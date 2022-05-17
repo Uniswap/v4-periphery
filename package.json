@@ -19,7 +19,9 @@
     "engines": {
       "node": ">=10"
     },
-    "dependencies": {},
+    "dependencies": {
+        "@uniswap/core-next": "git+ssh://git@github.com:Uniswap/core-next.git"
+    },
     "devDependencies": {
       "@openzeppelin/contracts": "4.4.2",
       "@nomiclabs/hardhat-ethers": "^2.0.2",
@@ -30,10 +32,12 @@
       "@types/mocha": "^5.2.7",
       "@uniswap/snapshot-gas-cost": "^1.0.0",
       "chai": "^4.2.0",
+      "decimal.js": "^10.2.1",
       "ethereum-waffle": "^3.0.2",
       "ethers": "^5.0.8",
       "hardhat": "^2.2.0",
       "hardhat-typechain": "^0.3.5",
+      "import-toml": "1.0.0",
       "mocha": "^6.2.2",
       "mocha-chai-jest-snapshot": "^1.1.0",
       "prettier": "^2.0.5",
@@ -46,8 +50,9 @@
       "typescript": "^3.7.3"
     },
     "scripts": {
-      "compile": "hardhat compile",
-      "test": "hardhat test"
+        "temporary_precompile": "cd node_modules/@uniswap/core-next && npx hardhat compile",
+        "compile": "yarn temporary_precompile && hardhat compile", 
+        "test": "hardhat test"
     }
   }
   
