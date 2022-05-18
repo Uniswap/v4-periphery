@@ -1,7 +1,7 @@
 {
     "name": "@uniswap/periphery-next",
     "description": "🦄 Uniswap Protocol periphery smart contracts",
-    "license": "UNLICENSED",
+    "license": "GPL-2.0-or-later",
     "publishConfig": {
       "access": "restricted"
     },
