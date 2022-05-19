@@ -43,15 +43,19 @@ describe('GeomeanOracle', () => {
     return bytecode
   }
 
+  const v4PoolManagerFixure = async ([wallet]: Wallet[]) => {
+    return (await waffle.deployContract(wallet, {
+      bytecode: V4_POOL_MANAGER_BYTECODE,
+      abi: V4_POOL_MANAGER_ABI,
+    })) as IPoolManager
+  }
+
   const fixture = async ([wallet]: Wallet[]) => {
     const geomeanOracleFactory = await ethers.getContractFactory('MockTimeGeomeanOracle')
 
     const modifyPositionTestFactory = await ethers.getContractFactory('PoolModifyPositionTest')
     const tokens = await tokensFixture()
-    const manager = await waffle.deployContract(wallet, {
-      bytecode: V4_POOL_MANAGER_BYTECODE,
-      abi: V4_POOL_MANAGER_ABI,
-    }) as IPoolManager
+    const manager = await v4PoolManagerFixure([wallet])
 
     const geomeanOracleHookAddress = createHookMask({
       beforeInitialize: true,
