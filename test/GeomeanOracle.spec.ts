@@ -1,7 +1,11 @@
+import {
+  abi as V4_POOL_MANAGER_ABI,
+  bytecode as V4_POOL_MANAGER_BYTECODE,
+} from '@uniswap/core-next/artifacts/contracts/PoolManager.sol/PoolManager.json'
 import { createFixtureLoader } from 'ethereum-waffle'
 import { Wallet } from 'ethers'
-import hre, { ethers } from 'hardhat'
-import { MockTimeGeomeanOracle, TestPoolManager, PoolModifyPositionTest, TestERC20 } from '../typechain'
+import hre, { ethers, waffle } from 'hardhat'
+import { MockTimeGeomeanOracle, IPoolManager, PoolModifyPositionTest, TestERC20 } from '../typechain'
 import { MAX_TICK_SPACING } from './shared/constants'
 import { expect } from './shared/expect'
 import { tokensFixture } from './shared/fixtures'
@@ -10,7 +14,7 @@ import { createHookMask, encodeSqrtPriceX96, getMaxTick, getMinTick } from './sh
 describe('GeomeanOracle', () => {
   let wallets: Wallet[]
   let oracle: MockTimeGeomeanOracle
-  let poolManager: TestPoolManager
+  let poolManager: IPoolManager
   let modifyPositionTest: PoolModifyPositionTest
   let token0: TestERC20
   let token1: TestERC20
@@ -42,10 +46,12 @@ describe('GeomeanOracle', () => {
   const fixture = async ([wallet]: Wallet[]) => {
     const geomeanOracleFactory = await ethers.getContractFactory('MockTimeGeomeanOracle')
 
-    const poolManagerFactory = await ethers.getContractFactory('TestPoolManager')
     const modifyPositionTestFactory = await ethers.getContractFactory('PoolModifyPositionTest')
     const tokens = await tokensFixture()
-    const manager = (await poolManagerFactory.deploy()) as TestPoolManager
+    const manager = await waffle.deployContract(wallet, {
+      bytecode: V4_POOL_MANAGER_BYTECODE,
+      abi: V4_POOL_MANAGER_ABI,
+    }) as IPoolManager
 
     const geomeanOracleHookAddress = createHookMask({
       beforeInitialize: true,
