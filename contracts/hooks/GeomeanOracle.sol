@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.13;
 
-import {IHooks} from '@uniswap/core-next/contracts/interfaces/IHooks.sol';
 import {IPoolManager} from '@uniswap/core-next/contracts/interfaces/IPoolManager.sol';
 import {Hooks} from '@uniswap/core-next/contracts/libraries/Hooks.sol';
 import {TickMath} from '@uniswap/core-next/contracts/libraries/TickMath.sol';
@@ -94,7 +93,7 @@ contract GeomeanOracle is BaseHook {
     }
 
     /// @dev Called before any action that potentially modifies pool price or liquidity, such as swap or modify position
-    function _updatePool(IPoolManager.PoolKey memory key) private {
+    function _updatePool(IPoolManager.PoolKey calldata key) private {
         (, int24 tick) = poolManager.getSlot0(key);
 
         uint128 liquidity = poolManager.getLiquidity(key);
