@@ -1,3 +1,17 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
+exports[`LimitOrderHooks #afterSwap gas cost 1`] = `
+Object {
+  "calldataByteLength": 324,
+  "gasUsed": 503248,
+}
+`;
+
+exports[`LimitOrderHooks #kill gas cost 1`] = `
+Object {
+  "calldataByteLength": 260,
+  "gasUsed": 208010,
+}
+`;
+
 exports[`LimitOrderHooks bytecode size 1`] = `13038`;

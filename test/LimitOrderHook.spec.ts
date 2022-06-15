@@ -1,3 +1,4 @@
+import snapshotGasCost from '@uniswap/snapshot-gas-cost';
 import {
   abi as V4_POOL_MANAGER_ABI,
   bytecode as V4_POOL_MANAGER_BYTECODE,
@@ -319,6 +320,10 @@ describe('LimitOrderHooks', () => {
 
       expect(await limitOrderHook.getEpochLiquidity(1, wallet.address)).to.eq(0)
     })
+
+    it('gas cost', async () => {
+      await snapshotGasCost(limitOrderHook.kill(key, tickLower, zeroForOne, wallet.address));
+    })
   })
 
   describe('swap across the range', async () => {
@@ -384,6 +389,36 @@ describe('LimitOrderHooks', () => {
 
       expect(epochInfo.token0Total).to.eq(0)
       expect(epochInfo.token1Total).to.eq(0)
+    })
+  })
+
+  describe('#afterSwap', async () => {
+    const tickLower = 0
+    const zeroForOne = true
+    const liquidity = 1000000
+    const expectedToken0Amount = 2996
+
+    beforeEach('create limit order', async () => {
+      await expect(limitOrderHook.place(key, tickLower, zeroForOne, liquidity))
+        .to.emit(tokens.token0, 'Transfer')
+        .withArgs(wallet.address, manager.address, expectedToken0Amount)
+    })
+
+    it('gas cost', async () => {
+      await snapshotGasCost(
+        swapTest.swap(
+          key,
+          {
+            zeroForOne: false,
+            amountSpecified: expandTo18Decimals(1),
+            sqrtPriceLimitX96: await tickMath.getSqrtRatioAtTick(key.tickSpacing),
+          },
+          {
+            withdrawTokens: true,
+            settleUsingTransfer: true,
+          }
+        )
+      )
     })
   })
 })
