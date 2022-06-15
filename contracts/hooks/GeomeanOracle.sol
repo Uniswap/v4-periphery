@@ -2,6 +2,7 @@
 pragma solidity =0.8.13;
 
 import {IPoolManager} from '@uniswap/core-next/contracts/interfaces/IPoolManager.sol';
+import {PoolId} from '@uniswap/core-next/contracts/libraries/PoolId.sol';
 import {Hooks} from '@uniswap/core-next/contracts/libraries/Hooks.sol';
 import {TickMath} from '@uniswap/core-next/contracts/libraries/TickMath.sol';
 import {Oracle} from '@uniswap/core-next/contracts/libraries/Oracle.sol';
@@ -12,6 +13,7 @@ import {BaseHook} from '@uniswap/core-next/contracts/hooks/base/BaseHook.sol';
 ///     for protocols that wish to use a V3 style geomean oracle.
 contract GeomeanOracle is BaseHook {
     using Oracle for Oracle.Observation[65535];
+    using PoolId for IPoolManager.PoolKey;
 
     /// @notice Oracle pools do not have fees because they exist to serve as an oracle for a pair of tokens
     error OnlyOneOraclePoolAllowed();
@@ -75,11 +77,12 @@ contract GeomeanOracle is BaseHook {
         address,
         IPoolManager.PoolKey calldata key,
         uint160
-    ) external view override poolManagerOnly {
+    ) external view override poolManagerOnly returns (bytes4) {
         // This is to limit the fragmentation of pools using this oracle hook. In other words,
         // there may only be one pool per pair of tokens that use this hook. The tick spacing is set to the maximum
         // because we only allow max range liquidity in this pool.
         if (key.fee != 0 || key.tickSpacing != poolManager.MAX_TICK_SPACING()) revert OnlyOneOraclePoolAllowed();
+        return GeomeanOracle.beforeInitialize.selector;
     }
 
     function afterInitialize(
@@ -87,18 +90,18 @@ contract GeomeanOracle is BaseHook {
         IPoolManager.PoolKey calldata key,
         uint160,
         int24
-    ) external override poolManagerOnly {
-        bytes32 id = keccak256(abi.encode(key));
+    ) external override poolManagerOnly returns (bytes4) {
+        bytes32 id = key.toId();
         (states[id].cardinality, states[id].cardinalityNext) = observations[id].initialize(_blockTimestamp());
+        return GeomeanOracle.afterInitialize.selector;
     }
 
     /// @dev Called before any action that potentially modifies pool price or liquidity, such as swap or modify position
     function _updatePool(IPoolManager.PoolKey calldata key) private {
-        (, int24 tick) = poolManager.getSlot0(key);
+        bytes32 id = key.toId();
+        (, int24 tick, ) = poolManager.getSlot0(id);
 
-        uint128 liquidity = poolManager.getLiquidity(key);
-
-        bytes32 id = keccak256(abi.encode(key));
+        uint128 liquidity = poolManager.getLiquidity(id);
 
         (states[id].index, states[id].cardinality) = observations[id].write(
             states[id].index,
@@ -114,7 +117,7 @@ contract GeomeanOracle is BaseHook {
         address,
         IPoolManager.PoolKey calldata key,
         IPoolManager.ModifyPositionParams calldata params
-    ) external override poolManagerOnly {
+    ) external override poolManagerOnly returns (bytes4) {
         if (params.liquidityDelta < 0) revert OraclePoolMustLockLiquidity();
         int24 maxTickSpacing = poolManager.MAX_TICK_SPACING();
         if (
@@ -122,14 +125,16 @@ contract GeomeanOracle is BaseHook {
             params.tickUpper != TickMath.maxUsableTick(maxTickSpacing)
         ) revert OraclePositionsMustBeFullRange();
         _updatePool(key);
+        return GeomeanOracle.beforeModifyPosition.selector;
     }
 
     function beforeSwap(
         address,
         IPoolManager.PoolKey calldata key,
         IPoolManager.SwapParams calldata
-    ) external override poolManagerOnly {
+    ) external override poolManagerOnly returns (bytes4) {
         _updatePool(key);
+        return GeomeanOracle.beforeSwap.selector;
     }
 
     /// @notice Observe the given pool for the timestamps
@@ -138,13 +143,13 @@ contract GeomeanOracle is BaseHook {
         view
         returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s)
     {
-        bytes32 id = keccak256(abi.encode(key));
+        bytes32 id = key.toId();
 
         ObservationState memory state = states[id];
 
-        (, int24 tick) = poolManager.getSlot0(key);
+        (, int24 tick, ) = poolManager.getSlot0(id);
 
-        uint128 liquidity = poolManager.getLiquidity(key);
+        uint128 liquidity = poolManager.getLiquidity(id);
 
         return
             observations[id].observe(_blockTimestamp(), secondsAgos, tick, state.index, liquidity, state.cardinality);
