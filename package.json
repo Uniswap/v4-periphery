@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "4.4.2",
-    "@uniswap/core-next": "git+ssh://git@github.com:Uniswap/core-next.git#43df9917ba606b151420dacfa9a08908256085f8"
+    "@uniswap/core-next": "git+ssh://git@github.com:Uniswap/core-next.git#50d7873b95218df47bc747d1218a97a29fad494e"
   },
   "devDependencies": {
     "@nomiclabs/hardhat-ethers": "^2.0.2",

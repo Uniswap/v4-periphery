@@ -1,3 +1,4 @@
+import snapshotGasCost from '@uniswap/snapshot-gas-cost';
 import {
   abi as V4_POOL_MANAGER_ABI,
   bytecode as V4_POOL_MANAGER_BYTECODE,
@@ -16,7 +17,7 @@ import hre, { ethers, waffle } from 'hardhat'
 import { LimitOrderHook, TestERC20 } from '../typechain'
 import { expect } from './shared/expect'
 import { tokensFixture } from './shared/fixtures'
-import { encodeSqrtPriceX96, expandTo18Decimals, FeeAmount, getWalletForDeployingHookMask } from './shared/utilities'
+import { encodeSqrtPriceX96, expandTo18Decimals, FeeAmount, getWalletForDeployingHookMask, getPoolId } from './shared/utilities'
 
 const { constants } = ethers
 
@@ -34,7 +35,7 @@ const v4PoolManagerFixure = async ([wallet]: Wallet[]) => {
   return (await waffle.deployContract(wallet, {
     bytecode: V4_POOL_MANAGER_BYTECODE,
     abi: V4_POOL_MANAGER_ABI,
-  })) as PoolManager
+  }, [10000])) as PoolManager
 }
 
 const poolSwapTestFixture = async ([wallet]: Wallet[], manager: string) => {
@@ -149,7 +150,7 @@ describe('LimitOrderHooks', () => {
   describe('hook is initialized', async () => {
     describe('#getTickLowerLast', () => {
       it('works when the price is 1', async () => {
-        expect(await limitOrderHook.getTickLowerLast(key)).to.eq(0)
+        expect(await limitOrderHook.getTickLowerLast(getPoolId(key))).to.eq(0)
       })
 
       it('works when the price is not 1', async () => {
@@ -158,7 +159,7 @@ describe('LimitOrderHooks', () => {
           tickSpacing: 61,
         }
         await manager.initialize(otherKey, encodeSqrtPriceX96(10, 1))
-        expect(await limitOrderHook.getTickLowerLast(otherKey)).to.eq(22997)
+        expect(await limitOrderHook.getTickLowerLast(getPoolId(otherKey))).to.eq(22997)
       })
     })
 
@@ -184,8 +185,8 @@ describe('LimitOrderHooks', () => {
         await limitOrderHook.place(key, tickLower, zeroForOne, liquidity)
         expect(await limitOrderHook.getEpoch(key, tickLower, zeroForOne)).to.eq(1)
         expect(
-          await manager['getLiquidity((address,address,uint24,int24,address),address,int24,int24)'](
-            key,
+          await manager['getLiquidity(bytes32,address,int24,int24)'](
+            getPoolId(key),
             limitOrderHook.address,
             tickLower,
             tickLower + key.tickSpacing
@@ -198,8 +199,8 @@ describe('LimitOrderHooks', () => {
         await limitOrderHook.place(key, tickLower, zeroForOne, liquidity)
         expect(await limitOrderHook.getEpoch(key, tickLower, zeroForOne)).to.eq(1)
         expect(
-          await manager['getLiquidity((address,address,uint24,int24,address),address,int24,int24)'](
-            key,
+          await manager['getLiquidity(bytes32,address,int24,int24)'](
+            getPoolId(key),
             limitOrderHook.address,
             tickLower,
             tickLower + key.tickSpacing
@@ -240,8 +241,8 @@ describe('LimitOrderHooks', () => {
         await limitOrderHook.place(key, tickLower, zeroForOne, liquidity)
         expect(await limitOrderHook.getEpoch(key, tickLower, zeroForOne)).to.eq(1)
         expect(
-          await manager['getLiquidity((address,address,uint24,int24,address),address,int24,int24)'](
-            key,
+          await manager['getLiquidity(bytes32,address,int24,int24)'](
+            getPoolId(key),
             limitOrderHook.address,
             tickLower,
             tickLower + key.tickSpacing
@@ -282,8 +283,8 @@ describe('LimitOrderHooks', () => {
       expect(await limitOrderHook.getEpoch(key, tickLower, zeroForOne)).to.eq(1)
 
       expect(
-        await manager['getLiquidity((address,address,uint24,int24,address),address,int24,int24)'](
-          key,
+        await manager['getLiquidity(bytes32,address,int24,int24)'](
+          getPoolId(key),
           limitOrderHook.address,
           tickLower,
           tickLower + key.tickSpacing
@@ -319,6 +320,10 @@ describe('LimitOrderHooks', () => {
 
       expect(await limitOrderHook.getEpochLiquidity(1, wallet.address)).to.eq(0)
     })
+
+    it('gas cost', async () => {
+      await snapshotGasCost(limitOrderHook.kill(key, tickLower, zeroForOne, wallet.address));
+    })
   })
 
   describe('swap across the range', async () => {
@@ -353,9 +358,9 @@ describe('LimitOrderHooks', () => {
         .to.emit(tokens.token0, 'Transfer')
         .withArgs(manager.address, wallet.address, expectedToken0Amount - 1) // 1 wei of dust
 
-      expect(await limitOrderHook.getTickLowerLast(key)).to.be.eq(key.tickSpacing)
+      expect(await limitOrderHook.getTickLowerLast(getPoolId(key))).to.be.eq(key.tickSpacing)
 
-      expect((await manager.getSlot0(key)).tick).to.eq(key.tickSpacing)
+      expect((await manager.getSlot0(getPoolId(key))).tick).to.eq(key.tickSpacing)
     })
 
     it('#fill', async () => {
@@ -366,8 +371,8 @@ describe('LimitOrderHooks', () => {
       expect(epochInfo.token1Total).to.eq(expectedToken0Amount + 17) // 3013, 2 wei of dust
 
       expect(
-        await manager['getLiquidity((address,address,uint24,int24,address),address,int24,int24)'](
-          key,
+        await manager['getLiquidity(bytes32,address,int24,int24)'](
+          getPoolId(key),
           limitOrderHook.address,
           tickLower,
           tickLower + key.tickSpacing
@@ -384,6 +389,36 @@ describe('LimitOrderHooks', () => {
 
       expect(epochInfo.token0Total).to.eq(0)
       expect(epochInfo.token1Total).to.eq(0)
+    })
+  })
+
+  describe('#afterSwap', async () => {
+    const tickLower = 0
+    const zeroForOne = true
+    const liquidity = 1000000
+    const expectedToken0Amount = 2996
+
+    beforeEach('create limit order', async () => {
+      await expect(limitOrderHook.place(key, tickLower, zeroForOne, liquidity))
+        .to.emit(tokens.token0, 'Transfer')
+        .withArgs(wallet.address, manager.address, expectedToken0Amount)
+    })
+
+    it('gas cost', async () => {
+      await snapshotGasCost(
+        swapTest.swap(
+          key,
+          {
+            zeroForOne: false,
+            amountSpecified: expandTo18Decimals(1),
+            sqrtPriceLimitX96: await tickMath.getSqrtRatioAtTick(key.tickSpacing),
+          },
+          {
+            withdrawTokens: true,
+            settleUsingTransfer: true,
+          }
+        )
+      )
     })
   })
 })

@@ -2,6 +2,7 @@
 pragma solidity =0.8.13;
 
 import {IPoolManager} from '@uniswap/core-next/contracts/interfaces/IPoolManager.sol';
+import {PoolId} from '@uniswap/core-next/contracts/libraries/PoolId.sol';
 import {Hooks} from '@uniswap/core-next/contracts/libraries/Hooks.sol';
 import {FullMath} from '@uniswap/core-next/contracts/libraries/FullMath.sol';
 import {SafeCast} from '@uniswap/core-next/contracts/libraries/SafeCast.sol';
@@ -27,6 +28,7 @@ library EpochLibrary {
 contract LimitOrderHook is BaseHook {
     using SafeCast for uint256;
     using EpochLibrary for Epoch;
+    using PoolId for IPoolManager.PoolKey;
 
     error ZeroLiquidity();
     error InRange();
@@ -91,12 +93,12 @@ contract LimitOrderHook is BaseHook {
         );
     }
 
-    function getTickLowerLast(IPoolManager.PoolKey memory key) public view returns (int24) {
-        return tickLowerLasts[keccak256(abi.encode(key))];
+    function getTickLowerLast(bytes32 poolId) public view returns (int24) {
+        return tickLowerLasts[poolId];
     }
 
-    function setTickLowerLast(IPoolManager.PoolKey memory key, int24 tickLower) private {
-        tickLowerLasts[keccak256(abi.encode(key))] = tickLower;
+    function setTickLowerLast(bytes32 poolId, int24 tickLower) private {
+        tickLowerLasts[poolId] = tickLower;
     }
 
     function getEpoch(
@@ -120,8 +122,8 @@ contract LimitOrderHook is BaseHook {
         return epochInfos[epoch].liquidity[owner];
     }
 
-    function getTick(IPoolManager.PoolKey memory key) private view returns (int24 tick) {
-        (, tick) = poolManager.getSlot0(key);
+    function getTick(bytes32 poolId) private view returns (int24 tick) {
+        (, tick, ) = poolManager.getSlot0(poolId);
     }
 
     function getTickLower(int24 tick, int24 tickSpacing) private pure returns (int24) {
@@ -135,8 +137,9 @@ contract LimitOrderHook is BaseHook {
         IPoolManager.PoolKey calldata key,
         uint160,
         int24 tick
-    ) external override poolManagerOnly {
-        setTickLowerLast(key, getTickLower(tick, key.tickSpacing));
+    ) external override poolManagerOnly returns (bytes4) {
+        setTickLowerLast(key.toId(), getTickLower(tick, key.tickSpacing));
+        return LimitOrderHook.afterInitialize.selector;
     }
 
     function afterSwap(
@@ -144,22 +147,9 @@ contract LimitOrderHook is BaseHook {
         IPoolManager.PoolKey calldata key,
         IPoolManager.SwapParams calldata params,
         IPoolManager.BalanceDelta calldata
-    ) external override poolManagerOnly {
-        int24 tickLower = getTickLower(getTick(key), key.tickSpacing);
-        int24 tickLowerLast = getTickLowerLast(key);
-        if (tickLower == tickLowerLast) return;
-
-        int24 lower;
-        int24 upper;
-        if (tickLower < tickLowerLast) {
-            // the pool has moved "left", meaning it's traded token1 for token0,
-            lower = tickLower + key.tickSpacing;
-            upper = tickLowerLast;
-        } else {
-            // the pool has moved "right", meaning it's traded token0 for token1
-            lower = tickLowerLast;
-            upper = tickLower - key.tickSpacing;
-        }
+    ) external override poolManagerOnly returns (bytes4) {
+        (int24 tickLower, int24 lower, int24 upper) = _getCrossedTicks(key.toId(), key.tickSpacing);
+        if (lower > upper) return LimitOrderHook.afterSwap.selector;
 
         // note that a zeroForOne swap means that the pool is actually gaining token0, so limit
         // order fills are the opposite of swap fills, hence the inversion below
@@ -189,7 +179,21 @@ contract LimitOrderHook is BaseHook {
             }
         }
 
-        setTickLowerLast(key, tickLower);
+        setTickLowerLast(key.toId(), tickLower);
+        return LimitOrderHook.afterSwap.selector;
+    }
+
+    function _getCrossedTicks(bytes32 poolId, int24 tickSpacing) internal view returns (int24 tickLower, int24 lower, int24 upper) {
+        tickLower = getTickLower(getTick(poolId), tickSpacing);
+        int24 tickLowerLast = getTickLowerLast(poolId);
+
+        if (tickLower < tickLowerLast) {
+            lower = tickLower + tickSpacing;
+            upper = tickLowerLast;
+        } else {
+            lower = tickLowerLast;
+            upper = tickLower - tickSpacing;
+        }
     }
 
     function lockAcquiredFill(

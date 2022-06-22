@@ -1253,9 +1253,9 @@
   resolved "https://registry.yarnpkg.com/@ungap/promise-all-settled/-/promise-all-settled-1.1.2.tgz#aa58042711d6e3275dd37dc597e5d31e8c290a44"
   integrity sha512-sL/cEvJWAnClXw0wHk85/2L0G6Sj8UB0Ctc1TEMbKSsmpRosqhwj9gWgFRZSrBr2f9tiXISwNhCPmlfqUqyb9Q==
 
-"@uniswap/core-next@git+ssh://git@github.com:Uniswap/core-next.git#43df9917ba606b151420dacfa9a08908256085f8":
+"@uniswap/core-next@git+ssh://git@github.com:Uniswap/core-next.git#50d7873b95218df47bc747d1218a97a29fad494e":
   version "1.0.0"
-  resolved "git+ssh://git@github.com:Uniswap/core-next.git#43df9917ba606b151420dacfa9a08908256085f8"
+  resolved "git+ssh://git@github.com:Uniswap/core-next.git#50d7873b95218df47bc747d1218a97a29fad494e"
   dependencies:
     "@openzeppelin/contracts" "4.4.2"
 
