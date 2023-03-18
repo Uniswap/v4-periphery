@@ -6,10 +6,9 @@ import {PoolId} from '@uniswap/core-next/contracts/libraries/PoolId.sol';
 import {Hooks} from '@uniswap/core-next/contracts/libraries/Hooks.sol';
 import {FullMath} from '@uniswap/core-next/contracts/libraries/FullMath.sol';
 import {SafeCast} from '@uniswap/core-next/contracts/libraries/SafeCast.sol';
-import {BaseHook} from '@uniswap/core-next/contracts/hooks/base/BaseHook.sol';
 import {IERC20Minimal} from '@uniswap/core-next/contracts/interfaces/external/IERC20Minimal.sol';
-
 import {IERC1155Receiver} from '@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol';
+import {BaseHook} from './BaseHook.sol';
 
 type Epoch is uint232;
 
