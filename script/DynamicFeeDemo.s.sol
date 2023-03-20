@@ -12,7 +12,7 @@ import {IHooks} from '@uniswap/core-next/contracts/interfaces/IHooks.sol';
 import {TestERC20} from '@uniswap/core-next/contracts/test/TestERC20.sol';
 import {PoolManager} from '@uniswap/core-next/contracts/PoolManager.sol';
 import {IPoolManager} from '@uniswap/core-next/contracts/interfaces/IPoolManager.sol';
-import {VolatilityOracle} from '../hooks/VolatilityOracle.sol';
+import {VolatilityOracle} from '../contracts/hooks/VolatilityOracle.sol';
 
 contract MyScript is Script {
     function run() external {

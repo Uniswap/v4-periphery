@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.13;
+pragma solidity =0.8.19;
 
 import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
 import {IDynamicFeeManager} from "@uniswap/core-next/contracts/interfaces/IDynamicFeeManager.sol";
+import {Hooks} from '@uniswap/core-next/contracts/libraries/Hooks.sol';
 import {BaseHook} from "./BaseHook.sol";
 
 contract VolatilityOracle is BaseHook, IDynamicFeeManager {
