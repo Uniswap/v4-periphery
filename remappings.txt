@@ -1,0 +1,2 @@
+@uniswap/=node_modules/@uniswap/
+forge-std/=lib/forge-std/src/

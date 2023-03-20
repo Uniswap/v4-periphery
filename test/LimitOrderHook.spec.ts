@@ -1,31 +1,31 @@
-import snapshotGasCost from '@uniswap/snapshot-gas-cost';
 import {
   abi as V4_POOL_MANAGER_ABI,
-  bytecode as V4_POOL_MANAGER_BYTECODE,
-} from '@uniswap/core-next/artifacts/contracts/PoolManager.sol/PoolManager.json'
+  bytecode as V4_POOL_MANAGER_BYTECODE
+} from '@uniswap/core-next/artifacts/contracts/PoolManager.sol/PoolManager.json';
 import {
   abi as POOL_SWAP_TEST_ABI,
-  bytecode as POOL_SWAP_TEST_BYTECODE,
-} from '@uniswap/core-next/artifacts/contracts/test/PoolSwapTest.sol/PoolSwapTest.json'
+  bytecode as POOL_SWAP_TEST_BYTECODE
+} from '@uniswap/core-next/artifacts/contracts/test/PoolSwapTest.sol/PoolSwapTest.json';
 import {
   abi as TICK_MATH_TEST_ABI,
-  bytecode as TICK_MATH_TEST_BYTECODE,
-} from '@uniswap/core-next/artifacts/contracts/test/TickMathTest.sol/TickMathTest.json'
-import { PoolManager, PoolSwapTest, TickMathTest } from '@uniswap/core-next/typechain'
-import { Wallet } from 'ethers'
-import hre, { ethers, waffle } from 'hardhat'
-import { LimitOrderHook, TestERC20 } from '../typechain'
-import { expect } from './shared/expect'
-import { tokensFixture } from './shared/fixtures'
-import { encodeSqrtPriceX96, expandTo18Decimals, FeeAmount, getWalletForDeployingHookMask, getPoolId } from './shared/utilities'
+  bytecode as TICK_MATH_TEST_BYTECODE
+} from '@uniswap/core-next/artifacts/contracts/test/TickMathTest.sol/TickMathTest.json';
+import { PoolManager, PoolSwapTest, TickMathTest } from '@uniswap/core-next/typechain';
+import snapshotGasCost from '@uniswap/snapshot-gas-cost';
+import { Wallet } from 'ethers';
+import hre, { ethers, waffle } from 'hardhat';
+import { LimitOrderHook, TestERC20 } from '../typechain';
+import { expect } from './shared/expect';
+import { tokensFixture } from './shared/fixtures';
+import { encodeSqrtPriceX96, expandTo18Decimals, FeeAmount, getPoolId, getWalletForDeployingHookMask } from './shared/utilities';
 
 const { constants } = ethers
 
 const createFixtureLoader = waffle.createFixtureLoader
 
 interface PoolKey {
-  token0: string
-  token1: string
+  currency0: string
+  currency1: string
   fee: FeeAmount
   tickSpacing: number
   hooks: string
@@ -137,8 +137,8 @@ describe('LimitOrderHooks', () => {
   beforeEach('initialize pool with limit order hook', async () => {
     await manager.initialize(
       (key = {
-        token0: tokens.token0.address,
-        token1: tokens.token1.address,
+        currency0: tokens.token0.address,
+        currency1: tokens.token1.address,
         fee: FeeAmount.MEDIUM,
         tickSpacing: 60,
         hooks: limitOrderHook.address,
@@ -293,8 +293,8 @@ describe('LimitOrderHooks', () => {
 
       const epochInfo = await limitOrderHook.epochInfos(1)
       expect(epochInfo.filled).to.be.false
-      expect(epochInfo.token0).to.eq(key.token0)
-      expect(epochInfo.token1).to.eq(key.token1)
+      expect(epochInfo.currency0).to.eq(key.currency0)
+      expect(epochInfo.currency1).to.eq(key.currency1)
       expect(epochInfo.token0Total).to.eq(0)
       expect(epochInfo.token1Total).to.eq(0)
       expect(epochInfo.liquidityTotal).to.eq(liquidity * 2)

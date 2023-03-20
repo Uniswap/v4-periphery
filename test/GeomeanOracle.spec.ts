@@ -1,11 +1,11 @@
 import {
   abi as V4_POOL_MANAGER_ABI,
-  bytecode as V4_POOL_MANAGER_BYTECODE,
+  bytecode as V4_POOL_MANAGER_BYTECODE
 } from '@uniswap/core-next/artifacts/contracts/PoolManager.sol/PoolManager.json'
 import { createFixtureLoader } from 'ethereum-waffle'
 import { Wallet } from 'ethers'
 import hre, { ethers, waffle } from 'hardhat'
-import { MockTimeGeomeanOracle, IPoolManager, PoolModifyPositionTest, TestERC20 } from '../typechain'
+import { IPoolManager, MockTimeGeomeanOracle, PoolModifyPositionTest, TestERC20 } from '../typechain'
 import { MAX_TICK_SPACING } from './shared/constants'
 import { expect } from './shared/expect'
 import { tokensFixture } from './shared/fixtures'
@@ -99,8 +99,8 @@ describe('GeomeanOracle', () => {
   })
 
   let poolKey: {
-    token0: string
-    token1: string
+    currency0: string
+    currency1: string
     fee: number
     tickSpacing: number
     hooks: string
@@ -114,8 +114,8 @@ describe('GeomeanOracle', () => {
       modifyPositionTest,
     } = await loadFixture(fixture))
     poolKey = {
-      token0: token0.address,
-      token1: token1.address,
+      currency0: token0.address,
+      currency1: token1.address,
       fee: 0,
       hooks: oracle.address,
       tickSpacing: MAX_TICK_SPACING,
@@ -146,8 +146,8 @@ describe('GeomeanOracle', () => {
       await expect(
         poolManager.initialize(
           {
-            token0: token0.address,
-            token1: token1.address,
+            currency0: token0.address,
+            currency1: token1.address,
             fee: 1,
             hooks: oracle.address,
             tickSpacing: MAX_TICK_SPACING,
@@ -161,8 +161,8 @@ describe('GeomeanOracle', () => {
       await expect(
         poolManager.initialize(
           {
-            token0: token0.address,
-            token1: token1.address,
+            currency0: token0.address,
+            currency1: token1.address,
             fee: 0,
             hooks: oracle.address,
             tickSpacing: 60,

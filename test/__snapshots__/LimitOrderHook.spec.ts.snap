@@ -3,15 +3,15 @@
 exports[`LimitOrderHooks #afterSwap gas cost 1`] = `
 Object {
   "calldataByteLength": 324,
-  "gasUsed": 506798,
+  "gasUsed": 444058,
 }
 `;
 
 exports[`LimitOrderHooks #kill gas cost 1`] = `
 Object {
   "calldataByteLength": 260,
-  "gasUsed": 210040,
+  "gasUsed": 188109,
 }
 `;
 
-exports[`LimitOrderHooks bytecode size 1`] = `13098`;
+exports[`LimitOrderHooks bytecode size 1`] = `12536`;

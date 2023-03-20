@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.13;
+pragma solidity =0.8.19;
 
-import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
-import {PoolId} from "@uniswap/core-next/contracts/libraries/PoolId.sol";
-import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
-import {FullMath} from "@uniswap/core-next/contracts/libraries/FullMath.sol";
-import {SafeCast} from "@uniswap/core-next/contracts/libraries/SafeCast.sol";
-import {IERC20Minimal} from "@uniswap/core-next/contracts/interfaces/external/IERC20Minimal.sol";
-import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
-import {BaseHook} from "./BaseHook.sol";
+import {IPoolManager} from '@uniswap/core-next/contracts/interfaces/IPoolManager.sol';
+import {PoolId} from '@uniswap/core-next/contracts/libraries/PoolId.sol';
+import {Hooks} from '@uniswap/core-next/contracts/libraries/Hooks.sol';
+import {FullMath} from '@uniswap/core-next/contracts/libraries/FullMath.sol';
+import {SafeCast} from '@uniswap/core-next/contracts/libraries/SafeCast.sol';
+import {IERC20Minimal} from '@uniswap/core-next/contracts/interfaces/external/IERC20Minimal.sol';
+import {IERC1155Receiver} from '@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol';
+import {BaseHook} from './BaseHook.sol';
+import {Currency, CurrencyLibrary} from '@uniswap/core-next/contracts/libraries/CurrencyLibrary.sol';
 
 type Epoch is uint232;
 
@@ -28,6 +29,7 @@ contract LimitOrderHook is BaseHook {
     using SafeCast for uint256;
     using EpochLibrary for Epoch;
     using PoolId for IPoolManager.PoolKey;
+    using CurrencyLibrary for Currency;
 
     error ZeroLiquidity();
     error InRange();
@@ -65,8 +67,8 @@ contract LimitOrderHook is BaseHook {
 
     struct EpochInfo {
         bool filled;
-        IERC20Minimal token0;
-        IERC20Minimal token1;
+        Currency currency0;
+        Currency currency1;
         uint256 token0Total;
         uint256 token1Total;
         uint128 liquidityTotal;
@@ -100,11 +102,20 @@ contract LimitOrderHook is BaseHook {
         tickLowerLasts[poolId] = tickLower;
     }
 
-    function getEpoch(IPoolManager.PoolKey memory key, int24 tickLower, bool zeroForOne) public view returns (Epoch) {
+    function getEpoch(
+        IPoolManager.PoolKey memory key,
+        int24 tickLower,
+        bool zeroForOne
+    ) public view returns (Epoch) {
         return epochs[keccak256(abi.encode(key, tickLower, zeroForOne))];
     }
 
-    function setEpoch(IPoolManager.PoolKey memory key, int24 tickLower, bool zeroForOne, Epoch epoch) private {
+    function setEpoch(
+        IPoolManager.PoolKey memory key,
+        int24 tickLower,
+        bool zeroForOne,
+        Epoch epoch
+    ) private {
         epochs[keccak256(abi.encode(key, tickLower, zeroForOne))] = epoch;
     }
 
@@ -113,7 +124,7 @@ contract LimitOrderHook is BaseHook {
     }
 
     function getTick(bytes32 poolId) private view returns (int24 tick) {
-        (, tick,) = poolManager.getSlot0(poolId);
+        (, tick, ) = poolManager.getSlot0(poolId);
     }
 
     function getTickLower(int24 tick, int24 tickSpacing) private pure returns (int24) {
@@ -122,12 +133,12 @@ contract LimitOrderHook is BaseHook {
         return compressed * tickSpacing;
     }
 
-    function afterInitialize(address, IPoolManager.PoolKey calldata key, uint160, int24 tick)
-        external
-        override
-        poolManagerOnly
-        returns (bytes4)
-    {
+    function afterInitialize(
+        address,
+        IPoolManager.PoolKey calldata key,
+        uint160,
+        int24 tick
+    ) external override poolManagerOnly returns (bytes4) {
         setTickLowerLast(key.toId(), getTickLower(tick, key.tickSpacing));
         return LimitOrderHook.afterInitialize.selector;
     }
@@ -176,7 +187,11 @@ contract LimitOrderHook is BaseHook {
     function _getCrossedTicks(bytes32 poolId, int24 tickSpacing)
         internal
         view
-        returns (int24 tickLower, int24 lower, int24 upper)
+        returns (
+            int24 tickLower,
+            int24 lower,
+            int24 upper
+        )
     {
         tickLower = getTickLower(getTick(poolId), tickSpacing);
         int24 tickLowerLast = getTickLowerLast(poolId);
@@ -190,11 +205,11 @@ contract LimitOrderHook is BaseHook {
         }
     }
 
-    function lockAcquiredFill(IPoolManager.PoolKey calldata key, int24 tickLower, int256 liquidityDelta)
-        external
-        selfOnly
-        returns (uint256 amount0, uint256 amount1)
-    {
+    function lockAcquiredFill(
+        IPoolManager.PoolKey calldata key,
+        int24 tickLower,
+        int256 liquidityDelta
+    ) external selfOnly returns (uint256 amount0, uint256 amount1) {
         IPoolManager.BalanceDelta memory delta = poolManager.modifyPosition(
             key,
             IPoolManager.ModifyPositionParams({
@@ -204,14 +219,16 @@ contract LimitOrderHook is BaseHook {
             })
         );
 
-        if (delta.amount0 < 0) poolManager.mint(key.token0, address(this), amount0 = uint256(-delta.amount0));
-        if (delta.amount1 < 0) poolManager.mint(key.token1, address(this), amount1 = uint256(-delta.amount1));
+        if (delta.amount0 < 0) poolManager.mint(key.currency0, address(this), amount0 = uint256(-delta.amount0));
+        if (delta.amount1 < 0) poolManager.mint(key.currency1, address(this), amount1 = uint256(-delta.amount1));
     }
 
-    function place(IPoolManager.PoolKey calldata key, int24 tickLower, bool zeroForOne, uint128 liquidity)
-        external
-        onlyValidPools(key.hooks)
-    {
+    function place(
+        IPoolManager.PoolKey calldata key,
+        int24 tickLower,
+        bool zeroForOne,
+        uint128 liquidity
+    ) external onlyValidPools(key.hooks) {
         if (liquidity == 0) revert ZeroLiquidity();
 
         poolManager.lock(
@@ -229,8 +246,8 @@ contract LimitOrderHook is BaseHook {
                 epochNext = epoch.unsafeIncrement();
             }
             epochInfo = epochInfos[epoch];
-            epochInfo.token0 = key.token0;
-            epochInfo.token1 = key.token1;
+            epochInfo.currency0 = key.currency0;
+            epochInfo.currency1 = key.currency1;
         } else {
             epochInfo = epochInfos[epoch];
         }
@@ -263,21 +280,31 @@ contract LimitOrderHook is BaseHook {
             if (delta.amount1 != 0) revert InRange();
             if (!zeroForOne) revert CrossedRange();
             // TODO use safeTransferFrom
-            key.token0.transferFrom(owner, address(poolManager), uint256(delta.amount0));
-            poolManager.settle(key.token0);
+            IERC20Minimal(Currency.unwrap(key.currency0)).transferFrom(
+                owner,
+                address(poolManager),
+                uint256(delta.amount0)
+            );
+            poolManager.settle(key.currency0);
         } else {
             if (delta.amount0 != 0) revert InRange();
             if (zeroForOne) revert CrossedRange();
             // TODO use safeTransferFrom
-            key.token1.transferFrom(owner, address(poolManager), uint256(delta.amount1));
-            poolManager.settle(key.token1);
+            IERC20Minimal(Currency.unwrap(key.currency1)).transferFrom(
+                owner,
+                address(poolManager),
+                uint256(delta.amount1)
+            );
+            poolManager.settle(key.currency1);
         }
     }
 
-    function kill(IPoolManager.PoolKey calldata key, int24 tickLower, bool zeroForOne, address to)
-        external
-        returns (uint256 amount0, uint256 amount1)
-    {
+    function kill(
+        IPoolManager.PoolKey calldata key,
+        int24 tickLower,
+        bool zeroForOne,
+        address to
+    ) external returns (uint256 amount0, uint256 amount1) {
         Epoch epoch = getEpoch(key, tickLower, zeroForOne);
         EpochInfo storage epochInfo = epochInfos[epoch];
 
@@ -315,7 +342,16 @@ contract LimitOrderHook is BaseHook {
         int256 liquidityDelta,
         address to,
         bool removingAllLiquidity
-    ) external selfOnly returns (uint256 amount0, uint256 amount1, uint256 amount0Fee, uint256 amount1Fee) {
+    )
+        external
+        selfOnly
+        returns (
+            uint256 amount0,
+            uint256 amount1,
+            uint256 amount0Fee,
+            uint256 amount1Fee
+        )
+    {
         int24 tickUpper = tickLower + key.tickSpacing;
 
         // because `modifyPosition` includes not just principal value but also fees, we cannot allocate
@@ -324,14 +360,15 @@ contract LimitOrderHook is BaseHook {
         // to prevent this, we allocate all fee revenue to remaining limit order placers, unless this is the last order.
         if (!removingAllLiquidity) {
             IPoolManager.BalanceDelta memory deltaFee = poolManager.modifyPosition(
-                key, IPoolManager.ModifyPositionParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0})
+                key,
+                IPoolManager.ModifyPositionParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0})
             );
 
             if (deltaFee.amount0 < 0) {
-                poolManager.mint(key.token0, address(this), amount0Fee = uint256(-deltaFee.amount0));
+                poolManager.mint(key.currency0, address(this), amount0Fee = uint256(-deltaFee.amount0));
             }
             if (deltaFee.amount1 < 0) {
-                poolManager.mint(key.token1, address(this), amount1Fee = uint256(-deltaFee.amount1));
+                poolManager.mint(key.currency1, address(this), amount1Fee = uint256(-deltaFee.amount1));
             }
         }
 
@@ -344,8 +381,8 @@ contract LimitOrderHook is BaseHook {
             })
         );
 
-        if (delta.amount0 < 0) poolManager.take(key.token0, to, amount0 = uint256(-delta.amount0));
-        if (delta.amount1 < 0) poolManager.take(key.token1, to, amount1 = uint256(-delta.amount1));
+        if (delta.amount0 < 0) poolManager.take(key.currency0, to, amount0 = uint256(-delta.amount0));
+        if (delta.amount1 < 0) poolManager.take(key.currency1, to, amount1 = uint256(-delta.amount1));
     }
 
     function withdraw(Epoch epoch, address to) external returns (uint256 amount0, uint256 amount1) {
@@ -369,34 +406,48 @@ contract LimitOrderHook is BaseHook {
         epochInfo.liquidityTotal = liquidityTotal - liquidity;
 
         poolManager.lock(
-            abi.encodeCall(this.lockAcquiredWithdraw, (epochInfo.token0, epochInfo.token1, amount0, amount1, to))
+            abi.encodeCall(this.lockAcquiredWithdraw, (epochInfo.currency0, epochInfo.currency1, amount0, amount1, to))
         );
 
         emit Withdraw(msg.sender, epoch, liquidity);
     }
 
     function lockAcquiredWithdraw(
-        IERC20Minimal token0,
-        IERC20Minimal token1,
+        Currency currency0,
+        Currency currency1,
         uint256 token0Amount,
         uint256 token1Amount,
         address to
     ) external selfOnly {
         if (token0Amount > 0) {
             poolManager.safeTransferFrom(
-                address(this), address(poolManager), uint256(uint160(address(token0))), token0Amount, ""
+                address(this),
+                address(poolManager),
+                uint256(uint160(Currency.unwrap(currency0))),
+                token0Amount,
+                ''
             );
-            poolManager.take(token0, to, token0Amount);
+            poolManager.take(currency0, to, token0Amount);
         }
         if (token1Amount > 0) {
             poolManager.safeTransferFrom(
-                address(this), address(poolManager), uint256(uint160(address(token1))), token1Amount, ""
+                address(this),
+                address(poolManager),
+                uint256(uint160(Currency.unwrap(currency1))),
+                token1Amount,
+                ''
             );
-            poolManager.take(token1, to, token1Amount);
+            poolManager.take(currency1, to, token1Amount);
         }
     }
 
-    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external view returns (bytes4) {
+    function onERC1155Received(
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes calldata
+    ) external view returns (bytes4) {
         if (msg.sender != address(poolManager)) revert NotPoolManagerToken();
         return IERC1155Receiver.onERC1155Received.selector;
     }
