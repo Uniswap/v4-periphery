@@ -1,7 +1,7 @@
-import 'hardhat-typechain'
 import '@nomiclabs/hardhat-ethers'
-import '@nomiclabs/hardhat-waffle'
 import '@nomiclabs/hardhat-etherscan'
+import '@nomiclabs/hardhat-waffle'
+import 'hardhat-typechain'
 
 const importToml = require('import-toml')
 const foundryConfig = importToml.sync('foundry.toml')
@@ -33,11 +33,11 @@ export default {
     apiKey: process.env.ETHERSCAN_API_KEY,
   },
   solidity: {
-    version: foundryConfig.default.solc_version,
+    version: foundryConfig.profile.default.solc_version,
     settings: {
       optimizer: {
         enabled: true,
-        runs: foundryConfig.default.optimizer_runs,
+        runs: foundryConfig.profile.default.optimizer_runs,
       },
       metadata: {
         // do not include the metadata hash, since this is machine dependent
