@@ -4,3 +4,6 @@
 [submodule "lib/core-next"]
 	path = lib/core-next
 	url = https://github.com/Uniswap/core-next
+[submodule "lib/openzeppelin-contracts"]
+	path = lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
