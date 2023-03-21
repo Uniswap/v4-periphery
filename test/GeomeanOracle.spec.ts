@@ -1,6 +1,6 @@
 import {
   abi as V4_POOL_MANAGER_ABI,
-  bytecode as V4_POOL_MANAGER_BYTECODE
+  bytecode as V4_POOL_MANAGER_BYTECODE,
 } from '@uniswap/core-next/artifacts/contracts/PoolManager.sol/PoolManager.json'
 import { createFixtureLoader } from 'ethereum-waffle'
 import { Wallet } from 'ethers'
@@ -44,10 +44,14 @@ describe('GeomeanOracle', () => {
   }
 
   const v4PoolManagerFixure = async ([wallet]: Wallet[]) => {
-    return (await waffle.deployContract(wallet, {
-      bytecode: V4_POOL_MANAGER_BYTECODE,
-      abi: V4_POOL_MANAGER_ABI,
-    }, [10000])) as IPoolManager
+    return (await waffle.deployContract(
+      wallet,
+      {
+        bytecode: V4_POOL_MANAGER_BYTECODE,
+        abi: V4_POOL_MANAGER_ABI,
+      },
+      [10000]
+    )) as IPoolManager
   }
 
   const fixture = async ([wallet]: Wallet[]) => {

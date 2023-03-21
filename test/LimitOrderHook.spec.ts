@@ -1,23 +1,29 @@
 import {
   abi as V4_POOL_MANAGER_ABI,
-  bytecode as V4_POOL_MANAGER_BYTECODE
-} from '@uniswap/core-next/artifacts/contracts/PoolManager.sol/PoolManager.json';
+  bytecode as V4_POOL_MANAGER_BYTECODE,
+} from '@uniswap/core-next/artifacts/contracts/PoolManager.sol/PoolManager.json'
 import {
   abi as POOL_SWAP_TEST_ABI,
-  bytecode as POOL_SWAP_TEST_BYTECODE
-} from '@uniswap/core-next/artifacts/contracts/test/PoolSwapTest.sol/PoolSwapTest.json';
+  bytecode as POOL_SWAP_TEST_BYTECODE,
+} from '@uniswap/core-next/artifacts/contracts/test/PoolSwapTest.sol/PoolSwapTest.json'
 import {
   abi as TICK_MATH_TEST_ABI,
-  bytecode as TICK_MATH_TEST_BYTECODE
-} from '@uniswap/core-next/artifacts/contracts/test/TickMathTest.sol/TickMathTest.json';
-import { PoolManager, PoolSwapTest, TickMathTest } from '@uniswap/core-next/typechain';
-import snapshotGasCost from '@uniswap/snapshot-gas-cost';
-import { Wallet } from 'ethers';
-import hre, { ethers, waffle } from 'hardhat';
-import { LimitOrderHook, TestERC20 } from '../typechain';
-import { expect } from './shared/expect';
-import { tokensFixture } from './shared/fixtures';
-import { encodeSqrtPriceX96, expandTo18Decimals, FeeAmount, getPoolId, getWalletForDeployingHookMask } from './shared/utilities';
+  bytecode as TICK_MATH_TEST_BYTECODE,
+} from '@uniswap/core-next/artifacts/contracts/test/TickMathTest.sol/TickMathTest.json'
+import { PoolManager, PoolSwapTest, TickMathTest } from '@uniswap/core-next/typechain'
+import snapshotGasCost from '@uniswap/snapshot-gas-cost'
+import { Wallet } from 'ethers'
+import hre, { ethers, waffle } from 'hardhat'
+import { LimitOrderHook, TestERC20 } from '../typechain'
+import { expect } from './shared/expect'
+import { tokensFixture } from './shared/fixtures'
+import {
+  encodeSqrtPriceX96,
+  expandTo18Decimals,
+  FeeAmount,
+  getPoolId,
+  getWalletForDeployingHookMask,
+} from './shared/utilities'
 
 const { constants } = ethers
 
@@ -32,10 +38,14 @@ interface PoolKey {
 }
 
 const v4PoolManagerFixure = async ([wallet]: Wallet[]) => {
-  return (await waffle.deployContract(wallet, {
-    bytecode: V4_POOL_MANAGER_BYTECODE,
-    abi: V4_POOL_MANAGER_ABI,
-  }, [10000])) as PoolManager
+  return (await waffle.deployContract(
+    wallet,
+    {
+      bytecode: V4_POOL_MANAGER_BYTECODE,
+      abi: V4_POOL_MANAGER_ABI,
+    },
+    [10000]
+  )) as PoolManager
 }
 
 const poolSwapTestFixture = async ([wallet]: Wallet[], manager: string) => {
@@ -322,7 +332,7 @@ describe('LimitOrderHooks', () => {
     })
 
     it('gas cost', async () => {
-      await snapshotGasCost(limitOrderHook.kill(key, tickLower, zeroForOne, wallet.address));
+      await snapshotGasCost(limitOrderHook.kill(key, tickLower, zeroForOne, wallet.address))
     })
   })
 
