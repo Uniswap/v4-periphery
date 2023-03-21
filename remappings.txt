@@ -1,2 +1,9 @@
+@ensdomains/=node_modules/@ensdomains/
+@openzeppelin/=node_modules/@openzeppelin/
+@openzeppelin/contracts/=lib/core-next/node_modules/@openzeppelin/contracts/
 @uniswap/=node_modules/@uniswap/
-forge-std/=lib/forge-std/src/
+core-next/=lib/core-next/contracts/
+ds-test/=lib/core-next/lib/forge-std/lib/ds-test/src/
+forge-gas-snapshot/=lib/core-next/lib/forge-gas-snapshot/src/
+forge-std/=lib/core-next/lib/forge-std/src/
+hardhat/=node_modules/hardhat/
