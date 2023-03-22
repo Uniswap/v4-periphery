@@ -78,20 +78,27 @@ contract LimitOrderHook is BaseHook {
     mapping(bytes32 => Epoch) public epochs;
     mapping(Epoch => EpochInfo) public epochInfos;
 
+    function getOwnHooksCalls() internal pure returns (Hooks.Calls memory) {
+        return Hooks.Calls({
+            beforeInitialize: false,
+            afterInitialize: true,
+            beforeModifyPosition: false,
+            afterModifyPosition: false,
+            beforeSwap: false,
+            afterSwap: true,
+            beforeDonate: false,
+            afterDonate: false
+        });
+    }
+
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
-        Hooks.validateHookAddress(
-            this,
-            Hooks.Calls({
-                beforeInitialize: false,
-                afterInitialize: true,
-                beforeModifyPosition: false,
-                afterModifyPosition: false,
-                beforeSwap: false,
-                afterSwap: true,
-                beforeDonate: false,
-                afterDonate: false
-            })
-        );
+        validateHookAddress(this);
+    }
+
+    // this is a hack - we override this function during testing so that we can deploy
+    // an implementation and then etch the bytecode into the correct address
+    function validateHookAddress(LimitOrderHook _this) internal virtual {
+        Hooks.validateHookAddress(_this, getOwnHooksCalls());
     }
 
     function getTickLowerLast(bytes32 poolId) public view returns (int24) {

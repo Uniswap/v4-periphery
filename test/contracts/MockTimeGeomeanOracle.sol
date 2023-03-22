@@ -2,7 +2,7 @@
 pragma solidity =0.8.19;
 
 import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
-import {GeomeanOracle} from "../hooks/GeomeanOracle.sol";
+import {GeomeanOracle} from "../../contracts/hooks/GeomeanOracle.sol";
 
 contract MockTimeGeomeanOracle is GeomeanOracle {
     uint32 public time;
