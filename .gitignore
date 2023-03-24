@@ -1,5 +1,2 @@
-artifacts/
-node_modules/
-typechain/
 cache/
 foundry-out/
