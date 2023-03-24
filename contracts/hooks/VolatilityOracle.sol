@@ -3,10 +3,12 @@ pragma solidity =0.8.19;
 
 import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
 import {IDynamicFeeManager} from "@uniswap/core-next/contracts/interfaces/IDynamicFeeManager.sol";
-import {Hooks} from '@uniswap/core-next/contracts/libraries/Hooks.sol';
-import {BaseHook} from "./BaseHook.sol";
+import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
+import {BaseHook} from "../BaseHook.sol";
 
 contract VolatilityOracle is BaseHook, IDynamicFeeManager {
+    error MustUseDynamicFee();
+
     uint32 deployTimestamp;
 
     function getFee(IPoolManager.PoolKey calldata) external view returns (uint24) {
@@ -21,19 +23,29 @@ contract VolatilityOracle is BaseHook, IDynamicFeeManager {
     }
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
-        Hooks.validateHookAddress(
-            this,
-            Hooks.Calls({
-                beforeInitialize: false,
-                afterInitialize: false,
-                beforeModifyPosition: false,
-                afterModifyPosition: false,
-                beforeSwap: false,
-                afterSwap: false,
-                beforeDonate: false,
-                afterDonate: false
-            })
-        );
         deployTimestamp = _blockTimestamp();
+    }
+
+    function getHooksCalls() public pure override returns (Hooks.Calls memory) {
+        return Hooks.Calls({
+            beforeInitialize: true,
+            afterInitialize: false,
+            beforeModifyPosition: false,
+            afterModifyPosition: false,
+            beforeSwap: false,
+            afterSwap: false,
+            beforeDonate: false,
+            afterDonate: false
+        });
+    }
+
+    function beforeInitialize(address, IPoolManager.PoolKey calldata key, uint160)
+        external
+        pure
+        override
+        returns (bytes4)
+    {
+        if (key.fee != Hooks.DYNAMIC_FEE) revert MustUseDynamicFee();
+        return VolatilityOracle.beforeInitialize.selector;
     }
 }
