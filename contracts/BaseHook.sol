@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.19;
 
+import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/core-next/contracts/interfaces/IHooks.sol";
 
@@ -16,6 +17,7 @@ abstract contract BaseHook is IHooks {
 
     constructor(IPoolManager _poolManager) {
         poolManager = _poolManager;
+        validateHookAddress(this);
     }
 
     /// @dev Only the pool manager may call this function
@@ -34,6 +36,15 @@ abstract contract BaseHook is IHooks {
     modifier onlyValidPools(IHooks hooks) {
         if (hooks != this) revert InvalidPool();
         _;
+    }
+
+    function getHooksCalls() public pure virtual returns (Hooks.Calls memory);
+
+    // this function is virtual so that we can override it during testing,
+    // which allows us to deploy an implementation to any address
+    // and then etch the bytecode into the correct address
+    function validateHookAddress(BaseHook _this) internal pure virtual {
+        Hooks.validateHookAddress(_this, getHooksCalls());
     }
 
     function lockAcquired(bytes calldata data) external virtual poolManagerOnly returns (bytes memory) {

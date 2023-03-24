@@ -6,7 +6,7 @@ import {PoolId} from "@uniswap/core-next/contracts/libraries/PoolId.sol";
 import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
 import {Oracle} from "@uniswap/core-next/contracts/libraries/Oracle.sol";
-import {BaseHook} from "./BaseHook.sol";
+import {BaseHook} from "../BaseHook.sol";
 
 /// @notice A hook for a pool that allows a Uniswap pool to act as an oracle. Pools that use this hook must have full range
 ///     tick spacing and liquidity is always permanently locked in these pools. This is the suggested configuration
@@ -57,20 +57,19 @@ contract GeomeanOracle is BaseHook {
         return uint32(block.timestamp);
     }
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
-        Hooks.validateHookAddress(
-            this,
-            Hooks.Calls({
-                beforeInitialize: true,
-                afterInitialize: true,
-                beforeModifyPosition: true,
-                afterModifyPosition: false,
-                beforeSwap: true,
-                afterSwap: false,
-                beforeDonate: false,
-                afterDonate: false
-            })
-        );
+    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+
+    function getHooksCalls() public pure override returns (Hooks.Calls memory) {
+        return Hooks.Calls({
+            beforeInitialize: true,
+            afterInitialize: true,
+            beforeModifyPosition: true,
+            afterModifyPosition: false,
+            beforeSwap: true,
+            afterSwap: false,
+            beforeDonate: false,
+            afterDonate: false
+        });
     }
 
     function beforeInitialize(address, IPoolManager.PoolKey calldata key, uint160)
