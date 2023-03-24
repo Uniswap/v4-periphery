@@ -8,7 +8,7 @@ import {FullMath} from "@uniswap/core-next/contracts/libraries/FullMath.sol";
 import {SafeCast} from "@uniswap/core-next/contracts/libraries/SafeCast.sol";
 import {IERC20Minimal} from "@uniswap/core-next/contracts/interfaces/external/IERC20Minimal.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
-import {BaseHook} from "./BaseHook.sol";
+import {BaseHook} from "../BaseHook.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/core-next/contracts/libraries/CurrencyLibrary.sol";
 
 type Epoch is uint232;
@@ -25,7 +25,7 @@ library EpochLibrary {
     }
 }
 
-contract LimitOrderHook is BaseHook {
+contract LimitOrder is BaseHook {
     using SafeCast for uint256;
     using EpochLibrary for Epoch;
     using PoolId for IPoolManager.PoolKey;
@@ -78,7 +78,9 @@ contract LimitOrderHook is BaseHook {
     mapping(bytes32 => Epoch) public epochs;
     mapping(Epoch => EpochInfo) public epochInfos;
 
-    function getOwnHooksCalls() internal pure returns (Hooks.Calls memory) {
+    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+
+    function getHooksCalls() public pure override returns (Hooks.Calls memory) {
         return Hooks.Calls({
             beforeInitialize: false,
             afterInitialize: true,
@@ -89,16 +91,6 @@ contract LimitOrderHook is BaseHook {
             beforeDonate: false,
             afterDonate: false
         });
-    }
-
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
-        validateHookAddress(this);
-    }
-
-    // this is a hack - we override this function during testing so that we can deploy
-    // an implementation and then etch the bytecode into the correct address
-    function validateHookAddress(LimitOrderHook _this) internal virtual {
-        Hooks.validateHookAddress(_this, getOwnHooksCalls());
     }
 
     function getTickLowerLast(bytes32 poolId) public view returns (int24) {
@@ -138,7 +130,7 @@ contract LimitOrderHook is BaseHook {
         returns (bytes4)
     {
         setTickLowerLast(key.toId(), getTickLower(tick, key.tickSpacing));
-        return LimitOrderHook.afterInitialize.selector;
+        return LimitOrder.afterInitialize.selector;
     }
 
     function afterSwap(
@@ -148,7 +140,7 @@ contract LimitOrderHook is BaseHook {
         IPoolManager.BalanceDelta calldata
     ) external override poolManagerOnly returns (bytes4) {
         (int24 tickLower, int24 lower, int24 upper) = _getCrossedTicks(key.toId(), key.tickSpacing);
-        if (lower > upper) return LimitOrderHook.afterSwap.selector;
+        if (lower > upper) return LimitOrder.afterSwap.selector;
 
         // note that a zeroForOne swap means that the pool is actually gaining token0, so limit
         // order fills are the opposite of swap fills, hence the inversion below
@@ -179,7 +171,7 @@ contract LimitOrderHook is BaseHook {
         }
 
         setTickLowerLast(key.toId(), tickLower);
-        return LimitOrderHook.afterSwap.selector;
+        return LimitOrder.afterSwap.selector;
     }
 
     function _getCrossedTicks(bytes32 poolId, int24 tickSpacing)
