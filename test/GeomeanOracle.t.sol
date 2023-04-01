@@ -14,7 +14,7 @@ import {CurrencyLibrary, Currency} from "@uniswap/core-next/contracts/libraries/
 import {PoolId} from "@uniswap/core-next/contracts/libraries/PoolId.sol";
 import {PoolModifyPositionTest} from "@uniswap/core-next/contracts/test/PoolModifyPositionTest.sol";
 import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
-import {Oracle} from "@uniswap/core-next/contracts/libraries/Oracle.sol";
+import {Oracle} from "../contracts/libraries/Oracle.sol";
 
 contract TestGeomeanOracle is Test, Deployers {
     int24 constant MAX_TICK_SPACING = 32767;
