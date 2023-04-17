@@ -59,28 +59,6 @@ library Oracle {
                 tickChange = bufferSize;
             }
 
-            // 0 -> 9000 w/ 0 buffer
-            // check and 0 buffer
-            // overflow = 9000 - 8100 = 900
-            // tickChange = 8100
-            // prevTick + tickChange = 0 + 8100
-
-            // 9000 -> 9100 w/ 900 buffer
-            // dump 900 on tickChange
-            // tickChange = 1000
-            // tickChange not over buffer, so we place it
-            // prevTick =
-
-            // 0 -> -9000 w/ 0 buffer
-            // check and 0 buffer
-            // -9000 < -8100
-            // tickChange < 0 -> tickBuffer = -8100
-            // overflow = -9000 - -8100 = -900
-            // tickChange = -8100
-
-            // -9000 -> - -20000
-            //
-
             return Observation({
                 blockTimestamp: blockTimestamp,
                 tickCumulative: last.tickCumulative + int56(last.previousTick + tickChange) * int56(uint56(delta)),
