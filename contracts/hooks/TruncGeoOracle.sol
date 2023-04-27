@@ -1,0 +1,167 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity =0.8.19;
+
+import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
+import {PoolId} from "@uniswap/core-next/contracts/libraries/PoolId.sol";
+import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
+import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
+import {TruncatedOracle} from "../libraries/TruncatedOracle.sol";
+import {BaseHook} from "../BaseHook.sol";
+
+/// @notice A hook for a pool that allows a Uniswap pool to act as an oracle. Pools that use this hook must have full range
+///     tick spacing and liquidity is always permanently locked in these pools. This is the suggested configuration
+///     for protocols that wish to use a V3 style geomean oracle.
+contract TruncGeoOracle is BaseHook {
+    using TruncatedOracle for TruncatedOracle.Observation[65535];
+    using PoolId for IPoolManager.PoolKey;
+
+    /// @notice Oracle pools do not have fees because they exist to serve as an oracle for a pair of tokens
+    error OnlyOneOraclePoolAllowed();
+
+    /// @notice Oracle positions must be full range
+    error OraclePositionsMustBeFullRange();
+
+    /// @notice Oracle pools must have liquidity locked so that they cannot become more susceptible to price manipulation
+    error OraclePoolMustLockLiquidity();
+
+    /// @member index The index of the last written observation for the pool
+    /// @member cardinality The cardinality of the observations array for the pool
+    /// @member cardinalityNext The cardinality target of the observations array for the pool, which will replace cardinality when enough observations are written
+    struct ObservationState {
+        uint16 index;
+        uint16 cardinality;
+        uint16 cardinalityNext;
+    }
+
+    /// @notice The list of observations for a given pool ID
+    mapping(bytes32 => TruncatedOracle.Observation[65535]) public observations;
+    /// @notice The current observation array state for the given pool ID
+    mapping(bytes32 => ObservationState) public states;
+
+    /// @notice Returns the observation for the given pool key and observation index
+    function getObservation(IPoolManager.PoolKey calldata key, uint256 index)
+        external
+        view
+        returns (TruncatedOracle.Observation memory observation)
+    {
+        observation = observations[keccak256(abi.encode(key))][index];
+    }
+
+    /// @notice Returns the state for the given pool key
+    function getState(IPoolManager.PoolKey calldata key) external view returns (ObservationState memory state) {
+        state = states[keccak256(abi.encode(key))];
+    }
+
+    /// @dev For mocking
+    function _blockTimestamp() internal view virtual returns (uint32) {
+        return uint32(block.timestamp);
+    }
+
+    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+
+    function getHooksCalls() public pure override returns (Hooks.Calls memory) {
+        return Hooks.Calls({
+            beforeInitialize: true,
+            afterInitialize: true,
+            beforeModifyPosition: true,
+            afterModifyPosition: false,
+            beforeSwap: true,
+            afterSwap: false,
+            beforeDonate: false,
+            afterDonate: false
+        });
+    }
+
+    function beforeInitialize(address, IPoolManager.PoolKey calldata key, uint160)
+        external
+        view
+        override
+        poolManagerOnly
+        returns (bytes4)
+    {
+        // This is to limit the fragmentation of pools using this oracle hook. In other words,
+        // there may only be one pool per pair of tokens that use this hook. The tick spacing is set to the maximum
+        // because we only allow max range liquidity in this pool.
+        if (key.fee != 0 || key.tickSpacing != poolManager.MAX_TICK_SPACING()) revert OnlyOneOraclePoolAllowed();
+        return TruncGeoOracle.beforeInitialize.selector;
+    }
+
+    function afterInitialize(address, IPoolManager.PoolKey calldata key, uint160, int24 tick)
+        external
+        override
+        poolManagerOnly
+        returns (bytes4)
+    {
+        bytes32 id = key.toId();
+        (states[id].cardinality, states[id].cardinalityNext) = observations[id].initialize(_blockTimestamp(), tick);
+        return TruncGeoOracle.afterInitialize.selector;
+    }
+
+    /// @dev Called before any action that potentially modifies pool price or liquidity, such as swap or modify position
+    function _updatePool(IPoolManager.PoolKey calldata key) private {
+        bytes32 id = key.toId();
+        (, int24 tick,) = poolManager.getSlot0(id);
+
+        uint128 liquidity = poolManager.getLiquidity(id);
+
+        (states[id].index, states[id].cardinality) = observations[id].write(
+            states[id].index, _blockTimestamp(), tick, liquidity, states[id].cardinality, states[id].cardinalityNext
+        );
+    }
+
+    function beforeModifyPosition(
+        address,
+        IPoolManager.PoolKey calldata key,
+        IPoolManager.ModifyPositionParams calldata params
+    ) external override poolManagerOnly returns (bytes4) {
+        if (params.liquidityDelta < 0) revert OraclePoolMustLockLiquidity();
+        int24 maxTickSpacing = poolManager.MAX_TICK_SPACING();
+        if (
+            params.tickLower != TickMath.minUsableTick(maxTickSpacing)
+                || params.tickUpper != TickMath.maxUsableTick(maxTickSpacing)
+        ) revert OraclePositionsMustBeFullRange();
+        _updatePool(key);
+        return TruncGeoOracle.beforeModifyPosition.selector;
+    }
+
+    function beforeSwap(address, IPoolManager.PoolKey calldata key, IPoolManager.SwapParams calldata)
+        external
+        override
+        poolManagerOnly
+        returns (bytes4)
+    {
+        _updatePool(key);
+        return TruncGeoOracle.beforeSwap.selector;
+    }
+
+    /// @notice Observe the given pool for the timestamps
+    function observe(IPoolManager.PoolKey calldata key, uint32[] calldata secondsAgos)
+        external
+        view
+        returns (int48[] memory tickCumulatives, uint144[] memory secondsPerLiquidityCumulativeX128s)
+    {
+        bytes32 id = key.toId();
+
+        ObservationState memory state = states[id];
+
+        (, int24 tick,) = poolManager.getSlot0(id);
+
+        uint128 liquidity = poolManager.getLiquidity(id);
+
+        return observations[id].observe(_blockTimestamp(), secondsAgos, tick, state.index, liquidity, state.cardinality);
+    }
+
+    /// @notice Increase the cardinality target for the given pool
+    function increaseCardinalityNext(IPoolManager.PoolKey calldata key, uint16 cardinalityNext)
+        external
+        returns (uint16 cardinalityNextOld, uint16 cardinalityNextNew)
+    {
+        bytes32 id = keccak256(abi.encode(key));
+
+        ObservationState storage state = states[id];
+
+        cardinalityNextOld = state.cardinalityNext;
+        cardinalityNextNew = observations[id].grow(cardinalityNextOld, cardinalityNext);
+        state.cardinalityNext = cardinalityNextNew;
+    }
+}
