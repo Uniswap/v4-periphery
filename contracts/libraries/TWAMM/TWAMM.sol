@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
-import {Tick} from '../Tick.sol';
-import {TickBitmap} from '../TickBitmap.sol';
-import {IPoolManager} from '../../interfaces/IPoolManager.sol';
-import {PoolId} from '../PoolId.sol';
-import {TickMath} from '../TickMath.sol';
+import {TickBitmap} from "@uniswap/core-next/contracts/libraries/TickBitmap.sol";
+import {IPoolManager} from '@uniswap/core-next/contracts/interfaces/IPoolManager.sol';
+import {PoolId} from "@uniswap/core-next/contracts/libraries/PoolId.sol";
+import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
 import {OrderPool} from './OrderPool.sol';
 import {TwammMath} from './TwammMath.sol';
-import {FixedPoint96} from '../FixedPoint96.sol';
-import {SqrtPriceMath} from '../SqrtPriceMath.sol';
-import {SwapMath} from '../SwapMath.sol';
-import {SafeCast} from '../SafeCast.sol';
+import {FixedPoint96} from "@uniswap/core-next/contracts/libraries/FixedPoint96.sol";
+import {SqrtPriceMath} from "@uniswap/core-next/contracts/libraries/SqrtPriceMath.sol";
+import {SwapMath} from "@uniswap/core-next/contracts/libraries/SwapMath.sol";
+import {SafeCast} from "@uniswap/core-next/contracts/libraries/SafeCast.sol";
 
 /// @title TWAMM - Time Weighted Average Market Maker
 /// @notice TWAMM represents long term orders in a pool

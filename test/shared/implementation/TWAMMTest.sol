@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.15;
+pragma solidity ^0.8.15;
 
-import {TWAMM} from '../libraries/TWAMM/TWAMM.sol';
-import {TwammMath} from '../libraries/TWAMM/TwammMath.sol';
-import {OrderPool} from '../libraries/TWAMM/OrderPool.sol';
-import {IPoolManager} from '../interfaces/IPoolManager.sol';
-import {Tick} from '../libraries/Tick.sol';
-import {TickBitmap} from '../libraries/TickBitmap.sol';
-import {ABDKMathQuad} from 'abdk-libraries-solidity/ABDKMathQuad.sol';
-import {FixedPoint96} from '../libraries/FixedPoint96.sol';
+import {TWAMM} from '../../../contracts/libraries/TWAMM/TWAMM.sol';
+import {TwammMath} from '../../../contracts/libraries/TWAMM/TwammMath.sol';
+import {OrderPool} from '../../../contracts/libraries/TWAMM/OrderPool.sol';
+import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
+import {Pool} from "@uniswap/core-next/contracts/libraries/Pool.sol";
+import {TickBitmap} from "@uniswap/core-next/contracts/libraries/TickBitmap.sol";
+import {ABDKMathQuad} from '../../../contracts/libraries/TWAMM/ABDKMathQuad.sol';
+import {FixedPoint96} from "@uniswap/core-next/contracts/libraries/FixedPoint96.sol";
 
 contract TWAMMTest {
     using TWAMM for TWAMM.State;
@@ -17,7 +17,7 @@ contract TWAMMTest {
 
     uint256 public expirationInterval;
     TWAMM.State internal twamm;
-    mapping(int24 => Tick.Info) mockTicks;
+    mapping(int24 => Pool.TickInfo) mockTicks;
     mapping(int16 => uint256) mockTickBitmap;
 
     function flipTick(int24 tick, int24 tickSpacing) external {
@@ -160,7 +160,7 @@ contract TWAMMTest {
     // Mocking IPoolManager functions here
     //////////////////////////////////////////////////////
 
-    function getTickNetLiquidity(IPoolManager.PoolKey memory, int24 tick) external view returns (Tick.Info memory) {
+    function getTickNetLiquidity(IPoolManager.PoolKey memory, int24 tick) external view returns (Pool.TickInfo memory) {
         return mockTicks[tick];
     }
 

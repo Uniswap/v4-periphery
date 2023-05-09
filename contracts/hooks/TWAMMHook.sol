@@ -1,27 +1,29 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.15;
+pragma solidity ^0.8.15;
 
-import {IHooks} from '../interfaces/IHooks.sol';
-import {IERC20Minimal} from '../interfaces/external/IERC20Minimal.sol';
-import {IPoolManager} from '../interfaces/IPoolManager.sol';
+import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
+import {BaseHook} from "../BaseHook.sol";
+import {IERC20Minimal} from "@uniswap/core-next/contracts/interfaces/external/IERC20Minimal.sol";
+import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
 import {ITWAMM} from '../interfaces/ITWAMM.sol';
-import {Hooks} from '../libraries/Hooks.sol';
-import {TickMath} from '../libraries/TickMath.sol';
+import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
 import {TransferHelper} from '../libraries/TransferHelper.sol';
 import {TWAMM} from '../libraries/TWAMM/TWAMM.sol';
 import {OrderPool} from '../libraries/TWAMM/OrderPool.sol';
-import {BaseHook} from './base/BaseHook.sol';
+import {Currency, CurrencyLibrary} from "@uniswap/core-next/contracts/libraries/CurrencyLibrary.sol";
+
 
 contract TWAMMHook is BaseHook, ITWAMM {
     using TWAMM for TWAMM.State;
     using TransferHelper for IERC20Minimal;
+    using CurrencyLibrary for Currency;
 
     // Time interval on which orders are allowed to expire. Conserves processing needed on execute.
     uint256 public immutable expirationInterval;
     // twammStates[poolId] => Twamm.State
     mapping(bytes32 => TWAMM.State) internal twammStates;
     // tokensOwed[token][owner] => amountOwed
-    mapping(address => mapping(address => uint256)) public tokensOwed;
+    mapping(Currency => mapping(address => uint256)) public tokensOwed;
 
     constructor(IPoolManager _poolManager, uint256 _expirationInterval) BaseHook(_poolManager) {
         expirationInterval = _expirationInterval;
@@ -62,6 +64,19 @@ contract TWAMMHook is BaseHook, ITWAMM {
             zeroForOne
                 ? (twamm.orderPool0For1.sellRateCurrent, twamm.orderPool0For1.earningsFactorCurrent)
                 : (twamm.orderPool1For0.sellRateCurrent, twamm.orderPool1For0.earningsFactorCurrent);
+    }
+
+    function getHooksCalls() public pure override returns (Hooks.Calls memory) {
+        return Hooks.Calls({
+            beforeInitialize: true,
+            afterInitialize: false,
+            beforeModifyPosition: true,
+            afterModifyPosition: false,
+            beforeSwap: true,
+            afterSwap: false,
+            beforeDonate: false,
+            afterDonate: false
+        });
     }
 
     function beforeInitialize(
@@ -131,7 +146,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
             uint256 duration = orderKey.expiration - block.timestamp;
             sellRate = amountIn / duration;
             orderId = twamm.submitLongTermOrder(orderKey, sellRate, expirationInterval);
-            IERC20Minimal(orderKey.zeroForOne ? key.token0 : key.token1).safeTransferFrom(
+            IERC20Minimal(orderKey.zeroForOne ? Currency.unwrap(key.currency0) : Currency.unwrap(key.currency1)).safeTransferFrom(
                 msg.sender,
                 address(this),
                 sellRate * duration
@@ -171,8 +186,8 @@ contract TWAMMHook is BaseHook, ITWAMM {
             tokens1Owed += sellTokensOwed;
         }
 
-        tokensOwed[address(key.token0)][orderKey.owner] += tokens0Owed;
-        tokensOwed[address(key.token1)][orderKey.owner] += tokens1Owed;
+        tokensOwed[key.currency0][orderKey.owner] += tokens0Owed;
+        tokensOwed[key.currency1][orderKey.owner] += tokens1Owed;
 
         emit UpdateLongTermOrder(
             poolId,
@@ -186,18 +201,18 @@ contract TWAMMHook is BaseHook, ITWAMM {
 
     /// @inheritdoc ITWAMM
     function claimTokens(
-        IERC20Minimal token,
+        Currency token,
         address to,
         uint256 amountRequested
     ) external returns (uint256 amountTransferred) {
-        uint256 currentBalance = token.balanceOf(address(this));
-        amountTransferred = tokensOwed[address(token)][msg.sender];
+        uint256 currentBalance = token.balanceOfSelf();
+        amountTransferred = tokensOwed[token][msg.sender];
         if (amountRequested != 0 && amountRequested < amountTransferred) amountTransferred = amountRequested;
         if (currentBalance < amountTransferred) amountTransferred = currentBalance; // to catch precision errors
-        token.safeTransfer(to, amountTransferred);
+        IERC20Minimal(Currency.unwrap(token)).safeTransfer(to, amountTransferred);
     }
 
-    function lockAcquired(bytes calldata rawData) external override poolManagerOnly returns (bytes memory) {
+    function lockAcquired(uint256, bytes calldata rawData) external override poolManagerOnly returns (bytes memory) {
         (IPoolManager.PoolKey memory key, IPoolManager.SwapParams memory swapParams) = abi.decode(
             rawData,
             (IPoolManager.PoolKey, IPoolManager.SwapParams)
@@ -207,19 +222,19 @@ contract TWAMMHook is BaseHook, ITWAMM {
 
         if (swapParams.zeroForOne) {
             if (delta.amount0 > 0) {
-                key.token0.safeTransfer(address(poolManager), uint256(delta.amount0));
-                poolManager.settle(key.token0);
+                key.currency0.transfer(address(poolManager), uint256(delta.amount0));
+                poolManager.settle(key.currency0);
             }
             if (delta.amount1 < 0) {
-                poolManager.take(key.token1, address(this), uint256(-delta.amount1));
+                poolManager.take(key.currency1, address(this), uint256(-delta.amount1));
             }
         } else {
             if (delta.amount1 > 0) {
-                key.token1.safeTransfer(address(poolManager), uint256(delta.amount1));
-                poolManager.settle(key.token1);
+                key.currency1.transfer(address(poolManager), uint256(delta.amount1));
+                poolManager.settle(key.currency1);
             }
             if (delta.amount0 < 0) {
-                poolManager.take(key.token0, address(this), uint256(-delta.amount0));
+                poolManager.take(key.currency0, address(this), uint256(-delta.amount0));
             }
         }
         return bytes('');

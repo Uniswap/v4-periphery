@@ -16,7 +16,6 @@ import {PoolSwapTest} from "@uniswap/core-next/contracts/test/PoolSwapTest.sol";
 import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
 
 contract TestLimitOrder is Test, Deployers {
-    uint160 constant SQRT_RATIO_1_1 = 79228162514264337593543950336;
     uint160 constant SQRT_RATIO_10_1 = 250541448375047931186413801569;
 
     TestERC20 token0;

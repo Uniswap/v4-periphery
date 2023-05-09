@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
-import {ABDKMathQuad} from 'abdk-libraries-solidity/ABDKMathQuad.sol';
+import {ABDKMathQuad} from './ABDKMathQuad.sol';
 import {TWAMM} from './TWAMM.sol';
-import {Tick} from '../Tick.sol';
-import {FixedPoint96} from '../FixedPoint96.sol';
-import {SafeCast} from '../SafeCast.sol';
-import {TickMath} from '../TickMath.sol';
+// import {Tick} from "@uniswap/core-next/contracts/libraries/Tick.sol";
+import {FixedPoint96} from "@uniswap/core-next/contracts/libraries/FixedPoint96.sol";
+import {SafeCast} from "@uniswap/core-next/contracts/libraries/SafeCast.sol";
+import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
 
 /// @title TWAMM Math - Pure functions for TWAMM math calculations
 library TwammMath {

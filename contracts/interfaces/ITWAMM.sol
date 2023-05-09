@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.15;
+pragma solidity ^0.8.15;
 
 import {TWAMM} from '../libraries/TWAMM/TWAMM.sol';
-import {IPoolManager} from './IPoolManager.sol';
-import {IERC20Minimal} from '../interfaces/external/IERC20Minimal.sol';
+import {IPoolManager} from '@uniswap/core-next/contracts/interfaces/IPoolManager.sol';
+import {IERC20Minimal} from "@uniswap/core-next/contracts/interfaces/external/IERC20Minimal.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/core-next/contracts/libraries/CurrencyLibrary.sol";
 
 interface ITWAMM {
     /// @notice Emitted when a new long term order is submitted
@@ -68,12 +69,12 @@ interface ITWAMM {
     /// @param amountRequested The amount of tokens requested to claim. Set to 0 to claim all.
     /// @return amountTransferred The total token amount to be collected
     function claimTokens(
-        IERC20Minimal token,
+        Currency token,
         address to,
         uint256 amountRequested
     ) external returns (uint256 amountTransferred);
 
     function executeTWAMMOrders(IPoolManager.PoolKey memory key) external;
 
-    function tokensOwed(address token, address owner) external returns (uint256);
+    function tokensOwed(Currency token, address owner) external returns (uint256);
 }
