@@ -18,7 +18,6 @@ import {Oracle} from "../contracts/libraries/Oracle.sol";
 
 contract TestGeomeanOracle is Test, Deployers {
     int24 constant MAX_TICK_SPACING = 32767;
-    uint160 constant SQRT_RATIO_1_1 = 79228162514264337593543950336;
     uint160 constant SQRT_RATIO_2_1 = 112045541949572279837463876454;
 
     TestERC20 token0;
