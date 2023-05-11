@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
-import {ABDKMathQuad} from './ABDKMathQuad.sol';
-import {TWAMM} from './TWAMM.sol';
-// import {Tick} from "@uniswap/core-next/contracts/libraries/Tick.sol";
+import {ABDKMathQuad} from "./ABDKMathQuad.sol";
 import {FixedPoint96} from "@uniswap/core-next/contracts/libraries/FixedPoint96.sol";
 import {SafeCast} from "@uniswap/core-next/contracts/libraries/SafeCast.sol";
 import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
@@ -62,8 +60,7 @@ library TwammMath {
         bytes16 newSqrtPriceX96Bytes = isOverflow ? sqrtSellRatioX96Bytes : newSqrtPriceBytesX96;
 
         newSqrtPriceX96 = getSqrtPriceWithinBounds(
-            params.sellRateCurrent0 > params.sellRateCurrent1,
-            newSqrtPriceX96Bytes
+            params.sellRateCurrent0 > params.sellRateCurrent1, newSqrtPriceX96Bytes
         ).toUInt().toUint160();
     }
 
@@ -135,11 +132,11 @@ library TwammMath {
         return numerator.mul(Q96).div(denominator).toUInt();
     }
 
-    function getTimeBetweenTicksMultiple(
-        bytes16 sqrtSellRatioX96,
-        bytes16 sqrtPriceStartX96,
-        bytes16 sqrtPriceEndX96
-    ) private pure returns (bytes16 multiple) {
+    function getTimeBetweenTicksMultiple(bytes16 sqrtSellRatioX96, bytes16 sqrtPriceStartX96, bytes16 sqrtPriceEndX96)
+        private
+        pure
+        returns (bytes16 multiple)
+    {
         bytes16 multiple1 = sqrtSellRatioX96.add(sqrtPriceEndX96).div(sqrtSellRatioX96.sub(sqrtPriceEndX96));
         bytes16 multiple2 = sqrtSellRatioX96.sub(sqrtPriceStartX96).div(sqrtSellRatioX96.add(sqrtPriceStartX96));
         return multiple1.mul(multiple2).ln();
@@ -156,21 +153,17 @@ library TwammMath {
 
     function getEarningsFactorPool0(EarningsFactorParams memory params) private pure returns (bytes16 earningsFactor) {
         bytes16 minuend = params.sellRatio.mul(params.secondsElapsed);
-        bytes16 subtrahend = params
-            .liquidity
-            .mul(params.sellRatio.sqrt())
-            .mul(params.newSqrtPrice.sub(params.prevSqrtPrice))
-            .div(params.sqrtSellRate);
+        bytes16 subtrahend = params.liquidity.mul(params.sellRatio.sqrt()).mul(
+            params.newSqrtPrice.sub(params.prevSqrtPrice)
+        ).div(params.sqrtSellRate);
         return minuend.sub(subtrahend);
     }
 
     function getEarningsFactorPool1(EarningsFactorParams memory params) private pure returns (bytes16 earningsFactor) {
         bytes16 minuend = params.secondsElapsed.div(params.sellRatio);
-        bytes16 subtrahend = params
-            .liquidity
-            .mul(reciprocal(params.sellRatio.sqrt()))
-            .mul(reciprocal(params.newSqrtPrice).sub(reciprocal(params.prevSqrtPrice)))
-            .div(params.sqrtSellRate);
+        bytes16 subtrahend = params.liquidity.mul(reciprocal(params.sellRatio.sqrt())).mul(
+            reciprocal(params.newSqrtPrice).sub(reciprocal(params.prevSqrtPrice))
+        ).div(params.sqrtSellRate);
         return minuend.sub(subtrahend);
     }
 

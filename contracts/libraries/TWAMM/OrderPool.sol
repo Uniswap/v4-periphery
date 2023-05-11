@@ -17,11 +17,7 @@ library OrderPool {
     }
 
     // Performs all updates on an OrderPool that must happen when hitting an expiration interval with expiring orders
-    function advanceToInterval(
-        State storage self,
-        uint256 expiration,
-        uint256 earningsFactor
-    ) internal {
+    function advanceToInterval(State storage self, uint256 expiration, uint256 earningsFactor) internal {
         unchecked {
             self.earningsFactorCurrent += earningsFactor;
             self.earningsFactorAtInterval[expiration] = self.earningsFactorCurrent;
