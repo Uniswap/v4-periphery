@@ -33,7 +33,6 @@ contract TWAMMHook is BaseHook, ITWAMM {
 
     /// @notice Contains full state related to the TWAMM
     /// @member poolKey
-    /// @member expirationInterval Interval in seconds between valid order expiration timestamps
     /// @member lastVirtualOrderTimestamp Last timestamp in which virtual orders were executed
     /// @member orderPools Mapping from bool zeroForOne to OrderPool that is selling zero for one or vice versa
     /// @member orders Mapping of orderId to individual orders
@@ -53,19 +52,6 @@ contract TWAMMHook is BaseHook, ITWAMM {
 
     constructor(IPoolManager _poolManager, uint256 _expirationInterval) BaseHook(_poolManager) {
         expirationInterval = _expirationInterval;
-        Hooks.validateHookAddress(
-            this,
-            Hooks.Calls({
-                beforeInitialize: true,
-                afterInitialize: false,
-                beforeModifyPosition: true,
-                afterModifyPosition: false,
-                beforeSwap: true,
-                afterSwap: false,
-                beforeDonate: false,
-                afterDonate: false
-            })
-        );
     }
 
     function getHooksCalls() public pure override returns (Hooks.Calls memory) {
@@ -155,8 +141,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
             twamm,
             poolManager,
             key,
-            PoolParamsOnExecute(sqrtPriceX96, poolManager.getLiquidity(poolId)),
-            expirationInterval
+            PoolParamsOnExecute(sqrtPriceX96, poolManager.getLiquidity(poolId))
         );
 
         if (sqrtPriceLimitX96 != 0 && sqrtPriceLimitX96 != sqrtPriceX96) {
@@ -178,7 +163,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
             // checks done in TWAMM library
             uint256 duration = orderKey.expiration - block.timestamp;
             sellRate = amountIn / duration;
-            orderId = submitLongTermOrder(twamm, orderKey, sellRate, expirationInterval);
+            orderId = _submitLongTermOrder(twamm, orderKey, sellRate);
             IERC20Minimal(orderKey.zeroForOne ? Currency.unwrap(key.currency0) : Currency.unwrap(key.currency1))
                 .safeTransferFrom(msg.sender, address(this), sellRate * duration);
         }
@@ -191,6 +176,33 @@ contract TWAMMHook is BaseHook, ITWAMM {
             sellRate,
             getOrder(twamm, orderKey).earningsFactorLast
         );
+    }
+
+    /// @notice Submits a new long term order into the TWAMM
+    /// @dev executeTWAMMOrders must be executed up to current timestamp before calling submitLongTermOrder
+    /// @param orderKey The OrderKey for the new order
+    function _submitLongTermOrder(
+        State storage self,
+        OrderKey memory orderKey,
+        uint256 sellRate
+    ) internal returns (bytes32 orderId) {
+        if (orderKey.owner != msg.sender) revert MustBeOwner(orderKey.owner, msg.sender);
+        if (self.lastVirtualOrderTimestamp == 0) revert NotInitialized();
+        if (orderKey.expiration <= block.timestamp) revert ExpirationLessThanBlocktime(orderKey.expiration);
+        if (sellRate == 0) revert SellRateCannotBeZero();
+        if (orderKey.expiration % expirationInterval != 0) revert ExpirationNotOnInterval(orderKey.expiration);
+
+        orderId = _orderId(orderKey);
+        if (self.orders[orderId].sellRate != 0) revert OrderAlreadyExists(orderKey);
+
+        OrderPool.State storage orderPool = orderKey.zeroForOne ? self.orderPool0For1 : self.orderPool1For0;
+
+        unchecked {
+            orderPool.sellRateCurrent += sellRate;
+            orderPool.sellRateEndingAtInterval[orderKey.expiration] += sellRate;
+        }
+
+        self.orders[orderId] = Order({sellRate: sellRate, earningsFactorLast: orderPool.earningsFactorCurrent});
     }
 
     /// @inheritdoc ITWAMM
@@ -272,34 +284,6 @@ contract TWAMMHook is BaseHook, ITWAMM {
         uint160 expiration;
     }
 
-    /// @notice Submits a new long term order into the TWAMM
-    /// @dev executeTWAMMOrders must be executed up to current timestamp before calling submitLongTermOrder
-    /// @param orderKey The OrderKey for the new order
-    function submitLongTermOrder(
-        State storage self,
-        OrderKey memory orderKey,
-        uint256 sellRate,
-        uint256 expirationInterval
-    ) internal returns (bytes32 orderId) {
-        if (orderKey.owner != msg.sender) revert MustBeOwner(orderKey.owner, msg.sender);
-        if (self.lastVirtualOrderTimestamp == 0) revert NotInitialized();
-        if (orderKey.expiration <= block.timestamp) revert ExpirationLessThanBlocktime(orderKey.expiration);
-        if (sellRate == 0) revert SellRateCannotBeZero();
-        if (orderKey.expiration % expirationInterval != 0) revert ExpirationNotOnInterval(orderKey.expiration);
-
-        orderId = _orderId(orderKey);
-        if (self.orders[orderId].sellRate != 0) revert OrderAlreadyExists(orderKey);
-
-        OrderPool.State storage orderPool = orderKey.zeroForOne ? self.orderPool0For1 : self.orderPool1For0;
-
-        unchecked {
-            orderPool.sellRateCurrent += sellRate;
-            orderPool.sellRateEndingAtInterval[orderKey.expiration] += sellRate;
-        }
-
-        self.orders[orderId] = Order({sellRate: sellRate, earningsFactorLast: orderPool.earningsFactorCurrent});
-    }
-
     /// @notice Modify an existing long term order with a new sellAmount
     /// @dev executeTWAMMOrders must be executed up to current timestamp before calling updateLongTermOrder
     /// @param self The TWAMM State
@@ -367,8 +351,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         State storage self,
         IPoolManager poolManager,
         IPoolManager.PoolKey memory key,
-        PoolParamsOnExecute memory pool,
-        uint256 expirationInterval
+        PoolParamsOnExecute memory pool
     ) internal returns (bool zeroForOne, uint160 newSqrtPriceX96) {
         if (!_hasOutstandingOrders(self)) {
             self.lastVirtualOrderTimestamp = block.timestamp;
