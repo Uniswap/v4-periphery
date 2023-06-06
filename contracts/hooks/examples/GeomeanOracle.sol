@@ -5,8 +5,8 @@ import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager
 import {PoolId} from "@uniswap/core-next/contracts/libraries/PoolId.sol";
 import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
-import {Oracle} from "../libraries/Oracle.sol";
-import {BaseHook} from "../BaseHook.sol";
+import {Oracle} from "../../libraries/Oracle.sol";
+import {BaseHook} from "../../BaseHook.sol";
 
 /// @notice A hook for a pool that allows a Uniswap pool to act as an oracle. Pools that use this hook must have full range
 ///     tick spacing and liquidity is always permanently locked in these pools. This is the suggested configuration

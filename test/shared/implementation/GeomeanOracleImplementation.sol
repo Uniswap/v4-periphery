@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {BaseHook} from "../../../contracts/BaseHook.sol";
-import {GeomeanOracle} from "../../../contracts/hooks/GeomeanOracle.sol";
+import {GeomeanOracle} from "../../../contracts/hooks/examples/GeomeanOracle.sol";
 import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
 
