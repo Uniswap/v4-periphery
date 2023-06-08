@@ -31,20 +31,21 @@ forge install https://github.com/Uniswap/periphery-next
 If you are building hooks, it may be useful to inherit from the `BaseHook` contract:
 
 ```solidity
-import {BaseHook} from 'periphery-next/contracts/BaseHook.sol'
+
+import {BaseHook} from 'periphery-next/contracts/BaseHook.sol';
 
 contract CoolHook is BaseHook {
-		// Override the hook callbacks you want on your hook
-		function beforeModifyPosition(
+    // Override the hook callbacks you want on your hook
+    function beforeModifyPosition(
         address,
         IPoolManager.PoolKey calldata key,
         IPoolManager.ModifyPositionParams calldata params
     ) external override poolManagerOnly returns (bytes4) {
         // hook logic
-				return BaseHook.beforeModifyPosition.selector;
+        return BaseHook.beforeModifyPosition.selector;
     }
-
 }
+
 ```
 
 ## Contributing
