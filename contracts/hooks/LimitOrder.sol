@@ -27,7 +27,6 @@ library EpochLibrary {
 }
 
 contract LimitOrder is BaseHook {
-    using SafeCast for uint256;
     using EpochLibrary for Epoch;
     using PoolId for IPoolManager.PoolKey;
     using CurrencyLibrary for Currency;
@@ -195,7 +194,7 @@ contract LimitOrder is BaseHook {
     function lockAcquiredFill(IPoolManager.PoolKey calldata key, int24 tickLower, int256 liquidityDelta)
         external
         selfOnly
-        returns (uint256 amount0, uint256 amount1)
+        returns (uint128 amount0, uint128 amount1)
     {
         BalanceDelta delta = poolManager.modifyPosition(
             key,
@@ -206,8 +205,8 @@ contract LimitOrder is BaseHook {
             })
         );
 
-        if (delta.amount0() < 0) poolManager.mint(key.currency0, address(this), amount0 = -delta.amount0().toInt128());
-        if (delta.amount1() < 0) poolManager.mint(key.currency1, address(this), amount1 = -delta.amount1());
+        if (delta.amount0() < 0) poolManager.mint(key.currency0, address(this), amount0 = uint128(-delta.amount0()));
+        if (delta.amount1() < 0) poolManager.mint(key.currency1, address(this), amount1 = uint128(-delta.amount1()));
     }
 
     function place(IPoolManager.PoolKey calldata key, int24 tickLower, bool zeroForOne, uint128 liquidity)
@@ -266,7 +265,7 @@ contract LimitOrder is BaseHook {
             if (!zeroForOne) revert CrossedRange();
             // TODO use safeTransferFrom
             IERC20Minimal(Currency.unwrap(key.currency0)).transferFrom(
-                owner, address(poolManager), delta.amount0()
+                owner, address(poolManager), uint256(uint128(delta.amount0()))
             );
             poolManager.settle(key.currency0);
         } else {
@@ -274,7 +273,7 @@ contract LimitOrder is BaseHook {
             if (zeroForOne) revert CrossedRange();
             // TODO use safeTransferFrom
             IERC20Minimal(Currency.unwrap(key.currency1)).transferFrom(
-                owner, address(poolManager), delta.amount1()
+                owner, address(poolManager), uint256(uint128(delta.amount1()))
             );
             poolManager.settle(key.currency1);
         }
@@ -321,7 +320,7 @@ contract LimitOrder is BaseHook {
         int256 liquidityDelta,
         address to,
         bool removingAllLiquidity
-    ) external selfOnly returns (uint256 amount0, uint256 amount1, uint256 amount0Fee, uint256 amount1Fee) {
+    ) external selfOnly returns (uint256 amount0, uint256 amount1, uint128 amount0Fee, uint128 amount1Fee) {
         int24 tickUpper = tickLower + key.tickSpacing;
 
         // because `modifyPosition` includes not just principal value but also fees, we cannot allocate
@@ -333,11 +332,11 @@ contract LimitOrder is BaseHook {
                 key, IPoolManager.ModifyPositionParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0})
             );
 
-            if (deltaFee.amount0 < 0) {
-                poolManager.mint(key.currency0, address(this), amount0Fee = -deltaFee.amount0());
+            if (deltaFee.amount0() < 0) {
+                poolManager.mint(key.currency0, address(this), amount0Fee = uint128(-deltaFee.amount0()));
             }
-            if (deltaFee.amount1 < 0) {
-                poolManager.mint(key.currency1, address(this), amount1Fee = -deltaFee.amount1());
+            if (deltaFee.amount1() < 0) {
+                poolManager.mint(key.currency1, address(this), amount1Fee = uint128(-deltaFee.amount1()));
             }
         }
 
@@ -350,8 +349,8 @@ contract LimitOrder is BaseHook {
             })
         );
 
-        if (delta.amount0() < 0) poolManager.take(key.currency0, to, amount0 = -delta.amount0());
-        if (delta.amount1() < 0) poolManager.take(key.currency1, to, amount1 = -delta.amount1());
+        if (delta.amount0() < 0) poolManager.take(key.currency0, to, amount0 = uint128(-delta.amount0()));
+        if (delta.amount1() < 0) poolManager.take(key.currency1, to, amount1 = uint128(-delta.amount1()));
     }
 
     function withdraw(Epoch epoch, address to) external returns (uint256 amount0, uint256 amount1) {
