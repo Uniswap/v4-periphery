@@ -1,3 +1,3 @@
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
-@uniswap/core-next/=lib/core-next/
+@uniswap/v4-core/=lib/v4-core/
 forge-std/=lib/forge-std/src/
