@@ -3,17 +3,17 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {GetSender} from "./shared/GetSender.sol";
-import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
+import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {GeomeanOracle} from "../contracts/hooks/examples/GeomeanOracle.sol";
 import {GeomeanOracleImplementation} from "./shared/implementation/GeomeanOracleImplementation.sol";
-import {PoolManager} from "@uniswap/core-next/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
-import {Deployers} from "@uniswap/core-next/test/foundry-tests/utils/Deployers.sol";
-import {TestERC20} from "@uniswap/core-next/contracts/test/TestERC20.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/core-next/contracts/libraries/CurrencyLibrary.sol";
-import {PoolId} from "@uniswap/core-next/contracts/libraries/PoolId.sol";
-import {PoolModifyPositionTest} from "@uniswap/core-next/contracts/test/PoolModifyPositionTest.sol";
-import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
+import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
+import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
+import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {Oracle} from "../contracts/libraries/Oracle.sol";
 
 contract TestGeomeanOracle is Test, Deployers {
