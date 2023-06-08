@@ -101,12 +101,11 @@ abstract contract BaseHook is IHooks {
         revert HookNotImplemented();
     }
 
-    function afterSwap(
-        address,
-        IPoolManager.PoolKey calldata,
-        IPoolManager.SwapParams calldata,
-        BalanceDelta
-    ) external virtual returns (bytes4) {
+    function afterSwap(address, IPoolManager.PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta)
+        external
+        virtual
+        returns (bytes4)
+    {
         revert HookNotImplemented();
     }
 
