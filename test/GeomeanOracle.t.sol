@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {GetSender} from "./shared/GetSender.sol";
 import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
-import {GeomeanOracle} from "../contracts/hooks/GeomeanOracle.sol";
+import {GeomeanOracle} from "../contracts/hooks/examples/GeomeanOracle.sol";
 import {GeomeanOracleImplementation} from "./shared/implementation/GeomeanOracleImplementation.sol";
 import {PoolManager} from "@uniswap/core-next/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
