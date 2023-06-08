@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.19;
 
-import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
-import {PoolId} from "@uniswap/core-next/contracts/libraries/PoolId.sol";
-import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
-import {FullMath} from "@uniswap/core-next/contracts/libraries/FullMath.sol";
-import {SafeCast} from "@uniswap/core-next/contracts/libraries/SafeCast.sol";
-import {IERC20Minimal} from "@uniswap/core-next/contracts/interfaces/external/IERC20Minimal.sol";
+import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
+import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {BaseHook} from "../BaseHook.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/core-next/contracts/libraries/CurrencyLibrary.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 
 type Epoch is uint232;
 
@@ -137,7 +138,7 @@ contract LimitOrder is BaseHook {
         address,
         IPoolManager.PoolKey calldata key,
         IPoolManager.SwapParams calldata params,
-        IPoolManager.BalanceDelta calldata
+        BalanceDelta
     ) external override poolManagerOnly returns (bytes4) {
         (int24 tickLower, int24 lower, int24 upper) = _getCrossedTicks(key.toId(), key.tickSpacing);
         if (lower > upper) return LimitOrder.afterSwap.selector;
@@ -196,7 +197,7 @@ contract LimitOrder is BaseHook {
         selfOnly
         returns (uint256 amount0, uint256 amount1)
     {
-        IPoolManager.BalanceDelta memory delta = poolManager.modifyPosition(
+        BalanceDelta delta = poolManager.modifyPosition(
             key,
             IPoolManager.ModifyPositionParams({
                 tickLower: tickLower,
@@ -205,8 +206,8 @@ contract LimitOrder is BaseHook {
             })
         );
 
-        if (delta.amount0 < 0) poolManager.mint(key.currency0, address(this), amount0 = uint256(-delta.amount0));
-        if (delta.amount1 < 0) poolManager.mint(key.currency1, address(this), amount1 = uint256(-delta.amount1));
+        if (delta.amount0() < 0) poolManager.mint(key.currency0, address(this), amount0 = -delta.amount0().toInt128());
+        if (delta.amount1() < 0) poolManager.mint(key.currency1, address(this), amount1 = -delta.amount1());
     }
 
     function place(IPoolManager.PoolKey calldata key, int24 tickLower, bool zeroForOne, uint128 liquidity)
@@ -251,7 +252,7 @@ contract LimitOrder is BaseHook {
         int256 liquidityDelta,
         address owner
     ) external selfOnly {
-        IPoolManager.BalanceDelta memory delta = poolManager.modifyPosition(
+        BalanceDelta delta = poolManager.modifyPosition(
             key,
             IPoolManager.ModifyPositionParams({
                 tickLower: tickLower,
@@ -260,20 +261,20 @@ contract LimitOrder is BaseHook {
             })
         );
 
-        if (delta.amount0 > 0) {
-            if (delta.amount1 != 0) revert InRange();
+        if (delta.amount0() > 0) {
+            if (delta.amount1() != 0) revert InRange();
             if (!zeroForOne) revert CrossedRange();
             // TODO use safeTransferFrom
             IERC20Minimal(Currency.unwrap(key.currency0)).transferFrom(
-                owner, address(poolManager), uint256(delta.amount0)
+                owner, address(poolManager), delta.amount0()
             );
             poolManager.settle(key.currency0);
         } else {
-            if (delta.amount0 != 0) revert InRange();
+            if (delta.amount0() != 0) revert InRange();
             if (zeroForOne) revert CrossedRange();
             // TODO use safeTransferFrom
             IERC20Minimal(Currency.unwrap(key.currency1)).transferFrom(
-                owner, address(poolManager), uint256(delta.amount1)
+                owner, address(poolManager), delta.amount1()
             );
             poolManager.settle(key.currency1);
         }
@@ -328,19 +329,19 @@ contract LimitOrder is BaseHook {
         // could be unfairly diluted by a user sychronously placing then killing a limit order to skim off fees.
         // to prevent this, we allocate all fee revenue to remaining limit order placers, unless this is the last order.
         if (!removingAllLiquidity) {
-            IPoolManager.BalanceDelta memory deltaFee = poolManager.modifyPosition(
+            BalanceDelta deltaFee = poolManager.modifyPosition(
                 key, IPoolManager.ModifyPositionParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0})
             );
 
             if (deltaFee.amount0 < 0) {
-                poolManager.mint(key.currency0, address(this), amount0Fee = uint256(-deltaFee.amount0));
+                poolManager.mint(key.currency0, address(this), amount0Fee = -deltaFee.amount0());
             }
             if (deltaFee.amount1 < 0) {
-                poolManager.mint(key.currency1, address(this), amount1Fee = uint256(-deltaFee.amount1));
+                poolManager.mint(key.currency1, address(this), amount1Fee = -deltaFee.amount1());
             }
         }
 
-        IPoolManager.BalanceDelta memory delta = poolManager.modifyPosition(
+        BalanceDelta delta = poolManager.modifyPosition(
             key,
             IPoolManager.ModifyPositionParams({
                 tickLower: tickLower,
@@ -349,8 +350,8 @@ contract LimitOrder is BaseHook {
             })
         );
 
-        if (delta.amount0 < 0) poolManager.take(key.currency0, to, amount0 = uint256(-delta.amount0));
-        if (delta.amount1 < 0) poolManager.take(key.currency1, to, amount1 = uint256(-delta.amount1));
+        if (delta.amount0() < 0) poolManager.take(key.currency0, to, amount0 = -delta.amount0());
+        if (delta.amount1() < 0) poolManager.take(key.currency1, to, amount1 = -delta.amount1());
     }
 
     function withdraw(Epoch epoch, address to) external returns (uint256 amount0, uint256 amount1) {
