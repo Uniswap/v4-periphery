@@ -4,11 +4,11 @@
 // import {TWAMMHook} from '../../../contracts/hooks/TWAMMHook.sol';
 // import {TwammMath} from '../../../contracts/libraries/TWAMM/TwammMath.sol';
 // import {OrderPool} from '../../../contracts/libraries/TWAMM/OrderPool.sol';
-// import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
-// import {Pool} from "@uniswap/core-next/contracts/libraries/Pool.sol";
-// import {TickBitmap} from "@uniswap/core-next/contracts/libraries/TickBitmap.sol";
+// import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+// import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
+// import {TickBitmap} from "@uniswap/v4-core/contracts/libraries/TickBitmap.sol";
 // import {ABDKMathQuad} from '../../../contracts/libraries/TWAMM/ABDKMathQuad.sol';
-// import {FixedPoint96} from "@uniswap/core-next/contracts/libraries/FixedPoint96.sol";
+// import {FixedPoint96} from "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
 //
 // contract TWAMMTest is TWAMMHook {
 //     using ABDKMathQuad for *;

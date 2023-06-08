@@ -3,8 +3,8 @@ pragma solidity ^0.8.19;
 
 import {BaseHook} from "../../../contracts/BaseHook.sol";
 import {TWAMMHook} from "../../../contracts/hooks/TWAMMHook.sol";
-import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
-import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 
 contract TWAMMImplementation is TWAMMHook {
     constructor(IPoolManager poolManager, uint256 interval, TWAMMHook addressToEtch) TWAMMHook(poolManager, interval) {

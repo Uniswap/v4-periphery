@@ -2,22 +2,22 @@ pragma solidity ^0.8.15;
 
 import {Test} from 'forge-std/Test.sol';
 import {Vm} from 'forge-std/Vm.sol';
-import {TestERC20} from "@uniswap/core-next/contracts/test/TestERC20.sol";
-import {IERC20Minimal} from "@uniswap/core-next/contracts/interfaces/external/IERC20Minimal.sol";
+import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {TWAMMImplementation} from "./shared/implementation/TWAMMImplementation.sol";
 import {TWAMMHook} from '../../contracts/hooks/TWAMMHook.sol';
 import {ITWAMM} from '../../contracts/interfaces/ITWAMM.sol';
-import {IHooks} from "@uniswap/core-next/contracts/interfaces/IHooks.sol";
-import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
-import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
-import {PoolManager} from "@uniswap/core-next/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
-import {PoolId} from "@uniswap/core-next/contracts/libraries/PoolId.sol";
-import {PoolModifyPositionTest} from "@uniswap/core-next/contracts/test/PoolModifyPositionTest.sol";
-import {PoolSwapTest} from "@uniswap/core-next/contracts/test/PoolSwapTest.sol";
-import {PoolDonateTest} from "@uniswap/core-next/contracts/test/PoolDonateTest.sol";
-import {Deployers} from "@uniswap/core-next/test/foundry-tests/utils/Deployers.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/core-next/contracts/libraries/CurrencyLibrary.sol";
+import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
+import {PoolDonateTest} from "@uniswap/v4-core/contracts/test/PoolDonateTest.sol";
+import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
 
 contract TWAMMTest is Test, Deployers {
     using CurrencyLibrary for Currency;

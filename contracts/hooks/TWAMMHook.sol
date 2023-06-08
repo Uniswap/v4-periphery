@@ -1,21 +1,23 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
-import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
-import {TickBitmap} from "@uniswap/core-next/contracts/libraries/TickBitmap.sol";
-import {SqrtPriceMath} from "@uniswap/core-next/contracts/libraries/SqrtPriceMath.sol";
-import {FixedPoint96} from "@uniswap/core-next/contracts/libraries/FixedPoint96.sol";
-import {PoolId} from "@uniswap/core-next/contracts/libraries/PoolId.sol";
-import {SafeCast} from "@uniswap/core-next/contracts/libraries/SafeCast.sol";
+import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {TickBitmap} from "@uniswap/v4-core/contracts/libraries/TickBitmap.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/contracts/libraries/SqrtPriceMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
+import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
 import {BaseHook} from "../BaseHook.sol";
-import {IERC20Minimal} from "@uniswap/core-next/contracts/interfaces/external/IERC20Minimal.sol";
-import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
+import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {ITWAMM} from "../interfaces/ITWAMM.sol";
-import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
+import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {TransferHelper} from "../libraries/TransferHelper.sol";
 import {TwammMath} from "../libraries/TWAMM/TwammMath.sol";
 import {OrderPool} from "../libraries/TWAMM/OrderPool.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/core-next/contracts/libraries/CurrencyLibrary.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
+import {PoolGetters} from "../libraries/PoolGetters.sol";
 
 contract TWAMMHook is BaseHook, ITWAMM {
     using TransferHelper for IERC20Minimal;
@@ -25,6 +27,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
     using TickMath for int24;
     using TickMath for uint160;
     using SafeCast for uint256;
+    using PoolGetters for IPoolManager;
     using TickBitmap for mapping(int16 => uint256);
 
     int256 internal constant MIN_DELTA = -1;
@@ -133,7 +136,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
     }
 
     function executeTWAMMOrders(IPoolManager.PoolKey memory key) public {
-        bytes32 poolId = keccak256(abi.encode(key));
+        bytes32 poolId = key.toId();
         (uint160 sqrtPriceX96,,) = poolManager.getSlot0(poolId);
         State storage twamm = twammStates[poolId];
 
@@ -251,23 +254,23 @@ contract TWAMMHook is BaseHook, ITWAMM {
         (IPoolManager.PoolKey memory key, IPoolManager.SwapParams memory swapParams) =
             abi.decode(rawData, (IPoolManager.PoolKey, IPoolManager.SwapParams));
 
-        IPoolManager.BalanceDelta memory delta = poolManager.swap(key, swapParams);
+        BalanceDelta delta = poolManager.swap(key, swapParams);
 
         if (swapParams.zeroForOne) {
-            if (delta.amount0 > 0) {
-                key.currency0.transfer(address(poolManager), uint256(delta.amount0));
+            if (delta.amount0() > 0) {
+                key.currency0.transfer(address(poolManager), uint256(uint128(delta.amount0())));
                 poolManager.settle(key.currency0);
             }
-            if (delta.amount1 < 0) {
-                poolManager.take(key.currency1, address(this), uint256(-delta.amount1));
+            if (delta.amount1() < 0) {
+                poolManager.take(key.currency1, address(this), uint256(uint128(-delta.amount1())));
             }
         } else {
-            if (delta.amount1 > 0) {
-                key.currency1.transfer(address(poolManager), uint256(delta.amount1));
+            if (delta.amount1() > 0) {
+                key.currency1.transfer(address(poolManager), uint256(uint128(delta.amount1())));
                 poolManager.settle(key.currency1);
             }
-            if (delta.amount0 < 0) {
-                poolManager.take(key.currency0, address(this), uint256(-delta.amount0));
+            if (delta.amount0() < 0) {
+                poolManager.take(key.currency0, address(this), uint256(uint128(-delta.amount0())));
             }
         }
         return bytes("");
@@ -524,7 +527,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
                 isCrossingInitializedTick(params.pool, poolManager, poolKey, finalSqrtPriceX96);
 
             if (crossingInitializedTick) {
-                int128 liquidityNetAtTick = poolManager.getTickNetLiquidity(poolKey.toId(), tick);
+                int128 liquidityNetAtTick = poolManager.getNetLiquidityAtTick(poolKey.toId(), tick);
                 uint160 initializedSqrtPrice = TickMath.getSqrtRatioAtTick(tick);
 
                 uint256 swapDelta0 = SqrtPriceMath.getAmount0Delta(
@@ -608,7 +611,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
 
         unchecked {
             // update pool
-            int128 liquidityNet = poolManager.getTickNetLiquidity(poolKey.toId(), params.initializedTick);
+            int128 liquidityNet = poolManager.getNetLiquidityAtTick(poolKey.toId(), params.initializedTick);
             if (initializedSqrtPrice < params.pool.sqrtPriceX96) liquidityNet = -liquidityNet;
             params.pool.liquidity = liquidityNet < 0
                 ? params.pool.liquidity - uint128(-liquidityNet)
@@ -638,7 +641,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
                 if (searchingLeft) nextTickInit -= 1;
             }
             (nextTickInit, crossingInitializedTick) =
-                poolManager.getNextInitializedTickWithinOneWord(poolKey, nextTickInit, searchingLeft);
+                poolManager.getNextInitializedTickWithinOneWord(poolKey.toId(), nextTickInit, poolKey.tickSpacing, searchingLeft);
             nextTickInitFurtherThanTarget = searchingLeft ? nextTickInit <= targetTick : nextTickInit > targetTick;
             if (crossingInitializedTick == true) break;
         }
