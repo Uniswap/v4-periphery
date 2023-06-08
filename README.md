@@ -8,14 +8,14 @@ There are a few canonical hook contracts that are currently being developed incl
 
 ```solidity
 contracts/
----hooks/
-     | TWAMM.sol
-     | LimitOrder.sol
-			---examples/
-            | GeomeanOracle.sol
-            | VolatilityOracle.sol
----libraries/
-		 | Oracle.sol
+----hooks/
+    ----examples/
+        | GeomeanOracle.sol
+        | VolatilityOracle.sol
+    | TWAMM.sol
+    | LimitOrder.sol
+----libraries/
+    | Oracle.sol
 BaseHook.sol
 test/
 ```
