@@ -55,4 +55,4 @@ Not all types of hooks will be safe or valuable to users. This repository will m
 
 ## License
 
-The license for Uniswap V4 Periphery is the GNU General Public License (GPL 2.0), see LICENSE(https://github.com/Uniswap/periphery-next/blob/main/LICENSE).
+The license for Uniswap V4 Periphery is the GNU General Public License (GPL 2.0), see [LICENSE](https://github.com/Uniswap/periphery-next/blob/main/LICENSE).
