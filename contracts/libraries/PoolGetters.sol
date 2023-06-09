@@ -11,7 +11,11 @@ library PoolGetters {
     uint256 constant TICKS_OFFSET = 4;
     uint256 constant TICK_BITMAP_OFFSET = 5;
 
-    function getNetLiquidityAtTick(IPoolManager poolManager, bytes32 poolId, int24 tick) internal view returns (int128 l) {
+    function getNetLiquidityAtTick(IPoolManager poolManager, bytes32 poolId, int24 tick)
+        internal
+        view
+        returns (int128 l)
+    {
         bytes32 value = poolManager.extsload(
             keccak256(abi.encode(tick, uint256(keccak256(abi.encode(poolId, POOL_SLOT))) + TICKS_OFFSET))
         );
@@ -21,10 +25,16 @@ library PoolGetters {
         }
     }
 
-    function getTickBitmapAtWord(IPoolManager poolManager, bytes32 poolId, int16 word) internal view returns (uint256 bm) {
-        bm = uint256(poolManager.extsload(
-            keccak256(abi.encode(word, uint256(keccak256(abi.encode(poolId, POOL_SLOT))) + TICK_BITMAP_OFFSET))
-        ));
+    function getTickBitmapAtWord(IPoolManager poolManager, bytes32 poolId, int16 word)
+        internal
+        view
+        returns (uint256 bm)
+    {
+        bm = uint256(
+            poolManager.extsload(
+                keccak256(abi.encode(word, uint256(keccak256(abi.encode(poolId, POOL_SLOT))) + TICK_BITMAP_OFFSET))
+            )
+        );
     }
 
     /// @notice Returns the next initialized tick contained in the same word (or adjacent word) as the tick that is either
@@ -76,7 +86,6 @@ library PoolGetters {
         }
     }
 
-
     /// @notice Computes the position in the mapping where the initialized bit for a tick lives
     /// @param tick The tick for which to compute the position
     /// @return wordPos The key in the mapping containing the word in which the bit is stored
@@ -87,6 +96,4 @@ library PoolGetters {
             bitPos = uint8(int8(tick % 256));
         }
     }
-
-
 }

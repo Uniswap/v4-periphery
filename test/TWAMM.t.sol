@@ -1,12 +1,12 @@
 pragma solidity ^0.8.15;
 
-import {Test} from 'forge-std/Test.sol';
-import {Vm} from 'forge-std/Vm.sol';
+import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {TWAMMImplementation} from "./shared/implementation/TWAMMImplementation.sol";
-import {TWAMMHook} from '../../contracts/hooks/TWAMMHook.sol';
-import {ITWAMM} from '../../contracts/interfaces/ITWAMM.sol';
+import {TWAMMHook} from "../../contracts/hooks/TWAMMHook.sol";
+import {ITWAMM} from "../../contracts/interfaces/ITWAMM.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
@@ -23,7 +23,9 @@ contract TWAMMTest is Test, Deployers {
     using CurrencyLibrary for Currency;
 
     // address constant twammHookAddr = address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG));
-    TWAMMHook twamm = TWAMMHook(address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG)));
+    TWAMMHook twamm = TWAMMHook(
+        address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG))
+    );
     // TWAMMHook twamm;
     PoolManager manager;
     PoolModifyPositionTest modifyPositionRouter;
@@ -39,7 +41,6 @@ contract TWAMMTest is Test, Deployers {
         token0 = new TestERC20(2**128);
         token1 = new TestERC20(2**128);
         manager = new PoolManager(500000);
-
 
         TWAMMImplementation impl = new TWAMMImplementation(manager, 10_000, twamm);
         (, bytes32[] memory writes) = vm.accesses(address(impl));
@@ -65,21 +66,17 @@ contract TWAMMTest is Test, Deployers {
         token1.mint(address(this), 100 ether);
         modifyPositionRouter.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-60, 60, 10 ether));
         modifyPositionRouter.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-120, 120, 10 ether));
-        modifyPositionRouter.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether));
-    }
-
-    function newPoolKey(IHooks hooks) public returns (IPoolManager.PoolKey memory, bytes32)  {
-        TestERC20[] memory tokens = deployTokens(2, 2**255);
-        IPoolManager.PoolKey memory key = IPoolManager.PoolKey(
-            Currency.wrap(address(tokens[0])),
-            Currency.wrap(address(tokens[1])),
-            0,
-            60,
-            hooks
+        modifyPositionRouter.modifyPosition(
+            poolKey, IPoolManager.ModifyPositionParams(TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether)
         );
-        return(key, keccak256(abi.encode(key)));
     }
 
+    function newPoolKey(IHooks hooks) public returns (IPoolManager.PoolKey memory, bytes32) {
+        TestERC20[] memory tokens = deployTokens(2, 2 ** 255);
+        IPoolManager.PoolKey memory key =
+            IPoolManager.PoolKey(Currency.wrap(address(tokens[0])), Currency.wrap(address(tokens[1])), 0, 60, hooks);
+        return (key, keccak256(abi.encode(key)));
+    }
 
     function testTWAMMbeforeInitializeInitializesTWAMM() public {
         (IPoolManager.PoolKey memory initKey, bytes32 initId) = newPoolKey(twamm);
@@ -154,6 +151,7 @@ contract TWAMMTest is Test, Deployers {
         uint256 sellRate,
         uint256 earningsFactorLast
     );
+
     function testTWAMMSubmitOrderEmitsEvent() public {
         ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
 
@@ -161,7 +159,7 @@ contract TWAMMTest is Test, Deployers {
         vm.warp(10000);
 
         vm.expectEmit(false, false, false, true);
-        emit SubmitLongTermOrder(id, address(this), 30000, true,  1 ether / 20000, 0);
+        emit SubmitLongTermOrder(id, address(this), 30000, true, 1 ether / 20000, 0);
         twamm.submitLongTermOrder(poolKey, orderKey1, 1e18);
     }
 
@@ -185,8 +183,8 @@ contract TWAMMTest is Test, Deployers {
         uint256 earningsToken0 = twamm.tokensOwed(poolKey.currency0, address(this));
         uint256 earningsToken1 = twamm.tokensOwed(poolKey.currency1, address(this));
 
-        assertEq(earningsToken0, orderAmount/2);
-        assertEq(earningsToken1, orderAmount/2);
+        assertEq(earningsToken0, orderAmount / 2);
+        assertEq(earningsToken1, orderAmount / 2);
 
         uint256 balance0BeforeTWAMM = TestERC20(Currency.unwrap(poolKey.currency0)).balanceOf(address(twamm));
         uint256 balance1BeforeTWAMM = TestERC20(Currency.unwrap(poolKey.currency1)).balanceOf(address(twamm));

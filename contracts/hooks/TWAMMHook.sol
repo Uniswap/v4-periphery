@@ -141,10 +141,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         State storage twamm = twammStates[poolId];
 
         (bool zeroForOne, uint160 sqrtPriceLimitX96) = executeTWAMMOrders(
-            twamm,
-            poolManager,
-            key,
-            PoolParamsOnExecute(sqrtPriceX96, poolManager.getLiquidity(poolId))
+            twamm, poolManager, key, PoolParamsOnExecute(sqrtPriceX96, poolManager.getLiquidity(poolId))
         );
 
         if (sqrtPriceLimitX96 != 0 && sqrtPriceLimitX96 != sqrtPriceX96) {
@@ -184,11 +181,10 @@ contract TWAMMHook is BaseHook, ITWAMM {
     /// @notice Submits a new long term order into the TWAMM
     /// @dev executeTWAMMOrders must be executed up to current timestamp before calling submitLongTermOrder
     /// @param orderKey The OrderKey for the new order
-    function _submitLongTermOrder(
-        State storage self,
-        OrderKey memory orderKey,
-        uint256 sellRate
-    ) internal returns (bytes32 orderId) {
+    function _submitLongTermOrder(State storage self, OrderKey memory orderKey, uint256 sellRate)
+        internal
+        returns (bytes32 orderId)
+    {
         if (orderKey.owner != msg.sender) revert MustBeOwner(orderKey.owner, msg.sender);
         if (self.lastVirtualOrderTimestamp == 0) revert NotInitialized();
         if (orderKey.expiration <= block.timestamp) revert ExpirationLessThanBlocktime(orderKey.expiration);
@@ -640,8 +636,9 @@ contract TWAMMHook is BaseHook, ITWAMM {
             unchecked {
                 if (searchingLeft) nextTickInit -= 1;
             }
-            (nextTickInit, crossingInitializedTick) =
-                poolManager.getNextInitializedTickWithinOneWord(poolKey.toId(), nextTickInit, poolKey.tickSpacing, searchingLeft);
+            (nextTickInit, crossingInitializedTick) = poolManager.getNextInitializedTickWithinOneWord(
+                poolKey.toId(), nextTickInit, poolKey.tickSpacing, searchingLeft
+            );
             nextTickInitFurtherThanTarget = searchingLeft ? nextTickInit <= targetTick : nextTickInit > targetTick;
             if (crossingInitializedTick == true) break;
         }
