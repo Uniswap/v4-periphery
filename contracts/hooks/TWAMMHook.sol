@@ -150,7 +150,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
     }
 
     /// @inheritdoc ITWAMM
-    function submitLongTermOrder(IPoolManager.PoolKey calldata key, OrderKey memory orderKey, uint256 amountIn)
+    function submitOrder(IPoolManager.PoolKey calldata key, OrderKey memory orderKey, uint256 amountIn)
         external
         returns (bytes32 orderId)
     {
@@ -163,12 +163,12 @@ contract TWAMMHook is BaseHook, ITWAMM {
             // checks done in TWAMM library
             uint256 duration = orderKey.expiration - block.timestamp;
             sellRate = amountIn / duration;
-            orderId = _submitLongTermOrder(twamm, orderKey, sellRate);
+            orderId = _submitOrder(twamm, orderKey, sellRate);
             IERC20Minimal(orderKey.zeroForOne ? Currency.unwrap(key.currency0) : Currency.unwrap(key.currency1))
                 .safeTransferFrom(msg.sender, address(this), sellRate * duration);
         }
 
-        emit SubmitLongTermOrder(
+        emit SubmitOrder(
             poolId,
             orderKey.owner,
             orderKey.expiration,
@@ -179,9 +179,9 @@ contract TWAMMHook is BaseHook, ITWAMM {
     }
 
     /// @notice Submits a new long term order into the TWAMM
-    /// @dev executeTWAMMOrders must be executed up to current timestamp before calling submitLongTermOrder
+    /// @dev executeTWAMMOrders must be executed up to current timestamp before calling submitOrder
     /// @param orderKey The OrderKey for the new order
-    function _submitLongTermOrder(State storage self, OrderKey memory orderKey, uint256 sellRate)
+    function _submitOrder(State storage self, OrderKey memory orderKey, uint256 sellRate)
         internal
         returns (bytes32 orderId)
     {
@@ -205,7 +205,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
     }
 
     /// @inheritdoc ITWAMM
-    function updateLongTermOrder(IPoolManager.PoolKey memory key, OrderKey memory orderKey, int256 amountDelta)
+    function updateOrder(IPoolManager.PoolKey memory key, OrderKey memory orderKey, int256 amountDelta)
         external
         returns (uint256 tokens0Owed, uint256 tokens1Owed)
     {
@@ -216,7 +216,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
 
         // This call reverts if the caller is not the owner of the order
         (uint256 buyTokensOwed, uint256 sellTokensOwed, uint256 newSellrate, uint256 newEarningsFactorLast) =
-            updateLongTermOrder(twamm, orderKey, amountDelta);
+            updateOrder(twamm, orderKey, amountDelta);
 
         if (orderKey.zeroForOne) {
             tokens0Owed += sellTokensOwed;
@@ -229,7 +229,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         tokensOwed[key.currency0][orderKey.owner] += tokens0Owed;
         tokensOwed[key.currency1][orderKey.owner] += tokens1Owed;
 
-        emit UpdateLongTermOrder(
+        emit UpdateOrder(
             poolId, orderKey.owner, orderKey.expiration, orderKey.zeroForOne, newSellrate, newEarningsFactorLast
         );
     }
@@ -276,7 +276,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         return twammStates[keccak256(abi.encode(key))];
     }
 
-    struct LongTermOrderParams {
+    struct OrderParams {
         address owner;
         bool zeroForOne;
         uint256 amountIn;
@@ -284,12 +284,12 @@ contract TWAMMHook is BaseHook, ITWAMM {
     }
 
     /// @notice Modify an existing long term order with a new sellAmount
-    /// @dev executeTWAMMOrders must be executed up to current timestamp before calling updateLongTermOrder
+    /// @dev executeTWAMMOrders must be executed up to current timestamp before calling updateOrder
     /// @param self The TWAMM State
     /// @param orderKey The OrderKey for which to identify the order
     /// @param amountDelta The delta for the order sell amount. Negative to remove from order, positive to add, or
     ///    -1 to remove full amount from order.
-    function updateLongTermOrder(State storage self, OrderKey memory orderKey, int256 amountDelta)
+    function updateOrder(State storage self, OrderKey memory orderKey, int256 amountDelta)
         internal
         returns (uint256 buyTokensOwed, uint256 sellTokensOwed, uint256 newSellRate, uint256 earningsFactorLast)
     {

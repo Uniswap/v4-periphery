@@ -33,12 +33,12 @@
 //         return twamm.lastVirtualOrderTimestamp;
 //     }
 //
-//     function submitLongTermOrder(OrderKey calldata orderKey, uint256 amountIn)
+//     function submitOrder(OrderKey calldata orderKey, uint256 amountIn)
 //         external
 //         returns (bytes32 orderId)
 //     {
 //         unchecked {
-//             orderId = twamm.submitLongTermOrder(
+//             orderId = twamm.submitOrder(
 //                 orderKey,
 //                 amountIn / (orderKey.expiration - block.timestamp),
 //                 expirationInterval
@@ -46,7 +46,7 @@
 //         }
 //     }
 //
-//     function updateLongTermOrder(OrderKey calldata orderKey, int128 amountDelta)
+//     function updateOrder(OrderKey calldata orderKey, int128 amountDelta)
 //         external
 //         returns (
 //             uint256 buyTokensOwed,
@@ -55,7 +55,7 @@
 //             uint256 earningsFactorLast
 //         )
 //     {
-//         return twamm.updateLongTermOrder(orderKey, amountDelta);
+//         return twamm.updateOrder(orderKey, amountDelta);
 //     }
 //
 //     // dont return true if the init tick is directly after the target price

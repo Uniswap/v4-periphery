@@ -20,6 +20,7 @@ import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
 
 contract TWAMMTest is Test, Deployers {
+    using PoolId for IPoolManager.PoolKey;
     using CurrencyLibrary for Currency;
 
     // address constant twammHookAddr = address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG));
@@ -71,15 +72,15 @@ contract TWAMMTest is Test, Deployers {
         );
     }
 
-    function newPoolKey(IHooks hooks) public returns (IPoolManager.PoolKey memory, bytes32) {
+    function newPoolKeyWithTWAMM(IHooks hooks) public returns (IPoolManager.PoolKey memory, bytes32) {
         TestERC20[] memory tokens = deployTokens(2, 2 ** 255);
         IPoolManager.PoolKey memory key =
             IPoolManager.PoolKey(Currency.wrap(address(tokens[0])), Currency.wrap(address(tokens[1])), 0, 60, hooks);
-        return (key, keccak256(abi.encode(key)));
+        return (key, key.toId());
     }
 
     function testTWAMMbeforeInitializeInitializesTWAMM() public {
-        (IPoolManager.PoolKey memory initKey, bytes32 initId) = newPoolKey(twamm);
+        (IPoolManager.PoolKey memory initKey, bytes32 initId) = newPoolKeyWithTWAMM(twamm);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
         manager.initialize(initKey, SQRT_RATIO_1_1);
@@ -95,7 +96,7 @@ contract TWAMMTest is Test, Deployers {
 
         token0.approve(address(twamm), 100 ether);
         vm.warp(10000);
-        twamm.submitLongTermOrder(poolKey, orderKey, 1 ether);
+        twamm.submitOrder(poolKey, orderKey, 1 ether);
 
         ITWAMM.Order memory submittedOrder = twamm.getOrder(poolKey, orderKey);
         assertEq(submittedOrder.sellRate, 1 ether / 20000);
@@ -110,10 +111,10 @@ contract TWAMMTest is Test, Deployers {
         token0.approve(address(twamm), 100e18);
         token1.approve(address(twamm), 100e18);
         vm.warp(10000);
-        twamm.submitLongTermOrder(poolKey, orderKey1, 1e18);
+        twamm.submitOrder(poolKey, orderKey1, 1e18);
         vm.warp(30000);
         token0.approve(address(twamm), 100e18);
-        twamm.submitLongTermOrder(poolKey, orderKey2, 1e18);
+        twamm.submitOrder(poolKey, orderKey2, 1e18);
         vm.warp(40000);
 
         ITWAMM.Order memory submittedOrder = twamm.getOrder(poolKey, orderKey2);
@@ -130,11 +131,11 @@ contract TWAMMTest is Test, Deployers {
         token0.approve(address(twamm), 100e18);
         token1.approve(address(twamm), 100e18);
         vm.warp(10000);
-        twamm.submitLongTermOrder(poolKey, orderKey1, 1e18);
-        twamm.submitLongTermOrder(poolKey, orderKey3, 10e18);
+        twamm.submitOrder(poolKey, orderKey1, 1e18);
+        twamm.submitOrder(poolKey, orderKey3, 10e18);
         vm.warp(30000);
         token0.approve(address(twamm), 100e18);
-        twamm.submitLongTermOrder(poolKey, orderKey2, 1e18);
+        twamm.submitOrder(poolKey, orderKey2, 1e18);
         vm.warp(40000);
 
         ITWAMM.Order memory submittedOrder = twamm.getOrder(poolKey, orderKey2);
@@ -143,7 +144,7 @@ contract TWAMMTest is Test, Deployers {
         assertEq(submittedOrder.earningsFactorLast, earningsFactorCurrent);
     }
 
-    event SubmitLongTermOrder(
+    event SubmitOrder(
         bytes32 indexed poolId,
         address indexed owner,
         uint160 expiration,
@@ -159,8 +160,8 @@ contract TWAMMTest is Test, Deployers {
         vm.warp(10000);
 
         vm.expectEmit(false, false, false, true);
-        emit SubmitLongTermOrder(id, address(this), 30000, true, 1 ether / 20000, 0);
-        twamm.submitLongTermOrder(poolKey, orderKey1, 1e18);
+        emit SubmitOrder(id, address(this), 30000, true, 1 ether / 20000, 0);
+        twamm.submitOrder(poolKey, orderKey1, 1e18);
     }
 
     function testTWAMMEndToEndSimEvenTradingGas() public {
@@ -173,12 +174,12 @@ contract TWAMMTest is Test, Deployers {
         modifyPositionRouter.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-2400, 2400, 10 ether));
 
         vm.warp(10000);
-        twamm.submitLongTermOrder(poolKey, orderKey1, orderAmount);
-        twamm.submitLongTermOrder(poolKey, orderKey2, orderAmount);
+        twamm.submitOrder(poolKey, orderKey1, orderAmount);
+        twamm.submitOrder(poolKey, orderKey2, orderAmount);
         vm.warp(20000);
         twamm.executeTWAMMOrders(poolKey);
-        twamm.updateLongTermOrder(poolKey, orderKey1, 0);
-        twamm.updateLongTermOrder(poolKey, orderKey2, 0);
+        twamm.updateOrder(poolKey, orderKey1, 0);
+        twamm.updateOrder(poolKey, orderKey2, 0);
 
         uint256 earningsToken0 = twamm.tokensOwed(poolKey.currency0, address(this));
         uint256 earningsToken1 = twamm.tokensOwed(poolKey.currency1, address(this));
@@ -193,8 +194,8 @@ contract TWAMMTest is Test, Deployers {
 
         vm.warp(30000);
         twamm.executeTWAMMOrders(poolKey);
-        twamm.updateLongTermOrder(poolKey, orderKey1, 0);
-        twamm.updateLongTermOrder(poolKey, orderKey2, 0);
+        twamm.updateOrder(poolKey, orderKey1, 0);
+        twamm.updateOrder(poolKey, orderKey2, 0);
         twamm.claimTokens(poolKey.currency0, address(this), 0);
         twamm.claimTokens(poolKey.currency1, address(this), 0);
 

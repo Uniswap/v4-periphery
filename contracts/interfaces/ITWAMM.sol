@@ -68,7 +68,7 @@ interface ITWAMM {
     /// @param zeroForOne Whether the order is selling token 0 for token 1
     /// @param sellRate The sell rate of tokens per second being sold in the order
     /// @param earningsFactorLast The current earningsFactor of the order pool
-    event SubmitLongTermOrder(
+    event SubmitOrder(
         bytes32 indexed poolId,
         address indexed owner,
         uint160 expiration,
@@ -85,7 +85,7 @@ interface ITWAMM {
     /// @param sellRate The updated sellRate of tokens per second being sold in the order
     /// @param earningsFactorLast The current earningsFactor of the order pool
     ///   (since updated orders will claim existing earnings)
-    event UpdateLongTermOrder(
+    event UpdateOrder(
         bytes32 indexed poolId,
         address indexed owner,
         uint160 expiration,
@@ -100,7 +100,7 @@ interface ITWAMM {
     /// @param amountIn The amount of sell token to add to the order. Some precision on amountIn may be lost up to the
     /// magnitude of (orderKey.expiration - block.timestamp)
     /// @return orderId The bytes32 ID of the order
-    function submitLongTermOrder(IPoolManager.PoolKey calldata key, OrderKey calldata orderKey, uint256 amountIn)
+    function submitOrder(IPoolManager.PoolKey calldata key, OrderKey calldata orderKey, uint256 amountIn)
         external
         returns (bytes32 orderId);
 
@@ -109,7 +109,7 @@ interface ITWAMM {
     /// @param orderKey The OrderKey for which to identify the order
     /// @param amountDelta The delta for the order sell amount. Negative to remove from order, positive to add, or
     ///    -1 to remove full amount from order.
-    function updateLongTermOrder(IPoolManager.PoolKey calldata key, OrderKey calldata orderKey, int256 amountDelta)
+    function updateOrder(IPoolManager.PoolKey calldata key, OrderKey calldata orderKey, int256 amountDelta)
         external
         returns (uint256 tokens0Owed, uint256 tokens1Owed);
 

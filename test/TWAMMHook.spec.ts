@@ -190,7 +190,7 @@
 //     })
 //   })
 //
-//   describe('#submitLongTermOrder', () => {
+//   describe('#submitOrder', () => {
 //     let latestTimestamp: number
 //     let poolKey: PoolKey
 //
@@ -223,7 +223,7 @@
 //
 //       const nullOrder = await twamm.getOrder(poolKey, orderKey)
 //
-//       await twamm.submitLongTermOrder(poolKey, orderKey, expandTo18Decimals(10))
+//       await twamm.submitOrder(poolKey, orderKey, expandTo18Decimals(10))
 //       const order = await twamm.getOrder(poolKey, orderKey)
 //       expect(order.earningsFactorLast).to.eq(0)
 //     })
@@ -240,15 +240,15 @@
 //         owner: wallet.address,
 //         expiration: nIntervalsFrom(latestTimestamp, EXPIRATION_INTERVAL, 5),
 //       }
-//       await twamm.submitLongTermOrder(poolKey, orderKey0, expandTo18Decimals(10))
+//       await twamm.submitOrder(poolKey, orderKey0, expandTo18Decimals(10))
 //       await setNextBlocktime(expiration + 100)
-//       await twamm.submitLongTermOrder(poolKey, orderKey1, expandTo18Decimals(10))
+//       await twamm.submitOrder(poolKey, orderKey1, expandTo18Decimals(10))
 //       const order = await twamm.getOrder(poolKey, orderKey1)
 //
 //       expect(order.earningsFactorLast).to.eq((await twamm.getOrderPool(poolKey, true)).earningsFactorCurrent)
 //     })
 //
-//     it('emits a SubmitLongTermOrder event', async () => {
+//     it('emits a SubmitOrder event', async () => {
 //       const expiration = nIntervalsFrom(latestTimestamp, EXPIRATION_INTERVAL, 3)
 //       const orderAmount = expandTo18Decimals(10)
 //       const orderKey = {
@@ -258,8 +258,8 @@
 //       }
 //
 //       await setNextBlocktime(expiration - EXPIRATION_INTERVAL)
-//       await expect(twamm.submitLongTermOrder(poolKey, orderKey, orderAmount))
-//         .to.emit(twamm, 'SubmitLongTermOrder')
+//       await expect(twamm.submitOrder(poolKey, orderKey, orderAmount))
+//         .to.emit(twamm, 'SubmitOrder')
 //         .withArgs(getPoolId(poolKey), wallet.address, expiration, true, orderAmount.div(EXPIRATION_INTERVAL), 0)
 //     })
 //
@@ -272,11 +272,11 @@
 //       }
 //
 //       // difficult to isolate gas from #executeTWAMMOrders()
-//       await snapshotGasCost(twamm.submitLongTermOrder(poolKey, orderKey0, expandTo18Decimals(10)))
+//       await snapshotGasCost(twamm.submitOrder(poolKey, orderKey0, expandTo18Decimals(10)))
 //     })
 //   })
 //
-//   describe('#updateLongTermOrder', () => {
+//   describe('#updateOrder', () => {
 //     let orderKey0: OrderKey
 //     let orderKey1: OrderKey
 //     let poolKey: PoolKey
@@ -319,8 +319,8 @@
 //       })
 //
 //       await inOneBlock(nIntervalsFrom(latestTimestamp, EXPIRATION_INTERVAL, 2), async () => {
-//         await twamm.submitLongTermOrder(poolKey, orderKey0, orderAmount)
-//         await twamm.submitLongTermOrder(poolKey, orderKey1, orderAmount)
+//         await twamm.submitOrder(poolKey, orderKey0, orderAmount)
+//         await twamm.submitOrder(poolKey, orderKey1, orderAmount)
 //       })
 //     })
 //
@@ -328,7 +328,7 @@
 //       it('claims rewards, decreases sellRate, and updates sellTokensOwed to owner', async () => {
 //         const amountDelta = orderAmount.div(10)
 //         await setNextBlocktime(halfwayTimestamp)
-//         await twamm.updateLongTermOrder(poolKey, orderKey0, amountDelta.mul(-1))
+//         await twamm.updateOrder(poolKey, orderKey0, amountDelta.mul(-1))
 //         const order = await twamm.getOrder(poolKey, orderKey0)
 //         const { earningsFactorCurrent } = await twamm.getOrderPool(poolKey, true)
 //
@@ -340,7 +340,7 @@
 //
 //       it('deletes order and returns all tokens if delta sent is -1', async () => {
 //         await setNextBlocktime(halfwayTimestamp)
-//         await twamm.updateLongTermOrder(poolKey, orderKey0, -1)
+//         await twamm.updateOrder(poolKey, orderKey0, -1)
 //         const order = await twamm.getOrder(poolKey, orderKey0)
 //         const { earningsFactorCurrent } = await twamm.getOrderPool(poolKey, true)
 //
@@ -352,7 +352,7 @@
 //
 //       it('claims rewards, increases sellRate, collects token0 balance if delta is positive', async () => {
 //         await setNextBlocktime(halfwayTimestamp)
-//         await twamm.updateLongTermOrder(poolKey, orderKey0, orderAmount)
+//         await twamm.updateOrder(poolKey, orderKey0, orderAmount)
 //         const order = await twamm.getOrder(poolKey, orderKey0)
 //         const { earningsFactorCurrent } = await twamm.getOrderPool(poolKey, true)
 //
@@ -362,12 +362,12 @@
 //         expect(await twamm.tokensOwed(poolKey.token1, orderKey0.owner)).to.eq(orderAmount.div(2))
 //       })
 //
-//       it('emits an UpdateLongTermOrder event', async () => {
+//       it('emits an UpdateOrder event', async () => {
 //         await setNextBlocktime(halfwayTimestamp)
 //         const updatedSellRate = orderAmount.div(40_000).add(orderAmount.div(20_000))
 //         const latestEarningsFactor = '0x4e20000000000000000000000000'
-//         await expect(twamm.updateLongTermOrder(poolKey, orderKey0, orderAmount))
-//           .to.emit(twamm, 'UpdateLongTermOrder')
+//         await expect(twamm.updateOrder(poolKey, orderKey0, orderAmount))
+//           .to.emit(twamm, 'UpdateOrder')
 //           .withArgs(getPoolId(poolKey), wallet.address, expiration, true, updatedSellRate, latestEarningsFactor)
 //       })
 //     })
@@ -376,7 +376,7 @@
 //       it('claims rewards, decreases sellRate, and transfers sell tokens if the delta is negative', async () => {
 //         const amountDelta = orderAmount.div(10)
 //         await setNextBlocktime(halfwayTimestamp)
-//         await twamm.updateLongTermOrder(poolKey, orderKey1, amountDelta.mul(-1))
+//         await twamm.updateOrder(poolKey, orderKey1, amountDelta.mul(-1))
 //         const order = await twamm.getOrder(poolKey, orderKey1)
 //         const { earningsFactorCurrent } = await twamm.getOrderPool(poolKey, false)
 //
@@ -388,7 +388,7 @@
 //
 //       it('deletes and returns all tokens if delta sent is -1', async () => {
 //         await setNextBlocktime(halfwayTimestamp)
-//         await twamm.updateLongTermOrder(poolKey, orderKey1, -1)
+//         await twamm.updateOrder(poolKey, orderKey1, -1)
 //         const order = await twamm.getOrder(poolKey, orderKey1)
 //
 //         expect(order.earningsFactorLast).to.eq(0)
@@ -399,7 +399,7 @@
 //
 //       it('collects token1 balance if delta is positive and increases sellRate', async () => {
 //         await setNextBlocktime(halfwayTimestamp)
-//         await twamm.updateLongTermOrder(poolKey, orderKey1, orderAmount)
+//         await twamm.updateOrder(poolKey, orderKey1, orderAmount)
 //         const order = await twamm.getOrder(poolKey, orderKey1)
 //         const { earningsFactorCurrent } = await twamm.getOrderPool(poolKey, false)
 //
@@ -409,19 +409,19 @@
 //         expect(await twamm.tokensOwed(poolKey.token1, orderKey0.owner)).to.eq(0)
 //       })
 //
-//       it('emits an UpdateLongTermOrder event', async () => {
+//       it('emits an UpdateOrder event', async () => {
 //         await setNextBlocktime(halfwayTimestamp)
 //         const updatedSellRate = orderAmount.div(40_000).add(orderAmount.div(20_000))
 //         const latestEarningsFactor = '0x4e20000000000000000000000000'
-//         await expect(twamm.updateLongTermOrder(poolKey, orderKey1, orderAmount))
-//           .to.emit(twamm, 'UpdateLongTermOrder')
+//         await expect(twamm.updateOrder(poolKey, orderKey1, orderAmount))
+//           .to.emit(twamm, 'UpdateOrder')
 //           .withArgs(getPoolId(poolKey), wallet.address, expiration, false, updatedSellRate, latestEarningsFactor)
 //       })
 //     })
 //
 //     it('gas', async () => {
 //       await setNextBlocktime(expiration - 5_000)
-//       await snapshotGasCost(twamm.updateLongTermOrder(poolKey, orderKey0, expandTo18Decimals(10)))
+//       await snapshotGasCost(twamm.updateOrder(poolKey, orderKey0, expandTo18Decimals(10)))
 //     })
 //   })
 //
@@ -467,8 +467,8 @@
 //       })
 //
 //       await inOneBlock(nIntervalsFrom(latestTimestamp, EXPIRATION_INTERVAL, 2), async () => {
-//         await twamm.submitLongTermOrder(poolKey, orderKey0, orderAmount)
-//         await twamm.submitLongTermOrder(poolKey, orderKey1, orderAmount)
+//         await twamm.submitOrder(poolKey, orderKey0, orderAmount)
+//         await twamm.submitOrder(poolKey, orderKey1, orderAmount)
 //       })
 //     })
 //
@@ -481,8 +481,8 @@
 //
 //     it('claims full amount if amountRequested is 0', async () => {
 //       await setNextBlocktime(expiration - 3_000)
-//       await twamm.updateLongTermOrder(poolKey, orderKey0, 0)
-//       await twamm.updateLongTermOrder(poolKey, orderKey1, 0)
+//       await twamm.updateOrder(poolKey, orderKey0, 0)
+//       await twamm.updateOrder(poolKey, orderKey1, 0)
 //
 //       const balance0Prev = await token0.balanceOf(wallet.address)
 //       const balance1Prev = await token1.balanceOf(wallet.address)
@@ -502,7 +502,7 @@
 //
 //     it('gas', async () => {
 //       await setNextBlocktime(expiration - 3_000)
-//       await twamm.updateLongTermOrder(poolKey, orderKey0, 0)
+//       await twamm.updateOrder(poolKey, orderKey0, 0)
 //       // difficult to isolate gas from #executeTWAMMOrders()
 //       await snapshotGasCost(twamm.claimTokens(token0.address, wallet.address, expandTo18Decimals(1)))
 //     })
@@ -551,8 +551,8 @@
 //     describe('when both order pools are selling', async () => {
 //       it('gas with no initialized ticks', async () => {
 //         await inOneBlock(latestTimestamp + 100, async () => {
-//           await twamm.submitLongTermOrder(poolKey, orderKey0, expandTo18Decimals(1))
-//           await twamm.submitLongTermOrder(poolKey, orderKey1, expandTo18Decimals(10))
+//           await twamm.submitOrder(poolKey, orderKey0, expandTo18Decimals(1))
+//           await twamm.submitOrder(poolKey, orderKey1, expandTo18Decimals(10))
 //         })
 //         await setNextBlocktime(latestTimestamp + EXPIRATION_INTERVAL)
 //         await snapshotGasCost(twamm.executeTWAMMOrders(poolKey))
@@ -565,8 +565,8 @@
 //           liquidityDelta: expandTo18Decimals(1),
 //         })
 //         await inOneBlock(latestTimestamp + 100, async () => {
-//           await twamm.submitLongTermOrder(poolKey, orderKey0, expandTo18Decimals(1))
-//           await twamm.submitLongTermOrder(poolKey, orderKey1, expandTo18Decimals(10))
+//           await twamm.submitOrder(poolKey, orderKey0, expandTo18Decimals(1))
+//           await twamm.submitOrder(poolKey, orderKey1, expandTo18Decimals(10))
 //         })
 //         await setNextBlocktime(latestTimestamp + EXPIRATION_INTERVAL)
 //         await snapshotGasCost(twamm.executeTWAMMOrders(poolKey))
@@ -585,8 +585,8 @@
 //         })
 //
 //         await inOneBlock(latestTimestamp + 100, async () => {
-//           await twamm.submitLongTermOrder(poolKey, orderKey0, expandTo18Decimals(1))
-//           await twamm.submitLongTermOrder(poolKey, orderKey1, expandTo18Decimals(10))
+//           await twamm.submitOrder(poolKey, orderKey0, expandTo18Decimals(1))
+//           await twamm.submitOrder(poolKey, orderKey1, expandTo18Decimals(10))
 //         })
 //
 //         await setNextBlocktime(latestTimestamp + EXPIRATION_INTERVAL)
@@ -605,7 +605,7 @@
 //
 //       it('gas crossing no initialized tick', async () => {
 //         await setNextBlocktime(latestTimestamp + 100)
-//         await twamm.submitLongTermOrder(poolKey, orderKey0, expandTo18Decimals(7))
+//         await twamm.submitOrder(poolKey, orderKey0, expandTo18Decimals(7))
 //
 //         await setNextBlocktime(expiration + 300)
 //         await snapshotGasCost(twamm.executeTWAMMOrders(poolKey))
@@ -619,7 +619,7 @@
 //         })
 //
 //         await setNextBlocktime(latestTimestamp + 100)
-//         await twamm.submitLongTermOrder(poolKey, orderKey0, expandTo18Decimals(7))
+//         await twamm.submitOrder(poolKey, orderKey0, expandTo18Decimals(7))
 //
 //         await setNextBlocktime(expiration + 300)
 //         await snapshotGasCost(twamm.executeTWAMMOrders(poolKey))
@@ -638,7 +638,7 @@
 //         })
 //
 //         await setNextBlocktime(latestTimestamp + 100)
-//         await twamm.submitLongTermOrder(poolKey, orderKey0, expandTo18Decimals(7))
+//         await twamm.submitOrder(poolKey, orderKey0, expandTo18Decimals(7))
 //
 //         await setNextBlocktime(expiration + 300)
 //         await snapshotGasCost(twamm.executeTWAMMOrders(poolKey))
@@ -704,8 +704,8 @@
 //         await ethers.provider.send('evm_setAutomine', [false])
 //
 //         // 2) Add order balances to TWAMM
-//         await twamm.submitLongTermOrder(key, orderKey0, amountSell0)
-//         await twamm.submitLongTermOrder(key, orderKey1, amountSell1)
+//         await twamm.submitOrder(key, orderKey0, amountSell0)
+//         await twamm.submitOrder(key, orderKey1, amountSell1)
 //
 //         await ethers.provider.send('evm_mine', [start])
 //         await ethers.provider.send('evm_setAutomine', [true])
@@ -715,8 +715,8 @@
 //         const prevBalance1 = await token1.balanceOf(twamm.address)
 //
 //         await twamm.executeTWAMMOrders(key)
-//         await twamm.updateLongTermOrder(key, orderKey0, 0)
-//         await twamm.updateLongTermOrder(key, orderKey1, 0)
+//         await twamm.updateOrder(key, orderKey0, 0)
+//         await twamm.updateOrder(key, orderKey1, 0)
 //
 //         const newBalance0 = await token0.balanceOf(twamm.address)
 //         const newBalance1 = await token1.balanceOf(twamm.address)
@@ -736,8 +736,8 @@
 //         await ethers.provider.send('evm_setAutomine', [false])
 //
 //         // 2) Add order balances to TWAMM
-//         await twamm.submitLongTermOrder(key, orderKey0, amountSell0)
-//         await twamm.submitLongTermOrder(key, orderKey1, amountSell1)
+//         await twamm.submitOrder(key, orderKey0, amountSell0)
+//         await twamm.submitOrder(key, orderKey1, amountSell1)
 //
 //         await ethers.provider.send('evm_mine', [start])
 //         await ethers.provider.send('evm_setAutomine', [true])
@@ -747,8 +747,8 @@
 //         const prevBalance1 = await token1.balanceOf(twamm.address)
 //
 //         await twamm.executeTWAMMOrders(key)
-//         await twamm.updateLongTermOrder(key, orderKey0, 0)
-//         await twamm.updateLongTermOrder(key, orderKey1, 0)
+//         await twamm.updateOrder(key, orderKey0, 0)
+//         await twamm.updateOrder(key, orderKey1, 0)
 //
 //         const newBalance0 = await token0.balanceOf(twamm.address)
 //         const newBalance1 = await token1.balanceOf(twamm.address)
@@ -812,8 +812,8 @@
 //
 //         // 2) Add order balances to TWAMM
 //         await inOneBlock(start, async () => {
-//           await twamm.submitLongTermOrder(key, orderKey0, amountSell0)
-//           await twamm.submitLongTermOrder(key, orderKey1, amountSell1)
+//           await twamm.submitOrder(key, orderKey0, amountSell0)
+//           await twamm.submitOrder(key, orderKey1, amountSell1)
 //         })
 //
 //         await setNextBlocktime(expiration + 1000)
@@ -822,8 +822,8 @@
 //         const prevBalance1 = await token1.balanceOf(twamm.address)
 //
 //         await twamm.executeTWAMMOrders(key)
-//         await twamm.updateLongTermOrder(key, orderKey0, 0)
-//         await twamm.updateLongTermOrder(key, orderKey1, 0)
+//         await twamm.updateOrder(key, orderKey0, 0)
+//         await twamm.updateOrder(key, orderKey1, 0)
 //
 //         const newBalance0 = await token0.balanceOf(twamm.address)
 //         const newBalance1 = await token1.balanceOf(twamm.address)
@@ -854,8 +854,8 @@
 //
 //         // 2) Add order balances to TWAMM
 //         await inOneBlock(start, async () => {
-//           await twamm.submitLongTermOrder(key, orderKey0, amountSell0)
-//           await twamm.submitLongTermOrder(key, orderKey1, amountSell1)
+//           await twamm.submitOrder(key, orderKey0, amountSell0)
+//           await twamm.submitOrder(key, orderKey1, amountSell1)
 //         })
 //
 //         await setNextBlocktime(expiration + 1000)
@@ -882,8 +882,8 @@
 //
 //         // 2) Add order balances to TWAMM
 //         await inOneBlock(start, async () => {
-//           await twamm.submitLongTermOrder(key, orderKey0, amountSell1)
-//           await twamm.submitLongTermOrder(key, orderKey1, amountSell0)
+//           await twamm.submitOrder(key, orderKey0, amountSell1)
+//           await twamm.submitOrder(key, orderKey1, amountSell0)
 //         })
 //
 //         await setNextBlocktime(expiration + 1000)
@@ -938,11 +938,11 @@
 //         it('receives the predicted earnings from the amm', async () => {
 //           await setNextBlocktime(start)
 //
-//           await twamm.submitLongTermOrder(key, orderKey0, expandTo18Decimals(5))
+//           await twamm.submitOrder(key, orderKey0, expandTo18Decimals(5))
 //
 //           await setNextBlocktime(expiration + 300)
 //           await twamm.executeTWAMMOrders(key)
-//           await twamm.updateLongTermOrder(key, orderKey0, 0)
+//           await twamm.updateOrder(key, orderKey0, 0)
 //
 //           const newBalance0 = await token0.balanceOf(twamm.address)
 //           const newBalance1 = await token1.balanceOf(twamm.address)
@@ -1005,14 +1005,14 @@
 //         const amountSell0 = BigNumber.from('100000')
 //         const amountSell1 = BigNumber.from('34025678683638809405905696563977446090000000')
 //         await inOneBlock(submitTimestamp, async () => {
-//           await twamm.submitLongTermOrder(poolKey, orderKey0, amountSell0)
-//           await twamm.submitLongTermOrder(poolKey, orderKey1, amountSell1)
+//           await twamm.submitOrder(poolKey, orderKey0, amountSell0)
+//           await twamm.submitOrder(poolKey, orderKey1, amountSell1)
 //         })
 //
 //         await ethers.provider.send('evm_setNextBlockTimestamp', [expirationTimestamp + 1000])
 //         await twamm.executeTWAMMOrders(poolKey)
-//         await twamm.updateLongTermOrder(poolKey, orderKey0, 0)
-//         await twamm.updateLongTermOrder(poolKey, orderKey1, 0)
+//         await twamm.updateOrder(poolKey, orderKey0, 0)
+//         await twamm.updateOrder(poolKey, orderKey1, 0)
 //
 //         const newBalance0 = await token0.balanceOf(twamm.address)
 //         const newBalance1 = await token1.balanceOf(twamm.address)
@@ -1045,14 +1045,14 @@
 //         const amountSell1 = BigNumber.from('100000')
 //
 //         await inOneBlock(submitTimestamp, async () => {
-//           await twamm.submitLongTermOrder(poolKey, orderKey0, amountSell0)
-//           await twamm.submitLongTermOrder(poolKey, orderKey1, amountSell1)
+//           await twamm.submitOrder(poolKey, orderKey0, amountSell0)
+//           await twamm.submitOrder(poolKey, orderKey1, amountSell1)
 //         })
 //
 //         await ethers.provider.send('evm_setNextBlockTimestamp', [expirationTimestamp + 1000])
 //         await twamm.executeTWAMMOrders(poolKey)
-//         await twamm.updateLongTermOrder(poolKey, orderKey0, 0)
-//         await twamm.updateLongTermOrder(poolKey, orderKey1, 0)
+//         await twamm.updateOrder(poolKey, orderKey0, 0)
+//         await twamm.updateOrder(poolKey, orderKey1, 0)
 //
 //         const newBalance0 = await token0.balanceOf(twamm.address)
 //         const newBalance1 = await token1.balanceOf(twamm.address)
@@ -1078,8 +1078,8 @@
 //         const amountSell1 = BigNumber.from('33112798684424369649027597812633277504400000')
 //
 //         await inOneBlock(submitTimestamp, async () => {
-//           await twamm.submitLongTermOrder(poolKey, orderKey0, amountSell0)
-//           await twamm.submitLongTermOrder(poolKey, orderKey1, amountSell1)
+//           await twamm.submitOrder(poolKey, orderKey0, amountSell0)
+//           await twamm.submitOrder(poolKey, orderKey1, amountSell1)
 //         })
 //
 //         const tickAtSqrtSellRatio = 887000
@@ -1092,8 +1092,8 @@
 //
 //         await ethers.provider.send('evm_setNextBlockTimestamp', [expirationTimestamp + 1000])
 //         await twamm.executeTWAMMOrders(poolKey)
-//         await twamm.updateLongTermOrder(poolKey, orderKey0, 0)
-//         await twamm.updateLongTermOrder(poolKey, orderKey1, 0)
+//         await twamm.updateOrder(poolKey, orderKey0, 0)
+//         await twamm.updateOrder(poolKey, orderKey1, 0)
 //
 //         const newBalance0 = await token0.balanceOf(twamm.address)
 //         const newBalance1 = await token1.balanceOf(twamm.address)
@@ -1119,15 +1119,15 @@
 //         const amountSell1 = '100000'
 //
 //         await inOneBlock(submitTimestamp, async () => {
-//           await twamm.submitLongTermOrder(poolKey, orderKey0, amountSell0)
-//           await twamm.submitLongTermOrder(poolKey, orderKey1, amountSell1)
+//           await twamm.submitOrder(poolKey, orderKey0, amountSell0)
+//           await twamm.submitOrder(poolKey, orderKey1, amountSell1)
 //         })
 //
 //         await ethers.provider.send('evm_setNextBlockTimestamp', [expirationTimestamp + 1000])
 //
 //         await twamm.executeTWAMMOrders(poolKey)
-//         await twamm.updateLongTermOrder(poolKey, orderKey0, 0)
-//         await twamm.updateLongTermOrder(poolKey, orderKey1, 0)
+//         await twamm.updateOrder(poolKey, orderKey0, 0)
+//         await twamm.updateOrder(poolKey, orderKey1, 0)
 //
 //         const newBalance0 = await token0.balanceOf(twamm.address)
 //         const newBalance1 = await token1.balanceOf(twamm.address)
@@ -1158,15 +1158,15 @@
 //         const amountSell1 = '540156786836388094059056965639774460900000000'
 //
 //         await inOneBlock(submitTimestamp, async () => {
-//           await twamm.submitLongTermOrder(poolKey, orderKey0, amountSell0)
-//           await twamm.submitLongTermOrder(poolKey, orderKey1, amountSell1)
+//           await twamm.submitOrder(poolKey, orderKey0, amountSell0)
+//           await twamm.submitOrder(poolKey, orderKey1, amountSell1)
 //         })
 //
 //         await ethers.provider.send('evm_setNextBlockTimestamp', [expirationTimestamp + 1000])
 //
 //         await twamm.executeTWAMMOrders(poolKey)
-//         await twamm.updateLongTermOrder(poolKey, orderKey0, 0)
-//         await twamm.updateLongTermOrder(poolKey, orderKey1, 0)
+//         await twamm.updateOrder(poolKey, orderKey0, 0)
+//         await twamm.updateOrder(poolKey, orderKey1, 0)
 //
 //         const newBalance0 = await token0.balanceOf(twamm.address)
 //         const newBalance1 = await token1.balanceOf(twamm.address)
@@ -1194,15 +1194,15 @@
 //         const amountSell1 = '10000'
 //
 //         await inOneBlock(submitTimestamp, async () => {
-//           await twamm.submitLongTermOrder(poolKey, orderKey0, amountSell0)
-//           await twamm.submitLongTermOrder(poolKey, orderKey1, amountSell1)
+//           await twamm.submitOrder(poolKey, orderKey0, amountSell0)
+//           await twamm.submitOrder(poolKey, orderKey1, amountSell1)
 //         })
 //
 //         await ethers.provider.send('evm_setNextBlockTimestamp', [expirationTimestamp + 1000])
 //
 //         await twamm.executeTWAMMOrders(poolKey)
-//         await twamm.updateLongTermOrder(poolKey, orderKey0, 0)
-//         await twamm.updateLongTermOrder(poolKey, orderKey1, 0)
+//         await twamm.updateOrder(poolKey, orderKey0, 0)
+//         await twamm.updateOrder(poolKey, orderKey1, 0)
 //
 //         const newBalance0 = await token0.balanceOf(twamm.address)
 //         const newBalance1 = await token1.balanceOf(twamm.address)
@@ -1263,14 +1263,14 @@
 //           const amountSell1 = expandTo18Decimals(10)
 //
 //           await inOneBlock(submitTimestamp, async () => {
-//             await twamm.submitLongTermOrder(poolKey, orderKey0, amountSell0)
-//             await twamm.submitLongTermOrder(poolKey, orderKey1, amountSell1)
+//             await twamm.submitOrder(poolKey, orderKey0, amountSell0)
+//             await twamm.submitOrder(poolKey, orderKey1, amountSell1)
 //           })
 //
 //           await setNextBlocktime(expirationTimestamp + 1000)
 //           await twamm.executeTWAMMOrders(poolKey)
-//           await twamm.updateLongTermOrder(poolKey, orderKey0, 0)
-//           await twamm.updateLongTermOrder(poolKey, orderKey1, 0)
+//           await twamm.updateOrder(poolKey, orderKey0, 0)
+//           await twamm.updateOrder(poolKey, orderKey1, 0)
 //
 //           const newBalance0 = await token0.balanceOf(twamm.address)
 //           const newBalance1 = await token1.balanceOf(twamm.address)
@@ -1293,14 +1293,14 @@
 //           const amountSell1 = expandTo18Decimals(1)
 //
 //           await inOneBlock(submitTimestamp, async () => {
-//             await twamm.submitLongTermOrder(poolKey, orderKey0, amountSell0)
-//             await twamm.submitLongTermOrder(poolKey, orderKey1, amountSell1)
+//             await twamm.submitOrder(poolKey, orderKey0, amountSell0)
+//             await twamm.submitOrder(poolKey, orderKey1, amountSell1)
 //           })
 //
 //           await setNextBlocktime(expirationTimestamp + 1000)
 //           await twamm.executeTWAMMOrders(poolKey)
-//           await twamm.updateLongTermOrder(poolKey, orderKey0, 0)
-//           await twamm.updateLongTermOrder(poolKey, orderKey1, 0)
+//           await twamm.updateOrder(poolKey, orderKey0, 0)
+//           await twamm.updateOrder(poolKey, orderKey1, 0)
 //
 //           const newBalance0 = await token0.balanceOf(twamm.address)
 //           const newBalance1 = await token1.balanceOf(twamm.address)
@@ -1322,12 +1322,12 @@
 //           const amountSell0 = expandTo18Decimals(1)
 //
 //           await inOneBlock(submitTimestamp, async () => {
-//             await twamm.submitLongTermOrder(poolKey, orderKey0, amountSell0)
+//             await twamm.submitOrder(poolKey, orderKey0, amountSell0)
 //           })
 //
 //           await setNextBlocktime(expirationTimestamp + 1000)
 //           await twamm.executeTWAMMOrders(poolKey)
-//           await twamm.updateLongTermOrder(poolKey, orderKey0, 0)
+//           await twamm.updateOrder(poolKey, orderKey0, 0)
 //
 //           const newBalance1 = await token1.balanceOf(twamm.address)
 //           const earningsToken1 = await twamm.tokensOwed(poolKey.token1, wallet.address)
