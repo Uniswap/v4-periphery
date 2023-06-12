@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.19;
 
-import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
-import {Pool} from "@uniswap/core-next/contracts/libraries/Pool.sol";
-import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
+import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {BaseHook} from "../BaseHook.sol";
 
-import {IHooks} from "@uniswap/core-next/contracts/interfaces/IHooks.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/core-next/contracts/libraries/CurrencyLibrary.sol";
-import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
-import {BalanceDelta} from "@uniswap/core-next/contracts/types/BalanceDelta.sol";
-import {IERC20Minimal} from "@uniswap/core-next/contracts/interfaces/external/IERC20Minimal.sol";
-import {ILockCallback} from "@uniswap/core-next/contracts/interfaces/callback/ILockCallback.sol";
+import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
+import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
 
 import "../libraries/LiquidityAmounts.sol";
 

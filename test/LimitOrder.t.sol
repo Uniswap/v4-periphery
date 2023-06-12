@@ -3,17 +3,17 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {GetSender} from "./shared/GetSender.sol";
-import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
+import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {LimitOrder, Epoch, EpochLibrary} from "../contracts/hooks/LimitOrder.sol";
 import {LimitOrderImplementation} from "./shared/implementation/LimitOrderImplementation.sol";
-import {PoolManager} from "@uniswap/core-next/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
-import {Deployers} from "@uniswap/core-next/test/foundry-tests/utils/Deployers.sol";
-import {TestERC20} from "@uniswap/core-next/contracts/test/TestERC20.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/core-next/contracts/libraries/CurrencyLibrary.sol";
-import {PoolId} from "@uniswap/core-next/contracts/libraries/PoolId.sol";
-import {PoolSwapTest} from "@uniswap/core-next/contracts/test/PoolSwapTest.sol";
-import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
+import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
+import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
+import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 
 contract TestLimitOrder is Test, Deployers {
     uint160 constant SQRT_RATIO_10_1 = 250541448375047931186413801569;
