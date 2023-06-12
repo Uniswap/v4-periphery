@@ -22,7 +22,7 @@ Feel free to tag the issue as a “good first issue” for any clean-up related 
 
 All pull requests should be opened against the `main` branch.  In the pull request, please reference the issue you are fixing.
 
-Pull requests can be reviewed by community members, but to be merged they will need approval from 2 of the repository maintainers. Please allow up to a week to receive a response, although the maintainers will aim to respond and comment as soon as possible.
+Pull requests can be reviewed by community members, but to be merged they will need approval from the repository maintainers. Please understand it will take time to receive a response, although the maintainers will aim to respond and comment as soon as possible.
 
 **For larger, more substantial changes to the code, it is best to open an issue and start a discussion with the maintainers to align on the change before spending time on the development.**
 
