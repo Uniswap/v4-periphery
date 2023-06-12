@@ -8,17 +8,17 @@ import {SqrtPriceMath} from "@uniswap/v4-core/contracts/libraries/SqrtPriceMath.
 import {FixedPoint96} from "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
 import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
-import {BaseHook} from "../BaseHook.sol";
+import {BaseHook} from "../../BaseHook.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {ITWAMM} from "../interfaces/ITWAMM.sol";
+import {ITWAMM} from "../../interfaces/ITWAMM.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
-import {TransferHelper} from "../libraries/TransferHelper.sol";
-import {TwammMath} from "../libraries/TWAMM/TwammMath.sol";
-import {OrderPool} from "../libraries/TWAMM/OrderPool.sol";
+import {TransferHelper} from "../../libraries/TransferHelper.sol";
+import {TwammMath} from "../../libraries/TWAMM/TwammMath.sol";
+import {OrderPool} from "../../libraries/TWAMM/OrderPool.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
-import {PoolGetters} from "../libraries/PoolGetters.sol";
+import {PoolGetters} from "../../libraries/PoolGetters.sol";
 
 contract TWAMMHook is BaseHook, ITWAMM {
     using TransferHelper for IERC20Minimal;

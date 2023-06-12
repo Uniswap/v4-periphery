@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {BaseHook} from "../../../contracts/BaseHook.sol";
-import {TWAMMHook} from "../../../contracts/hooks/TWAMMHook.sol";
+import {TWAMMHook} from "../../../contracts/hooks/examples/TWAMMHook.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 
