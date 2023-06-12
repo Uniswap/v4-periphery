@@ -1,12 +1,11 @@
 pragma solidity ^0.8.15;
 
+import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {TWAMMImplementation} from "./shared/implementation/TWAMMImplementation.sol";
-import {TWAMMHook} from "../../contracts/hooks/TWAMMHook.sol";
-import {ITWAMM} from "../../contracts/interfaces/ITWAMM.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
@@ -18,6 +17,8 @@ import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
 import {PoolDonateTest} from "@uniswap/v4-core/contracts/test/PoolDonateTest.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import {TWAMMHook} from "../contracts/hooks/TWAMMHook.sol";
+import {ITWAMM} from "../contracts/interfaces/ITWAMM.sol";
 
 contract TWAMMTest is Test, Deployers {
     using PoolId for IPoolManager.PoolKey;
@@ -79,7 +80,7 @@ contract TWAMMTest is Test, Deployers {
         return (key, key.toId());
     }
 
-    function testTWAMMbeforeInitializeInitializesTWAMM() public {
+    function testTWAMMbeforeInitializeSetsLastVirtualOrderTimestamp() public {
         (IPoolManager.PoolKey memory initKey, bytes32 initId) = newPoolKeyWithTWAMM(twamm);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
@@ -87,24 +88,36 @@ contract TWAMMTest is Test, Deployers {
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 10000);
     }
 
-    function testTWAMMSubmitLTOStoresOrderUnderCorrectPool() public {
-        ITWAMM.OrderKey memory orderKey = ITWAMM.OrderKey(address(this), 30000, true);
+    function testTWAMMSubmitOrderStoresOrderWithCorrectPoolAndOrderPoolInfo() public {
+        uint160 expiration = 30000;
+        uint160 submitTimestamp = 10000;
+        uint160 duration = expiration - submitTimestamp;
+
+        ITWAMM.OrderKey memory orderKey = ITWAMM.OrderKey(address(this), expiration, true);
 
         ITWAMM.Order memory nullOrder = twamm.getOrder(poolKey, orderKey);
         assertEq(nullOrder.sellRate, 0);
         assertEq(nullOrder.earningsFactorLast, 0);
 
-        token0.approve(address(twamm), 100 ether);
         vm.warp(10000);
+        token0.approve(address(twamm), 100 ether);
         twamm.submitOrder(poolKey, orderKey, 1 ether);
 
         ITWAMM.Order memory submittedOrder = twamm.getOrder(poolKey, orderKey);
-        assertEq(submittedOrder.sellRate, 1 ether / 20000);
+        (uint256 sellRateCurrent0For1, uint256 earningsFactorCurrent0For1) = twamm.getOrderPool(poolKey, true);
+        (uint256 sellRateCurrent1For0, uint256 earningsFactorCurrent1For0) = twamm.getOrderPool(poolKey, false);
+
+        assertEq(submittedOrder.sellRate, 1 ether / duration);
         assertEq(submittedOrder.earningsFactorLast, 0);
+        assertEq(sellRateCurrent0For1, 1 ether / duration);
+        assertEq(sellRateCurrent1For0, 0);
+        assertEq(earningsFactorCurrent0For1, 0);
+        assertEq(earningsFactorCurrent1For0, 0);
     }
 
-    function TWAMMSingleSellFailing() public {
+    function TWAMMSingleSell0For1SellRateAndEarningsFactorGetsUpdatedProperly() public {
         // TODO: fails with a bug for single pool sell, swap amount 3 wei above balance.
+
         ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
         ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), 40000, true);
 
@@ -113,7 +126,6 @@ contract TWAMMTest is Test, Deployers {
         vm.warp(10000);
         twamm.submitOrder(poolKey, orderKey1, 1e18);
         vm.warp(30000);
-        token0.approve(address(twamm), 100e18);
         twamm.submitOrder(poolKey, orderKey2, 1e18);
         vm.warp(40000);
 
@@ -123,25 +135,49 @@ contract TWAMMTest is Test, Deployers {
         assertEq(submittedOrder.earningsFactorLast, earningsFactorCurrent);
     }
 
-    function testTWAMMOrderStoresEarningsFactorLast() public {
-        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
-        ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), 40000, true);
-        ITWAMM.OrderKey memory orderKey3 = ITWAMM.OrderKey(address(this), 40000, false);
+    function testTWAMMSubmitOrderStoresSellRatesEarningsFactorsProperly() public {
+        uint160 expiration1 = 30000;
+        uint160 expiration2 = 40000;
+        uint256 submitTimestamp1 = 10000;
+        uint256 submitTimestamp2 = 30000;
+        uint256 sellRateFromOrderKey1 = 1e18 / (expiration1 - submitTimestamp1);
+        uint256 sellRateFromOrderKey2 = 2e18 / (expiration2 - submitTimestamp2);
+        uint256 earningsFactor0For1;
+        uint256 earningsFactor1For0;
+        uint256 sellRate0For1;
+        uint256 sellRate1For0;
+
+        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), expiration1, true);
+        ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), expiration2, true);
+        ITWAMM.OrderKey memory orderKey3 = ITWAMM.OrderKey(address(this), expiration2, false);
 
         token0.approve(address(twamm), 100e18);
         token1.approve(address(twamm), 100e18);
-        vm.warp(10000);
-        twamm.submitOrder(poolKey, orderKey1, 1e18);
-        twamm.submitOrder(poolKey, orderKey3, 10e18);
-        vm.warp(30000);
-        token0.approve(address(twamm), 100e18);
-        twamm.submitOrder(poolKey, orderKey2, 1e18);
-        vm.warp(40000);
 
-        ITWAMM.Order memory submittedOrder = twamm.getOrder(poolKey, orderKey2);
-        (, uint256 earningsFactorCurrent) = twamm.getOrderPool(poolKey, true);
-        assertEq(submittedOrder.sellRate, 1 ether / 10000);
-        assertEq(submittedOrder.earningsFactorLast, earningsFactorCurrent);
+        // Submit 2 TWAMM orders and test all information gets updated
+        vm.warp(submitTimestamp1);
+        twamm.submitOrder(poolKey, orderKey1, 1e18);
+        twamm.submitOrder(poolKey, orderKey3, 3e18);
+
+        (sellRate0For1, earningsFactor0For1) = twamm.getOrderPool(poolKey, true);
+        (sellRate1For0, earningsFactor1For0) = twamm.getOrderPool(poolKey, false);
+        assertEq(sellRate0For1, 1e18 / (expiration1 - submitTimestamp1));
+        assertEq(sellRate1For0, 3e18 / (expiration2 - submitTimestamp1));
+        assertEq(earningsFactor0For1, 0);
+        assertEq(earningsFactor1For0, 0);
+
+        // Warp time and submit 1 TWAMM order. Test that pool information is updated properly as one order expires and
+        // another order is added to the pool
+        vm.warp(submitTimestamp2);
+        twamm.submitOrder(poolKey, orderKey2, 2e18);
+
+        (sellRate0For1, earningsFactor0For1) = twamm.getOrderPool(poolKey, true);
+        (sellRate1For0, earningsFactor1For0) = twamm.getOrderPool(poolKey, false);
+
+        assertEq(sellRate0For1, sellRateFromOrderKey2);
+        assertEq(sellRate1For0, 3e18 / (expiration2 - submitTimestamp1));
+        assertEq(earningsFactor0For1, 1712020976636017581269515821040000);
+        assertEq(earningsFactor1For0, 1470157410324350030712806974476955);
     }
 
     event SubmitOrder(
@@ -164,7 +200,7 @@ contract TWAMMTest is Test, Deployers {
         twamm.submitOrder(poolKey, orderKey1, 1e18);
     }
 
-    function testTWAMMEndToEndSimEvenTradingGas() public {
+    function testTWAMMEndToEndSimSymmetricalOrderPools() public {
         uint256 orderAmount = 1e18;
         ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
         ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), 30000, false);

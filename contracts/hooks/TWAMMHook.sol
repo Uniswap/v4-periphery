@@ -35,7 +35,6 @@ contract TWAMMHook is BaseHook, ITWAMM {
     bool internal constant ONE_FOR_ZERO = false;
 
     /// @notice Contains full state related to the TWAMM
-    /// @member poolKey
     /// @member lastVirtualOrderTimestamp Last timestamp in which virtual orders were executed
     /// @member orderPools Mapping from bool zeroForOne to OrderPool that is selling zero for one or vice versa
     /// @member orders Mapping of orderId to individual orders
@@ -77,7 +76,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         poolManagerOnly
         returns (bytes4)
     {
-        // Dont need to enforce one-time as each pool can only be initialized once in the manager
+        // one-time initialization enforced in PoolManager
         initialize(getTWAMM(key));
         return BaseHook.beforeInitialize.selector;
     }
