@@ -7,19 +7,20 @@ body:
       attributes:
           value: |
               Please ensure that the feature has not already been requested.
-    - type: checkboxes
+    - type: dropdown
       attributes:
-        label: Components
-        description: What architectural feature or area of code does your idea improve?
-        options:
-        - label: Pool Interaction, Hooks
-        - label: Pool Interaction, Swaps
-        - label: Pool Interaction, Positions
-        - label: Pool Interaction, Donate
-        - label: Pool Interaction, Settle/Take/Mint
-        - label: Gas Optimization
-        - label: General design optimization (improving efficiency, cleanliness, or developer experience)
-        - label: Documentation
+          label: Component
+          description: Which area of code does your idea improve?
+          multiple: true
+          options:
+            - Pool Interaction, Hooks
+            - Pool Interaction, Swaps
+            - Pool Interaction, Positions
+            - Pool Interaction, Donate
+            - Pool Interaction, Settle/Take/Mint
+            - Gas Optimization
+            - General design optimization (improving efficiency, cleanliness, or developer experience)
+            - Documentation
       validations:
         required: true
     - type: textarea
