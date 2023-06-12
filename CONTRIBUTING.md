@@ -1,6 +1,6 @@
-# Contribution Guidelines
+# Contribution Guidelines 
 
-Thanks for your interest in contributing to v4 of the Uniswap Protocol! The contracts in this repo are in early stages. There is a lot more development left before v4 is in a stable and production-ready state, and so we appreciate any kind of contribution, no matter how small.
+Thanks for your interest in contributing to v4 of the Uniswap Protocol! The contracts in this repo are in early stages - we are releasing the draft code now so that v4 can be built in public, with open feedback and meaningful community contribution. We expect this will be a months-long process, and we appreciate any kind of contribution, no matter how small.
 
 If you need to get in contact with the repository maintainers, please reach out in our [Discord](https://discord.com/invite/FCfyBSbCU5) .
 
@@ -14,7 +14,7 @@ There are many ways to contribute, but here are a few if you want a place to sta
 
 ## Opening an Issue
 
-When opening an [issue](https://github.com/Uniswap/periphery-next/issues/new), choose a template to start from, either a Bug Report or a Feature Improvement. For bug reports, you should be able to reproduce the bug through tests or proof of concept integrations. For feature improvements, please title it with a concise problem statement and check that a similar request is not already open or already in progress. Not all issues may be deemed worth resolving, so please follow through with responding to any questions or comments that others may have regarding the issue.
+When opening an [issue](https://github.com/Uniswap/periphery-next/issues/new/choose), choose a template to start from: Bug Report or Feature Improvement. For bug reports, you should be able to reproduce the bug through tests or proof of concept integrations. For feature improvements, please title it with a concise problem statement and check that a similar request is not already open or already in progress. Not all issues may be deemed worth resolving, so please follow through with responding to any questions or comments that others may have regarding the issue.
 
 Feel free to tag the issue as a “good first issue” for any clean-up related issues, or small scoped changes to help encourage pull requests from first time contributors!
 
@@ -22,14 +22,14 @@ Feel free to tag the issue as a “good first issue” for any clean-up related 
 
 All pull requests should be opened against the `main` branch.  In the pull request, please reference the issue you are fixing.
 
-Pull requests can be reviewed by community members, but to be merged they will need approval from 2 of the repository maintainers. Please allow up to a week to receive a response, although the maintainers will aim to respond and comment as soon as possible.
+Pull requests can be reviewed by community members, but to be merged they will need approval from the repository maintainers. Please understand it will take time to receive a response, although the maintainers will aim to respond and comment as soon as possible.
 
 **For larger, more substantial changes to the code, it is best to open an issue and start a discussion with the maintainers to align on the change before spending time on the development.**
 
 Finally, before opening a pull request please do the following:
 
-- Check that the code styles follow the [standards](#standards).
-- Run the tests and snapshots. Commands outlined in the [tests](#tests) section.
+- Check that the code style follows the [standards](#standards).
+- Run the tests and snapshots. Commands are outlined in the [tests](#tests) section.
 - Document any new functions, structs, or interfaces following the natspec standard.
 - Add tests! For smaller contributions, they should be tested with unit tests, and fuzz tests where possible. For bigger contributions, they should be tested with integration tests and invariant tests where possible.
 

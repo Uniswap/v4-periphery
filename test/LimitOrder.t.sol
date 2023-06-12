@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {GetSender} from "./shared/GetSender.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {LimitOrder, Epoch, EpochLibrary} from "../contracts/hooks/LimitOrder.sol";
+import {LimitOrder, Epoch, EpochLibrary} from "../contracts/hooks/examples/LimitOrder.sol";
 import {LimitOrderImplementation} from "./shared/implementation/LimitOrderImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
