@@ -14,6 +14,8 @@ import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC
 import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
 import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 
+import "forge-std/console.sol";
+
 import "../libraries/LiquidityAmounts.sol";
 
 contract FullRange is BaseHook {
@@ -159,7 +161,9 @@ contract FullRange is BaseHook {
         IPoolManager.ModifyPositionParams calldata params
     ) external view override returns (bytes4) {
         // check msg.sender
-        require(msg.sender == address(this), "msg.sender must be hook");
+        console.log(msg.sender);
+        console.log(address(this));
+        // require(msg.sender == address(this), "msg.sender must be hook");
 
         // check full range
         require(
