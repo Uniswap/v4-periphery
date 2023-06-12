@@ -134,8 +134,8 @@ contract FullRange is BaseHook {
         (uint160 sqrtPriceX96,,) = poolState.slot0();
 
         // add the hardcoded TICK_LOWER and TICK_UPPER
-        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(TICK_LOWER);
-        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(TICK_UPPER);
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(MIN_TICK);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(MAX_TICK);
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, amountADesired, amountBDesired
