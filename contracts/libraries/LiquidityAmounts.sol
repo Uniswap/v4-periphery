@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.19;
 
-import "@uniswap/core-next/contracts/libraries/FullMath.sol";
-import "@uniswap/core-next/contracts/libraries/FixedPoint96.sol";
+import "@uniswap/v4-core/contracts/libraries/FullMath.sol";
+import "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
 
 /// @title Liquidity amount functions
 /// @notice Provides functions for computing liquidity amounts from token amounts and prices

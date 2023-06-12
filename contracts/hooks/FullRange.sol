@@ -12,10 +12,14 @@ import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
+import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 
 import "../libraries/LiquidityAmounts.sol";
 
 contract FullRange is BaseHook {
+    using CurrencyLibrary for Currency;
+    using PoolId for IPoolManager.PoolKey;
+
     /// @dev Min tick for full range with tick spacing of 60
     int24 internal constant MIN_TICK = -887220;
     /// @dev Max tick for full range with tick spacing of 60
@@ -30,7 +34,6 @@ contract FullRange is BaseHook {
     }
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
-        poolManager = _poolManager;
     }
 
     modifier ensure(uint deadline) {
@@ -38,21 +41,21 @@ contract FullRange is BaseHook {
         _;
             }
 
+    // maybe don't make this function public ?
     function modifyPosition(IPoolManager.PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
-        internal
+        public
         payable
         returns (BalanceDelta delta)
     {
         delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
 
-        // do i need this ?
         uint256 ethBalance = address(this).balance;
         if (ethBalance > 0) {
             CurrencyLibrary.NATIVE.transfer(msg.sender, ethBalance);
         }
     }
 
-    function lockAcquired(uint256, bytes calldata rawData) external returns (bytes memory) {
+    function lockAcquired(uint256, bytes calldata rawData) external override returns (bytes memory) {
         require(msg.sender == address(poolManager));
 
         CallbackData memory data = abi.decode(rawData, (CallbackData));
@@ -106,12 +109,9 @@ contract FullRange is BaseHook {
         uint24 fee,
         uint256 amountADesired,
         uint256 amountBDesired,
-        uint256 amountAMin,
-        uint256 amountBMin,
-        address to,
         uint256 deadline
-    ) external ensure(deadline) returns (uint256 amountA, uint256 amountB, uint256 liquidity) {
-        IPoolManager.PoolKey key = IPoolManager.PoolKey({
+    ) external ensure(deadline) returns (uint128 liquidity) {
+        IPoolManager.PoolKey memory key = IPoolManager.PoolKey({
             currency0: Currency.wrap(tokenA),
             currency1: Currency.wrap(tokenB),
             fee: fee,
@@ -120,22 +120,20 @@ contract FullRange is BaseHook {
         });
 
         // replacement addLiquidity function from LiquidityManagement.sol
-
-        Pool.State poolState = poolManager.pools.get(key.toId());
-        (uint160 sqrtPriceX96,,) = poolState.slot0();
+        (uint160 sqrtPriceX96,,) = poolManager.getSlot0(key.toId());
 
         // add the hardcoded TICK_LOWER and TICK_UPPER
         uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(MIN_TICK);
         uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(MAX_TICK);
 
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+        liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, amountADesired, amountBDesired
         );
 
-        require(liquidity >= 0, "Cannot add negative liquidity to a new position");
+        // require(liquidity >= 0, "Cannot add negative liquidity to a new position");
 
-        IPoolManager.ModifyPositionParams params =
-            IPoolManager.ModifyPositionParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: liquidity});
+        IPoolManager.ModifyPositionParams memory params =
+            IPoolManager.ModifyPositionParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: int256(int128(liquidity))});
 
         BalanceDelta delta = modifyPosition(key, params);
 
@@ -160,9 +158,6 @@ contract FullRange is BaseHook {
         IPoolManager.PoolKey calldata key,
         IPoolManager.ModifyPositionParams calldata params
     ) external view override returns (bytes4) {
-        // check pool exists
-        require(poolManager.pools.get(key.toId()) != 0, "Pool doesn't exist");
-
         // check msg.sender
         require(msg.sender == address(this), "msg.sender must be hook");
 
