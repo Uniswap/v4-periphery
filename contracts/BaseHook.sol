@@ -5,6 +5,8 @@ import {Hooks} from "@uniswap/core-next/contracts/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/core-next/contracts/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/core-next/contracts/interfaces/IHooks.sol";
 
+import {BalanceDelta} from "@uniswap/core-next/contracts/types/BalanceDelta.sol";
+
 abstract contract BaseHook is IHooks {
     error NotPoolManager();
     error NotSelf();
@@ -87,7 +89,7 @@ abstract contract BaseHook is IHooks {
         address,
         IPoolManager.PoolKey calldata,
         IPoolManager.ModifyPositionParams calldata,
-        IPoolManager.BalanceDelta calldata
+        BalanceDelta calldata
     ) external virtual returns (bytes4) {
         revert HookNotImplemented();
     }
@@ -104,7 +106,7 @@ abstract contract BaseHook is IHooks {
         address,
         IPoolManager.PoolKey calldata,
         IPoolManager.SwapParams calldata,
-        IPoolManager.BalanceDelta calldata
+        BalanceDelta calldata
     ) external virtual returns (bytes4) {
         revert HookNotImplemented();
     }

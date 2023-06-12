@@ -16,7 +16,7 @@ import {TickMath} from "@uniswap/core-next/contracts/libraries/TickMath.sol";
 import {Oracle} from "../contracts/libraries/Oracle.sol";
 
 contract TestFullRange is Test, Deployers {
-    int24 constant MAX_TICK_SPACING = 32767;
+    int24 constant TICK_SPACING = 60;
     uint160 constant SQRT_RATIO_2_1 = 112045541949572279837463876454;
 
     TestERC20 token0;
@@ -24,7 +24,7 @@ contract TestFullRange is Test, Deployers {
     PoolManager manager;
     FullRangeImplementation fullRange = FullRangeImplementation(
         address(
-            uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG | Hooks.AFTER_MODIFY_POSITION_FLAG)
+            uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG)
         )
     );
     IPoolManager.PoolKey key;
@@ -48,9 +48,8 @@ contract TestFullRange is Test, Deployers {
                 vm.store(address(fullRange), slot, vm.load(address(impl), slot));
             }
         }
-        // geomeanOracle.setTime(1);
         key = IPoolManager.PoolKey(
-            Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, MAX_TICK_SPACING, fullRange
+            Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, TICK_SPACING, fullRange
         );
         id = PoolId.toId(key);
 
@@ -66,130 +65,15 @@ contract TestFullRange is Test, Deployers {
         manager.initialize(key, SQRT_RATIO_1_1);
     }
 
-    // function testBeforeInitializeRevertsIfFee() public {
-    //     vm.expectRevert(GeomeanOracle.OnlyOneOraclePoolAllowed.selector);
-    //     manager.initialize(
-    //         IPoolManager.PoolKey(
-    //             Currency.wrap(address(token0)), Currency.wrap(address(token1)), 1, MAX_TICK_SPACING, geomeanOracle
-    //         ),
-    //         SQRT_RATIO_1_1
-    //     );
+    // function testBeforeInitializeRevertsIfWrongSpacing() public {
+
     // }
 
-    // function testBeforeInitializeRevertsIfNotMaxTickSpacing() public {
-    //     vm.expectRevert(GeomeanOracle.OnlyOneOraclePoolAllowed.selector);
-    //     manager.initialize(
-    //         IPoolManager.PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, 60, geomeanOracle),
-    //         SQRT_RATIO_1_1
-    //     );
+    // function testBeforeModifyPositionSucceeds() public {
+
     // }
 
-    // function testAfterInitializeState() public {
-    //     manager.initialize(key, SQRT_RATIO_2_1);
-    //     GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
-    //     assertEq(observationState.index, 0);
-    //     assertEq(observationState.cardinality, 1);
-    //     assertEq(observationState.cardinalityNext, 1);
-    // }
+    // function testBeforeModifyPositionFailsIfNoPool() public {
 
-    // function testAfterInitializeObservation() public {
-    //     manager.initialize(key, SQRT_RATIO_2_1);
-    //     Oracle.Observation memory observation = geomeanOracle.getObservation(key, 0);
-    //     assertTrue(observation.initialized);
-    //     assertEq(observation.blockTimestamp, 1);
-    //     assertEq(observation.tickCumulative, 0);
-    //     assertEq(observation.secondsPerLiquidityCumulativeX128, 0);
-    // }
-
-    // function testAfterInitializeObserve0() public {
-    //     manager.initialize(key, SQRT_RATIO_2_1);
-    //     uint32[] memory secondsAgo = new uint32[](1);
-    //     secondsAgo[0] = 0;
-    //     (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s) =
-    //         geomeanOracle.observe(key, secondsAgo);
-    //     assertEq(tickCumulatives.length, 1);
-    //     assertEq(secondsPerLiquidityCumulativeX128s.length, 1);
-    //     assertEq(tickCumulatives[0], 0);
-    //     assertEq(secondsPerLiquidityCumulativeX128s[0], 0);
-    // }
-
-    // function testBeforeModifyPositionNoObservations() public {
-    //     manager.initialize(key, SQRT_RATIO_2_1);
-    //     modifyPositionRouter.modifyPosition(
-    //         key,
-    //         IPoolManager.ModifyPositionParams(
-    //             TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
-    //         )
-    //     );
-
-    //     GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
-    //     assertEq(observationState.index, 0);
-    //     assertEq(observationState.cardinality, 1);
-    //     assertEq(observationState.cardinalityNext, 1);
-
-    //     Oracle.Observation memory observation = geomeanOracle.getObservation(key, 0);
-    //     assertTrue(observation.initialized);
-    //     assertEq(observation.blockTimestamp, 1);
-    //     assertEq(observation.tickCumulative, 0);
-    //     assertEq(observation.secondsPerLiquidityCumulativeX128, 0);
-    // }
-
-    // function testBeforeModifyPositionObservation() public {
-    //     manager.initialize(key, SQRT_RATIO_2_1);
-    //     geomeanOracle.setTime(3); // advance 2 seconds
-    //     modifyPositionRouter.modifyPosition(
-    //         key,
-    //         IPoolManager.ModifyPositionParams(
-    //             TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
-    //         )
-    //     );
-
-    //     GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
-    //     assertEq(observationState.index, 0);
-    //     assertEq(observationState.cardinality, 1);
-    //     assertEq(observationState.cardinalityNext, 1);
-
-    //     Oracle.Observation memory observation = geomeanOracle.getObservation(key, 0);
-    //     assertTrue(observation.initialized);
-    //     assertEq(observation.blockTimestamp, 3);
-    //     assertEq(observation.tickCumulative, 13862);
-    //     assertEq(observation.secondsPerLiquidityCumulativeX128, 680564733841876926926749214863536422912);
-    // }
-
-    // function testBeforeModifyPositionObservationAndCardinality() public {
-    //     manager.initialize(key, SQRT_RATIO_2_1);
-    //     geomeanOracle.setTime(3); // advance 2 seconds
-    //     geomeanOracle.increaseCardinalityNext(key, 2);
-    //     GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
-    //     assertEq(observationState.index, 0);
-    //     assertEq(observationState.cardinality, 1);
-    //     assertEq(observationState.cardinalityNext, 2);
-
-    //     modifyPositionRouter.modifyPosition(
-    //         key,
-    //         IPoolManager.ModifyPositionParams(
-    //             TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
-    //         )
-    //     );
-
-    //     // cardinality is updated
-    //     observationState = geomeanOracle.getState(key);
-    //     assertEq(observationState.index, 1);
-    //     assertEq(observationState.cardinality, 2);
-    //     assertEq(observationState.cardinalityNext, 2);
-
-    //     // index 0 is untouched
-    //     Oracle.Observation memory observation = geomeanOracle.getObservation(key, 0);
-    //     assertTrue(observation.initialized);
-    //     assertEq(observation.blockTimestamp, 1);
-    //     assertEq(observation.tickCumulative, 0);
-    //     assertEq(observation.secondsPerLiquidityCumulativeX128, 0);
-
-    //     // index 1 is written
-    //     observation = geomeanOracle.getObservation(key, 1);
-    //     assertTrue(observation.initialized);
-    //     assertEq(observation.blockTimestamp, 3);
-    //     assertEq(observation.tickCumulative, 13862);
-    //     assertEq(observation.secondsPerLiquidityCumulativeX128, 680564733841876926926749214863536422912);
     // }
 }
