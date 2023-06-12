@@ -3,6 +3,7 @@ pragma solidity ^0.8.15;
 import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {TWAMMImplementation} from "./shared/implementation/TWAMMImplementation.sol";
@@ -20,7 +21,7 @@ import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/Cu
 import {TWAMMHook} from "../contracts/hooks/TWAMMHook.sol";
 import {ITWAMM} from "../contracts/interfaces/ITWAMM.sol";
 
-contract TWAMMTest is Test, Deployers {
+contract TWAMMTest is Test, Deployers, GasSnapshot {
     using PoolId for IPoolManager.PoolKey;
     using CurrencyLibrary for Currency;
 
@@ -37,7 +38,7 @@ contract TWAMMTest is Test, Deployers {
     TestERC20 token0;
     TestERC20 token1;
     IPoolManager.PoolKey poolKey;
-    bytes32 id;
+    bytes32 poolId;
 
     function setUp() public {
         token0 = new TestERC20(2**128);
@@ -59,7 +60,7 @@ contract TWAMMTest is Test, Deployers {
         swapRouter = new PoolSwapTest(IPoolManager(address(manager)));
 
         poolKey = IPoolManager.PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, twamm);
-        id = PoolId.toId(poolKey);
+        poolId = PoolId.toId(poolKey);
         manager.initialize(poolKey, SQRT_RATIO_1_1);
 
         token0.approve(address(modifyPositionRouter), 100 ether);
@@ -71,13 +72,6 @@ contract TWAMMTest is Test, Deployers {
         modifyPositionRouter.modifyPosition(
             poolKey, IPoolManager.ModifyPositionParams(TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether)
         );
-    }
-
-    function newPoolKeyWithTWAMM(IHooks hooks) public returns (IPoolManager.PoolKey memory, bytes32) {
-        TestERC20[] memory tokens = deployTokens(2, 2 ** 255);
-        IPoolManager.PoolKey memory key =
-            IPoolManager.PoolKey(Currency.wrap(address(tokens[0])), Currency.wrap(address(tokens[1])), 0, 60, hooks);
-        return (key, key.toId());
     }
 
     function testTWAMMbeforeInitializeSetsLastVirtualOrderTimestamp() public {
@@ -101,7 +95,9 @@ contract TWAMMTest is Test, Deployers {
 
         vm.warp(10000);
         token0.approve(address(twamm), 100 ether);
+        snapStart("TWAMMSubmitOrder");
         twamm.submitOrder(poolKey, orderKey, 1 ether);
+        snapEnd();
 
         ITWAMM.Order memory submittedOrder = twamm.getOrder(poolKey, orderKey);
         (uint256 sellRateCurrent0For1, uint256 earningsFactorCurrent0For1) = twamm.getOrderPool(poolKey, true);
@@ -135,13 +131,11 @@ contract TWAMMTest is Test, Deployers {
         assertEq(submittedOrder.earningsFactorLast, earningsFactorCurrent);
     }
 
-    function testTWAMMSubmitOrderStoresSellRatesEarningsFactorsProperly() public {
+    function testTWAMM_SubmitOrderStoresSellRatesEarningsFactorsProperly() public {
         uint160 expiration1 = 30000;
         uint160 expiration2 = 40000;
         uint256 submitTimestamp1 = 10000;
         uint256 submitTimestamp2 = 30000;
-        uint256 sellRateFromOrderKey1 = 1e18 / (expiration1 - submitTimestamp1);
-        uint256 sellRateFromOrderKey2 = 2e18 / (expiration2 - submitTimestamp2);
         uint256 earningsFactor0For1;
         uint256 earningsFactor1For0;
         uint256 sellRate0For1;
@@ -174,7 +168,7 @@ contract TWAMMTest is Test, Deployers {
         (sellRate0For1, earningsFactor0For1) = twamm.getOrderPool(poolKey, true);
         (sellRate1For0, earningsFactor1For0) = twamm.getOrderPool(poolKey, false);
 
-        assertEq(sellRate0For1, sellRateFromOrderKey2);
+        assertEq(sellRate0For1, 2e18 / (expiration2 - submitTimestamp2));
         assertEq(sellRate1For0, 3e18 / (expiration2 - submitTimestamp1));
         assertEq(earningsFactor0For1, 1712020976636017581269515821040000);
         assertEq(earningsFactor1For0, 1470157410324350030712806974476955);
@@ -189,15 +183,44 @@ contract TWAMMTest is Test, Deployers {
         uint256 earningsFactorLast
     );
 
-    function testTWAMMSubmitOrderEmitsEvent() public {
+    function testTWAMM_SubmitOrderEmitsEvent() public {
         ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
 
         token0.approve(address(twamm), 100e18);
         vm.warp(10000);
 
         vm.expectEmit(false, false, false, true);
-        emit SubmitOrder(id, address(this), 30000, true, 1 ether / 20000, 0);
+        emit SubmitOrder(poolId, address(this), 30000, true, 1 ether / 20000, 0);
         twamm.submitOrder(poolKey, orderKey1, 1e18);
+    }
+
+    function testTWAMM_UpdateOrder_ZeroForOne_ClaimsRewardsDecreasesSellrateUpdatesSellTokensOwed() public {
+        ITWAMM.OrderKey memory orderKey1;
+        ITWAMM.OrderKey memory orderKey2;
+        uint256 orderAmount;
+        (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
+        // decrease order amount by 10%
+        int256 amountDelta = -int256(orderAmount) / 10;
+
+        // set timestamp to halfway through the order
+        vm.roll(20000);
+
+        (uint256 originalSellRate,) = twamm.getOrderPool(poolKey, true);
+        (uint256 tokens0Owed, uint256 tokens1Owed) = twamm.updateOrder(poolKey, orderKey1, amountDelta);
+        console.log(tokens0Owed);
+        console.log(tokens1Owed);
+
+        (uint256 updatedSellRate,) = twamm.getOrderPool(poolKey, true);
+        uint256 token0Owed = twamm.tokensOwed(poolKey.currency0, orderKey1.owner);
+        uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey1.owner);
+        console.log(token0Owed);
+        console.log(token1Owed);
+
+        // assert sellRate is 90% of the original order
+        assertEq(updatedSellRate, originalSellRate * 90 / 100);
+        assertEq(token0Owed, uint256(-amountDelta));
+        // assertEq(token1Owed, orderAmount / 2);
+
     }
 
     function testTWAMMEndToEndSimSymmetricalOrderPools() public {
@@ -246,5 +269,25 @@ contract TWAMMTest is Test, Deployers {
         assertEq(balance0AfterThis - balance0BeforeThis, orderAmount);
         assertEq(balance1BeforeTWAMM - balance1AfterTWAMM, orderAmount);
         assertEq(balance1AfterThis - balance1BeforeThis, orderAmount);
+    }
+
+    function newPoolKeyWithTWAMM(IHooks hooks) public returns (IPoolManager.PoolKey memory, bytes32) {
+        TestERC20[] memory tokens = deployTokens(2, 2 ** 255);
+        IPoolManager.PoolKey memory key =
+            IPoolManager.PoolKey(Currency.wrap(address(tokens[0])), Currency.wrap(address(tokens[1])), 0, 60, hooks);
+        return (key, key.toId());
+    }
+
+    function submitOrdersBothDirections() internal returns (ITWAMM.OrderKey memory key1, ITWAMM.OrderKey memory key2, uint256 amount) {
+        key1 = ITWAMM.OrderKey(address(this), 30000, true);
+        key2 = ITWAMM.OrderKey(address(this), 30000, false);
+        amount = 1 ether;
+
+        token0.approve(address(twamm), amount);
+        token1.approve(address(twamm), amount);
+
+        vm.warp(10000);
+        twamm.submitOrder(poolKey, key1, amount);
+        twamm.submitOrder(poolKey, key2, amount);
     }
 }

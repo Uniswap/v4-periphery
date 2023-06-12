@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
+import "forge-std/console.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickBitmap} from "@uniswap/v4-core/contracts/libraries/TickBitmap.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/contracts/libraries/SqrtPriceMath.sol";
@@ -215,7 +216,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
 
         // This call reverts if the caller is not the owner of the order
         (uint256 buyTokensOwed, uint256 sellTokensOwed, uint256 newSellrate, uint256 newEarningsFactorLast) =
-            updateOrder(twamm, orderKey, amountDelta);
+            _updateOrder(twamm, orderKey, amountDelta);
 
         if (orderKey.zeroForOne) {
             tokens0Owed += sellTokensOwed;
@@ -231,6 +232,62 @@ contract TWAMMHook is BaseHook, ITWAMM {
         emit UpdateOrder(
             poolId, orderKey.owner, orderKey.expiration, orderKey.zeroForOne, newSellrate, newEarningsFactorLast
         );
+    }
+
+    /// @notice Modify an existing long term order with a new sellAmount
+    /// @dev executeTWAMMOrders must be executed up to current timestamp before calling updateOrder
+    /// @param self The TWAMM State
+    /// @param orderKey The OrderKey for which to identify the order
+    /// @param amountDelta The delta for the order sell amount. Negative to remove from order, positive to add, or
+    ///    -1 to remove full amount from order.
+    function _updateOrder(State storage self, OrderKey memory orderKey, int256 amountDelta)
+        internal
+        returns (uint256 buyTokensOwed, uint256 sellTokensOwed, uint256 newSellRate, uint256 earningsFactorLast)
+    {
+        Order storage order = getOrder(self, orderKey);
+
+        if (orderKey.owner != msg.sender) revert MustBeOwner(orderKey.owner, msg.sender);
+        if (order.sellRate == 0) revert OrderDoesNotExist(orderKey);
+        if (amountDelta != 0 && orderKey.expiration <= block.timestamp) revert CannotModifyCompletedOrder(orderKey);
+
+        OrderPool.State storage orderPool = orderKey.zeroForOne ? self.orderPool0For1 : self.orderPool1For0;
+
+        unchecked {
+            uint256 earningsFactor = orderPool.earningsFactorCurrent - order.earningsFactorLast;
+            buyTokensOwed = (earningsFactor * order.sellRate) >> FixedPoint96.RESOLUTION;
+            earningsFactorLast = orderPool.earningsFactorCurrent;
+            order.earningsFactorLast = earningsFactorLast;
+
+            if (orderKey.expiration <= block.timestamp) {
+                delete self.orders[_orderId(orderKey)];
+            }
+
+            if (amountDelta != 0) {
+                uint256 duration = orderKey.expiration - block.timestamp;
+                uint256 unsoldAmount = order.sellRate * duration;
+                if (amountDelta == MIN_DELTA) amountDelta = -(unsoldAmount.toInt256());
+                int256 newSellAmount = unsoldAmount.toInt256() + amountDelta;
+                if (newSellAmount < 0) revert InvalidAmountDelta(orderKey, unsoldAmount, amountDelta);
+
+                newSellRate = uint256(newSellAmount) / duration;
+
+                if (amountDelta < 0) {
+                    uint256 sellRateDelta = order.sellRate - newSellRate;
+                    orderPool.sellRateCurrent -= sellRateDelta;
+                    orderPool.sellRateEndingAtInterval[orderKey.expiration] -= sellRateDelta;
+                    sellTokensOwed = uint256(-amountDelta);
+                } else {
+                    uint256 sellRateDelta = newSellRate - order.sellRate;
+                    orderPool.sellRateCurrent += sellRateDelta;
+                    orderPool.sellRateEndingAtInterval[orderKey.expiration] += sellRateDelta;
+                }
+                if (newSellRate == 0) {
+                    delete self.orders[_orderId(orderKey)];
+                } else {
+                    order.sellRate = newSellRate;
+                }
+            }
+        }
     }
 
     /// @inheritdoc ITWAMM
@@ -280,62 +337,6 @@ contract TWAMMHook is BaseHook, ITWAMM {
         bool zeroForOne;
         uint256 amountIn;
         uint160 expiration;
-    }
-
-    /// @notice Modify an existing long term order with a new sellAmount
-    /// @dev executeTWAMMOrders must be executed up to current timestamp before calling updateOrder
-    /// @param self The TWAMM State
-    /// @param orderKey The OrderKey for which to identify the order
-    /// @param amountDelta The delta for the order sell amount. Negative to remove from order, positive to add, or
-    ///    -1 to remove full amount from order.
-    function updateOrder(State storage self, OrderKey memory orderKey, int256 amountDelta)
-        internal
-        returns (uint256 buyTokensOwed, uint256 sellTokensOwed, uint256 newSellRate, uint256 earningsFactorLast)
-    {
-        Order storage order = getOrder(self, orderKey);
-
-        if (orderKey.owner != msg.sender) revert MustBeOwner(orderKey.owner, msg.sender);
-        if (order.sellRate == 0) revert OrderDoesNotExist(orderKey);
-        if (amountDelta != 0 && orderKey.expiration <= block.timestamp) revert CannotModifyCompletedOrder(orderKey);
-
-        OrderPool.State storage orderPool = orderKey.zeroForOne ? self.orderPool0For1 : self.orderPool1For0;
-
-        unchecked {
-            uint256 earningsFactor = orderPool.earningsFactorCurrent - order.earningsFactorLast;
-            buyTokensOwed = (earningsFactor * order.sellRate) >> FixedPoint96.RESOLUTION;
-            earningsFactorLast = orderPool.earningsFactorCurrent;
-            order.earningsFactorLast = earningsFactorLast;
-
-            if (orderKey.expiration <= block.timestamp) {
-                delete self.orders[_orderId(orderKey)];
-            }
-
-            if (amountDelta != 0) {
-                uint256 duration = orderKey.expiration - block.timestamp;
-                uint256 unsoldAmount = order.sellRate * duration;
-                if (amountDelta == MIN_DELTA) amountDelta = -(unsoldAmount.toInt256());
-                int256 newSellAmount = unsoldAmount.toInt256() + amountDelta;
-                if (newSellAmount < 0) revert InvalidAmountDelta(orderKey, unsoldAmount, amountDelta);
-
-                newSellRate = uint256(newSellAmount) / duration;
-
-                if (amountDelta < 0) {
-                    uint256 sellRateDelta = order.sellRate - newSellRate;
-                    orderPool.sellRateCurrent -= sellRateDelta;
-                    orderPool.sellRateEndingAtInterval[orderKey.expiration] -= sellRateDelta;
-                    sellTokensOwed = uint256(-amountDelta);
-                } else {
-                    uint256 sellRateDelta = newSellRate - order.sellRate;
-                    orderPool.sellRateCurrent += sellRateDelta;
-                    orderPool.sellRateEndingAtInterval[orderKey.expiration] += sellRateDelta;
-                }
-                if (newSellRate == 0) {
-                    delete self.orders[_orderId(orderKey)];
-                } else {
-                    order.sellRate = newSellRate;
-                }
-            }
-        }
     }
 
     struct PoolParamsOnExecute {
