@@ -22,7 +22,7 @@ library TwammMath {
     // (TickMath.MIN_SQRT_RATIO + 1).fromUInt()
     bytes16 internal constant MIN_SQRT_RATIO_BYTES = 0x401f000276a400000000000000000000;
     //// @dev The maximum value that a pool price can equal, represented in bytes.
-    // (MAX_SQRT_RATIO - 1).fromUInt()
+    // (TickMath.MAX_SQRT_RATIO - 1).fromUInt()
     bytes16 internal constant MAX_SQRT_RATIO_BYTES = 0x409efffb12c7dfa3f8d4a0c91092bb2a;
 
     struct PriceParamsBytes16 {
@@ -70,9 +70,9 @@ library TwammMath {
         returns (bytes16 newSqrtPriceX96)
     {
         if (zeroForOne) {
-            newSqrtPriceX96 = MIN_SQRT_RATIO_BYTES.cmp(desiredPriceX96) == 1 ? MIN_SQRT_RATIO_BYTES : desiredPriceX96;
+            newSqrtPriceX96 = MIN_SQRT_RATIO_BYTES.gt(desiredPriceX96) == 1 ? MIN_SQRT_RATIO_BYTES : desiredPriceX96;
         } else {
-            newSqrtPriceX96 = desiredPriceX96.cmp(MAX_SQRT_RATIO_BYTES) == 1 ? MAX_SQRT_RATIO_BYTES : desiredPriceX96;
+            newSqrtPriceX96 = desiredPriceX96.gt(MAX_SQRT_RATIO_BYTES) == 1 ? MAX_SQRT_RATIO_BYTES : desiredPriceX96;
         }
     }
 
@@ -97,7 +97,7 @@ library TwammMath {
         });
 
         // Trade the amm orders.
-        // If liquidity is 0, it trades the twamm orders against eachother for the time duration.
+        // If liquidity is 0, it trades the twamm orders against each other for the time duration.
         earningsFactorPool0 = getEarningsFactorPool0(earningsFactorParams).mul(Q96).toUInt();
         earningsFactorPool1 = getEarningsFactorPool1(earningsFactorParams).mul(Q96).toUInt();
     }

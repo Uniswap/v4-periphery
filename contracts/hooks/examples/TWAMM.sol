@@ -36,8 +36,9 @@ contract TWAMM is BaseHook, ITWAMM {
 
     /// @notice Contains full state related to the TWAMM
     /// @member lastVirtualOrderTimestamp Last timestamp in which virtual orders were executed
-    /// @member orderPools Mapping from bool zeroForOne to OrderPool that is selling zero for one or vice versa
-    /// @member orders Mapping of orderId to individual orders
+    /// @member orderPool0For1 Order pool trading token0 for token1 of pool
+    /// @member orderPool1For0 Order pool trading token1 for token0 of pool
+    /// @member orders Mapping of orderId to individual orders on pool
     struct State {
         uint256 lastVirtualOrderTimestamp;
         OrderPool.State orderPool0For1;
@@ -134,6 +135,7 @@ contract TWAMM is BaseHook, ITWAMM {
         IPoolManager.SwapParams params;
     }
 
+    /// @inheritdoc ITWAMM
     function executeTWAMMOrders(IPoolManager.PoolKey memory key) public {
         bytes32 poolId = key.toId();
         (uint160 sqrtPriceX96,,) = poolManager.getSlot0(poolId);

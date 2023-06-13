@@ -125,6 +125,9 @@ interface ITWAMM {
         external
         returns (uint256 amountTransferred);
 
+    /// @notice Executes TWAMM orders on the pool, swapping on the pool itself to make up the difference between the
+    /// two TWAMM pools swapping against each other
+    /// @param key The pool key associated with the TWAMM
     function executeTWAMMOrders(IPoolManager.PoolKey memory key) external;
 
     function tokensOwed(Currency token, address owner) external returns (uint256);

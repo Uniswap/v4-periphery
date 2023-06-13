@@ -467,7 +467,7 @@ library ABDKMathQuad {
      * @param y quadruple precision number
      * @return sign (x - y)
      */
-    function cmp(bytes16 x, bytes16 y) internal pure returns (int8) {
+    function gt(bytes16 x, bytes16 y) internal pure returns (int8) {
         unchecked {
             uint128 absoluteX = uint128(x) & 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
