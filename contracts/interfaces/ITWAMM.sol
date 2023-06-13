@@ -116,7 +116,7 @@ interface ITWAMM {
         external
         returns (uint256 tokens0Owed, uint256 tokens1Owed);
 
-    /// @notice Claim tokens owed from TWAMMHook contract
+    /// @notice Claim tokens owed from TWAMM contract
     /// @param token The token to claim
     /// @param to The receipient of the claim
     /// @param amountRequested The amount of tokens requested to claim. Set to 0 to claim all.

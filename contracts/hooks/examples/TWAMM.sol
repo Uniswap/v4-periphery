@@ -20,7 +20,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/Cu
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {PoolGetters} from "../../libraries/PoolGetters.sol";
 
-contract TWAMMHook is BaseHook, ITWAMM {
+contract TWAMM is BaseHook, ITWAMM {
     using TransferHelper for IERC20Minimal;
     using CurrencyLibrary for Currency;
     using OrderPool for OrderPool.State;
