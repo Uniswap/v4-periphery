@@ -230,8 +230,8 @@ contract TWAMMHook is BaseHook, ITWAMM {
         tokensOwed[key.currency1][orderKey.owner] += tokens1Owed;
 
         if (amountDelta > 0) {
-          IERC20Minimal(orderKey.zeroForOne ? Currency.unwrap(key.currency0) : Currency.unwrap(key.currency1))
-              .safeTransferFrom(msg.sender, address(this), uint256(amountDelta));
+            IERC20Minimal(orderKey.zeroForOne ? Currency.unwrap(key.currency0) : Currency.unwrap(key.currency1))
+                .safeTransferFrom(msg.sender, address(this), uint256(amountDelta));
         }
 
         emit UpdateOrder(
