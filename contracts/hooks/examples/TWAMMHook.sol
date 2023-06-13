@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
+import "forge-std/console.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickBitmap} from "@uniswap/v4-core/contracts/libraries/TickBitmap.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/contracts/libraries/SqrtPriceMath.sol";
@@ -228,28 +229,26 @@ contract TWAMMHook is BaseHook, ITWAMM {
         tokensOwed[key.currency0][orderKey.owner] += tokens0Owed;
         tokensOwed[key.currency1][orderKey.owner] += tokens1Owed;
 
+        if (amountDelta > 0) {
+          IERC20Minimal(orderKey.zeroForOne ? Currency.unwrap(key.currency0) : Currency.unwrap(key.currency1))
+              .safeTransferFrom(msg.sender, address(this), uint256(amountDelta));
+        }
+
         emit UpdateOrder(
             poolId, orderKey.owner, orderKey.expiration, orderKey.zeroForOne, newSellrate, newEarningsFactorLast
         );
     }
 
-    /// @notice Modify an existing long term order with a new sellAmount
-    /// @dev executeTWAMMOrders must be executed up to current timestamp before calling updateOrder
-    /// @param self The TWAMM State
-    /// @param orderKey The OrderKey for which to identify the order
-    /// @param amountDelta The delta for the order sell amount. Negative to remove from order, positive to add, or
-    ///    -1 to remove full amount from order.
     function _updateOrder(State storage self, OrderKey memory orderKey, int256 amountDelta)
         internal
         returns (uint256 buyTokensOwed, uint256 sellTokensOwed, uint256 newSellRate, uint256 earningsFactorLast)
     {
         Order storage order = _getOrder(self, orderKey);
+        OrderPool.State storage orderPool = orderKey.zeroForOne ? self.orderPool0For1 : self.orderPool1For0;
 
         if (orderKey.owner != msg.sender) revert MustBeOwner(orderKey.owner, msg.sender);
         if (order.sellRate == 0) revert OrderDoesNotExist(orderKey);
         if (amountDelta != 0 && orderKey.expiration <= block.timestamp) revert CannotModifyCompletedOrder(orderKey);
-
-        OrderPool.State storage orderPool = orderKey.zeroForOne ? self.orderPool0For1 : self.orderPool1For0;
 
         unchecked {
             uint256 earningsFactor = orderPool.earningsFactorCurrent - order.earningsFactorLast;

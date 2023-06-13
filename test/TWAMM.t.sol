@@ -34,6 +34,15 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 earningsFactorLast
     );
 
+    event UpdateOrder(
+        bytes32 indexed poolId,
+        address indexed owner,
+        uint160 expiration,
+        bool zeroForOne,
+        uint256 sellRate,
+        uint256 earningsFactorLast
+    );
+
     // address constant twammHookAddr = address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG));
     TWAMMHook twamm = TWAMMHook(
         address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG))
@@ -194,6 +203,22 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.submitOrder(poolKey, orderKey1, 1e18);
     }
 
+    function testTWAMM_updateOrder_EmitsEvent() public {
+        ITWAMM.OrderKey memory orderKey1;
+        ITWAMM.OrderKey memory orderKey2;
+        uint256 orderAmount;
+        (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
+        // decrease order amount by 10%
+        int256 amountDelta = -1;
+
+        // set timestamp to halfway through the order
+        vm.warp(20000);
+
+        vm.expectEmit(true, true, true, true);
+        emit UpdateOrder(poolId, address(this), 30000, true, 0, 10000 << 96);
+        twamm.updateOrder(poolKey, orderKey1, amountDelta);
+    }
+
     function testTWAMM_updateOrder_ZeroForOne_DecreasesSellrateUpdatesSellTokensOwed() public {
         ITWAMM.OrderKey memory orderKey1;
         ITWAMM.OrderKey memory orderKey2;
@@ -261,6 +286,76 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(deletedOrder.earningsFactorLast, 0);
         assertEq(token0Owed, orderAmount / 2);
         assertEq(token1Owed, orderAmount / 2);
+    }
+
+    function testTWAMM_updatedOrder_OneForZero_ClosesOrderIfEliminatingPosition() public {
+        ITWAMM.OrderKey memory orderKey1;
+        ITWAMM.OrderKey memory orderKey2;
+        uint256 orderAmount;
+        (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
+
+        // set timestamp to halfway through the order
+        vm.warp(20000);
+
+        twamm.updateOrder(poolKey, orderKey2, -1);
+        ITWAMM.Order memory deletedOrder = twamm.getOrder(poolKey, orderKey2);
+        uint256 token0Owed = twamm.tokensOwed(poolKey.currency0, orderKey2.owner);
+        uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey2.owner);
+
+        assertEq(deletedOrder.sellRate, 0);
+        assertEq(deletedOrder.earningsFactorLast, 0);
+        assertEq(token0Owed, orderAmount / 2);
+        assertEq(token1Owed, orderAmount / 2);
+    }
+
+    function testTWAMM_updatedOrder_ZeroForOne_IncreaseOrderAmount() public {
+        int256 amountDelta = 1 ether;
+        ITWAMM.OrderKey memory orderKey1;
+        ITWAMM.OrderKey memory orderKey2;
+        uint256 orderAmount;
+        (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
+
+        // set timestamp to halfway through the order
+        vm.warp(20000);
+
+        uint256 balance0TWAMMBefore = token0.balanceOf(address(twamm));
+        token0.approve(address(twamm), uint256(amountDelta));
+        twamm.updateOrder(poolKey, orderKey1, amountDelta);
+        uint256 balance0TWAMMAfter = token0.balanceOf(address(twamm));
+
+        ITWAMM.Order memory updatedOrder = twamm.getOrder(poolKey, orderKey1);
+        uint256 token0Owed = twamm.tokensOwed(poolKey.currency0, orderKey1.owner);
+        uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey1.owner);
+
+        assertEq(balance0TWAMMAfter - balance0TWAMMBefore, uint256(amountDelta));
+        assertEq(updatedOrder.sellRate, 150000000000000);
+        assertEq(token0Owed, 0);
+        assertEq(token1Owed, orderAmount / 2);
+    }
+
+    function testTWAMM_updatedOrder_OneForZero_IncreaseOrderAmount() public {
+        int256 amountDelta = 1 ether;
+        ITWAMM.OrderKey memory orderKey1;
+        ITWAMM.OrderKey memory orderKey2;
+        uint256 orderAmount;
+        (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
+
+        // set timestamp to halfway through the order
+        vm.warp(20000);
+
+        uint256 balance0TWAMMBefore = token1.balanceOf(address(twamm));
+        token1.approve(address(twamm), uint256(amountDelta));
+        twamm.updateOrder(poolKey, orderKey2, amountDelta);
+        uint256 balance0TWAMMAfter = token1.balanceOf(address(twamm));
+
+        ITWAMM.Order memory updatedOrder = twamm.getOrder(poolKey, orderKey2);
+        uint256 token0Owed = twamm.tokensOwed(poolKey.currency0, orderKey2.owner);
+        uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey2.owner);
+
+        assertEq(balance0TWAMMAfter - balance0TWAMMBefore, uint256(amountDelta));
+        assertEq(updatedOrder.sellRate, 150000000000000);
+        assertEq(token0Owed, orderAmount / 2);
+        assertEq(token1Owed, 0);
     }
 
     function testTWAMMEndToEndSimSymmetricalOrderPools() public {
