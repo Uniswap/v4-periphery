@@ -1,6 +1,5 @@
 pragma solidity ^0.8.15;
 
-import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
