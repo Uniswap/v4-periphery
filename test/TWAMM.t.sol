@@ -25,6 +25,15 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     using PoolId for IPoolManager.PoolKey;
     using CurrencyLibrary for Currency;
 
+    event SubmitOrder(
+        bytes32 indexed poolId,
+        address indexed owner,
+        uint160 expiration,
+        bool zeroForOne,
+        uint256 sellRate,
+        uint256 earningsFactorLast
+    );
+
     // address constant twammHookAddr = address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG));
     TWAMMHook twamm = TWAMMHook(
         address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG))
@@ -74,7 +83,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         );
     }
 
-    function testTWAMMbeforeInitializeSetsLastVirtualOrderTimestamp() public {
+    function testTWAMM_beforeInitialize_SetsLastVirtualOrderTimestamp() public {
         (IPoolManager.PoolKey memory initKey, bytes32 initId) = newPoolKeyWithTWAMM(twamm);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
@@ -82,7 +91,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 10000);
     }
 
-    function testTWAMMSubmitOrderStoresOrderWithCorrectPoolAndOrderPoolInfo() public {
+    function testTWAMM_submitOrder_StoresOrderWithCorrectPoolAndOrderPoolInfo() public {
         uint160 expiration = 30000;
         uint160 submitTimestamp = 10000;
         uint160 duration = expiration - submitTimestamp;
@@ -131,7 +140,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(submittedOrder.earningsFactorLast, earningsFactorCurrent);
     }
 
-    function testTWAMM_SubmitOrderStoresSellRatesEarningsFactorsProperly() public {
+    function testTWAMM_submitOrder_StoresSellRatesEarningsFactorsProperly() public {
         uint160 expiration1 = 30000;
         uint160 expiration2 = 40000;
         uint256 submitTimestamp1 = 10000;
@@ -174,16 +183,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(earningsFactor1For0, 1470157410324350030712806974476955);
     }
 
-    event SubmitOrder(
-        bytes32 indexed poolId,
-        address indexed owner,
-        uint160 expiration,
-        bool zeroForOne,
-        uint256 sellRate,
-        uint256 earningsFactorLast
-    );
-
-    function testTWAMM_SubmitOrderEmitsEvent() public {
+    function testTWAMM_submitOrder_EmitsEvent() public {
         ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
 
         token0.approve(address(twamm), 100e18);
@@ -194,7 +194,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.submitOrder(poolKey, orderKey1, 1e18);
     }
 
-    function testTWAMM_UpdateOrder_ZeroForOne_ClaimsRewardsDecreasesSellrateUpdatesSellTokensOwed() public {
+    function testTWAMM_updateOrder_ZeroForOne_DecreasesSellrateUpdatesSellTokensOwed() public {
         ITWAMM.OrderKey memory orderKey1;
         ITWAMM.OrderKey memory orderKey2;
         uint256 orderAmount;
@@ -203,24 +203,64 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         int256 amountDelta = -int256(orderAmount) / 10;
 
         // set timestamp to halfway through the order
-        vm.roll(20000);
+        vm.warp(20000);
 
         (uint256 originalSellRate,) = twamm.getOrderPool(poolKey, true);
-        (uint256 tokens0Owed, uint256 tokens1Owed) = twamm.updateOrder(poolKey, orderKey1, amountDelta);
-        console.log(tokens0Owed);
-        console.log(tokens1Owed);
-
+        twamm.updateOrder(poolKey, orderKey1, amountDelta);
         (uint256 updatedSellRate,) = twamm.getOrderPool(poolKey, true);
+
         uint256 token0Owed = twamm.tokensOwed(poolKey.currency0, orderKey1.owner);
         uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey1.owner);
-        console.log(token0Owed);
-        console.log(token1Owed);
 
-        // assert sellRate is 90% of the original order
-        assertEq(updatedSellRate, originalSellRate * 90 / 100);
+        // takes 10% off the remaining half (so 80% of original sellrate)
+        assertEq(updatedSellRate, originalSellRate * 80 / 100);
         assertEq(token0Owed, uint256(-amountDelta));
-        // assertEq(token1Owed, orderAmount / 2);
+        assertEq(token1Owed, orderAmount / 2);
+    }
 
+    function testTWAMM_updateOrder_OneForZero_DecreasesSellrateUpdatesSellTokensOwed() public {
+        ITWAMM.OrderKey memory orderKey1;
+        ITWAMM.OrderKey memory orderKey2;
+        uint256 orderAmount;
+        (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
+
+        // decrease order amount by 10%
+        int256 amountDelta = -int256(orderAmount) / 10;
+
+        // set timestamp to halfway through the order
+        vm.warp(20000);
+
+        (uint256 originalSellRate,) = twamm.getOrderPool(poolKey, false);
+        twamm.updateOrder(poolKey, orderKey2, amountDelta);
+        (uint256 updatedSellRate,) = twamm.getOrderPool(poolKey, false);
+
+        uint256 token0Owed = twamm.tokensOwed(poolKey.currency0, orderKey1.owner);
+        uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey1.owner);
+
+        // takes 10% off the remaining half (so 80% of original sellrate)
+        assertEq(updatedSellRate, originalSellRate * 80 / 100);
+        assertEq(token0Owed, orderAmount / 2);
+        assertEq(token1Owed, uint256(-amountDelta));
+    }
+
+    function testTWAMM_updatedOrder_ZeroForOne_ClosesOrderIfEliminatingPosition() public {
+        ITWAMM.OrderKey memory orderKey1;
+        ITWAMM.OrderKey memory orderKey2;
+        uint256 orderAmount;
+        (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
+
+        // set timestamp to halfway through the order
+        vm.warp(20000);
+
+        twamm.updateOrder(poolKey, orderKey1, -1);
+        ITWAMM.Order memory deletedOrder = twamm.getOrder(poolKey, orderKey1);
+        uint256 token0Owed = twamm.tokensOwed(poolKey.currency0, orderKey1.owner);
+        uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey1.owner);
+
+        assertEq(deletedOrder.sellRate, 0);
+        assertEq(deletedOrder.earningsFactorLast, 0);
+        assertEq(token0Owed, orderAmount / 2);
+        assertEq(token1Owed, orderAmount / 2);
     }
 
     function testTWAMMEndToEndSimSymmetricalOrderPools() public {
@@ -278,7 +318,10 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         return (key, key.toId());
     }
 
-    function submitOrdersBothDirections() internal returns (ITWAMM.OrderKey memory key1, ITWAMM.OrderKey memory key2, uint256 amount) {
+    function submitOrdersBothDirections()
+        internal
+        returns (ITWAMM.OrderKey memory key1, ITWAMM.OrderKey memory key2, uint256 amount)
+    {
         key1 = ITWAMM.OrderKey(address(this), 30000, true);
         key2 = ITWAMM.OrderKey(address(this), 30000, false);
         amount = 1 ether;

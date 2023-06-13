@@ -78,7 +78,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         returns (bytes4)
     {
         // one-time initialization enforced in PoolManager
-        initialize(getTWAMM(key));
+        initialize(_getTWAMM(key));
         return BaseHook.beforeInitialize.selector;
     }
 
@@ -110,7 +110,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         view
         returns (Order memory)
     {
-        return getOrder(twammStates[keccak256(abi.encode(poolKey))], orderKey);
+        return _getOrder(twammStates[keccak256(abi.encode(poolKey))], orderKey);
     }
 
     function getOrderPool(IPoolManager.PoolKey calldata key, bool zeroForOne)
@@ -118,7 +118,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         view
         returns (uint256 sellRateCurrent, uint256 earningsFactorCurrent)
     {
-        State storage twamm = getTWAMM(key);
+        State storage twamm = _getTWAMM(key);
         return zeroForOne
             ? (twamm.orderPool0For1.sellRateCurrent, twamm.orderPool0For1.earningsFactorCurrent)
             : (twamm.orderPool1For0.sellRateCurrent, twamm.orderPool1For0.earningsFactorCurrent);
@@ -140,7 +140,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         (uint160 sqrtPriceX96,,) = poolManager.getSlot0(poolId);
         State storage twamm = twammStates[poolId];
 
-        (bool zeroForOne, uint160 sqrtPriceLimitX96) = executeTWAMMOrders(
+        (bool zeroForOne, uint160 sqrtPriceLimitX96) = _executeTWAMMOrders(
             twamm, poolManager, key, PoolParamsOnExecute(sqrtPriceX96, poolManager.getLiquidity(poolId))
         );
 
@@ -174,7 +174,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
             orderKey.expiration,
             orderKey.zeroForOne,
             sellRate,
-            getOrder(twamm, orderKey).earningsFactorLast
+            _getOrder(twamm, orderKey).earningsFactorLast
         );
     }
 
@@ -244,7 +244,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         internal
         returns (uint256 buyTokensOwed, uint256 sellTokensOwed, uint256 newSellRate, uint256 earningsFactorLast)
     {
-        Order storage order = getOrder(self, orderKey);
+        Order storage order = _getOrder(self, orderKey);
 
         if (orderKey.owner != msg.sender) revert MustBeOwner(orderKey.owner, msg.sender);
         if (order.sellRate == 0) revert OrderDoesNotExist(orderKey);
@@ -328,7 +328,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         return bytes("");
     }
 
-    function getTWAMM(IPoolManager.PoolKey memory key) private view returns (State storage) {
+    function _getTWAMM(IPoolManager.PoolKey memory key) private view returns (State storage) {
         return twammStates[keccak256(abi.encode(key))];
     }
 
@@ -346,7 +346,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
 
     /// @notice Executes all existing long term orders in the TWAMM
     /// @param pool The relevant state of the pool
-    function executeTWAMMOrders(
+    function _executeTWAMMOrders(
         State storage self,
         IPoolManager poolManager,
         IPoolManager.PoolKey memory key,
@@ -371,7 +371,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
                         || orderPool1For0.sellRateEndingAtInterval[nextExpirationTimestamp] > 0
                 ) {
                     if (orderPool0For1.sellRateCurrent != 0 && orderPool1For0.sellRateCurrent != 0) {
-                        pool = advanceToNewTimestamp(
+                        pool = _advanceToNewTimestamp(
                             self,
                             poolManager,
                             key,
@@ -383,7 +383,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
                             )
                         );
                     } else {
-                        pool = advanceTimestampForSinglePoolSell(
+                        pool = _advanceTimestampForSinglePoolSell(
                             self,
                             poolManager,
                             key,
@@ -405,14 +405,14 @@ contract TWAMMHook is BaseHook, ITWAMM {
 
             if (prevTimestamp < block.timestamp && _hasOutstandingOrders(self)) {
                 if (orderPool0For1.sellRateCurrent != 0 && orderPool1For0.sellRateCurrent != 0) {
-                    pool = advanceToNewTimestamp(
+                    pool = _advanceToNewTimestamp(
                         self,
                         poolManager,
                         key,
                         AdvanceParams(expirationInterval, block.timestamp, block.timestamp - prevTimestamp, pool)
                     );
                 } else {
-                    pool = advanceTimestampForSinglePoolSell(
+                    pool = _advanceTimestampForSinglePoolSell(
                         self,
                         poolManager,
                         key,
@@ -440,7 +440,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         PoolParamsOnExecute pool;
     }
 
-    function advanceToNewTimestamp(
+    function _advanceToNewTimestamp(
         State storage self,
         IPoolManager poolManager,
         IPoolManager.PoolKey memory poolKey,
@@ -464,11 +464,11 @@ contract TWAMMHook is BaseHook, ITWAMM {
             finalSqrtPriceX96 = TwammMath.getNewSqrtPriceX96(executionParams);
 
             (bool crossingInitializedTick, int24 tick) =
-                isCrossingInitializedTick(params.pool, poolManager, poolKey, finalSqrtPriceX96);
+                _isCrossingInitializedTick(params.pool, poolManager, poolKey, finalSqrtPriceX96);
             unchecked {
                 if (crossingInitializedTick) {
                     uint256 secondsUntilCrossingX96;
-                    (params.pool, secondsUntilCrossingX96) = advanceTimeThroughTickCrossing(
+                    (params.pool, secondsUntilCrossingX96) = _advanceTimeThroughTickCrossing(
                         self,
                         poolManager,
                         poolKey,
@@ -503,7 +503,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         bool zeroForOne;
     }
 
-    function advanceTimestampForSinglePoolSell(
+    function _advanceTimestampForSinglePoolSell(
         State storage self,
         IPoolManager poolManager,
         IPoolManager.PoolKey memory poolKey,
@@ -520,7 +520,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
             );
 
             (bool crossingInitializedTick, int24 tick) =
-                isCrossingInitializedTick(params.pool, poolManager, poolKey, finalSqrtPriceX96);
+                _isCrossingInitializedTick(params.pool, poolManager, poolKey, finalSqrtPriceX96);
 
             if (crossingInitializedTick) {
                 int128 liquidityNetAtTick = poolManager.getNetLiquidityAtTick(poolKey.toId(), tick);
@@ -575,7 +575,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         PoolParamsOnExecute pool;
     }
 
-    function advanceTimeThroughTickCrossing(
+    function _advanceTimeThroughTickCrossing(
         State storage self,
         IPoolManager poolManager,
         IPoolManager.PoolKey memory poolKey,
@@ -618,7 +618,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         return (params.pool, secondsUntilCrossingX96);
     }
 
-    function isCrossingInitializedTick(
+    function _isCrossingInitializedTick(
         PoolParamsOnExecute memory pool,
         IPoolManager poolManager,
         IPoolManager.PoolKey memory poolKey,
@@ -645,7 +645,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         if (nextTickInitFurtherThanTarget) crossingInitializedTick = false;
     }
 
-    function getOrder(State storage self, OrderKey memory key) internal view returns (Order storage) {
+    function _getOrder(State storage self, OrderKey memory key) internal view returns (Order storage) {
         return self.orders[_orderId(key)];
     }
 

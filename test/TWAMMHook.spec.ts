@@ -229,19 +229,6 @@ describe('TWAMM Hook', () => {
     })
 
     describe('for orders trading zeroForOne', () => {
-      it('claims rewards, decreases sellRate, and updates sellTokensOwed to owner', async () => {
-        const amountDelta = orderAmount.div(10)
-        await setNextBlocktime(halfwayTimestamp)
-        await twamm.updateOrder(poolKey, orderKey0, amountDelta.mul(-1))
-        const order = await twamm.getOrder(poolKey, orderKey0)
-        const { earningsFactorCurrent } = await twamm.getOrderPool(poolKey, true)
-
-        expect(order.sellRate).to.eq(200000000000000)
-        expect(order.earningsFactorLast).to.eq(earningsFactorCurrent)
-        expect(await twamm.tokensOwed(poolKey.token0, orderKey0.owner)).to.eq(amountDelta)
-        expect(await twamm.tokensOwed(poolKey.token1, orderKey0.owner)).to.eq(orderAmount.div(2))
-      })
-
       it('deletes order and returns all tokens if delta sent is -1', async () => {
         await setNextBlocktime(halfwayTimestamp)
         await twamm.updateOrder(poolKey, orderKey0, -1)
