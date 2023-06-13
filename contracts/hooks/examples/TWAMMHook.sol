@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
-import "forge-std/console.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickBitmap} from "@uniswap/v4-core/contracts/libraries/TickBitmap.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/contracts/libraries/SqrtPriceMath.sol";
@@ -46,7 +45,7 @@ contract TWAMMHook is BaseHook, ITWAMM {
         mapping(bytes32 => Order) orders;
     }
 
-    // Time interval on which orders are allowed to expire. Conserves processing needed on execute.
+    /// @inheritdoc ITWAMM
     uint256 public immutable expirationInterval;
     // twammStates[poolId] => Twamm.State
     mapping(bytes32 => State) internal twammStates;

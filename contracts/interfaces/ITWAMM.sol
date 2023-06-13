@@ -94,6 +94,9 @@ interface ITWAMM {
         uint256 earningsFactorLast
     );
 
+    /// @notice Time interval on which orders are allowed to expire. Conserves processing needed on execute.
+    function expirationInterval() external view returns (uint256);
+
     /// @notice Submits a new long term order into the TWAMM. Also executes TWAMM orders if not up to date.
     /// @param key The PoolKey for which to identify the amm pool of the order
     /// @param orderKey The OrderKey for the new order
