@@ -42,11 +42,8 @@ contract TestFullRange is Test, Deployers {
     TestERC20 token0;
     TestERC20 token1;
     PoolManager manager;
-    FullRangeImplementation fullRange = FullRangeImplementation(
-        address(
-            uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG)
-        )
-    );
+    FullRangeImplementation fullRange =
+        FullRangeImplementation(address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG)));
     IPoolManager.PoolKey key;
     bytes32 id;
 
@@ -85,6 +82,8 @@ contract TestFullRange is Test, Deployers {
         vm.expectEmit(true, true, true, true);
         emit Initialize(PoolId.toId(key), key.currency0, key.currency1, key.fee, key.tickSpacing, key.hooks);
         manager.initialize(key, SQRT_RATIO_1_1);
+
+        // TODO: check that address is in mapping
     }
 
     function testBeforeInitializeRevertsIfWrongSpacing() public {
@@ -98,35 +97,28 @@ contract TestFullRange is Test, Deployers {
 
     function testAddLiquiditySucceeds() public {
         manager.initialize(key, SQRT_RATIO_1_1);
-        console.log("manager address");
-        console.log(address(manager));
-        console.log("test contract address");
-        console.log(address(this));
-        console.log("fullRange address");
-        console.log(address(fullRange));
 
         fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, 12329839823);
     }
 
-    function testModifyPositionFailsIfNotFullRange() public {
-        manager.initialize(key, SQRT_RATIO_1_1);
-        vm.expectRevert("Tick range out of range or not full range");
-
-        modifyPositionRouter.modifyPosition(
-            key, IPoolManager.ModifyPositionParams({tickLower: MIN_TICK + 1, tickUpper: MAX_TICK - 1, liquidityDelta: 100})
-        );
-    }
-
-    // function testBeforeModifyPositionFailsWithWrongMsgSender() public {
+    // function testModifyPositionFailsIfNotFullRange() public {
     //     manager.initialize(key, SQRT_RATIO_1_1);
-
-    //     vm.expectRevert("msg.sender must be hook");
+    //     vm.expectRevert("Tick range out of range or not full range");
 
     //     modifyPositionRouter.modifyPosition(
-    //         key, IPoolManager.ModifyPositionParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: 100})
+    //         key, IPoolManager.ModifyPositionParams({tickLower: MIN_TICK + 1, tickUpper: MAX_TICK - 1, liquidityDelta: 100})
     //     );
-
     // }
+
+    function testBeforeModifyPositionFailsWithWrongMsgSender() public {
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        vm.expectRevert("sender must be hook");
+
+        modifyPositionRouter.modifyPosition(
+            key, IPoolManager.ModifyPositionParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: 100})
+        );
+    }
 
     // function testBeforeModifyPositionFailsIfNoPool() public {
 

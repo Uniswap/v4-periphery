@@ -13,6 +13,7 @@ import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
 import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {UniswapV4ERC20} from "./UniswapV4ERC20.sol";
 
 import "forge-std/console.sol";
 
@@ -27,7 +28,7 @@ contract FullRange is BaseHook {
     /// @dev Max tick for full range with tick spacing of 60
     int24 internal constant MAX_TICK = -MIN_TICK;
 
-    mapping(bytes32 => address) poolToERC20;
+    mapping(bytes32 => address) public poolToERC20;
 
     struct CallbackData {
         address sender;
@@ -35,13 +36,12 @@ contract FullRange is BaseHook {
         IPoolManager.ModifyPositionParams params;
     }
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
-    }
+    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    modifier ensure(uint deadline) {
-        require(deadline >= block.timestamp, 'Expired'); 
+    modifier ensure(uint256 deadline) {
+        require(deadline >= block.timestamp, "Expired");
         _;
-            }
+    }
 
     // maybe don't make this function public ?
     function modifyPosition(IPoolManager.PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
@@ -134,8 +134,11 @@ contract FullRange is BaseHook {
 
         // require(liquidity >= 0, "Cannot add negative liquidity to a new position");
 
-        IPoolManager.ModifyPositionParams memory params =
-            IPoolManager.ModifyPositionParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: int256(int128(liquidity))});
+        IPoolManager.ModifyPositionParams memory params = IPoolManager.ModifyPositionParams({
+            tickLower: MIN_TICK,
+            tickUpper: MAX_TICK,
+            liquidityDelta: int256(int128(liquidity))
+        });
 
         BalanceDelta delta = modifyPosition(key, params);
 
@@ -146,24 +149,33 @@ contract FullRange is BaseHook {
     // deploy ERC-20 contract
     function beforeInitialize(address, IPoolManager.PoolKey calldata key, uint160)
         external
-        view
         override
         returns (bytes4)
     {
         require(key.tickSpacing == 60, "Tick spacing must be default");
+        
         // deploy erc20 contract
+
+        bytes memory bytecode = type(UniswapV4ERC20).creationCode;
+        bytes32 salt = keccak256(abi.encodePacked(key.toId()));
+
+        address poolToken; 
+        assembly {
+            poolToken := create2(0, add(bytecode, 32), mload(bytecode), salt)
+        }
+        
+        poolToERC20[key.toId()] = poolToken;
+
         return FullRange.beforeInitialize.selector;
     }
 
     function beforeModifyPosition(
-        address,
+        address sender,
         IPoolManager.PoolKey calldata key,
         IPoolManager.ModifyPositionParams calldata params
     ) external view override returns (bytes4) {
         // check msg.sender
-        console.log(msg.sender);
-        console.log(address(this));
-        // require(msg.sender == address(this), "msg.sender must be hook");
+        require(sender == address(this), "sender must be hook");
 
         // check full range
         require(
@@ -171,6 +183,7 @@ contract FullRange is BaseHook {
         );
 
         // minting!!! save gas
+
 
         return FullRange.beforeModifyPosition.selector;
     }
