@@ -35,7 +35,7 @@ contract UniswapV4ERC20 is IUniswapV4ERC20 {
         // );
     }
 
-    function _mint(address to, uint value) internal {
+    function _mint(address to, uint value) external {
         totalSupply = totalSupply.add(value);
         balanceOf[to] = balanceOf[to].add(value);
         emit Transfer(address(0), to, value);

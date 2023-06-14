@@ -83,7 +83,8 @@ contract TestFullRange is Test, Deployers {
         emit Initialize(PoolId.toId(key), key.currency0, key.currency1, key.fee, key.tickSpacing, key.hooks);
         manager.initialize(key, SQRT_RATIO_1_1);
 
-        // TODO: check that address is in mapping
+        // check that address is in mapping
+        assertFalse(fullRange.poolToERC20(PoolId.toId(key)) == address(0));
     }
 
     function testBeforeInitializeRevertsIfWrongSpacing() public {
@@ -95,12 +96,13 @@ contract TestFullRange is Test, Deployers {
         manager.initialize(wrongKey, SQRT_RATIO_1_1);
     }
 
-    function testAddLiquiditySucceeds() public {
+    function testInitialAddLiquiditySucceeds() public {
         manager.initialize(key, SQRT_RATIO_1_1);
 
-        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, 12329839823);
+        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
     }
-
+    
+    // this test is never called
     // function testModifyPositionFailsIfNotFullRange() public {
     //     manager.initialize(key, SQRT_RATIO_1_1);
     //     vm.expectRevert("Tick range out of range or not full range");
@@ -120,7 +122,9 @@ contract TestFullRange is Test, Deployers {
         );
     }
 
-    // function testBeforeModifyPositionFailsIfNoPool() public {
-
-    // }
+    function testAddLiquidityFailsIfNoPool() public {
+        // PoolNotInitialized()
+        vm.expectRevert(0x486aa307);
+        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
+    }
 }

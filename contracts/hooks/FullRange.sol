@@ -13,7 +13,11 @@ import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
 import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
 import {UniswapV4ERC20} from "./UniswapV4ERC20.sol";
+import {IUniswapV4ERC20} from "./IUniswapV4ERC20.sol";
+import {SafeMath} from "./SafeMath.sol";
+import {Math} from "./Math.sol";
 
 import "forge-std/console.sol";
 
@@ -23,10 +27,15 @@ contract FullRange is BaseHook {
     using CurrencyLibrary for Currency;
     using PoolId for IPoolManager.PoolKey;
 
+    /// @notice Thrown when trying to interact with a non-initialized pool
+    error PoolNotInitialized();
+
     /// @dev Min tick for full range with tick spacing of 60
     int24 internal constant MIN_TICK = -887220;
     /// @dev Max tick for full range with tick spacing of 60
     int24 internal constant MAX_TICK = -MIN_TICK;
+
+    uint public constant MINIMUM_LIQUIDITY = 10**3;
 
     mapping(bytes32 => address) public poolToERC20;
 
@@ -45,8 +54,7 @@ contract FullRange is BaseHook {
 
     // maybe don't make this function public ?
     function modifyPosition(IPoolManager.PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
-        public
-        payable
+        internal
         returns (BalanceDelta delta)
     {
         delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
@@ -111,6 +119,7 @@ contract FullRange is BaseHook {
         uint24 fee,
         uint256 amountADesired,
         uint256 amountBDesired,
+        address to,
         uint256 deadline
     ) external ensure(deadline) returns (uint128 liquidity) {
         IPoolManager.PoolKey memory key = IPoolManager.PoolKey({
@@ -124,6 +133,8 @@ contract FullRange is BaseHook {
         // replacement addLiquidity function from LiquidityManagement.sol
         (uint160 sqrtPriceX96,,) = poolManager.getSlot0(key.toId());
 
+        if (sqrtPriceX96 == 0) revert PoolNotInitialized();
+
         // add the hardcoded TICK_LOWER and TICK_UPPER
         uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(MIN_TICK);
         uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(MAX_TICK);
@@ -131,6 +142,46 @@ contract FullRange is BaseHook {
         liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, amountADesired, amountBDesired
         );
+
+        uint depositedLiquidity;
+
+        uint128 poolLiquidity = poolManager.getLiquidity(key.toId());
+
+        console.log("poolLiquidity");
+        console.log(poolLiquidity);
+
+        UniswapV4ERC20 erc20 = UniswapV4ERC20(poolToERC20[key.toId()]);
+        
+        if (poolLiquidity == 0) {
+            // TODO: not sure if i should just use ratios instead
+            uint256 sqrtLiquidityDelta = Math.sqrt(LiquidityAmounts.getAmount0ForLiquidity(sqrtRatioAX96, sqrtRatioBX96, liquidity) * LiquidityAmounts.getAmount1ForLiquidity(sqrtRatioAX96, sqrtRatioBX96, liquidity));
+            depositedLiquidity = SafeMath.sub(sqrtLiquidityDelta, MINIMUM_LIQUIDITY);
+            erc20._mint(address(0), MINIMUM_LIQUIDITY); // permanently lock the first MINIMUM_LIQUIDITY tokens
+        } else {
+            // TODO: get the reserves, but we also have to find the minimum ? and do the if statements
+            // or do i use the periphery function to get the reserves 
+            // we are not considering if sqrtRatioX96 == the min and max yet 
+
+            // delta amounts 
+            uint256 amount0 = LiquidityAmounts.getAmount0ForLiquidity(sqrtPriceX96, sqrtRatioBX96, liquidity);
+            uint256 amount1 = LiquidityAmounts.getAmount1ForLiquidity(sqrtRatioAX96, sqrtPriceX96, liquidity);
+            
+            // delta liquidity 
+            uint128 liquidity0 = LiquidityAmounts.getLiquidityForAmount0(sqrtPriceX96, sqrtRatioBX96, amount0);
+            uint128 liquidity1 = LiquidityAmounts.getLiquidityForAmount1(sqrtRatioAX96, sqrtPriceX96, amount1);
+            
+            // total amounts
+            uint256 amount0Total = LiquidityAmounts.getAmount0ForLiquidity(sqrtPriceX96, sqrtRatioBX96, poolLiquidity);
+            uint256 amount1Total = LiquidityAmounts.getAmount1ForLiquidity(sqrtRatioAX96, sqrtPriceX96, poolLiquidity);
+
+            if (liquidity0 < liquidity1) {
+                require(liquidity0 == liquidity, "liquidity must match");
+                depositedLiquidity = FullMath.mulDiv(liquidity,(sqrtRatioBX96 - sqrtRatioAX96), amount0Total); 
+            } else {
+                require(liquidity1 == liquidity, "liquidity must match");
+                depositedLiquidity = FullMath.mulDiv(liquidity,(sqrtRatioBX96 - sqrtRatioAX96), amount1Total); 
+            }
+        }
 
         // require(liquidity >= 0, "Cannot add negative liquidity to a new position");
 
@@ -144,6 +195,10 @@ contract FullRange is BaseHook {
 
         // TODO: price slippage check for v4 deposit
         // require(amountA >= amountAMin && amountB >= params.amountBMin, 'Price slippage check');
+
+        // mint
+        erc20._mint(to, depositedLiquidity);
+
     }
 
     // deploy ERC-20 contract
@@ -173,7 +228,7 @@ contract FullRange is BaseHook {
         address sender,
         IPoolManager.PoolKey calldata key,
         IPoolManager.ModifyPositionParams calldata params
-    ) external view override returns (bytes4) {
+    ) external override returns (bytes4) {
         // check msg.sender
         require(sender == address(this), "sender must be hook");
 
@@ -181,9 +236,6 @@ contract FullRange is BaseHook {
         require(
             params.tickLower == MIN_TICK && params.tickUpper == MAX_TICK, "Tick range out of range or not full range"
         );
-
-        // minting!!! save gas
-
 
         return FullRange.beforeModifyPosition.selector;
     }
