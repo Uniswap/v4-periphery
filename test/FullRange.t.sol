@@ -15,6 +15,7 @@ import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModify
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {Oracle} from "../contracts/libraries/Oracle.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
+import {UniswapV4ERC20} from "../contracts/hooks/UniswapV4ERC20.sol";
 
 import "forge-std/console.sol";
 
@@ -99,7 +100,150 @@ contract TestFullRange is Test, Deployers {
     function testInitialAddLiquiditySucceeds() public {
         manager.initialize(key, SQRT_RATIO_1_1);
 
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
         fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
+
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 100);
+    }
+
+    function testAddLiquidityFailsIfNoPool() public {
+        // PoolNotInitialized()
+        vm.expectRevert(0x486aa307);
+        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
+    }
+
+    function testAddLiquiditySucceedsWithNoFee() public {
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
+        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 100);
+
+        fullRange.addLiquidity(address(token0), address(token1), 0, 50, 50, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 150);
+    }
+
+    function testAddLiquidityWithDiffRatiosAndNoFee() public {
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 100);
+
+        fullRange.addLiquidity(address(token0), address(token1), 0, 50, 25, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 125);
+    }
+
+    function testInitialRemoveLiquiditySucceeds() public {
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
+        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 100);
+
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
+
+        fullRange.removeLiquidity(address(token0), address(token1), 0, 100, 0, 0, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 0);
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1);
+    }
+
+    function testRemoveLiquidityFailsIfNoPool() public {
+        // PoolNotInitialized()
+        vm.expectRevert(0x486aa307);
+        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
+    }
+
+    function testRemoveLiquiditySucceedsWithNoFee() public {
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
+        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
+
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 100);
+
+        fullRange.addLiquidity(address(token0), address(token1), 0, 50, 50, address(this), 12329839823);
+
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 150);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 150);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 150);
+
+        fullRange.removeLiquidity(address(token0), address(token1), 0, 150, 0, 0, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 0);
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1);
+    }
+
+    // lowkey forgot what this test is meant to do
+    function testRemoveLiquiditySucceedsWithPartial() public {
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
+        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 100);
+
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
+
+        fullRange.removeLiquidity(address(token0), address(token1), 0, 50, 0, 0, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 50);
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 50);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 50);
+
+    }
+
+    function testRemoveLiquidityWithDiffRatiosAndNoFee() public {
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
+        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
+
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 100);
+
+        fullRange.addLiquidity(address(token0), address(token1), 0, 50, 25, address(this), 12329839823);
+
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 150);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 125);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 125);
+
+        fullRange.removeLiquidity(address(token0), address(token1), 0, 50, 0, 0, address(this), 12329839823);
+
+        // TODO: balance checks for token0 and token1
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(PoolId.toId(key))).balanceOf(address(this)), 75);
     }
     
     // this test is never called
@@ -120,11 +264,5 @@ contract TestFullRange is Test, Deployers {
         modifyPositionRouter.modifyPosition(
             key, IPoolManager.ModifyPositionParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: 100})
         );
-    }
-
-    function testAddLiquidityFailsIfNoPool() public {
-        // PoolNotInitialized()
-        vm.expectRevert(0x486aa307);
-        fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
     }
 }
