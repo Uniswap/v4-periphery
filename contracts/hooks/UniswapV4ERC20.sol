@@ -2,6 +2,7 @@ pragma solidity =0.8.19;
 
 import './IUniswapV4ERC20.sol';
 import './SafeMath.sol';
+import "forge-std/console.sol";
 
 contract UniswapV4ERC20 is IUniswapV4ERC20 {
     using SafeMath for uint;
@@ -70,7 +71,12 @@ contract UniswapV4ERC20 is IUniswapV4ERC20 {
 
     function transferFrom(address from, address to, uint value) external returns (bool) {
         if (allowance[from][msg.sender] != uint(int256(-1))) {
+            console.log("hi");
+            console.log(allowance[from][msg.sender]);
+            console.log(msg.sender);
             allowance[from][msg.sender] = allowance[from][msg.sender].sub(value);
+            console.log("hi2");
+            console.log(allowance[from][msg.sender]);
         }
         _transfer(from, to, value);
         return true;

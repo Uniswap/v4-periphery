@@ -52,13 +52,20 @@ contract FullRange is BaseHook {
         _;
     }
 
+    function balanceOf(Currency currency, address user) internal view returns (uint256) {
+        if (currency.isNative()) {
+            return user.balance;
+        } else {
+            return IERC20Minimal(Currency.unwrap(currency)).balanceOf(user);
+        }
+    }
+
     // maybe don't make this function public ?
     function modifyPosition(IPoolManager.PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
         internal
         returns (BalanceDelta delta)
     {
-        console.log("msg.sender of modifyPosition");
-        console.log(msg.sender);
+        // msg.sender is the test contract (aka whoever called addLiquidity/removeLiquidity)
 
         delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
 
@@ -75,6 +82,11 @@ contract FullRange is BaseHook {
 
         BalanceDelta delta = poolManager.modifyPosition(data.key, data.params);
 
+        console.log("amount0");
+        console.logInt(delta.amount0());
+        console.log("amount1");
+        console.logInt(delta.amount1());
+
         // this does all the transfers
         if (delta.amount0() > 0) {
             if (data.key.currency0.isNative()) {
@@ -86,12 +98,20 @@ contract FullRange is BaseHook {
                 poolManager.settle(data.key.currency0);
             }
         } else {
+            console.log("delta is negative (as it should be for removing liquidity)");
+
+            uint256 balBefore = balanceOf(data.key.currency0, data.sender);
+            poolManager.take(data.key.currency0, data.sender, uint256(uint128(-delta.amount0())));
+            uint256 balAfter = balanceOf(data.key.currency0, data.sender);
+            require(balAfter - balBefore == uint128(-delta.amount0()));
+
             if (data.key.currency0.isNative()) {
-                poolManager.settle{value: uint128(delta.amount0())}(data.key.currency0);
+                poolManager.settle{value: uint128(-delta.amount0())}(data.key.currency0);
             } else {
-                IERC20Minimal(Currency.unwrap(data.key.currency0)).transferFrom(
-                    address(poolManager), data.sender, uint128(delta.amount0())
-                );
+
+                // IERC20Minimal(Currency.unwrap(data.key.currency0)).transferFrom(
+                //     data.sender, address(poolManager), uint128(-delta.amount0())
+                // );
                 poolManager.settle(data.key.currency0);
             }
 
@@ -104,16 +124,22 @@ contract FullRange is BaseHook {
                     data.sender, address(poolManager), uint128(delta.amount1())
                 );
                 poolManager.settle(data.key.currency1);
+            
             }
         } else {
             // TODO: fix the native code here maybe 
             // TODO: data.sender is the hook, so how are the tests passing?
+            uint256 balBefore = balanceOf(data.key.currency1, data.sender);
+            poolManager.take(data.key.currency1, data.sender, uint128(-delta.amount1()));
+            uint256 balAfter = balanceOf(data.key.currency1, data.sender);
+            require(balAfter - balBefore == uint256(uint128(-delta.amount1())));
+
             if (data.key.currency1.isNative()) {
-                poolManager.settle{value: uint128(delta.amount1())}(data.key.currency1);
+                poolManager.settle{value: uint128(-delta.amount1())}(data.key.currency1);
             } else {
-                IERC20Minimal(Currency.unwrap(data.key.currency1)).transferFrom(
-                    address(poolManager), data.sender, uint128(delta.amount1())
-                );
+                // IERC20Minimal(Currency.unwrap(data.key.currency1)).transferFrom(
+                //     data.sender, address(poolManager), uint128(-delta.amount1())
+                // );
                 poolManager.settle(data.key.currency1);
             }
         }
@@ -170,8 +196,8 @@ contract FullRange is BaseHook {
         uint depositedLiquidity;
         uint128 poolLiquidity = poolManager.getLiquidity(key.toId());
 
-        console.log("poolLiquidity");
-        console.log(poolLiquidity);
+        // console.log("poolLiquidity");
+        // console.log(poolLiquidity);
 
         UniswapV4ERC20 erc20 = UniswapV4ERC20(poolToERC20[key.toId()]);
 
@@ -250,6 +276,11 @@ contract FullRange is BaseHook {
         // transfer liquidity tokens to erc20 contract
         UniswapV4ERC20 erc20 = UniswapV4ERC20(poolToERC20[key.toId()]);
         erc20.transferFrom(msg.sender, address(erc20), liquidity);
+
+        console.log("liquidity in removeLiquidity");
+        console.log(liquidity);
+        console.log("liquidity int");
+        console.logInt(-int256(liquidity));
 
         IPoolManager.ModifyPositionParams memory params = IPoolManager.ModifyPositionParams({
             tickLower: MIN_TICK,
