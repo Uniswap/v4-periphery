@@ -332,13 +332,6 @@ contract TWAMM is BaseHook, ITWAMM {
         return twammStates[keccak256(abi.encode(key))];
     }
 
-    struct OrderParams {
-        address owner;
-        bool zeroForOne;
-        uint256 amountIn;
-        uint160 expiration;
-    }
-
     struct PoolParamsOnExecute {
         uint160 sqrtPriceX96;
         uint128 liquidity;
