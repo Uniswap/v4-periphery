@@ -298,6 +298,7 @@ contract TWAMM is BaseHook, ITWAMM {
         amountTransferred = tokensOwed[token][msg.sender];
         if (amountRequested != 0 && amountRequested < amountTransferred) amountTransferred = amountRequested;
         if (currentBalance < amountTransferred) amountTransferred = currentBalance; // to catch precision errors
+        tokensOwed[token][msg.sender] -= amountTransferred;
         IERC20Minimal(Currency.unwrap(token)).safeTransfer(to, amountTransferred);
     }
 
