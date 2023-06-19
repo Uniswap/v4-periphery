@@ -2,7 +2,7 @@
 pragma solidity =0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
 import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
@@ -28,7 +28,7 @@ library EpochLibrary {
 
 contract LimitOrder is BaseHook {
     using EpochLibrary for Epoch;
-    using PoolId for IPoolManager.PoolKey;
+    using PoolIdLibrary for IPoolManager.PoolKey;
     using CurrencyLibrary for Currency;
 
     error ZeroLiquidity();
@@ -62,7 +62,7 @@ contract LimitOrder is BaseHook {
 
     Epoch private constant EPOCH_DEFAULT = Epoch.wrap(0);
 
-    mapping(bytes32 => int24) public tickLowerLasts;
+    mapping(PoolId => int24) public tickLowerLasts;
     Epoch public epochNext = Epoch.wrap(1);
 
     struct EpochInfo {
@@ -93,11 +93,11 @@ contract LimitOrder is BaseHook {
         });
     }
 
-    function getTickLowerLast(bytes32 poolId) public view returns (int24) {
+    function getTickLowerLast(PoolId poolId) public view returns (int24) {
         return tickLowerLasts[poolId];
     }
 
-    function setTickLowerLast(bytes32 poolId, int24 tickLower) private {
+    function setTickLowerLast(PoolId poolId, int24 tickLower) private {
         tickLowerLasts[poolId] = tickLower;
     }
 
@@ -113,8 +113,8 @@ contract LimitOrder is BaseHook {
         return epochInfos[epoch].liquidity[owner];
     }
 
-    function getTick(bytes32 poolId) private view returns (int24 tick) {
-        (, tick,) = poolManager.getSlot0(poolId);
+    function getTick(PoolId poolId) private view returns (int24 tick) {
+        (, tick,,,,) = poolManager.getSlot0(poolId);
     }
 
     function getTickLower(int24 tick, int24 tickSpacing) private pure returns (int24) {
@@ -174,7 +174,7 @@ contract LimitOrder is BaseHook {
         return LimitOrder.afterSwap.selector;
     }
 
-    function _getCrossedTicks(bytes32 poolId, int24 tickSpacing)
+    function _getCrossedTicks(PoolId poolId, int24 tickSpacing)
         internal
         view
         returns (int24 tickLower, int24 lower, int24 upper)

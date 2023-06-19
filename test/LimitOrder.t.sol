@@ -11,11 +11,13 @@ import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.s
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
 import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
-import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 
 contract TestLimitOrder is Test, Deployers {
+    using PoolIdLibrary for IPoolManager.PoolKey;
+
     uint160 constant SQRT_RATIO_10_1 = 250541448375047931186413801569;
 
     TestERC20 token0;
@@ -23,7 +25,7 @@ contract TestLimitOrder is Test, Deployers {
     PoolManager manager;
     LimitOrder limitOrder = LimitOrder(address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG)));
     IPoolManager.PoolKey key;
-    bytes32 id;
+    PoolId id;
 
     PoolSwapTest swapRouter;
 
@@ -45,7 +47,7 @@ contract TestLimitOrder is Test, Deployers {
         }
 
         key = IPoolManager.PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, limitOrder);
-        id = PoolId.toId(key);
+        id = key.toId();
         manager.initialize(key, SQRT_RATIO_1_1);
 
         swapRouter = new PoolSwapTest(manager);
@@ -64,7 +66,7 @@ contract TestLimitOrder is Test, Deployers {
         IPoolManager.PoolKey memory differentKey =
             IPoolManager.PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 61, limitOrder);
         manager.initialize(differentKey, SQRT_RATIO_10_1);
-        assertEq(limitOrder.getTickLowerLast(PoolId.toId(differentKey)), 22997);
+        assertEq(limitOrder.getTickLowerLast(differentKey.toId()), 22997);
     }
 
     function testEpochNext() public {
@@ -190,7 +192,7 @@ contract TestLimitOrder is Test, Deployers {
         );
 
         assertEq(limitOrder.getTickLowerLast(id), 60);
-        (, int24 tick,) = manager.getSlot0(id);
+        (, int24 tick,,,,) = manager.getSlot0(id);
         assertEq(tick, 60);
 
         (bool filled,,, uint256 token0Total, uint256 token1Total,) = limitOrder.epochInfos(Epoch.wrap(1));
