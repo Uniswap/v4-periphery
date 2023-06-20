@@ -5,8 +5,10 @@ import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.s
 import {IDynamicFeeManager} from "@uniswap/v4-core/contracts/interfaces/IDynamicFeeManager.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {BaseHook} from "../../BaseHook.sol";
+import {Fees} from "@uniswap/v4-core/contracts/libraries/Fees.sol";
 
 contract VolatilityOracle is BaseHook, IDynamicFeeManager {
+    using Fees for uint24;
     error MustUseDynamicFee();
 
     uint32 deployTimestamp;
@@ -45,7 +47,7 @@ contract VolatilityOracle is BaseHook, IDynamicFeeManager {
         override
         returns (bytes4)
     {
-        if (key.fee != Hooks.DYNAMIC_FEE) revert MustUseDynamicFee();
+        if (key.fee.isDynamicFee()) revert MustUseDynamicFee();
         return VolatilityOracle.beforeInitialize.selector;
     }
 }
