@@ -129,26 +129,6 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(earningsFactorCurrent1For0, 0);
     }
 
-    function TWAMMSingleSell0For1SellRateAndEarningsFactorGetsUpdatedProperly() public {
-        // TODO: fails with a bug for single pool sell, swap amount 3 wei above balance.
-
-        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
-        ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), 40000, true);
-
-        token0.approve(address(twamm), 100e18);
-        token1.approve(address(twamm), 100e18);
-        vm.warp(10000);
-        twamm.submitOrder(poolKey, orderKey1, 1e18);
-        vm.warp(30000);
-        twamm.submitOrder(poolKey, orderKey2, 1e18);
-        vm.warp(40000);
-
-        ITWAMM.Order memory submittedOrder = twamm.getOrder(poolKey, orderKey2);
-        (, uint256 earningsFactorCurrent) = twamm.getOrderPool(poolKey, true);
-        assertEq(submittedOrder.sellRate, 1 ether / 10000);
-        assertEq(submittedOrder.earningsFactorLast, earningsFactorCurrent);
-    }
-
     function testTWAMM_submitOrder_storesSellRatesEarningsFactorsProperly() public {
         uint160 expiration1 = 30000;
         uint160 expiration2 = 40000;
@@ -203,6 +183,26 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.submitOrder(poolKey, orderKey1, 1e18);
     }
 
+    function TWAMMSingleSell0For1SellRateAndEarningsFactorGetsUpdatedProperly() public {
+        // TODO: fails with a bug for single pool sell, swap amount 3 wei above balance.
+
+        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
+        ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), 40000, true);
+
+        token0.approve(address(twamm), 100e18);
+        token1.approve(address(twamm), 100e18);
+        vm.warp(10000);
+        twamm.submitOrder(poolKey, orderKey1, 1e18);
+        vm.warp(30000);
+        twamm.submitOrder(poolKey, orderKey2, 1e18);
+        vm.warp(40000);
+
+        ITWAMM.Order memory submittedOrder = twamm.getOrder(poolKey, orderKey2);
+        (, uint256 earningsFactorCurrent) = twamm.getOrderPool(poolKey, true);
+        assertEq(submittedOrder.sellRate, 1 ether / 10000);
+        assertEq(submittedOrder.earningsFactorLast, earningsFactorCurrent);
+    }
+
     function testTWAMM_submitOrder_revertsIfExpiryNotOnInterval() public {
         uint160 invalidTimestamp = 30001;
         ITWAMM.OrderKey memory invalidKey = ITWAMM.OrderKey(address(this), invalidTimestamp, true);
@@ -234,7 +234,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.submitOrder(poolKey, orderKey1, 1e18);
     }
 
-    function testTWAMM_updateOrder_EmitsEvent() public {
+    function testTWAMM_updateOrder_emitsEvent() public {
         ITWAMM.OrderKey memory orderKey1;
         ITWAMM.OrderKey memory orderKey2;
         uint256 orderAmount;
@@ -250,7 +250,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.updateOrder(poolKey, orderKey1, amountDelta);
     }
 
-    function testTWAMM_updateOrder_ZeroForOne_DecreasesSellrateUpdatesSellTokensOwed() public {
+    function testTWAMM_updateOrder_zeroForOne_decreasesSellrateUpdatesSellTokensOwed() public {
         ITWAMM.OrderKey memory orderKey1;
         ITWAMM.OrderKey memory orderKey2;
         uint256 orderAmount;
@@ -274,7 +274,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(token1Owed, orderAmount / 2);
     }
 
-    function testTWAMM_updateOrder_OneForZero_DecreasesSellrateUpdatesSellTokensOwed() public {
+    function testTWAMM_updateOrder_oneForZero_decreasesSellrateUpdatesSellTokensOwed() public {
         ITWAMM.OrderKey memory orderKey1;
         ITWAMM.OrderKey memory orderKey2;
         uint256 orderAmount;
@@ -299,7 +299,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(token1Owed, uint256(-amountDelta));
     }
 
-    function testTWAMM_updatedOrder_ZeroForOne_ClosesOrderIfEliminatingPosition() public {
+    function testTWAMM_updatedOrder_zeroForOne_closesOrderIfEliminatingPosition() public {
         ITWAMM.OrderKey memory orderKey1;
         ITWAMM.OrderKey memory orderKey2;
         uint256 orderAmount;
@@ -319,7 +319,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(token1Owed, orderAmount / 2);
     }
 
-    function testTWAMM_updatedOrder_OneForZero_ClosesOrderIfEliminatingPosition() public {
+    function testTWAMM_updatedOrder_oneForZero_closesOrderIfEliminatingPosition() public {
         ITWAMM.OrderKey memory orderKey1;
         ITWAMM.OrderKey memory orderKey2;
         uint256 orderAmount;
@@ -339,7 +339,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(token1Owed, orderAmount / 2);
     }
 
-    function testTWAMM_updatedOrder_ZeroForOne_IncreaseOrderAmount() public {
+    function testTWAMM_updatedOrder_zeroForOne_increaseOrderAmount() public {
         int256 amountDelta = 1 ether;
         ITWAMM.OrderKey memory orderKey1;
         ITWAMM.OrderKey memory orderKey2;
@@ -364,7 +364,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(token1Owed, orderAmount / 2);
     }
 
-    function testTWAMM_updatedOrder_OneForZero_IncreaseOrderAmount() public {
+    function testTWAMM_updatedOrder_oneForZero_increaseOrderAmount() public {
         int256 amountDelta = 1 ether;
         ITWAMM.OrderKey memory orderKey1;
         ITWAMM.OrderKey memory orderKey2;
