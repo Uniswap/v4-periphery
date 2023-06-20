@@ -4,6 +4,7 @@ pragma solidity ^0.8.15;
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 
 interface ITWAMM {
     /// @notice Thrown when account other than owner attempts to interact with an order
@@ -69,7 +70,7 @@ interface ITWAMM {
     /// @param sellRate The sell rate of tokens per second being sold in the order
     /// @param earningsFactorLast The current earningsFactor of the order pool
     event SubmitOrder(
-        bytes32 indexed poolId,
+        PoolId indexed poolId,
         address indexed owner,
         uint160 expiration,
         bool zeroForOne,
@@ -86,7 +87,7 @@ interface ITWAMM {
     /// @param earningsFactorLast The current earningsFactor of the order pool
     ///   (since updated orders will claim existing earnings)
     event UpdateOrder(
-        bytes32 indexed poolId,
+        PoolId indexed poolId,
         address indexed owner,
         uint160 expiration,
         bool zeroForOne,

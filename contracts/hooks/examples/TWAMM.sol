@@ -6,7 +6,7 @@ import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickBitmap} from "@uniswap/v4-core/contracts/libraries/TickBitmap.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/contracts/libraries/SqrtPriceMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
-import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
 import {BaseHook} from "../../BaseHook.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
@@ -24,7 +24,7 @@ contract TWAMM is BaseHook, ITWAMM {
     using TransferHelper for IERC20Minimal;
     using CurrencyLibrary for Currency;
     using OrderPool for OrderPool.State;
-    using PoolId for IPoolManager.PoolKey;
+    using PoolIdLibrary for IPoolManager.PoolKey;
     using TickMath for int24;
     using TickMath for uint160;
     using SafeCast for uint256;
@@ -50,7 +50,7 @@ contract TWAMM is BaseHook, ITWAMM {
     /// @inheritdoc ITWAMM
     uint256 public immutable expirationInterval;
     // twammStates[poolId] => Twamm.State
-    mapping(bytes32 => State) internal twammStates;
+    mapping(PoolId => State) internal twammStates;
     // tokensOwed[token][owner] => amountOwed
     mapping(Currency => mapping(address => uint256)) public tokensOwed;
 
@@ -102,7 +102,7 @@ contract TWAMM is BaseHook, ITWAMM {
         return BaseHook.beforeSwap.selector;
     }
 
-    function lastVirtualOrderTimestamp(bytes32 key) external view returns (uint256) {
+    function lastVirtualOrderTimestamp(PoolId key) external view returns (uint256) {
         return twammStates[key].lastVirtualOrderTimestamp;
     }
 
@@ -111,7 +111,7 @@ contract TWAMM is BaseHook, ITWAMM {
         view
         returns (Order memory)
     {
-        return _getOrder(twammStates[keccak256(abi.encode(poolKey))], orderKey);
+        return _getOrder(twammStates[PoolId.wrap(keccak256(abi.encode(poolKey)))], orderKey);
     }
 
     function getOrderPool(IPoolManager.PoolKey calldata key, bool zeroForOne)
@@ -138,8 +138,8 @@ contract TWAMM is BaseHook, ITWAMM {
 
     /// @inheritdoc ITWAMM
     function executeTWAMMOrders(IPoolManager.PoolKey memory key) public {
-        bytes32 poolId = key.toId();
-        (uint160 sqrtPriceX96,,) = poolManager.getSlot0(poolId);
+        PoolId poolId = key.toId();
+        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
         State storage twamm = twammStates[poolId];
         if (twamm.lastVirtualOrderTimestamp == 0) revert NotInitialized();
 
@@ -157,7 +157,7 @@ contract TWAMM is BaseHook, ITWAMM {
         external
         returns (bytes32 orderId)
     {
-        bytes32 poolId = keccak256(abi.encode(key));
+        PoolId poolId = PoolId.wrap(keccak256(abi.encode(key)));
         State storage twamm = twammStates[poolId];
         executeTWAMMOrders(key);
 
@@ -211,7 +211,7 @@ contract TWAMM is BaseHook, ITWAMM {
         external
         returns (uint256 tokens0Owed, uint256 tokens1Owed)
     {
-        bytes32 poolId = keccak256(abi.encode(key));
+        PoolId poolId = PoolId.wrap(keccak256(abi.encode(key)));
         State storage twamm = twammStates[poolId];
 
         executeTWAMMOrders(key);
@@ -330,7 +330,7 @@ contract TWAMM is BaseHook, ITWAMM {
     }
 
     function _getTWAMM(IPoolManager.PoolKey memory key) private view returns (State storage) {
-        return twammStates[keccak256(abi.encode(key))];
+        return twammStates[PoolId.wrap(keccak256(abi.encode(key)))];
     }
 
     struct PoolParamsOnExecute {
