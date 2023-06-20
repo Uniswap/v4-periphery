@@ -11,12 +11,14 @@ import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.s
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
 import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
-import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {Oracle} from "../contracts/libraries/Oracle.sol";
 
 contract TestGeomeanOracle is Test, Deployers {
+    using PoolIdLibrary for IPoolManager.PoolKey;
+
     int24 constant MAX_TICK_SPACING = 32767;
     uint160 constant SQRT_RATIO_2_1 = 112045541949572279837463876454;
 
@@ -32,7 +34,7 @@ contract TestGeomeanOracle is Test, Deployers {
         )
     );
     IPoolManager.PoolKey key;
-    bytes32 id;
+    PoolId id;
 
     PoolModifyPositionTest modifyPositionRouter;
 
@@ -56,7 +58,7 @@ contract TestGeomeanOracle is Test, Deployers {
         key = IPoolManager.PoolKey(
             Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, MAX_TICK_SPACING, geomeanOracle
         );
-        id = PoolId.toId(key);
+        id = key.toId();
 
         modifyPositionRouter = new PoolModifyPositionTest(manager);
 

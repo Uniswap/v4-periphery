@@ -2,12 +2,12 @@
 pragma solidity ^0.8.19;
 
 import {BaseHook} from "../../../contracts/BaseHook.sol";
-import {LimitOrder} from "../../../contracts/hooks/examples/LimitOrder.sol";
+import {TWAMM} from "../../../contracts/hooks/examples/TWAMM.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 
-contract LimitOrderImplementation is LimitOrder {
-    constructor(IPoolManager _poolManager, LimitOrder addressToEtch) LimitOrder(_poolManager) {
+contract TWAMMImplementation is TWAMM {
+    constructor(IPoolManager poolManager, uint256 interval, TWAMM addressToEtch) TWAMM(poolManager, interval) {
         Hooks.validateHookAddress(addressToEtch, getHooksCalls());
     }
 
