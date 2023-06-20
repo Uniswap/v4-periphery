@@ -250,63 +250,8 @@ describe('TWAMM', () => {
         })
       })
 
-      it('updates all the necessarily earningsFactor intervals', async () => {
-        const sqrtPriceX96 = encodeSqrtPriceX96(1, 1)
-        const liquidity = '10000000000000000000'
-        await setNextBlocktime(timestampInterval4 + 5_000)
-
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(true, timestampInterval1)).to.eq(0)
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(false, timestampInterval1)).to.eq(0)
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(true, timestampInterval2)).to.eq(0)
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(false, timestampInterval2)).to.eq(0)
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(true, timestampInterval3)).to.eq(0)
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(false, timestampInterval3)).to.eq(0)
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(true, timestampInterval4)).to.eq(0)
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(false, timestampInterval4)).to.eq(0)
-
-        await twamm.executeTWAMMOrders(POOL_KEY, { sqrtPriceX96, liquidity })
-
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(true, timestampInterval1)).to.be.eq(0)
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(false, timestampInterval1)).to.be.eq(0)
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(true, timestampInterval2)).to.eq(
-          '1994006903617166884240785113028529'
-        )
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(false, timestampInterval2)).to.eq(
-          '1274791212190872404935371267515656'
-        )
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(true, timestampInterval3)).to.eq(
-          '3371273930125135653759633453292465'
-        )
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(false, timestampInterval3)).to.eq(
-          '1734117616897553517344907099974480'
-        )
-        expect(await twamm.getOrderPoolEarningsFactorAtInterval(true, timestampInterval4)).to.eq(
-          '4887459849016401416285295160076330'
-        )
-      })
-
       it('updates all necessary intervals when block is mined exactly on an interval')
 
-      it('one interval gas', async () => {
-        const sqrtPriceX96 = encodeSqrtPriceX96(1, 1)
-        const liquidity = '10000000000000000000'
-        await setNextBlocktime(timestampInterval2 + 500)
-        await snapshotGasCost(twamm.executeTWAMMOrders(POOL_KEY, { sqrtPriceX96, liquidity }))
-      })
-
-      it('two intervals gas', async () => {
-        const sqrtPriceX96 = encodeSqrtPriceX96(1, 1)
-        const liquidity = '10000000000000000000'
-        await setNextBlocktime(timestampInterval3 + 5_000)
-        await snapshotGasCost(twamm.executeTWAMMOrders(POOL_KEY, { sqrtPriceX96, liquidity }))
-      })
-
-      it('three intervals gas', async () => {
-        const sqrtPriceX96 = encodeSqrtPriceX96(1, 1)
-        const liquidity = '10000000000000000000'
-        await setNextBlocktime(timestampInterval4 + 5_000)
-        await snapshotGasCost(twamm.executeTWAMMOrders(POOL_KEY, { sqrtPriceX96, liquidity }))
-      })
     })
 
     describe('single pool sell', () => {
@@ -479,7 +424,7 @@ describe('TWAMM', () => {
       const halfSellAmount = fullSellAmount.div(2)
       const halfSellAmountUnderError = halfSellAmount.sub(halfSellAmount.div(error))
       const halfSellAmountOverError = halfSellAmount.add(halfSellAmount.div(error))
-      const fullSellAmountUnderError = fullSellAmount.sub(fullSellAmount.div(error))
+      const fullSellAmountUnderErroßr = fullSellAmount.sub(fullSellAmount.div(error))
       const fullSellAmountOverError = fullSellAmount.add(fullSellAmount.div(error))
 
       beforeEach('submit a single long term order', async () => {

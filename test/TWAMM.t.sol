@@ -44,7 +44,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     );
 
     // address constant TWAMMAddr = address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG));
-    TWAMM twamm = TWAMM(
+    TWAMMImplementation twamm = TWAMMImplementation(
         address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG))
     );
     // TWAMM twamm;
@@ -470,6 +470,86 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.updateOrder(poolKey, orderKey2, 1000);
     }
 
+    function testTWAMM_executeTWAMMOrders_updatesAllTheNecessaryEarningsFactorIntervals() public {
+        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
+        ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), 40000, false);
+        ITWAMM.OrderKey memory orderKey3 = ITWAMM.OrderKey(address(this), 50000, true);
+        ITWAMM.OrderKey memory orderKey4 = ITWAMM.OrderKey(address(this), 50000, false);
+
+        token0.approve(address(twamm), 100 ether);
+        token1.approve(address(twamm), 100 ether);
+
+        vm.warp(10000);
+
+        twamm.submitOrder(poolKey, orderKey1, 1 ether);
+        twamm.submitOrder(poolKey, orderKey2, 5 ether);
+        twamm.submitOrder(poolKey, orderKey3, 2 ether);
+        twamm.submitOrder(poolKey, orderKey4, 2 ether);
+
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 20000), 0);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 20000), 0);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 30000), 0);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 30000), 0);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 40000), 0);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 40000), 0);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 50000), 0);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 50000), 0);
+
+        vm.warp(60000);
+        snapStart('TWAMM executTWAMMOrders 3 intervals');
+        twamm.executeTWAMMOrders(poolKey);
+        snapEnd();
+
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 20000), 0);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 20000), 0);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 30000), 1903834450064690094904650934081653);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 30000), 1332467160273236668937468324643833);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 40000), 3151779959438527761611322345863307);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 40000), 1837497928424750201261148602165737);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 50000), 4499127981259426598474740139623306);
+        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 50000), 2303495623595701879842493741448458);
+    }
+
+    function testTWAMM_executeTWAMMOrders_OneIntervalGas() public {
+        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
+        ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), 30000, false);
+
+        token0.approve(address(twamm), 100 ether);
+        token1.approve(address(twamm), 100 ether);
+
+        vm.warp(10000);
+
+        twamm.submitOrder(poolKey, orderKey1, 1 ether);
+        twamm.submitOrder(poolKey, orderKey2, 5 ether);
+
+        vm.warp(60000);
+        snapStart('TWAMM executTWAMMOrders 1 interval');
+        twamm.executeTWAMMOrders(poolKey);
+        snapEnd();
+    }
+
+    function testTWAMM_executeTWAMMOrders_TwoIntervalsGas() public {
+        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
+        ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), 30000, false);
+        ITWAMM.OrderKey memory orderKey3 = ITWAMM.OrderKey(address(this), 40000, true);
+        ITWAMM.OrderKey memory orderKey4 = ITWAMM.OrderKey(address(this), 40000, false);
+
+        token0.approve(address(twamm), 100 ether);
+        token1.approve(address(twamm), 100 ether);
+
+        vm.warp(10000);
+
+        twamm.submitOrder(poolKey, orderKey1, 1 ether);
+        twamm.submitOrder(poolKey, orderKey2, 5 ether);
+        twamm.submitOrder(poolKey, orderKey3, 2 ether);
+        twamm.submitOrder(poolKey, orderKey4, 2 ether);
+
+        vm.warp(60000);
+        snapStart('TWAMM executTWAMMOrders 2 intervals');
+        twamm.executeTWAMMOrders(poolKey);
+        snapEnd();
+    }
+
     function testTWAMMEndToEndSimSymmetricalOrderPools() public {
         uint256 orderAmount = 1e18;
         ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
@@ -479,9 +559,12 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         token1.approve(address(twamm), 100e18);
         modifyPositionRouter.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-2400, 2400, 10 ether));
 
+        // submit symmetrical orders trading against each other (easy numbers)
         vm.warp(10000);
         twamm.submitOrder(poolKey, orderKey1, orderAmount);
         twamm.submitOrder(poolKey, orderKey2, orderAmount);
+
+        // execute half the orders and update individual order info
         vm.warp(20000);
         twamm.executeTWAMMOrders(poolKey);
         twamm.updateOrder(poolKey, orderKey1, 0);
@@ -490,6 +573,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 earningsToken0 = twamm.tokensOwed(poolKey.currency0, address(this));
         uint256 earningsToken1 = twamm.tokensOwed(poolKey.currency1, address(this));
 
+        // each owner should be owed half the tokens from the opposing order
         assertEq(earningsToken0, orderAmount / 2);
         assertEq(earningsToken1, orderAmount / 2);
 
@@ -498,6 +582,8 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 balance0BeforeThis = poolKey.currency0.balanceOfSelf();
         uint256 balance1BeforeThis = poolKey.currency1.balanceOfSelf();
 
+
+        // conplete order and collect tokens
         vm.warp(30000);
         twamm.executeTWAMMOrders(poolKey);
         twamm.updateOrder(poolKey, orderKey1, 0);
@@ -513,6 +599,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 balance0AfterThis = poolKey.currency0.balanceOfSelf();
         uint256 balance1AfterThis = poolKey.currency1.balanceOfSelf();
 
+        // TWAMM should not have any remaining balance
         assertEq(balance1AfterTWAMM, 0);
         assertEq(balance0AfterTWAMM, 0);
         assertEq(balance0BeforeTWAMM - balance0AfterTWAMM, orderAmount);
