@@ -9,6 +9,7 @@ import {Fees} from "@uniswap/v4-core/contracts/libraries/Fees.sol";
 
 contract VolatilityOracle is BaseHook, IDynamicFeeManager {
     using Fees for uint24;
+
     error MustUseDynamicFee();
 
     uint32 deployTimestamp;
