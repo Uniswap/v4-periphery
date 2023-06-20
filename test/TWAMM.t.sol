@@ -1,6 +1,6 @@
 pragma solidity ^0.8.15;
 
-import 'forge-std/console.sol';
+import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
@@ -268,7 +268,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 token0Owed = twamm.tokensOwed(poolKey.currency0, orderKey1.owner);
         uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey1.owner);
 
-        // takes 10% off the remaining half (so 80% of original sellrate)
+        // takes 10% off the remaining half amount (so 80% of original sellrate)
         assertEq(updatedSellRate, originalSellRate * 80 / 100);
         assertEq(token0Owed, uint256(-amountDelta));
         assertEq(token1Owed, orderAmount / 2);
@@ -387,6 +387,21 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(updatedOrder.sellRate, 150000000000000);
         assertEq(token0Owed, orderAmount / 2);
         assertEq(token1Owed, 0);
+    }
+
+    function testTWAMM_updatedOrder_revertsIfDecreasingByAmoungGreaterThanOrder() public {
+        ITWAMM.OrderKey memory orderKey1;
+        ITWAMM.OrderKey memory orderKey2;
+        uint256 orderAmount;
+        (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
+        // decrease entire order after some has already sold
+        int256 amountDelta = orderAmount;
+
+        // set timestamp to halfway through the order
+        vm.warp(20000);
+
+        vm.exectRevert(ITWAMM.InvalidAmountDelta.selector);
+        twamm.updateOrder(poolKey, orderKey1, amountDelta);
     }
 
     function testTWAMMEndToEndSimSymmetricalOrderPools() public {
