@@ -298,6 +298,7 @@ contract TWAMM is BaseHook, ITWAMM {
         amountTransferred = tokensOwed[token][msg.sender];
         if (amountRequested != 0 && amountRequested < amountTransferred) amountTransferred = amountRequested;
         if (currentBalance < amountTransferred) amountTransferred = currentBalance; // to catch precision errors
+        tokensOwed[token][msg.sender] -= amountTransferred;
         IERC20Minimal(Currency.unwrap(token)).safeTransfer(to, amountTransferred);
     }
 
@@ -329,13 +330,6 @@ contract TWAMM is BaseHook, ITWAMM {
 
     function _getTWAMM(IPoolManager.PoolKey memory key) private view returns (State storage) {
         return twammStates[keccak256(abi.encode(key))];
-    }
-
-    struct OrderParams {
-        address owner;
-        bool zeroForOne;
-        uint256 amountIn;
-        uint160 expiration;
     }
 
     struct PoolParamsOnExecute {
