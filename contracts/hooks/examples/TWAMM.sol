@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
+import "forge-std/console.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickBitmap} from "@uniswap/v4-core/contracts/libraries/TickBitmap.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/contracts/libraries/SqrtPriceMath.sol";
@@ -140,6 +141,7 @@ contract TWAMM is BaseHook, ITWAMM {
         bytes32 poolId = key.toId();
         (uint160 sqrtPriceX96,,) = poolManager.getSlot0(poolId);
         State storage twamm = twammStates[poolId];
+        if (twamm.lastVirtualOrderTimestamp == 0) revert NotInitialized();
 
         (bool zeroForOne, uint160 sqrtPriceLimitX96) = _executeTWAMMOrders(
             twamm, poolManager, key, PoolParamsOnExecute(sqrtPriceX96, poolManager.getLiquidity(poolId))
@@ -187,7 +189,6 @@ contract TWAMM is BaseHook, ITWAMM {
         returns (bytes32 orderId)
     {
         if (orderKey.owner != msg.sender) revert MustBeOwner(orderKey.owner, msg.sender);
-        if (self.lastVirtualOrderTimestamp == 0) revert NotInitialized();
         if (orderKey.expiration <= block.timestamp) revert ExpirationLessThanBlocktime(orderKey.expiration);
         if (sellRate == 0) revert SellRateCannotBeZero();
         if (orderKey.expiration % expirationInterval != 0) revert ExpirationNotOnInterval(orderKey.expiration);

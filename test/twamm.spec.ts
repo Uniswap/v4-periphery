@@ -207,11 +207,6 @@ describe('TWAMM', () => {
       expiration = findExpiryTime(blocktime, 3, EXPIRATION_INTERVAL)
     })
 
-    it('reverts if expiry is not on an interval', async () => {
-      await expect(twamm.submitOrder({ zeroForOne, owner, expiration: nonIntervalExpiration }, amountIn)).to.be
-        .reverted
-    })
-
     it('reverts if not initialized', async () => {
       const twammUnitialized = await loadFixture(twammFixture)
       await expect(

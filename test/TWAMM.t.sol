@@ -1,5 +1,6 @@
 pragma solidity ^0.8.15;
 
+import 'forge-std/console.sol';
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
@@ -209,6 +210,18 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         vm.expectRevert(abi.encodeWithSelector(ITWAMM.ExpirationNotOnInterval.selector, invalidTimestamp));
         twamm.submitOrder(poolKey, invalidKey, 1e18);
+    }
+
+    function testTWAMM_submitOrder_revertsIfPoolNotInitialized() public {
+        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
+        IPoolManager.PoolKey memory invalidPoolKey = poolKey;
+        invalidPoolKey.fee = 1000;
+
+        token0.approve(address(twamm), 100e18);
+        vm.warp(10000);
+
+        vm.expectRevert(ITWAMM.NotInitialized.selector);
+        twamm.submitOrder(invalidPoolKey, orderKey1, 1e18);
     }
 
     function testTWAMM_updateOrder_EmitsEvent() public {
