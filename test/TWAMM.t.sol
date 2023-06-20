@@ -202,6 +202,15 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.submitOrder(poolKey, orderKey1, 1e18);
     }
 
+    function testTWAMM_submitOrder_revertsIfExpiryNotOnInterval() public {
+        uint160 invalidTimestamp = 30001;
+        ITWAMM.OrderKey memory invalidKey = ITWAMM.OrderKey(address(this), invalidTimestamp, true);
+        token0.approve(address(twamm), 100e18);
+
+        vm.expectRevert(abi.encodeWithSelector(ITWAMM.ExpirationNotOnInterval.selector, invalidTimestamp));
+        twamm.submitOrder(poolKey, invalidKey, 1e18);
+    }
+
     function testTWAMM_updateOrder_EmitsEvent() public {
         ITWAMM.OrderKey memory orderKey1;
         ITWAMM.OrderKey memory orderKey2;
