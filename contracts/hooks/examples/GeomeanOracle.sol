@@ -2,7 +2,7 @@
 pragma solidity =0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {Oracle} from "../../libraries/Oracle.sol";
@@ -13,7 +13,7 @@ import {BaseHook} from "../../BaseHook.sol";
 ///     for protocols that wish to use a V3 style geomean oracle.
 contract GeomeanOracle is BaseHook {
     using Oracle for Oracle.Observation[65535];
-    using PoolId for IPoolManager.PoolKey;
+    using PoolIdLibrary for IPoolManager.PoolKey;
 
     /// @notice Oracle pools do not have fees because they exist to serve as an oracle for a pair of tokens
     error OnlyOneOraclePoolAllowed();
@@ -34,9 +34,9 @@ contract GeomeanOracle is BaseHook {
     }
 
     /// @notice The list of observations for a given pool ID
-    mapping(bytes32 => Oracle.Observation[65535]) public observations;
+    mapping(PoolId => Oracle.Observation[65535]) public observations;
     /// @notice The current observation array state for the given pool ID
-    mapping(bytes32 => ObservationState) public states;
+    mapping(PoolId => ObservationState) public states;
 
     /// @notice Returns the observation for the given pool key and observation index
     function getObservation(IPoolManager.PoolKey calldata key, uint256 index)
@@ -44,12 +44,12 @@ contract GeomeanOracle is BaseHook {
         view
         returns (Oracle.Observation memory observation)
     {
-        observation = observations[keccak256(abi.encode(key))][index];
+        observation = observations[PoolId.wrap(keccak256(abi.encode(key)))][index];
     }
 
     /// @notice Returns the state for the given pool key
     function getState(IPoolManager.PoolKey calldata key) external view returns (ObservationState memory state) {
-        state = states[keccak256(abi.encode(key))];
+        state = states[PoolId.wrap(keccak256(abi.encode(key)))];
     }
 
     /// @dev For mocking
@@ -92,15 +92,15 @@ contract GeomeanOracle is BaseHook {
         poolManagerOnly
         returns (bytes4)
     {
-        bytes32 id = key.toId();
+        PoolId id = key.toId();
         (states[id].cardinality, states[id].cardinalityNext) = observations[id].initialize(_blockTimestamp());
         return GeomeanOracle.afterInitialize.selector;
     }
 
     /// @dev Called before any action that potentially modifies pool price or liquidity, such as swap or modify position
     function _updatePool(IPoolManager.PoolKey calldata key) private {
-        bytes32 id = key.toId();
-        (, int24 tick,) = poolManager.getSlot0(id);
+        PoolId id = key.toId();
+        (, int24 tick,,,,) = poolManager.getSlot0(id);
 
         uint128 liquidity = poolManager.getLiquidity(id);
 
@@ -140,11 +140,11 @@ contract GeomeanOracle is BaseHook {
         view
         returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s)
     {
-        bytes32 id = key.toId();
+        PoolId id = key.toId();
 
         ObservationState memory state = states[id];
 
-        (, int24 tick,) = poolManager.getSlot0(id);
+        (, int24 tick,,,,) = poolManager.getSlot0(id);
 
         uint128 liquidity = poolManager.getLiquidity(id);
 
@@ -156,7 +156,7 @@ contract GeomeanOracle is BaseHook {
         external
         returns (uint16 cardinalityNextOld, uint16 cardinalityNextNew)
     {
-        bytes32 id = keccak256(abi.encode(key));
+        PoolId id = PoolId.wrap(keccak256(abi.encode(key)));
 
         ObservationState storage state = states[id];
 

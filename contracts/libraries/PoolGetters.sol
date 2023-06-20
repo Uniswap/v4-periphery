@@ -3,15 +3,16 @@ pragma solidity ^0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 import {BitMath} from "@uniswap/v4-core/contracts/libraries/BitMath.sol";
 
 /// @title Helper functions to access pool information
 library PoolGetters {
-    uint256 constant POOL_SLOT = 4;
+    uint256 constant POOL_SLOT = 8;
     uint256 constant TICKS_OFFSET = 4;
     uint256 constant TICK_BITMAP_OFFSET = 5;
 
-    function getNetLiquidityAtTick(IPoolManager poolManager, bytes32 poolId, int24 tick)
+    function getNetLiquidityAtTick(IPoolManager poolManager, PoolId poolId, int24 tick)
         internal
         view
         returns (int128 l)
@@ -25,7 +26,7 @@ library PoolGetters {
         }
     }
 
-    function getTickBitmapAtWord(IPoolManager poolManager, bytes32 poolId, int16 word)
+    function getTickBitmapAtWord(IPoolManager poolManager, PoolId poolId, int16 word)
         internal
         view
         returns (uint256 bm)
@@ -47,7 +48,7 @@ library PoolGetters {
     /// @return initialized Whether the next tick is initialized, as the function only searches within up to 256 ticks
     function getNextInitializedTickWithinOneWord(
         IPoolManager poolManager,
-        bytes32 poolId,
+        PoolId poolId,
         int24 tick,
         int24 tickSpacing,
         bool lte

@@ -11,7 +11,7 @@ import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
 import {PoolDonateTest} from "@uniswap/v4-core/contracts/test/PoolDonateTest.sol";
@@ -21,11 +21,11 @@ import {TWAMM} from "../contracts/hooks/examples/TWAMM.sol";
 import {ITWAMM} from "../contracts/interfaces/ITWAMM.sol";
 
 contract TWAMMTest is Test, Deployers, GasSnapshot {
-    using PoolId for IPoolManager.PoolKey;
+    using PoolIdLibrary for IPoolManager.PoolKey;
     using CurrencyLibrary for Currency;
 
     event SubmitOrder(
-        bytes32 indexed poolId,
+        PoolId indexed poolId,
         address indexed owner,
         uint160 expiration,
         bool zeroForOne,
@@ -34,7 +34,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     );
 
     event UpdateOrder(
-        bytes32 indexed poolId,
+        PoolId indexed poolId,
         address indexed owner,
         uint160 expiration,
         bool zeroForOne,
@@ -55,7 +55,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     TestERC20 token0;
     TestERC20 token1;
     IPoolManager.PoolKey poolKey;
-    bytes32 poolId;
+    PoolId poolId;
 
     function setUp() public {
         token0 = new TestERC20(2**128);
@@ -77,7 +77,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         swapRouter = new PoolSwapTest(IPoolManager(address(manager)));
 
         poolKey = IPoolManager.PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, twamm);
-        poolId = PoolId.toId(poolKey);
+        poolId = poolKey.toId();
         manager.initialize(poolKey, SQRT_RATIO_1_1);
 
         token0.approve(address(modifyPositionRouter), 100 ether);
@@ -92,7 +92,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     }
 
     function testTWAMM_beforeInitialize_SetsLastVirtualOrderTimestamp() public {
-        (IPoolManager.PoolKey memory initKey, bytes32 initId) = newPoolKeyWithTWAMM(twamm);
+        (IPoolManager.PoolKey memory initKey, PoolId initId) = newPoolKeyWithTWAMM(twamm);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
         manager.initialize(initKey, SQRT_RATIO_1_1);
@@ -408,7 +408,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(balance1AfterThis - balance1BeforeThis, orderAmount);
     }
 
-    function newPoolKeyWithTWAMM(IHooks hooks) public returns (IPoolManager.PoolKey memory, bytes32) {
+    function newPoolKeyWithTWAMM(IHooks hooks) public returns (IPoolManager.PoolKey memory, PoolId) {
         TestERC20[] memory tokens = deployTokens(2, 2 ** 255);
         IPoolManager.PoolKey memory key =
             IPoolManager.PoolKey(Currency.wrap(address(tokens[0])), Currency.wrap(address(tokens[1])), 0, 60, hooks);
