@@ -100,7 +100,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 10000);
     }
 
-    function testTWAMM_submitOrder_StoresOrderWithCorrectPoolAndOrderPoolInfo() public {
+    function testTWAMM_submitOrder_storesOrderWithCorrectPoolAndOrderPoolInfo() public {
         uint160 expiration = 30000;
         uint160 submitTimestamp = 10000;
         uint160 duration = expiration - submitTimestamp;
@@ -149,7 +149,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(submittedOrder.earningsFactorLast, earningsFactorCurrent);
     }
 
-    function testTWAMM_submitOrder_StoresSellRatesEarningsFactorsProperly() public {
+    function testTWAMM_submitOrder_storesSellRatesEarningsFactorsProperly() public {
         uint160 expiration1 = 30000;
         uint160 expiration2 = 40000;
         uint256 submitTimestamp1 = 10000;
@@ -192,7 +192,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(earningsFactor1For0, 1470157410324350030712806974476955);
     }
 
-    function testTWAMM_submitOrder_EmitsEvent() public {
+    function testTWAMM_submitOrder_emitsEvent() public {
         ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
 
         token0.approve(address(twamm), 100e18);
@@ -222,6 +222,16 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         vm.expectRevert(ITWAMM.NotInitialized.selector);
         twamm.submitOrder(invalidPoolKey, orderKey1, 1e18);
+    }
+
+    function testTWAMM_submitOrder_revertsIfExpiryInThePast() public {
+        uint160 prevTimestamp = 10000;
+        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), prevTimestamp, true);
+        token0.approve(address(twamm), 100e18);
+        vm.warp(20000);
+
+        vm.expectRevert(abi.encodeWithSelector(ITWAMM.ExpirationLessThanBlocktime.selector, prevTimestamp));
+        twamm.submitOrder(poolKey, orderKey1, 1e18);
     }
 
     function testTWAMM_updateOrder_EmitsEvent() public {
