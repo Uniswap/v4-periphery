@@ -392,6 +392,9 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.claimTokens(poolKey.currency0, address(this), 0);
         twamm.claimTokens(poolKey.currency1, address(this), 0);
 
+        assertEq(twamm.tokensOwed(poolKey.currency0, address(this)), 0);
+        assertEq(twamm.tokensOwed(poolKey.currency1, address(this)), 0);
+
         uint256 balance0AfterTWAMM = TestERC20(Currency.unwrap(poolKey.currency0)).balanceOf(address(twamm));
         uint256 balance1AfterTWAMM = TestERC20(Currency.unwrap(poolKey.currency1)).balanceOf(address(twamm));
         uint256 balance0AfterThis = poolKey.currency0.balanceOfSelf();
