@@ -1,24 +1,24 @@
 pragma solidity =0.8.19;
 
-import './IUniswapV4ERC20.sol';
-import './SafeMath.sol';
+import "./IUniswapV4ERC20.sol";
+import "./SafeMath.sol";
 import "forge-std/console.sol";
 
 contract UniswapV4ERC20 is IUniswapV4ERC20 {
-    using SafeMath for uint;
+    using SafeMath for uint256;
 
-    string public constant name = 'Uniswap V4';
-    string public constant symbol = 'UNI-V4';
+    string public constant name = "Uniswap V4";
+    string public constant symbol = "UNI-V4";
     uint8 public constant decimals = 18;
-    uint  public totalSupply;
-    mapping(address => uint) public balanceOf;
-    mapping(address => mapping(address => uint)) public allowance;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
 
     bytes32 public DOMAIN_SEPARATOR;
     // keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
     // TODO: permit stuff
     bytes32 public constant PERMIT_TYPEHASH = 0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
-    mapping(address => uint) public nonces;
+    mapping(address => uint256) public nonces;
 
     constructor() public {
         // uint chainId;
@@ -36,41 +36,41 @@ contract UniswapV4ERC20 is IUniswapV4ERC20 {
         // );
     }
 
-    function _mint(address to, uint value) external {
+    function _mint(address to, uint256 value) external {
         totalSupply = totalSupply.add(value);
         balanceOf[to] = balanceOf[to].add(value);
         emit Transfer(address(0), to, value);
     }
 
-    function _burn(address from, uint value) internal {
+    function _burn(address from, uint256 value) internal {
         balanceOf[from] = balanceOf[from].sub(value);
         totalSupply = totalSupply.sub(value);
         emit Transfer(from, address(0), value);
     }
 
-    function _approve(address owner, address spender, uint value) private {
+    function _approve(address owner, address spender, uint256 value) private {
         allowance[owner][spender] = value;
         emit Approval(owner, spender, value);
     }
 
-    function _transfer(address from, address to, uint value) private {
+    function _transfer(address from, address to, uint256 value) private {
         balanceOf[from] = balanceOf[from].sub(value);
         balanceOf[to] = balanceOf[to].add(value);
         emit Transfer(from, to, value);
     }
 
-    function approve(address spender, uint value) external returns (bool) {
+    function approve(address spender, uint256 value) external returns (bool) {
         _approve(msg.sender, spender, value);
         return true;
     }
 
-    function transfer(address to, uint value) external returns (bool) {
+    function transfer(address to, uint256 value) external returns (bool) {
         _transfer(msg.sender, to, value);
         return true;
     }
 
-    function transferFrom(address from, address to, uint value) external returns (bool) {
-        if (allowance[from][msg.sender] != uint(int256(-1))) {
+    function transferFrom(address from, address to, uint256 value) external returns (bool) {
+        if (allowance[from][msg.sender] != uint256(int256(-1))) {
             console.log("hi");
             console.log(allowance[from][msg.sender]);
             console.log(msg.sender);

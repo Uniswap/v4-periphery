@@ -2,6 +2,7 @@
 pragma solidity =0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {BaseHook} from "../BaseHook.sol";
@@ -18,6 +19,7 @@ import {UniswapV4ERC20} from "./UniswapV4ERC20.sol";
 import {IUniswapV4ERC20} from "./IUniswapV4ERC20.sol";
 import {SafeMath} from "./SafeMath.sol";
 import {Math} from "./Math.sol";
+import '@uniswap/v4-core/contracts/libraries/FixedPoint128.sol';
 
 import "forge-std/console.sol";
 
@@ -35,7 +37,9 @@ contract FullRange is BaseHook {
     /// @dev Max tick for full range with tick spacing of 60
     int24 internal constant MAX_TICK = -MIN_TICK;
 
-    uint public constant MINIMUM_LIQUIDITY = 10**3;
+    uint256 public constant MINIMUM_LIQUIDITY = 10 ** 3;
+
+    uint256 internal blockNumber;
 
     mapping(bytes32 => address) public poolToERC20;
 
@@ -45,7 +49,32 @@ contract FullRange is BaseHook {
         IPoolManager.ModifyPositionParams params;
     }
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+    struct Position {
+        // the nonce for permits
+        uint96 nonce;
+        // the address that is approved for spending this token
+        address operator;
+        // the ID of the pool with which this token is connected
+        uint80 poolId;
+        // the tick range of the position
+        int24 tickLower;
+        int24 tickUpper;
+        // the liquidity of the position
+        uint128 liquidity;
+        // the fee growth of the aggregate position as of the last action on the individual position
+        uint256 feeGrowthInside0LastX128;
+        uint256 feeGrowthInside1LastX128;
+        // how many uncollected tokens are owed to the position, as of the last computation
+        uint128 tokensOwed0;
+        uint128 tokensOwed1;
+    }
+
+    // TODO: init position
+    Position hookPosition;
+
+    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
+        blockNumber = block.number;
+    }
 
     modifier ensure(uint256 deadline) {
         require(deadline >= block.timestamp, "Expired");
@@ -60,7 +89,6 @@ contract FullRange is BaseHook {
         }
     }
 
-    // maybe don't make this function public ?
     function modifyPosition(IPoolManager.PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
         internal
         returns (BalanceDelta delta)
@@ -68,6 +96,21 @@ contract FullRange is BaseHook {
         // msg.sender is the test contract (aka whoever called addLiquidity/removeLiquidity)
 
         delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
+
+        uint256 ethBalance = address(this).balance;
+        if (ethBalance > 0) {
+            CurrencyLibrary.NATIVE.transfer(msg.sender, ethBalance);
+        }
+    }
+
+    // TODO: potentially delete this 
+    function hookModifyPosition(IPoolManager.PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
+        internal
+        returns (BalanceDelta delta)
+    {
+        // msg.sender is the test contract (aka whoever called addLiquidity/removeLiquidity)
+
+        delta = abi.decode(poolManager.lock(abi.encode(CallbackData(address(this), key, params))), (BalanceDelta));
 
         uint256 ethBalance = address(this).balance;
         if (ethBalance > 0) {
@@ -98,7 +141,6 @@ contract FullRange is BaseHook {
                 poolManager.settle(data.key.currency0);
             }
         } else {
-            console.log("delta is negative (as it should be for removing liquidity)");
 
             uint256 balBefore = balanceOf(data.key.currency0, data.sender);
             poolManager.take(data.key.currency0, data.sender, uint256(uint128(-delta.amount0())));
@@ -108,13 +150,8 @@ contract FullRange is BaseHook {
             if (data.key.currency0.isNative()) {
                 poolManager.settle{value: uint128(-delta.amount0())}(data.key.currency0);
             } else {
-
-                // IERC20Minimal(Currency.unwrap(data.key.currency0)).transferFrom(
-                //     data.sender, address(poolManager), uint128(-delta.amount0())
-                // );
                 poolManager.settle(data.key.currency0);
             }
-
         }
         if (delta.amount1() > 0) {
             if (data.key.currency1.isNative()) {
@@ -124,11 +161,8 @@ contract FullRange is BaseHook {
                     data.sender, address(poolManager), uint128(delta.amount1())
                 );
                 poolManager.settle(data.key.currency1);
-            
             }
         } else {
-            // TODO: fix the native code here maybe 
-            // TODO: data.sender is the hook, so how are the tests passing?
             uint256 balBefore = balanceOf(data.key.currency1, data.sender);
             poolManager.take(data.key.currency1, data.sender, uint128(-delta.amount1()));
             uint256 balAfter = balanceOf(data.key.currency1, data.sender);
@@ -137,9 +171,6 @@ contract FullRange is BaseHook {
             if (data.key.currency1.isNative()) {
                 poolManager.settle{value: uint128(-delta.amount1())}(data.key.currency1);
             } else {
-                // IERC20Minimal(Currency.unwrap(data.key.currency1)).transferFrom(
-                //     data.sender, address(poolManager), uint128(-delta.amount1())
-                // );
                 poolManager.settle(data.key.currency1);
             }
         }
@@ -153,7 +184,7 @@ contract FullRange is BaseHook {
             afterInitialize: false,
             beforeModifyPosition: true,
             afterModifyPosition: false,
-            beforeSwap: false,
+            beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
             afterDonate: false
@@ -193,47 +224,7 @@ contract FullRange is BaseHook {
             sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, amountADesired, amountBDesired
         );
 
-        uint depositedLiquidity;
-        uint128 poolLiquidity = poolManager.getLiquidity(key.toId());
-
-        // console.log("poolLiquidity");
-        // console.log(poolLiquidity);
-
         UniswapV4ERC20 erc20 = UniswapV4ERC20(poolToERC20[key.toId()]);
-
-        // delta amounts 
-        uint256 amount0 = LiquidityAmounts.getAmount0ForLiquidity(sqrtPriceX96, sqrtRatioBX96, liquidity);
-        uint256 amount1 = LiquidityAmounts.getAmount1ForLiquidity(sqrtRatioAX96, sqrtPriceX96, liquidity);
-        
-        // if (poolLiquidity == 0) {
-        //     // uint256 sqrtLiquidityDelta = Math.sqrt(amount0 * amount1);
-        //     // depositedLiquidity = SafeMath.sub(liquidity, MINIMUM_LIQUIDITY);
-        //     // erc20._mint(address(0), MINIMUM_LIQUIDITY); // permanently lock the first MINIMUM_LIQUIDITY tokens
-
-        //     depositedLiquidity = liquidity;
-        // } else {
-        //     // we are not considering if sqrtRatioX96 == the min and max yet 
-            
-        //     // // delta liquidity 
-        //     // uint128 liquidity0 = LiquidityAmounts.getLiquidityForAmount0(sqrtPriceX96, sqrtRatioBX96, amount0);
-        //     // uint128 liquidity1 = LiquidityAmounts.getLiquidityForAmount1(sqrtRatioAX96, sqrtPriceX96, amount1);
-            
-        //     // total amounts
-        //     uint256 amount0Total = LiquidityAmounts.getAmount0ForLiquidity(sqrtPriceX96, sqrtRatioBX96, poolLiquidity);
-        //     uint256 amount1Total = LiquidityAmounts.getAmount1ForLiquidity(sqrtRatioAX96, sqrtPriceX96, poolLiquidity);
-
-        //     // if (liquidity0 < liquidity1) {
-        //     //     require(liquidity0 == liquidity, "liquidity must match");
-        //     //     depositedLiquidity = FullMath.mulDiv(liquidity,(sqrtRatioBX96 - sqrtRatioAX96), amount0Total); 
-        //     // } else {
-        //     //     require(liquidity1 == liquidity, "liquidity must match");
-        //     //     depositedLiquidity = FullMath.mulDiv(liquidity,(sqrtRatioBX96 - sqrtRatioAX96), amount1Total); 
-        //     // }
-
-        //     depositedLiquidity = Math.min(FullMath.mulDiv(amount0, poolLiquidity, amount0Total), FullMath.mulDiv(amount1, poolLiquidity, amount1Total));
-        // }
-
-        // require(liquidity >= 0, "Cannot add negative liquidity to a new position");
 
         IPoolManager.ModifyPositionParams memory params = IPoolManager.ModifyPositionParams({
             tickLower: MIN_TICK,
@@ -248,19 +239,18 @@ contract FullRange is BaseHook {
 
         // mint
         erc20._mint(to, liquidity);
-
     }
 
     function removeLiquidity(
         address tokenA,
         address tokenB,
         uint24 fee,
-        uint liquidity,
-        uint amountAMin,
-        uint amountBMin,
+        uint256 liquidity,
+        uint256 amountAMin,
+        uint256 amountBMin,
         address to,
-        uint deadline
-    ) public virtual ensure(deadline) returns (uint amountA, uint amountB) {
+        uint256 deadline
+    ) public virtual ensure(deadline) returns (uint256 amountA, uint256 amountB) {
         IPoolManager.PoolKey memory key = IPoolManager.PoolKey({
             currency0: Currency.wrap(tokenA),
             currency1: Currency.wrap(tokenB),
@@ -275,6 +265,8 @@ contract FullRange is BaseHook {
 
         // transfer liquidity tokens to erc20 contract
         UniswapV4ERC20 erc20 = UniswapV4ERC20(poolToERC20[key.toId()]);
+
+        // TODO: burn
         erc20.transferFrom(msg.sender, address(erc20), liquidity);
 
         console.log("liquidity in removeLiquidity");
@@ -290,31 +282,23 @@ contract FullRange is BaseHook {
 
         BalanceDelta balanceDelta = modifyPosition(key, params);
 
-        // transfers should be done in lockAcquired
-        // CurrencyLibrary.transfer(Currency.wrap(tokenA), to, uint256(uint128(BalanceDeltaLibrary.amount0(balanceDelta))));
-        // CurrencyLibrary.transfer(Currency.wrap(tokenB), to, uint256(uint128(BalanceDeltaLibrary.amount1(balanceDelta))));
-
         // collect rewards - or just have that dealt with in lock as well
     }
 
     // deploy ERC-20 contract
-    function beforeInitialize(address, IPoolManager.PoolKey calldata key, uint160)
-        external
-        override
-        returns (bytes4)
-    {
+    function beforeInitialize(address, IPoolManager.PoolKey calldata key, uint160) external override returns (bytes4) {
         require(key.tickSpacing == 60, "Tick spacing must be default");
-        
+
         // deploy erc20 contract
 
         bytes memory bytecode = type(UniswapV4ERC20).creationCode;
         bytes32 salt = keccak256(abi.encodePacked(key.toId()));
 
-        address poolToken; 
+        address poolToken;
         assembly {
             poolToken := create2(0, add(bytecode, 32), mload(bytecode), salt)
         }
-        
+
         poolToERC20[key.toId()] = poolToken;
 
         return FullRange.beforeInitialize.selector;
@@ -335,4 +319,61 @@ contract FullRange is BaseHook {
 
         return FullRange.beforeModifyPosition.selector;
     }
+
+        function beforeSwap(address, IPoolManager.PoolKey calldata key, IPoolManager.SwapParams calldata)
+            external
+            override
+            returns (bytes4)
+        {
+            // if we're at a new block, rebalance
+            if (block.number > blockNumber) {
+                blockNumber = block.number;
+
+                // retrieve all liquidity
+                uint128 hookLiquidity = poolManager.getLiquidity(key.toId(), address(this), MIN_TICK, MAX_TICK);
+
+                IPoolManager.ModifyPositionParams memory params = IPoolManager.ModifyPositionParams({
+                    tickLower: MIN_TICK,
+                    tickUpper: MAX_TICK,
+                    liquidityDelta: -int256(int128(hookLiquidity))
+                });
+
+                BalanceDelta balanceDelta = hookModifyPosition(key, params);
+
+                // retrieve all fees
+                // TODO: figure out extsload stuff
+                bytes32 poolAccess = poolManager.extsload(key.toId());
+                console.logBytes(poolAccess);
+
+                uint256 feeGrowthInside0LastX128 = 1;
+                uint256 feeGrowthInside1LastX128 = 1;
+
+                // TODO: figure out position liquidity
+
+                hookPosition.tokensOwed0 +=
+                uint128(-balanceDelta.amount0()) +
+                uint128(
+                    FullMath.mulDiv(
+                        feeGrowthInside0LastX128 - hookPosition.feeGrowthInside0LastX128,
+                        positionLiquidity,
+                        FixedPoint128.Q128
+                    )
+                );
+
+                hookPosition.tokensOwed1 +=
+                uint128(-balanceDelta.amount1()) +
+                uint128(
+                    FullMath.mulDiv(
+                        feeGrowthInside1LastX128 - hookPosition.feeGrowthInside1LastX128,
+                        positionLiquidity,
+                        FixedPoint128.Q128
+                    )
+                );
+
+                // invest everything 
+
+
+            }
+            return IHooks.beforeSwap.selector;
+        }
 }
