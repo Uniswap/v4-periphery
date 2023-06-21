@@ -421,30 +421,30 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     }
 
     function testTWAMM_updatedOrder_doesNotRevertIfEliminatingExactAmount() public {
-      ITWAMM.OrderKey memory orderKey1;
-      ITWAMM.OrderKey memory orderKey2;
-      uint256 orderAmount;
-      (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
+        ITWAMM.OrderKey memory orderKey1;
+        ITWAMM.OrderKey memory orderKey2;
+        uint256 orderAmount;
+        (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
 
-      // decrease order amount by 10%
-      int256 restOfOrder = -int256(orderAmount) / 2;
+        // decrease order amount by 10%
+        int256 restOfOrder = -int256(orderAmount) / 2;
 
-      // set timestamp to halfway through the order
-      vm.warp(20000);
+        // set timestamp to halfway through the order
+        vm.warp(20000);
 
-      twamm.updateOrder(poolKey, orderKey2, restOfOrder);
-      (uint256 updatedSellRate,) = twamm.getOrderPool(poolKey, false);
-      ITWAMM.Order memory deletedOrder = twamm.getOrder(poolKey, orderKey2);
+        twamm.updateOrder(poolKey, orderKey2, restOfOrder);
+        (uint256 updatedSellRate,) = twamm.getOrderPool(poolKey, false);
+        ITWAMM.Order memory deletedOrder = twamm.getOrder(poolKey, orderKey2);
 
-      uint256 token0Owed = twamm.tokensOwed(poolKey.currency0, orderKey2.owner);
-      uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey2.owner);
+        uint256 token0Owed = twamm.tokensOwed(poolKey.currency0, orderKey2.owner);
+        uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey2.owner);
 
-      // sellRate is 0, tokens owed equal all of order
-      assertEq(updatedSellRate, 0);
-      assertEq(token0Owed, orderAmount / 2);
-      assertEq(token1Owed, orderAmount / 2);
-      assertEq(deletedOrder.sellRate, 0);
-      assertEq(deletedOrder.earningsFactorLast, 0);
+        // sellRate is 0, tokens owed equal all of order
+        assertEq(updatedSellRate, 0);
+        assertEq(token0Owed, orderAmount / 2);
+        assertEq(token1Owed, orderAmount / 2);
+        assertEq(deletedOrder.sellRate, 0);
+        assertEq(deletedOrder.earningsFactorLast, 0);
     }
 
     function testTWAMM_updateOrder_updatesTokensOwedIfCalledAfterExpirationWithNoDelta() public {
@@ -510,18 +510,30 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 50000), 0);
 
         vm.warp(50000); // go to exact interval to also test when block is exactly on an interval
-        snapStart('TWAMM executTWAMMOrders 3 intervals');
+        snapStart("TWAMM executTWAMMOrders 3 intervals");
         twamm.executeTWAMMOrders(poolKey);
         snapEnd();
 
         assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 20000), 0);
         assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 20000), 0);
-        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 30000), 1903834450064690094904650934081653);
-        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 30000), 1332467160273236668937468324643833);
-        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 40000), 3151779959438527761611322345863307);
-        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 40000), 1837497928424750201261148602165737);
-        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 50000), 4499127981259426598474740139623306);
-        assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 50000), 2303495623595701879842493741448458);
+        assertEq(
+            twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 30000), 1903834450064690094904650934081653
+        );
+        assertEq(
+            twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 30000), 1332467160273236668937468324643833
+        );
+        assertEq(
+            twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 40000), 3151779959438527761611322345863307
+        );
+        assertEq(
+            twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 40000), 1837497928424750201261148602165737
+        );
+        assertEq(
+            twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 50000), 4499127981259426598474740139623306
+        );
+        assertEq(
+            twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 50000), 2303495623595701879842493741448458
+        );
     }
 
     function testTWAMM_executeTWAMMOrders_OneIntervalGas() public {
@@ -537,7 +549,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.submitOrder(poolKey, orderKey2, 5 ether);
 
         vm.warp(60000);
-        snapStart('TWAMM executTWAMMOrders 1 interval');
+        snapStart("TWAMM executTWAMMOrders 1 interval");
         twamm.executeTWAMMOrders(poolKey);
         snapEnd();
     }
@@ -559,7 +571,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.submitOrder(poolKey, orderKey4, 2 ether);
 
         vm.warp(60000);
-        snapStart('TWAMM executTWAMMOrders 2 intervals');
+        snapStart("TWAMM executTWAMMOrders 2 intervals");
         twamm.executeTWAMMOrders(poolKey);
         snapEnd();
     }
@@ -574,7 +586,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.submitOrder(poolKey, orderKey1, 1 ether);
 
         vm.warp(60000);
-        snapStart('TWAMM executTWAMMOrders singleSell 1 interval');
+        snapStart("TWAMM executTWAMMOrders singleSell 1 interval");
         twamm.executeTWAMMOrders(poolKey);
         snapEnd();
     }
@@ -591,7 +603,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.submitOrder(poolKey, orderKey2, 5 ether);
 
         vm.warp(60000);
-        snapStart('TWAMM executTWAMMOrders singleSell 2 intervals');
+        snapStart("TWAMM executTWAMMOrders singleSell 2 intervals");
         twamm.executeTWAMMOrders(poolKey);
         snapEnd();
     }
@@ -627,7 +639,6 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 balance1BeforeTWAMM = TestERC20(Currency.unwrap(poolKey.currency1)).balanceOf(address(twamm));
         uint256 balance0BeforeThis = poolKey.currency0.balanceOfSelf();
         uint256 balance1BeforeThis = poolKey.currency1.balanceOfSelf();
-
 
         // conplete order and collect tokens
         vm.warp(30000);

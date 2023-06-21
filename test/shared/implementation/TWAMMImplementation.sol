@@ -23,5 +23,4 @@ contract TWAMMImplementation is TWAMM {
         if (zeroForOne) return twammStates[id].orderPool0For1.earningsFactorAtInterval[timestamp];
         else return twammStates[id].orderPool1For0.earningsFactorAtInterval[timestamp];
     }
-
 }
