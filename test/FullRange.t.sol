@@ -45,10 +45,15 @@ contract TestFullRange is Test, Deployers {
     TestERC20 token0;
     TestERC20 token1;
     PoolManager manager;
-    FullRangeImplementation fullRange =
-        FullRangeImplementation(address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG)));
+    FullRangeImplementation fullRange = FullRangeImplementation(
+        address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG))
+    );
     IPoolManager.PoolKey key;
     PoolId id;
+
+    // the key that includes a pool fee for pool fee rebalance tests
+    IPoolManager.PoolKey feeKey;
+    PoolId feeId;
 
     PoolModifyPositionTest modifyPositionRouter;
 
@@ -73,6 +78,11 @@ contract TestFullRange is Test, Deployers {
         );
         id = key.toId();
 
+        feeKey = IPoolManager.PoolKey(
+            Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, TICK_SPACING, fullRange
+        );
+        feeId = feeKey.toId();
+
         modifyPositionRouter = new PoolModifyPositionTest(manager);
 
         token0.approve(address(fullRange), type(uint256).max);
@@ -85,11 +95,11 @@ contract TestFullRange is Test, Deployers {
 
     function testBeforeInitializeAllowsPoolCreation() public {
         vm.expectEmit(true, true, true, true);
-        emit Initialize(key.toId(), key.currency0, key.currency1, key.fee, key.tickSpacing, key.hooks);
+        emit Initialize(id, key.currency0, key.currency1, key.fee, key.tickSpacing, key.hooks);
         manager.initialize(key, SQRT_RATIO_1_1);
 
         // check that address is in mapping
-        assertFalse(fullRange.poolToERC20(key.toId()) == address(0));
+        assertFalse(fullRange.poolToERC20(id) == address(0));
     }
 
     function testBeforeInitializeRevertsIfWrongSpacing() public {
@@ -112,7 +122,45 @@ contract TestFullRange is Test, Deployers {
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 100);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 100);
+    }
+
+    function testInitialAddLiquidityWithFeeSucceeds() public {
+        manager.initialize(feeKey, SQRT_RATIO_1_1);
+
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 100, 100, address(this), 12329839823);
+
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 100);
+
+        // check pool position state
+        (
+            ,
+            ,
+            PoolId poolId,
+            int24 tickLower,
+            int24 tickUpper,
+            uint128 liquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        ) = fullRange.poolToHookPosition(feeId);
+
+        // TODO: probably do not need the poolId check, can prob remove it from the position struct
+        assertEq(tickLower, MIN_TICK);
+        assertEq(tickUpper, MAX_TICK);
+        assertEq(liquidity, 100);
+        // TODO: make sure 0 is correct
+        assertEq(feeGrowthInside0LastX128, 0);
+        assertEq(feeGrowthInside1LastX128, 0);
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
     }
 
     function testAddLiquidityFailsIfNoPool() public {
@@ -129,14 +177,56 @@ contract TestFullRange is Test, Deployers {
 
         fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 100);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 100);
 
         fullRange.addLiquidity(address(token0), address(token1), 0, 50, 50, address(this), 12329839823);
 
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 150);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 150);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 150);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 150);
+    }
+
+    function testAddLiquiditySucceedsWithFee() public {
+        manager.initialize(feeKey, SQRT_RATIO_1_1);
+
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 100, 100, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 100);
+
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 50, 50, address(this), 12329839823);
+
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 150);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 150);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 150);
+
+        // check pool position state
+        (
+            ,
+            ,
+            PoolId poolId,
+            int24 tickLower,
+            int24 tickUpper,
+            uint128 liquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        ) = fullRange.poolToHookPosition(feeId);
+
+        // TODO: probably do not need the poolId check, can prob remove it from the position struct
+        assertEq(tickLower, MIN_TICK);
+        assertEq(tickUpper, MAX_TICK);
+        assertEq(liquidity, 150);
+        // TODO: make sure 0 is correct
+        assertEq(feeGrowthInside0LastX128, 0);
+        assertEq(feeGrowthInside1LastX128, 0);
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
     }
 
     function testAddLiquidityWithDiffRatiosAndNoFee() public {
@@ -147,15 +237,58 @@ contract TestFullRange is Test, Deployers {
 
         fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 100);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 100);
 
         fullRange.addLiquidity(address(token0), address(token1), 0, 50, 25, address(this), 12329839823);
+
+        // even though we desire to deposit more token0, we cannot, since the ratio is 1:1
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 125);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 125);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 125);
+    }
+
+    function testAddLiquidityWithDiffRatiosAndFee() public {
+        manager.initialize(feeKey, SQRT_RATIO_1_1);
+
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 100, 100, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 100);
+
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 50, 25, address(this), 12329839823);
 
         // evem though we desire to deposit more token0, we cannot, since the ratio is 1:1
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 125);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 125);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 125);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 125);
+
+        // check pool position state
+        (
+            ,
+            ,
+            PoolId poolId,
+            int24 tickLower,
+            int24 tickUpper,
+            uint128 liquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        ) = fullRange.poolToHookPosition(feeId);
+
+        // TODO: probably do not need the poolId check, can prob remove it from the position struct
+        assertEq(tickLower, MIN_TICK);
+        assertEq(tickUpper, MAX_TICK);
+        assertEq(liquidity, 125);
+        // TODO: make sure 0 is correct
+        assertEq(feeGrowthInside0LastX128, 0);
+        assertEq(feeGrowthInside1LastX128, 0);
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
     }
 
     function testInitialRemoveLiquiditySucceeds() public {
@@ -166,17 +299,17 @@ contract TestFullRange is Test, Deployers {
 
         fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 100);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 100);
 
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
 
         // approve fullRange to spend our liquidity tokens
-        UniswapV4ERC20(fullRange.poolToERC20(key.toId())).approve(address(fullRange), type(uint256).max);
+        UniswapV4ERC20(fullRange.poolToERC20(id)).approve(address(fullRange), type(uint256).max);
 
         fullRange.removeLiquidity(address(token0), address(token1), 0, 100, 0, 0, address(this), 12329839823);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 0);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 0);
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 1);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 1);
     }
@@ -198,20 +331,20 @@ contract TestFullRange is Test, Deployers {
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 100);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 100);
 
         fullRange.addLiquidity(address(token0), address(token1), 0, 50, 50, address(this), 12329839823);
 
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 150);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 150);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 150);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 150);
 
-        UniswapV4ERC20(fullRange.poolToERC20(key.toId())).approve(address(fullRange), type(uint256).max);
+        UniswapV4ERC20(fullRange.poolToERC20(id)).approve(address(fullRange), type(uint256).max);
 
         fullRange.removeLiquidity(address(token0), address(token1), 0, 150, 0, 0, address(this), 12329839823);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 0);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 0);
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 1);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 1);
     }
@@ -224,16 +357,16 @@ contract TestFullRange is Test, Deployers {
 
         fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 100);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 100);
 
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
 
-        UniswapV4ERC20(fullRange.poolToERC20(key.toId())).approve(address(fullRange), type(uint256).max);
+        UniswapV4ERC20(fullRange.poolToERC20(id)).approve(address(fullRange), type(uint256).max);
 
         fullRange.removeLiquidity(address(token0), address(token1), 0, 50, 0, 0, address(this), 12329839823);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 50);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 50);
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 51);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 51);
     }
@@ -249,16 +382,16 @@ contract TestFullRange is Test, Deployers {
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 100);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 100);
 
         fullRange.addLiquidity(address(token0), address(token1), 0, 50, 25, address(this), 12329839823);
 
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 125);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 125);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 125);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 125);
 
-        UniswapV4ERC20(fullRange.poolToERC20(key.toId())).approve(address(fullRange), type(uint256).max);
+        UniswapV4ERC20(fullRange.poolToERC20(id)).approve(address(fullRange), type(uint256).max);
 
         fullRange.removeLiquidity(address(token0), address(token1), 0, 50, 0, 0, address(this), 12329839823);
 
@@ -266,7 +399,7 @@ contract TestFullRange is Test, Deployers {
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 76);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 76);
 
-        assertEq(UniswapV4ERC20(fullRange.poolToERC20(key.toId())).balanceOf(address(this)), 75);
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 75);
     }
 
     // this test is never called

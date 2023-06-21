@@ -71,7 +71,6 @@ contract FullRange is BaseHook {
     mapping(PoolId => address) public poolToERC20;
     mapping(PoolId => HookPosition) public poolToHookPosition;
 
-
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
         blockNumber = block.number;
     }
@@ -139,7 +138,8 @@ contract FullRange is BaseHook {
         } else {
             if (data.rebalance) {
                 // retrieve all fees -
-                uint256 feeGrowthInside0LastX128 = poolManager.getPosition(data.key.toId(), address(this), MIN_TICK, MAX_TICK).feeGrowthInside0LastX128;
+                uint256 feeGrowthInside0LastX128 =
+                    poolManager.getPosition(data.key.toId(), address(this), MIN_TICK, MAX_TICK).feeGrowthInside0LastX128;
 
                 position.tokensOwed0 += uint128(-delta.amount0())
                     + uint128(
@@ -185,7 +185,8 @@ contract FullRange is BaseHook {
             }
         } else {
             if (data.rebalance) {
-                uint256 feeGrowthInside1LastX128 = poolManager.getPosition(data.key.toId(), address(this), MIN_TICK, MAX_TICK).feeGrowthInside1LastX128;
+                uint256 feeGrowthInside1LastX128 =
+                    poolManager.getPosition(data.key.toId(), address(this), MIN_TICK, MAX_TICK).feeGrowthInside1LastX128;
                 position.tokensOwed1 += uint128(-delta.amount1())
                     + uint128(
                         FullMath.mulDiv(
@@ -204,7 +205,7 @@ contract FullRange is BaseHook {
                 poolManager.take(data.key.currency1, data.sender, uint128(-delta.amount1()));
                 uint256 balAfter = balanceOf(data.key.currency1, data.sender);
                 require(balAfter - balBefore == uint256(uint128(-delta.amount1())));
-                
+
                 // NOTE: commented out because we are never adding the liquidity being taken out to the tokensOwed.
                 // position.tokensOwed1 -= delta.amount1();
             }
@@ -293,12 +294,11 @@ contract FullRange is BaseHook {
             position.poolId = key.toId();
             position.tickLower = MIN_TICK;
             position.tickUpper = MAX_TICK;
-            position.liquidity = 0;
+            position.liquidity = liquidity;
             position.feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
             position.feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
             position.tokensOwed0 = 0;
             position.tokensOwed1 = 0;
-
         } else {
             position.tokensOwed0 += uint128(
                 FullMath.mulDiv(
@@ -369,17 +369,20 @@ contract FullRange is BaseHook {
         // uint256 feeGrowthInside0LastX128 = posInfo.feeGrowthInside0LastX128;
         // uint256 feeGrowthInside1LastX128 = posInfo.feeGrowthInside1LastX128;
 
-        position.tokensOwed0 +=
-            uint128(
-                FullMath.mulDiv(
-                    posInfo.feeGrowthInside0LastX128 - position.feeGrowthInside0LastX128, positionLiquidity, FixedPoint128.Q128
-                )
-            );
+        position.tokensOwed0 += uint128(
+            FullMath.mulDiv(
+                posInfo.feeGrowthInside0LastX128 - position.feeGrowthInside0LastX128,
+                positionLiquidity,
+                FixedPoint128.Q128
+            )
+        );
         position.tokensOwed1 += uint128(
-                FullMath.mulDiv(
-                    posInfo.feeGrowthInside1LastX128 - position.feeGrowthInside1LastX128, positionLiquidity, FixedPoint128.Q128
-                )
-            );
+            FullMath.mulDiv(
+                posInfo.feeGrowthInside1LastX128 - position.feeGrowthInside1LastX128,
+                positionLiquidity,
+                FixedPoint128.Q128
+            )
+        );
 
         position.feeGrowthInside0LastX128 = posInfo.feeGrowthInside0LastX128;
         position.feeGrowthInside1LastX128 = posInfo.feeGrowthInside1LastX128;
