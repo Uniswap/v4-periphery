@@ -23,4 +23,14 @@ contract TWAMMImplementation is TWAMM {
         if (zeroForOne) return twammStates[id].orderPool0For1.earningsFactorAtInterval[timestamp];
         else return twammStates[id].orderPool1For0.earningsFactorAtInterval[timestamp];
     }
+
+
+    function isCrossingInitializedTick(
+        PoolParamsOnExecute memory pool,
+        IPoolManager poolManager,
+        IPoolManager.PoolKey memory poolKey,
+        uint160 nextSqrtPriceX96
+    ) external view returns (bool crossingInitializedTick, int24 nextTickInit) {
+        return _isCrossingInitializedTick(pool, poolManager, poolKey, nextSqrtPriceX96);
+    }
 }
