@@ -183,14 +183,11 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.submitOrder(poolKey, orderKey1, 1e18);
     }
 
-    function TWAMMSingleSell0For1SellRateAndEarningsFactorGetsUpdatedProperly() public {
-        // TODO: fails with a bug for single pool sell, swap amount 3 wei above balance.
-
+    function testTWAMM_submitOrder_singleSell_zeroForOne_sellRateAndEarningsFactorGetsUpdatedProperly() public {
         ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
         ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), 40000, true);
 
         token0.approve(address(twamm), 100e18);
-        token1.approve(address(twamm), 100e18);
         vm.warp(10000);
         twamm.submitOrder(poolKey, orderKey1, 1e18);
         vm.warp(30000);
@@ -199,6 +196,23 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         ITWAMM.Order memory submittedOrder = twamm.getOrder(poolKey, orderKey2);
         (, uint256 earningsFactorCurrent) = twamm.getOrderPool(poolKey, true);
+        assertEq(submittedOrder.sellRate, 1 ether / 10000);
+        assertEq(submittedOrder.earningsFactorLast, earningsFactorCurrent);
+    }
+
+    function testTWAMM_submitOrder_singleSell_OneForZero_sellRateAndEarningsFactorGetsUpdatedProperly() public {
+        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, false);
+        ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), 40000, false);
+
+        token1.approve(address(twamm), 100e18);
+        vm.warp(10000);
+        twamm.submitOrder(poolKey, orderKey1, 1e18);
+        vm.warp(30000);
+        twamm.submitOrder(poolKey, orderKey2, 1e18);
+        vm.warp(40000);
+
+        ITWAMM.Order memory submittedOrder = twamm.getOrder(poolKey, orderKey2);
+        (, uint256 earningsFactorCurrent) = twamm.getOrderPool(poolKey, false);
         assertEq(submittedOrder.sellRate, 1 ether / 10000);
         assertEq(submittedOrder.earningsFactorLast, earningsFactorCurrent);
     }
@@ -463,7 +477,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 orderAmount;
         (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
 
-        // set timestamp to halfway through the order
+        // set timestamp to after expiration
         vm.warp(orderKey2.expiration + 10);
 
         vm.expectRevert(abi.encodeWithSelector(ITWAMM.CannotModifyCompletedOrder.selector, orderKey2));
@@ -495,7 +509,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), true, 50000), 0);
         assertEq(twamm.getOrderPoolEarningsFactorAtInterval(poolKey.toId(), false, 50000), 0);
 
-        vm.warp(60000);
+        vm.warp(50000); // go to exact interval to also test when block is exactly on an interval
         snapStart('TWAMM executTWAMMOrders 3 intervals');
         twamm.executeTWAMMOrders(poolKey);
         snapEnd();
@@ -546,6 +560,38 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         vm.warp(60000);
         snapStart('TWAMM executTWAMMOrders 2 intervals');
+        twamm.executeTWAMMOrders(poolKey);
+        snapEnd();
+    }
+
+    function testTWAMM_executeTWAMMOrders_singlePoolSell_OneIntervalGas() public {
+        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
+
+        token0.approve(address(twamm), 100 ether);
+
+        vm.warp(10000);
+
+        twamm.submitOrder(poolKey, orderKey1, 1 ether);
+
+        vm.warp(60000);
+        snapStart('TWAMM executTWAMMOrders singleSell 1 interval');
+        twamm.executeTWAMMOrders(poolKey);
+        snapEnd();
+    }
+
+    function testTWAMM_executeTWAMMOrders_SinglePoolSell_twoIntervalsGas() public {
+        ITWAMM.OrderKey memory orderKey1 = ITWAMM.OrderKey(address(this), 30000, true);
+        ITWAMM.OrderKey memory orderKey2 = ITWAMM.OrderKey(address(this), 40000, true);
+
+        token0.approve(address(twamm), 100 ether);
+
+        vm.warp(10000);
+
+        twamm.submitOrder(poolKey, orderKey1, 1 ether);
+        twamm.submitOrder(poolKey, orderKey2, 5 ether);
+
+        vm.warp(60000);
+        snapStart('TWAMM executTWAMMOrders singleSell 2 intervals');
         twamm.executeTWAMMOrders(poolKey);
         snapEnd();
     }

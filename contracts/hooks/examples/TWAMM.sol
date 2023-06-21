@@ -148,7 +148,10 @@ contract TWAMM is BaseHook, ITWAMM {
         );
 
         if (sqrtPriceLimitX96 != 0 && sqrtPriceLimitX96 != sqrtPriceX96) {
-            poolManager.lock(abi.encode(key, IPoolManager.SwapParams(zeroForOne, type(int256).max, sqrtPriceLimitX96)));
+            // v3 math inherently has small imprecision, must set swapAmountLimit to balance in case the trade needs
+            // more wei than is left in the contract
+            int256 swapAmountLimit = int256(zeroForOne ? key.currency0.balanceOfSelf() : key.currency1.balanceOfSelf());
+            poolManager.lock(abi.encode(key, IPoolManager.SwapParams(zeroForOne, swapAmountLimit, sqrtPriceLimitX96)));
         }
     }
 
@@ -311,6 +314,8 @@ contract TWAMM is BaseHook, ITWAMM {
 
         if (swapParams.zeroForOne) {
             if (delta.amount0() > 0) {
+                console.log(key.currency0.balanceOfSelf());
+                console.logInt(delta.amount0());
                 key.currency0.transfer(address(poolManager), uint256(uint128(delta.amount0())));
                 poolManager.settle(key.currency0);
             }
