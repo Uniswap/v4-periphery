@@ -314,8 +314,6 @@ contract TWAMM is BaseHook, ITWAMM {
 
         if (swapParams.zeroForOne) {
             if (delta.amount0() > 0) {
-                console.log(key.currency0.balanceOfSelf());
-                console.logInt(delta.amount0());
                 key.currency0.transfer(address(poolManager), uint256(uint128(delta.amount0())));
                 poolManager.settle(key.currency0);
             }

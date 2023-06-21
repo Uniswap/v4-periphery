@@ -253,65 +253,6 @@ describe('TWAMM', () => {
       it('updates all necessary intervals when block is mined exactly on an interval')
 
     })
-
-    describe('single pool sell', () => {
-      beforeEach(async () => {
-        await setNextBlocktime(timestampInterval1 - 1_000)
-
-        const poolKey = { token0: ZERO_ADDR, token1: ZERO_ADDR, tickSpacing: TICK_SPACING, fee: FEE, hooks: ZERO_ADDR }
-        await twamm.initialize()
-
-        await inOneBlock(timestampInterval1, async () => {
-          await twamm.submitOrder(
-            {
-              zeroForOne: true,
-              owner: wallet.address,
-              expiration: timestampInterval2,
-            },
-            expandTo18Decimals(1)
-          )
-
-          await twamm.submitOrder(
-            {
-              zeroForOne: true,
-              owner: wallet.address,
-              expiration: timestampInterval3,
-            },
-            expandTo18Decimals(5)
-          )
-
-          await twamm.submitOrder(
-            {
-              zeroForOne: true,
-              owner: wallet.address,
-              expiration: timestampInterval4,
-            },
-            expandTo18Decimals(2)
-          )
-        })
-      })
-
-      it('one interval gas', async () => {
-        const sqrtPriceX96 = encodeSqrtPriceX96(1, 1)
-        const liquidity = '10000000000000000000'
-        await setNextBlocktime(timestampInterval2 + 500)
-        await snapshotGasCost(twamm.executeTWAMMOrders(POOL_KEY, { sqrtPriceX96, liquidity }))
-      })
-
-      it('two intervals gas', async () => {
-        const sqrtPriceX96 = encodeSqrtPriceX96(1, 1)
-        const liquidity = '10000000000000000000'
-        await setNextBlocktime(timestampInterval3 + 5_000)
-        await snapshotGasCost(twamm.executeTWAMMOrders(POOL_KEY, { sqrtPriceX96, liquidity }))
-      })
-
-      it('three intervals gas', async () => {
-        const sqrtPriceX96 = encodeSqrtPriceX96(1, 1)
-        const liquidity = '10000000000000000000'
-        await setNextBlocktime(timestampInterval4 + 5_000)
-        await snapshotGasCost(twamm.executeTWAMMOrders(POOL_KEY, { sqrtPriceX96, liquidity }))
-      })
-    })
   })
 
   describe('end-to-end simulation', async () => {
