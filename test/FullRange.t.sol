@@ -464,26 +464,25 @@ contract TestFullRange is Test, Deployers {
         // rebalance should happen before this
         fullRange.addLiquidity(address(token0), address(token1), 3000, 50, 50, address(this), 12329839823);
 
-        // // check pool position state
-        // (
-        //     liquidity,
-        //     feeGrowthInside0LastX128,
-        //     feeGrowthInside1LastX128,
-        //     tokensOwed0,
-        //     tokensOwed1
-        // ) = fullRange.poolToHookPosition(feeId);
+        // check pool position state
+        (
+            liquidity,
+            feeGrowthInside0LastX128,
+            feeGrowthInside1LastX128,
+            tokensOwed0,
+            tokensOwed1
+        ) = fullRange.poolToHookPosition(feeId);
 
-        // assertEq(liquidity, 135);
+        assertEq(liquidity, 1000000000000000098); // it's actually less than the liquidity added LOL
 
-        // // TODO: calculate the feeGrowth on my own after a swap
-        // Position.Info memory posInfo = manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK);
+        // TODO: calculate the feeGrowth on my own after a swap
+        Position.Info memory posInfo = manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK);
 
-        // assertEq(feeGrowthInside0LastX128, posInfo.feeGrowthInside0LastX128);
-        // assertEq(feeGrowthInside1LastX128, posInfo.feeGrowthInside1LastX128);
+        assertEq(feeGrowthInside0LastX128, posInfo.feeGrowthInside0LastX128);
+        assertEq(feeGrowthInside1LastX128, posInfo.feeGrowthInside1LastX128);
 
-        // // TODO: calculate the tokens owed on my own after a swap
-        // assertEq(tokensOwed0, 0);
-        // assertEq(tokensOwed1, 0);
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
     }
 
     function testInitialRemoveLiquiditySucceeds() public {

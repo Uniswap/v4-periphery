@@ -103,6 +103,9 @@ contract FullRange is BaseHook {
     {
         // msg.sender is the test contract (aka whoever called addLiquidity/removeLiquidity)
 
+        IERC20Minimal(Currency.unwrap(key.currency0)).approve(address(this), type(uint256).max);
+        IERC20Minimal(Currency.unwrap(key.currency1)).approve(address(this), type(uint256).max);
+
         delta = abi.decode(poolManager.lock(abi.encode(CallbackData(address(this), key, params, true))), (BalanceDelta));
 
         uint256 ethBalance = address(this).balance;
@@ -138,7 +141,7 @@ contract FullRange is BaseHook {
 
                 console.log(position.tokensOwed0);
                 console.log(uint128(-delta.amount0()));
-                poolManager.take(data.key.currency0, data.sender, uint256(position.tokensOwed0) + uint256(uint128(-delta.amount0())));
+                poolManager.take(data.key.currency0, data.sender, uint256(uint128(-delta.amount0())));
 
                 // NOTE: even though we've taken all of the tokens we're owed, we don't set position.tokensOwed to 0
                 // since we need to reinvest into the pool
@@ -172,7 +175,7 @@ contract FullRange is BaseHook {
             // withdrawing is because of rebalance
             if (data.rebalance) {
                 console.log('rebalancing token1');
-                poolManager.take(data.key.currency1, data.sender, uint256(position.tokensOwed1) + uint256(uint128(-delta.amount1())));
+                poolManager.take(data.key.currency1, data.sender, uint256(uint128(-delta.amount1())));
             } else {
                 poolManager.take(data.key.currency1, data.sender, uint128(-delta.amount1()));
 
@@ -428,8 +431,8 @@ contract FullRange is BaseHook {
                     sqrtPriceX96,
                     TickMath.getSqrtRatioAtTick(MIN_TICK),
                     TickMath.getSqrtRatioAtTick(MAX_TICK),
-                    uint256(uint128(balanceDelta.amount0())),
-                    uint256(uint128(balanceDelta.amount1()))
+                    uint256(uint128(-balanceDelta.amount0())),
+                    uint256(uint128(-balanceDelta.amount1()))
                 );
 
                 params = IPoolManager.ModifyPositionParams({
@@ -439,7 +442,7 @@ contract FullRange is BaseHook {
                 });
 
                 // reinvest everything
-                modifyPosition(key, params);
+                hookModifyPosition(key, params);
 
                 // update position
                 Position.Info memory posInfo = poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK);
