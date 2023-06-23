@@ -133,7 +133,7 @@ contract FullRange is BaseHook {
                 );
                 poolManager.settle(data.key.currency0);
             }
-        // withdrawing liquidity for token0
+            // withdrawing liquidity for token0
         } else {
             // if withdrawing is because of rebalance
             if (data.rebalance) {
@@ -170,11 +170,11 @@ contract FullRange is BaseHook {
                 );
                 poolManager.settle(data.key.currency1);
             }
-        // withdrawing liquidity for token1
+            // withdrawing liquidity for token1
         } else {
             // withdrawing is because of rebalance
             if (data.rebalance) {
-                console.log('rebalancing token1');
+                console.log("rebalancing token1");
                 poolManager.take(data.key.currency1, data.sender, uint256(uint128(-delta.amount1())));
             } else {
                 poolManager.take(data.key.currency1, data.sender, uint128(-delta.amount1()));
@@ -377,88 +377,57 @@ contract FullRange is BaseHook {
     }
 
     function _rebalance(IPoolManager.PoolKey calldata key) internal {
-        // if we're at a new block, rebalance
-        if (block.number > blockNumber) {
-            console.log("block number increased");
-            blockNumber = block.number;
-            HookPosition storage position = poolToHookPosition[key.toId()];
-            // uint256 feeGrowthInside0LastX128 =
-            //     poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK).feeGrowthInside0LastX128;
+        console.log("we're rebalancing");
+        // retrieve all liquidity -- i think i should already have the liquidity kept track of
+        // uint128 hookLiquidity = poolManager.getLiquidity(key.toId(), address(this), MIN_TICK, MAX_TICK);
 
-            // position.tokensOwed0 += uint128(
-            //     FullMath.mulDiv(
-            //         feeGrowthInside0LastX128 - position.feeGrowthInside0LastX128, position.liquidity, FixedPoint128.Q128
-            //     )
-            // );
+        // position.liquidity = hookLiquidity;
 
-            console.log("checking tokensOwed math :/");
-            console.log(position.tokensOwed0);
-            console.log(position.feeGrowthInside0LastX128);
+        HookPosition storage position = poolToHookPosition[key.toId()];
 
-            // uint256 feeGrowthInside1LastX128 =
-            //     poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK).feeGrowthInside1LastX128;
+        IPoolManager.ModifyPositionParams memory params = IPoolManager.ModifyPositionParams({
+            tickLower: MIN_TICK,
+            tickUpper: MAX_TICK,
+            liquidityDelta: -int256(int128(position.liquidity))
+        });
 
-            // position.tokensOwed1 += uint128(
-            //     FullMath.mulDiv(
-            //         feeGrowthInside1LastX128 - position.feeGrowthInside1LastX128, position.liquidity, FixedPoint128.Q128
-            //     )
-            // );
+        console.log("the entire hook liquidity");
+        console.log(position.liquidity);
 
-            console.log(position.tokensOwed1);
-            console.log(position.feeGrowthInside1LastX128);
+        BalanceDelta balanceDelta = hookModifyPosition(key, params);
 
-            if (position.tokensOwed1 > 0 || position.tokensOwed0 > 0) {
-                console.log("we're rebalancing");
-                // retrieve all liquidity -- i think i should already have the liquidity kept track of
-                // uint128 hookLiquidity = poolManager.getLiquidity(key.toId(), address(this), MIN_TICK, MAX_TICK);
+        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(key.toId());
 
-                // position.liquidity = hookLiquidity;
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtRatioAtTick(MIN_TICK),
+            TickMath.getSqrtRatioAtTick(MAX_TICK),
+            uint256(uint128(-balanceDelta.amount0())),
+            uint256(uint128(-balanceDelta.amount1()))
+        );
 
-                IPoolManager.ModifyPositionParams memory params = IPoolManager.ModifyPositionParams({
-                    tickLower: MIN_TICK,
-                    tickUpper: MAX_TICK,
-                    liquidityDelta: -int256(int128(position.liquidity))
-                });
+        params = IPoolManager.ModifyPositionParams({
+            tickLower: MIN_TICK,
+            tickUpper: MAX_TICK,
+            liquidityDelta: int256(int128(liquidity))
+        });
 
-                console.log("the entire hook liquidity");
-                console.log(position.liquidity);
+        // reinvest everything
+        hookModifyPosition(key, params);
 
-                BalanceDelta balanceDelta = hookModifyPosition(key, params);
+        // update position
+        Position.Info memory posInfo = poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK);
 
-                (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(key.toId());
-
-                uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-                    sqrtPriceX96,
-                    TickMath.getSqrtRatioAtTick(MIN_TICK),
-                    TickMath.getSqrtRatioAtTick(MAX_TICK),
-                    uint256(uint128(-balanceDelta.amount0())),
-                    uint256(uint128(-balanceDelta.amount1()))
-                );
-
-                params = IPoolManager.ModifyPositionParams({
-                    tickLower: MIN_TICK,
-                    tickUpper: MAX_TICK,
-                    liquidityDelta: int256(int128(liquidity))
-                });
-
-                // reinvest everything
-                hookModifyPosition(key, params);
-
-                // update position
-                Position.Info memory posInfo = poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK);
-
-                position.feeGrowthInside0LastX128 = posInfo.feeGrowthInside0LastX128;
-                position.feeGrowthInside1LastX128 = posInfo.feeGrowthInside1LastX128;
-                position.tokensOwed0 = 0;
-                position.tokensOwed1 = 0;
-            }
-        }
+        position.feeGrowthInside0LastX128 = posInfo.feeGrowthInside0LastX128;
+        position.feeGrowthInside1LastX128 = posInfo.feeGrowthInside1LastX128;
+        position.tokensOwed0 = 0;
+        position.tokensOwed1 = 0;
     }
 
     function beforeModifyPosition(
         address sender,
         IPoolManager.PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata
+        IPoolManager.ModifyPositionParams calldata params
     ) external override returns (bytes4) {
         // check msg.sender
         require(sender == address(this), "sender must be hook");
@@ -468,7 +437,15 @@ contract FullRange is BaseHook {
         //     params.tickLower == MIN_TICK && params.tickUpper == MAX_TICK, "Tick range out of range or not full range"
         // );
 
-        _rebalance(key);
+        if (block.number > blockNumber) {
+            console.log("block number increased");
+            blockNumber = block.number;
+            HookPosition storage position = poolToHookPosition[key.toId()];
+
+            if (position.tokensOwed1 > 0 || position.tokensOwed0 > 0) {
+                _rebalance(key);
+            }
+        }
 
         return FullRange.beforeModifyPosition.selector;
     }
@@ -478,7 +455,15 @@ contract FullRange is BaseHook {
         override
         returns (bytes4)
     {
-        _rebalance(key);
+        if (block.number > blockNumber) {
+            console.log("block number increased");
+            blockNumber = block.number;
+            HookPosition storage position = poolToHookPosition[key.toId()];
+
+            if (position.tokensOwed1 > 0 || position.tokensOwed0 > 0) {
+                _rebalance(key);
+            }
+        }
         return IHooks.beforeSwap.selector;
     }
 }

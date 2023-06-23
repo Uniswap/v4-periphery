@@ -350,9 +350,9 @@ contract TestFullRange is Test, Deployers {
         swapRouter.swap(feeKey, params, testSettings);
 
         uint256 feeGrowthInside0LastX128test =
-                manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK).feeGrowthInside0LastX128;
+            manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK).feeGrowthInside0LastX128;
         uint256 feeGrowthInside1LastX128test =
-                manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK).feeGrowthInside1LastX128;
+            manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK).feeGrowthInside1LastX128;
         console.log("post swap, fee growth should increase");
         console.log(feeGrowthInside0LastX128test);
         console.log(feeGrowthInside1LastX128test);
@@ -423,9 +423,6 @@ contract TestFullRange is Test, Deployers {
         vm.roll(100);
         manager.initialize(feeKey, SQRT_RATIO_1_1);
 
-        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
-        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
-
         fullRange.addLiquidity(address(token0), address(token1), 3000, 1 ether, 1 ether, address(this), 12329839823);
 
         assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 1 ether);
@@ -454,7 +451,7 @@ contract TestFullRange is Test, Deployers {
         assertEq(tokensOwed1, 0);
 
         fullRange.addLiquidity(address(token0), address(token1), 3000, 50, 50, address(this), 12329839823);
-        
+
         // all the core fee updates should have happened by now
 
         vm.roll(101);
@@ -465,13 +462,8 @@ contract TestFullRange is Test, Deployers {
         fullRange.addLiquidity(address(token0), address(token1), 3000, 50, 50, address(this), 12329839823);
 
         // check pool position state
-        (
-            liquidity,
-            feeGrowthInside0LastX128,
-            feeGrowthInside1LastX128,
-            tokensOwed0,
-            tokensOwed1
-        ) = fullRange.poolToHookPosition(feeId);
+        (liquidity, feeGrowthInside0LastX128, feeGrowthInside1LastX128, tokensOwed0, tokensOwed1) =
+            fullRange.poolToHookPosition(feeId);
 
         assertEq(liquidity, 1000000000000000098); // it's actually less than the liquidity added LOL
 
@@ -485,7 +477,7 @@ contract TestFullRange is Test, Deployers {
         assertEq(tokensOwed1, 0);
     }
 
-    function testInitialRemoveLiquiditySucceeds() public {
+    function testInitialRemoveLiquiditySucceedsNoFee() public {
         manager.initialize(key, SQRT_RATIO_1_1);
 
         uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
@@ -506,6 +498,45 @@ contract TestFullRange is Test, Deployers {
         assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 0);
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 1);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 1);
+    }
+
+    function testInitialRemoveLiquiditySucceedsWithFee() public {
+        manager.initialize(feeKey, SQRT_RATIO_1_1);
+
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 100, 100, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 100);
+
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
+
+        // approve fullRange to spend our liquidity tokens
+        UniswapV4ERC20(fullRange.poolToERC20(feeId)).approve(address(fullRange), type(uint256).max);
+
+        fullRange.removeLiquidity(address(token0), address(token1), 3000, 100, 0, 0, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 0);
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 1);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 1);
+
+        // check pool position state
+        (
+            uint128 liquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        ) = fullRange.poolToHookPosition(feeId);
+
+        assertEq(liquidity, 0);
+        // TODO: make sure 0 is correct
+        assertEq(feeGrowthInside0LastX128, 0);
+        assertEq(feeGrowthInside1LastX128, 0);
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
     }
 
     function testRemoveLiquidityFailsIfNoPool() public {
@@ -543,6 +574,44 @@ contract TestFullRange is Test, Deployers {
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 1);
     }
 
+    function testRemoveLiquiditySucceedsWithPartialAndFee() public {
+        manager.initialize(feeKey, SQRT_RATIO_1_1);
+
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 100, 100, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 100);
+
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
+
+        UniswapV4ERC20(fullRange.poolToERC20(feeId)).approve(address(fullRange), type(uint256).max);
+
+        fullRange.removeLiquidity(address(token0), address(token1), 3000, 50, 0, 0, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 50);
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 51);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 51);
+
+        // check pool position state
+        (
+            uint128 liquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        ) = fullRange.poolToHookPosition(feeId);
+
+        assertEq(liquidity, 50);
+        // TODO: make sure 0 is correct
+        assertEq(feeGrowthInside0LastX128, 0);
+        assertEq(feeGrowthInside1LastX128, 0);
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
+    }
+
     function testRemoveLiquiditySucceedsWithPartial() public {
         manager.initialize(key, SQRT_RATIO_1_1);
 
@@ -566,6 +635,7 @@ contract TestFullRange is Test, Deployers {
     }
 
     function testRemoveLiquidityWithDiffRatiosAndNoFee() public {
+        // TODO: maybe add one for with fees?
         manager.initialize(key, SQRT_RATIO_1_1);
 
         uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
@@ -594,6 +664,114 @@ contract TestFullRange is Test, Deployers {
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 76);
 
         assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 75);
+    }
+
+    function testSwapRemoveLiquiditySucceedsWithFeeNoRebalance() public {
+        manager.initialize(feeKey, SQRT_RATIO_1_1);
+
+        uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
+        uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
+
+        fullRange.addLiquidity(
+            address(token0), address(token1), 3000, 1000000000000000000, 1000000000000000000, address(this), 12329839823
+        );
+
+        IPoolManager.SwapParams memory params =
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 100, sqrtPriceLimitX96: SQRT_RATIO_1_2});
+
+        PoolSwapTest.TestSettings memory testSettings =
+            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+
+        swapRouter.swap(feeKey, params, testSettings);
+
+        UniswapV4ERC20(fullRange.poolToERC20(feeId)).approve(address(fullRange), type(uint256).max);
+
+        // all of the fee updates should have happened here
+        fullRange.removeLiquidity(address(token0), address(token1), 3000, 5000000, 0, 0, address(this), 12329839823);
+
+        // TODO: numbers
+        assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 1000000000000000000 - 100 + 5000000);
+        assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 1000000000000000000 + 98 + 5000000 - 1);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 1000000000000000000 - 5000000);
+
+        // check pool position state
+        (
+            uint128 liquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        ) = fullRange.poolToHookPosition(feeId);
+
+        assertEq(liquidity, 1000000000000000000 - 5000000);
+
+        // // TODO: calculate the feeGrowth
+        Position.Info memory posInfo = manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK);
+
+        // NOTE: supposedly, the feeGrowthInside0Last will update after the second modifyPosition, not directly after a swap - makes sense since
+        // a swap does not update all positions
+
+        // not supposed to be 0 here
+        assertEq(feeGrowthInside0LastX128, posInfo.feeGrowthInside0LastX128);
+        assertEq(feeGrowthInside1LastX128, posInfo.feeGrowthInside1LastX128);
+
+        uint128 tokensOwed0New =
+            uint128(FullMath.mulDiv(feeGrowthInside0LastX128 - 0, 1000000000000000000, FixedPoint128.Q128));
+
+        uint128 tokensOwed1New =
+            uint128(FullMath.mulDiv(feeGrowthInside1LastX128 - 0, 1000000000000000000, FixedPoint128.Q128));
+
+        // pretty sure this rounds down the tokensOwed you get lol...
+        assertEq(tokensOwed0, tokensOwed0New);
+        assertEq(tokensOwed1, tokensOwed1New);
+    }
+
+    function testSwapRemoveLiquiditySucceedsWithFeeRebalance() public {
+        vm.roll(100);
+        manager.initialize(feeKey, SQRT_RATIO_1_1);
+
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 1 ether, 1 ether, address(this), 12329839823);
+
+        assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 1 ether);
+
+        IPoolManager.SwapParams memory params =
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 10000000, sqrtPriceLimitX96: SQRT_RATIO_1_2});
+
+        PoolSwapTest.TestSettings memory testSettings =
+            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+
+        swapRouter.swap(feeKey, params, testSettings);
+
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 50, 50, address(this), 12329839823);
+
+        // all the core fee updates should have happened by now
+
+        vm.roll(101);
+
+        UniswapV4ERC20(fullRange.poolToERC20(feeId)).approve(address(fullRange), type(uint256).max);
+
+        fullRange.removeLiquidity(address(token0), address(token1), 3000, 50, 0, 0, address(this), 12329839823);
+
+        // check pool position state
+        (
+            uint128 liquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1
+        ) = fullRange.poolToHookPosition(feeId);
+
+        assertEq(liquidity, 1 ether - 1); // it's actually less than the liquidity added LOL
+
+        // TODO: calculate the feeGrowth on my own after a swap
+        Position.Info memory posInfo = manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK);
+
+        assertEq(feeGrowthInside0LastX128, posInfo.feeGrowthInside0LastX128);
+        assertEq(feeGrowthInside1LastX128, posInfo.feeGrowthInside1LastX128);
+
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
     }
 
     // this test is never called
