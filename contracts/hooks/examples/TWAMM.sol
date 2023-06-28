@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
+import "forge-std/console.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickBitmap} from "@uniswap/v4-core/contracts/libraries/TickBitmap.sol";
 import {SqrtPriceMath} from "@uniswap/v4-core/contracts/libraries/SqrtPriceMath.sol";
@@ -140,13 +141,17 @@ contract TWAMM is BaseHook, ITWAMM {
         PoolId poolId = key.toId();
         (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
         State storage twamm = twammStates[poolId];
+        if (twamm.lastVirtualOrderTimestamp == 0) revert NotInitialized();
 
         (bool zeroForOne, uint160 sqrtPriceLimitX96) = _executeTWAMMOrders(
             twamm, poolManager, key, PoolParamsOnExecute(sqrtPriceX96, poolManager.getLiquidity(poolId))
         );
 
         if (sqrtPriceLimitX96 != 0 && sqrtPriceLimitX96 != sqrtPriceX96) {
-            poolManager.lock(abi.encode(key, IPoolManager.SwapParams(zeroForOne, type(int256).max, sqrtPriceLimitX96)));
+            // v3 math inherently has small imprecision, must set swapAmountLimit to balance in case the trade needs
+            // more wei than is left in the contract
+            int256 swapAmountLimit = int256(zeroForOne ? key.currency0.balanceOfSelf() : key.currency1.balanceOfSelf());
+            poolManager.lock(abi.encode(key, IPoolManager.SwapParams(zeroForOne, swapAmountLimit, sqrtPriceLimitX96)));
         }
     }
 
@@ -187,7 +192,6 @@ contract TWAMM is BaseHook, ITWAMM {
         returns (bytes32 orderId)
     {
         if (orderKey.owner != msg.sender) revert MustBeOwner(orderKey.owner, msg.sender);
-        if (self.lastVirtualOrderTimestamp == 0) revert NotInitialized();
         if (orderKey.expiration <= block.timestamp) revert ExpirationLessThanBlocktime(orderKey.expiration);
         if (sellRate == 0) revert SellRateCannotBeZero();
         if (orderKey.expiration % expirationInterval != 0) revert ExpirationNotOnInterval(orderKey.expiration);
