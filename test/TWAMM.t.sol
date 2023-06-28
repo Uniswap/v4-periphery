@@ -668,98 +668,70 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     }
 
     function testTWAMM_isCrossingIinitializedTick_returnsFalseWhenSwappingToSamePrice() public {
-        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(
-            SQRT_RATIO_1_1,
-            1000000 ether
-        );
+        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(SQRT_RATIO_1_1, 1000000 ether);
 
-        (bool crossingInitializedTick, int24 nextTickInit) = twamm.isCrossingInitializedTick(
-            poolParams, manager, poolKey, SQRT_RATIO_1_1
-        );
+        (bool crossingInitializedTick, int24 nextTickInit) =
+            twamm.isCrossingInitializedTick(poolParams, manager, poolKey, SQRT_RATIO_1_1);
 
         assertEq(crossingInitializedTick, false);
         assertEq(nextTickInit, 60);
     }
 
     function testTWAMM_isCrossingIinitializedTick_returnsTrueWhenCrossingToTheRight() public {
-        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(
-            SQRT_RATIO_1_1,
-            1000000 ether
-        );
+        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(SQRT_RATIO_1_1, 1000000 ether);
 
-        (bool crossingInitializedTick, int24 nextTickInit) = twamm.isCrossingInitializedTick(
-            poolParams, manager, poolKey, SQRT_RATIO_2_1
-        );
+        (bool crossingInitializedTick, int24 nextTickInit) =
+            twamm.isCrossingInitializedTick(poolParams, manager, poolKey, SQRT_RATIO_2_1);
 
         assertEq(crossingInitializedTick, true);
         assertEq(nextTickInit, 60);
     }
 
     function testTWAMM_isCrossingIinitializedTick_returnsTrueWhenCrossingToTheLeft() public {
-        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(
-            SQRT_RATIO_1_1,
-            1000000 ether
-        );
+        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(SQRT_RATIO_1_1, 1000000 ether);
 
-        (bool crossingInitializedTick, int24 nextTickInit) = twamm.isCrossingInitializedTick(
-            poolParams, manager, poolKey, SQRT_RATIO_1_2
-        );
+        (bool crossingInitializedTick, int24 nextTickInit) =
+            twamm.isCrossingInitializedTick(poolParams, manager, poolKey, SQRT_RATIO_1_2);
 
         assertEq(crossingInitializedTick, true);
         assertEq(nextTickInit, -60);
     }
 
     function testTWAMM_isCrossingIinitializedTick_returnsFalseWhenSwappingRightBeforeTick() public {
-        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(
-            SQRT_RATIO_1_1,
-            1000000 ether
-        );
+        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(SQRT_RATIO_1_1, 1000000 ether);
 
-        (bool crossingInitializedTick, int24 nextTickInit) = twamm.isCrossingInitializedTick(
-            poolParams, manager, poolKey, TickMath.getSqrtRatioAtTick(59)
-        );
+        (bool crossingInitializedTick, int24 nextTickInit) =
+            twamm.isCrossingInitializedTick(poolParams, manager, poolKey, TickMath.getSqrtRatioAtTick(59));
 
         assertEq(crossingInitializedTick, false);
         assertEq(nextTickInit, 60);
     }
 
     function testTWAMM_isCrossingIinitializedTick_returnsFalseWhenSwappingRightToInitializeableTick() public {
-        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(
-            SQRT_RATIO_1_1,
-            1000000 ether
-        );
+        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(SQRT_RATIO_1_1, 1000000 ether);
 
-        (bool crossingInitializedTick, int24 nextTickInit) = twamm.isCrossingInitializedTick(
-            poolParams, manager, poolKey, TickMath.getSqrtRatioAtTick(50)
-        );
+        (bool crossingInitializedTick, int24 nextTickInit) =
+            twamm.isCrossingInitializedTick(poolParams, manager, poolKey, TickMath.getSqrtRatioAtTick(50));
 
         assertEq(crossingInitializedTick, false);
         assertEq(nextTickInit, 60);
     }
 
     function testTWAMM_isCrossingIinitializedTick_returnsFalseWhenSwappingLeftBeforeTick() public {
-        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(
-            SQRT_RATIO_1_1,
-            1000000 ether
-        );
+        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(SQRT_RATIO_1_1, 1000000 ether);
 
-        (bool crossingInitializedTick, int24 nextTickInit) = twamm.isCrossingInitializedTick(
-            poolParams, manager, poolKey, TickMath.getSqrtRatioAtTick(-59)
-        );
+        (bool crossingInitializedTick, int24 nextTickInit) =
+            twamm.isCrossingInitializedTick(poolParams, manager, poolKey, TickMath.getSqrtRatioAtTick(-59));
 
         assertEq(crossingInitializedTick, false);
         assertEq(nextTickInit, -60);
     }
 
     function testTWAMM_isCrossingIinitializedTick_returnsFalseWhenSwappingLeftToInitializeableTick() public {
-        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(
-            SQRT_RATIO_1_1,
-            1000000 ether
-        );
+        TWAMM.PoolParamsOnExecute memory poolParams = TWAMM.PoolParamsOnExecute(SQRT_RATIO_1_1, 1000000 ether);
 
-        (bool crossingInitializedTick, int24 nextTickInit) = twamm.isCrossingInitializedTick(
-            poolParams, manager, poolKey, TickMath.getSqrtRatioAtTick(-50)
-        );
+        (bool crossingInitializedTick, int24 nextTickInit) =
+            twamm.isCrossingInitializedTick(poolParams, manager, poolKey, TickMath.getSqrtRatioAtTick(-50));
 
         assertEq(crossingInitializedTick, false);
         assertEq(nextTickInit, -60);
