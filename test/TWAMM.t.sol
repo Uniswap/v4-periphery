@@ -264,6 +264,40 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         twamm.updateOrder(poolKey, orderKey1, amountDelta);
     }
 
+    function testTWAMM_updatedOrder_calculateTokensOwedAfterExpiration() public {
+        ITWAMM.OrderKey memory orderKey1;
+        ITWAMM.OrderKey memory orderKey2;
+        uint256 orderAmount;
+        (orderKey1, orderKey2, orderAmount) = submitOrdersBothDirections();
+
+        // submit two more orders that will expire after order1 & order2 so the earningsFactorCurrent will continue growing after they expire
+        uint256 extraOrderAmount = 2 ether;
+        ITWAMM.OrderKey memory orderKey3 = ITWAMM.OrderKey(address(this), 60000, true);
+        ITWAMM.OrderKey memory orderKey4 = ITWAMM.OrderKey(address(this), 60000, false);
+        token0.approve(address(twamm), extraOrderAmount);
+        token1.approve(address(twamm), extraOrderAmount);
+        twamm.submitOrder(poolKey, orderKey3, extraOrderAmount);
+        twamm.submitOrder(poolKey, orderKey4, extraOrderAmount);
+
+        // set timestamp to after order1 & order2 expire
+        vm.warp(40000);
+
+        // update order1 & order2 after expiration, should use the earningsFactorAtInterval at expiration to settle
+        vm.expectEmit(true, true, true, true);
+        emit UpdateOrder(poolId, address(this), 30000, true, 0, 20000 << 96);
+        twamm.updateOrder(poolKey, orderKey1, 0);
+
+        vm.expectEmit(true, true, true, true);
+        emit UpdateOrder(poolId, address(this), 30000, false, 0, 20000 << 96);
+        twamm.updateOrder(poolKey, orderKey2, 0);
+
+        uint256 token0Owed = twamm.tokensOwed(poolKey.currency0, orderKey2.owner);
+        uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey2.owner);
+
+        assertEq(token0Owed, orderAmount);
+        assertEq(token1Owed, orderAmount);
+    }
+
     function testTWAMM_updateOrder_zeroForOne_decreasesSellrateUpdatesSellTokensOwed() public {
         ITWAMM.OrderKey memory orderKey1;
         ITWAMM.OrderKey memory orderKey2;
