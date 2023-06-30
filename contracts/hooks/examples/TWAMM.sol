@@ -252,13 +252,16 @@ contract TWAMM is BaseHook, ITWAMM {
         if (amountDelta != 0 && orderKey.expiration <= block.timestamp) revert CannotModifyCompletedOrder(orderKey);
 
         unchecked {
-            uint256 earningsFactor = orderPool.earningsFactorCurrent - order.earningsFactorLast;
-            buyTokensOwed = (earningsFactor * order.sellRate) >> FixedPoint96.RESOLUTION;
-            earningsFactorLast = orderPool.earningsFactorCurrent;
-            order.earningsFactorLast = earningsFactorLast;
+            earningsFactorLast = orderKey.expiration <= block.timestamp
+                ? orderPool.earningsFactorAtInterval[orderKey.expiration]
+                : orderPool.earningsFactorCurrent;
+            buyTokensOwed =
+                ((earningsFactorLast - order.earningsFactorLast) * order.sellRate) >> FixedPoint96.RESOLUTION;
 
             if (orderKey.expiration <= block.timestamp) {
                 delete self.orders[_orderId(orderKey)];
+            } else {
+                order.earningsFactorLast = earningsFactorLast;
             }
 
             if (amountDelta != 0) {
