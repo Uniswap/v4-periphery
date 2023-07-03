@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
+import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {Position} from "@uniswap/v4-core/contracts/libraries/Position.sol";
 import {FullRange} from "../contracts/hooks/FullRange.sol";
@@ -23,7 +24,7 @@ import "@uniswap/v4-core/contracts/libraries/FixedPoint128.sol";
 
 import "forge-std/console.sol";
 
-contract TestFullRange is Test, Deployers {
+contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for IPoolManager.PoolKey;
 
     event Initialize(
@@ -129,13 +130,27 @@ contract TestFullRange is Test, Deployers {
         manager.initialize(wrongKey, SQRT_RATIO_1_1);
     }
 
+    function gasTestInitialize() public {
+        snapStart("initialize no fee");
+        manager.initialize(key, SQRT_RATIO_1_1);
+        snapEnd();
+    }
+
+    function gasTestInitializeFee() public {
+        snapStart("initialize with fee");
+        manager.initialize(feeKey, SQRT_RATIO_1_1);
+        snapEnd();
+    }
+
     function testInitialAddLiquiditySucceeds() public {
         manager.initialize(key, SQRT_RATIO_1_1);
 
         uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
         uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
 
+        snapStart("add liquidity");
         fullRange.addLiquidity(address(token0), address(token1), 0, 100, 100, address(this), 12329839823);
+        snapEnd();
 
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
@@ -149,7 +164,9 @@ contract TestFullRange is Test, Deployers {
         uint256 currBalance0 = TestERC20(token0).balanceOf(address(this));
         uint256 currBalance1 = TestERC20(token1).balanceOf(address(this));
 
+        snapStart("add liquidity with fee");
         fullRange.addLiquidity(address(token0), address(token1), 3000, 100, 100, address(this), 12329839823);
+        snapEnd();
 
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 100);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 100);
@@ -308,8 +325,10 @@ contract TestFullRange is Test, Deployers {
 
         vm.expectEmit(true, true, true, true);
         emit Swap(id, address(swapRouter), 100, -99, 79228162514264329670727698910, 1000000000000000000, -1, 0); // TODO: modify this emit
-
+        
+        snapStart("swap with no fee");
         swapRouter.swap(key, params, testSettings);
+        snapEnd();
 
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 1000000000000000000 - 100);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 1000000000000000000 + 99);
@@ -347,15 +366,14 @@ contract TestFullRange is Test, Deployers {
         vm.expectEmit(true, true, true, true);
         emit Swap(feeId, address(swapRouter), 100, -98, 79228162514264329749955861424, 1000000000000000000, -1, 3000); // TODO: modify this emit
 
+        snapStart("swap with fee");
         swapRouter.swap(feeKey, params, testSettings);
+        snapEnd();
 
         uint256 feeGrowthInside0LastX128test =
             manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK).feeGrowthInside0LastX128;
         uint256 feeGrowthInside1LastX128test =
             manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK).feeGrowthInside1LastX128;
-        console.log("post swap, fee growth should increase");
-        console.log(feeGrowthInside0LastX128test);
-        console.log(feeGrowthInside1LastX128test);
 
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 1000000000000000000 - 100);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 1000000000000000000 + 98);
@@ -376,7 +394,9 @@ contract TestFullRange is Test, Deployers {
         assertEq(prevTokensOwed1, 0);
 
         // all of the fee updates should have happened here
+        snapStart("add liquidity with fee accumulated");
         fullRange.addLiquidity(address(token0), address(token1), 3000, 50, 50, address(this), 12329839823);
+        snapEnd();
 
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 1000000000000000000 - 100 - 50);
         assertEq(TestERC20(token1).balanceOf(address(this)), currBalance1 - 1000000000000000000 + 98 - 49);
@@ -432,8 +452,10 @@ contract TestFullRange is Test, Deployers {
 
         PoolSwapTest.TestSettings memory testSettings =
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
-
+        
+        snapStart("swap with fee and rebalance");
         swapRouter.swap(feeKey, params, testSettings);
+        snapEnd();
 
         // check pool position state
         (
@@ -442,6 +464,7 @@ contract TestFullRange is Test, Deployers {
             uint256 feeGrowthInside1LastX128,
             uint128 tokensOwed0,
             uint128 tokensOwed1
+
         ) = fullRange.poolToHookPosition(feeId);
 
         assertEq(liquidity, 1 ether);
@@ -450,7 +473,9 @@ contract TestFullRange is Test, Deployers {
         assertEq(tokensOwed0, 0);
         assertEq(tokensOwed1, 0);
 
+        snapStart("add liquidity with fee accumulated for rebalance");
         fullRange.addLiquidity(address(token0), address(token1), 3000, 50, 50, address(this), 12329839823);
+        snapEnd();
 
         // all the core fee updates should have happened by now
 
@@ -459,7 +484,9 @@ contract TestFullRange is Test, Deployers {
         vm.breakpoint("g");
 
         // rebalance should happen before this
+        snapStart("add liquidity with fee for rebalance and update state");
         fullRange.addLiquidity(address(token0), address(token1), 3000, 50, 50, address(this), 12329839823);
+        snapEnd();
 
         // check pool position state
         (liquidity, feeGrowthInside0LastX128, feeGrowthInside1LastX128, tokensOwed0, tokensOwed1) =
@@ -493,7 +520,9 @@ contract TestFullRange is Test, Deployers {
         // approve fullRange to spend our liquidity tokens
         UniswapV4ERC20(fullRange.poolToERC20(id)).approve(address(fullRange), type(uint256).max);
 
+        snapStart("remove liquidity no fee");
         fullRange.removeLiquidity(address(token0), address(token1), 0, 100, 0, 0, address(this), 12329839823);
+        snapEnd();
 
         assertEq(UniswapV4ERC20(fullRange.poolToERC20(id)).balanceOf(address(this)), 0);
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 1);
@@ -516,7 +545,9 @@ contract TestFullRange is Test, Deployers {
         // approve fullRange to spend our liquidity tokens
         UniswapV4ERC20(fullRange.poolToERC20(feeId)).approve(address(fullRange), type(uint256).max);
 
+        snapStart("remove liquidity with fee");
         fullRange.removeLiquidity(address(token0), address(token1), 3000, 100, 0, 0, address(this), 12329839823);
+        snapEnd();
 
         assertEq(UniswapV4ERC20(fullRange.poolToERC20(feeId)).balanceOf(address(this)), 0);
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 1);
@@ -687,7 +718,9 @@ contract TestFullRange is Test, Deployers {
         UniswapV4ERC20(fullRange.poolToERC20(feeId)).approve(address(fullRange), type(uint256).max);
 
         // all of the fee updates should have happened here
+        snapStart("remove liquidity with fee no rebalance");
         fullRange.removeLiquidity(address(token0), address(token1), 3000, 5000000, 0, 0, address(this), 12329839823);
+        snapEnd();
 
         // TODO: numbers
         assertEq(TestERC20(token0).balanceOf(address(this)), currBalance0 - 1000000000000000000 - 100 + 5000000);
@@ -751,7 +784,9 @@ contract TestFullRange is Test, Deployers {
 
         UniswapV4ERC20(fullRange.poolToERC20(feeId)).approve(address(fullRange), type(uint256).max);
 
+        snapStart("remove liquidity with fee and rebalance");
         fullRange.removeLiquidity(address(token0), address(token1), 3000, 50, 0, 0, address(this), 12329839823);
+        snapEnd();
 
         // check pool position state
         (
