@@ -16,9 +16,6 @@ import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILoc
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
 import {UniswapV4ERC20} from "./UniswapV4ERC20.sol";
-import {IUniswapV4ERC20} from "./IUniswapV4ERC20.sol";
-import {SafeMath} from "./SafeMath.sol";
-import {Math} from "./Math.sol";
 import {Position} from "@uniswap/v4-core/contracts/libraries/Position.sol";
 import "@uniswap/v4-core/contracts/libraries/FixedPoint128.sol";
 
@@ -256,9 +253,8 @@ contract FullRange is BaseHook {
 
         // TODO: price slippage check for v4 deposit
         // require(amountA >= amountAMin && amountB >= params.amountBMin, 'Price slippage check');
-
         // mint
-        UniswapV4ERC20(poolInfo.liquidityToken)._mint(to, liquidity);
+        UniswapV4ERC20(poolInfo.liquidityToken).mint(to, liquidity);
     }
 
     function removeLiquidity(
@@ -286,7 +282,7 @@ contract FullRange is BaseHook {
         // transfer liquidity tokens to erc20 contract
         UniswapV4ERC20 erc20 = UniswapV4ERC20(poolToInfo[key.toId()].liquidityToken);
 
-        erc20.transferFrom(msg.sender, address(0), liquidity);
+        erc20.burn(msg.sender, liquidity);
 
         modifyPosition(
             key,
@@ -332,13 +328,14 @@ contract FullRange is BaseHook {
 
         // deploy erc20 contract
 
-        bytes memory bytecode = type(UniswapV4ERC20).creationCode;
-        bytes32 salt = keccak256(abi.encodePacked(key.toId()));
+        // TODO: name, symbol for the ERC20 contract
+        // bytes memory bytecode = abi.encode(type(UniswapV4ERC20).creationCode, string(abi.encodePacked(key.toId())), string(abi.encodePacked(key.toId())));
+        // bytes32 salt = keccak256(abi.encodePacked(key.toId()));
 
-        address poolToken;
-        assembly {
-            poolToken := create2(0, add(bytecode, 32), mload(bytecode), salt)
-        }
+        UniswapV4ERC20 poolToken = new UniswapV4ERC20(string(abi.encodePacked(key.toId())), string(abi.encodePacked(key.toId())));
+        // assembly {
+        //     poolToken := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
+        // }
 
         PoolInfo memory poolInfo = PoolInfo({
             liquidity: 0,
@@ -347,7 +344,7 @@ contract FullRange is BaseHook {
             tokensOwed0: 0,
             tokensOwed1: 0,
             blockNumber: block.number,
-            liquidityToken: poolToken
+            liquidityToken: address(poolToken)
         });
 
         poolToInfo[key.toId()] = poolInfo;
