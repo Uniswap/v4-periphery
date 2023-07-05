@@ -329,13 +329,13 @@ contract FullRange is BaseHook {
         // deploy erc20 contract
 
         // TODO: name, symbol for the ERC20 contract
-        // bytes memory bytecode = abi.encode(type(UniswapV4ERC20).creationCode, string(abi.encodePacked(key.toId())), string(abi.encodePacked(key.toId())));
-        // bytes32 salt = keccak256(abi.encodePacked(key.toId()));
+        bytes memory bytecode = type(UniswapV4ERC20).creationCode;
+        bytes32 salt = keccak256(abi.encodePacked(key.toId()));
 
-        UniswapV4ERC20 poolToken = new UniswapV4ERC20(string(abi.encodePacked(key.toId())), string(abi.encodePacked(key.toId())));
-        // assembly {
-        //     poolToken := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
-        // }
+        address poolToken;
+        assembly {
+            poolToken := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
+        }
 
         PoolInfo memory poolInfo = PoolInfo({
             liquidity: 0,
@@ -344,7 +344,7 @@ contract FullRange is BaseHook {
             tokensOwed0: 0,
             tokensOwed1: 0,
             blockNumber: block.number,
-            liquidityToken: address(poolToken)
+            liquidityToken: poolToken
         });
 
         poolToInfo[key.toId()] = poolInfo;
