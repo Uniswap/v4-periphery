@@ -15,7 +15,7 @@ contract UniswapV4ERC20 is ERC20Permit, Ownable {
         _mint(account, amount);
     }
 
-    function burn(address account, uint256 amount) external {
+    function burn(address account, uint256 amount) external onlyOwner {
         _burn(account, amount);
     }
 }
