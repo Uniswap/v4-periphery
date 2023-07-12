@@ -7,6 +7,7 @@ import "./base/PeripheryValidation.sol";
 import "./interfaces/INonfungiblePositionManager.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
+import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 
 contract NonfungiblePositionManager is
@@ -30,5 +31,8 @@ contract NonfungiblePositionManager is
         (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(params.poolId);
         uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(params.tickLower);
         uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(params.tickUpper);
+        liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, params.amount0Desired, params.amount1Desired
+        );
     }
 }
