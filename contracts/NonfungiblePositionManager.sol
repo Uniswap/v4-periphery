@@ -27,6 +27,6 @@ contract NonfungiblePositionManager is
         checkDeadline(params.deadline)
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
-        Pool.State memory poolState = poolManager.pools[params.poolId];
+        (uint160 sqrtPriceX96 , , , , , ) = poolManager.getSlot0(params.poolId);
     }
 }
