@@ -3,11 +3,11 @@ pragma solidity ^0.8.0;
 
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "./IPeripheryImmutableState.sol";
-import {PoolId} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 
 interface INonfungiblePositionManager is IERC721, IPeripheryImmutableState {
     struct MintParams {
-        PoolId poolId;
+        IPoolManager.PoolKey poolKey;
         int24 tickLower;
         int24 tickUpper;
         uint256 amount0Desired;
