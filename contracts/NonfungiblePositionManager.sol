@@ -28,5 +28,7 @@ contract NonfungiblePositionManager is
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         (uint160 sqrtPriceX96 , , , , , ) = poolManager.getSlot0(params.poolId);
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(params.tickLower);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(params.tickUpper);
     }
 }
