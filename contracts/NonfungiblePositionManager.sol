@@ -6,6 +6,7 @@ import "./base/PeripheryImmutableState.sol";
 import "./base/PeripheryValidation.sol";
 import "./interfaces/INonfungiblePositionManager.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 
 contract NonfungiblePositionManager is
@@ -26,6 +27,6 @@ contract NonfungiblePositionManager is
         checkDeadline(params.deadline)
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
-//        (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
+        Pool.State memory poolState = poolManager.pools[params.poolId];
     }
 }
