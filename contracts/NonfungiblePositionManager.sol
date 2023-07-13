@@ -20,6 +20,11 @@ contract NonfungiblePositionManager is
 {
     using PoolIdLibrary for IPoolManager.PoolKey;
 
+    struct CallbackData {
+        address sender;
+        MintParams params;
+    }
+
     constructor(PoolManager _poolManager, address _WETH9)
         ERC721("Uniswap V4 Positions NFT-V1", "UNI-V4-POS")
         PeripheryImmutableState(_poolManager, _WETH9)
@@ -30,18 +35,25 @@ contract NonfungiblePositionManager is
         payable
         override
         checkDeadline(params.deadline)
-        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
+        returns (BalanceDelta delta)
     {
-        PoolId poolId = params.poolKey.toId();
+        delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, params))), (BalanceDelta));
+    }
+
+    function lockAcquired(uint256, bytes calldata rawData) external returns (bytes memory) {
+        require(msg.sender == address(poolManager));
+        CallbackData memory data = abi.decode(rawData, (CallbackData));
+        PoolId poolId = data.params.poolKey.toId();
         (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
-        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(params.tickLower);
-        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(params.tickUpper);
-        liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, params.amount0Desired, params.amount1Desired
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(data.params.tickLower);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(data.params.tickUpper);
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, data.params.amount0Desired, data.params.amount1Desired
         );
         BalanceDelta delta = poolManager.modifyPosition(
-            params.poolKey,
-            IPoolManager.ModifyPositionParams(params.tickLower, params.tickUpper, int256(int128(liquidity)))
+            data.params.poolKey,
+            IPoolManager.ModifyPositionParams(data.params.tickLower, data.params.tickUpper, int256(int128(liquidity)))
         );
+        return abi.encode(delta);
     }
 }
