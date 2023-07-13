@@ -39,7 +39,7 @@ contract NonfungiblePositionManager is
         liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, params.amount0Desired, params.amount1Desired
         );
-        poolManager.modifyPosition(
+        BalanceDelta delta = poolManager.modifyPosition(
             params.poolKey,
             IPoolManager.ModifyPositionParams(params.tickLower, params.tickUpper, int256(int128(liquidity)))
         );
