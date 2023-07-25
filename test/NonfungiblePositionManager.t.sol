@@ -9,6 +9,7 @@ import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
 import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract NonfungiblePositionManagerTest is Test, TokenFixture {
     using PoolIdLibrary for IPoolManager.PoolKey;
@@ -53,13 +54,16 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
                 poolKey: key,
                 tickLower: 0,
                 tickUpper: 60,
-                amount0Desired: 1000000000000000000,
-                amount1Desired: 1000000000000000000,
+                amount0Desired: 1 ether,
+                amount1Desired: 0,
                 amount0Min: 0,
                 amount1Min: 0,
                 recipient: address(this),
                 deadline: MAX_UINT256
             })
         );
+
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(this)), 9 ether);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 10 ether);
     }
 }
