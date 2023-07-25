@@ -35,7 +35,8 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         MockERC20(Currency.unwrap(currency1)).approve(address(nonfungiblePositionManager), 10 ether);
     }
 
-    function testMint() public {
+    // Add 1 currency0 of liquidity.
+    function testMintCurrency0() public {
         IPoolManager.PoolKey memory key = IPoolManager.PoolKey({
             currency0: currency0,
             currency1: currency1,
@@ -67,6 +68,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 10 ether);
     }
 
+    // Add 1 currency1 of liquidity.
     function testMintCurrency1() public {
         IPoolManager.PoolKey memory key = IPoolManager.PoolKey({
             currency0: currency0,
@@ -96,6 +98,39 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         );
 
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(this)), 10 ether);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 9 ether);
+    }
+
+    // Add 1 currency0 and 1 currency1 of liquidity.
+    function testMintCurrency0AndCurrency1() public {
+        IPoolManager.PoolKey memory key = IPoolManager.PoolKey({
+            currency0: currency0,
+            currency1: currency1,
+            fee: 3000,
+            hooks: IHooks(address(0)),
+            tickSpacing: 60
+        });
+
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        vm.expectEmit(true, true, true, true);
+        emit ModifyPosition(key.toId(), address(nonfungiblePositionManager), -60, 60, 333850249709699449134);
+
+        nonfungiblePositionManager.mint(
+            INonfungiblePositionManager.MintParams({
+                poolKey: key,
+                tickLower: -60,
+                tickUpper: 60,
+                amount0Desired: 1 ether,
+                amount1Desired: 1 ether,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: address(this),
+                deadline: MAX_UINT256
+            })
+        );
+
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(this)), 9 ether);
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 9 ether);
     }
 }
