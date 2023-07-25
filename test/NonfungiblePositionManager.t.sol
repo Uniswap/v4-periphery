@@ -46,7 +46,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         manager.initialize(key, SQRT_RATIO_1_1);
 
         vm.expectEmit(true, true, true, true);
-        emit ModifyPosition(key.toId(), address(nonfungiblePositionManager), 0, 60, 100);
+        emit ModifyPosition(key.toId(), address(nonfungiblePositionManager), 0, 60, 333850249709699449134);
 
         nonfungiblePositionManager.mint(
             INonfungiblePositionManager.MintParams({

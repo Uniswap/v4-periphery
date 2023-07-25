@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./base/PeripheryImmutableState.sol";
 import "./base/PeripheryValidation.sol";
 import "./interfaces/INonfungiblePositionManager.sol";
@@ -11,6 +12,8 @@ import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {IPoolManager, PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import "forge-std/console.sol";
 
 contract NonfungiblePositionManager is
     ERC721,
@@ -50,10 +53,25 @@ contract NonfungiblePositionManager is
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, data.params.amount0Desired, data.params.amount1Desired
         );
+        console.log("sqrtPriceX96", sqrtPriceX96);
+        console.log("sqrtRatioAX96", sqrtRatioAX96);
+        console.log("sqrtRatioBX96", sqrtRatioBX96);
+        console.log("liquidity", liquidity);
         BalanceDelta delta = poolManager.modifyPosition(
             data.params.poolKey,
             IPoolManager.ModifyPositionParams(data.params.tickLower, data.params.tickUpper, int256(int128(liquidity)))
         );
+        console.log("delta.amount0()");
+        console.logInt(delta.amount0());
+        console.log("delta.amount1()");
+        console.logInt(delta.amount1());
+
+        if (delta.amount0() > 0) {
+            IERC20(Currency.unwrap(data.params.poolKey.currency0)).transferFrom(
+                data.sender, address(poolManager), uint256(int256(delta.amount0()))
+            );
+            poolManager.settle(data.params.poolKey.currency0);
+        }
         return abi.encode(delta);
     }
 }
