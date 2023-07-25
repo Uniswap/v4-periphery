@@ -72,6 +72,12 @@ contract NonfungiblePositionManager is
             );
             poolManager.settle(data.params.poolKey.currency0);
         }
+        if (delta.amount1() > 0) {
+            IERC20(Currency.unwrap(data.params.poolKey.currency1)).transferFrom(
+                data.sender, address(poolManager), uint256(int256(delta.amount1()))
+            );
+            poolManager.settle(data.params.poolKey.currency1);
+        }
         return abi.encode(delta);
     }
 }
