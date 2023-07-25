@@ -7,6 +7,8 @@ import {PoolManager, IPoolManager} from "@uniswap/v4-core/contracts/PoolManager.
 import {NonfungiblePositionManager, INonfungiblePositionManager} from "../contracts/NonfungiblePositionManager.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
 
 contract NonfungiblePositionManagerTest is Test, TokenFixture {
     using PoolIdLibrary for IPoolManager.PoolKey;
@@ -25,6 +27,11 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         initializeTokens();
         manager = new PoolManager(500000);
         nonfungiblePositionManager = new NonfungiblePositionManager(manager, address(1));
+
+        MockERC20(Currency.unwrap(currency0)).mint(address(this), 10 ether);
+        MockERC20(Currency.unwrap(currency1)).mint(address(this), 10 ether);
+        MockERC20(Currency.unwrap(currency0)).approve(address(nonfungiblePositionManager), 10 ether);
+        MockERC20(Currency.unwrap(currency1)).approve(address(nonfungiblePositionManager), 10 ether);
     }
 
     function testMint() public {
@@ -46,8 +53,8 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
                 poolKey: key,
                 tickLower: 0,
                 tickUpper: 60,
-                amount0Desired: 0,
-                amount1Desired: 0,
+                amount0Desired: 1000000000000000000,
+                amount1Desired: 1000000000000000000,
                 amount0Min: 0,
                 amount1Min: 0,
                 recipient: address(this),
