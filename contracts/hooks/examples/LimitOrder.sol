@@ -11,6 +11,7 @@ import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Re
 import {BaseHook} from "../../BaseHook.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
 type Epoch is uint232;
 
@@ -28,7 +29,7 @@ library EpochLibrary {
 
 contract LimitOrder is BaseHook {
     using EpochLibrary for Epoch;
-    using PoolIdLibrary for IPoolManager.PoolKey;
+    using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
 
     error ZeroLiquidity();
@@ -41,18 +42,18 @@ contract LimitOrder is BaseHook {
     event Place(
         address indexed owner,
         Epoch indexed epoch,
-        IPoolManager.PoolKey key,
+        PoolKey key,
         int24 tickLower,
         bool zeroForOne,
         uint128 liquidity
     );
 
-    event Fill(Epoch indexed epoch, IPoolManager.PoolKey key, int24 tickLower, bool zeroForOne);
+    event Fill(Epoch indexed epoch, PoolKey key, int24 tickLower, bool zeroForOne);
 
     event Kill(
         address indexed owner,
         Epoch indexed epoch,
-        IPoolManager.PoolKey key,
+        PoolKey key,
         int24 tickLower,
         bool zeroForOne,
         uint128 liquidity
@@ -101,11 +102,11 @@ contract LimitOrder is BaseHook {
         tickLowerLasts[poolId] = tickLower;
     }
 
-    function getEpoch(IPoolManager.PoolKey memory key, int24 tickLower, bool zeroForOne) public view returns (Epoch) {
+    function getEpoch(PoolKey memory key, int24 tickLower, bool zeroForOne) public view returns (Epoch) {
         return epochs[keccak256(abi.encode(key, tickLower, zeroForOne))];
     }
 
-    function setEpoch(IPoolManager.PoolKey memory key, int24 tickLower, bool zeroForOne, Epoch epoch) private {
+    function setEpoch(PoolKey memory key, int24 tickLower, bool zeroForOne, Epoch epoch) private {
         epochs[keccak256(abi.encode(key, tickLower, zeroForOne))] = epoch;
     }
 
@@ -123,7 +124,7 @@ contract LimitOrder is BaseHook {
         return compressed * tickSpacing;
     }
 
-    function afterInitialize(address, IPoolManager.PoolKey calldata key, uint160, int24 tick)
+    function afterInitialize(address, PoolKey calldata key, uint160, int24 tick)
         external
         override
         poolManagerOnly
@@ -135,7 +136,7 @@ contract LimitOrder is BaseHook {
 
     function afterSwap(
         address,
-        IPoolManager.PoolKey calldata key,
+        PoolKey calldata key,
         IPoolManager.SwapParams calldata params,
         BalanceDelta
     ) external override poolManagerOnly returns (bytes4) {
@@ -191,7 +192,7 @@ contract LimitOrder is BaseHook {
         }
     }
 
-    function lockAcquiredFill(IPoolManager.PoolKey calldata key, int24 tickLower, int256 liquidityDelta)
+    function lockAcquiredFill(PoolKey calldata key, int24 tickLower, int256 liquidityDelta)
         external
         selfOnly
         returns (uint128 amount0, uint128 amount1)
@@ -209,7 +210,7 @@ contract LimitOrder is BaseHook {
         if (delta.amount1() < 0) poolManager.mint(key.currency1, address(this), amount1 = uint128(-delta.amount1()));
     }
 
-    function place(IPoolManager.PoolKey calldata key, int24 tickLower, bool zeroForOne, uint128 liquidity)
+    function place(PoolKey calldata key, int24 tickLower, bool zeroForOne, uint128 liquidity)
         external
         onlyValidPools(key.hooks)
     {
@@ -245,7 +246,7 @@ contract LimitOrder is BaseHook {
     }
 
     function lockAcquiredPlace(
-        IPoolManager.PoolKey calldata key,
+        PoolKey calldata key,
         int24 tickLower,
         bool zeroForOne,
         int256 liquidityDelta,
@@ -279,7 +280,7 @@ contract LimitOrder is BaseHook {
         }
     }
 
-    function kill(IPoolManager.PoolKey calldata key, int24 tickLower, bool zeroForOne, address to)
+    function kill(PoolKey calldata key, int24 tickLower, bool zeroForOne, address to)
         external
         returns (uint256 amount0, uint256 amount1)
     {
@@ -315,7 +316,7 @@ contract LimitOrder is BaseHook {
     }
 
     function lockAcquiredKill(
-        IPoolManager.PoolKey calldata key,
+        PoolKey calldata key,
         int24 tickLower,
         int256 liquidityDelta,
         address to,
