@@ -43,12 +43,7 @@ contract VolatilityOracle is BaseHook, IDynamicFeeManager {
         });
     }
 
-    function beforeInitialize(address, PoolKey calldata key, uint160)
-        external
-        pure
-        override
-        returns (bytes4)
-    {
+    function beforeInitialize(address, PoolKey calldata key, uint160) external pure override returns (bytes4) {
         if (key.fee.isDynamicFee()) revert MustUseDynamicFee();
         return VolatilityOracle.beforeInitialize.selector;
     }

@@ -411,8 +411,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
     function newPoolKeyWithTWAMM(IHooks hooks) public returns (PoolKey memory, PoolId) {
         TestERC20[] memory tokens = deployTokens(2, 2 ** 255);
-        PoolKey memory key =
-            PoolKey(Currency.wrap(address(tokens[0])), Currency.wrap(address(tokens[1])), 0, 60, hooks);
+        PoolKey memory key = PoolKey(Currency.wrap(address(tokens[0])), Currency.wrap(address(tokens[1])), 0, 60, hooks);
         return (key, key.toId());
     }
 

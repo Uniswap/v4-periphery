@@ -40,23 +40,13 @@ contract LimitOrder is BaseHook {
     error NotPoolManagerToken();
 
     event Place(
-        address indexed owner,
-        Epoch indexed epoch,
-        PoolKey key,
-        int24 tickLower,
-        bool zeroForOne,
-        uint128 liquidity
+        address indexed owner, Epoch indexed epoch, PoolKey key, int24 tickLower, bool zeroForOne, uint128 liquidity
     );
 
     event Fill(Epoch indexed epoch, PoolKey key, int24 tickLower, bool zeroForOne);
 
     event Kill(
-        address indexed owner,
-        Epoch indexed epoch,
-        PoolKey key,
-        int24 tickLower,
-        bool zeroForOne,
-        uint128 liquidity
+        address indexed owner, Epoch indexed epoch, PoolKey key, int24 tickLower, bool zeroForOne, uint128 liquidity
     );
 
     event Withdraw(address indexed owner, Epoch indexed epoch, uint128 liquidity);
@@ -134,12 +124,12 @@ contract LimitOrder is BaseHook {
         return LimitOrder.afterInitialize.selector;
     }
 
-    function afterSwap(
-        address,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata params,
-        BalanceDelta
-    ) external override poolManagerOnly returns (bytes4) {
+    function afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, BalanceDelta)
+        external
+        override
+        poolManagerOnly
+        returns (bytes4)
+    {
         (int24 tickLower, int24 lower, int24 upper) = _getCrossedTicks(key.toId(), key.tickSpacing);
         if (lower > upper) return LimitOrder.afterSwap.selector;
 

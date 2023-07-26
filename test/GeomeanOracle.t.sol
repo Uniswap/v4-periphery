@@ -56,9 +56,8 @@ contract TestGeomeanOracle is Test, Deployers {
             }
         }
         geomeanOracle.setTime(1);
-        key = PoolKey(
-            Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, MAX_TICK_SPACING, geomeanOracle
-        );
+        key =
+            PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, MAX_TICK_SPACING, geomeanOracle);
         id = key.toId();
 
         modifyPositionRouter = new PoolModifyPositionTest(manager);
@@ -76,9 +75,7 @@ contract TestGeomeanOracle is Test, Deployers {
     function testBeforeInitializeRevertsIfFee() public {
         vm.expectRevert(GeomeanOracle.OnlyOneOraclePoolAllowed.selector);
         manager.initialize(
-            PoolKey(
-                Currency.wrap(address(token0)), Currency.wrap(address(token1)), 1, MAX_TICK_SPACING, geomeanOracle
-            ),
+            PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 1, MAX_TICK_SPACING, geomeanOracle),
             SQRT_RATIO_1_1
         );
     }

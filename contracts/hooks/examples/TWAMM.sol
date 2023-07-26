@@ -83,11 +83,12 @@ contract TWAMM is BaseHook, ITWAMM {
         return BaseHook.beforeInitialize.selector;
     }
 
-    function beforeModifyPosition(
-        address,
-        PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata
-    ) external override poolManagerOnly returns (bytes4) {
+    function beforeModifyPosition(address, PoolKey calldata key, IPoolManager.ModifyPositionParams calldata)
+        external
+        override
+        poolManagerOnly
+        returns (bytes4)
+    {
         executeTWAMMOrders(key);
         return BaseHook.beforeModifyPosition.selector;
     }
@@ -106,11 +107,7 @@ contract TWAMM is BaseHook, ITWAMM {
         return twammStates[key].lastVirtualOrderTimestamp;
     }
 
-    function getOrder(PoolKey calldata poolKey, OrderKey calldata orderKey)
-        external
-        view
-        returns (Order memory)
-    {
+    function getOrder(PoolKey calldata poolKey, OrderKey calldata orderKey) external view returns (Order memory) {
         return _getOrder(twammStates[PoolId.wrap(keccak256(abi.encode(poolKey)))], orderKey);
     }
 
