@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {BitMath} from "@uniswap/v4-core/contracts/libraries/BitMath.sol";
 
 /// @title Helper functions to access pool information

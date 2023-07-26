@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.19;
+pragma solidity ^0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {IDynamicFeeManager} from "@uniswap/v4-core/contracts/interfaces/IDynamicFeeManager.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {BaseHook} from "../../BaseHook.sol";
-import {Fees} from "@uniswap/v4-core/contracts/libraries/Fees.sol";
+import {Fees} from "@uniswap/v4-core/contracts/Fees.sol";
 
 contract VolatilityOracle is BaseHook, IDynamicFeeManager {
     using Fees for uint24;
