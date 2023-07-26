@@ -21,6 +21,8 @@ interface INonfungiblePositionManager is IERC721, IPeripheryImmutableState {
 
     /// @notice Creates a new position wrapped in a NFT
     /// @param params The params necessary to mint a position, encoded as `MintParams` in calldata
-    /// @return delta The amount of token1
-    function mint(MintParams calldata params) external payable returns (BalanceDelta delta);
+    function mint(MintParams calldata params)
+        external
+        payable
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
 }

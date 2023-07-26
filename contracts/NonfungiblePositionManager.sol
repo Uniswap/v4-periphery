@@ -57,9 +57,11 @@ contract NonfungiblePositionManager is
         payable
         override
         checkDeadline(params.deadline)
-        returns (BalanceDelta delta)
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
-        delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, params))), (BalanceDelta));
+        (tokenId, liquidity, amount0, amount1) = abi.decode(
+            poolManager.lock(abi.encode(CallbackData(msg.sender, params))), (uint256, uint128, uint256, uint256)
+        );
     }
 
     function lockAcquired(uint256, bytes calldata rawData) external returns (bytes memory) {
@@ -85,6 +87,9 @@ contract NonfungiblePositionManager is
         console.log("delta.amount1()");
         console.logInt(delta.amount1());
 
+        uint256 tokenId = _nextId++;
+        _mint(data.params.recipient, tokenId);
+
         if (delta.amount0() > 0) {
             IERC20(Currency.unwrap(data.params.poolKey.currency0)).transferFrom(
                 data.sender, address(poolManager), uint256(int256(delta.amount0()))
@@ -97,6 +102,6 @@ contract NonfungiblePositionManager is
             );
             poolManager.settle(data.params.poolKey.currency1);
         }
-        return abi.encode(delta);
+        return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
     }
 }
