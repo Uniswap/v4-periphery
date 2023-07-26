@@ -13,7 +13,6 @@ import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {IPoolManager, PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
-import "forge-std/console.sol";
 
 contract NonfungiblePositionManager is
     ERC721,
@@ -74,18 +73,10 @@ contract NonfungiblePositionManager is
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, data.params.amount0Desired, data.params.amount1Desired
         );
-        console.log("sqrtPriceX96", sqrtPriceX96);
-        console.log("sqrtRatioAX96", sqrtRatioAX96);
-        console.log("sqrtRatioBX96", sqrtRatioBX96);
-        console.log("liquidity", liquidity);
         BalanceDelta delta = poolManager.modifyPosition(
             data.params.poolKey,
             IPoolManager.ModifyPositionParams(data.params.tickLower, data.params.tickUpper, int256(int128(liquidity)))
         );
-        console.log("delta.amount0()");
-        console.logInt(delta.amount0());
-        console.log("delta.amount1()");
-        console.logInt(delta.amount1());
 
         uint256 tokenId = _nextId++;
         _mint(data.params.recipient, tokenId);
