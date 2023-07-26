@@ -81,6 +81,10 @@ contract NonfungiblePositionManager is
         uint256 tokenId = _nextId++;
         _mint(data.params.recipient, tokenId);
 
+//        bytes32 positionKey = PositionKey.compute(address(this), params.tickLower, params.tickUpper);
+//        (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
+//        poolManager.getPosition(poolId, address(this), data.params.tickLower, data.params.tickUpper);
+
         if (delta.amount0() > 0) {
             IERC20(Currency.unwrap(data.params.poolKey.currency0)).transferFrom(
                 data.sender, address(poolManager), uint256(int256(delta.amount0()))
