@@ -87,7 +87,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         vm.expectEmit(true, true, true, true);
         emit ModifyPosition(key.toId(), address(nonfungiblePositionManager), -60, 0, 333850249709699449134);
 
-        nonfungiblePositionManager.mint(
+        (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1) = nonfungiblePositionManager.mint(
             INonfungiblePositionManager.MintParams({
                 poolKey: key,
                 tickLower: -60,
@@ -100,6 +100,10 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
                 deadline: MAX_UINT256
             })
         );
+        assertEq(tokenId, 1);
+        assertEq(liquidity, 333850249709699449134);
+        assertEq(amount0, 0);
+        assertEq(amount1, 1 ether);
 
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(this)), 10 ether);
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 9 ether);
@@ -120,7 +124,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         vm.expectEmit(true, true, true, true);
         emit ModifyPosition(key.toId(), address(nonfungiblePositionManager), -60, 60, 333850249709699449134);
 
-        nonfungiblePositionManager.mint(
+        (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1) = nonfungiblePositionManager.mint(
             INonfungiblePositionManager.MintParams({
                 poolKey: key,
                 tickLower: -60,
@@ -133,6 +137,10 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
                 deadline: MAX_UINT256
             })
         );
+        assertEq(tokenId, 1);
+        assertEq(liquidity, 333850249709699449134);
+        assertEq(amount0, 1 ether);
+        assertEq(amount1, 1 ether);
 
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(this)), 9 ether);
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 9 ether);
