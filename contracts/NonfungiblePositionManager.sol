@@ -23,9 +23,28 @@ contract NonfungiblePositionManager is
 {
     using PoolIdLibrary for IPoolManager.PoolKey;
 
+    /// @dev The ID of the next token that will be minted. Skips 0
+    uint256 private _nextId = 1;
+
     struct CallbackData {
         address sender;
         MintParams params;
+    }
+
+    // details about the uniswap position
+    struct Position {
+        IPoolManager.PoolKey poolKey;
+        // the tick range of the position
+        int24 tickLower;
+        int24 tickUpper;
+        // the liquidity of the position
+        uint128 liquidity;
+        // the fee growth of the aggregate position as of the last action on the individual position
+        uint256 feeGrowthInside0LastX128;
+        uint256 feeGrowthInside1LastX128;
+        // how many uncollected tokens are owed to the position, as of the last computation
+        uint128 tokensOwed0;
+        uint128 tokensOwed1;
     }
 
     constructor(PoolManager _poolManager, address _WETH9)
