@@ -66,6 +66,7 @@ contract NonfungiblePositionManager is
         (tokenId, liquidity, amount0, amount1) = abi.decode(
             poolManager.lock(abi.encode(CallbackData(msg.sender, params))), (uint256, uint128, uint256, uint256)
         );
+        emit IncreaseLiquidity(tokenId, liquidity, amount0, amount1);
     }
 
     function lockAcquired(bytes calldata rawData) external returns (bytes memory) {
@@ -112,7 +113,6 @@ contract NonfungiblePositionManager is
             );
             poolManager.settle(params.poolKey.currency1);
         }
-        emit IncreaseLiquidity(tokenId, liquidity, uint256(int256(delta.amount0())), uint256(int256(delta.amount1())));
         return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
     }
 }
