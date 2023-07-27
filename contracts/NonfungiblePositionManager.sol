@@ -49,7 +49,7 @@ contract NonfungiblePositionManager is
     }
 
     /// @dev The token ID position data
-    mapping(uint256 => TokenIdPosition) private _positions;
+    mapping(uint256 => TokenIdPosition) public positions;
 
     constructor(PoolManager _poolManager, address _WETH9)
         ERC721("Uniswap V4 Positions NFT-V1", "UNI-V4-POS")
@@ -90,7 +90,7 @@ contract NonfungiblePositionManager is
 
         Position.Info memory positionInfo =
             poolManager.getPosition(poolId, address(this), params.tickLower, params.tickUpper);
-        _positions[tokenId] = TokenIdPosition({
+        positions[tokenId] = TokenIdPosition({
             poolKey: params.poolKey,
             tickLower: params.tickLower,
             tickUpper: params.tickUpper,
