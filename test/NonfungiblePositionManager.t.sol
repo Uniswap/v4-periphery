@@ -6,13 +6,14 @@ import {TokenFixture} from "@uniswap/v4-core/test/foundry-tests/utils/TokenFixtu
 import {PoolManager, IPoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {NonfungiblePositionManager, INonfungiblePositionManager} from "../contracts/NonfungiblePositionManager.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
 contract NonfungiblePositionManagerTest is Test, TokenFixture {
-    using PoolIdLibrary for IPoolManager.PoolKey;
+    using PoolIdLibrary for PoolKey;
 
     event ModifyPosition(
         PoolId indexed poolId, address indexed sender, int24 tickLower, int24 tickUpper, int256 liquidityDelta
@@ -37,7 +38,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
     // Add 1 currency0 of liquidity.
     function testMintCurrency0() public {
-        IPoolManager.PoolKey memory key = IPoolManager.PoolKey({
+        PoolKey memory key = PoolKey({
             currency0: currency0,
             currency1: currency1,
             fee: 3000,
@@ -74,7 +75,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
     // Add 1 currency1 of liquidity.
     function testMintCurrency1() public {
-        IPoolManager.PoolKey memory key = IPoolManager.PoolKey({
+        PoolKey memory key = PoolKey({
             currency0: currency0,
             currency1: currency1,
             fee: 3000,
@@ -111,7 +112,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
     // Add 1 currency0 and 1 currency1 of liquidity.
     function testMintCurrency0AndCurrency1() public {
-        IPoolManager.PoolKey memory key = IPoolManager.PoolKey({
+        PoolKey memory key = PoolKey({
             currency0: currency0,
             currency1: currency1,
             fee: 3000,

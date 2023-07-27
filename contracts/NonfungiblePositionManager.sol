@@ -11,8 +11,9 @@ import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {IPoolManager, PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
 contract NonfungiblePositionManager is
     ERC721,
@@ -20,7 +21,7 @@ contract NonfungiblePositionManager is
     INonfungiblePositionManager,
     PeripheryValidation
 {
-    using PoolIdLibrary for IPoolManager.PoolKey;
+    using PoolIdLibrary for PoolKey;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 private _nextId = 1;
@@ -32,7 +33,7 @@ contract NonfungiblePositionManager is
 
     // details about the uniswap position
     struct Position {
-        IPoolManager.PoolKey poolKey;
+        PoolKey poolKey;
         // the tick range of the position
         int24 tickLower;
         int24 tickUpper;
