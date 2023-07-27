@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.19;
+pragma solidity ^0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {Oracle} from "../../libraries/Oracle.sol";
 import {BaseHook} from "../../BaseHook.sol";
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
 /// @notice A hook for a pool that allows a Uniswap pool to act as an oracle. Pools that use this hook must have full range
 ///     tick spacing and liquidity is always permanently locked in these pools. This is the suggested configuration
 ///     for protocols that wish to use a V3 style geomean oracle.
 contract GeomeanOracle is BaseHook {
     using Oracle for Oracle.Observation[65535];
-    using PoolIdLibrary for IPoolManager.PoolKey;
+    using PoolIdLibrary for PoolKey;
 
     /// @notice Oracle pools do not have fees because they exist to serve as an oracle for a pair of tokens
     error OnlyOneOraclePoolAllowed();
@@ -39,7 +40,7 @@ contract GeomeanOracle is BaseHook {
     mapping(PoolId => ObservationState) public states;
 
     /// @notice Returns the observation for the given pool key and observation index
-    function getObservation(IPoolManager.PoolKey calldata key, uint256 index)
+    function getObservation(PoolKey calldata key, uint256 index)
         external
         view
         returns (Oracle.Observation memory observation)
@@ -48,7 +49,7 @@ contract GeomeanOracle is BaseHook {
     }
 
     /// @notice Returns the state for the given pool key
-    function getState(IPoolManager.PoolKey calldata key) external view returns (ObservationState memory state) {
+    function getState(PoolKey calldata key) external view returns (ObservationState memory state) {
         state = states[PoolId.wrap(keccak256(abi.encode(key)))];
     }
 
@@ -72,7 +73,7 @@ contract GeomeanOracle is BaseHook {
         });
     }
 
-    function beforeInitialize(address, IPoolManager.PoolKey calldata key, uint160)
+    function beforeInitialize(address, PoolKey calldata key, uint160)
         external
         view
         override
@@ -86,7 +87,7 @@ contract GeomeanOracle is BaseHook {
         return GeomeanOracle.beforeInitialize.selector;
     }
 
-    function afterInitialize(address, IPoolManager.PoolKey calldata key, uint160, int24)
+    function afterInitialize(address, PoolKey calldata key, uint160, int24)
         external
         override
         poolManagerOnly
@@ -98,7 +99,7 @@ contract GeomeanOracle is BaseHook {
     }
 
     /// @dev Called before any action that potentially modifies pool price or liquidity, such as swap or modify position
-    function _updatePool(IPoolManager.PoolKey calldata key) private {
+    function _updatePool(PoolKey calldata key) private {
         PoolId id = key.toId();
         (, int24 tick,,,,) = poolManager.getSlot0(id);
 
@@ -109,11 +110,12 @@ contract GeomeanOracle is BaseHook {
         );
     }
 
-    function beforeModifyPosition(
-        address,
-        IPoolManager.PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata params
-    ) external override poolManagerOnly returns (bytes4) {
+    function beforeModifyPosition(address, PoolKey calldata key, IPoolManager.ModifyPositionParams calldata params)
+        external
+        override
+        poolManagerOnly
+        returns (bytes4)
+    {
         if (params.liquidityDelta < 0) revert OraclePoolMustLockLiquidity();
         int24 maxTickSpacing = poolManager.MAX_TICK_SPACING();
         if (
@@ -124,7 +126,7 @@ contract GeomeanOracle is BaseHook {
         return GeomeanOracle.beforeModifyPosition.selector;
     }
 
-    function beforeSwap(address, IPoolManager.PoolKey calldata key, IPoolManager.SwapParams calldata)
+    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata)
         external
         override
         poolManagerOnly
@@ -135,7 +137,7 @@ contract GeomeanOracle is BaseHook {
     }
 
     /// @notice Observe the given pool for the timestamps
-    function observe(IPoolManager.PoolKey calldata key, uint32[] calldata secondsAgos)
+    function observe(PoolKey calldata key, uint32[] calldata secondsAgos)
         external
         view
         returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s)
@@ -152,7 +154,7 @@ contract GeomeanOracle is BaseHook {
     }
 
     /// @notice Increase the cardinality target for the given pool
-    function increaseCardinalityNext(IPoolManager.PoolKey calldata key, uint16 cardinalityNext)
+    function increaseCardinalityNext(PoolKey calldata key, uint16 cardinalityNext)
         external
         returns (uint16 cardinalityNextOld, uint16 cardinalityNextNew)
     {
