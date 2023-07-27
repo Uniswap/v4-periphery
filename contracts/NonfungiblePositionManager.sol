@@ -64,7 +64,7 @@ contract NonfungiblePositionManager is
         );
     }
 
-    function lockAcquired(uint256, bytes calldata rawData) external returns (bytes memory) {
+    function lockAcquired(bytes calldata rawData) external returns (bytes memory) {
         require(msg.sender == address(poolManager));
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         PoolId poolId = data.params.poolKey.toId();
