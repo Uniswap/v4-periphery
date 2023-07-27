@@ -18,6 +18,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
     event ModifyPosition(
         PoolId indexed poolId, address indexed sender, int24 tickLower, int24 tickUpper, int256 liquidityDelta
     );
+    event IncreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
 
     PoolManager manager;
     NonfungiblePositionManager nonfungiblePositionManager;
@@ -45,6 +46,8 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
         vm.expectEmit(true, true, true, true);
         emit ModifyPosition(key.toId(), address(nonfungiblePositionManager), 0, 60, 333850249709699449134);
+        vm.expectEmit(true, true, true, true);
+        emit IncreaseLiquidity(1, 333850249709699449134, 1 ether, 0);
 
         (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1) = nonfungiblePositionManager.mint(
             INonfungiblePositionManager.MintParams({
