@@ -153,4 +153,48 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         assertEq(feeGrowthInside0LastX128, 0);
         assertEq(feeGrowthInside1LastX128, 0);
     }
+
+    // Mint 2 positions.
+    function test2Mints() public {
+        PoolKey memory key =
+            PoolKey({currency0: currency0, currency1: currency1, fee: 3000, hooks: IHooks(address(0)), tickSpacing: 60});
+
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1) = nonfungiblePositionManager.mint(
+            INonfungiblePositionManager.MintParams({
+                poolKey: key,
+                tickLower: 0,
+                tickUpper: 60,
+                amount0Desired: 1 ether,
+                amount1Desired: 0,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: address(this),
+                deadline: MAX_UINT256
+            })
+        );
+        assertEq(tokenId, 1);
+        assertEq(liquidity, 333850249709699449134);
+        assertEq(amount0, 1 ether);
+        assertEq(amount1, 0);
+
+        (tokenId, liquidity, amount0, amount1) = nonfungiblePositionManager.mint(
+            INonfungiblePositionManager.MintParams({
+                poolKey: key,
+                tickLower: 0,
+                tickUpper: 60,
+                amount0Desired: 1 ether,
+                amount1Desired: 0,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: address(this),
+                deadline: MAX_UINT256
+            })
+        );
+        assertEq(tokenId, 2);
+        assertEq(liquidity, 333850249709699449134);
+        assertEq(amount0, 1 ether);
+        assertEq(amount1, 0);
+    }
 }
