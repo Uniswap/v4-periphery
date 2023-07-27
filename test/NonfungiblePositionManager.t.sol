@@ -71,7 +71,11 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(this)), 9 ether);
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 10 ether);
         assertEq(IERC721(nonfungiblePositionManager).ownerOf(1), address(this));
-        NonfungiblePositionManager.TokenIdPosition memory tokenIdPosition = nonfungiblePositionManager.positions(1);
+        (PoolKey memory poolkey,,,, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128,,) =
+            nonfungiblePositionManager.positions(1);
+        assertEq(PoolId.unwrap(poolkey.toId()), PoolId.unwrap(key.toId()));
+        assertEq(feeGrowthInside0LastX128, 0);
+        assertEq(feeGrowthInside1LastX128, 0);
     }
 
     // Add 1 currency1 of liquidity.
