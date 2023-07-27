@@ -8,6 +8,7 @@ import "./base/PeripheryValidation.sol";
 import "./interfaces/INonfungiblePositionManager.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
+import {Position} from "@uniswap/v4-core/contracts/libraries/Position.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {IPoolManager, PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
@@ -32,7 +33,7 @@ contract NonfungiblePositionManager is
     }
 
     // details about the uniswap position
-    struct Position {
+    struct TokenIdPosition {
         PoolKey poolKey;
         // the tick range of the position
         int24 tickLower;
@@ -46,6 +47,9 @@ contract NonfungiblePositionManager is
         uint128 tokensOwed0;
         uint128 tokensOwed1;
     }
+
+    /// @dev The token ID position data
+    mapping(uint256 => TokenIdPosition) private _positions;
 
     constructor(PoolManager _poolManager, address _WETH9)
         ERC721("Uniswap V4 Positions NFT-V1", "UNI-V4-POS")
@@ -67,8 +71,8 @@ contract NonfungiblePositionManager is
     function lockAcquired(bytes calldata rawData) external returns (bytes memory) {
         require(msg.sender == address(poolManager));
         CallbackData memory data = abi.decode(rawData, (CallbackData));
-        PoolId poolId = data.params.poolKey.toId();
         MintParams memory params = data.params;
+        PoolId poolId = params.poolKey.toId();
         (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
         uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(params.tickLower);
         uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(params.tickUpper);
@@ -83,9 +87,18 @@ contract NonfungiblePositionManager is
         uint256 tokenId = _nextId++;
         _mint(params.recipient, tokenId);
 
-//        bytes32 positionKey = PositionKey.compute(address(this), params.tickLower, params.tickUpper);
-//        (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
-//        poolManager.getPosition(poolId, address(this), params.tickLower, params.tickUpper);
+        Position.Info memory positionInfo =
+            poolManager.getPosition(poolId, address(this), params.tickLower, params.tickUpper);
+        _positions[tokenId] = TokenIdPosition({
+            poolKey: params.poolKey,
+            tickLower: params.tickLower,
+            tickUpper: params.tickUpper,
+            liquidity: liquidity,
+            feeGrowthInside0LastX128: positionInfo.feeGrowthInside0LastX128,
+            feeGrowthInside1LastX128: positionInfo.feeGrowthInside1LastX128,
+            tokensOwed0: 0,
+            tokensOwed1: 0
+        });
 
         if (delta.amount0() > 0) {
             IERC20(Currency.unwrap(params.poolKey.currency0)).transferFrom(
@@ -99,6 +112,7 @@ contract NonfungiblePositionManager is
             );
             poolManager.settle(params.poolKey.currency1);
         }
+        emit IncreaseLiquidity(tokenId, liquidity, uint256(int256(delta.amount0())), uint256(int256(delta.amount1())));
         return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
     }
 }

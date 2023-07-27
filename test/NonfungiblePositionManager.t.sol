@@ -38,13 +38,8 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
     // Add 1 currency0 of liquidity.
     function testMintCurrency0() public {
-        PoolKey memory key = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: 3000,
-            hooks: IHooks(address(0)),
-            tickSpacing: 60
-        });
+        PoolKey memory key =
+            PoolKey({currency0: currency0, currency1: currency1, fee: 3000, hooks: IHooks(address(0)), tickSpacing: 60});
 
         manager.initialize(key, SQRT_RATIO_1_1);
 
@@ -75,13 +70,8 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
     // Add 1 currency1 of liquidity.
     function testMintCurrency1() public {
-        PoolKey memory key = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: 3000,
-            hooks: IHooks(address(0)),
-            tickSpacing: 60
-        });
+        PoolKey memory key =
+            PoolKey({currency0: currency0, currency1: currency1, fee: 3000, hooks: IHooks(address(0)), tickSpacing: 60});
 
         manager.initialize(key, SQRT_RATIO_1_1);
 
@@ -112,13 +102,8 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
     // Add 1 currency0 and 1 currency1 of liquidity.
     function testMintCurrency0AndCurrency1() public {
-        PoolKey memory key = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: 3000,
-            hooks: IHooks(address(0)),
-            tickSpacing: 60
-        });
+        PoolKey memory key =
+            PoolKey({currency0: currency0, currency1: currency1, fee: 3000, hooks: IHooks(address(0)), tickSpacing: 60});
 
         manager.initialize(key, SQRT_RATIO_1_1);
 
