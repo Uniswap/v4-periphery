@@ -10,6 +10,7 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
 contract NonfungiblePositionManagerTest is Test, TokenFixture {
@@ -69,6 +70,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(this)), 9 ether);
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 10 ether);
+        assertEq(IERC721(nonfungiblePositionManager).ownerOf(1), address(this));
     }
 
     // Add 1 currency1 of liquidity.
