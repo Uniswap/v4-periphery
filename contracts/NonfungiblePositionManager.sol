@@ -68,35 +68,36 @@ contract NonfungiblePositionManager is
         require(msg.sender == address(poolManager));
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         PoolId poolId = data.params.poolKey.toId();
+        MintParams memory params = data.params;
         (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
-        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(data.params.tickLower);
-        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(data.params.tickUpper);
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(params.tickLower);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(params.tickUpper);
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, data.params.amount0Desired, data.params.amount1Desired
+            sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, params.amount0Desired, params.amount1Desired
         );
         BalanceDelta delta = poolManager.modifyPosition(
-            data.params.poolKey,
-            IPoolManager.ModifyPositionParams(data.params.tickLower, data.params.tickUpper, int256(int128(liquidity)))
+            params.poolKey,
+            IPoolManager.ModifyPositionParams(params.tickLower, params.tickUpper, int256(int128(liquidity)))
         );
 
         uint256 tokenId = _nextId++;
-        _mint(data.params.recipient, tokenId);
+        _mint(params.recipient, tokenId);
 
 //        bytes32 positionKey = PositionKey.compute(address(this), params.tickLower, params.tickUpper);
 //        (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = pool.positions(positionKey);
-//        poolManager.getPosition(poolId, address(this), data.params.tickLower, data.params.tickUpper);
+//        poolManager.getPosition(poolId, address(this), params.tickLower, params.tickUpper);
 
         if (delta.amount0() > 0) {
-            IERC20(Currency.unwrap(data.params.poolKey.currency0)).transferFrom(
+            IERC20(Currency.unwrap(params.poolKey.currency0)).transferFrom(
                 data.sender, address(poolManager), uint256(int256(delta.amount0()))
             );
-            poolManager.settle(data.params.poolKey.currency0);
+            poolManager.settle(params.poolKey.currency0);
         }
         if (delta.amount1() > 0) {
-            IERC20(Currency.unwrap(data.params.poolKey.currency1)).transferFrom(
+            IERC20(Currency.unwrap(params.poolKey.currency1)).transferFrom(
                 data.sender, address(poolManager), uint256(int256(delta.amount1()))
             );
-            poolManager.settle(data.params.poolKey.currency1);
+            poolManager.settle(params.poolKey.currency1);
         }
         return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
     }
