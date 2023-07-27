@@ -300,7 +300,7 @@ contract TWAMM is BaseHook, ITWAMM {
         IERC20Minimal(Currency.unwrap(token)).safeTransfer(to, amountTransferred);
     }
 
-    function lockAcquired(uint256, bytes calldata rawData) external override poolManagerOnly returns (bytes memory) {
+    function lockAcquired(bytes calldata rawData) external override poolManagerOnly returns (bytes memory) {
         (PoolKey memory key, IPoolManager.SwapParams memory swapParams) =
             abi.decode(rawData, (PoolKey, IPoolManager.SwapParams));
 

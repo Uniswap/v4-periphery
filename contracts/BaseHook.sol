@@ -49,7 +49,7 @@ abstract contract BaseHook is IHooks {
         Hooks.validateHookAddress(_this, getHooksCalls());
     }
 
-    function lockAcquired(uint256, /* id */ bytes calldata data)
+    function lockAcquired(bytes calldata data)
         external
         virtual
         poolManagerOnly
