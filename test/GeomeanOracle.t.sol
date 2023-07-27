@@ -10,14 +10,15 @@ import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
 import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {Oracle} from "../contracts/libraries/Oracle.sol";
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
 contract TestGeomeanOracle is Test, Deployers {
-    using PoolIdLibrary for IPoolManager.PoolKey;
+    using PoolIdLibrary for PoolKey;
 
     int24 constant MAX_TICK_SPACING = 32767;
     uint160 constant SQRT_RATIO_2_1 = 112045541949572279837463876454;
@@ -33,7 +34,7 @@ contract TestGeomeanOracle is Test, Deployers {
             )
         )
     );
-    IPoolManager.PoolKey key;
+    PoolKey key;
     PoolId id;
 
     PoolModifyPositionTest modifyPositionRouter;
@@ -55,9 +56,8 @@ contract TestGeomeanOracle is Test, Deployers {
             }
         }
         geomeanOracle.setTime(1);
-        key = IPoolManager.PoolKey(
-            Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, MAX_TICK_SPACING, geomeanOracle
-        );
+        key =
+            PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, MAX_TICK_SPACING, geomeanOracle);
         id = key.toId();
 
         modifyPositionRouter = new PoolModifyPositionTest(manager);
@@ -75,9 +75,7 @@ contract TestGeomeanOracle is Test, Deployers {
     function testBeforeInitializeRevertsIfFee() public {
         vm.expectRevert(GeomeanOracle.OnlyOneOraclePoolAllowed.selector);
         manager.initialize(
-            IPoolManager.PoolKey(
-                Currency.wrap(address(token0)), Currency.wrap(address(token1)), 1, MAX_TICK_SPACING, geomeanOracle
-            ),
+            PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 1, MAX_TICK_SPACING, geomeanOracle),
             SQRT_RATIO_1_1
         );
     }
@@ -85,7 +83,7 @@ contract TestGeomeanOracle is Test, Deployers {
     function testBeforeInitializeRevertsIfNotMaxTickSpacing() public {
         vm.expectRevert(GeomeanOracle.OnlyOneOraclePoolAllowed.selector);
         manager.initialize(
-            IPoolManager.PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, 60, geomeanOracle),
+            PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, 60, geomeanOracle),
             SQRT_RATIO_1_1
         );
     }
