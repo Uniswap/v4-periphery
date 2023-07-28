@@ -202,5 +202,11 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         assertEq(liquidity, 333850249709699449134);
         assertEq(amount0, 1 ether);
         assertEq(amount1, 0);
+
+        Position.Info memory info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
+        // This is twice of the liquidity in `testMintCurrency0`.
+        assertEq(info.liquidity, 667700499419398898268);
+        assertEq(info.feeGrowthInside0LastX128, 0);
+        assertEq(info.feeGrowthInside1LastX128, 0);
     }
 }
