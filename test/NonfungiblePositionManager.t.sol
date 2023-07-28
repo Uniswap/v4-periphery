@@ -12,6 +12,7 @@ import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {Position} from "@uniswap/v4-core/contracts/libraries/Position.sol";
 
 contract NonfungiblePositionManagerTest is Test, TokenFixture {
     using PoolIdLibrary for PoolKey;
@@ -76,6 +77,11 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         assertEq(PoolId.unwrap(poolkey.toId()), PoolId.unwrap(key.toId()));
         assertEq(feeGrowthInside0LastX128, 0);
         assertEq(feeGrowthInside1LastX128, 0);
+
+        Position.Info memory info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
+        assertEq(info.liquidity, 333850249709699449134);
+        assertEq(info.feeGrowthInside0LastX128, 0);
+        assertEq(info.feeGrowthInside1LastX128, 0);
     }
 
     // Add 1 currency1 of liquidity.
