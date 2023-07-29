@@ -27,8 +27,10 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
     NonfungiblePositionManager nonfungiblePositionManager;
     PoolSwapTest swapRouter;
 
+    // Ratio of token0 / token1
     uint160 constant SQRT_RATIO_1_1 = 79228162514264337593543950336;
     uint160 constant SQRT_RATIO_1_2 = 56022770974786139918731938227;
+    uint160 constant SQRT_RATIO_2_1 = 158456325028528675187087900672;
     uint256 constant MAX_UINT256 = type(uint256).max;
 
     function setUp() public {
@@ -41,6 +43,8 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         MockERC20(Currency.unwrap(currency1)).mint(address(this), 10 ether);
         MockERC20(Currency.unwrap(currency0)).approve(address(nonfungiblePositionManager), 10 ether);
         MockERC20(Currency.unwrap(currency1)).approve(address(nonfungiblePositionManager), 10 ether);
+        MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), 10 ether);
+        MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), 10 ether);
     }
 
     // Add 1 currency0 of liquidity.
@@ -235,9 +239,11 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         );
 
         IPoolManager.SwapParams memory params =
-            IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 1 ether / 2, sqrtPriceLimitX96: SQRT_RATIO_1_2});
+            IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 1 ether / 2, sqrtPriceLimitX96: SQRT_RATIO_2_1});
         PoolSwapTest.TestSettings memory testSettings =
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
         swapRouter.swap(key, params, testSettings);
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(this)), 10 ether);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 9 ether);
     }
 }
