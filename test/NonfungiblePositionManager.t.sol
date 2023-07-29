@@ -13,6 +13,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {Position} from "@uniswap/v4-core/contracts/libraries/Position.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
 
 contract NonfungiblePositionManagerTest is Test, TokenFixture {
     using PoolIdLibrary for PoolKey;
@@ -24,14 +25,17 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
     PoolManager manager;
     NonfungiblePositionManager nonfungiblePositionManager;
+    PoolSwapTest swapRouter;
 
     uint160 constant SQRT_RATIO_1_1 = 79228162514264337593543950336;
+    uint160 constant SQRT_RATIO_1_2 = 56022770974786139918731938227;
     uint256 constant MAX_UINT256 = type(uint256).max;
 
     function setUp() public {
         initializeTokens();
         manager = new PoolManager(500000);
         nonfungiblePositionManager = new NonfungiblePositionManager(manager, address(1));
+        swapRouter = new PoolSwapTest(manager);
 
         MockERC20(Currency.unwrap(currency0)).mint(address(this), 10 ether);
         MockERC20(Currency.unwrap(currency1)).mint(address(this), 10 ether);
@@ -208,5 +212,32 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         assertEq(info.liquidity, 667700499419398898268);
         assertEq(info.feeGrowthInside0LastX128, 0);
         assertEq(info.feeGrowthInside1LastX128, 0);
+    }
+
+    function testFeesAccrue() public {
+        PoolKey memory key =
+            PoolKey({currency0: currency0, currency1: currency1, fee: 3000, hooks: IHooks(address(0)), tickSpacing: 60});
+
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1) = nonfungiblePositionManager.mint(
+            INonfungiblePositionManager.MintParams({
+                poolKey: key,
+                tickLower: 0,
+                tickUpper: 60,
+                amount0Desired: 1 ether,
+                amount1Desired: 0,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: address(this),
+                deadline: MAX_UINT256
+            })
+        );
+
+        IPoolManager.SwapParams memory params =
+            IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 1 ether / 2, sqrtPriceLimitX96: SQRT_RATIO_1_2});
+        PoolSwapTest.TestSettings memory testSettings =
+            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+        swapRouter.swap(key, params, testSettings);
     }
 }
