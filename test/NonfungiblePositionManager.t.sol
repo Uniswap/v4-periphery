@@ -14,7 +14,6 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {Position} from "@uniswap/v4-core/contracts/libraries/Position.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
-import "forge-std/console.sol";
 
 contract NonfungiblePositionManagerTest is Test, TokenFixture {
     using PoolIdLibrary for PoolKey;
@@ -27,7 +26,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
     PoolManager manager;
     NonfungiblePositionManager nonfungiblePositionManager;
     PoolSwapTest swapRouter;
-    address swapper;
+    address swapper = address(12345);
 
     // Ratio of token0 / token1
     uint160 constant SQRT_RATIO_1_1 = 79228162514264337593543950336;
@@ -254,9 +253,6 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
         Position.Info memory info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
-        console.log("info.liquidity", info.liquidity);
-        console.log("info.feeGrowthInside0LastX128", info.feeGrowthInside0LastX128);
-        console.log("info.feeGrowthInside1LastX128", info.feeGrowthInside1LastX128);
 
         (
             PoolKey memory pk,
@@ -268,15 +264,6 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
             uint128 tokens0,
             uint128 tokens1
         ) = nonfungiblePositionManager.positions(1);
-        console.log("tl");
-        console.logInt(tl);
-        console.log("tu");
-        console.logInt(tu);
-        console.log("liq", liq);
-        console.log("fee0", fee0);
-        console.log("fee1", fee1);
-        console.log("tokens0", tokens0);
-        console.log("tokens1", tokens1);
 
         vm.prank(swapper);
         swapRouter.swap(key, params, testSettings);
@@ -287,9 +274,6 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
         // Why is liquidity and feeGrowth unchanged after the swap?
         info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
-        console.log("info.liquidity", info.liquidity);
-        console.log("info.feeGrowthInside0LastX128", info.feeGrowthInside0LastX128);
-        console.log("info.feeGrowthInside1LastX128", info.feeGrowthInside1LastX128);
 
         (
             pk,
@@ -301,14 +285,5 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
             tokens0,
             tokens1
         ) = nonfungiblePositionManager.positions(1);
-        console.log("tl");
-        console.logInt(tl);
-        console.log("tu");
-        console.logInt(tu);
-        console.log("liq", liq);
-        console.log("fee0", fee0);
-        console.log("fee1", fee1);
-        console.log("tokens0", tokens0);
-        console.log("tokens1", tokens1);
     }
 }
