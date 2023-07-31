@@ -26,6 +26,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
     PoolManager manager;
     NonfungiblePositionManager nonfungiblePositionManager;
     PoolSwapTest swapRouter;
+    address swapper;
 
     // Ratio of token0 / token1
     uint160 constant SQRT_RATIO_1_1 = 79228162514264337593543950336;
@@ -44,6 +45,11 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         MockERC20(Currency.unwrap(currency0)).approve(address(nonfungiblePositionManager), 10 ether);
         MockERC20(Currency.unwrap(currency1)).approve(address(nonfungiblePositionManager), 10 ether);
         MockERC20(Currency.unwrap(currency0)).approve(address(swapRouter), 10 ether);
+        MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), 10 ether);
+
+        // Give swapper 10 of currency1
+        MockERC20(Currency.unwrap(currency1)).mint(swapper, 10 ether);
+        vm.prank(swapper);
         MockERC20(Currency.unwrap(currency1)).approve(address(swapRouter), 10 ether);
     }
 
@@ -224,7 +230,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
         manager.initialize(key, SQRT_RATIO_1_1);
 
-        (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1) = nonfungiblePositionManager.mint(
+        nonfungiblePositionManager.mint(
             INonfungiblePositionManager.MintParams({
                 poolKey: key,
                 tickLower: 0,
@@ -242,8 +248,11 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
             IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 1 ether / 2, sqrtPriceLimitX96: SQRT_RATIO_2_1});
         PoolSwapTest.TestSettings memory testSettings =
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+        vm.prank(swapper);
         swapRouter.swap(key, params, testSettings);
-        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(this)), 10 ether);
-        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 9 ether);
+        // 0.5 currency1 is taken from swapper
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(swapper), 19 ether / 2);
+        // swapper gains 497756757352268361 currency0
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(swapper), 1 ether / 2);
     }
 }
