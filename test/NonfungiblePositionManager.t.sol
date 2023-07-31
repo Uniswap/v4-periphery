@@ -245,8 +245,11 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
             })
         );
 
-        IPoolManager.SwapParams memory params =
-            IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 1 ether / 2, sqrtPriceLimitX96: SQRT_RATIO_2_1});
+        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+            zeroForOne: false,
+            amountSpecified: 1 ether / 2,
+            sqrtPriceLimitX96: SQRT_RATIO_2_1
+        });
         PoolSwapTest.TestSettings memory testSettings =
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
@@ -254,6 +257,26 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         console.log("info.liquidity", info.liquidity);
         console.log("info.feeGrowthInside0LastX128", info.feeGrowthInside0LastX128);
         console.log("info.feeGrowthInside1LastX128", info.feeGrowthInside1LastX128);
+
+        (
+            PoolKey memory pk,
+            int24 tl,
+            int24 tu,
+            uint128 liq,
+            uint256 fee0,
+            uint256 fee1,
+            uint128 tokens0,
+            uint128 tokens1
+        ) = nonfungiblePositionManager.positions(1);
+        console.log("tl");
+        console.logInt(tl);
+        console.log("tu");
+        console.logInt(tu);
+        console.log("liq", liq);
+        console.log("fee0", fee0);
+        console.log("fee1", fee1);
+        console.log("tokens0", tokens0);
+        console.log("tokens1", tokens1);
 
         vm.prank(swapper);
         swapRouter.swap(key, params, testSettings);
@@ -267,5 +290,25 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         console.log("info.liquidity", info.liquidity);
         console.log("info.feeGrowthInside0LastX128", info.feeGrowthInside0LastX128);
         console.log("info.feeGrowthInside1LastX128", info.feeGrowthInside1LastX128);
+
+        (
+            pk,
+            tl,
+            tu,
+            liq,
+            fee0,
+            fee1,
+            tokens0,
+            tokens1
+        ) = nonfungiblePositionManager.positions(1);
+        console.log("tl");
+        console.logInt(tl);
+        console.log("tu");
+        console.logInt(tu);
+        console.log("liq", liq);
+        console.log("fee0", fee0);
+        console.log("fee1", fee1);
+        console.log("tokens0", tokens0);
+        console.log("tokens1", tokens1);
     }
 }
