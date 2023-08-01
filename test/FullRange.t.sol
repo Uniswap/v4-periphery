@@ -282,9 +282,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         uint256 prevBalance0 = TestERC20(token0).balanceOf(address(this));
         uint256 prevBalance1 = TestERC20(token1).balanceOf(address(this));
 
-        fullRange.addLiquidity(
-            address(token0), address(token1), 0, 10 ether, 10 ether, address(this), MAX_DEADLINE
-        );
+        fullRange.addLiquidity(address(token0), address(token1), 0, 10 ether, 10 ether, address(this), MAX_DEADLINE);
 
         (,,,,,, address liquidityToken) = fullRange.poolInfo(id);
 
@@ -299,7 +297,9 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
         vm.expectEmit(true, true, true, true);
-        emit Swap(id, address(swapRouter), 1 ether, -909090909090909090, 72025602285694852357767227579, 10 ether, -1907, 0); // TODO: modify this emit
+        emit Swap(
+            id, address(swapRouter), 1 ether, -909090909090909090, 72025602285694852357767227579, 10 ether, -1907, 0
+        ); // TODO: modify this emit
 
         snapStart("swap with no fee");
         swapRouter.swap(key, params, testSettings);
@@ -324,9 +324,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         uint256 prevBalance0 = TestERC20(token0).balanceOf(address(this));
         uint256 prevBalance1 = TestERC20(token1).balanceOf(address(this));
 
-        fullRange.addLiquidity(
-            address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE
-        );
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
 
         (,,,,,, address liquidityToken) = fullRange.poolInfo(feeId);
 
@@ -336,7 +334,16 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         // only get 98 back because of fees
         vm.expectEmit(true, true, true, true);
-        emit Swap(feeId, address(swapRouter), 1 ether, -906610893880149131, 72045250990510446115798809072, 10 ether, -1901, 3000); // TODO: modify this emit
+        emit Swap(
+            feeId,
+            address(swapRouter),
+            1 ether,
+            -906610893880149131,
+            72045250990510446115798809072,
+            10 ether,
+            -1901,
+            3000
+        ); // TODO: modify this emit
 
         snapStart("swap with fee");
         swapRouter.swap(
@@ -514,7 +521,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     //         uint128 tokensOwed0,
     //         uint128 tokensOwed1,,) =
     //         fullRange.poolInfo(feeId);
-        
+
     //     assertEq(liquidity, 150 ether); // it's actually less than the liquidity added LOL
 
     //     // TODO: calculate the feeGrowth on my own after a swap
@@ -763,9 +770,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         uint256 prevBalance0 = TestERC20(token0).balanceOf(address(this));
         uint256 prevBalance1 = TestERC20(token1).balanceOf(address(this));
 
-        fullRange.addLiquidity(
-            address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE
-        );
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
 
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
@@ -813,11 +818,9 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         assertEq(feeGrowthInside0LastX128, posInfo.feeGrowthInside0LastX128);
         assertEq(feeGrowthInside1LastX128, posInfo.feeGrowthInside1LastX128);
 
-        uint128 tokensOwed0New =
-            uint128(FullMath.mulDiv(feeGrowthInside0LastX128 - 0, 10 ether, FixedPoint128.Q128));
+        uint128 tokensOwed0New = uint128(FullMath.mulDiv(feeGrowthInside0LastX128 - 0, 10 ether, FixedPoint128.Q128));
 
-        uint128 tokensOwed1New =
-            uint128(FullMath.mulDiv(feeGrowthInside1LastX128 - 0, 10 ether, FixedPoint128.Q128));
+        uint128 tokensOwed1New = uint128(FullMath.mulDiv(feeGrowthInside1LastX128 - 0, 10 ether, FixedPoint128.Q128));
 
         // pretty sure this rounds down the tokensOwed you get lol...
         assertEq(tokensOwed0, tokensOwed0New);

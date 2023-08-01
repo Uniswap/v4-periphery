@@ -37,6 +37,7 @@ contract FullRange is BaseHook {
     int24 internal constant MAX_TICK = -MIN_TICK;
 
     uint256 public constant MINIMUM_LIQUIDITY = 10 ** 3;
+    int256 internal constant MAX_INT = 2 ^ 256 / 2 - 1;
 
     struct CallbackData {
         address sender;
@@ -60,8 +61,7 @@ contract FullRange is BaseHook {
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    modifier ensure(uint256 deadline)
-     {
+    modifier ensure(uint256 deadline) {
         require(deadline >= block.timestamp, "Expired");
         _;
     }
@@ -420,13 +420,15 @@ contract FullRange is BaseHook {
         }
     }
 
-    function getSqrtPrice(IPoolManager.PoolKey calldata key, BalanceDelta delta) public returns (uint160 newSqrtPriceX96){
-        newSqrtPriceX96 = uint160(sqrt(FullMath.mulDiv(
-                    uint128(delta.amount1()),
-                    FixedPoint96.Q96,
-                    uint128(delta.amount0())
-                )) * sqrt(FixedPoint96.Q96));
-        
+    function getSqrtPrice(IPoolManager.PoolKey calldata key, BalanceDelta delta)
+        public
+        returns (uint160 newSqrtPriceX96)
+    {
+        newSqrtPriceX96 = uint160(
+            sqrt(FullMath.mulDiv(uint128(delta.amount1()), FixedPoint96.Q96, uint128(delta.amount0())))
+                * sqrt(FixedPoint96.Q96)
+        );
+
         console2.log(newSqrtPriceX96);
     }
 
@@ -449,18 +451,24 @@ contract FullRange is BaseHook {
                     })
                 );
 
-                uint160 newSqrtPriceX96 = uint160(sqrt(FullMath.mulDiv(
-                    uint128(balanceDelta.amount1()),
-                    FixedPoint96.Q96,
-                    uint128(balanceDelta.amount0())
-                )) * sqrt(FixedPoint96.Q96));
+                uint160 newSqrtPriceX96 = uint160(
+                    sqrt(
+                        FullMath.mulDiv(
+                            uint128(-balanceDelta.amount1()), FixedPoint96.Q96, uint128(-balanceDelta.amount0())
+                        )
+                    ) * sqrt(FixedPoint96.Q96)
+                );
 
-                // TODO: change this max
+                (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(key.toId());
+
+                console2.log("new sqrt price", newSqrtPriceX96);
+                console2.log("old sqrt price", sqrtPriceX96);
+
                 BalanceDelta swapDelta = poolManager.swap(
                     key,
                     IPoolManager.SwapParams({
-                        zeroForOne: balanceDelta.amount0() > 0,
-                        amountSpecified: 100000000 ether,
+                        zeroForOne: newSqrtPriceX96 < sqrtPriceX96,
+                        amountSpecified: MAX_INT,
                         sqrtPriceLimitX96: newSqrtPriceX96
                     })
                 );
