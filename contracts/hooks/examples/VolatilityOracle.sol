@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.19;
+pragma solidity ^0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {IDynamicFeeManager} from "@uniswap/v4-core/contracts/interfaces/IDynamicFeeManager.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {FeeLibrary} from "@uniswap/v4-core/contracts/libraries/FeeLibrary.sol";
 import {BaseHook} from "../../BaseHook.sol";
-import {Fees} from "@uniswap/v4-core/contracts/libraries/Fees.sol";
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
 contract VolatilityOracle is BaseHook, IDynamicFeeManager {
-    using Fees for uint24;
+    using FeeLibrary for uint24;
 
     error MustUseDynamicFee();
 
     uint32 deployTimestamp;
 
-    function getFee(IPoolManager.PoolKey calldata) external view returns (uint24) {
+    function getFee(PoolKey calldata) external view returns (uint24) {
         uint24 startingFee = 3000;
         uint32 lapsed = _blockTimestamp() - deployTimestamp;
         return startingFee + (uint24(lapsed) * 100) / 60; // 100 bps a minute
@@ -42,13 +43,8 @@ contract VolatilityOracle is BaseHook, IDynamicFeeManager {
         });
     }
 
-    function beforeInitialize(address, IPoolManager.PoolKey calldata key, uint160)
-        external
-        pure
-        override
-        returns (bytes4)
-    {
-        if (key.fee.isDynamicFee()) revert MustUseDynamicFee();
+    function beforeInitialize(address, PoolKey calldata key, uint160) external pure override returns (bytes4) {
+        if (!key.fee.isDynamicFee()) revert MustUseDynamicFee();
         return VolatilityOracle.beforeInitialize.selector;
     }
 }

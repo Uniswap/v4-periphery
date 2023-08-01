@@ -3,12 +3,12 @@ pragma solidity ^0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {BitMath} from "@uniswap/v4-core/contracts/libraries/BitMath.sol";
 
 /// @title Helper functions to access pool information
 library PoolGetters {
-    uint256 constant POOL_SLOT = 8;
+    uint256 constant POOL_SLOT = 10;
     uint256 constant TICKS_OFFSET = 4;
     uint256 constant TICK_BITMAP_OFFSET = 5;
 
