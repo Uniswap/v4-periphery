@@ -224,6 +224,8 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         assertEq(info.feeGrowthInside1LastX128, 0);
     }
 
+    // address(this) adds 1 token0 of liquidity. Swapper swaps 0.5 token1 for 497756757352268361 token0.
+    // nonfungiblePositionManager gains 1499999999999999 token1 from fees.
     function testFeesAccrue() public {
         PoolKey memory key =
             PoolKey({currency0: currency0, currency1: currency1, fee: 3000, hooks: IHooks(address(0)), tickSpacing: 60});
