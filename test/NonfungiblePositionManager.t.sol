@@ -254,17 +254,6 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
 
         Position.Info memory info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
 
-        (
-            PoolKey memory pk,
-            int24 tl,
-            int24 tu,
-            uint128 liq,
-            uint256 fee0,
-            uint256 fee1,
-            uint128 tokens0,
-            uint128 tokens1
-        ) = nonfungiblePositionManager.positions(1);
-
         vm.prank(swapper);
         swapRouter.swap(key, params, testSettings);
         // 0.5 currency1 is taken from swapper
@@ -272,18 +261,25 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         // swapper gains 497756757352268361 currency0
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(swapper), 497756757352268361);
 
-        // Why is liquidity and feeGrowth unchanged after the swap?
-        info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
+        vm.prank(swapper);
+        nonfungiblePositionManager.mint(
+            INonfungiblePositionManager.MintParams({
+                poolKey: key,
+                tickLower: 0,
+                tickUpper: 60,
+                amount0Desired: 0,
+                amount1Desired: 0,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: address(this),
+                deadline: MAX_UINT256
+            })
+        );
 
-        (
-            pk,
-            tl,
-            tu,
-            liq,
-            fee0,
-            fee1,
-            tokens0,
-            tokens1
-        ) = nonfungiblePositionManager.positions(1);
+        // Why is liquidity unchanged after the swap?
+        info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
+        assertEq(info.liquidity, 333850249709699449134);
+        assertEq(info.feeGrowthInside0LastX128, 0);
+        assertEq(info.feeGrowthInside1LastX128, 1528899711248525719508603825072376);
     }
 }
