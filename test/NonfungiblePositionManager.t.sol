@@ -261,7 +261,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         // swapper gains 497756757352268361 currency0
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(swapper), 497756757352268361);
 
-        vm.prank(swapper);
+        // Touch the PoolManager's position to trigger an update
         nonfungiblePositionManager.mint(
             INonfungiblePositionManager.MintParams({
                 poolKey: key,
@@ -275,6 +275,10 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
                 deadline: MAX_UINT256
             })
         );
+
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(nonfungiblePositionManager)), 0);
+        // Below is the 0.3% fee of 0.5 token1
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(nonfungiblePositionManager)), 1499999999999999);
 
         // Why is liquidity unchanged after the swap?
         info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);

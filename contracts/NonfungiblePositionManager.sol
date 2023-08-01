@@ -110,7 +110,7 @@ contract NonfungiblePositionManager is
             );
             poolManager.settle(params.poolKey.currency0);
         } else if (delta.amount0() < 0) {
-            poolManager.take(params.poolKey.currency0, data.sender, uint128(-delta.amount0()));
+            poolManager.take(params.poolKey.currency0, address(this), uint128(-delta.amount0()));
         }
         console.log("delta.amount1()");
         console.logInt(delta.amount1());
@@ -120,7 +120,7 @@ contract NonfungiblePositionManager is
             );
             poolManager.settle(params.poolKey.currency1);
         } else if (delta.amount1() < 0) {
-            poolManager.take(params.poolKey.currency1, data.sender, uint128(-delta.amount1()));
+            poolManager.take(params.poolKey.currency1, address(this), uint128(-delta.amount1()));
         }
         return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
     }
