@@ -253,6 +253,9 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
         Position.Info memory info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
+        assertEq(info.liquidity, 333850249709699449134);
+        assertEq(info.feeGrowthInside0LastX128, 0);
+        assertEq(info.feeGrowthInside1LastX128, 0);
 
         vm.prank(swapper);
         swapRouter.swap(key, params, testSettings);

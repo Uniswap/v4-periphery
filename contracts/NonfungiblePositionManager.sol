@@ -15,7 +15,6 @@ import {IPoolManager, PoolManager} from "@uniswap/v4-core/contracts/PoolManager.
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import "forge-std/console.sol";
 
 contract NonfungiblePositionManager is
     ERC721,
@@ -102,8 +101,6 @@ contract NonfungiblePositionManager is
             tokensOwed1: 0
         });
 
-        console.log("delta.amount0()");
-        console.logInt(delta.amount0());
         if (delta.amount0() > 0) {
             IERC20(Currency.unwrap(params.poolKey.currency0)).transferFrom(
                 data.sender, address(poolManager), uint256(int256(delta.amount0()))
@@ -112,8 +109,6 @@ contract NonfungiblePositionManager is
         } else if (delta.amount0() < 0) {
             poolManager.take(params.poolKey.currency0, address(this), uint128(-delta.amount0()));
         }
-        console.log("delta.amount1()");
-        console.logInt(delta.amount1());
         if (delta.amount1() > 0) {
             IERC20(Currency.unwrap(params.poolKey.currency1)).transferFrom(
                 data.sender, address(poolManager), uint256(int256(delta.amount1()))
