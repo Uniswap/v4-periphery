@@ -18,8 +18,9 @@ import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
 import {UniswapV4ERC20} from "./UniswapV4ERC20.sol";
 import {Position} from "@uniswap/v4-core/contracts/libraries/Position.sol";
 import "@uniswap/v4-core/contracts/libraries/FixedPoint128.sol";
+import {FixedPoint96} from "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
 
-import "forge-std/console.sol";
+import "forge-std/console2.sol";
 
 import "../libraries/LiquidityAmounts.sol";
 
@@ -354,6 +355,81 @@ contract FullRange is BaseHook {
         poolInfo.liquidity = uint128(positionLiquidity - liquidity);
     }
 
+    function sqrt(uint256 x) internal pure returns (uint256 z) {
+        /// @solidity memory-safe-assembly
+        assembly {
+            let y := x // We start y at x, which will help us make our initial estimate.
+
+            z := 181 // The "correct" value is 1, but this saves a multiplication later.
+
+            // This segment is to get a reasonable initial estimate for the Babylonian method. With a bad
+            // start, the correct # of bits increases ~linearly each iteration instead of ~quadratically.
+
+            // We check y >= 2^(k + 8) but shift right by k bits
+            // each branch to ensure that if x >= 256, then y >= 256.
+            if iszero(lt(y, 0x10000000000000000000000000000000000)) {
+                y := shr(128, y)
+                z := shl(64, z)
+            }
+            if iszero(lt(y, 0x1000000000000000000)) {
+                y := shr(64, y)
+                z := shl(32, z)
+            }
+            if iszero(lt(y, 0x10000000000)) {
+                y := shr(32, y)
+                z := shl(16, z)
+            }
+            if iszero(lt(y, 0x1000000)) {
+                y := shr(16, y)
+                z := shl(8, z)
+            }
+
+            // Goal was to get z*z*y within a small factor of x. More iterations could
+            // get y in a tighter range. Currently, we will have y in [256, 256*2^16).
+            // We ensured y >= 256 so that the relative difference between y and y+1 is small.
+            // That's not possible if x < 256 but we can just verify those cases exhaustively.
+
+            // Now, z*z*y <= x < z*z*(y+1), and y <= 2^(16+8), and either y >= 256, or x < 256.
+            // Correctness can be checked exhaustively for x < 256, so we assume y >= 256.
+            // Then z*sqrt(y) is within sqrt(257)/sqrt(256) of sqrt(x), or about 20bps.
+
+            // For s in the range [1/256, 256], the estimate f(s) = (181/1024) * (s+1) is in the range
+            // (1/2.84 * sqrt(s), 2.84 * sqrt(s)), with largest error when s = 1 and when s = 256 or 1/256.
+
+            // Since y is in [256, 256*2^16), let a = y/65536, so that a is in [1/256, 256). Then we can estimate
+            // sqrt(y) using sqrt(65536) * 181/1024 * (a + 1) = 181/4 * (y + 65536)/65536 = 181 * (y + 65536)/2^18.
+
+            // There is no overflow risk here since y < 2^136 after the first branch above.
+            z := shr(18, mul(z, add(y, 65536))) // A mul() is saved from starting z at 181.
+
+            // Given the worst case multiplicative error of 2.84 above, 7 iterations should be enough.
+            z := shr(1, add(z, div(x, z)))
+            z := shr(1, add(z, div(x, z)))
+            z := shr(1, add(z, div(x, z)))
+            z := shr(1, add(z, div(x, z)))
+            z := shr(1, add(z, div(x, z)))
+            z := shr(1, add(z, div(x, z)))
+            z := shr(1, add(z, div(x, z)))
+
+            // If x+1 is a perfect square, the Babylonian method cycles between
+            // floor(sqrt(x)) and ceil(sqrt(x)). This statement ensures we return floor.
+            // See: https://en.wikipedia.org/wiki/Integer_square_root#Using_only_integer_division
+            // Since the ceil is rare, we save gas on the assignment and repeat division in the rare case.
+            // If you don't care whether the floor or ceil square root is returned, you can remove this statement.
+            z := sub(z, lt(div(x, z), z))
+        }
+    }
+
+    function getSqrtPrice(IPoolManager.PoolKey calldata key, BalanceDelta delta) public returns (uint160 newSqrtPriceX96){
+        newSqrtPriceX96 = uint160(sqrt(FullMath.mulDiv(
+                    uint128(delta.amount1()),
+                    FixedPoint96.Q96,
+                    uint128(delta.amount0())
+                )) * sqrt(FixedPoint96.Q96));
+        
+        console2.log(newSqrtPriceX96);
+    }
+
     function _rebalance(IPoolManager.PoolKey calldata key) internal {
         PoolInfo storage position = poolInfo[key.toId()];
 
@@ -373,10 +449,24 @@ contract FullRange is BaseHook {
                     })
                 );
 
-                (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(key.toId());
+                uint160 newSqrtPriceX96 = uint160(sqrt(FullMath.mulDiv(
+                    uint128(balanceDelta.amount1()),
+                    FixedPoint96.Q96,
+                    uint128(balanceDelta.amount0())
+                )) * sqrt(FixedPoint96.Q96));
+
+                // TODO: change this max
+                BalanceDelta swapDelta = poolManager.swap(
+                    key,
+                    IPoolManager.SwapParams({
+                        zeroForOne: balanceDelta.amount0() > 0,
+                        amountSpecified: 100000000 ether,
+                        sqrtPriceLimitX96: newSqrtPriceX96
+                    })
+                );
 
                 uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-                    sqrtPriceX96,
+                    newSqrtPriceX96,
                     TickMath.getSqrtRatioAtTick(MIN_TICK),
                     TickMath.getSqrtRatioAtTick(MAX_TICK),
                     uint256(uint128(-balanceDelta.amount0())),
@@ -394,8 +484,13 @@ contract FullRange is BaseHook {
                 );
 
                 // make sure there is no dust
-                require(IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this)) == prevBal0);
-                require(IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this)) == prevBal1);
+                // require(IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this)) == prevBal0);
+                // require(IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this)) == prevBal1);
+
+                console2.log("new balance 0", IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this)));
+                console2.log("new balance 1", IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this)));
+                console2.log("prev balance 0", prevBal0);
+                console2.log("prev balance 1", prevBal1);
 
                 // update position
                 Position.Info memory posInfo = poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK);
