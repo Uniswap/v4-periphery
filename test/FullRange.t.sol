@@ -117,20 +117,16 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         token0.approve(address(fullRange), type(uint256).max);
         token1.approve(address(fullRange), type(uint256).max);
+        token2.approve(address(fullRange), type(uint256).max);
         token0.approve(address(modifyPositionRouter), type(uint256).max);
         token1.approve(address(modifyPositionRouter), type(uint256).max);
+        token2.approve(address(modifyPositionRouter), type(uint256).max);
         token0.approve(address(swapRouter), type(uint256).max);
         token1.approve(address(swapRouter), type(uint256).max);
+        token2.approve(address(swapRouter), type(uint256).max);
         token0.approve(address(manager), type(uint256).max);
         token1.approve(address(manager), type(uint256).max);
-    }
-
-    function testGetSqrtPrice() public {
-        manager.initialize(key, SQRT_RATIO_1_1);
-        // fullRange.addLiquidity(address(token0), address(token1), 0, 10 ether, 10 ether, address(this), MAX_DEADLINE);
-        uint160 sqrtPrice = fullRange.getSqrtPrice(key, toBalanceDelta(10 ether, 10 ether));
-        sqrtPrice = fullRange.getSqrtPrice(key, toBalanceDelta(12 ether, 7.5 ether));
-        sqrtPrice = fullRange.getSqrtPrice(key, toBalanceDelta(1 ether, 7.5 ether));
+        token2.approve(address(manager), type(uint256).max);
     }
 
     function testBeforeInitializeAllowsPoolCreation() public {
@@ -489,70 +485,70 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         // assertEq(tokensOwed1, 0);
     }
 
-    // function testSwapAddLiquidityTwoPoolsAndRebalance() public {
-    //     vm.roll(100);
-    //     manager.initialize(feeKey, SQRT_RATIO_1_1);
-    //     manager.initialize(feeKey2, SQRT_RATIO_1_1);
+    function testSwapAddLiquidityTwoPoolsAndRebalance() public {
+        vm.roll(100);
+        manager.initialize(feeKey, SQRT_RATIO_1_1);
+        manager.initialize(feeKey2, SQRT_RATIO_1_1);
 
-    //     fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
-    //     fullRange.addLiquidity(address(token1), address(token2), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
+        fullRange.addLiquidity(address(token1), address(token2), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
 
-    //     IPoolManager.SwapParams memory params =
-    //         IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 10000000, sqrtPriceLimitX96: SQRT_RATIO_1_2});
+        IPoolManager.SwapParams memory params =
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 10000000, sqrtPriceLimitX96: SQRT_RATIO_1_2});
 
-    //     PoolSwapTest.TestSettings memory testSettings =
-    //         PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+        PoolSwapTest.TestSettings memory testSettings =
+            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-    //     swapRouter.swap(feeKey, params, testSettings);
+        swapRouter.swap(feeKey, params, testSettings);
 
-    //     // fullRange.addLiquidity(address(token0), address(token1), 3000, 50, 50, address(this), MAX_DEADLINE);
+        // this add liquidity updates the fee state to incur the rebalance
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
+        fullRange.addLiquidity(address(token1), address(token2), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
 
-    //     // all the core fee updates should have happened by now
-    //     vm.roll(101);
+        // all the core fee updates should have happened by now
+        vm.roll(101);
 
-    //     // rebalance should happen before this
-    //     fullRange.addLiquidity(address(token0), address(token1), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
-    //     fullRange.addLiquidity(address(token1), address(token2), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
+        // rebalance should happen before this
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
+        fullRange.addLiquidity(address(token1), address(token2), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
 
-    //     // check pool position state
-    //     (uint128 liquidity,
-    //         uint256 feeGrowthInside0LastX128,
-    //         uint256 feeGrowthInside1LastX128,
-    //         uint128 tokensOwed0,
-    //         uint128 tokensOwed1,,) =
-    //         fullRange.poolInfo(feeId);
+        // check pool position state
+        (uint128 liquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1,,) =
+            fullRange.poolInfo(feeId);
 
-    //     assertEq(liquidity, 150 ether); // it's actually less than the liquidity added LOL
+        assertEq(liquidity, 19999999999990030000); // it's actually less than the liquidity added LOL
 
-    //     // TODO: calculate the feeGrowth on my own after a swap
-    //     Position.Info memory posInfo = manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK);
+        // TODO: calculate the feeGrowth on my own after a swap
+        Position.Info memory posInfo = manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK);
 
-    //     assertEq(feeGrowthInside0LastX128, posInfo.feeGrowthInside0LastX128);
-    //     assertEq(feeGrowthInside1LastX128, posInfo.feeGrowthInside1LastX128);
+        assertEq(feeGrowthInside0LastX128, posInfo.feeGrowthInside0LastX128);
+        assertEq(feeGrowthInside1LastX128, posInfo.feeGrowthInside1LastX128);
 
-    //     assertEq(tokensOwed0, 0);
-    //     assertEq(tokensOwed1, 0);
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
 
-    //     (liquidity,
-    //     feeGrowthInside0LastX128,
-    //     feeGrowthInside1LastX128,
-    //     tokensOwed0,
-    //     tokensOwed1,,) =
-    //         fullRange.poolInfo(feeId2);
+        (liquidity,
+        feeGrowthInside0LastX128,
+        feeGrowthInside1LastX128,
+        tokensOwed0,
+        tokensOwed1,,) =
+            fullRange.poolInfo(feeId2);
 
-    //     assertEq(liquidity, 15 ether); // it's actually less than the liquidity added LOL
+        assertEq(liquidity, 19999999999990030000); // it's actually less than the liquidity added LOL
 
-    //     // TODO: calculate the feeGrowth on my own after a swap
-    //     posInfo = manager.getPosition(feeId2, address(fullRange), MIN_TICK, MAX_TICK);
+        // TODO: calculate the feeGrowth on my own after a swap
+        posInfo = manager.getPosition(feeId2, address(fullRange), MIN_TICK, MAX_TICK);
 
-    //     assertEq(feeGrowthInside0LastX128, posInfo.feeGrowthInside0LastX128);
-    //     assertEq(feeGrowthInside1LastX128, posInfo.feeGrowthInside1LastX128);
+        assertEq(feeGrowthInside0LastX128, posInfo.feeGrowthInside0LastX128);
+        assertEq(feeGrowthInside1LastX128, posInfo.feeGrowthInside1LastX128);
 
-    //     assertEq(tokensOwed0, 0);
-    //     assertEq(tokensOwed1, 0);
-    // }
-
-    // // block number change with two pools
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
+    }
 
     function testInitialRemoveLiquiditySucceedsNoFee() public {
         manager.initialize(key, SQRT_RATIO_1_1);
@@ -827,57 +823,58 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         assertEq(tokensOwed1, tokensOwed1New);
     }
 
-    // function testSwapRemoveLiquiditySucceedsWithFeeRebalance() public {
-    //     vm.roll(100);
-    //     manager.initialize(feeKey, SQRT_RATIO_1_1);
+    // todo: does this one actually work
+    function testSwapRemoveLiquiditySucceedsWithFeeRebalance() public {
+        vm.roll(100);
+        manager.initialize(feeKey, SQRT_RATIO_1_1);
 
-    //     fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
 
-    //     (,,,,,, address liquidityToken) = fullRange.poolInfo(feeId);
+        (,,,,,, address liquidityToken) = fullRange.poolInfo(feeId);
 
-    //     assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether);
+        assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether);
 
-    //     IPoolManager.SwapParams memory params =
-    //         IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
+        IPoolManager.SwapParams memory params =
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
 
-    //     PoolSwapTest.TestSettings memory testSettings =
-    //         PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+        PoolSwapTest.TestSettings memory testSettings =
+            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-    //     swapRouter.swap(feeKey, params, testSettings);
+        swapRouter.swap(feeKey, params, testSettings);
 
-    //     fullRange.addLiquidity(address(token0), address(token1), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
+        fullRange.addLiquidity(address(token0), address(token1), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
 
-    //     // all the core fee updates should have happened by now
+        // all the core fee updates should have happened by now
 
-    //     vm.roll(101);
+        vm.roll(101);
 
-    //     UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
+        UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
-    //     snapStart("remove liquidity with fee and rebalance");
-    //     fullRange.removeLiquidity(address(token0), address(token1), 3000, 5 ether, 0, 0, address(this), MAX_DEADLINE);
-    //     snapEnd();
+        snapStart("remove liquidity with fee and rebalance");
+        fullRange.removeLiquidity(address(token0), address(token1), 3000, 5 ether, 0, 0, address(this), MAX_DEADLINE);
+        snapEnd();
 
-    //     // check pool position state
-    //     (
-    //         uint128 liquidity,
-    //         uint256 feeGrowthInside0LastX128,
-    //         uint256 feeGrowthInside1LastX128,
-    //         uint128 tokensOwed0,
-    //         uint128 tokensOwed1,
-    //         ,
-    //     ) = fullRange.poolInfo(feeId);
-    //     // TODO: check
-    //     assertEq(liquidity, 9546694553059925434); // it's actually less than the liquidity added LOL
+        // check pool position state
+        (
+            uint128 liquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128,
+            uint128 tokensOwed0,
+            uint128 tokensOwed1,
+            ,
+        ) = fullRange.poolInfo(feeId);
+        // TODO: check
+        assertEq(liquidity, 9546694553059925434); // it's actually less than the liquidity added LOL
 
-    //     // TODO: calculate the feeGrowth on my own after a swap
-    //     Position.Info memory posInfo = manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK);
+        // TODO: calculate the feeGrowth on my own after a swap
+        Position.Info memory posInfo = manager.getPosition(feeId, address(fullRange), MIN_TICK, MAX_TICK);
 
-    //     assertEq(feeGrowthInside0LastX128, posInfo.feeGrowthInside0LastX128);
-    //     assertEq(feeGrowthInside1LastX128, posInfo.feeGrowthInside1LastX128);
+        assertEq(feeGrowthInside0LastX128, posInfo.feeGrowthInside0LastX128);
+        assertEq(feeGrowthInside1LastX128, posInfo.feeGrowthInside1LastX128);
 
-    //     assertEq(tokensOwed0, 0);
-    //     assertEq(tokensOwed1, 0);
-    // }
+        assertEq(tokensOwed0, 0);
+        assertEq(tokensOwed1, 0);
+    }
 
     // this test is never called
     // function testModifyPositionFailsIfNotFullRange() public {
