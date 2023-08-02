@@ -13,6 +13,7 @@ import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol
 import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
@@ -26,7 +27,7 @@ import {BalanceDelta, BalanceDeltaLibrary, toBalanceDelta} from "@uniswap/v4-cor
 import "forge-std/console.sol";
 
 contract TestFullRange is Test, Deployers, GasSnapshot {
-    using PoolIdLibrary for IPoolManager.PoolKey;
+    using PoolIdLibrary for PoolKey;
 
     event Initialize(
         PoolId indexed poolId,
@@ -67,14 +68,14 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     FullRangeImplementation fullRange = FullRangeImplementation(
         address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG))
     );
-    IPoolManager.PoolKey key;
+    PoolKey key;
     PoolId id;
 
     // the key that includes a pool fee for pool fee rebalance tests
-    IPoolManager.PoolKey feeKey;
+    PoolKey feeKey;
     PoolId feeId;
 
-    IPoolManager.PoolKey feeKey2;
+    PoolKey feeKey2;
     PoolId feeId2;
 
     PoolModifyPositionTest modifyPositionRouter;
@@ -90,26 +91,13 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         FullRangeImplementation impl = new FullRangeImplementation(manager, fullRange);
         (, bytes32[] memory writes) = vm.accesses(address(impl));
         vm.etch(address(fullRange), address(impl).code);
-        // for each storage key that was written during the hook implementation, copy the value over
-        unchecked {
-            for (uint256 i = 0; i < writes.length; i++) {
-                bytes32 slot = writes[i];
-                vm.store(address(fullRange), slot, vm.load(address(impl), slot));
-            }
-        }
-        key = IPoolManager.PoolKey(
-            Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, TICK_SPACING, fullRange
-        );
+        key = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, TICK_SPACING, fullRange);
         id = key.toId();
 
-        feeKey = IPoolManager.PoolKey(
-            Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, TICK_SPACING, fullRange
-        );
+        feeKey = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, TICK_SPACING, fullRange);
         feeId = feeKey.toId();
 
-        feeKey2 = IPoolManager.PoolKey(
-            Currency.wrap(address(token1)), Currency.wrap(address(token2)), 3000, TICK_SPACING, fullRange
-        );
+        feeKey2 = PoolKey(Currency.wrap(address(token1)), Currency.wrap(address(token2)), 3000, TICK_SPACING, fullRange);
         feeId2 = feeKey.toId();
 
         modifyPositionRouter = new PoolModifyPositionTest(manager);
@@ -154,9 +142,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testBeforeInitializeRevertsIfWrongSpacing() public {
-        IPoolManager.PoolKey memory wrongKey = IPoolManager.PoolKey(
-            Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, TICK_SPACING + 1, fullRange
-        );
+        PoolKey memory wrongKey =
+            PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, TICK_SPACING + 1, fullRange);
 
         vm.expectRevert("Tick spacing must be default");
         manager.initialize(wrongKey, SQRT_RATIO_1_1);
@@ -513,12 +500,14 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         fullRange.addLiquidity(address(token1), address(token2), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
 
         // check pool position state
-        (uint128 liquidity,
+        (
+            uint128 liquidity,
             uint256 feeGrowthInside0LastX128,
             uint256 feeGrowthInside1LastX128,
             uint128 tokensOwed0,
-            uint128 tokensOwed1,,) =
-            fullRange.poolInfo(feeId);
+            uint128 tokensOwed1,
+            ,
+        ) = fullRange.poolInfo(feeId);
 
         assertEq(liquidity, 19999999999990030000); // it's actually less than the liquidity added LOL
 
@@ -531,11 +520,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         assertEq(tokensOwed0, 0);
         assertEq(tokensOwed1, 0);
 
-        (liquidity,
-        feeGrowthInside0LastX128,
-        feeGrowthInside1LastX128,
-        tokensOwed0,
-        tokensOwed1,,) =
+        (liquidity, feeGrowthInside0LastX128, feeGrowthInside1LastX128, tokensOwed0, tokensOwed1,,) =
             fullRange.poolInfo(feeId2);
 
         assertEq(liquidity, 19999999999990030000); // it's actually less than the liquidity added LOL

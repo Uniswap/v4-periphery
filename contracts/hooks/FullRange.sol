@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.19;
+pragma solidity ^0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
@@ -14,20 +14,22 @@ import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/contracts/type
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
 import {UniswapV4ERC20} from "./UniswapV4ERC20.sol";
 import {Position} from "@uniswap/v4-core/contracts/libraries/Position.sol";
 import "@uniswap/v4-core/contracts/libraries/FixedPoint128.sol";
 import {FixedPoint96} from "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
 
 import "forge-std/console2.sol";
 
 import "../libraries/LiquidityAmounts.sol";
 
-contract FullRange is BaseHook {
+contract FullRange is BaseHook, ILockCallback {
     using CurrencyLibrary for Currency;
-    using PoolIdLibrary for IPoolManager.PoolKey;
+    using PoolIdLibrary for PoolKey;
 
     /// @notice Thrown when trying to interact with a non-initialized pool
     error PoolNotInitialized();
@@ -42,7 +44,7 @@ contract FullRange is BaseHook {
 
     struct CallbackData {
         address sender;
-        IPoolManager.PoolKey key;
+        PoolKey key;
         IPoolManager.ModifyPositionParams params;
     }
 
@@ -80,7 +82,7 @@ contract FullRange is BaseHook {
         });
     }
 
-    function beforeInitialize(address, IPoolManager.PoolKey calldata key, uint160) external override returns (bytes4) {
+    function beforeInitialize(address, PoolKey calldata key, uint160) external override returns (bytes4) {
         require(key.tickSpacing == 60, "Tick spacing must be default");
 
         // deploy erc20 contract
@@ -111,7 +113,7 @@ contract FullRange is BaseHook {
 
     function beforeModifyPosition(
         address sender,
-        IPoolManager.PoolKey calldata key,
+        PoolKey calldata key,
         IPoolManager.ModifyPositionParams calldata params
     ) external override returns (bytes4) {
         // check msg.sender
@@ -121,7 +123,7 @@ contract FullRange is BaseHook {
         return FullRange.beforeModifyPosition.selector;
     }
 
-    function beforeSwap(address, IPoolManager.PoolKey calldata key, IPoolManager.SwapParams calldata)
+    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata)
         external
         override
         returns (bytes4)
@@ -140,85 +142,61 @@ contract FullRange is BaseHook {
         }
     }
 
-    function modifyPosition(IPoolManager.PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
+    function modifyPosition(PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
         internal
         returns (BalanceDelta delta)
     {
         // msg.sender is the test contract (aka whoever called addLiquidity/removeLiquidity)
 
         delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
-
-        uint256 ethBalance = address(this).balance;
-        if (ethBalance > 0) {
-            CurrencyLibrary.NATIVE.transfer(msg.sender, ethBalance);
-        }
     }
 
-    function hookModifyPosition(IPoolManager.PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
+    function hookModifyPosition(PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
         internal
         returns (BalanceDelta delta)
     {
-        // IERC20Minimal(Currency.unwrap(key.currency0)).approve(address(this), type(uint256).max);
-        // IERC20Minimal(Currency.unwrap(key.currency1)).approve(address(this), type(uint256).max);
+        IERC20Minimal(Currency.unwrap(key.currency0)).approve(address(this), type(uint256).max);
+        IERC20Minimal(Currency.unwrap(key.currency1)).approve(address(this), type(uint256).max);
 
         delta = abi.decode(poolManager.lock(abi.encode(CallbackData(address(this), key, params))), (BalanceDelta));
+    }
 
-        uint256 ethBalance = address(this).balance;
-        if (ethBalance > 0) {
-            CurrencyLibrary.NATIVE.transfer(msg.sender, ethBalance);
+    function _addingLiquidity(address sender, PoolKey memory key, BalanceDelta delta) internal {
+        if (key.currency0.isNative()) {
+            poolManager.settle{value: uint128(delta.amount0())}(key.currency0);
+        } else {
+            IERC20Minimal(Currency.unwrap(key.currency0)).transferFrom(
+                sender, address(poolManager), uint128(delta.amount0())
+            );
+            poolManager.settle(key.currency0);
+        }
+        if (key.currency1.isNative()) {
+            poolManager.settle{value: uint128(delta.amount1())}(key.currency1);
+        } else {
+            IERC20Minimal(Currency.unwrap(key.currency1)).transferFrom(
+                sender, address(poolManager), uint128(delta.amount1())
+            );
+            poolManager.settle(key.currency1);
         }
     }
 
-    function lockAcquired(uint256, bytes calldata rawData) external override returns (bytes memory) {
+    function _removingLiquidity(address sender, PoolKey memory key, BalanceDelta delta) internal {
+        poolManager.take(key.currency0, sender, uint256(uint128(-delta.amount0())));
+        poolManager.take(key.currency1, sender, uint256(uint128(-delta.amount1())));
+    }
+
+    function lockAcquired(bytes calldata rawData) external override(ILockCallback, BaseHook) returns (bytes memory) {
         require(msg.sender == address(poolManager));
 
         CallbackData memory data = abi.decode(rawData, (CallbackData));
 
         BalanceDelta delta = poolManager.modifyPosition(data.key, data.params);
 
-        // check if we are inputting liquidity for token0
         if (delta.amount0() > 0) {
-            if (data.key.currency0.isNative()) {
-                poolManager.settle{value: uint128(delta.amount0())}(data.key.currency0);
-            } else {
-                IERC20Minimal(Currency.unwrap(data.key.currency0)).transferFrom(
-                    data.sender, address(poolManager), uint128(delta.amount0())
-                );
-                poolManager.settle(data.key.currency0);
-            }
-            // withdrawing liquidity for token0
+            _addingLiquidity(data.sender, data.key, delta);
         } else {
-            poolManager.take(data.key.currency0, data.sender, uint256(uint128(-delta.amount0())));
-
-            if (data.key.currency0.isNative()) {
-                poolManager.settle{value: uint128(-delta.amount0())}(data.key.currency0);
-            } else {
-                poolManager.settle(data.key.currency0);
-            }
+            _removingLiquidity(data.sender, data.key, delta);
         }
-
-        // check if we are inputting liquidity for token1
-        if (delta.amount1() > 0) {
-            if (data.key.currency1.isNative()) {
-                poolManager.settle{value: uint128(delta.amount1())}(data.key.currency1);
-            } else {
-                IERC20Minimal(Currency.unwrap(data.key.currency1)).transferFrom(
-                    data.sender, address(poolManager), uint128(delta.amount1())
-                );
-                poolManager.settle(data.key.currency1);
-            }
-            // withdrawing liquidity for token1
-        } else {
-            // withdrawing is because of rebalance
-            poolManager.take(data.key.currency1, data.sender, uint256(uint128(-delta.amount1())));
-
-            if (data.key.currency1.isNative()) {
-                poolManager.settle{value: uint128(-delta.amount1())}(data.key.currency1);
-            } else {
-                poolManager.settle(data.key.currency1);
-            }
-        }
-
         return abi.encode(delta);
     }
 
@@ -231,7 +209,7 @@ contract FullRange is BaseHook {
         address to,
         uint256 deadline
     ) external ensure(deadline) returns (uint128 liquidity) {
-        IPoolManager.PoolKey memory key = IPoolManager.PoolKey({
+        PoolKey memory key = PoolKey({
             currency0: Currency.wrap(tokenA),
             currency1: Currency.wrap(tokenB),
             fee: fee,
@@ -264,31 +242,27 @@ contract FullRange is BaseHook {
 
         Position.Info memory posInfo = poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK);
 
-        PoolInfo storage poolInfo = poolInfo[key.toId()];
+        PoolInfo storage pool = poolInfo[key.toId()];
 
-        poolInfo.tokensOwed0 += uint128(
+        pool.tokensOwed0 += uint128(
             FullMath.mulDiv(
-                posInfo.feeGrowthInside0LastX128 - poolInfo.feeGrowthInside0LastX128,
-                poolInfo.liquidity,
-                FixedPoint128.Q128
+                posInfo.feeGrowthInside0LastX128 - pool.feeGrowthInside0LastX128, pool.liquidity, FixedPoint128.Q128
             )
         );
-        poolInfo.tokensOwed1 += uint128(
+        pool.tokensOwed1 += uint128(
             FullMath.mulDiv(
-                posInfo.feeGrowthInside1LastX128 - poolInfo.feeGrowthInside1LastX128,
-                poolInfo.liquidity,
-                FixedPoint128.Q128
+                posInfo.feeGrowthInside1LastX128 - pool.feeGrowthInside1LastX128, pool.liquidity, FixedPoint128.Q128
             )
         );
 
-        poolInfo.feeGrowthInside0LastX128 = posInfo.feeGrowthInside0LastX128;
-        poolInfo.feeGrowthInside1LastX128 = posInfo.feeGrowthInside1LastX128;
-        poolInfo.liquidity += liquidity;
+        pool.feeGrowthInside0LastX128 = posInfo.feeGrowthInside0LastX128;
+        pool.feeGrowthInside1LastX128 = posInfo.feeGrowthInside1LastX128;
+        pool.liquidity += liquidity;
 
         // TODO: price slippage check for v4 deposit
         // require(amountA >= amountAMin && amountB >= params.amountBMin, 'Price slippage check');
 
-        UniswapV4ERC20(poolInfo.liquidityToken).mint(to, liquidity);
+        UniswapV4ERC20(pool.liquidityToken).mint(to, liquidity);
     }
 
     function removeLiquidity(
@@ -301,7 +275,7 @@ contract FullRange is BaseHook {
         address to,
         uint256 deadline
     ) public virtual ensure(deadline) returns (uint256 amountA, uint256 amountB) {
-        IPoolManager.PoolKey memory key = IPoolManager.PoolKey({
+        PoolKey memory key = PoolKey({
             currency0: Currency.wrap(tokenA),
             currency1: Currency.wrap(tokenB),
             fee: fee,
@@ -328,35 +302,31 @@ contract FullRange is BaseHook {
         );
 
         // here, all of the necessary liquidity should have been removed, this portion is just to update fees and feeGrowth
-        PoolInfo storage poolInfo = poolInfo[key.toId()];
+        PoolInfo storage pool = poolInfo[key.toId()];
 
-        uint128 positionLiquidity = poolInfo.liquidity;
+        uint128 positionLiquidity = pool.liquidity;
         require(positionLiquidity >= liquidity);
 
         Position.Info memory posInfo = poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK);
 
-        poolInfo.tokensOwed0 += uint128(
+        pool.tokensOwed0 += uint128(
             FullMath.mulDiv(
-                posInfo.feeGrowthInside0LastX128 - poolInfo.feeGrowthInside0LastX128,
-                positionLiquidity,
-                FixedPoint128.Q128
+                posInfo.feeGrowthInside0LastX128 - pool.feeGrowthInside0LastX128, positionLiquidity, FixedPoint128.Q128
             )
         );
-        poolInfo.tokensOwed1 += uint128(
+        pool.tokensOwed1 += uint128(
             FullMath.mulDiv(
-                posInfo.feeGrowthInside1LastX128 - poolInfo.feeGrowthInside1LastX128,
-                positionLiquidity,
-                FixedPoint128.Q128
+                posInfo.feeGrowthInside1LastX128 - pool.feeGrowthInside1LastX128, positionLiquidity, FixedPoint128.Q128
             )
         );
 
-        poolInfo.feeGrowthInside0LastX128 = posInfo.feeGrowthInside0LastX128;
-        poolInfo.feeGrowthInside1LastX128 = posInfo.feeGrowthInside1LastX128;
+        pool.feeGrowthInside0LastX128 = posInfo.feeGrowthInside0LastX128;
+        pool.feeGrowthInside1LastX128 = posInfo.feeGrowthInside1LastX128;
         // subtraction is safe because we checked positionLiquidity is gte liquidity
-        poolInfo.liquidity = uint128(positionLiquidity - liquidity);
+        pool.liquidity = uint128(positionLiquidity - liquidity);
     }
 
-    function _rebalance(IPoolManager.PoolKey calldata key) internal {
+    function _rebalance(PoolKey calldata key) internal {
         PoolInfo storage position = poolInfo[key.toId()];
 
         if (block.number > position.blockNumber) {
@@ -385,8 +355,8 @@ contract FullRange is BaseHook {
 
                 (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(key.toId());
 
-                console2.log("new sqrt price", newSqrtPriceX96);
-                console2.log("old sqrt price", sqrtPriceX96);
+                // console2.log("new sqrt price", newSqrtPriceX96);
+                // console2.log("old sqrt price", sqrtPriceX96);
 
                 BalanceDelta swapDelta = poolManager.swap(
                     key,
@@ -419,10 +389,10 @@ contract FullRange is BaseHook {
                 // require(IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this)) == prevBal0);
                 // require(IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this)) == prevBal1);
 
-                console2.log("new balance 0", IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this)));
-                console2.log("new balance 1", IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this)));
-                console2.log("prev balance 0", prevBal0);
-                console2.log("prev balance 1", prevBal1);
+                // console2.log("new balance 0", IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this)));
+                // console2.log("new balance 1", IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this)));
+                // console2.log("prev balance 0", prevBal0);
+                // console2.log("prev balance 1", prevBal1);
 
                 // update position
                 Position.Info memory posInfo = poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK);
