@@ -285,7 +285,6 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         // Below is the 0.3% fee of 0.5 token1
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(nonfungiblePositionManager)), 1499999999999999);
 
-        // Why is liquidity unchanged after the swap?
         info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
         assertEq(info.liquidity, 333850249709699449134);
         assertEq(info.feeGrowthInside0LastX128, 0);
