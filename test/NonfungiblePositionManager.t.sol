@@ -254,6 +254,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         PoolSwapTest.TestSettings memory testSettings =
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
+        // Assert pool manager's position is correct prior to swap
         Position.Info memory info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
         assertEq(info.liquidity, 333850249709699449134);
         assertEq(info.feeGrowthInside0LastX128, 0);
@@ -285,9 +286,14 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         // Below is the 0.3% fee of 0.5 token1
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(nonfungiblePositionManager)), 1499999999999999);
 
+        // Ensure that pool manager's position has correct data
         info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
         assertEq(info.liquidity, 333850249709699449134);
         assertEq(info.feeGrowthInside0LastX128, 0);
         assertEq(info.feeGrowthInside1LastX128, 1528899711248525719508603825072376);
+
+        // Assert that the pool manager has appropriate funds after swap
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(manager)), 502243242647731639);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(manager)), 498500000000000001);
     }
 }
