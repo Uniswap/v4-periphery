@@ -119,4 +119,12 @@ contract NonfungiblePositionManager is
         }
         return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
     }
+
+    function increaseLiquidity(IncreaseLiquidityParams calldata params)
+        external
+        payable
+        override
+        checkDeadline(params.deadline)
+        returns (uint128 liquidity, uint256 amount0, uint256 amount1)
+    {}
 }
