@@ -8,12 +8,12 @@ import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {BaseHook} from "../BaseHook.sol";
 
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
 import {UniswapV4ERC20} from "./UniswapV4ERC20.sol";
 import {Position} from "@uniswap/v4-core/contracts/libraries/Position.sol";
@@ -158,8 +158,8 @@ contract FullRange is BaseHook {
         internal
         returns (BalanceDelta delta)
     {
-        IERC20Minimal(Currency.unwrap(key.currency0)).approve(address(this), type(uint256).max);
-        IERC20Minimal(Currency.unwrap(key.currency1)).approve(address(this), type(uint256).max);
+        // IERC20Minimal(Currency.unwrap(key.currency0)).approve(address(this), type(uint256).max);
+        // IERC20Minimal(Currency.unwrap(key.currency1)).approve(address(this), type(uint256).max);
 
         delta = abi.decode(poolManager.lock(abi.encode(CallbackData(address(this), key, params))), (BalanceDelta));
 
