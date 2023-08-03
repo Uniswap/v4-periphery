@@ -79,10 +79,7 @@ contract NonfungiblePositionManager is
         emit IncreaseLiquidity(tokenId, liquidity, amount0, amount1);
     }
 
-    function addLiquidity(AddLiquidityParams memory params)
-        internal
-        returns (uint128 liquidity, BalanceDelta delta)
-    {
+    function addLiquidity(AddLiquidityParams memory params) internal returns (uint128 liquidity, BalanceDelta delta) {
         (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(params.poolKey.toId());
         uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(params.tickLower);
         uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(params.tickUpper);
@@ -92,6 +89,11 @@ contract NonfungiblePositionManager is
         delta = poolManager.modifyPosition(
             params.poolKey,
             IPoolManager.ModifyPositionParams(params.tickLower, params.tickUpper, int256(int128(liquidity)))
+        );
+        require(
+            uint256(int256(delta.amount0())) >= params.amount0Min
+                && uint256(int256(delta.amount1())) >= params.amount1Min,
+            "Price slippage check"
         );
     }
 
