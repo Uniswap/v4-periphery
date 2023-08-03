@@ -3,8 +3,9 @@ pragma solidity ^0.8.15;
 
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
 interface ITWAMM {
     /// @notice Thrown when account other than owner attempts to interact with an order
@@ -104,7 +105,7 @@ interface ITWAMM {
     /// @param amountIn The amount of sell token to add to the order. Some precision on amountIn may be lost up to the
     /// magnitude of (orderKey.expiration - block.timestamp)
     /// @return orderId The bytes32 ID of the order
-    function submitOrder(IPoolManager.PoolKey calldata key, OrderKey calldata orderKey, uint256 amountIn)
+    function submitOrder(PoolKey calldata key, OrderKey calldata orderKey, uint256 amountIn)
         external
         returns (bytes32 orderId);
 
@@ -113,7 +114,7 @@ interface ITWAMM {
     /// @param orderKey The OrderKey for which to identify the order
     /// @param amountDelta The delta for the order sell amount. Negative to remove from order, positive to add, or
     ///    -1 to remove full amount from order.
-    function updateOrder(IPoolManager.PoolKey calldata key, OrderKey calldata orderKey, int256 amountDelta)
+    function updateOrder(PoolKey calldata key, OrderKey calldata orderKey, int256 amountDelta)
         external
         returns (uint256 tokens0Owed, uint256 tokens1Owed);
 
@@ -129,7 +130,7 @@ interface ITWAMM {
     /// @notice Executes TWAMM orders on the pool, swapping on the pool itself to make up the difference between the
     /// two TWAMM pools swapping against each other
     /// @param key The pool key associated with the TWAMM
-    function executeTWAMMOrders(IPoolManager.PoolKey memory key) external;
+    function executeTWAMMOrders(PoolKey memory key) external;
 
     function tokensOwed(Currency token, address owner) external returns (uint256);
 }

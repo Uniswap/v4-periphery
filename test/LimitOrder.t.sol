@@ -10,13 +10,14 @@ import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
 import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
 contract TestLimitOrder is Test, Deployers {
-    using PoolIdLibrary for IPoolManager.PoolKey;
+    using PoolIdLibrary for PoolKey;
 
     uint160 constant SQRT_RATIO_10_1 = 250541448375047931186413801569;
 
@@ -24,7 +25,7 @@ contract TestLimitOrder is Test, Deployers {
     TestERC20 token1;
     PoolManager manager;
     LimitOrder limitOrder = LimitOrder(address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG)));
-    IPoolManager.PoolKey key;
+    PoolKey key;
     PoolId id;
 
     PoolSwapTest swapRouter;
@@ -46,7 +47,7 @@ contract TestLimitOrder is Test, Deployers {
             }
         }
 
-        key = IPoolManager.PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, limitOrder);
+        key = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, limitOrder);
         id = key.toId();
         manager.initialize(key, SQRT_RATIO_1_1);
 
@@ -63,8 +64,8 @@ contract TestLimitOrder is Test, Deployers {
     }
 
     function testGetTickLowerLastWithDifferentPrice() public {
-        IPoolManager.PoolKey memory differentKey =
-            IPoolManager.PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 61, limitOrder);
+        PoolKey memory differentKey =
+            PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 61, limitOrder);
         manager.initialize(differentKey, SQRT_RATIO_10_1);
         assertEq(limitOrder.getTickLowerLast(differentKey.toId()), 22997);
     }
