@@ -48,6 +48,16 @@ contract NonfungiblePositionManager is
         uint128 tokensOwed1;
     }
 
+    struct AddLiquidityParams {
+        PoolKey poolKey;
+        int24 tickLower;
+        int24 tickUpper;
+        uint256 amount0Desired;
+        uint256 amount1Desired;
+        uint256 amount0Min;
+        uint256 amount1Min;
+    }
+
     /// @dev The token ID position data
     mapping(uint256 => TokenIdPosition) public positions;
 
@@ -69,22 +79,19 @@ contract NonfungiblePositionManager is
         emit IncreaseLiquidity(tokenId, liquidity, amount0, amount1);
     }
 
-    function addLiquidity(
-        PoolKey memory poolKey,
-        int24 tickLower,
-        int24 tickUpper,
-        uint256 amount0Desired,
-        uint256 amount1Desired,
-        address recipient
-    ) internal returns (uint128 liquidity, BalanceDelta delta) {
-        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolKey.toId());
-        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
-        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+    function addLiquidity(AddLiquidityParams memory params)
+        internal
+        returns (uint128 liquidity, BalanceDelta delta)
+    {
+        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(params.poolKey.toId());
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(params.tickLower);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(params.tickUpper);
         liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, amount0Desired, amount1Desired
+            sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, params.amount0Desired, params.amount1Desired
         );
         delta = poolManager.modifyPosition(
-            poolKey, IPoolManager.ModifyPositionParams(tickLower, tickUpper, int256(int128(liquidity)))
+            params.poolKey,
+            IPoolManager.ModifyPositionParams(params.tickLower, params.tickUpper, int256(int128(liquidity)))
         );
     }
 
@@ -94,12 +101,15 @@ contract NonfungiblePositionManager is
         MintParams memory params = data.params;
         PoolId poolId = params.poolKey.toId();
         (uint128 liquidity, BalanceDelta delta) = addLiquidity(
-            params.poolKey,
-            params.tickLower,
-            params.tickUpper,
-            params.amount0Desired,
-            params.amount1Desired,
-            params.recipient
+            AddLiquidityParams({
+                poolKey: params.poolKey,
+                tickLower: params.tickLower,
+                tickUpper: params.tickUpper,
+                amount0Desired: params.amount0Desired,
+                amount1Desired: params.amount1Desired,
+                amount0Min: params.amount0Min,
+                amount1Min: params.amount1Min
+            })
         );
 
         uint256 tokenId = _nextId++;
