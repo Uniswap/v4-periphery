@@ -69,20 +69,37 @@ contract NonfungiblePositionManager is
         emit IncreaseLiquidity(tokenId, liquidity, amount0, amount1);
     }
 
+    function addLiquidity(
+        PoolKey memory poolKey,
+        int24 tickLower,
+        int24 tickUpper,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        address recipient
+    ) internal returns (uint128 liquidity, BalanceDelta delta) {
+        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolKey.toId());
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+        liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, amount0Desired, amount1Desired
+        );
+        delta = poolManager.modifyPosition(
+            poolKey, IPoolManager.ModifyPositionParams(tickLower, tickUpper, int256(int128(liquidity)))
+        );
+    }
+
     function lockAcquired(bytes calldata rawData) external returns (bytes memory) {
         require(msg.sender == address(poolManager));
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         MintParams memory params = data.params;
         PoolId poolId = params.poolKey.toId();
-        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
-        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(params.tickLower);
-        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(params.tickUpper);
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96, sqrtRatioAX96, sqrtRatioBX96, params.amount0Desired, params.amount1Desired
-        );
-        BalanceDelta delta = poolManager.modifyPosition(
+        (uint128 liquidity, BalanceDelta delta) = addLiquidity(
             params.poolKey,
-            IPoolManager.ModifyPositionParams(params.tickLower, params.tickUpper, int256(int128(liquidity)))
+            params.tickLower,
+            params.tickUpper,
+            params.amount0Desired,
+            params.amount1Desired,
+            params.recipient
         );
 
         uint256 tokenId = _nextId++;
