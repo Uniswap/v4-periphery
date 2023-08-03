@@ -27,8 +27,14 @@ contract NonfungiblePositionManager is
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 private _nextId = 1;
 
+    enum CallbackDataType {
+        Mint,
+        IncreaseLiquidity
+    }
+
     struct CallbackData {
         address sender;
+        CallbackDataType callbackDataType;
         MintParams params;
     }
 
@@ -74,7 +80,8 @@ contract NonfungiblePositionManager is
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         (tokenId, liquidity, amount0, amount1) = abi.decode(
-            poolManager.lock(abi.encode(CallbackData(msg.sender, params))), (uint256, uint128, uint256, uint256)
+            poolManager.lock(abi.encode(CallbackData(msg.sender, CallbackDataType.Mint, params))),
+            (uint256, uint128, uint256, uint256)
         );
         emit IncreaseLiquidity(tokenId, liquidity, amount0, amount1);
     }
@@ -102,51 +109,54 @@ contract NonfungiblePositionManager is
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         MintParams memory params = data.params;
         PoolId poolId = params.poolKey.toId();
-        (uint128 liquidity, BalanceDelta delta) = addLiquidity(
-            AddLiquidityParams({
+
+        if (data.callbackDataType == CallbackDataType.Mint) {
+            (uint128 liquidity, BalanceDelta delta) = addLiquidity(
+                AddLiquidityParams({
+                    poolKey: params.poolKey,
+                    tickLower: params.tickLower,
+                    tickUpper: params.tickUpper,
+                    amount0Desired: params.amount0Desired,
+                    amount1Desired: params.amount1Desired,
+                    amount0Min: params.amount0Min,
+                    amount1Min: params.amount1Min
+                })
+            );
+
+            uint256 tokenId = _nextId++;
+            _mint(params.recipient, tokenId);
+
+            Position.Info memory positionInfo =
+                poolManager.getPosition(poolId, address(this), params.tickLower, params.tickUpper);
+            positions[tokenId] = TokenIdPosition({
                 poolKey: params.poolKey,
                 tickLower: params.tickLower,
                 tickUpper: params.tickUpper,
-                amount0Desired: params.amount0Desired,
-                amount1Desired: params.amount1Desired,
-                amount0Min: params.amount0Min,
-                amount1Min: params.amount1Min
-            })
-        );
+                liquidity: liquidity,
+                feeGrowthInside0LastX128: positionInfo.feeGrowthInside0LastX128,
+                feeGrowthInside1LastX128: positionInfo.feeGrowthInside1LastX128,
+                tokensOwed0: 0,
+                tokensOwed1: 0
+            });
 
-        uint256 tokenId = _nextId++;
-        _mint(params.recipient, tokenId);
-
-        Position.Info memory positionInfo =
-            poolManager.getPosition(poolId, address(this), params.tickLower, params.tickUpper);
-        positions[tokenId] = TokenIdPosition({
-            poolKey: params.poolKey,
-            tickLower: params.tickLower,
-            tickUpper: params.tickUpper,
-            liquidity: liquidity,
-            feeGrowthInside0LastX128: positionInfo.feeGrowthInside0LastX128,
-            feeGrowthInside1LastX128: positionInfo.feeGrowthInside1LastX128,
-            tokensOwed0: 0,
-            tokensOwed1: 0
-        });
-
-        if (delta.amount0() > 0) {
-            IERC20(Currency.unwrap(params.poolKey.currency0)).transferFrom(
-                data.sender, address(poolManager), uint256(int256(delta.amount0()))
-            );
-            poolManager.settle(params.poolKey.currency0);
-        } else if (delta.amount0() < 0) {
-            poolManager.take(params.poolKey.currency0, address(this), uint128(-delta.amount0()));
+            if (delta.amount0() > 0) {
+                IERC20(Currency.unwrap(params.poolKey.currency0)).transferFrom(
+                    data.sender, address(poolManager), uint256(int256(delta.amount0()))
+                );
+                poolManager.settle(params.poolKey.currency0);
+            } else if (delta.amount0() < 0) {
+                poolManager.take(params.poolKey.currency0, address(this), uint128(-delta.amount0()));
+            }
+            if (delta.amount1() > 0) {
+                IERC20(Currency.unwrap(params.poolKey.currency1)).transferFrom(
+                    data.sender, address(poolManager), uint256(int256(delta.amount1()))
+                );
+                poolManager.settle(params.poolKey.currency1);
+            } else if (delta.amount1() < 0) {
+                poolManager.take(params.poolKey.currency1, address(this), uint128(-delta.amount1()));
+            }
+            return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
         }
-        if (delta.amount1() > 0) {
-            IERC20(Currency.unwrap(params.poolKey.currency1)).transferFrom(
-                data.sender, address(poolManager), uint256(int256(delta.amount1()))
-            );
-            poolManager.settle(params.poolKey.currency1);
-        } else if (delta.amount1() < 0) {
-            poolManager.take(params.poolKey.currency1, address(this), uint128(-delta.amount1()));
-        }
-        return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
     }
 
     function increaseLiquidity(IncreaseLiquidityParams calldata params)
