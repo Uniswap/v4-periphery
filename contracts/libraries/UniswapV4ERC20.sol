@@ -9,7 +9,7 @@ contract UniswapV4ERC20 is ERC20Permit, Ownable {
 
     bytes32 public constant PERMIT_TYPEHASH = 0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
 
-    constructor() public ERC20Permit("V4ERC20") ERC20("V4ERC20", "V4ERC20") Ownable(msg.sender) {}
+    constructor() ERC20Permit("V4ERC20") ERC20("V4ERC20", "V4ERC20") Ownable(msg.sender) {}
 
     function mint(address account, uint256 amount) external onlyOwner {
         _mint(account, amount);
