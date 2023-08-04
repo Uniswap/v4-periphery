@@ -280,9 +280,12 @@ contract FullRange is BaseHook, ILockCallback {
         poolManager.take(key.currency1, sender, uint256(uint128(-delta.amount1())));
     }
 
-    function lockAcquired(bytes calldata rawData) external override(ILockCallback, BaseHook) returns (bytes memory) {
-        require(msg.sender == address(poolManager));
-
+    function lockAcquired(bytes calldata rawData)
+        external
+        override(ILockCallback, BaseHook)
+        poolManagerOnly
+        returns (bytes memory)
+    {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
 
         BalanceDelta delta = poolManager.modifyPosition(data.key, data.params);
