@@ -181,5 +181,10 @@ contract NonfungiblePositionManager is
         returns (uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         TokenIdPosition storage position = positions[params.tokenId];
+        (liquidity, amount0, amount1) = abi.decode(
+            poolManager.lock(abi.encode(CallbackData(msg.sender, CallbackDataType.IncreaseLiquidity, params))),
+            (uint128, uint256, uint256)
+        );
+        emit IncreaseLiquidity(params.tokenId, liquidity, amount0, amount1);
     }
 }

@@ -296,4 +296,37 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(manager)), 502243242647731639);
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(manager)), 498500000000000001);
     }
+
+    // address(this) adds 1 token0 of liquidity. Then address(this) increases token0 liquidity by 2.
+    function testIncreaseLiquidity() public {
+        PoolKey memory key =
+            PoolKey({currency0: currency0, currency1: currency1, fee: 3000, hooks: IHooks(address(0)), tickSpacing: 60});
+
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        nonfungiblePositionManager.mint(
+            INonfungiblePositionManager.MintParams({
+                poolKey: key,
+                tickLower: 0,
+                tickUpper: 60,
+                amount0Desired: 1 ether,
+                amount1Desired: 0,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: address(this),
+                deadline: MAX_UINT256
+            })
+        );
+
+        (uint128 liquidity, uint256 amount0, uint256 amount1) = nonfungiblePositionManager.increaseLiquidity(
+            INonfungiblePositionManager.IncreaseLiquidityParams({
+                tokenId: 1,
+                amount0Desired: 2 ether,
+                amount1Desired: 0,
+                amount0Min: 0,
+                amount1Min: 1,
+                deadline: MAX_UINT256
+            })
+        );
+    }
 }
