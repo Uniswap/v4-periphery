@@ -156,6 +156,18 @@ contract NonfungiblePositionManager is
                 poolManager.take(params.poolKey.currency1, address(this), uint128(-delta.amount1()));
             }
             return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
+        } else if (data.callbackDataType == CallbackDataType.IncreaseLiquidity) {
+            (uint128 liquidity, BalanceDelta delta) = addLiquidity(
+                AddLiquidityParams({
+                    poolKey: params.poolKey,
+                    tickLower: params.tickLower,
+                    tickUpper: params.tickUpper,
+                    amount0Desired: params.amount0Desired,
+                    amount1Desired: params.amount1Desired,
+                    amount0Min: params.amount0Min,
+                    amount1Min: params.amount1Min
+                })
+            );
         }
     }
 
