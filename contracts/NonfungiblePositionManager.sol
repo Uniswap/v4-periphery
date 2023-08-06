@@ -168,6 +168,8 @@ contract NonfungiblePositionManager is
                     amount1Min: params.amount1Min
                 })
             );
+            Position.Info memory positionInfo =
+                poolManager.getPosition(poolId, address(this), params.tickLower, params.tickUpper);
         }
     }
 
