@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
+import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {GetSender} from "./shared/GetSender.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
@@ -9,6 +10,7 @@ import {GeomeanOracleImplementation} from "./shared/implementation/GeomeanOracle
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
+import {TokenFixture} from "@uniswap/v4-core/test/foundry-tests/utils/TokenFixture.sol";
 import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
@@ -17,7 +19,7 @@ import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {Oracle} from "../contracts/libraries/Oracle.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
-contract TestGeomeanOracle is Test, Deployers {
+contract TestGeomeanOracle is Test, Deployers, TokenFixture {
     using PoolIdLibrary for PoolKey;
 
     int24 constant MAX_TICK_SPACING = 32767;
@@ -40,8 +42,10 @@ contract TestGeomeanOracle is Test, Deployers {
     PoolModifyPositionTest modifyPositionRouter;
 
     function setUp() public {
-        token0 = new TestERC20(2**128);
-        token1 = new TestERC20(2**128);
+        initializeTokens();
+        token0 = TestERC20(Currency.unwrap(currency0));
+        token1 = TestERC20(Currency.unwrap(currency1));
+
         manager = new PoolManager(500000);
 
         vm.record();
@@ -57,7 +61,7 @@ contract TestGeomeanOracle is Test, Deployers {
         }
         geomeanOracle.setTime(1);
         key =
-            PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, MAX_TICK_SPACING, geomeanOracle);
+            PoolKey(currency0, currency1, 0, MAX_TICK_SPACING, geomeanOracle);
         id = key.toId();
 
         modifyPositionRouter = new PoolModifyPositionTest(manager);
