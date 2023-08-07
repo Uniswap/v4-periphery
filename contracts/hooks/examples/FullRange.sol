@@ -25,6 +25,8 @@ import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILoc
 
 import "../../libraries/LiquidityAmounts.sol";
 
+import "forge-std/console.sol";
+
 contract FullRange is BaseHook, ILockCallback {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -38,6 +40,7 @@ contract FullRange is BaseHook, ILockCallback {
     int24 internal constant MAX_TICK = -MIN_TICK;
 
     int256 internal constant MAX_INT = type(int256).max;
+    bytes32 internal constant ERC20_INIT_CODE_HASH = 0x5e46b98ddc6b6990b9f46f6bb8eb6cf50ccd2185bf8a743b94bdbc90a7170181;
 
     struct CallbackData {
         address sender;
@@ -49,7 +52,6 @@ contract FullRange is BaseHook, ILockCallback {
         uint128 liquidity;
         // how many uncollected tokens are owed to the position, as of the last computation
         bool owed;
-        address liquidityToken;
     }
 
     mapping(PoolId => PoolInfo) public poolInfo;
@@ -115,7 +117,9 @@ contract FullRange is BaseHook, ILockCallback {
 
         pool.liquidity += liquidity;
 
-        UniswapV4ERC20(pool.liquidityToken).mint(to, liquidity);
+        address liquidityToken = computeAddress(key);
+
+        UniswapV4ERC20(liquidityToken).mint(to, liquidity);
     }
 
     function removeLiquidity(address tokenA, address tokenB, uint24 fee, uint256 liquidity, uint256 deadline)
@@ -137,7 +141,8 @@ contract FullRange is BaseHook, ILockCallback {
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
         // transfer liquidity tokens to erc20 contract
-        UniswapV4ERC20 erc20 = UniswapV4ERC20(poolInfo[key.toId()].liquidityToken);
+        // UniswapV4ERC20 erc20 = UniswapV4ERC20(poolInfo[key.toId()].liquidityToken);
+        UniswapV4ERC20 erc20 = UniswapV4ERC20(computeAddress(key));
 
         erc20.burn(msg.sender, liquidity);
 
@@ -160,15 +165,14 @@ contract FullRange is BaseHook, ILockCallback {
 
     function beforeInitialize(address, PoolKey calldata key, uint160) external override returns (bytes4) {
         require(key.tickSpacing == 60, "Tick spacing must be default");
-        bytes memory bytecode = type(UniswapV4ERC20).creationCode;
+        // bytes memory bytecode = type(UniswapV4ERC20).creationCode;
         bytes32 salt = keccak256(abi.encodePacked(key.toId()));
+        address poolToken = address(new UniswapV4ERC20{salt: salt}());
+        // assembly {
+        //     poolToken := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
+        // }
 
-        address poolToken;
-        assembly {
-            poolToken := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
-        }
-
-        PoolInfo memory info = PoolInfo({liquidity: 0, owed: false, liquidityToken: poolToken});
+        PoolInfo memory info = PoolInfo({liquidity: 0, owed: false});
 
         poolInfo[key.toId()] = info;
 
@@ -309,5 +313,22 @@ contract FullRange is BaseHook, ILockCallback {
                 })
             );
         }
+    }
+
+    function computeAddress(PoolKey memory key) public view returns (address token) {
+        token = address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            hex"ff",
+                            address(this),
+                            keccak256(abi.encode(key.toId())),
+                            keccak256(type(UniswapV4ERC20).creationCode)
+                        )
+                    )
+                )
+            )
+        );
     }
 }
