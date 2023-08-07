@@ -25,8 +25,6 @@ import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILoc
 
 import "../../libraries/LiquidityAmounts.sol";
 
-import "forge-std/console.sol";
-
 contract FullRange is BaseHook, ILockCallback {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;

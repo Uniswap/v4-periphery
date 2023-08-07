@@ -23,8 +23,6 @@ import {UniswapV4ERC20} from "../contracts/libraries/UniswapV4ERC20.sol";
 import {FixedPoint128} from "@uniswap/v4-core/contracts/libraries/FixedPoint128.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 
-import "forge-std/console.sol";
-
 contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
 
