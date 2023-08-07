@@ -194,8 +194,11 @@ contract FullRange is BaseHook, ILockCallback {
         returns (bytes4)
     {
         bool tokensOwed = poolInfo[key.toId()].owed;
-        PoolInfo storage position = poolInfo[key.toId()];
-        position.owed = true;
+
+        if (!tokensOwed) {
+            PoolInfo storage position = poolInfo[key.toId()];
+            position.owed = true;
+        }
 
         return IHooks.beforeSwap.selector;
     }
