@@ -25,6 +25,8 @@ import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILoc
 
 import "../../libraries/LiquidityAmounts.sol";
 
+import "forge-std/console.sol";
+
 contract FullRange is BaseHook, ILockCallback {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -47,13 +49,8 @@ contract FullRange is BaseHook, ILockCallback {
 
     struct PoolInfo {
         uint128 liquidity;
-        // the fee growth of the aggregate position as of the last action on the individual position
-        uint256 feeGrowthInside0LastX128;
-        uint256 feeGrowthInside1LastX128;
         // how many uncollected tokens are owed to the position, as of the last computation
-        uint128 tokensOwed0;
-        uint128 tokensOwed1;
-        uint256 blockNumber;
+        bool owed;
         address liquidityToken;
     }
 
@@ -116,26 +113,8 @@ contract FullRange is BaseHook, ILockCallback {
                 liquidityDelta: int256(int128(liquidity))
             })
         );
-
-        // NOTE: we've already done the rebalance here
-
-        Position.Info memory posInfo = poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK);
-
         PoolInfo storage pool = poolInfo[key.toId()];
 
-        pool.tokensOwed0 += uint128(
-            FullMath.mulDiv(
-                posInfo.feeGrowthInside0LastX128 - pool.feeGrowthInside0LastX128, pool.liquidity, FixedPoint128.Q128
-            )
-        );
-        pool.tokensOwed1 += uint128(
-            FullMath.mulDiv(
-                posInfo.feeGrowthInside1LastX128 - pool.feeGrowthInside1LastX128, pool.liquidity, FixedPoint128.Q128
-            )
-        );
-
-        pool.feeGrowthInside0LastX128 = posInfo.feeGrowthInside0LastX128;
-        pool.feeGrowthInside1LastX128 = posInfo.feeGrowthInside1LastX128;
         pool.liquidity += liquidity;
 
         UniswapV4ERC20(pool.liquidityToken).mint(to, liquidity);
@@ -173,29 +152,12 @@ contract FullRange is BaseHook, ILockCallback {
             })
         );
 
-        // here, all of the necessary liquidity should have been removed, this portion is just to update fees and feeGrowth
-        PoolInfo storage pool = poolInfo[key.toId()];
+        PoolInfo storage pool = poolInfo[key.toId()]; // possibly just load this as a single storage slot
 
         uint128 positionLiquidity = pool.liquidity;
-        require(positionLiquidity >= liquidity);
-
-        Position.Info memory posInfo = poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK);
-
-        pool.tokensOwed0 += uint128(
-            FullMath.mulDiv(
-                posInfo.feeGrowthInside0LastX128 - pool.feeGrowthInside0LastX128, positionLiquidity, FixedPoint128.Q128
-            )
-        );
-        pool.tokensOwed1 += uint128(
-            FullMath.mulDiv(
-                posInfo.feeGrowthInside1LastX128 - pool.feeGrowthInside1LastX128, positionLiquidity, FixedPoint128.Q128
-            )
-        );
-
-        pool.feeGrowthInside0LastX128 = posInfo.feeGrowthInside0LastX128;
-        pool.feeGrowthInside1LastX128 = posInfo.feeGrowthInside1LastX128;
-        // subtraction is safe because we checked positionLiquidity is gte liquidity
         pool.liquidity = uint128(positionLiquidity - liquidity);
+
+        // poolInfo[key.toId()].liquidity -= liquidity;
     }
 
     function beforeInitialize(address, PoolKey calldata key, uint160) external override returns (bytes4) {
@@ -208,28 +170,20 @@ contract FullRange is BaseHook, ILockCallback {
             poolToken := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
         }
 
-        PoolInfo memory info = PoolInfo({
-            liquidity: 0,
-            feeGrowthInside0LastX128: 0,
-            feeGrowthInside1LastX128: 0,
-            tokensOwed0: 0,
-            tokensOwed1: 0,
-            blockNumber: block.number,
-            liquidityToken: poolToken
-        });
+        PoolInfo memory info = PoolInfo({liquidity: 0, owed: false, liquidityToken: poolToken});
 
         poolInfo[key.toId()] = info;
 
         return FullRange.beforeInitialize.selector;
     }
 
-    function beforeModifyPosition(address sender, PoolKey calldata key, IPoolManager.ModifyPositionParams calldata)
-        external
-        override
-        returns (bytes4)
-    {
+    function beforeModifyPosition(
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.ModifyPositionParams calldata params
+    ) external override returns (bytes4) {
         require(sender == address(this), "sender must be hook");
-        _rebalance(key);
+        _rebalance(key, params.liquidityDelta);
 
         return FullRange.beforeModifyPosition.selector;
     }
@@ -239,7 +193,10 @@ contract FullRange is BaseHook, ILockCallback {
         override
         returns (bytes4)
     {
-        _rebalance(key);
+        bool tokensOwed = poolInfo[key.toId()].owed;
+        PoolInfo storage position = poolInfo[key.toId()];
+        position.owed = true;
+
         return IHooks.beforeSwap.selector;
     }
 
@@ -298,67 +255,58 @@ contract FullRange is BaseHook, ILockCallback {
         return abi.encode(delta);
     }
 
-    function _rebalance(PoolKey calldata key) internal {
+    function _rebalance(PoolKey calldata key, int256 liquidity) internal {
         PoolInfo storage position = poolInfo[key.toId()];
+        if (position.owed && liquidity < 0) {
+            position.owed = false;
 
-        if (block.number > position.blockNumber) {
-            position.blockNumber = block.number;
+            BalanceDelta balanceDelta = hookModifyPosition(
+                key,
+                IPoolManager.ModifyPositionParams({
+                    tickLower: MIN_TICK,
+                    tickUpper: MAX_TICK,
+                    liquidityDelta: -int256(int128(position.liquidity))
+                })
+            );
 
-            if (position.tokensOwed1 > 0 || position.tokensOwed0 > 0) {
-                BalanceDelta balanceDelta = hookModifyPosition(
-                    key,
-                    IPoolManager.ModifyPositionParams({
-                        tickLower: MIN_TICK,
-                        tickUpper: MAX_TICK,
-                        liquidityDelta: -int256(int128(position.liquidity))
-                    })
-                );
+            uint160 newSqrtPriceX96 = uint160(
+                FixedPointMathLib.sqrt(
+                    FullMath.mulDiv(
+                        uint128(-balanceDelta.amount1()), FixedPoint96.Q96, uint128(-balanceDelta.amount0())
+                    )
+                ) * FixedPointMathLib.sqrt(FixedPoint96.Q96)
+            );
 
-                uint160 newSqrtPriceX96 = uint160(
-                    FixedPointMathLib.sqrt(
-                        FullMath.mulDiv(
-                            uint128(-balanceDelta.amount1()), FixedPoint96.Q96, uint128(-balanceDelta.amount0())
-                        )
-                    ) * FixedPointMathLib.sqrt(FixedPoint96.Q96)
-                );
+            (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(key.toId());
 
-                (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(key.toId());
+            poolManager.swap(
+                key,
+                IPoolManager.SwapParams({
+                    zeroForOne: newSqrtPriceX96 < sqrtPriceX96,
+                    amountSpecified: MAX_INT,
+                    sqrtPriceLimitX96: newSqrtPriceX96
+                })
+            );
 
-                poolManager.swap(
-                    key,
-                    IPoolManager.SwapParams({
-                        zeroForOne: newSqrtPriceX96 < sqrtPriceX96,
-                        amountSpecified: MAX_INT,
-                        sqrtPriceLimitX96: newSqrtPriceX96
-                    })
-                );
+            position.owed = false;
 
-                uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-                    newSqrtPriceX96,
-                    TickMath.getSqrtRatioAtTick(MIN_TICK),
-                    TickMath.getSqrtRatioAtTick(MAX_TICK),
-                    uint256(uint128(-balanceDelta.amount0())),
-                    uint256(uint128(-balanceDelta.amount1()))
-                );
+            uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+                newSqrtPriceX96,
+                TickMath.getSqrtRatioAtTick(MIN_TICK),
+                TickMath.getSqrtRatioAtTick(MAX_TICK),
+                uint256(uint128(-balanceDelta.amount0())),
+                uint256(uint128(-balanceDelta.amount1()))
+            );
 
-                // reinvest everything
-                hookModifyPosition(
-                    key,
-                    IPoolManager.ModifyPositionParams({
-                        tickLower: MIN_TICK,
-                        tickUpper: MAX_TICK,
-                        liquidityDelta: int256(int128(liquidity))
-                    })
-                );
-
-                // update position
-                Position.Info memory posInfo = poolManager.getPosition(key.toId(), address(this), MIN_TICK, MAX_TICK);
-
-                position.feeGrowthInside0LastX128 = posInfo.feeGrowthInside0LastX128;
-                position.feeGrowthInside1LastX128 = posInfo.feeGrowthInside1LastX128;
-                position.tokensOwed0 = 0;
-                position.tokensOwed1 = 0;
-            }
+            // reinvest everything
+            hookModifyPosition(
+                key,
+                IPoolManager.ModifyPositionParams({
+                    tickLower: MIN_TICK,
+                    tickUpper: MAX_TICK,
+                    liquidityDelta: int256(int128(liquidity))
+                })
+            );
         }
     }
 }
