@@ -208,13 +208,6 @@ contract FullRange is BaseHook, ILockCallback {
         delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
     }
 
-    function hookModifyPosition(PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
-        internal
-        returns (BalanceDelta delta)
-    {
-        delta = abi.decode(poolManager.lock(abi.encode(CallbackData(address(this), key, params))), (BalanceDelta));
-    }
-
     function _settleDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
         _settleDelta(sender, key.currency0, uint128(delta.amount0()));
         _settleDelta(sender, key.currency1, uint128(delta.amount1()));
@@ -261,7 +254,7 @@ contract FullRange is BaseHook, ILockCallback {
         if (position.owed && liquidity < 0) {
             position.owed = false;
 
-            BalanceDelta balanceDelta = hookModifyPosition(
+            BalanceDelta balanceDelta = poolManager.modifyPosition(
                 key,
                 IPoolManager.ModifyPositionParams({
                     tickLower: MIN_TICK,
@@ -299,8 +292,7 @@ contract FullRange is BaseHook, ILockCallback {
                 uint256(uint128(-balanceDelta.amount1()))
             );
 
-            // reinvest everything
-            hookModifyPosition(
+            BalanceDelta balanceDelta2 = poolManager.modifyPosition(
                 key,
                 IPoolManager.ModifyPositionParams({
                     tickLower: MIN_TICK,
@@ -308,6 +300,14 @@ contract FullRange is BaseHook, ILockCallback {
                     liquidityDelta: int256(int128(liquidity))
                 })
             );
+
+            uint128 amount0 = uint128(-balanceDelta.amount0() - balanceDelta2.amount0());
+            uint128 amount1 = uint128(-balanceDelta.amount1() - balanceDelta2.amount1());
+
+            poolManager.donate(key, amount0, amount1);
+
+            poolManager.settle(key.currency0);
+            poolManager.settle(key.currency1);
         }
     }
 }
