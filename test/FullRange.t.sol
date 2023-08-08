@@ -424,42 +424,6 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 7.5 ether);
     }
 
-    // TODO: maybe remove this
-    function testSwapRemoveLiquiditySucceedsWithFeeNoRebalance() public {
-        manager.initialize(feeKey, SQRT_RATIO_1_1);
-
-        uint256 prevBalance0 = TestERC20(token0).balanceOf(address(this));
-        uint256 prevBalance1 = TestERC20(token1).balanceOf(address(this));
-
-        fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
-
-        IPoolManager.SwapParams memory params =
-            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
-
-        PoolSwapTest.TestSettings memory testSettings =
-            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
-
-        swapRouter.swap(feeKey, params, testSettings);
-
-        (,, address liquidityToken) = fullRange.poolInfo(feeId);
-
-        UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
-
-        snapStart("remove liquidity with fee no rebalance");
-        fullRange.removeLiquidity(address(token0), address(token1), 3000, 5 ether, MAX_DEADLINE);
-        snapEnd();
-
-        // assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 5500750051143335487);
-        // assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 4547314599141369503);
-
-        assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 5 ether);
-
-        (uint128 liquidity, bool owed,) = fullRange.poolInfo(feeId);
-
-        assertEq(liquidity, 5 ether);
-        assertEq(owed, false);
-    }
-
     function testSwapRemoveLiquiditySucceedsWithFeeRebalance() public {
         manager.initialize(feeKey, SQRT_RATIO_1_1);
 
