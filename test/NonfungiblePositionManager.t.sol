@@ -324,7 +324,7 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
                 amount0Desired: 2 ether,
                 amount1Desired: 0,
                 amount0Min: 0,
-                amount1Min: 1,
+                amount1Min: 0,
                 deadline: MAX_UINT256
             })
         );

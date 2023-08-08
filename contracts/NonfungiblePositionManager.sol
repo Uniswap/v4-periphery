@@ -107,10 +107,10 @@ contract NonfungiblePositionManager is
     function lockAcquired(bytes calldata rawData) external returns (bytes memory) {
         require(msg.sender == address(poolManager));
         CallbackData memory data = abi.decode(rawData, (CallbackData));
-        MintParams memory params = abi.decode(data.params, (MintParams));
-        PoolId poolId = params.poolKey.toId();
 
         if (data.callbackDataType == CallbackDataType.Mint) {
+            MintParams memory params = abi.decode(data.params, (MintParams));
+            PoolId poolId = params.poolKey.toId();
             (uint128 liquidity, BalanceDelta delta) = addLiquidity(
                 AddLiquidityParams({
                     poolKey: params.poolKey,
@@ -157,19 +157,23 @@ contract NonfungiblePositionManager is
             }
             return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
         } else if (data.callbackDataType == CallbackDataType.IncreaseLiquidity) {
+            IncreaseLiquidityParams memory params = abi.decode(data.params, (IncreaseLiquidityParams));
+            TokenIdPosition memory tokenIdPosition = positions[params.tokenId];
             (uint128 liquidity, BalanceDelta delta) = addLiquidity(
                 AddLiquidityParams({
-                    poolKey: params.poolKey,
-                    tickLower: params.tickLower,
-                    tickUpper: params.tickUpper,
+                    poolKey: tokenIdPosition.poolKey,
+                    tickLower: tokenIdPosition.tickLower,
+                    tickUpper: tokenIdPosition.tickUpper,
                     amount0Desired: params.amount0Desired,
                     amount1Desired: params.amount1Desired,
                     amount0Min: params.amount0Min,
                     amount1Min: params.amount1Min
                 })
             );
+
+            PoolId poolId = tokenIdPosition.poolKey.toId();
             Position.Info memory positionInfo =
-                poolManager.getPosition(poolId, address(this), params.tickLower, params.tickUpper);
+                poolManager.getPosition(poolId, address(this), tokenIdPosition.tickLower, tokenIdPosition.tickUpper);
         }
     }
 
@@ -182,7 +186,9 @@ contract NonfungiblePositionManager is
     {
         TokenIdPosition storage position = positions[params.tokenId];
         (liquidity, amount0, amount1) = abi.decode(
-            poolManager.lock(abi.encode(CallbackData(msg.sender, CallbackDataType.IncreaseLiquidity, abi.encode(params)))),
+            poolManager.lock(
+                abi.encode(CallbackData(msg.sender, CallbackDataType.IncreaseLiquidity, abi.encode(params)))
+            ),
             (uint128, uint256, uint256)
         );
         emit IncreaseLiquidity(params.tokenId, liquidity, amount0, amount1);
