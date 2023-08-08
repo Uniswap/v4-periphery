@@ -35,7 +35,7 @@ contract NonfungiblePositionManager is
     struct CallbackData {
         address sender;
         CallbackDataType callbackDataType;
-        MintParams params;
+        bytes params;
     }
 
     // details about the uniswap position
@@ -80,7 +80,7 @@ contract NonfungiblePositionManager is
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         (tokenId, liquidity, amount0, amount1) = abi.decode(
-            poolManager.lock(abi.encode(CallbackData(msg.sender, CallbackDataType.Mint, params))),
+            poolManager.lock(abi.encode(CallbackData(msg.sender, CallbackDataType.Mint, abi.encode(params)))),
             (uint256, uint128, uint256, uint256)
         );
         emit IncreaseLiquidity(tokenId, liquidity, amount0, amount1);
@@ -107,7 +107,7 @@ contract NonfungiblePositionManager is
     function lockAcquired(bytes calldata rawData) external returns (bytes memory) {
         require(msg.sender == address(poolManager));
         CallbackData memory data = abi.decode(rawData, (CallbackData));
-        MintParams memory params = data.params;
+        MintParams memory params = abi.decode(data.params, (MintParams));
         PoolId poolId = params.poolKey.toId();
 
         if (data.callbackDataType == CallbackDataType.Mint) {
@@ -182,7 +182,7 @@ contract NonfungiblePositionManager is
     {
         TokenIdPosition storage position = positions[params.tokenId];
         (liquidity, amount0, amount1) = abi.decode(
-            poolManager.lock(abi.encode(CallbackData(msg.sender, CallbackDataType.IncreaseLiquidity, params))),
+            poolManager.lock(abi.encode(CallbackData(msg.sender, CallbackDataType.IncreaseLiquidity, abi.encode(params)))),
             (uint128, uint256, uint256)
         );
         emit IncreaseLiquidity(params.tokenId, liquidity, amount0, amount1);
