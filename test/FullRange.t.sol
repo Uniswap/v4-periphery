@@ -182,7 +182,6 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         assertEq(owed, false);
     }
 
-    // TODO: check fees accumulated ?
     function testSwapAddLiquiditySucceeds() public {
         manager.initialize(feeKey, SQRT_RATIO_1_1);
 
@@ -207,7 +206,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             10 ether,
             -1901,
             3000
-        ); // TODO: modify this emit
+        );
 
         snapStart("swap with fee");
         swapRouter.swap(
@@ -220,20 +219,17 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether - 1 ether);
         assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 9093389106119850869);
 
-        // check pool position state
         (uint128 prevLiquidity, bool prevOwed,) = fullRange.poolInfo(feeId);
 
         assertEq(prevLiquidity, 10 ether);
         assertEq(prevOwed, true);
 
-        // all of the fee updates should have happened here
         snapStart("add liquidity with fee accumulated");
         fullRange.addLiquidity(address(token0), address(token1), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
         snapEnd();
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 14546694553059925434);
 
-        // check pool position state
         (uint128 liquidity, bool owed,) = fullRange.poolInfo(feeId);
 
         assertEq(liquidity, 14546694553059925434);
@@ -253,7 +249,6 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         );
         snapEnd();
 
-        // check pool position state
         (, bool owed,) = fullRange.poolInfo(feeId);
         assertEq(owed, true);
 
@@ -265,7 +260,6 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         );
         snapEnd();
 
-        // check pool position state
         (, owed,) = fullRange.poolInfo(feeId);
         assertEq(owed, true);
     }
@@ -286,7 +280,6 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         swapRouter.swap(feeKey, params, testSettings);
         swapRouter.swap(feeKey2, params, testSettings);
 
-        // check pool position state
         (uint128 liquidity, bool owed,) = fullRange.poolInfo(feeId);
 
         assertEq(liquidity, 10000000000000000000);
@@ -314,7 +307,6 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
         assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 10 ether);
 
-        // approve fullRange to spend our liquidity tokens
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
         snapStart("remove liquidity no fee");
@@ -341,7 +333,6 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
         assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 10 ether);
 
-        // approve fullRange to spend our liquidity tokens
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
         snapStart("remove liquidity with fee");

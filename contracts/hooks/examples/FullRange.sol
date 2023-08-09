@@ -6,7 +6,7 @@ import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {BaseHook} from "../../BaseHook.sol";
-
+import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
@@ -28,6 +28,7 @@ import "../../libraries/LiquidityAmounts.sol";
 contract FullRange is BaseHook, ILockCallback {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
+    using SafeCast for uint256;
 
     /// @notice Thrown when trying to interact with a non-initialized pool
     error PoolNotInitialized();
@@ -47,7 +48,6 @@ contract FullRange is BaseHook, ILockCallback {
 
     struct PoolInfo {
         uint128 liquidity;
-        // how many uncollected tokens are owed to the position, as of the last computation
         bool owed;
         address liquidityToken;
     }
@@ -136,7 +136,6 @@ contract FullRange is BaseHook, ILockCallback {
 
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
-        // transfer liquidity tokens to erc20 contract
         UniswapV4ERC20 erc20 = UniswapV4ERC20(poolInfo[key.toId()].liquidityToken);
 
         erc20.burn(msg.sender, liquidity);
@@ -150,12 +149,10 @@ contract FullRange is BaseHook, ILockCallback {
             })
         );
 
-        PoolInfo storage pool = poolInfo[key.toId()]; // possibly just load this as a single storage slot
+        PoolInfo storage pool = poolInfo[key.toId()];
 
         uint128 positionLiquidity = pool.liquidity;
         pool.liquidity = uint128(positionLiquidity - liquidity);
-
-        // poolInfo[key.toId()].liquidity -= liquidity;
     }
 
     function beforeInitialize(address, PoolKey calldata key, uint160) external override returns (bytes4) {
@@ -168,9 +165,7 @@ contract FullRange is BaseHook, ILockCallback {
             poolToken := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
         }
 
-        PoolInfo memory info = PoolInfo({liquidity: 0, owed: false, liquidityToken: poolToken});
-
-        poolInfo[key.toId()] = info;
+        poolInfo[key.toId()] = PoolInfo({liquidity: 0, owed: false, liquidityToken: poolToken});
 
         return FullRange.beforeInitialize.selector;
     }
@@ -249,9 +244,9 @@ contract FullRange is BaseHook, ILockCallback {
         return abi.encode(delta);
     }
 
-    function _rebalance(PoolKey calldata key, int256 liquidity) internal {
+    function _rebalance(PoolKey calldata key, int256 paramsLiquidity) internal {
         PoolInfo storage position = poolInfo[key.toId()];
-        if (position.owed && liquidity < 0) {
+        if (position.owed && paramsLiquidity < 0) {
             position.owed = false;
 
             BalanceDelta balanceDelta = poolManager.modifyPosition(
@@ -263,13 +258,13 @@ contract FullRange is BaseHook, ILockCallback {
                 })
             );
 
-            uint160 newSqrtPriceX96 = uint160(
+            uint160 newSqrtPriceX96 = (
                 FixedPointMathLib.sqrt(
                     FullMath.mulDiv(
                         uint128(-balanceDelta.amount1()), FixedPoint96.Q96, uint128(-balanceDelta.amount0())
                     )
                 ) * FixedPointMathLib.sqrt(FixedPoint96.Q96)
-            );
+            ).toUint160();
 
             (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(key.toId());
 
@@ -292,7 +287,7 @@ contract FullRange is BaseHook, ILockCallback {
                 uint256(uint128(-balanceDelta.amount1()))
             );
 
-            BalanceDelta balanceDelta2 = poolManager.modifyPosition(
+            BalanceDelta balanceDeltaAfter = poolManager.modifyPosition(
                 key,
                 IPoolManager.ModifyPositionParams({
                     tickLower: MIN_TICK,
@@ -301,13 +296,10 @@ contract FullRange is BaseHook, ILockCallback {
                 })
             );
 
-            uint128 amount0 = uint128(-balanceDelta.amount0() - balanceDelta2.amount0());
-            uint128 amount1 = uint128(-balanceDelta.amount1() - balanceDelta2.amount1());
+            uint128 donateAmount0 = uint128(-balanceDelta.amount0() - balanceDeltaAfter.amount0());
+            uint128 donateAmount1 = uint128(-balanceDelta.amount1() - balanceDeltaAfter.amount1());
 
-            poolManager.donate(key, amount0, amount1);
-
-            poolManager.settle(key.currency0);
-            poolManager.settle(key.currency1);
+            poolManager.donate(key, donateAmount0, donateAmount1);
         }
     }
 }
