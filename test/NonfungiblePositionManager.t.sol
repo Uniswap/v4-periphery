@@ -332,5 +332,8 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
                 deadline: MAX_UINT256
             })
         );
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(this)), 7 ether);
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(manager)), 3 ether);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 10 ether);
     }
 }
