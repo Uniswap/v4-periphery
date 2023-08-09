@@ -104,6 +104,25 @@ contract NonfungiblePositionManager is
         );
     }
 
+    function settleDeltas(address from, PoolKey memory poolKey, BalanceDelta delta) internal {
+        if (delta.amount0() > 0) {
+            IERC20(Currency.unwrap(poolKey.currency0)).transferFrom(
+                from, address(poolManager), uint256(int256(delta.amount0()))
+            );
+            poolManager.settle(poolKey.currency0);
+        } else if (delta.amount0() < 0) {
+            poolManager.take(poolKey.currency0, address(this), uint128(-delta.amount0()));
+        }
+        if (delta.amount1() > 0) {
+            IERC20(Currency.unwrap(poolKey.currency1)).transferFrom(
+                from, address(poolManager), uint256(int256(delta.amount1()))
+            );
+            poolManager.settle(poolKey.currency1);
+        } else if (delta.amount1() < 0) {
+            poolManager.take(poolKey.currency1, address(this), uint128(-delta.amount1()));
+        }
+    }
+
     function lockAcquired(bytes calldata rawData) external returns (bytes memory) {
         require(msg.sender == address(poolManager));
         CallbackData memory data = abi.decode(rawData, (CallbackData));
@@ -139,22 +158,8 @@ contract NonfungiblePositionManager is
                 tokensOwed1: 0
             });
 
-            if (delta.amount0() > 0) {
-                IERC20(Currency.unwrap(params.poolKey.currency0)).transferFrom(
-                    data.sender, address(poolManager), uint256(int256(delta.amount0()))
-                );
-                poolManager.settle(params.poolKey.currency0);
-            } else if (delta.amount0() < 0) {
-                poolManager.take(params.poolKey.currency0, address(this), uint128(-delta.amount0()));
-            }
-            if (delta.amount1() > 0) {
-                IERC20(Currency.unwrap(params.poolKey.currency1)).transferFrom(
-                    data.sender, address(poolManager), uint256(int256(delta.amount1()))
-                );
-                poolManager.settle(params.poolKey.currency1);
-            } else if (delta.amount1() < 0) {
-                poolManager.take(params.poolKey.currency1, address(this), uint128(-delta.amount1()));
-            }
+            settleDeltas(data.sender, params.poolKey, delta);
+
             return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
         } else if (data.callbackDataType == CallbackDataType.IncreaseLiquidity) {
             IncreaseLiquidityParams memory params = abi.decode(data.params, (IncreaseLiquidityParams));
@@ -175,22 +180,8 @@ contract NonfungiblePositionManager is
             Position.Info memory positionInfo =
                 poolManager.getPosition(poolId, address(this), tokenIdPosition.tickLower, tokenIdPosition.tickUpper);
 
-            if (delta.amount0() > 0) {
-                IERC20(Currency.unwrap(tokenIdPosition.poolKey.currency0)).transferFrom(
-                    data.sender, address(poolManager), uint256(int256(delta.amount0()))
-                );
-                poolManager.settle(tokenIdPosition.poolKey.currency0);
-            } else if (delta.amount0() < 0) {
-                poolManager.take(tokenIdPosition.poolKey.currency0, address(this), uint128(-delta.amount0()));
-            }
-            if (delta.amount1() > 0) {
-                IERC20(Currency.unwrap(tokenIdPosition.poolKey.currency1)).transferFrom(
-                    data.sender, address(poolManager), uint256(int256(delta.amount1()))
-                );
-                poolManager.settle(tokenIdPosition.poolKey.currency1);
-            } else if (delta.amount1() < 0) {
-                poolManager.take(tokenIdPosition.poolKey.currency1, address(this), uint128(-delta.amount1()));
-            }
+            settleDeltas(data.sender, tokenIdPosition.poolKey, delta);
+
             return abi.encode(liquidity, delta.amount0(), delta.amount1());
         }
     }
