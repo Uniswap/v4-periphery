@@ -318,6 +318,10 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
             })
         );
 
+        vm.expectEmit(true, true, true, true);
+        emit ModifyPosition(key.toId(), address(nonfungiblePositionManager), 0, 60, 667700499419398898269);
+        vm.expectEmit(true, true, true, true);
+        emit IncreaseLiquidity(1, 667700499419398898269, 2 ether, 0);
         (uint128 liquidity, uint256 amount0, uint256 amount1) = nonfungiblePositionManager.increaseLiquidity(
             INonfungiblePositionManager.IncreaseLiquidityParams({
                 tokenId: 1,

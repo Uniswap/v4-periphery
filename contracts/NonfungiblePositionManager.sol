@@ -193,7 +193,6 @@ contract NonfungiblePositionManager is
         checkDeadline(params.deadline)
         returns (uint128 liquidity, uint256 amount0, uint256 amount1)
     {
-        TokenIdPosition storage position = positions[params.tokenId];
         (liquidity, amount0, amount1) = abi.decode(
             poolManager.lock(
                 abi.encode(CallbackData(msg.sender, CallbackDataType.IncreaseLiquidity, abi.encode(params)))
