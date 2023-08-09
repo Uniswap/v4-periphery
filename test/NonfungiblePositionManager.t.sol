@@ -335,5 +335,26 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(this)), 7 ether);
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(manager)), 3 ether);
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(this)), 10 ether);
+
+        // Assert that nonfungiblePositionManager's position (NFT tokenId = 1) is fine
+        (
+            PoolKey memory poolkey,
+            ,
+            ,
+            uint128 tokenIdPositionLiquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128,
+            ,
+        ) = nonfungiblePositionManager.positions(1);
+        assertEq(PoolId.unwrap(poolkey.toId()), PoolId.unwrap(key.toId()));
+//        assertEq(tokenIdPositionLiquidity, 1001550749129098347403);
+        assertEq(feeGrowthInside0LastX128, 0);
+        assertEq(feeGrowthInside1LastX128, 0);
+
+        // Assert that pool manager's position is fine
+        Position.Info memory info = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
+        assertEq(info.liquidity, 1001550749129098347403);
+        assertEq(info.feeGrowthInside0LastX128, 0);
+        assertEq(info.feeGrowthInside1LastX128, 0);
     }
 }

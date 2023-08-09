@@ -15,6 +15,8 @@ import {IPoolManager, PoolManager} from "@uniswap/v4-core/contracts/PoolManager.
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
+import {FixedPoint128} from "@uniswap/v4-core/contracts/libraries/FixedPoint128.sol";
 
 contract NonfungiblePositionManager is
     ERC721,
@@ -163,12 +165,12 @@ contract NonfungiblePositionManager is
             return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
         } else if (data.callbackDataType == CallbackDataType.IncreaseLiquidity) {
             IncreaseLiquidityParams memory params = abi.decode(data.params, (IncreaseLiquidityParams));
-            TokenIdPosition memory tokenIdPosition = positions[params.tokenId];
+            TokenIdPosition memory nftPosition = positions[params.tokenId];
             (uint128 liquidity, BalanceDelta delta) = addLiquidity(
                 AddLiquidityParams({
-                    poolKey: tokenIdPosition.poolKey,
-                    tickLower: tokenIdPosition.tickLower,
-                    tickUpper: tokenIdPosition.tickUpper,
+                    poolKey: nftPosition.poolKey,
+                    tickLower: nftPosition.tickLower,
+                    tickUpper: nftPosition.tickUpper,
                     amount0Desired: params.amount0Desired,
                     amount1Desired: params.amount1Desired,
                     amount0Min: params.amount0Min,
@@ -176,11 +178,31 @@ contract NonfungiblePositionManager is
                 })
             );
 
-            PoolId poolId = tokenIdPosition.poolKey.toId();
-            Position.Info memory positionInfo =
-                poolManager.getPosition(poolId, address(this), tokenIdPosition.tickLower, tokenIdPosition.tickUpper);
+            PoolId poolId = nftPosition.poolKey.toId();
 
-            settleDeltas(data.sender, tokenIdPosition.poolKey, delta);
+            Position.Info memory poolManagerPositionInfo =
+                poolManager.getPosition(poolId, address(this), nftPosition.tickLower, nftPosition.tickUpper);
+
+            nftPosition.tokensOwed0 += uint128(
+                FullMath.mulDiv(
+                    poolManagerPositionInfo.feeGrowthInside0LastX128 - nftPosition.feeGrowthInside0LastX128,
+                    nftPosition.liquidity,
+                    FixedPoint128.Q128
+                )
+            );
+            nftPosition.tokensOwed1 += uint128(
+                FullMath.mulDiv(
+                    poolManagerPositionInfo.feeGrowthInside1LastX128 - nftPosition.feeGrowthInside1LastX128,
+                    nftPosition.liquidity,
+                    FixedPoint128.Q128
+                )
+            );
+
+            nftPosition.feeGrowthInside0LastX128 = poolManagerPositionInfo.feeGrowthInside0LastX128;
+            nftPosition.feeGrowthInside1LastX128 = poolManagerPositionInfo.feeGrowthInside1LastX128;
+            nftPosition.liquidity += liquidity;
+
+            settleDeltas(data.sender, nftPosition.poolKey, delta);
 
             return abi.encode(liquidity, delta.amount0(), delta.amount1());
         }
