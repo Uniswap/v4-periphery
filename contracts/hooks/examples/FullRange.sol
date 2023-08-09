@@ -91,7 +91,9 @@ contract FullRange is BaseHook, ILockCallback {
             hooks: IHooks(address(this))
         });
 
-        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(key.toId());
+        PoolId poolId = key.toId();
+
+        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
 
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
@@ -111,7 +113,7 @@ contract FullRange is BaseHook, ILockCallback {
                 liquidityDelta: int256(int128(liquidity))
             })
         );
-        PoolInfo storage pool = poolInfo[key.toId()];
+        PoolInfo storage pool = poolInfo[poolId];
 
         pool.liquidity += liquidity;
 
@@ -132,11 +134,13 @@ contract FullRange is BaseHook, ILockCallback {
             hooks: IHooks(address(this))
         });
 
-        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(key.toId());
+        PoolId poolId = key.toId();
+
+        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
 
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
-        UniswapV4ERC20 erc20 = UniswapV4ERC20(poolInfo[key.toId()].liquidityToken);
+        UniswapV4ERC20 erc20 = UniswapV4ERC20(poolInfo[poolId].liquidityToken);
 
         erc20.burn(msg.sender, liquidity);
 
@@ -149,7 +153,7 @@ contract FullRange is BaseHook, ILockCallback {
             })
         );
 
-        PoolInfo storage pool = poolInfo[key.toId()];
+        PoolInfo storage pool = poolInfo[poolId];
 
         uint128 positionLiquidity = pool.liquidity;
         pool.liquidity = uint128(positionLiquidity - liquidity);
@@ -158,14 +162,17 @@ contract FullRange is BaseHook, ILockCallback {
     function beforeInitialize(address, PoolKey calldata key, uint160) external override returns (bytes4) {
         require(key.tickSpacing == 60, "Tick spacing must be default");
         bytes memory bytecode = type(UniswapV4ERC20).creationCode;
-        bytes32 salt = keccak256(abi.encodePacked(key.toId()));
+
+        PoolId poolId = key.toId();
+
+        bytes32 salt = keccak256(abi.encodePacked(poolId));
 
         address poolToken;
         assembly {
             poolToken := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
         }
 
-        poolInfo[key.toId()] = PoolInfo({liquidity: 0, owed: false, liquidityToken: poolToken});
+        poolInfo[poolId] = PoolInfo({liquidity: 0, owed: false, liquidityToken: poolToken});
 
         return FullRange.beforeInitialize.selector;
     }
@@ -175,7 +182,7 @@ contract FullRange is BaseHook, ILockCallback {
         PoolKey calldata key,
         IPoolManager.ModifyPositionParams calldata params
     ) external override returns (bytes4) {
-        require(sender == address(this), "sender must be hook");
+        require(sender == address(this), "Sender must be hook");
         _rebalance(key, params.liquidityDelta);
 
         return FullRange.beforeModifyPosition.selector;
@@ -186,10 +193,11 @@ contract FullRange is BaseHook, ILockCallback {
         override
         returns (bytes4)
     {
-        bool tokensOwed = poolInfo[key.toId()].owed;
+        PoolId poolId = key.toId();
+        bool tokensOwed = poolInfo[poolId].owed;
 
         if (!tokensOwed) {
-            PoolInfo storage position = poolInfo[key.toId()];
+            PoolInfo storage position = poolInfo[poolId];
             position.owed = true;
         }
 
@@ -245,7 +253,8 @@ contract FullRange is BaseHook, ILockCallback {
     }
 
     function _rebalance(PoolKey calldata key, int256 paramsLiquidity) internal {
-        PoolInfo storage position = poolInfo[key.toId()];
+        PoolId poolId = key.toId();
+        PoolInfo storage position = poolInfo[poolId];
         if (position.owed && paramsLiquidity < 0) {
             position.owed = false;
 
@@ -266,7 +275,7 @@ contract FullRange is BaseHook, ILockCallback {
                 ) * FixedPointMathLib.sqrt(FixedPoint96.Q96)
             ).toUint160();
 
-            (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(key.toId());
+            (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
 
             poolManager.swap(
                 key,
