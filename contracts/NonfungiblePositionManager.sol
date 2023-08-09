@@ -165,7 +165,7 @@ contract NonfungiblePositionManager is
             return abi.encode(tokenId, liquidity, delta.amount0(), delta.amount1());
         } else if (data.callbackDataType == CallbackDataType.IncreaseLiquidity) {
             IncreaseLiquidityParams memory params = abi.decode(data.params, (IncreaseLiquidityParams));
-            TokenIdPosition memory nftPosition = positions[params.tokenId];
+            TokenIdPosition storage nftPosition = positions[params.tokenId];
             (uint128 liquidity, BalanceDelta delta) = addLiquidity(
                 AddLiquidityParams({
                     poolKey: nftPosition.poolKey,
