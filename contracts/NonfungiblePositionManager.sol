@@ -174,6 +174,24 @@ contract NonfungiblePositionManager is
             PoolId poolId = tokenIdPosition.poolKey.toId();
             Position.Info memory positionInfo =
                 poolManager.getPosition(poolId, address(this), tokenIdPosition.tickLower, tokenIdPosition.tickUpper);
+
+            if (delta.amount0() > 0) {
+                IERC20(Currency.unwrap(tokenIdPosition.poolKey.currency0)).transferFrom(
+                    data.sender, address(poolManager), uint256(int256(delta.amount0()))
+                );
+                poolManager.settle(tokenIdPosition.poolKey.currency0);
+            } else if (delta.amount0() < 0) {
+                poolManager.take(tokenIdPosition.poolKey.currency0, address(this), uint128(-delta.amount0()));
+            }
+            if (delta.amount1() > 0) {
+                IERC20(Currency.unwrap(tokenIdPosition.poolKey.currency1)).transferFrom(
+                    data.sender, address(poolManager), uint256(int256(delta.amount1()))
+                );
+                poolManager.settle(tokenIdPosition.poolKey.currency1);
+            } else if (delta.amount1() < 0) {
+                poolManager.take(tokenIdPosition.poolKey.currency1, address(this), uint128(-delta.amount1()));
+            }
+            return abi.encode(liquidity, delta.amount0(), delta.amount1());
         }
     }
 
