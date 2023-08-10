@@ -150,10 +150,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether);
 
-        // (uint128 liquidity, bool owed,) = fullRange.poolInfo(feeId);
-
-        // assertEq(liquidity, 10 ether);
-        // assertEq(owed, false);
+        (bool owed,) = fullRange.poolInfo(feeId);
+        assertEq(owed, false);
     }
 
     function testAddLiquidityFailsIfNoPool() public {
@@ -176,10 +174,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 25 ether + 1);
 
-        // (uint128 liquidity, bool owed,) = fullRange.poolInfo(feeId);
-
-        // assertEq(liquidity, 25 ether + 1);
-        // assertEq(owed, false);
+        (bool owed,) = fullRange.poolInfo(feeId);
+        assertEq(owed, false);
     }
 
     function testSwapAddLiquiditySucceeds() public {

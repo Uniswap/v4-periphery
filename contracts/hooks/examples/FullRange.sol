@@ -297,6 +297,7 @@ contract FullRange is BaseHook, ILockCallback {
                 })
             );
 
+            // Donate any "dust" from the sqrtRatio change as fees
             uint128 donateAmount0 = uint128(-balanceDelta.amount0() - balanceDeltaAfter.amount0());
             uint128 donateAmount1 = uint128(-balanceDelta.amount1() - balanceDeltaAfter.amount1());
 
