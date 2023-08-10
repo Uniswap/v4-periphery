@@ -22,6 +22,8 @@ import {FixedPoint128} from "@uniswap/v4-core/contracts/libraries/FixedPoint128.
 import {FixedPoint96} from "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
+import {IERC20Metadata} from "../../interfaces/IERC20Metadata.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 import "../../libraries/LiquidityAmounts.sol";
 
@@ -153,16 +155,19 @@ contract FullRange is BaseHook, ILockCallback {
 
     function beforeInitialize(address, PoolKey calldata key, uint160) external override returns (bytes4) {
         require(key.tickSpacing == 60, "Tick spacing must be default");
-        bytes memory bytecode = type(UniswapV4ERC20).creationCode;
 
         PoolId poolId = key.toId();
 
-        bytes32 salt = keccak256(abi.encodePacked(poolId));
-
-        address poolToken;
-        assembly {
-            poolToken := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
-        }
+        string memory tokenSymbol = string(
+            abi.encodePacked(
+                IERC20Metadata(Currency.unwrap(key.currency0)).symbol(),
+                "-",
+                IERC20Metadata(Currency.unwrap(key.currency1)).symbol(),
+                "-",
+                Strings.toString(uint256(key.fee))
+            )
+        );
+        address poolToken = address(new UniswapV4ERC20(tokenSymbol, tokenSymbol));
 
         poolInfo[poolId] = PoolInfo({owed: false, liquidityToken: poolToken});
 

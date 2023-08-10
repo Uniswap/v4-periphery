@@ -10,7 +10,8 @@ import {FullRangeImplementation} from "./shared/implementation/FullRangeImplemen
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
+// import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
+import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
@@ -57,44 +58,44 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     /// @dev Max tick for full range with tick spacing of 60
     int24 internal constant MAX_TICK = -MIN_TICK;
 
-    TestERC20 token0;
-    TestERC20 token1;
-    TestERC20 token2;
+    MockERC20 token0;
+    MockERC20 token1;
+    MockERC20 token2;
 
     PoolManager manager;
     FullRangeImplementation fullRange = FullRangeImplementation(
         address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG))
     );
+
     PoolKey key;
     PoolId id;
 
-    // the key that includes a pool fee for pool fee rebalance tests
-    PoolKey feeKey;
-    PoolId feeId;
-
-    PoolKey feeKey2;
-    PoolId feeId2;
+    PoolKey key2;
+    PoolId id2;
 
     PoolModifyPositionTest modifyPositionRouter;
     PoolSwapTest swapRouter;
 
     function setUp() public {
-        token0 = new TestERC20(2**128);
-        token1 = new TestERC20(2**128);
-        token2 = new TestERC20(2**128);
+        token0 = new MockERC20("token0", "0", 18);
+        token1 = new MockERC20("token1", "1", 18);
+        token2 = new MockERC20("token2", "2", 18);
+
+        token0.mint(address(this), 2 ** 128);
+        token1.mint(address(this), 2 ** 128);
+        token2.mint(address(this), 2 ** 128);
+
         manager = new PoolManager(500000);
 
         vm.record();
         FullRangeImplementation impl = new FullRangeImplementation(manager, fullRange);
         vm.etch(address(fullRange), address(impl).code);
-        key = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, TICK_SPACING, fullRange);
+
+        key = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, TICK_SPACING, fullRange);
         id = key.toId();
 
-        feeKey = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, TICK_SPACING, fullRange);
-        feeId = feeKey.toId();
-
-        feeKey2 = PoolKey(Currency.wrap(address(token1)), Currency.wrap(address(token2)), 3000, TICK_SPACING, fullRange);
-        feeId2 = feeKey.toId();
+        key2 = PoolKey(Currency.wrap(address(token1)), Currency.wrap(address(token2)), 3000, TICK_SPACING, fullRange);
+        id2 = key.toId();
 
         modifyPositionRouter = new PoolModifyPositionTest(manager);
         swapRouter = new PoolSwapTest(manager);
@@ -115,12 +116,12 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
     function testBeforeInitializeAllowsPoolCreation() public {
         vm.expectEmit(true, true, true, true);
-        emit Initialize(feeId, feeKey.currency0, feeKey.currency1, feeKey.fee, feeKey.tickSpacing, feeKey.hooks);
-        snapStart("initialize with fee");
-        manager.initialize(feeKey, SQRT_RATIO_1_1);
+        emit Initialize(id, key.currency0, key.currency1, key.fee, key.tickSpacing, key.hooks);
+        snapStart("initialize");
+        manager.initialize(key, SQRT_RATIO_1_1);
         snapEnd();
 
-        (, address liquidityToken) = fullRange.poolInfo(feeId);
+        (, address liquidityToken) = fullRange.poolInfo(id);
 
         assertFalse(liquidityToken == address(0));
     }
@@ -134,23 +135,23 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testInitialAddLiquiditySucceeds() public {
-        manager.initialize(feeKey, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_RATIO_1_1);
 
-        uint256 prevBalance0 = TestERC20(token0).balanceOf(address(this));
-        uint256 prevBalance1 = TestERC20(token1).balanceOf(address(this));
+        uint256 prevBalance0 = MockERC20(token0).balanceOf(address(this));
+        uint256 prevBalance1 = MockERC20(token1).balanceOf(address(this));
 
-        snapStart("add liquidity with fee");
+        snapStart("add liquidity");
         fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
         snapEnd();
 
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
-        assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 10 ether);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
+        assertEq(MockERC20(token1).balanceOf(address(this)), prevBalance1 - 10 ether);
 
-        (, address liquidityToken) = fullRange.poolInfo(feeId);
+        (, address liquidityToken) = fullRange.poolInfo(id);
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether);
 
-        (bool owed,) = fullRange.poolInfo(feeId);
+        (bool owed,) = fullRange.poolInfo(id);
         assertEq(owed, false);
     }
 
@@ -160,105 +161,96 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testAddLiquidityWithDiffRatios() public {
-        manager.initialize(feeKey, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_RATIO_1_1);
 
-        uint256 prevBalance0 = TestERC20(token0).balanceOf(address(this));
-        uint256 prevBalance1 = TestERC20(token1).balanceOf(address(this));
+        uint256 prevBalance0 = MockERC20(token0).balanceOf(address(this));
+        uint256 prevBalance1 = MockERC20(token1).balanceOf(address(this));
 
         fullRange.addLiquidity(address(token0), address(token1), 3000, 50 ether, 25 ether, address(this), MAX_DEADLINE);
 
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 25 ether);
-        assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 25 ether);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance0 - 25 ether);
+        assertEq(MockERC20(token1).balanceOf(address(this)), prevBalance1 - 25 ether);
 
-        (, address liquidityToken) = fullRange.poolInfo(feeId);
+        (, address liquidityToken) = fullRange.poolInfo(id);
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 25 ether + 1);
 
-        (bool owed,) = fullRange.poolInfo(feeId);
+        (bool owed,) = fullRange.poolInfo(id);
         assertEq(owed, false);
     }
 
     function testSwapAddLiquiditySucceeds() public {
-        manager.initialize(feeKey, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_RATIO_1_1);
 
-        uint256 prevBalance0 = TestERC20(token0).balanceOf(address(this));
-        uint256 prevBalance1 = TestERC20(token1).balanceOf(address(this));
+        uint256 prevBalance0 = MockERC20(token0).balanceOf(address(this));
+        uint256 prevBalance1 = MockERC20(token1).balanceOf(address(this));
 
         fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
 
-        (, address liquidityToken) = fullRange.poolInfo(feeId);
+        (, address liquidityToken) = fullRange.poolInfo(id);
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether);
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance1 - 10 ether);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance1 - 10 ether);
 
         vm.expectEmit(true, true, true, true);
         emit Swap(
-            feeId,
-            address(swapRouter),
-            1 ether,
-            -906610893880149131,
-            72045250990510446115798809072,
-            10 ether,
-            -1901,
-            3000
+            id, address(swapRouter), 1 ether, -906610893880149131, 72045250990510446115798809072, 10 ether, -1901, 3000
         );
 
-        snapStart("swap with fee");
+        snapStart("swap");
         swapRouter.swap(
-            feeKey,
+            key,
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2}),
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true})
         );
         snapEnd();
 
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether - 1 ether);
-        assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 9093389106119850869);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether - 1 ether);
+        assertEq(MockERC20(token1).balanceOf(address(this)), prevBalance1 - 9093389106119850869);
 
-        (bool owed,) = fullRange.poolInfo(feeId);
+        (bool owed,) = fullRange.poolInfo(id);
         assertEq(owed, true);
 
-        snapStart("add liquidity with fee accumulated");
         fullRange.addLiquidity(address(token0), address(token1), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
-        snapEnd();
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 14546694553059925434);
 
-        (owed,) = fullRange.poolInfo(feeId);
+        (owed,) = fullRange.poolInfo(id);
         assertEq(owed, true);
     }
 
     function testTwoSwaps() public {
-        manager.initialize(feeKey, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_RATIO_1_1);
 
         fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
 
-        snapStart("swap with fee first");
+        snapStart("swap first");
         swapRouter.swap(
-            feeKey,
+            key,
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2}),
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true})
         );
         snapEnd();
 
-        (bool owed,) = fullRange.poolInfo(feeId);
+        (bool owed,) = fullRange.poolInfo(id);
         assertEq(owed, true);
 
-        snapStart("swap with fee second");
+        snapStart("swap second");
         swapRouter.swap(
-            feeKey,
+            key,
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2}),
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true})
         );
         snapEnd();
 
-        (owed,) = fullRange.poolInfo(feeId);
+        (owed,) = fullRange.poolInfo(id);
         assertEq(owed, true);
     }
 
     function testSwapAddLiquidityTwoPools() public {
-        manager.initialize(feeKey, SQRT_RATIO_1_1);
-        manager.initialize(feeKey2, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_RATIO_1_1);
+        manager.initialize(key2, SQRT_RATIO_1_1);
 
         fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
         fullRange.addLiquidity(address(token1), address(token2), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
@@ -269,42 +261,42 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         PoolSwapTest.TestSettings memory testSettings =
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-        swapRouter.swap(feeKey, params, testSettings);
-        swapRouter.swap(feeKey2, params, testSettings);
+        swapRouter.swap(key, params, testSettings);
+        swapRouter.swap(key2, params, testSettings);
 
-        (bool owed,) = fullRange.poolInfo(feeId);
+        (bool owed,) = fullRange.poolInfo(id);
         assertEq(owed, true);
 
-        (owed,) = fullRange.poolInfo(feeId2);
+        (owed,) = fullRange.poolInfo(id2);
         assertEq(owed, true);
     }
 
-    function testInitialRemoveLiquiditySucceedsWithFee() public {
-        manager.initialize(feeKey, SQRT_RATIO_1_1);
+    function testInitialRemoveLiquiditySucceeds() public {
+        manager.initialize(key, SQRT_RATIO_1_1);
 
-        uint256 prevBalance0 = TestERC20(token0).balanceOf(address(this));
-        uint256 prevBalance1 = TestERC20(token1).balanceOf(address(this));
+        uint256 prevBalance0 = MockERC20(token0).balanceOf(address(this));
+        uint256 prevBalance1 = MockERC20(token1).balanceOf(address(this));
 
         fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
 
-        (, address liquidityToken) = fullRange.poolInfo(feeId);
+        (, address liquidityToken) = fullRange.poolInfo(id);
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether);
 
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
-        assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 10 ether);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
+        assertEq(MockERC20(token1).balanceOf(address(this)), prevBalance1 - 10 ether);
 
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
-        snapStart("remove liquidity with fee");
+        snapStart("remove liquidity");
         fullRange.removeLiquidity(address(token0), address(token1), 3000, 1 ether, MAX_DEADLINE);
         snapEnd();
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 9 ether);
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 9 ether - 1);
-        assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 9 ether - 1);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance0 - 9 ether - 1);
+        assertEq(MockERC20(token1).balanceOf(address(this)), prevBalance1 - 9 ether - 1);
 
-        (bool owed,) = fullRange.poolInfo(feeId);
+        (bool owed,) = fullRange.poolInfo(id);
         assertEq(owed, false);
     }
 
@@ -320,55 +312,55 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
         vm.expectRevert(); // Insufficient balance error from ERC20 contract
-        fullRange.removeLiquidity(address(token0), address(token1), 0, 10 ether, MAX_DEADLINE);
+        fullRange.removeLiquidity(address(token0), address(token1), 3000, 10 ether, MAX_DEADLINE);
     }
 
     function testRemoveLiquiditySucceedsWithPartialAndFee() public {
-        manager.initialize(feeKey, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_RATIO_1_1);
 
-        uint256 prevBalance0 = TestERC20(token0).balanceOf(address(this));
-        uint256 prevBalance1 = TestERC20(token1).balanceOf(address(this));
+        uint256 prevBalance0 = MockERC20(token0).balanceOf(address(this));
+        uint256 prevBalance1 = MockERC20(token1).balanceOf(address(this));
 
         fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
 
-        (, address liquidityToken) = fullRange.poolInfo(feeId);
+        (, address liquidityToken) = fullRange.poolInfo(id);
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether);
 
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
-        assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 10 ether);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
+        assertEq(MockERC20(token1).balanceOf(address(this)), prevBalance1 - 10 ether);
 
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
         fullRange.removeLiquidity(address(token0), address(token1), 3000, 5 ether, MAX_DEADLINE);
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 5 ether);
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 5 ether - 1);
-        assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 5 ether - 1);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance0 - 5 ether - 1);
+        assertEq(MockERC20(token1).balanceOf(address(this)), prevBalance1 - 5 ether - 1);
 
-        (bool owed,) = fullRange.poolInfo(feeId);
+        (bool owed,) = fullRange.poolInfo(id);
         assertEq(owed, false);
     }
 
     function testRemoveLiquidityWithDiffRatiosAndFee() public {
-        manager.initialize(feeKey, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_RATIO_1_1);
 
-        uint256 prevBalance0 = TestERC20(token0).balanceOf(address(this));
-        uint256 prevBalance1 = TestERC20(token1).balanceOf(address(this));
+        uint256 prevBalance0 = MockERC20(token0).balanceOf(address(this));
+        uint256 prevBalance1 = MockERC20(token1).balanceOf(address(this));
 
         fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
 
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
-        assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 10 ether);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance0 - 10 ether);
+        assertEq(MockERC20(token1).balanceOf(address(this)), prevBalance1 - 10 ether);
 
-        (, address liquidityToken) = fullRange.poolInfo(feeId);
+        (, address liquidityToken) = fullRange.poolInfo(id);
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether);
 
         fullRange.addLiquidity(address(token0), address(token1), 3000, 5 ether, 2.5 ether, address(this), MAX_DEADLINE);
 
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 12.5 ether);
-        assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 12.5 ether);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance0 - 12.5 ether);
+        assertEq(MockERC20(token1).balanceOf(address(this)), prevBalance1 - 12.5 ether);
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 12.5 ether);
 
@@ -376,18 +368,18 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         fullRange.removeLiquidity(address(token0), address(token1), 3000, 5 ether, MAX_DEADLINE);
 
-        assertEq(TestERC20(token0).balanceOf(address(this)), prevBalance0 - 7.5 ether - 1);
-        assertEq(TestERC20(token1).balanceOf(address(this)), prevBalance1 - 7.5 ether - 1);
+        assertEq(MockERC20(token0).balanceOf(address(this)), prevBalance0 - 7.5 ether - 1);
+        assertEq(MockERC20(token1).balanceOf(address(this)), prevBalance1 - 7.5 ether - 1);
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 7.5 ether);
     }
 
-    function testSwapRemoveLiquiditySucceedsWithFeeRebalance() public {
-        manager.initialize(feeKey, SQRT_RATIO_1_1);
+    function testSwapRemoveLiquiditySucceedsWithRebalance() public {
+        manager.initialize(key, SQRT_RATIO_1_1);
 
         fullRange.addLiquidity(address(token0), address(token1), 3000, 10 ether, 10 ether, address(this), MAX_DEADLINE);
 
-        (, address liquidityToken) = fullRange.poolInfo(feeId);
+        (, address liquidityToken) = fullRange.poolInfo(id);
 
         assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether);
 
@@ -397,17 +389,17 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         PoolSwapTest.TestSettings memory testSettings =
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-        swapRouter.swap(feeKey, params, testSettings);
+        swapRouter.swap(key, params, testSettings);
 
         fullRange.addLiquidity(address(token0), address(token1), 3000, 5 ether, 5 ether, address(this), MAX_DEADLINE);
 
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
-        snapStart("remove liquidity with fee and rebalance");
+        snapStart("remove liquidity and rebalance");
         fullRange.removeLiquidity(address(token0), address(token1), 3000, 5 ether, MAX_DEADLINE);
         snapEnd();
 
-        (bool owed,) = fullRange.poolInfo(feeId);
+        (bool owed,) = fullRange.poolInfo(id);
         assertEq(owed, false);
     }
 
