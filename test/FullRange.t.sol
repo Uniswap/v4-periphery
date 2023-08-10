@@ -10,7 +10,6 @@ import {FullRangeImplementation} from "./shared/implementation/FullRangeImplemen
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-// import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
 import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
@@ -50,7 +49,6 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     );
 
     int24 constant TICK_SPACING = 60;
-    uint160 constant SQRT_RATIO_2_1 = 112045541949572279837463876454;
     uint256 constant MAX_DEADLINE = 12329839823;
 
     /// @dev Min tick for full range with tick spacing of 60
@@ -130,7 +128,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         PoolKey memory wrongKey =
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, TICK_SPACING + 1, fullRange);
 
-        vm.expectRevert("Tick spacing must be default");
+        vm.expectRevert(FullRange.TickSpacingNotDefault.selector);
         manager.initialize(wrongKey, SQRT_RATIO_1_1);
     }
 

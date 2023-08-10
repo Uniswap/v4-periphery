@@ -34,6 +34,7 @@ contract FullRange is BaseHook, ILockCallback {
 
     /// @notice Thrown when trying to interact with a non-initialized pool
     error PoolNotInitialized();
+    error TickSpacingNotDefault();
 
     /// @dev Min tick for full range with tick spacing of 60
     int24 internal constant MIN_TICK = -887220;
@@ -154,7 +155,7 @@ contract FullRange is BaseHook, ILockCallback {
     }
 
     function beforeInitialize(address, PoolKey calldata key, uint160) external override returns (bytes4) {
-        require(key.tickSpacing == 60, "Tick spacing must be default");
+        if (key.tickSpacing != 60) revert TickSpacingNotDefault();
 
         PoolId poolId = key.toId();
 
