@@ -353,9 +353,52 @@ contract NonfungiblePositionManagerTest is Test, TokenFixture {
         assertEq(feeGrowthInside1LastX128, 0);
 
         // Assert that pool manager's position is fine
-        Position.Info memory poolManagerPositionInfo = manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
+        Position.Info memory poolManagerPositionInfo =
+            manager.getPosition(key.toId(), address(nonfungiblePositionManager), 0, 60);
         assertEq(poolManagerPositionInfo.liquidity, 1001550749129098347403);
         assertEq(poolManagerPositionInfo.feeGrowthInside0LastX128, 0);
         assertEq(poolManagerPositionInfo.feeGrowthInside1LastX128, 0);
+    }
+
+    // address(this) adds 1 token0 of liquidity. Then swapper adds 2 token0 of liquidity.
+    function testIncreaseLiquidity2Users() public {
+        // Give swapper 2 of currency0
+        MockERC20(Currency.unwrap(currency0)).mint(swapper, 2 ether);
+        vm.prank(swapper);
+        MockERC20(Currency.unwrap(currency0)).approve(address(nonfungiblePositionManager), 2 ether);
+
+        PoolKey memory key =
+            PoolKey({currency0: currency0, currency1: currency1, fee: 3000, hooks: IHooks(address(0)), tickSpacing: 60});
+
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        nonfungiblePositionManager.mint(
+            INonfungiblePositionManager.MintParams({
+                poolKey: key,
+                tickLower: 0,
+                tickUpper: 60,
+                amount0Desired: 1 ether,
+                amount1Desired: 0,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: address(this),
+                deadline: MAX_UINT256
+            })
+        );
+
+        vm.prank(swapper);
+        nonfungiblePositionManager.mint(
+            INonfungiblePositionManager.MintParams({
+                poolKey: key,
+                tickLower: 0,
+                tickUpper: 60,
+                amount0Desired: 2 ether,
+                amount1Desired: 0,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: address(this),
+                deadline: MAX_UINT256
+            })
+        );
     }
 }
