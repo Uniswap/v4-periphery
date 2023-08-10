@@ -47,7 +47,6 @@ contract FullRange is BaseHook, ILockCallback {
     }
 
     struct PoolInfo {
-        uint128 liquidity;
         bool owed;
         address liquidityToken;
     }
@@ -115,8 +114,6 @@ contract FullRange is BaseHook, ILockCallback {
         );
         PoolInfo storage pool = poolInfo[poolId];
 
-        pool.liquidity += liquidity;
-
         UniswapV4ERC20(pool.liquidityToken).mint(to, liquidity);
     }
 
@@ -152,11 +149,6 @@ contract FullRange is BaseHook, ILockCallback {
                 liquidityDelta: -int256(liquidity)
             })
         );
-
-        PoolInfo storage pool = poolInfo[poolId];
-
-        uint128 positionLiquidity = pool.liquidity;
-        pool.liquidity = uint128(positionLiquidity - liquidity);
     }
 
     function beforeInitialize(address, PoolKey calldata key, uint160) external override returns (bytes4) {
@@ -172,7 +164,7 @@ contract FullRange is BaseHook, ILockCallback {
             poolToken := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
         }
 
-        poolInfo[poolId] = PoolInfo({liquidity: 0, owed: false, liquidityToken: poolToken});
+        poolInfo[poolId] = PoolInfo({owed: false, liquidityToken: poolToken});
 
         return FullRange.beforeInitialize.selector;
     }
@@ -197,8 +189,8 @@ contract FullRange is BaseHook, ILockCallback {
         bool tokensOwed = poolInfo[poolId].owed;
 
         if (!tokensOwed) {
-            PoolInfo storage position = poolInfo[poolId];
-            position.owed = true;
+            PoolInfo storage pool = poolInfo[poolId];
+            pool.owed = true;
         }
 
         return IHooks.beforeSwap.selector;
@@ -254,16 +246,16 @@ contract FullRange is BaseHook, ILockCallback {
 
     function _rebalance(PoolKey calldata key, int256 paramsLiquidity) internal {
         PoolId poolId = key.toId();
-        PoolInfo storage position = poolInfo[poolId];
-        if (position.owed && paramsLiquidity < 0) {
-            position.owed = false;
+        PoolInfo storage pool = poolInfo[poolId];
+        if (pool.owed && paramsLiquidity < 0) {
+            pool.owed = false;
 
             BalanceDelta balanceDelta = poolManager.modifyPosition(
                 key,
                 IPoolManager.ModifyPositionParams({
                     tickLower: MIN_TICK,
                     tickUpper: MAX_TICK,
-                    liquidityDelta: -int256(int128(position.liquidity))
+                    liquidityDelta: -int256(int128(poolManager.getLiquidity(poolId)))
                 })
             );
 
@@ -286,7 +278,7 @@ contract FullRange is BaseHook, ILockCallback {
                 })
             );
 
-            position.owed = false;
+            pool.owed = false;
 
             uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
                 newSqrtPriceX96,
