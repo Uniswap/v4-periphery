@@ -23,6 +23,8 @@ import {UniswapV4ERC20} from "../contracts/libraries/UniswapV4ERC20.sol";
 import {FixedPoint128} from "@uniswap/v4-core/contracts/libraries/FixedPoint128.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 
+import "forge-std/console.sol";
+
 contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
 
@@ -151,6 +153,23 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         (bool owed,) = fullRange.poolInfo(id);
         assertEq(owed, false);
+    }
+
+    function testInitialAddLiquidityFuzz(uint256 amount) public {
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        if (amount <= 1000) {
+            vm.expectRevert("Input amount does not minimum liquidity");
+            fullRange.addLiquidity(address(token0), address(token1), 3000, amount, amount, address(this), MAX_DEADLINE);
+        } else if (amount >= 10 ** 34) {
+            vm.expectRevert();
+            fullRange.addLiquidity(address(token0), address(token1), 3000, amount, amount, address(this), MAX_DEADLINE);
+        } else {
+            fullRange.addLiquidity(address(token0), address(token1), 3000, amount, amount, address(this), MAX_DEADLINE);
+
+            (bool owed,) = fullRange.poolInfo(id);
+            assertEq(owed, false);
+        }
     }
 
     function testAddLiquidityFailsIfNoPool() public {
@@ -296,6 +315,28 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         (bool owed,) = fullRange.poolInfo(id);
         assertEq(owed, false);
+    }
+
+    function testInitialRemoveLiquidityFuzz(uint256 amount) public {
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        fullRange.addLiquidity(
+            address(token0), address(token1), 3000, 1000 ether, 1000 ether, address(this), MAX_DEADLINE
+        );
+
+        (, address liquidityToken) = fullRange.poolInfo(id);
+
+        UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
+
+        if (amount >= 1000 ether - 1000) {
+            vm.expectRevert();
+            fullRange.removeLiquidity(address(token0), address(token1), 3000, amount, MAX_DEADLINE);
+        } else {
+            fullRange.removeLiquidity(address(token0), address(token1), 3000, amount, MAX_DEADLINE);
+
+            (bool owed,) = fullRange.poolInfo(id);
+            assertEq(owed, false);
+        }
     }
 
     function testRemoveLiquidityFailsIfNoPool() public {

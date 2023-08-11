@@ -86,6 +86,8 @@ contract FullRange is BaseHook, ILockCallback {
         address to,
         uint256 deadline
     ) external ensure(deadline) returns (uint128 liquidity) {
+        require(amountADesired > 1000 && amountBDesired > 1000, "Input amount does not minimum liquidity");
+
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(tokenA),
             currency1: Currency.wrap(tokenB),
@@ -111,6 +113,8 @@ contract FullRange is BaseHook, ILockCallback {
             amountADesired,
             amountBDesired
         );
+
+        // require(amountADesired > 1000 && amountBDesired > 1000, "Input amount does not minimum liquidity");
 
         modifyPosition(
             key,
