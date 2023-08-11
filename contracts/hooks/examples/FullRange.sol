@@ -259,7 +259,7 @@ contract FullRange is BaseHook, ILockCallback {
         return abi.encode(delta);
     }
 
-    function _rebalance(PoolKey calldata key, int256 paramsLiquidity) internal {
+    function _rebalance(PoolKey calldata key, int256 paramsLiquidity) public {
         PoolId poolId = key.toId();
         PoolInfo storage pool = poolInfo[poolId];
         if (pool.owed && paramsLiquidity < 0) {
