@@ -22,7 +22,7 @@ import {FixedPoint128} from "@uniswap/v4-core/contracts/libraries/FixedPoint128.
 import {FixedPoint96} from "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
-import {IERC20Metadata} from "../../interfaces/IERC20Metadata.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 import "../../libraries/LiquidityAmounts.sol";
@@ -42,6 +42,7 @@ contract FullRange is BaseHook, ILockCallback {
     int24 internal constant MAX_TICK = -MIN_TICK;
 
     int256 internal constant MAX_INT = type(int256).max;
+    uint16 internal constant MINIMUM_LIQUIDITY = 10 ** 3;
 
     struct CallbackData {
         address sender;
@@ -99,6 +100,10 @@ contract FullRange is BaseHook, ILockCallback {
 
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
+        PoolInfo storage pool = poolInfo[poolId];
+
+        uint128 poolLiquidity = poolManager.getLiquidity(poolId);
+
         liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtRatioAtTick(MIN_TICK),
@@ -115,7 +120,11 @@ contract FullRange is BaseHook, ILockCallback {
                 liquidityDelta: int256(int128(liquidity))
             })
         );
-        PoolInfo storage pool = poolInfo[poolId];
+
+        if (poolLiquidity == 0) {
+            liquidity -= MINIMUM_LIQUIDITY;
+            UniswapV4ERC20(pool.liquidityToken).mint(address(0), MINIMUM_LIQUIDITY); // permanently lock the first MINIMUM_LIQUIDITY tokens
+        }
 
         UniswapV4ERC20(pool.liquidityToken).mint(to, liquidity);
     }
