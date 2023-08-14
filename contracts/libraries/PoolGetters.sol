@@ -12,6 +12,18 @@ library PoolGetters {
     uint256 constant TICKS_OFFSET = 4;
     uint256 constant TICK_BITMAP_OFFSET = 5;
 
+    // CAN WE GET THIS TO BE MORE OPTIMAL
+    function getPoolSqrtPrice(IPoolManager poolManager, PoolId poolId) internal view returns (uint160 sqrtPriceX96){
+        bytes32 slot0Bytes = manager.extsload(keccak256(abi.encode(poolId, POOL_SLOT)));
+        assembly {
+            sqrtPriceX96 := and(slot0Bytes, sub(shl(160, 1), 1))
+        }
+    }
+
+    function getPositionFeeGrowth(IPoolManager poolManager, PoolId poolId) internal view returns (uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) {
+
+    }
+
     function getNetLiquidityAtTick(IPoolManager poolManager, PoolId poolId, int24 tick)
         internal
         view
