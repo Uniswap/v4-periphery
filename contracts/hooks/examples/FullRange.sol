@@ -27,6 +27,8 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 import "../../libraries/LiquidityAmounts.sol";
 
+import "forge-std/console.sol";
+
 contract FullRange is BaseHook, ILockCallback {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -35,6 +37,7 @@ contract FullRange is BaseHook, ILockCallback {
     /// @notice Thrown when trying to interact with a non-initialized pool
     error PoolNotInitialized();
     error TickSpacingNotDefault();
+    error LiquidityDoesntMeetMinimum();
 
     /// @dev Min tick for full range with tick spacing of 60
     int24 internal constant MIN_TICK = -887220;
@@ -51,7 +54,7 @@ contract FullRange is BaseHook, ILockCallback {
     }
 
     struct PoolInfo {
-        bool owed;
+        bool hasAccruedFees;
         address liquidityToken;
     }
 
@@ -86,8 +89,7 @@ contract FullRange is BaseHook, ILockCallback {
         address to,
         uint256 deadline
     ) external ensure(deadline) returns (uint128 liquidity) {
-        require(amountADesired > 1000 && amountBDesired > 1000, "Input amount does not minimum liquidity");
-
+        console.log(msg.sender);
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(tokenA),
             currency1: Currency.wrap(tokenB),
@@ -114,7 +116,10 @@ contract FullRange is BaseHook, ILockCallback {
             amountBDesired
         );
 
-        // require(amountADesired > 1000 && amountBDesired > 1000, "Input amount does not minimum liquidity");
+        if (liquidity < 1000) {
+            revert LiquidityDoesntMeetMinimum();
+        }
+
 
         modifyPosition(
             key,
@@ -157,6 +162,8 @@ contract FullRange is BaseHook, ILockCallback {
 
         erc20.burn(msg.sender, liquidity);
 
+        // (liquidity / totalSupply) * manager.getLiquidity(pool)
+
         delta = modifyPosition(
             key,
             IPoolManager.ModifyPositionParams({
@@ -183,7 +190,7 @@ contract FullRange is BaseHook, ILockCallback {
         );
         address poolToken = address(new UniswapV4ERC20(tokenSymbol, tokenSymbol));
 
-        poolInfo[poolId] = PoolInfo({owed: false, liquidityToken: poolToken});
+        poolInfo[poolId] = PoolInfo({hasAccruedFees: false, liquidityToken: poolToken});
 
         return FullRange.beforeInitialize.selector;
     }
@@ -205,11 +212,10 @@ contract FullRange is BaseHook, ILockCallback {
         returns (bytes4)
     {
         PoolId poolId = key.toId();
-        bool tokensOwed = poolInfo[poolId].owed;
 
-        if (!tokensOwed) {
+        if (!poolInfo[poolId].hasAccruedFees) {
             PoolInfo storage pool = poolInfo[poolId];
-            pool.owed = true;
+            pool.hasAccruedFees = true;
         }
 
         return IHooks.beforeSwap.selector;
@@ -219,6 +225,7 @@ contract FullRange is BaseHook, ILockCallback {
         internal
         returns (BalanceDelta delta)
     {
+        console.log(msg.sender);
         delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
     }
 
@@ -266,8 +273,8 @@ contract FullRange is BaseHook, ILockCallback {
     function _rebalance(PoolKey calldata key, int256 paramsLiquidity) public {
         PoolId poolId = key.toId();
         PoolInfo storage pool = poolInfo[poolId];
-        if (pool.owed && paramsLiquidity < 0) {
-            pool.owed = false;
+        if (pool.hasAccruedFees && paramsLiquidity < 0) {
+            pool.hasAccruedFees = false;
 
             BalanceDelta balanceDelta = poolManager.modifyPosition(
                 key,
@@ -297,7 +304,7 @@ contract FullRange is BaseHook, ILockCallback {
                 })
             );
 
-            pool.owed = false;
+            pool.hasAccruedFees = false;
 
             uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
                 newSqrtPriceX96,
