@@ -27,6 +27,7 @@ contract FullRange is BaseHook, ILockCallback {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
+    using SafeCast for uint128;
 
     /// @notice Thrown when trying to interact with a non-initialized pool
     error PoolNotInitialized();
@@ -134,7 +135,7 @@ contract FullRange is BaseHook, ILockCallback {
             IPoolManager.ModifyPositionParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
-                liquidityDelta: int256(int128(liquidity))
+                liquidityDelta: liquidity.toInt256()
             })
         );
 
@@ -178,7 +179,7 @@ contract FullRange is BaseHook, ILockCallback {
             IPoolManager.ModifyPositionParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
-                liquidityDelta: -int256(params.liquidity)
+                liquidityDelta: -(params.liquidity.toInt256())
             })
         );
 
@@ -279,7 +280,7 @@ contract FullRange is BaseHook, ILockCallback {
             UniswapV4ERC20(pool.liquidityToken).totalSupply()
         );
 
-        params.liquidityDelta = -int256(liquidityToRemove);
+        params.liquidityDelta = -(liquidityToRemove.toInt256());
         delta = poolManager.modifyPosition(key, params);
         pool.hasAccruedFees = false;
     }
@@ -310,7 +311,7 @@ contract FullRange is BaseHook, ILockCallback {
             IPoolManager.ModifyPositionParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
-                liquidityDelta: -int256(int128(poolManager.getLiquidity(poolId)))
+                liquidityDelta: -(poolManager.getLiquidity(poolId).toInt256())
             })
         );
 
@@ -344,7 +345,7 @@ contract FullRange is BaseHook, ILockCallback {
             IPoolManager.ModifyPositionParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
-                liquidityDelta: int256(int128(liquidity))
+                liquidityDelta: liquidity.toInt256()
             })
         );
 
