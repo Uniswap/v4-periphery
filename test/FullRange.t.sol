@@ -280,6 +280,46 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         assertEq(hasAccruedFees, true);
     }
 
+    function testFullRange_addLiquidity_FailsIfTooMuchSlippage() public {
+        manager.initialize(key, SQRT_RATIO_1_1);
+
+        fullRange.addLiquidity(
+            FullRange.AddLiquidityParams(
+                address(token0),
+                address(token1),
+                3000,
+                10 ether,
+                10 ether,
+                10 ether,
+                10 ether,
+                address(this),
+                MAX_DEADLINE
+            )
+        );
+
+        IPoolManager.SwapParams memory params =
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1000 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
+        PoolSwapTest.TestSettings memory settings =
+            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+
+        swapRouter.swap(key, params, settings);
+
+        vm.expectRevert("Price slippage check");
+        fullRange.addLiquidity(
+            FullRange.AddLiquidityParams(
+                address(token0),
+                address(token1),
+                3000,
+                10 ether,
+                10 ether,
+                10 ether,
+                10 ether,
+                address(this),
+                MAX_DEADLINE
+            )
+        );
+    }
+
     function testFullRange_swap_TwoSwaps() public {
         PoolKey memory testKey = key;
         manager.initialize(testKey, SQRT_RATIO_1_1);

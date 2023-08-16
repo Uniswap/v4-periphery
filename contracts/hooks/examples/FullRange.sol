@@ -40,7 +40,7 @@ contract FullRange is BaseHook, ILockCallback {
     int24 internal constant MAX_TICK = -MIN_TICK;
 
     int256 internal constant MAX_INT = type(int256).max;
-    uint16 internal constant MINIMUM_LIQUIDITY = 10 ** 3;
+    uint16 internal constant MINIMUM_LIQUIDITY = 1000;
 
     struct CallbackData {
         address sender;
@@ -126,10 +126,9 @@ contract FullRange is BaseHook, ILockCallback {
             params.amount1Desired
         );
 
-        if (liquidity < 1000) {
+        if (poolLiquidity == 0 && liquidity <= MINIMUM_LIQUIDITY) {
             revert LiquidityDoesntMeetMinimum();
         }
-
         BalanceDelta addedDelta = modifyPosition(
             key,
             IPoolManager.ModifyPositionParams({
