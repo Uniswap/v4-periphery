@@ -139,8 +139,9 @@ contract FullRange is BaseHook, ILockCallback {
         );
 
         if (poolLiquidity == 0) {
+            // permanently lock the first MINIMUM_LIQUIDITY tokens
             liquidity -= MINIMUM_LIQUIDITY;
-            UniswapV4ERC20(pool.liquidityToken).mint(address(0), MINIMUM_LIQUIDITY); // permanently lock the first MINIMUM_LIQUIDITY tokens
+            UniswapV4ERC20(pool.liquidityToken).mint(address(0), MINIMUM_LIQUIDITY);
         }
 
         UniswapV4ERC20(pool.liquidityToken).mint(params.to, liquidity);
