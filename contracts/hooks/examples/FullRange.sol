@@ -193,6 +193,8 @@ contract FullRange is BaseHook, ILockCallback {
 
         string memory tokenSymbol = string(
             abi.encodePacked(
+                "UniV4",
+                "-",
                 IERC20Metadata(Currency.unwrap(key.currency0)).symbol(),
                 "-",
                 IERC20Metadata(Currency.unwrap(key.currency1)).symbol(),
