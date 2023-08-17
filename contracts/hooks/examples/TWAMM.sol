@@ -83,12 +83,12 @@ contract TWAMM is BaseHook, ITWAMM {
         return BaseHook.beforeInitialize.selector;
     }
 
-    function beforeModifyPosition(address, PoolKey calldata key, IPoolManager.ModifyPositionParams calldata, bytes calldata)
-        external
-        override
-        poolManagerOnly
-        returns (bytes4)
-    {
+    function beforeModifyPosition(
+        address,
+        PoolKey calldata key,
+        IPoolManager.ModifyPositionParams calldata,
+        bytes calldata
+    ) external override poolManagerOnly returns (bytes4) {
         executeTWAMMOrders(key);
         return BaseHook.beforeModifyPosition.selector;
     }

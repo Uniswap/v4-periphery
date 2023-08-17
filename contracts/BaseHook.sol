@@ -64,7 +64,11 @@ abstract contract BaseHook is IHooks {
         revert HookNotImplemented();
     }
 
-    function afterInitialize(address, PoolKey calldata, uint160, int24, bytes calldata) external virtual returns (bytes4) {
+    function afterInitialize(address, PoolKey calldata, uint160, int24, bytes calldata)
+        external
+        virtual
+        returns (bytes4)
+    {
         revert HookNotImplemented();
     }
 
@@ -76,11 +80,13 @@ abstract contract BaseHook is IHooks {
         revert HookNotImplemented();
     }
 
-    function afterModifyPosition(address, PoolKey calldata, IPoolManager.ModifyPositionParams calldata, BalanceDelta, bytes calldata)
-        external
-        virtual
-        returns (bytes4)
-    {
+    function afterModifyPosition(
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyPositionParams calldata,
+        BalanceDelta,
+        bytes calldata
+    ) external virtual returns (bytes4) {
         revert HookNotImplemented();
     }
 
@@ -100,11 +106,19 @@ abstract contract BaseHook is IHooks {
         revert HookNotImplemented();
     }
 
-    function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata) external virtual returns (bytes4) {
+    function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
+        external
+        virtual
+        returns (bytes4)
+    {
         revert HookNotImplemented();
     }
 
-    function afterDonate(address, PoolKey calldata, uint256, uint256, bytes calldata) external virtual returns (bytes4) {
+    function afterDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
+        external
+        virtual
+        returns (bytes4)
+    {
         revert HookNotImplemented();
     }
 }

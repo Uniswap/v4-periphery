@@ -124,12 +124,13 @@ contract LimitOrder is BaseHook {
         return LimitOrder.afterInitialize.selector;
     }
 
-    function afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, BalanceDelta, bytes calldata)
-        external
-        override
-        poolManagerOnly
-        returns (bytes4)
-    {
+    function afterSwap(
+        address,
+        PoolKey calldata key,
+        IPoolManager.SwapParams calldata params,
+        BalanceDelta,
+        bytes calldata
+    ) external override poolManagerOnly returns (bytes4) {
         (int24 tickLower, int24 lower, int24 upper) = _getCrossedTicks(key.toId(), key.tickSpacing);
         if (lower > upper) return LimitOrder.afterSwap.selector;
 
@@ -163,27 +164,27 @@ contract LimitOrder is BaseHook {
 
     function _fillEpoch(PoolKey calldata key, int24 lower, bool zeroForOne) internal {
         Epoch epoch = getEpoch(key, lower, zeroForOne);
-            if (!epoch.equals(EPOCH_DEFAULT)) {
-                EpochInfo storage epochInfo = epochInfos[epoch];
+        if (!epoch.equals(EPOCH_DEFAULT)) {
+            EpochInfo storage epochInfo = epochInfos[epoch];
 
-                epochInfo.filled = true;
+            epochInfo.filled = true;
 
-                (uint256 amount0, uint256 amount1) = abi.decode(
-                    poolManager.lock(
-                        abi.encodeCall(this.lockAcquiredFill, (key, lower, -int256(uint256(epochInfo.liquidityTotal))))
-                    ),
-                    (uint256, uint256)
-                );
+            (uint256 amount0, uint256 amount1) = abi.decode(
+                poolManager.lock(
+                    abi.encodeCall(this.lockAcquiredFill, (key, lower, -int256(uint256(epochInfo.liquidityTotal))))
+                ),
+                (uint256, uint256)
+            );
 
-                unchecked {
-                    epochInfo.token0Total += amount0;
-                    epochInfo.token1Total += amount1;
-                }
-
-                setEpoch(key, lower, zeroForOne, EPOCH_DEFAULT);
-
-                emit Fill(epoch, key, lower, zeroForOne);
+            unchecked {
+                epochInfo.token0Total += amount0;
+                epochInfo.token1Total += amount1;
             }
+
+            setEpoch(key, lower, zeroForOne, EPOCH_DEFAULT);
+
+            emit Fill(epoch, key, lower, zeroForOne);
+        }
     }
 
     function lockAcquiredFill(PoolKey calldata key, int24 tickLower, int256 liquidityDelta)
@@ -326,7 +327,9 @@ contract LimitOrder is BaseHook {
         // to prevent this, we allocate all fee revenue to remaining limit order placers, unless this is the last order.
         if (!removingAllLiquidity) {
             BalanceDelta deltaFee = poolManager.modifyPosition(
-                key, IPoolManager.ModifyPositionParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0}), bytes("")
+                key,
+                IPoolManager.ModifyPositionParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0}),
+                bytes("")
             );
 
             if (deltaFee.amount0() < 0) {

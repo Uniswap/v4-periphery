@@ -110,12 +110,12 @@ contract GeomeanOracle is BaseHook {
         );
     }
 
-    function beforeModifyPosition(address, PoolKey calldata key, IPoolManager.ModifyPositionParams calldata params, bytes calldata)
-        external
-        override
-        poolManagerOnly
-        returns (bytes4)
-    {
+    function beforeModifyPosition(
+        address,
+        PoolKey calldata key,
+        IPoolManager.ModifyPositionParams calldata params,
+        bytes calldata
+    ) external override poolManagerOnly returns (bytes4) {
         if (params.liquidityDelta < 0) revert OraclePoolMustLockLiquidity();
         int24 maxTickSpacing = poolManager.MAX_TICK_SPACING();
         if (
