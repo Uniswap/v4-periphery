@@ -8,20 +8,66 @@ import {BitMath} from "@uniswap/v4-core/contracts/libraries/BitMath.sol";
 
 /// @title Helper functions to access pool information
 library PoolGetters {
-    uint256 constant POOL_SLOT = 10;
+    uint256 constant POOL_SLOT = 10; // does this work ? isnt pool slot 4? in pool manager it's also 10
     uint256 constant TICKS_OFFSET = 4;
     uint256 constant TICK_BITMAP_OFFSET = 5;
+    uint256 constant POSITIONS_OFFSET = 6;
 
-    // CAN WE GET THIS TO BE MORE OPTIMAL
     function getPoolSqrtPrice(IPoolManager poolManager, PoolId poolId) internal view returns (uint160 sqrtPriceX96){
         bytes32 slot0Bytes = manager.extsload(keccak256(abi.encode(poolId, POOL_SLOT)));
         assembly {
+            // the 160 is the size of the sqrtPriceX96, its a uint160
+            // why are we shifting it by 1 bit?
+            // 10100000 -> 101000000 -> 10100000 - 1 = 01011111 <<< how are we going to use this as a mask for the slot0 btyes ?
+            // and why are we subtracting by one?
             sqrtPriceX96 := and(slot0Bytes, sub(shl(160, 1), 1))
         }
     }
 
-    function getPositionFeeGrowth(IPoolManager poolManager, PoolId poolId) internal view returns (uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) {
+    function getFeeGrowthGlobal(IPoolManager poolManager, PoolId poolId) internal view returns (uint256 feeGrowthGlobal0X128Extsload, uint256 feeGrowthGlobal1X128Extsload) {
+        bytes memory value = manager.extsload(bytes32(uint256(keccak256(abi.encode(poolId, POOL_SLOT))) + 1), 2);
+        assembly {
+            feeGrowthGlobal0X128Extsload := and(mload(add(value, 0x20)), sub(shl(256, 1), 1))
+            feeGrowthGlobal1X128Extsload := and(mload(add(value, 0x40)), sub(shl(256, 1), 1))
+        }
+    }
 
+    function getPositionFeeGrowth(IPoolManager poolManager, PoolId poolId, address owner, int24 tickLower, int24 tickUpper) internal view returns (uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) {
+        bytes32 position = keccak256(abi.encodePacked(owner, tickLower, tickUpper));
+
+        // loading three slots to access the entirety of the Position.Info struct
+        bytes memory value = poolManager.extsload(
+            keccak256(abi.encode(position, uint256(keccak256(abi.encode(poolId, POOL_SLOT))) + POSITIONS_OFFSET)), 3
+        );
+
+         // theres a uint128 for liquidity before the fee growth stuff... not sure if we use 30 or 40
+        assembly {
+            feeGrowthInside0LastX128 := and(mload(add(value, 0x40)), sub(shl(256, 1), 1))
+            feeGrowthInside1LastX128 := and(mload(add(value, 0x60)), sub(shl(256, 1), 1))
+        }
+    }
+
+    function getPositionLiquidity(IPoolManager poolManager, PoolId poolId, address owner, int24 tickLower, int24 tickUpper) internal view returns (uint128 liquidity) {
+        bytes32 position = keccak256(abi.encodePacked(owner, tickLower, tickUpper));
+
+        // loading three slots to access the entirety of the Position.Info struct
+        bytes memory value = poolManager.extsload(
+            keccak256(abi.encode(position, uint256(keccak256(abi.encode(poolId, POOL_SLOT))) + POSITIONS_OFFSET)), 1
+        );
+
+         // theres a uint128 for liquidity before the fee growth stuff... 
+        assembly {
+            liquidity := and(mload(add(value, 0x20)), sub(shl(128, 1), 1))
+        }
+    }
+
+    function getPosition(IPoolManager poolManager, PoolId poolId, address owner, int24 tickLower, int24 tickUpper) internal view returns () {
+        assembly {
+            mstore(info, and(sub(shl(128, 1), 1), mload(add(value, 0x20))))
+            mstore(add(info, 0x20), shr(128, and(mload(add(value, 0x20)), shl(128, sub(shl(128, 1), 1)))))
+            mstore(add(info, 0x40), mload(add(value, 0x40)))
+            mstore(add(info, 0x60), mload(add(value, 0x60)))
+        }
     }
 
     function getNetLiquidityAtTick(IPoolManager poolManager, PoolId poolId, int24 tick)
