@@ -71,7 +71,7 @@ contract TWAMM is BaseHook, ITWAMM {
         });
     }
 
-    function beforeInitialize(address, PoolKey calldata key, uint160)
+    function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata)
         external
         virtual
         override
@@ -83,7 +83,7 @@ contract TWAMM is BaseHook, ITWAMM {
         return BaseHook.beforeInitialize.selector;
     }
 
-    function beforeModifyPosition(address, PoolKey calldata key, IPoolManager.ModifyPositionParams calldata)
+    function beforeModifyPosition(address, PoolKey calldata key, IPoolManager.ModifyPositionParams calldata, bytes calldata)
         external
         override
         poolManagerOnly
@@ -93,7 +93,7 @@ contract TWAMM is BaseHook, ITWAMM {
         return BaseHook.beforeModifyPosition.selector;
     }
 
-    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata)
+    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
         poolManagerOnly
@@ -304,7 +304,7 @@ contract TWAMM is BaseHook, ITWAMM {
         (PoolKey memory key, IPoolManager.SwapParams memory swapParams) =
             abi.decode(rawData, (PoolKey, IPoolManager.SwapParams));
 
-        BalanceDelta delta = poolManager.swap(key, swapParams);
+        BalanceDelta delta = poolManager.swap(key, swapParams, bytes(""));
 
         if (swapParams.zeroForOne) {
             if (delta.amount0() > 0) {

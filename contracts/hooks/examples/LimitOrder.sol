@@ -114,7 +114,7 @@ contract LimitOrder is BaseHook {
         return compressed * tickSpacing;
     }
 
-    function afterInitialize(address, PoolKey calldata key, uint160, int24 tick)
+    function afterInitialize(address, PoolKey calldata key, uint160, int24 tick, bytes calldata)
         external
         override
         poolManagerOnly
@@ -124,7 +124,7 @@ contract LimitOrder is BaseHook {
         return LimitOrder.afterInitialize.selector;
     }
 
-    function afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, BalanceDelta)
+    function afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, BalanceDelta, bytes calldata)
         external
         override
         poolManagerOnly
@@ -193,7 +193,8 @@ contract LimitOrder is BaseHook {
                 tickLower: tickLower,
                 tickUpper: tickLower + key.tickSpacing,
                 liquidityDelta: liquidityDelta
-            })
+            }),
+            bytes("")
         );
 
         if (delta.amount0() < 0) poolManager.mint(key.currency0, address(this), amount0 = uint128(-delta.amount0()));
@@ -248,7 +249,8 @@ contract LimitOrder is BaseHook {
                 tickLower: tickLower,
                 tickUpper: tickLower + key.tickSpacing,
                 liquidityDelta: liquidityDelta
-            })
+            }),
+            bytes("")
         );
 
         if (delta.amount0() > 0) {
@@ -320,7 +322,7 @@ contract LimitOrder is BaseHook {
         // to prevent this, we allocate all fee revenue to remaining limit order placers, unless this is the last order.
         if (!removingAllLiquidity) {
             BalanceDelta deltaFee = poolManager.modifyPosition(
-                key, IPoolManager.ModifyPositionParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0})
+                key, IPoolManager.ModifyPositionParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0}), bytes("")
             );
 
             if (deltaFee.amount0() < 0) {
@@ -337,7 +339,8 @@ contract LimitOrder is BaseHook {
                 tickLower: tickLower,
                 tickUpper: tickUpper,
                 liquidityDelta: liquidityDelta
-            })
+            }),
+            bytes("")
         );
 
         if (delta.amount0() < 0) poolManager.take(key.currency0, to, amount0 = uint128(-delta.amount0()));

@@ -49,7 +49,7 @@ contract TestLimitOrder is Test, Deployers {
 
         key = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, limitOrder);
         id = key.toId();
-        manager.initialize(key, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_RATIO_1_1, bytes(""));
 
         swapRouter = new PoolSwapTest(manager);
 
@@ -66,7 +66,7 @@ contract TestLimitOrder is Test, Deployers {
     function testGetTickLowerLastWithDifferentPrice() public {
         PoolKey memory differentKey =
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 61, limitOrder);
-        manager.initialize(differentKey, SQRT_RATIO_10_1);
+        manager.initialize(differentKey, SQRT_RATIO_10_1, bytes(""));
         assertEq(limitOrder.getTickLowerLast(differentKey.toId()), 22997);
     }
 
@@ -159,8 +159,8 @@ contract TestLimitOrder is Test, Deployers {
             uint128 liquidityTotal
         ) = limitOrder.epochInfos(Epoch.wrap(1));
         assertFalse(filled);
-        assertTrue(CurrencyLibrary.equals(currency0, Currency.wrap(address(token0))));
-        assertTrue(CurrencyLibrary.equals(currency1, Currency.wrap(address(token1))));
+        assertTrue(currency0 == Currency.wrap(address(token0)));
+        assertTrue(currency1 == Currency.wrap(address(token1)));
         assertEq(token0Total, 0);
         assertEq(token1Total, 0);
         assertEq(liquidityTotal, liquidity * 2);

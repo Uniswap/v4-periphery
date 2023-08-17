@@ -69,14 +69,15 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testBeforeInitializeAllowsPoolCreation() public {
-        manager.initialize(key, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_RATIO_1_1, bytes(""));
     }
 
     function testBeforeInitializeRevertsIfFee() public {
         vm.expectRevert(GeomeanOracle.OnlyOneOraclePoolAllowed.selector);
         manager.initialize(
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 1, MAX_TICK_SPACING, geomeanOracle),
-            SQRT_RATIO_1_1
+            SQRT_RATIO_1_1,
+            bytes("")
         );
     }
 
@@ -84,12 +85,13 @@ contract TestGeomeanOracle is Test, Deployers {
         vm.expectRevert(GeomeanOracle.OnlyOneOraclePoolAllowed.selector);
         manager.initialize(
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, 60, geomeanOracle),
-            SQRT_RATIO_1_1
+            SQRT_RATIO_1_1,
+            bytes("")
         );
     }
 
     function testAfterInitializeState() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
+        manager.initialize(key, SQRT_RATIO_2_1, bytes(""));
         GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
         assertEq(observationState.index, 0);
         assertEq(observationState.cardinality, 1);
@@ -97,7 +99,7 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testAfterInitializeObservation() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
+        manager.initialize(key, SQRT_RATIO_2_1, bytes(""));
         Oracle.Observation memory observation = geomeanOracle.getObservation(key, 0);
         assertTrue(observation.initialized);
         assertEq(observation.blockTimestamp, 1);
@@ -106,7 +108,7 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testAfterInitializeObserve0() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
+        manager.initialize(key, SQRT_RATIO_2_1, bytes(""));
         uint32[] memory secondsAgo = new uint32[](1);
         secondsAgo[0] = 0;
         (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s) =
@@ -118,7 +120,7 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testBeforeModifyPositionNoObservations() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
+        manager.initialize(key, SQRT_RATIO_2_1, bytes(""));
         modifyPositionRouter.modifyPosition(
             key,
             IPoolManager.ModifyPositionParams(
@@ -139,7 +141,7 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testBeforeModifyPositionObservation() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
+        manager.initialize(key, SQRT_RATIO_2_1, bytes(""));
         geomeanOracle.setTime(3); // advance 2 seconds
         modifyPositionRouter.modifyPosition(
             key,
@@ -161,7 +163,7 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testBeforeModifyPositionObservationAndCardinality() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
+        manager.initialize(key, SQRT_RATIO_2_1, bytes(""));
         geomeanOracle.setTime(3); // advance 2 seconds
         geomeanOracle.increaseCardinalityNext(key, 2);
         GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);

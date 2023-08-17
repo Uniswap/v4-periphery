@@ -20,6 +20,7 @@ import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Curren
 import {TWAMM} from "../contracts/hooks/examples/TWAMM.sol";
 import {ITWAMM} from "../contracts/interfaces/ITWAMM.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
 
 contract TWAMMTest is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -79,7 +80,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         poolKey = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, twamm);
         poolId = poolKey.toId();
-        manager.initialize(poolKey, SQRT_RATIO_1_1);
+        manager.initialize(poolKey, SQRT_RATIO_1_1, bytes(""));
 
         token0.approve(address(modifyPositionRouter), 100 ether);
         token1.approve(address(modifyPositionRouter), 100 ether);
@@ -96,7 +97,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         (PoolKey memory initKey, PoolId initId) = newPoolKeyWithTWAMM(twamm);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
-        manager.initialize(initKey, SQRT_RATIO_1_1);
+        manager.initialize(initKey, SQRT_RATIO_1_1, bytes(""));
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 10000);
     }
 
@@ -410,7 +411,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     }
 
     function newPoolKeyWithTWAMM(IHooks hooks) public returns (PoolKey memory, PoolId) {
-        TestERC20[] memory tokens = deployTokens(2, 2 ** 255);
+        MockERC20[] memory tokens = deployTokens(2, 2 ** 255);
         PoolKey memory key = PoolKey(Currency.wrap(address(tokens[0])), Currency.wrap(address(tokens[1])), 0, 60, hooks);
         return (key, key.toId());
     }
