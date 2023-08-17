@@ -54,7 +54,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     int24 constant TICK_SPACING = 60;
     uint16 constant LOCKED_LIQUIDITY = 1000;
     uint256 constant MAX_DEADLINE = 12329839823;
-    uint256 constant MAX_TICK_LIQUIDITY = 11505069308564788430434325881101413;
+    uint256 constant MAX_TICK_LIQUIDITY = 11505069308564788430434325881101412;
     uint8 constant DUST = 30;
 
     MockERC20 token0;
