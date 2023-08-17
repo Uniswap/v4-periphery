@@ -17,9 +17,12 @@ import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModify
 import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {UniswapV4ERC20} from "../contracts/libraries/UniswapV4ERC20.sol";
+import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
+import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
 
 contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
+    using SafeCast for uint256;
 
     event Initialize(
         PoolId indexed poolId,
@@ -785,6 +788,55 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         assertTrue(manager.getLiquidity(id) < LOCKED_LIQUIDITY + DUST);
 
         assertEq(hasAccruedFees, false);
+    }
+
+    function testFullRange_removeLiquidity_SwapRemoveAllFuzz(uint256 amount) public {
+        manager.initialize(key, SQRT_RATIO_1_1);
+        (, address liquidityToken) = fullRange.poolInfo(id);
+
+        if (amount <= LOCKED_LIQUIDITY) {
+            vm.expectRevert(FullRange.LiquidityDoesntMeetMinimum.selector);
+            fullRange.addLiquidity(
+                FullRange.AddLiquidityParams(
+                    address(token0), address(token1), 3000, amount, amount, amount, amount, address(this), MAX_DEADLINE
+                )
+            );
+        } else if (amount >= MAX_TICK_LIQUIDITY) {
+            vm.expectRevert();
+            fullRange.addLiquidity(
+                FullRange.AddLiquidityParams(
+                    address(token0), address(token1), 3000, amount, amount, amount, amount, address(this), MAX_DEADLINE
+                )
+            );
+        } else {
+            fullRange.addLiquidity(
+                FullRange.AddLiquidityParams(
+                    address(token0), address(token1), 3000, amount, amount, 0, 0, address(this), MAX_DEADLINE
+                )
+            );
+
+            IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+                zeroForOne: true,
+                amountSpecified: (FullMath.mulDiv(amount, 1, 4)).toInt256(),
+                sqrtPriceLimitX96: SQRT_RATIO_1_4
+            });
+
+            PoolSwapTest.TestSettings memory testSettings =
+                PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+
+            swapRouter.swap(key, params, testSettings);
+
+            // Test contract removes liquidity, succeeds
+            UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
+
+            uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
+
+            fullRange.removeLiquidity(
+                FullRange.RemoveLiquidityParams(address(token0), address(token1), 3000, liquidityTokenBal, MAX_DEADLINE)
+            );
+
+            assertTrue(manager.getLiquidity(id) <= LOCKED_LIQUIDITY + DUST);
+        }
     }
 
     function testFullRange_BeforeModifyPositionFailsWithWrongMsgSender() public {
