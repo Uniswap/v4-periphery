@@ -137,28 +137,7 @@ contract LimitOrder is BaseHook {
         // order fills are the opposite of swap fills, hence the inversion below
         bool zeroForOne = !params.zeroForOne;
         for (; lower <= upper; lower += key.tickSpacing) {
-            Epoch epoch = getEpoch(key, lower, zeroForOne);
-            if (!epoch.equals(EPOCH_DEFAULT)) {
-                EpochInfo storage epochInfo = epochInfos[epoch];
-
-                epochInfo.filled = true;
-
-                (uint256 amount0, uint256 amount1) = abi.decode(
-                    poolManager.lock(
-                        abi.encodeCall(this.lockAcquiredFill, (key, lower, -int256(uint256(epochInfo.liquidityTotal))))
-                    ),
-                    (uint256, uint256)
-                );
-
-                unchecked {
-                    epochInfo.token0Total += amount0;
-                    epochInfo.token1Total += amount1;
-                }
-
-                setEpoch(key, lower, zeroForOne, EPOCH_DEFAULT);
-
-                emit Fill(epoch, key, lower, zeroForOne);
-            }
+            _fillEpoch(key, lower, zeroForOne);
         }
 
         setTickLowerLast(key.toId(), tickLower);
@@ -180,6 +159,31 @@ contract LimitOrder is BaseHook {
             lower = tickLowerLast;
             upper = tickLower - tickSpacing;
         }
+    }
+
+    function _fillEpoch(PoolKey calldata key, int24 lower, bool zeroForOne) internal {
+        Epoch epoch = getEpoch(key, lower, zeroForOne);
+            if (!epoch.equals(EPOCH_DEFAULT)) {
+                EpochInfo storage epochInfo = epochInfos[epoch];
+
+                epochInfo.filled = true;
+
+                (uint256 amount0, uint256 amount1) = abi.decode(
+                    poolManager.lock(
+                        abi.encodeCall(this.lockAcquiredFill, (key, lower, -int256(uint256(epochInfo.liquidityTotal))))
+                    ),
+                    (uint256, uint256)
+                );
+
+                unchecked {
+                    epochInfo.token0Total += amount0;
+                    epochInfo.token1Total += amount1;
+                }
+
+                setEpoch(key, lower, zeroForOne, EPOCH_DEFAULT);
+
+                emit Fill(epoch, key, lower, zeroForOne);
+            }
     }
 
     function lockAcquiredFill(PoolKey calldata key, int24 tickLower, int256 liquidityDelta)
