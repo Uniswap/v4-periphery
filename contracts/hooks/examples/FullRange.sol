@@ -33,6 +33,9 @@ contract FullRange is BaseHook, ILockCallback {
     error PoolNotInitialized();
     error TickSpacingNotDefault();
     error LiquidityDoesntMeetMinimum();
+    error SenderMustBeHook();
+    error ExpiredPastDeadline();
+    error TooMuchSlippage();
 
     /// @dev Min tick for full range with tick spacing of 60
     int24 internal constant MIN_TICK = -887220;
@@ -78,7 +81,7 @@ contract FullRange is BaseHook, ILockCallback {
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
     modifier ensure(uint256 deadline) {
-        require(deadline >= block.timestamp, "Expired");
+        if (deadline < block.timestamp) revert ExpiredPastDeadline();
         _;
     }
 
@@ -146,10 +149,9 @@ contract FullRange is BaseHook, ILockCallback {
 
         UniswapV4ERC20(pool.liquidityToken).mint(params.to, liquidity);
 
-        require(
-            uint128(addedDelta.amount0()) >= params.amount0Min && uint128(addedDelta.amount1()) >= params.amount1Min,
-            "Price slippage check"
-        );
+        if (uint128(addedDelta.amount0()) < params.amount0Min || uint128(addedDelta.amount1()) < params.amount1Min) {
+            revert TooMuchSlippage();
+        }
     }
 
     function removeLiquidity(RemoveLiquidityParams calldata params)
@@ -215,7 +217,7 @@ contract FullRange is BaseHook, ILockCallback {
         override
         returns (bytes4)
     {
-        require(sender == address(this), "Sender must be hook");
+        if (sender != address(this)) revert SenderMustBeHook();
 
         return FullRange.beforeModifyPosition.selector;
     }

@@ -338,7 +338,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         swapRouter.swap(key, params, settings);
 
-        vm.expectRevert("Price slippage check");
+        vm.expectRevert(FullRange.TooMuchSlippage.selector);
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
                 address(token0),
@@ -842,7 +842,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     function testFullRange_BeforeModifyPositionFailsWithWrongMsgSender() public {
         manager.initialize(key, SQRT_RATIO_1_1);
 
-        vm.expectRevert("Sender must be hook");
+        vm.expectRevert(FullRange.SenderMustBeHook.selector);
 
         modifyPositionRouter.modifyPosition(
             key, IPoolManager.ModifyPositionParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: 100})
