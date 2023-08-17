@@ -61,6 +61,12 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     function setUp() public {
         token0 = new TestERC20(2**128);
         token1 = new TestERC20(2**128);
+
+        if (token0 > token1) {
+            // Tokens in wrong order, swap them
+            (token0, token1) = (token1, token0);
+        }
+
         manager = new PoolManager(500000);
 
         TWAMMImplementation impl = new TWAMMImplementation(manager, 10_000, twamm);
