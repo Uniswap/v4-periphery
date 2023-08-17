@@ -658,7 +658,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         manager.initialize(key, SQRT_RATIO_1_1);
         (, address liquidityToken) = fullRange.poolInfo(id);
 
-        if (amount < LOCKED_LIQUIDITY) {
+        if (amount <= LOCKED_LIQUIDITY) {
             vm.expectRevert(FullRange.LiquidityDoesntMeetMinimum.selector);
             fullRange.addLiquidity(
                 FullRange.AddLiquidityParams(
@@ -682,18 +682,13 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             // Test contract removes liquidity, succeeds
             UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
-            if (amount > UniswapV4ERC20(liquidityToken).balanceOf(address(this))) {
-                vm.expectRevert();
-                fullRange.removeLiquidity(
-                    FullRange.RemoveLiquidityParams(address(token0), address(token1), 3000, amount, MAX_DEADLINE)
-                );
-            } else {
-                fullRange.removeLiquidity(
-                    FullRange.RemoveLiquidityParams(address(token0), address(token1), 3000, amount, MAX_DEADLINE)
-                );
-            }
+            uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
 
-            assertTrue(manager.getLiquidity(id) >= LOCKED_LIQUIDITY);
+            fullRange.removeLiquidity(
+                FullRange.RemoveLiquidityParams(address(token0), address(token1), 3000, liquidityTokenBal, MAX_DEADLINE)
+            );
+
+            assertEq(manager.getLiquidity(id), LOCKED_LIQUIDITY);
         }
     }
 
