@@ -81,7 +81,7 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
 
         poolKey = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, twamm);
         poolId = poolKey.toId();
-        manager.initialize(poolKey, SQRT_RATIO_1_1);
+        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
 
         token0.approve(address(modifyPositionRouter), 100 ether);
         token1.approve(address(modifyPositionRouter), 100 ether);
@@ -98,7 +98,7 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
         (PoolKey memory initKey, PoolId initId) = newPoolKeyWithTWAMM(twamm);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
-        manager.initialize(initKey, SQRT_RATIO_1_1);
+        manager.initialize(initKey, SQRT_RATIO_1_1, ZERO_BYTES);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 10000);
     }
 

@@ -52,7 +52,7 @@ contract TestLimitOrder is Test, Deployers, TokenFixture {
 
         key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
         id = key.toId();
-        manager.initialize(key, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         swapRouter = new PoolSwapTest(manager);
 
@@ -69,7 +69,7 @@ contract TestLimitOrder is Test, Deployers, TokenFixture {
     function testGetTickLowerLastWithDifferentPrice() public {
         PoolKey memory differentKey =
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 61, limitOrder);
-        manager.initialize(differentKey, SQRT_RATIO_10_1);
+        manager.initialize(differentKey, SQRT_RATIO_10_1, ZERO_BYTES);
         assertEq(limitOrder.getTickLowerLast(differentKey.toId()), 22997);
     }
 

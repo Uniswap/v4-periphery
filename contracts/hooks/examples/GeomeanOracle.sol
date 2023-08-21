@@ -73,7 +73,7 @@ contract GeomeanOracle is BaseHook {
         });
     }
 
-    function beforeInitialize(address, PoolKey calldata key, uint160)
+    function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata)
         external
         view
         override
@@ -87,7 +87,7 @@ contract GeomeanOracle is BaseHook {
         return GeomeanOracle.beforeInitialize.selector;
     }
 
-    function afterInitialize(address, PoolKey calldata key, uint160, int24)
+    function afterInitialize(address, PoolKey calldata key, uint160, int24, bytes calldata)
         external
         override
         poolManagerOnly
@@ -110,12 +110,12 @@ contract GeomeanOracle is BaseHook {
         );
     }
 
-    function beforeModifyPosition(address, PoolKey calldata key, IPoolManager.ModifyPositionParams calldata params)
-        external
-        override
-        poolManagerOnly
-        returns (bytes4)
-    {
+    function beforeModifyPosition(
+        address,
+        PoolKey calldata key,
+        IPoolManager.ModifyPositionParams calldata params,
+        bytes calldata
+    ) external override poolManagerOnly returns (bytes4) {
         if (params.liquidityDelta < 0) revert OraclePoolMustLockLiquidity();
         int24 maxTickSpacing = poolManager.MAX_TICK_SPACING();
         if (
@@ -126,7 +126,7 @@ contract GeomeanOracle is BaseHook {
         return GeomeanOracle.beforeModifyPosition.selector;
     }
 
-    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata)
+    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
         poolManagerOnly
