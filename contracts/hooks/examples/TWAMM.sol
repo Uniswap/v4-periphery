@@ -31,7 +31,7 @@ contract TWAMM is BaseHook, ITWAMM {
     using PoolGetters for IPoolManager;
     using TickBitmap for mapping(int16 => uint256);
 
-    bytes internal constant ZERO_BYTES = new bytes(0);
+    bytes internal constant ZERO_BYTES = bytes("");
 
     int256 internal constant MIN_DELTA = -1;
     bool internal constant ZERO_FOR_ONE = true;

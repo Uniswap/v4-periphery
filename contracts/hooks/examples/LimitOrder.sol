@@ -51,7 +51,7 @@ contract LimitOrder is BaseHook {
 
     event Withdraw(address indexed owner, Epoch indexed epoch, uint128 liquidity);
 
-    bytes internal constant ZERO_BYTES = new bytes(0);
+    bytes internal constant ZERO_BYTES = bytes("");
 
     Epoch private constant EPOCH_DEFAULT = Epoch.wrap(0);
 

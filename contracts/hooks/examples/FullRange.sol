@@ -37,7 +37,7 @@ contract FullRange is BaseHook, ILockCallback {
     error ExpiredPastDeadline();
     error TooMuchSlippage();
 
-    bytes internal constant ZERO_BYTES = new bytes(0);
+    bytes internal constant ZERO_BYTES = bytes("");
 
     /// @dev Min tick for full range with tick spacing of 60
     int24 internal constant MIN_TICK = -887220;
