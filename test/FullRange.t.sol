@@ -157,15 +157,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         uint256 prevBalance1 = key.currency1.balanceOf(address(this));
 
         FullRange.AddLiquidityParams memory addLiquidityParams = FullRange.AddLiquidityParams(
-            key.currency0,
-            key.currency1,
-            3000,
-            10 ether,
-            10 ether,
-            9 ether,
-            9 ether,
-            address(this),
-            MAX_DEADLINE
+            key.currency0, key.currency1, 3000, 10 ether, 10 ether, 9 ether, 9 ether, address(this), MAX_DEADLINE
         );
 
         snapStart("FullRangeAddInitialLiquidity");
@@ -190,44 +182,20 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             vm.expectRevert(FullRange.LiquidityDoesntMeetMinimum.selector);
             fullRange.addLiquidity(
                 FullRange.AddLiquidityParams(
-                    key.currency0,
-                    key.currency1,
-                    3000,
-                    amount,
-                    amount,
-                    amount,
-                    amount,
-                    address(this),
-                    MAX_DEADLINE
+                    key.currency0, key.currency1, 3000, amount, amount, amount, amount, address(this), MAX_DEADLINE
                 )
             );
         } else if (amount > MAX_TICK_LIQUIDITY) {
             vm.expectRevert();
             fullRange.addLiquidity(
                 FullRange.AddLiquidityParams(
-                    key.currency0,
-                    key.currency1,
-                    3000,
-                    amount,
-                    amount,
-                    amount,
-                    amount,
-                    address(this),
-                    MAX_DEADLINE
+                    key.currency0, key.currency1, 3000, amount, amount, amount, amount, address(this), MAX_DEADLINE
                 )
             );
         } else {
             fullRange.addLiquidity(
                 FullRange.AddLiquidityParams(
-                    key.currency0,
-                    key.currency1,
-                    3000,
-                    amount,
-                    amount,
-                    0,
-                    0,
-                    address(this),
-                    MAX_DEADLINE
+                    key.currency0, key.currency1, 3000, amount, amount, 0, 0, address(this), MAX_DEADLINE
                 )
             );
 
@@ -246,9 +214,16 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         (, address liquidityToken) = fullRange.poolInfo(idWithLiq);
         uint256 prevLiquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
 
-
         FullRange.AddLiquidityParams memory addLiquidityParams = FullRange.AddLiquidityParams(
-            keyWithLiq.currency0, keyWithLiq.currency1, 3000, 10 ether, 10 ether, 9 ether, 9 ether, address(this), MAX_DEADLINE
+            keyWithLiq.currency0,
+            keyWithLiq.currency1,
+            3000,
+            10 ether,
+            10 ether,
+            9 ether,
+            9 ether,
+            address(this),
+            MAX_DEADLINE
         );
 
         snapStart("FullRangeAddLiquidity");
@@ -285,15 +260,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key.currency0,
-                key.currency1,
-                3000,
-                10 ether,
-                10 ether,
-                9 ether,
-                9 ether,
-                address(this),
-                MAX_DEADLINE
+                key.currency0, key.currency1, 3000, 10 ether, 10 ether, 9 ether, 9 ether, address(this), MAX_DEADLINE
             )
         );
 
@@ -326,15 +293,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key.currency0,
-                key.currency1,
-                3000,
-                5 ether,
-                5 ether,
-                4 ether,
-                4 ether,
-                address(this),
-                MAX_DEADLINE
+                key.currency0, key.currency1, 3000, 5 ether, 5 ether, 4 ether, 4 ether, address(this), MAX_DEADLINE
             )
         );
 
@@ -351,15 +310,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key.currency0,
-                key.currency1,
-                3000,
-                10 ether,
-                10 ether,
-                10 ether,
-                10 ether,
-                address(this),
-                MAX_DEADLINE
+                key.currency0, key.currency1, 3000, 10 ether, 10 ether, 10 ether, 10 ether, address(this), MAX_DEADLINE
             )
         );
 
@@ -373,15 +324,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         vm.expectRevert(FullRange.TooMuchSlippage.selector);
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key.currency0,
-                key.currency1,
-                3000,
-                10 ether,
-                10 ether,
-                10 ether,
-                10 ether,
-                address(this),
-                MAX_DEADLINE
+                key.currency0, key.currency1, 3000, 10 ether, 10 ether, 10 ether, 10 ether, address(this), MAX_DEADLINE
             )
         );
     }
@@ -392,15 +335,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key.currency0,
-                key.currency1,
-                3000,
-                10 ether,
-                10 ether,
-                9 ether,
-                9 ether,
-                address(this),
-                MAX_DEADLINE
+                key.currency0, key.currency1, 3000, 10 ether, 10 ether, 9 ether, 9 ether, address(this), MAX_DEADLINE
             )
         );
 
@@ -430,28 +365,12 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key.currency0,
-                key.currency1,
-                3000,
-                10 ether,
-                10 ether,
-                9 ether,
-                9 ether,
-                address(this),
-                MAX_DEADLINE
+                key.currency0, key.currency1, 3000, 10 ether, 10 ether, 9 ether, 9 ether, address(this), MAX_DEADLINE
             )
         );
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key2.currency0,
-                key2.currency1,
-                3000,
-                10 ether,
-                10 ether,
-                9 ether,
-                9 ether,
-                address(this),
-                MAX_DEADLINE
+                key2.currency0, key2.currency1, 3000, 10 ether, 10 ether, 9 ether, 9 ether, address(this), MAX_DEADLINE
             )
         );
 
@@ -520,16 +439,12 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         if (amount > UniswapV4ERC20(liquidityToken).balanceOf(address(this))) {
             vm.expectRevert();
             fullRange.removeLiquidity(
-                FullRange.RemoveLiquidityParams(
-                    key.currency0, key.currency1, 3000, amount, MAX_DEADLINE
-                )
+                FullRange.RemoveLiquidityParams(key.currency0, key.currency1, 3000, amount, MAX_DEADLINE)
             );
         } else {
             uint256 prevLiquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
             fullRange.removeLiquidity(
-                FullRange.RemoveLiquidityParams(
-                    key.currency0, key.currency1, 3000, amount, MAX_DEADLINE
-                )
+                FullRange.RemoveLiquidityParams(key.currency0, key.currency1, 3000, amount, MAX_DEADLINE)
             );
 
             uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
@@ -568,15 +483,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key.currency0,
-                key.currency1,
-                3000,
-                10 ether,
-                10 ether,
-                9 ether,
-                9 ether,
-                address(this),
-                MAX_DEADLINE
+                key.currency0, key.currency1, 3000, 10 ether, 10 ether, 9 ether, 9 ether, address(this), MAX_DEADLINE
             )
         );
 
@@ -590,9 +497,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
         fullRange.removeLiquidity(
-            FullRange.RemoveLiquidityParams(
-                key.currency0, key.currency1, 3000, 5 ether, MAX_DEADLINE
-            )
+            FullRange.RemoveLiquidityParams(key.currency0, key.currency1, 3000, 5 ether, MAX_DEADLINE)
         );
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
@@ -613,15 +518,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key.currency0,
-                key.currency1,
-                3000,
-                10 ether,
-                10 ether,
-                9 ether,
-                9 ether,
-                address(this),
-                MAX_DEADLINE
+                key.currency0, key.currency1, 3000, 10 ether, 10 ether, 9 ether, 9 ether, address(this), MAX_DEADLINE
             )
         );
 
@@ -634,15 +531,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key.currency0,
-                key.currency1,
-                3000,
-                5 ether,
-                2.5 ether,
-                2 ether,
-                2 ether,
-                address(this),
-                MAX_DEADLINE
+                key.currency0, key.currency1, 3000, 5 ether, 2.5 ether, 2 ether, 2 ether, address(this), MAX_DEADLINE
             )
         );
 
@@ -654,9 +543,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
         fullRange.removeLiquidity(
-            FullRange.RemoveLiquidityParams(
-                key.currency0, key.currency1, 3000, 5 ether, MAX_DEADLINE
-            )
+            FullRange.RemoveLiquidityParams(key.currency0, key.currency1, 3000, 5 ether, MAX_DEADLINE)
         );
 
         uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
@@ -680,7 +567,6 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
-
         FullRange.RemoveLiquidityParams memory removeLiquidityParams =
             FullRange.RemoveLiquidityParams(keyWithLiq.currency0, keyWithLiq.currency1, 3000, 5 ether, MAX_DEADLINE);
 
@@ -700,44 +586,20 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             vm.expectRevert(FullRange.LiquidityDoesntMeetMinimum.selector);
             fullRange.addLiquidity(
                 FullRange.AddLiquidityParams(
-                    key.currency0,
-                    key.currency1,
-                    3000,
-                    amount,
-                    amount,
-                    amount,
-                    amount,
-                    address(this),
-                    MAX_DEADLINE
+                    key.currency0, key.currency1, 3000, amount, amount, amount, amount, address(this), MAX_DEADLINE
                 )
             );
         } else if (amount >= MAX_TICK_LIQUIDITY) {
             vm.expectRevert();
             fullRange.addLiquidity(
                 FullRange.AddLiquidityParams(
-                    key.currency0,
-                    key.currency1,
-                    3000,
-                    amount,
-                    amount,
-                    amount,
-                    amount,
-                    address(this),
-                    MAX_DEADLINE
+                    key.currency0, key.currency1, 3000, amount, amount, amount, amount, address(this), MAX_DEADLINE
                 )
             );
         } else {
             fullRange.addLiquidity(
                 FullRange.AddLiquidityParams(
-                    key.currency0,
-                    key.currency1,
-                    3000,
-                    amount,
-                    amount,
-                    0,
-                    0,
-                    address(this),
-                    MAX_DEADLINE
+                    key.currency0, key.currency1, 3000, amount, amount, 0, 0, address(this), MAX_DEADLINE
                 )
             );
 
@@ -747,13 +609,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
 
             fullRange.removeLiquidity(
-                FullRange.RemoveLiquidityParams(
-                    key.currency0,
-                    key.currency1,
-                    3000,
-                    liquidityTokenBal,
-                    MAX_DEADLINE
-                )
+                FullRange.RemoveLiquidityParams(key.currency0, key.currency1, 3000, liquidityTokenBal, MAX_DEADLINE)
             );
 
             assertEq(manager.getLiquidity(id), LOCKED_LIQUIDITY);
@@ -843,11 +699,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
         fullRange.removeLiquidity(
             FullRange.RemoveLiquidityParams(
-                key.currency0,
-                key.currency1,
-                3000,
-                300 ether - LOCKED_LIQUIDITY,
-                MAX_DEADLINE
+                key.currency0, key.currency1, 3000, 300 ether - LOCKED_LIQUIDITY, MAX_DEADLINE
             )
         );
         (hasAccruedFees,) = fullRange.poolInfo(id);
@@ -867,44 +719,20 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             vm.expectRevert(FullRange.LiquidityDoesntMeetMinimum.selector);
             fullRange.addLiquidity(
                 FullRange.AddLiquidityParams(
-                    key.currency0,
-                    key.currency1,
-                    3000,
-                    amount,
-                    amount,
-                    amount,
-                    amount,
-                    address(this),
-                    MAX_DEADLINE
+                    key.currency0, key.currency1, 3000, amount, amount, amount, amount, address(this), MAX_DEADLINE
                 )
             );
         } else if (amount >= MAX_TICK_LIQUIDITY) {
             vm.expectRevert();
             fullRange.addLiquidity(
                 FullRange.AddLiquidityParams(
-                    key.currency0,
-                    key.currency1,
-                    3000,
-                    amount,
-                    amount,
-                    amount,
-                    amount,
-                    address(this),
-                    MAX_DEADLINE
+                    key.currency0, key.currency1, 3000, amount, amount, amount, amount, address(this), MAX_DEADLINE
                 )
             );
         } else {
             fullRange.addLiquidity(
                 FullRange.AddLiquidityParams(
-                    key.currency0,
-                    key.currency1,
-                    3000,
-                    amount,
-                    amount,
-                    0,
-                    0,
-                    address(this),
-                    MAX_DEADLINE
+                    key.currency0, key.currency1, 3000, amount, amount, 0, 0, address(this), MAX_DEADLINE
                 )
             );
 
@@ -925,13 +753,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
 
             fullRange.removeLiquidity(
-                FullRange.RemoveLiquidityParams(
-                    key.currency0,
-                    key.currency1,
-                    3000,
-                    liquidityTokenBal,
-                    MAX_DEADLINE
-                )
+                FullRange.RemoveLiquidityParams(key.currency0, key.currency1, 3000, liquidityTokenBal, MAX_DEADLINE)
             );
 
             assertTrue(manager.getLiquidity(id) <= LOCKED_LIQUIDITY + DUST);
