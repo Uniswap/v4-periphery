@@ -31,6 +31,8 @@ contract TWAMM is BaseHook, ITWAMM {
     using PoolGetters for IPoolManager;
     using TickBitmap for mapping(int16 => uint256);
 
+    bytes internal constant ZERO_BYTES = bytes("");
+
     int256 internal constant MIN_DELTA = -1;
     bool internal constant ZERO_FOR_ONE = true;
     bool internal constant ONE_FOR_ZERO = false;
@@ -71,7 +73,7 @@ contract TWAMM is BaseHook, ITWAMM {
         });
     }
 
-    function beforeInitialize(address, PoolKey calldata key, uint160)
+    function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata)
         external
         virtual
         override
@@ -83,17 +85,17 @@ contract TWAMM is BaseHook, ITWAMM {
         return BaseHook.beforeInitialize.selector;
     }
 
-    function beforeModifyPosition(address, PoolKey calldata key, IPoolManager.ModifyPositionParams calldata)
-        external
-        override
-        poolManagerOnly
-        returns (bytes4)
-    {
+    function beforeModifyPosition(
+        address,
+        PoolKey calldata key,
+        IPoolManager.ModifyPositionParams calldata,
+        bytes calldata
+    ) external override poolManagerOnly returns (bytes4) {
         executeTWAMMOrders(key);
         return BaseHook.beforeModifyPosition.selector;
     }
 
-    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata)
+    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
         poolManagerOnly
@@ -304,7 +306,7 @@ contract TWAMM is BaseHook, ITWAMM {
         (PoolKey memory key, IPoolManager.SwapParams memory swapParams) =
             abi.decode(rawData, (PoolKey, IPoolManager.SwapParams));
 
-        BalanceDelta delta = poolManager.swap(key, swapParams);
+        BalanceDelta delta = poolManager.swap(key, swapParams, ZERO_BYTES);
 
         if (swapParams.zeroForOne) {
             if (delta.amount0() > 0) {

@@ -15,7 +15,11 @@ contract VolatilityOracle is BaseHook, IDynamicFeeManager {
 
     uint32 deployTimestamp;
 
-    function getFee(PoolKey calldata) external view returns (uint24) {
+    function getFee(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
+        external
+        view
+        returns (uint24)
+    {
         uint24 startingFee = 3000;
         uint32 lapsed = _blockTimestamp() - deployTimestamp;
         return startingFee + (uint24(lapsed) * 100) / 60; // 100 bps a minute
@@ -43,7 +47,12 @@ contract VolatilityOracle is BaseHook, IDynamicFeeManager {
         });
     }
 
-    function beforeInitialize(address, PoolKey calldata key, uint160) external pure override returns (bytes4) {
+    function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata)
+        external
+        pure
+        override
+        returns (bytes4)
+    {
         if (!key.fee.isDynamicFee()) revert MustUseDynamicFee();
         return VolatilityOracle.beforeInitialize.selector;
     }

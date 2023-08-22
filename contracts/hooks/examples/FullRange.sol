@@ -37,6 +37,8 @@ contract FullRange is BaseHook, ILockCallback {
     error ExpiredPastDeadline();
     error TooMuchSlippage();
 
+    bytes internal constant ZERO_BYTES = bytes("");
+
     /// @dev Min tick for full range with tick spacing of 60
     int24 internal constant MIN_TICK = -887220;
     /// @dev Max tick for full range with tick spacing of 60
@@ -188,7 +190,11 @@ contract FullRange is BaseHook, ILockCallback {
         erc20.burn(msg.sender, params.liquidity);
     }
 
-    function beforeInitialize(address, PoolKey calldata key, uint160) external override returns (bytes4) {
+    function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata)
+        external
+        override
+        returns (bytes4)
+    {
         if (key.tickSpacing != 60) revert TickSpacingNotDefault();
 
         PoolId poolId = key.toId();
@@ -211,18 +217,18 @@ contract FullRange is BaseHook, ILockCallback {
         return FullRange.beforeInitialize.selector;
     }
 
-    function beforeModifyPosition(address sender, PoolKey calldata, IPoolManager.ModifyPositionParams calldata)
-        external
-        view
-        override
-        returns (bytes4)
-    {
+    function beforeModifyPosition(
+        address sender,
+        PoolKey calldata,
+        IPoolManager.ModifyPositionParams calldata,
+        bytes calldata
+    ) external view override returns (bytes4) {
         if (sender != address(this)) revert SenderMustBeHook();
 
         return FullRange.beforeModifyPosition.selector;
     }
 
-    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata)
+    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
         returns (bytes4)
@@ -285,7 +291,7 @@ contract FullRange is BaseHook, ILockCallback {
         );
 
         params.liquidityDelta = -(liquidityToRemove.toInt256());
-        delta = poolManager.modifyPosition(key, params);
+        delta = poolManager.modifyPosition(key, params, ZERO_BYTES);
         pool.hasAccruedFees = false;
     }
 
@@ -302,7 +308,7 @@ contract FullRange is BaseHook, ILockCallback {
             delta = _removeLiquidity(data.key, data.params);
             _takeDeltas(data.sender, data.key, delta);
         } else {
-            delta = poolManager.modifyPosition(data.key, data.params);
+            delta = poolManager.modifyPosition(data.key, data.params, ZERO_BYTES);
             _settleDeltas(data.sender, data.key, delta);
         }
         return abi.encode(delta);
@@ -316,7 +322,8 @@ contract FullRange is BaseHook, ILockCallback {
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
                 liquidityDelta: -(poolManager.getLiquidity(poolId).toInt256())
-            })
+            }),
+            ZERO_BYTES
         );
 
         uint160 newSqrtPriceX96 = (
@@ -333,7 +340,8 @@ contract FullRange is BaseHook, ILockCallback {
                 zeroForOne: newSqrtPriceX96 < sqrtPriceX96,
                 amountSpecified: MAX_INT,
                 sqrtPriceLimitX96: newSqrtPriceX96
-            })
+            }),
+            ZERO_BYTES
         );
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
@@ -350,13 +358,14 @@ contract FullRange is BaseHook, ILockCallback {
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
                 liquidityDelta: liquidity.toInt256()
-            })
+            }),
+            ZERO_BYTES
         );
 
         // Donate any "dust" from the sqrtRatio change as fees
         uint128 donateAmount0 = uint128(-balanceDelta.amount0() - balanceDeltaAfter.amount0());
         uint128 donateAmount1 = uint128(-balanceDelta.amount1() - balanceDeltaAfter.amount1());
 
-        poolManager.donate(key, donateAmount0, donateAmount1);
+        poolManager.donate(key, donateAmount0, donateAmount1, ZERO_BYTES);
     }
 }

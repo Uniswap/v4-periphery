@@ -9,6 +9,7 @@ import {LimitOrderImplementation} from "./shared/implementation/LimitOrderImplem
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
+import {TokenFixture} from "@uniswap/v4-core/test/foundry-tests/utils/TokenFixture.sol";
 import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
@@ -16,7 +17,7 @@ import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
-contract TestLimitOrder is Test, Deployers {
+contract TestLimitOrder is Test, Deployers, TokenFixture {
     using PoolIdLibrary for PoolKey;
 
     uint160 constant SQRT_RATIO_10_1 = 250541448375047931186413801569;
@@ -31,8 +32,10 @@ contract TestLimitOrder is Test, Deployers {
     PoolSwapTest swapRouter;
 
     function setUp() public {
-        token0 = new TestERC20(2**128);
-        token1 = new TestERC20(2**128);
+        initializeTokens();
+        token0 = TestERC20(Currency.unwrap(currency0));
+        token1 = TestERC20(Currency.unwrap(currency1));
+
         manager = new PoolManager(500000);
 
         vm.record();
@@ -47,9 +50,9 @@ contract TestLimitOrder is Test, Deployers {
             }
         }
 
-        key = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, limitOrder);
+        key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
         id = key.toId();
-        manager.initialize(key, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         swapRouter = new PoolSwapTest(manager);
 
@@ -66,7 +69,7 @@ contract TestLimitOrder is Test, Deployers {
     function testGetTickLowerLastWithDifferentPrice() public {
         PoolKey memory differentKey =
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 61, limitOrder);
-        manager.initialize(differentKey, SQRT_RATIO_10_1);
+        manager.initialize(differentKey, SQRT_RATIO_10_1, ZERO_BYTES);
         assertEq(limitOrder.getTickLowerLast(differentKey.toId()), 22997);
     }
 
@@ -159,8 +162,8 @@ contract TestLimitOrder is Test, Deployers {
             uint128 liquidityTotal
         ) = limitOrder.epochInfos(Epoch.wrap(1));
         assertFalse(filled);
-        assertTrue(CurrencyLibrary.equals(currency0, Currency.wrap(address(token0))));
-        assertTrue(CurrencyLibrary.equals(currency1, Currency.wrap(address(token1))));
+        assertTrue(currency0 == Currency.wrap(address(token0)));
+        assertTrue(currency1 == Currency.wrap(address(token1)));
         assertEq(token0Total, 0);
         assertEq(token1Total, 0);
         assertEq(liquidityTotal, liquidity * 2);

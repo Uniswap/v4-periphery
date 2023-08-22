@@ -3,7 +3,7 @@ pragma solidity ^0.8.15;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
-import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
+import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {TWAMMImplementation} from "./shared/implementation/TWAMMImplementation.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
@@ -16,12 +16,13 @@ import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModify
 import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
 import {PoolDonateTest} from "@uniswap/v4-core/contracts/test/PoolDonateTest.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
+import {TokenFixture} from "@uniswap/v4-core/test/foundry-tests/utils/TokenFixture.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {TWAMM} from "../contracts/hooks/examples/TWAMM.sol";
 import {ITWAMM} from "../contracts/interfaces/ITWAMM.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
-contract TWAMMTest is Test, Deployers, GasSnapshot {
+contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
 
@@ -53,14 +54,15 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     PoolSwapTest swapRouter;
     PoolDonateTest donateRouter;
     address hookAddress;
-    TestERC20 token0;
-    TestERC20 token1;
+    MockERC20 token0;
+    MockERC20 token1;
     PoolKey poolKey;
     PoolId poolId;
 
     function setUp() public {
-        token0 = new TestERC20(2**128);
-        token1 = new TestERC20(2**128);
+        initializeTokens();
+        token0 = MockERC20(Currency.unwrap(currency0));
+        token1 = MockERC20(Currency.unwrap(currency1));
         manager = new PoolManager(500000);
 
         TWAMMImplementation impl = new TWAMMImplementation(manager, 10_000, twamm);
@@ -79,7 +81,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         poolKey = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, twamm);
         poolId = poolKey.toId();
-        manager.initialize(poolKey, SQRT_RATIO_1_1);
+        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
 
         token0.approve(address(modifyPositionRouter), 100 ether);
         token1.approve(address(modifyPositionRouter), 100 ether);
@@ -96,7 +98,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         (PoolKey memory initKey, PoolId initId) = newPoolKeyWithTWAMM(twamm);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
-        manager.initialize(initKey, SQRT_RATIO_1_1);
+        manager.initialize(initKey, SQRT_RATIO_1_1, ZERO_BYTES);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 10000);
     }
 
@@ -381,8 +383,8 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(earningsToken0, orderAmount / 2);
         assertEq(earningsToken1, orderAmount / 2);
 
-        uint256 balance0BeforeTWAMM = TestERC20(Currency.unwrap(poolKey.currency0)).balanceOf(address(twamm));
-        uint256 balance1BeforeTWAMM = TestERC20(Currency.unwrap(poolKey.currency1)).balanceOf(address(twamm));
+        uint256 balance0BeforeTWAMM = MockERC20(Currency.unwrap(poolKey.currency0)).balanceOf(address(twamm));
+        uint256 balance1BeforeTWAMM = MockERC20(Currency.unwrap(poolKey.currency1)).balanceOf(address(twamm));
         uint256 balance0BeforeThis = poolKey.currency0.balanceOfSelf();
         uint256 balance1BeforeThis = poolKey.currency1.balanceOfSelf();
 
@@ -396,8 +398,8 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(twamm.tokensOwed(poolKey.currency0, address(this)), 0);
         assertEq(twamm.tokensOwed(poolKey.currency1, address(this)), 0);
 
-        uint256 balance0AfterTWAMM = TestERC20(Currency.unwrap(poolKey.currency0)).balanceOf(address(twamm));
-        uint256 balance1AfterTWAMM = TestERC20(Currency.unwrap(poolKey.currency1)).balanceOf(address(twamm));
+        uint256 balance0AfterTWAMM = MockERC20(Currency.unwrap(poolKey.currency0)).balanceOf(address(twamm));
+        uint256 balance1AfterTWAMM = MockERC20(Currency.unwrap(poolKey.currency1)).balanceOf(address(twamm));
         uint256 balance0AfterThis = poolKey.currency0.balanceOfSelf();
         uint256 balance1AfterThis = poolKey.currency1.balanceOfSelf();
 
@@ -410,7 +412,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     }
 
     function newPoolKeyWithTWAMM(IHooks hooks) public returns (PoolKey memory, PoolId) {
-        TestERC20[] memory tokens = deployTokens(2, 2 ** 255);
+        MockERC20[] memory tokens = deployTokens(2, 2 ** 255);
         PoolKey memory key = PoolKey(Currency.wrap(address(tokens[0])), Currency.wrap(address(tokens[1])), 0, 60, hooks);
         return (key, key.toId());
     }
