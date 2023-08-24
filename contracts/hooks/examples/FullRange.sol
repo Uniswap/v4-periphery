@@ -59,8 +59,8 @@ contract FullRange is BaseHook, ILockCallback {
     }
 
     struct AddLiquidityParams {
-        address token0;
-        address token1;
+        Currency currency0;
+        Currency currency1;
         uint24 fee;
         uint256 amount0Desired;
         uint256 amount1Desired;
@@ -71,8 +71,8 @@ contract FullRange is BaseHook, ILockCallback {
     }
 
     struct RemoveLiquidityParams {
-        address token0;
-        address token1;
+        Currency currency0;
+        Currency currency1;
         uint24 fee;
         uint256 liquidity;
         uint256 deadline;
@@ -106,8 +106,8 @@ contract FullRange is BaseHook, ILockCallback {
         returns (uint128 liquidity)
     {
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(params.token0),
-            currency1: Currency.wrap(params.token1),
+            currency0: params.currency0,
+            currency1: params.currency1,
             fee: params.fee,
             tickSpacing: 60,
             hooks: IHooks(address(this))
@@ -163,8 +163,8 @@ contract FullRange is BaseHook, ILockCallback {
         returns (BalanceDelta delta)
     {
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(params.token0),
-            currency1: Currency.wrap(params.token1),
+            currency0: params.currency0,
+            currency1: params.currency1,
             fee: params.fee,
             tickSpacing: 60,
             hooks: IHooks(address(this))
