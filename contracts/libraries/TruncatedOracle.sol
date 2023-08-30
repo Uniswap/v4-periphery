@@ -18,7 +18,7 @@ library TruncatedOracle {
     error TargetPredatesOldestObservation(uint32 oldestTimestamp, uint32 targetTimestamp);
 
     /// @notice This is the max amount of ticks in either direction that the pool is allowed to move at one time
-    int24 constant MAX_ABS_TICK_MOVE = 8100;
+    int24 constant MAX_ABS_TICK_MOVE = 9116;
 
     struct Observation {
         // the block timestamp of the observation
