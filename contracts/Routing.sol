@@ -83,10 +83,20 @@ abstract contract UniswapV4Routing {
 
             if (i == 0) {
                 if (zeroForOne) {
-                    _pay(Currency.unwrap(poolKey.currency0), msgSender, address(poolManager), uint256(uint128(delta.amount0())));
+                    _pay(
+                        Currency.unwrap(poolKey.currency0),
+                        msgSender,
+                        address(poolManager),
+                        uint256(uint128(delta.amount0()))
+                    );
                     poolManager.settle(poolKey.currency0);
                 } else {
-                    _pay(Currency.unwrap(poolKey.currency1), msgSender, address(poolManager), uint256(uint128(delta.amount1())));
+                    _pay(
+                        Currency.unwrap(poolKey.currency1),
+                        msgSender,
+                        address(poolManager),
+                        uint256(uint128(delta.amount1()))
+                    );
                     poolManager.settle(poolKey.currency1);
                 }
             }
@@ -110,8 +120,8 @@ abstract contract UniswapV4Routing {
     }
 
     function _getPoolAndSwapDirection(PoolKey memory params)
-        pure
         private
+        pure
         returns (PoolKey memory poolKey, bool zeroForOne)
     {
         (Currency currency0, Currency currency1) = params.currency0 < params.currency1
