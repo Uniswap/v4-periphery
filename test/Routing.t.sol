@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import 'forge-std/console.sol';
+import "forge-std/console.sol";
 
 import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
@@ -17,7 +17,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Curren
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 
 contract RoutingTest is Test, Deployers, GasSnapshot {
-  using CurrencyLibrary for Currency;
+    using CurrencyLibrary for Currency;
 
     PoolManager manager;
     PoolModifyPositionTest positionManager;
@@ -37,7 +37,7 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     function setUp() public {
         manager = new PoolManager(500000);
         router = new RoutingImplementation(manager);
-        positionManager =  new PoolModifyPositionTest(manager);
+        positionManager = new PoolModifyPositionTest(manager);
 
         token0 = new MockERC20("Test0", "0", 18, 2 ** 128);
         token1 = new MockERC20("Test1", "1", 18, 2 ** 128);
@@ -56,6 +56,10 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         token1.approve(address(router), type(uint256).max);
         token2.approve(address(router), type(uint256).max);
         token3.approve(address(router), type(uint256).max);
+    }
+
+    function testRouter_bytecodeSize() public {
+        snapSize("RouterBytecode", address(router));
     }
 
     function testRouter_swapExactIn_0Hops_zeroForOne() public {
@@ -115,7 +119,6 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         uint256 prevBalance1 = token1.balanceOf(address(this));
         uint256 prevBalance2 = token2.balanceOf(address(this));
 
-
         snapStart("RouterExactIn1Hop");
         router.swap(
             UniswapV4Routing.SwapType.ExactInput,
@@ -147,7 +150,6 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance3 = token3.balanceOf(address(this));
 
-
         snapStart("RouterExactIn2Hops");
         router.swap(
             UniswapV4Routing.SwapType.ExactInput,
@@ -166,7 +168,6 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         assertEq(token3.balanceOf(address(router)), 0);
     }
 
-
     function createPoolKey(MockERC20 tokenA, MockERC20 tokenB) internal pure returns (PoolKey memory) {
         if (address(tokenA) > address(tokenB)) (tokenA, tokenB) = (tokenB, tokenA);
         return PoolKey(Currency.wrap(address(tokenA)), Currency.wrap(address(tokenB)), 3000, 60, IHooks(address(0)));
@@ -180,6 +181,6 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     }
 
     function toCurrency(MockERC20 token) internal pure returns (Currency) {
-      return Currency.wrap(address(token));
+        return Currency.wrap(address(token));
     }
 }
