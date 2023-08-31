@@ -62,7 +62,7 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         snapSize("RouterBytecode", address(router));
     }
 
-    function testRouter_swapExactIn_0Hops_zeroForOne() public {
+    function testRouter_swapExactIn_1Hop_zeroForOne() public {
         path.push(PoolKey(toCurrency(token0), toCurrency(token1), 3000, 60, IHooks(address(0))));
         PoolKey[] memory _pathCached = path;
 
@@ -72,7 +72,7 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
 
-        snapStart("RouterExactIn0Hops");
+        snapStart("RouterExactIn1Hop");
         router.swap(
             UniswapV4Routing.SwapType.ExactInput,
             abi.encode(UniswapV4Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
@@ -86,7 +86,7 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         assertEq(newBalance1 - prevBalance1, expectedAmountOut);
     }
 
-    function testRouter_swapExactIn_0Hops_oneForZero() public {
+    function testRouter_swapExactIn_1Hop_oneForZero() public {
         path.push(PoolKey(toCurrency(token1), toCurrency(token0), 3000, 60, IHooks(address(0))));
 
         uint256 amountIn = 1 ether;
@@ -107,7 +107,7 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         assertEq(newBalance0 - prevBalance0, expectedAmountOut);
     }
 
-    function testRouter_swapExactIn_1Hop() public {
+    function testRouter_swapExactIn_2Hops() public {
         path.push(PoolKey(toCurrency(token0), toCurrency(token1), 3000, 60, IHooks(address(0))));
         path.push(PoolKey(toCurrency(token1), toCurrency(token2), 3000, 60, IHooks(address(0))));
         PoolKey[] memory _pathCached = path;
@@ -119,7 +119,7 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         uint256 prevBalance1 = token1.balanceOf(address(this));
         uint256 prevBalance2 = token2.balanceOf(address(this));
 
-        snapStart("RouterExactIn1Hop");
+        snapStart("RouterExactIn2Hops");
         router.swap(
             UniswapV4Routing.SwapType.ExactInput,
             abi.encode(UniswapV4Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
@@ -138,7 +138,7 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         assertEq(token2.balanceOf(address(router)), 0);
     }
 
-    function testRouter_swapExactIn_2Hops() public {
+    function testRouter_swapExactIn_3Hops() public {
         path.push(PoolKey(toCurrency(token0), toCurrency(token1), 3000, 60, IHooks(address(0))));
         path.push(PoolKey(toCurrency(token1), toCurrency(token2), 3000, 60, IHooks(address(0))));
         path.push(PoolKey(toCurrency(token2), toCurrency(token3), 3000, 60, IHooks(address(0))));
@@ -150,7 +150,7 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance3 = token3.balanceOf(address(this));
 
-        snapStart("RouterExactIn2Hops");
+        snapStart("RouterExactIn3Hops");
         router.swap(
             UniswapV4Routing.SwapType.ExactInput,
             abi.encode(UniswapV4Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
