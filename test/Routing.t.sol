@@ -32,7 +32,8 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     PoolKey key1;
     PoolKey key2;
 
-    PoolKey[] path;
+    MockERC20[] tokenPath;
+    bytes path;
 
     function setUp() public {
         manager = new PoolManager(500000);
@@ -63,8 +64,11 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     }
 
     function testRouter_swapExactIn_1Hop_zeroForOne() public {
-        path.push(PoolKey(toCurrency(token0), toCurrency(token1), 3000, 60, IHooks(address(0))));
-        PoolKey[] memory _pathCached = path;
+        tokenPath.push(token0);
+        tokenPath.push(token1);
+        path = encodePathThroughDefaultPools(tokenPath);
+
+        bytes memory _pathCached = path;
 
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
@@ -87,7 +91,9 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     }
 
     function testRouter_swapExactIn_1Hop_oneForZero() public {
-        path.push(PoolKey(toCurrency(token1), toCurrency(token0), 3000, 60, IHooks(address(0))));
+        tokenPath.push(token1);
+        tokenPath.push(token0);
+        path = encodePathThroughDefaultPools(tokenPath);
 
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
@@ -108,9 +114,11 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     }
 
     function testRouter_swapExactIn_2Hops() public {
-        path.push(PoolKey(toCurrency(token0), toCurrency(token1), 3000, 60, IHooks(address(0))));
-        path.push(PoolKey(toCurrency(token1), toCurrency(token2), 3000, 60, IHooks(address(0))));
-        PoolKey[] memory _pathCached = path;
+        tokenPath.push(token0);
+        tokenPath.push(token1);
+        tokenPath.push(token2);
+        path = encodePathThroughDefaultPools(tokenPath);
+        bytes memory _pathCached = path;
 
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 984211133872795298;
@@ -139,10 +147,12 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     }
 
     function testRouter_swapExactIn_3Hops() public {
-        path.push(PoolKey(toCurrency(token0), toCurrency(token1), 3000, 60, IHooks(address(0))));
-        path.push(PoolKey(toCurrency(token1), toCurrency(token2), 3000, 60, IHooks(address(0))));
-        path.push(PoolKey(toCurrency(token2), toCurrency(token3), 3000, 60, IHooks(address(0))));
-        PoolKey[] memory _pathCached = path;
+        tokenPath.push(token0);
+        tokenPath.push(token1);
+        tokenPath.push(token2);
+        tokenPath.push(token3);
+        path = encodePathThroughDefaultPools(tokenPath);
+        bytes memory _pathCached = path;
 
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 976467664490096191;
@@ -182,5 +192,23 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
 
     function toCurrency(MockERC20 token) internal pure returns (Currency) {
         return Currency.wrap(address(token));
+    }
+
+    function encodePathThroughDefaultPools(MockERC20[] memory _tokenPath) internal pure returns (bytes memory _path) {
+        for (uint256 i = 0; i < _tokenPath.length ; i++) {
+            if (i < _tokenPath.length - 1) {
+                _path = abi.encodePacked(_path, encodePathInputAndDefaultPool(_tokenPath[i]));
+            } else {
+                _path = abi.encodePacked(_path, encodePathOutputToken(_tokenPath[i]));
+            }
+        }
+    }
+
+    function encodePathInputAndDefaultPool(MockERC20 token) internal pure returns (bytes memory) {
+        return abi.encodePacked(address(token), uint24(3000), int24(60), address(0));
+    }
+
+    function encodePathOutputToken(MockERC20 token) internal pure returns (bytes memory) {
+        return abi.encodePacked(address(token));
     }
 }

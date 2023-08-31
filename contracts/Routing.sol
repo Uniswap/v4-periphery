@@ -7,11 +7,13 @@ import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {Path} from "./libraries/Path.sol";
 
 /// @title UniswapV4Routing
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
 abstract contract UniswapV4Routing {
     using CurrencyLibrary for Currency;
+    using Path for bytes;
 
     IPoolManager immutable poolManager;
 
@@ -26,7 +28,7 @@ abstract contract UniswapV4Routing {
     }
 
     struct ExactInputParams {
-        PoolKey[] path; // TODO: pack this and get rid of redundant token (ultimately will NOT be PoolKey but bytes)
+        bytes path;
         address recipient;
         uint128 amountIn;
         uint128 amountOutMinimum;
@@ -67,8 +69,11 @@ abstract contract UniswapV4Routing {
     }
 
     function _swapExactInput(ExactInputParams memory params, address msgSender) private {
-        for (uint256 i = 0; i < params.path.length; i++) {
-            (PoolKey memory poolKey, bool zeroForOne) = _getPoolAndSwapDirection(params.path[i]);
+        bool inputPayed;
+
+        while (true) {
+            (PoolKey memory poolKey, bool zeroForOne) = params.path.decodeFirstPoolKeyAndSwapDirection();
+
             BalanceDelta delta = poolManager.swap(
                 poolKey,
                 IPoolManager.SwapParams(
@@ -81,7 +86,7 @@ abstract contract UniswapV4Routing {
                 bytes("")
             );
 
-            if (i == 0) {
+            if (!inputPayed) {
                 if (zeroForOne) {
                     _pay(
                         Currency.unwrap(poolKey.currency0),
@@ -99,14 +104,7 @@ abstract contract UniswapV4Routing {
                     );
                     poolManager.settle(poolKey.currency1);
                 }
-            }
-
-            if (i == params.path.length - 1) {
-                if (zeroForOne) {
-                    poolManager.take(poolKey.currency1, msgSender, uint256(uint128(-delta.amount1())));
-                } else {
-                    poolManager.take(poolKey.currency0, msgSender, uint256(uint128(-delta.amount0())));
-                }
+                inputPayed = true;
             }
 
             if (zeroForOne) {
@@ -114,22 +112,22 @@ abstract contract UniswapV4Routing {
             } else {
                 params.amountIn = uint128(-delta.amount0());
             }
+
+
+            if (params.path.isFinalSwap()) {
+                if (zeroForOne) {
+                    poolManager.take(poolKey.currency1, msgSender, uint256(uint128(-delta.amount1())));
+                } else {
+                    poolManager.take(poolKey.currency0, msgSender, uint256(uint128(-delta.amount0())));
+                }
+                break;
+            } else {
+                params.path = params.path.skipToken();
+            }
         }
 
+        // after final swap, params.amountIn is the amountOut
         if (params.amountIn < params.amountOutMinimum) revert TooLittleReceived();
-    }
-
-    function _getPoolAndSwapDirection(PoolKey memory params)
-        private
-        pure
-        returns (PoolKey memory poolKey, bool zeroForOne)
-    {
-        (Currency currency0, Currency currency1) = params.currency0 < params.currency1
-            ? (params.currency0, params.currency1)
-            : (params.currency1, params.currency0);
-
-        zeroForOne = params.currency0 == currency0;
-        poolKey = PoolKey(currency0, currency1, params.fee, params.tickSpacing, params.hooks);
     }
 
     function _pay(address token, address payer, address recipient, uint256 amount) internal virtual;

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity >=0.6.0;
+pragma solidity >=0.8.20;
 
 import './BytesLib.sol';
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 
 /// @title Functions for manipulating path data for multihop swaps
 library Path {
@@ -11,19 +14,21 @@ library Path {
     uint256 private constant ADDR_SIZE = 20;
     /// @dev The length of the bytes encoded fee
     uint256 private constant FEE_SIZE = 3;
+    /// @dev The length of the bytes encoded fee
+    uint256 private constant TICK_SPACING_SIZE = 3;
 
-    /// @dev The offset of a single token address and pool fee
-    uint256 private constant NEXT_OFFSET = ADDR_SIZE + FEE_SIZE;
+    /// @dev The offset of a single token address, hooks address, fee, and tickspacing
+    uint256 private constant NEXT_OFFSET = ADDR_SIZE * 2 + FEE_SIZE + TICK_SPACING_SIZE;
     /// @dev The offset of an encoded pool key
     uint256 private constant POP_OFFSET = NEXT_OFFSET + ADDR_SIZE;
     /// @dev The minimum length of an encoding that contains 2 or more pools
     uint256 private constant MULTIPLE_POOLS_MIN_LENGTH = POP_OFFSET + NEXT_OFFSET;
 
-    /// @notice Returns true iff the path contains two or more pools
+    /// @notice Returns true if the path contains two or more pools
     /// @param path The encoded swap path
     /// @return True if path contains two or more pools, otherwise false
-    function hasMultiplePools(bytes memory path) internal pure returns (bool) {
-        return path.length >= MULTIPLE_POOLS_MIN_LENGTH;
+    function isFinalSwap(bytes memory path) internal pure returns (bool) {
+        return path.length < MULTIPLE_POOLS_MIN_LENGTH;
     }
 
     /// @notice Returns the number of pools in the path
@@ -36,21 +41,21 @@ library Path {
 
     /// @notice Decodes the first pool in path
     /// @param path The bytes encoded swap path
-    /// @return tokenA The first token of the given pool
-    /// @return tokenB The second token of the given pool
-    /// @return fee The fee level of the pool
-    function decodeFirstPool(bytes memory path)
+    /// @return poolKey The first poolKey in the given path
+    /// @return zeroForOne true if we're trading currency0 for currency1
+    function decodeFirstPoolKeyAndSwapDirection(bytes memory path)
         internal
         pure
-        returns (
-            address tokenA,
-            address tokenB,
-            uint24 fee
-        )
+        returns (PoolKey memory poolKey, bool zeroForOne)
     {
-        tokenA = path.toAddress(0);
-        fee = path.toUint24(ADDR_SIZE);
-        tokenB = path.toAddress(NEXT_OFFSET);
+        Currency currencyA = Currency.wrap(path.toAddress(0));
+        Currency currencyB = Currency.wrap(path.toAddress(NEXT_OFFSET));
+        zeroForOne = currencyA < currencyB;
+
+        (poolKey.currency0, poolKey.currency1) = zeroForOne ? (currencyA, currencyB) : (currencyB, currencyA);
+        poolKey.fee = path.toUint24(ADDR_SIZE);
+        poolKey.tickSpacing = int24(path.toUint24(ADDR_SIZE + FEE_SIZE));
+        poolKey.hooks = IHooks(path.toAddress(ADDR_SIZE + FEE_SIZE + TICK_SPACING_SIZE));
     }
 
     /// @notice Gets the segment corresponding to the first pool in the path
