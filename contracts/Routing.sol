@@ -10,7 +10,7 @@ import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 
 /// @title UniswapV4Routing
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
-abstract contract UniswapV4Routing {
+abstract contract Routing {
     using CurrencyLibrary for Currency;
 
     IPoolManager immutable poolManager;
@@ -26,7 +26,7 @@ abstract contract UniswapV4Routing {
     }
 
     struct ExactInputParams {
-        PoolKey[] path; // TODO: pack this and get rid of redundant token (ultimately will NOT be PoolKey but bytes)
+        PoolKey[] path;  // TODO: pack this and get rid of redundant token (ultimately will NOT be PoolKey but bytes)
         address recipient;
         uint128 amountIn;
         uint128 amountOutMinimum;
