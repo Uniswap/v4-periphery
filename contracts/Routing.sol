@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import "forge-std/console.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
@@ -32,6 +31,15 @@ abstract contract Routing {
         uint24 fee;
         int24 tickSpacing;
         IHooks hooks;
+    }
+
+    struct ExactInputSingleParams {
+        PoolKey poolKey;
+        bool zeroForOne;
+        address recipient;
+        uint128 amountIn;
+        uint128 amountOutMinimum;
+        uint160 sqrtPriceLimitX96;
     }
 
     struct ExactInputParams {
@@ -69,11 +77,47 @@ abstract contract Routing {
 
         if (swapInfo.swapType == SwapType.ExactInput) {
             _swapExactInput(abi.decode(swapInfo.params, (ExactInputParams)), swapInfo.msgSender);
+        } else if (swapInfo.swapType == SwapType.ExactInputSingle) {
+            _swapExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)), swapInfo.msgSender);
         } else {
             revert InvalidSwapType();
         }
 
         return bytes("");
+    }
+
+    function _swapExactInputSingle(ExactInputSingleParams memory params, address msgSender) private {
+        BalanceDelta delta = poolManager.swap(
+            params.poolKey,
+            IPoolManager.SwapParams(
+                params.zeroForOne,
+                int256(int128(params.amountIn)),
+                params.sqrtPriceLimitX96 == 0
+                    ? (params.zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+                    : params.sqrtPriceLimitX96
+            ),
+            bytes("")
+        );
+
+        if (params.zeroForOne) {
+            _pay(
+                Currency.unwrap(params.poolKey.currency0),
+                msgSender,
+                address(poolManager),
+                uint256(uint128(delta.amount0()))
+            );
+            poolManager.settle(params.poolKey.currency0);
+            poolManager.take(params.poolKey.currency1, msgSender, uint256(uint128(-delta.amount1())));
+        } else {
+            _pay(
+                Currency.unwrap(params.poolKey.currency1),
+                msgSender,
+                address(poolManager),
+                uint256(uint128(delta.amount1()))
+            );
+            poolManager.settle(params.poolKey.currency1);
+            poolManager.take(params.poolKey.currency0, msgSender, uint256(uint128(-delta.amount0())));
+        }
     }
 
     function _swapExactInput(ExactInputParams memory params, address msgSender) private {

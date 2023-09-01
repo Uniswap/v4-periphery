@@ -60,6 +60,46 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         snapSize("RouterBytecode", address(router));
     }
 
+    function testRouter_swapExactInSingle_zeroForOne() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        Routing.ExactInputSingleParams memory params =
+            Routing.ExactInputSingleParams(key0, true, address(this), uint128(amountIn), 0, 0);
+
+        uint256 prevBalance0 = token0.balanceOf(address(this));
+        uint256 prevBalance1 = token1.balanceOf(address(this));
+
+        snapStart("RouterExactInSingle");
+        router.swap(Routing.SwapType.ExactInputSingle, abi.encode(params));
+        snapEnd();
+
+        uint256 newBalance0 = token0.balanceOf(address(this));
+        uint256 newBalance1 = token1.balanceOf(address(this));
+
+        assertEq(prevBalance0 - newBalance0, amountIn);
+        assertEq(newBalance1 - prevBalance1, expectedAmountOut);
+    }
+
+    function testRouter_swapExactInSingle_oneForZero() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        Routing.ExactInputSingleParams memory params =
+            Routing.ExactInputSingleParams(key0, false, address(this), uint128(amountIn), 0, 0);
+
+        uint256 prevBalance0 = token0.balanceOf(address(this));
+        uint256 prevBalance1 = token1.balanceOf(address(this));
+
+        router.swap(Routing.SwapType.ExactInputSingle, abi.encode(params));
+
+        uint256 newBalance0 = token0.balanceOf(address(this));
+        uint256 newBalance1 = token1.balanceOf(address(this));
+
+        assertEq(prevBalance1 - newBalance1, amountIn);
+        assertEq(newBalance0 - prevBalance0, expectedAmountOut);
+    }
+
     function testRouter_swapExactIn_1Hop_zeroForOne() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
