@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
+import "forge-std/console.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 
 /// @title UniswapV4Routing
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
@@ -25,8 +27,16 @@ abstract contract Routing {
         bytes params;
     }
 
+    struct PathKey {
+        Currency currencyOut;
+        uint24 fee;
+        int24 tickSpacing;
+        IHooks hooks;
+    }
+
     struct ExactInputParams {
-        PoolKey[] path;  // TODO: pack this and get rid of redundant token (ultimately will NOT be PoolKey but bytes)
+        Currency currencyIn;
+        PathKey[] path;
         address recipient;
         uint128 amountIn;
         uint128 amountOutMinimum;
@@ -68,7 +78,7 @@ abstract contract Routing {
 
     function _swapExactInput(ExactInputParams memory params, address msgSender) private {
         for (uint256 i = 0; i < params.path.length; i++) {
-            (PoolKey memory poolKey, bool zeroForOne) = _getPoolAndSwapDirection(params.path[i]);
+            (PoolKey memory poolKey, bool zeroForOne) = _getPoolAndSwapDirection(params.path[i], params.currencyIn);
             BalanceDelta delta = poolManager.swap(
                 poolKey,
                 IPoolManager.SwapParams(
@@ -114,21 +124,21 @@ abstract contract Routing {
             } else {
                 params.amountIn = uint128(-delta.amount0());
             }
+            params.currencyIn = params.path[i].currencyOut;
         }
 
         if (params.amountIn < params.amountOutMinimum) revert TooLittleReceived();
     }
 
-    function _getPoolAndSwapDirection(PoolKey memory params)
+    function _getPoolAndSwapDirection(PathKey memory params, Currency currencyIn)
         private
-        pure
+        view
         returns (PoolKey memory poolKey, bool zeroForOne)
     {
-        (Currency currency0, Currency currency1) = params.currency0 < params.currency1
-            ? (params.currency0, params.currency1)
-            : (params.currency1, params.currency0);
+        (Currency currency0, Currency currency1) =
+            currencyIn < params.currencyOut ? (currencyIn, params.currencyOut) : (params.currencyOut, currencyIn);
 
-        zeroForOne = params.currency0 == currency0;
+        zeroForOne = currencyIn == currency0;
         poolKey = PoolKey(currency0, currency1, params.fee, params.tickSpacing, params.hooks);
     }
 

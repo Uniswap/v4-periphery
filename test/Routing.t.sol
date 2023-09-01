@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import "forge-std/console.sol";
-
 import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
@@ -32,7 +30,7 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     PoolKey key1;
     PoolKey key2;
 
-    PoolKey[] path;
+    MockERC20[] tokenPath;
 
     function setUp() public {
         manager = new PoolManager(500000);
@@ -63,20 +61,18 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     }
 
     function testRouter_swapExactIn_1Hop_zeroForOne() public {
-        path.push(PoolKey(toCurrency(token0), toCurrency(token1), 3000, 60, IHooks(address(0))));
-        PoolKey[] memory _pathCached = path;
-
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
+
+        tokenPath.push(token0);
+        tokenPath.push(token1);
+        Routing.ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
 
         snapStart("RouterExactIn1Hop");
-        router.swap(
-            Routing.SwapType.ExactInput,
-            abi.encode(Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
-        );
+        router.swap(Routing.SwapType.ExactInput, abi.encode(params));
         snapEnd();
 
         uint256 newBalance0 = token0.balanceOf(address(this));
@@ -87,18 +83,16 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     }
 
     function testRouter_swapExactIn_1Hop_oneForZero() public {
-        path.push(PoolKey(toCurrency(token1), toCurrency(token0), 3000, 60, IHooks(address(0))));
-
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
+        tokenPath.push(token1);
+        tokenPath.push(token0);
+        Routing.ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
 
-        router.swap(
-            Routing.SwapType.ExactInput,
-            abi.encode(Routing.ExactInputParams(path, address(this), uint128(amountIn), 0, 0))
-        );
+        router.swap(Routing.SwapType.ExactInput, abi.encode(params));
 
         uint256 newBalance0 = token0.balanceOf(address(this));
         uint256 newBalance1 = token1.balanceOf(address(this));
@@ -108,22 +102,20 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     }
 
     function testRouter_swapExactIn_2Hops() public {
-        path.push(PoolKey(toCurrency(token0), toCurrency(token1), 3000, 60, IHooks(address(0))));
-        path.push(PoolKey(toCurrency(token1), toCurrency(token2), 3000, 60, IHooks(address(0))));
-        PoolKey[] memory _pathCached = path;
-
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 984211133872795298;
+
+        tokenPath.push(token0);
+        tokenPath.push(token1);
+        tokenPath.push(token2);
+        Routing.ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
         uint256 prevBalance2 = token2.balanceOf(address(this));
 
         snapStart("RouterExactIn2Hops");
-        router.swap(
-            Routing.SwapType.ExactInput,
-            abi.encode(Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
-        );
+        router.swap(Routing.SwapType.ExactInput, abi.encode(params));
         snapEnd();
 
         uint256 newBalance0 = token0.balanceOf(address(this));
@@ -139,22 +131,20 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
     }
 
     function testRouter_swapExactIn_3Hops() public {
-        path.push(PoolKey(toCurrency(token0), toCurrency(token1), 3000, 60, IHooks(address(0))));
-        path.push(PoolKey(toCurrency(token1), toCurrency(token2), 3000, 60, IHooks(address(0))));
-        path.push(PoolKey(toCurrency(token2), toCurrency(token3), 3000, 60, IHooks(address(0))));
-        PoolKey[] memory _pathCached = path;
-
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 976467664490096191;
+
+        tokenPath.push(token0);
+        tokenPath.push(token1);
+        tokenPath.push(token2);
+        tokenPath.push(token3);
+        Routing.ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance3 = token3.balanceOf(address(this));
 
         snapStart("RouterExactIn3Hops");
-        router.swap(
-            Routing.SwapType.ExactInput,
-            abi.encode(Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
-        );
+        router.swap(Routing.SwapType.ExactInput, abi.encode(params));
         snapEnd();
 
         uint256 newBalance0 = token0.balanceOf(address(this));
@@ -182,5 +172,23 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
 
     function toCurrency(MockERC20 token) internal pure returns (Currency) {
         return Currency.wrap(address(token));
+    }
+
+    function getExactInputParams(MockERC20[] memory _tokenPath, uint256 amountIn)
+        internal
+        view
+        returns (Routing.ExactInputParams memory params)
+    {
+        Routing.PathKey[] memory path = new Routing.PathKey[](_tokenPath.length - 1);
+        for (uint256 i = 0; i < _tokenPath.length - 1; i++) {
+            path[i] = Routing.PathKey(Currency.wrap(address(_tokenPath[i + 1])), 3000, 60, IHooks(address(0)));
+        }
+
+        params.currencyIn = Currency.wrap(address(_tokenPath[0]));
+        params.path = path;
+        params.recipient = address(this);
+        params.amountIn = uint128(amountIn);
+        params.amountOutMinimum = 0;
+        params.sqrtPriceLimitX96 = 0;
     }
 }
