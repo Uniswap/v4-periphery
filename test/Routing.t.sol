@@ -10,7 +10,7 @@ import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol
 import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {UniswapV4Routing} from "../contracts/Routing.sol";
+import {Routing} from "../contracts/Routing.sol";
 import {RoutingImplementation} from "./shared/implementation/RoutingImplementation.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
@@ -74,8 +74,8 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
 
         snapStart("RouterExactIn1Hop");
         router.swap(
-            UniswapV4Routing.SwapType.ExactInput,
-            abi.encode(UniswapV4Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
+            Routing.SwapType.ExactInput,
+            abi.encode(Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
         );
         snapEnd();
 
@@ -96,8 +96,8 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         uint256 prevBalance1 = token1.balanceOf(address(this));
 
         router.swap(
-            UniswapV4Routing.SwapType.ExactInput,
-            abi.encode(UniswapV4Routing.ExactInputParams(path, address(this), uint128(amountIn), 0, 0))
+            Routing.SwapType.ExactInput,
+            abi.encode(Routing.ExactInputParams(path, address(this), uint128(amountIn), 0, 0))
         );
 
         uint256 newBalance0 = token0.balanceOf(address(this));
@@ -121,8 +121,8 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
 
         snapStart("RouterExactIn2Hops");
         router.swap(
-            UniswapV4Routing.SwapType.ExactInput,
-            abi.encode(UniswapV4Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
+            Routing.SwapType.ExactInput,
+            abi.encode(Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
         );
         snapEnd();
 
@@ -152,8 +152,8 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
 
         snapStart("RouterExactIn3Hops");
         router.swap(
-            UniswapV4Routing.SwapType.ExactInput,
-            abi.encode(UniswapV4Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
+            Routing.SwapType.ExactInput,
+            abi.encode(Routing.ExactInputParams(_pathCached, address(this), uint128(amountIn), 0, 0))
         );
         snapEnd();
 
