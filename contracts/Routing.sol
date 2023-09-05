@@ -110,46 +110,50 @@ abstract contract Routing {
     }
 
     function _swapExactInput(ExactInputParams memory params, address msgSender) private {
-        for (uint256 i = 0; i < params.path.length; i++) {
-            (PoolKey memory poolKey, bool zeroForOne) = _getPoolAndSwapDirection(params.path[i], params.currencyIn);
-            uint128 amountOut = uint128(
-                -_swapExactPrivate(
-                    poolKey,
-                    zeroForOne,
-                    int256(int128(params.amountIn)),
-                    0,
-                    msgSender,
-                    i == 0,
-                    i == params.path.length - 1
-                )
-            );
+        unchecked {
+            for (uint256 i = 0; i < params.path.length; i++) {
+                (PoolKey memory poolKey, bool zeroForOne) = _getPoolAndSwapDirection(params.path[i], params.currencyIn);
+                uint128 amountOut = uint128(
+                    -_swapExactPrivate(
+                        poolKey,
+                        zeroForOne,
+                        int256(int128(params.amountIn)),
+                        0,
+                        msgSender,
+                        i == 0,
+                        i == params.path.length - 1
+                    )
+                );
 
-            params.amountIn = amountOut;
-            params.currencyIn = params.path[i].tradeCurrency;
+                params.amountIn = amountOut;
+                params.currencyIn = params.path[i].tradeCurrency;
+            }
+
+            if (params.amountIn < params.amountOutMinimum) revert TooLittleReceived();
         }
-
-        if (params.amountIn < params.amountOutMinimum) revert TooLittleReceived();
     }
 
     function _swapExactOutput(ExactOutputParams memory params, address msgSender) private {
-        for (uint256 i = params.path.length; i > 0; i--) {
-            (PoolKey memory poolKey, bool oneForZero) = _getPoolAndSwapDirection(params.path[i - 1], params.currencyOut);
-            uint128 amountIn = uint128(
-                _swapExactPrivate(
-                    poolKey,
-                    !oneForZero,
-                    -int256(int128(params.amountOut)),
-                    0,
-                    msgSender,
-                    i == 1,
-                    i == params.path.length
-                )
-            );
+        unchecked {
+            for (uint256 i = params.path.length; i > 0; i--) {
+                (PoolKey memory poolKey, bool oneForZero) = _getPoolAndSwapDirection(params.path[i - 1], params.currencyOut);
+                uint128 amountIn = uint128(
+                    _swapExactPrivate(
+                        poolKey,
+                        !oneForZero,
+                        -int256(int128(params.amountOut)),
+                        0,
+                        msgSender,
+                        i == 1,
+                        i == params.path.length
+                    )
+                );
 
-            params.amountOut = amountIn;
-            params.currencyOut = params.path[i - 1].tradeCurrency;
+                params.amountOut = amountIn;
+                params.currencyOut = params.path[i - 1].tradeCurrency;
+            }
+            if (params.amountOut > params.amountInMaximum) revert TooMuchRequested();
         }
-        if (params.amountOut > params.amountInMaximum) revert TooMuchRequested();
     }
 
     function _swapExactPrivate(
