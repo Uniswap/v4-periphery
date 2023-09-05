@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
+import "forge-std/console.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
@@ -134,7 +135,7 @@ abstract contract Routing {
         for (uint256 i = params.path.length; i > 0; i--) {
             (PoolKey memory poolKey, bool oneForZero) = _getPoolAndSwapDirection(params.path[i - 1], params.currencyOut);
             uint128 amountIn = uint128(
-                -_swapExactPrivate(
+                _swapExactPrivate(
                     poolKey,
                     !oneForZero,
                     -int256(int128(params.amountOut)),
@@ -144,8 +145,6 @@ abstract contract Routing {
                     i == params.path.length
                 )
             );
-
-            // console.log(amountIn);
 
             params.amountOut = amountIn;
             params.currencyOut = params.path[i - 1].tradeCurrency;
@@ -175,11 +174,11 @@ abstract contract Routing {
         );
 
         if (zeroForOne) {
-            reciprocalAmount = amountSpecified > 0 ? delta.amount1() : -delta.amount0();
+            reciprocalAmount = amountSpecified > 0 ? delta.amount1() : delta.amount0();
             if (settle) _payAndSettle(poolKey.currency0, msgSender, delta.amount0());
             if (take) poolManager.take(poolKey.currency1, msgSender, uint128(-delta.amount1()));
         } else {
-            reciprocalAmount = amountSpecified > 0 ? delta.amount0() : -delta.amount1();
+            reciprocalAmount = amountSpecified > 0 ? delta.amount0() : delta.amount1();
             if (settle) _payAndSettle(poolKey.currency1, msgSender, delta.amount1());
             if (take) poolManager.take(poolKey.currency0, msgSender, uint128(-delta.amount0()));
         }
