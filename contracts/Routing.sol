@@ -52,6 +52,15 @@ abstract contract Routing {
         uint128 amountOutMinimum;
     }
 
+    struct ExactOutputSingleParams {
+        PoolKey poolKey;
+        bool zeroForOne;
+        address recipient;
+        uint128 amountOut;
+        uint128 amountInMaximum;
+        uint160 sqrtPriceLimitX96;
+    }
+
     struct ExactOutputParams {
         Currency currencyOut;
         PathKey[] path;
@@ -90,6 +99,8 @@ abstract contract Routing {
             _swapExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)), swapInfo.msgSender);
         } else if (swapInfo.swapType == SwapType.ExactOutput) {
             _swapExactOutput(abi.decode(swapInfo.params, (ExactOutputParams)), swapInfo.msgSender);
+        } else if (swapInfo.swapType == SwapType.ExactOutputSingle) {
+            _swapExactOutputSingle(abi.decode(swapInfo.params, (ExactOutputSingleParams)), swapInfo.msgSender);
         } else {
             revert InvalidSwapType();
         }
@@ -133,10 +144,23 @@ abstract contract Routing {
         }
     }
 
+    function _swapExactOutputSingle(ExactOutputSingleParams memory params, address msgSender) private {
+        _swapExactPrivate(
+            params.poolKey,
+            params.zeroForOne,
+            -int256(int128(params.amountOut)),
+            params.sqrtPriceLimitX96,
+            msgSender,
+            true,
+            true
+        );
+    }
+
     function _swapExactOutput(ExactOutputParams memory params, address msgSender) private {
         unchecked {
             for (uint256 i = params.path.length; i > 0; i--) {
-                (PoolKey memory poolKey, bool oneForZero) = _getPoolAndSwapDirection(params.path[i - 1], params.currencyOut);
+                (PoolKey memory poolKey, bool oneForZero) =
+                    _getPoolAndSwapDirection(params.path[i - 1], params.currencyOut);
                 uint128 amountIn = uint128(
                     _swapExactPrivate(
                         poolKey,
