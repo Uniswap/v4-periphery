@@ -48,7 +48,6 @@ abstract contract Routing {
         address recipient;
         uint128 amountIn;
         uint128 amountOutMinimum;
-        uint160 sqrtPriceLimitX96;
     }
 
     enum SwapType {
@@ -99,7 +98,7 @@ abstract contract Routing {
                 poolKey,
                 zeroForOne,
                 params.amountIn,
-                params.sqrtPriceLimitX96,
+                0,
                 msgSender,
                 i == 0,
                 i == params.path.length - 1

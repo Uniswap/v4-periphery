@@ -229,6 +229,5 @@ contract RoutingTest is Test, Deployers, GasSnapshot {
         params.recipient = address(this);
         params.amountIn = uint128(amountIn);
         params.amountOutMinimum = 0;
-        params.sqrtPriceLimitX96 = 0;
     }
 }
