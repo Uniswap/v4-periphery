@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 import {GetSender} from "./shared/GetSender.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {LimitOrder, Epoch, EpochLibrary} from "../contracts/hooks/examples/LimitOrder.sol";
-import {LimitOrderImplementation} from "./shared/implementation/LimitOrderImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
@@ -16,6 +15,7 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol
 import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {HookMiner} from "./utils/HookMiner.sol";
 
 contract TestLimitOrder is Test, Deployers, TokenFixture {
     using PoolIdLibrary for PoolKey;
@@ -25,7 +25,7 @@ contract TestLimitOrder is Test, Deployers, TokenFixture {
     TestERC20 token0;
     TestERC20 token1;
     PoolManager manager;
-    LimitOrder limitOrder = LimitOrder(address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG)));
+    LimitOrder limitOrder;
     PoolKey key;
     PoolId id;
 
@@ -38,17 +38,11 @@ contract TestLimitOrder is Test, Deployers, TokenFixture {
 
         manager = new PoolManager(500000);
 
-        vm.record();
-        LimitOrderImplementation impl = new LimitOrderImplementation(manager, limitOrder);
-        (, bytes32[] memory writes) = vm.accesses(address(impl));
-        vm.etch(address(limitOrder), address(impl).code);
-        // for each storage key that was written during the hook implementation, copy the value over
-        unchecked {
-            for (uint256 i = 0; i < writes.length; i++) {
-                bytes32 slot = writes[i];
-                vm.store(address(limitOrder), slot, vm.load(address(impl), slot));
-            }
-        }
+        uint160 flags = uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG);
+        (address hookAddress, bytes32 salt) =
+            HookMiner.find(address(this), flags, 0, type(LimitOrder).creationCode, abi.encode(manager));
+        limitOrder = new LimitOrder{salt: salt}(manager);
+        require(address(limitOrder) == hookAddress, "TestLimitOrder: hook address mismatch");
 
         key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
         id = key.toId();
