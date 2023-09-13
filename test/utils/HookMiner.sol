@@ -17,30 +17,29 @@ library HookMiner {
     /// @param seed Use 0 for as a default. An optional starting salt when linearly searching for a salt. Useful for finding salts for multiple hooks with the same flags
     /// @param creationCode The creation code of a hook contract. Example: `type(Counter).creationCode`
     /// @param constructorArgs The encoded constructor arguments of a hook contract. Example: `abi.encode(address(manager))`
-    /// @return hookAddress the salt and corresponding address that was found. The salt can be used in `new Hook{salt: salt}(<constructor arguments>)`
+    /// @return hookAddress salt and corresponding address that was found. The salt can be used in `new Hook{salt: salt}(<constructor arguments>)`
     function find(
         address deployer,
         uint160 flags,
         uint256 seed,
         bytes memory creationCode,
         bytes memory constructorArgs
-    ) external pure returns (address hookAddress, bytes32 salt) {
+    ) external pure returns (address, bytes32) {
+        address hookAddress;
         bytes memory creationCodeWithArgs = abi.encodePacked(creationCode, constructorArgs);
-        uint160 prefix;
-        uint256 i = seed;
-        for (i; i < MAX_LOOP;) {
-            hookAddress = computeAddress(deployer, i, creationCodeWithArgs);
-            prefix = uint160(hookAddress) & FLAG_MASK;
-            if (prefix == flags) {
-                break;
+
+        uint256 salt = seed;
+        for (salt; salt < MAX_LOOP;) {
+            hookAddress = computeAddress(deployer, salt, creationCodeWithArgs);
+            if (uint160(hookAddress) & FLAG_MASK == flags) {
+                return (hookAddress, bytes32(salt));
             }
 
             unchecked {
-                ++i;
+                ++salt;
             }
         }
-        salt = bytes32(i);
-        require(uint160(hookAddress) & FLAG_MASK == flags, "HookMiner: could not find hook address");
+        revert("HookMiner: could not find salt");
     }
 
     /// @notice Precompute a contract address deployed via CREATE2
