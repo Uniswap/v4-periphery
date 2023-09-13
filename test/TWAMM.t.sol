@@ -62,13 +62,14 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
         manager = new PoolManager(500000);
 
         // Find a salt that produces a hook address with the desired `flags`
-        uint160 flags = uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG);
-        bytes memory creationCode = abi.encodePacked(type(TWAMM).creationCode, abi.encode(address(manager), 10_000));
-        (address hookAddress, bytes32 salt) = HookMiner.find(address(this), flags, 0, creationCode);
-        
+        uint160 flags =
+            uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG);
+        (address hookAddress, bytes32 salt) =
+            HookMiner.find(address(this), flags, 0, type(TWAMM).creationCode, abi.encode(address(manager), 10_000));
+
         // Deploy hook to the precomputed address using the salt
         twamm = new TWAMM{salt: salt}(IPoolManager(address(manager)), 10_000);
-        require(address(twamm) == hookAddress, "TWAMMTest: hook address does not match"); // safety check that salt was mined correctly 
+        require(address(twamm) == hookAddress, "TWAMMTest: hook address does not match"); // safety check that salt was mined correctly
 
         modifyPositionRouter = new PoolModifyPositionTest(IPoolManager(address(manager)));
         swapRouter = new PoolSwapTest(IPoolManager(address(manager)));
