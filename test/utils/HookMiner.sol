@@ -25,7 +25,7 @@ library HookMiner {
         uint160 prefix;
         uint256 i = seed;
         for (i; i < MAX_LOOP;) {
-            hookAddress = computeAddress(deployer, salt, creationCode);
+            hookAddress = computeAddress(deployer, i, creationCode);
             prefix = uint160(hookAddress) & FLAG_MASK;
             if (prefix == flags) {
                 break;
@@ -35,6 +35,7 @@ library HookMiner {
                 ++i;
             }
         }
+        salt = bytes32(i);
         require(uint160(hookAddress) & FLAG_MASK == flags, "HookMiner: could not find hook address");
     }
 
@@ -43,7 +44,7 @@ library HookMiner {
     ///                 In `forge script`, this should be `0x4e59b44847b379578588920cA78FbF26c0B4956C` (CREATE2 Deployer Proxy)
     /// @param salt The salt used to deploy the hook
     /// @param creationCode The creation code of a hook contract
-    function computeAddress(address deployer, bytes32 salt, bytes memory creationCode)
+    function computeAddress(address deployer, uint256 salt, bytes memory creationCode)
         public
         pure
         returns (address hookAddress)
