@@ -49,7 +49,6 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
     PoolModifyPositionTest modifyPositionRouter;
     PoolSwapTest swapRouter;
     PoolDonateTest donateRouter;
-    address hookAddress;
     MockERC20 token0;
     MockERC20 token1;
     PoolKey poolKey;
@@ -65,10 +64,10 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
         uint160 flags =
             uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG);
         (address hookAddress, bytes32 salt) =
-            HookMiner.find(address(this), flags, 0, type(TWAMM).creationCode, abi.encode(address(manager), 10_000));
+            HookMiner.find(address(this), flags, 0, type(TWAMM).creationCode, abi.encode(manager, 10_000));
 
         // Deploy hook to the precomputed address using the salt
-        twamm = new TWAMM{salt: salt}(IPoolManager(address(manager)), 10_000);
+        twamm = new TWAMM{salt: salt}(manager, 10_000);
         require(address(twamm) == hookAddress, "TWAMMTest: hook address does not match"); // safety check that salt was mined correctly
 
         modifyPositionRouter = new PoolModifyPositionTest(IPoolManager(address(manager)));
