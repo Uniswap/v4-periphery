@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {FullRange} from "../contracts/hooks/examples/FullRange.sol";
-import {FullRangeImplementation} from "./shared/implementation/FullRangeImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
@@ -19,6 +18,7 @@ import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {UniswapV4ERC20} from "../contracts/libraries/UniswapV4ERC20.sol";
 import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
 import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
+import {HookMiner} from "./utils/HookMiner.sol";
 
 contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -66,9 +66,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     Currency currency1;
 
     PoolManager manager;
-    FullRangeImplementation fullRange = FullRangeImplementation(
-        address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG))
-    );
+    FullRange fullRange;
 
     PoolKey key;
     PoolId id;
@@ -90,8 +88,12 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         manager = new PoolManager(500000);
 
-        FullRangeImplementation impl = new FullRangeImplementation(manager, fullRange);
-        vm.etch(address(fullRange), address(impl).code);
+        uint160 flags =
+            uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG);
+        (address hookAddress, bytes32 salt) =
+            HookMiner.find(address(this), flags, 0, type(FullRange).creationCode, abi.encode(manager));
+        fullRange = new FullRange{salt: salt}(manager);
+        require(address(fullRange) == hookAddress, "TestFullRange: hook address mismatch");
 
         key = createPoolKey(token0, token1);
         id = key.toId();
