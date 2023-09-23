@@ -562,10 +562,10 @@ contract TWAMM is BaseHook, ITWAMM {
     }
 
     struct TickCrossingParams {
-        int24 initializedTick;
         uint256 nextTimestamp;
         uint256 secondsElapsedX96;
         PoolParamsOnExecute pool;
+        int24 initializedTick;
     }
 
     function _advanceTimeThroughTickCrossing(
@@ -621,7 +621,7 @@ contract TWAMM is BaseHook, ITWAMM {
         nextTickInit = pool.sqrtPriceX96.getTickAtSqrtRatio();
         int24 targetTick = nextSqrtPriceX96.getTickAtSqrtRatio();
         bool searchingLeft = nextSqrtPriceX96 < pool.sqrtPriceX96;
-        bool nextTickInitFurtherThanTarget = false; // initialize as false
+        bool nextTickInitFurtherThanTarget; // initialize as false
 
         // nextTickInit returns the furthest tick within one word if no tick within that word is initialized
         // so we must keep iterating if we haven't reached a tick further than our target tick
