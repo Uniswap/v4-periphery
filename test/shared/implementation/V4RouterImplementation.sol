@@ -9,7 +9,7 @@ contract V4RouterImplementation is V4Router {
     constructor(IPoolManager _poolManager) V4Router(_poolManager) {}
 
     function swap(SwapType swapType, bytes memory params) external {
-        v4Swap(swapType, params);
+        _v4Swap(swapType, params);
     }
 
     function _pay(address token, address payer, address recipient, uint256 amount) internal override {

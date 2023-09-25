@@ -27,7 +27,7 @@ abstract contract V4Router is IV4Router {
         poolManager = _poolManager;
     }
 
-    function v4Swap(SwapType swapType, bytes memory params) internal {
+    function _v4Swap(SwapType swapType, bytes memory params) internal {
         poolManager.lock(abi.encode(SwapInfo(swapType, msg.sender, params)));
     }
 
@@ -63,7 +63,9 @@ abstract contract V4Router is IV4Router {
 
     function _swapExactInput(ExactInputParams memory params, address msgSender) private {
         unchecked {
-            for (uint256 i = 0; i < params.path.length; i++) {
+            uint256 pathLength = params.path.length;
+
+            for (uint256 i = 0; i < pathLength; i++) {
                 (PoolKey memory poolKey, bool zeroForOne) = _getPoolAndSwapDirection(params.path[i], params.currencyIn);
                 uint128 amountOut = uint128(
                     -_swapExactPrivate(
@@ -73,12 +75,12 @@ abstract contract V4Router is IV4Router {
                         0,
                         msgSender,
                         i == 0,
-                        i == params.path.length - 1
+                        i == pathLength - 1
                     )
                 );
 
                 params.amountIn = amountOut;
-                params.currencyIn = params.path[i].tradeCurrency;
+                params.currencyIn = params.path[i].intermediateCurrency;
             }
 
             if (params.amountIn < params.amountOutMinimum) revert TooLittleReceived();
@@ -99,7 +101,9 @@ abstract contract V4Router is IV4Router {
 
     function _swapExactOutput(ExactOutputParams memory params, address msgSender) private {
         unchecked {
-            for (uint256 i = params.path.length; i > 0; i--) {
+            uint256 pathLength = params.path.length;
+
+            for (uint256 i = pathLength; i > 0; i--) {
                 (PoolKey memory poolKey, bool oneForZero) =
                     _getPoolAndSwapDirection(params.path[i - 1], params.currencyOut);
                 uint128 amountIn = uint128(
@@ -110,12 +114,12 @@ abstract contract V4Router is IV4Router {
                         0,
                         msgSender,
                         i == 1,
-                        i == params.path.length
+                        i == pathLength
                     )
                 );
 
                 params.amountOut = amountIn;
-                params.currencyOut = params.path[i - 1].tradeCurrency;
+                params.currencyOut = params.path[i - 1].intermediateCurrency;
             }
             if (params.amountOut > params.amountInMaximum) revert TooMuchRequested();
         }
@@ -158,8 +162,9 @@ abstract contract V4Router is IV4Router {
         pure
         returns (PoolKey memory poolKey, bool zeroForOne)
     {
-        (Currency currency0, Currency currency1) =
-            currencyIn < params.tradeCurrency ? (currencyIn, params.tradeCurrency) : (params.tradeCurrency, currencyIn);
+        (Currency currency0, Currency currency1) = currencyIn < params.intermediateCurrency
+            ? (currencyIn, params.intermediateCurrency)
+            : (params.intermediateCurrency, currencyIn);
 
         zeroForOne = currencyIn == currency0;
         poolKey = PoolKey(currency0, currency1, params.fee, params.tickSpacing, params.hooks);
