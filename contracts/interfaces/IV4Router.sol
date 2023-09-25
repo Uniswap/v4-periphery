@@ -25,7 +25,7 @@ interface IV4Router {
     }
 
     struct PathKey {
-        Currency tradeCurrency;
+        Currency intermediateCurrency;
         uint24 fee;
         int24 tickSpacing;
         IHooks hooks;
