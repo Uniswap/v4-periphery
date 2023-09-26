@@ -11,13 +11,16 @@ library HookMiner {
     uint256 constant MAX_LOOP = 10_000;
 
     /// @notice Find a salt that produces a hook address with the desired `flags`
-    /// @param deployer The address that will deploy the hook. In `forge test`, this will be the test contract `address(this)` or the pranking address
-    ///                 In `forge script`, this should be `0x4e59b44847b379578588920cA78FbF26c0B4956C` (CREATE2 Deployer Proxy)
+    /// @param deployer The address that will deploy the hook.
+    ///     In `forge test`, this will be the test contract `address(this)` or the pranking address
+    ///     In `forge script`, this should be `0x4e59b44847b379578588920cA78FbF26c0B4956C` (CREATE2 Deployer Proxy)
     /// @param flags The desired flags for the hook address
-    /// @param seed Use 0 for as a default. An optional starting salt when linearly searching for a salt. Useful for finding salts for multiple hooks with the same flags
+    /// @param seed Use 0 for as a default. An optional starting salt when linearly searching for a salt
+    ///     Useful for finding salts for multiple hooks with the same flags
     /// @param creationCode The creation code of a hook contract. Example: `type(Counter).creationCode`
     /// @param constructorArgs The encoded constructor arguments of a hook contract. Example: `abi.encode(address(manager))`
-    /// @return hookAddress salt and corresponding address that was found. The salt can be used in `new Hook{salt: salt}(<constructor arguments>)`
+    /// @return hookAddress salt and corresponding address that was found
+    ///     The salt can be used in `new Hook{salt: salt}(<constructor arguments>)`
     function find(
         address deployer,
         uint160 flags,
@@ -43,8 +46,9 @@ library HookMiner {
     }
 
     /// @notice Precompute a contract address deployed via CREATE2
-    /// @param deployer The address that will deploy the hook. In `forge test`, this will be the test contract `address(this)` or the pranking address
-    ///                 In `forge script`, this should be `0x4e59b44847b379578588920cA78FbF26c0B4956C` (CREATE2 Deployer Proxy)
+    /// @param deployer The address that will deploy the hook
+    ///     In `forge test`, this will be the test contract `address(this)` or the pranking address
+    ///     In `forge script`, this should be `0x4e59b44847b379578588920cA78FbF26c0B4956C` (CREATE2 Deployer Proxy)
     /// @param salt The salt used to deploy the hook
     /// @param creationCode The creation code of a hook contract
     function computeAddress(address deployer, uint256 salt, bytes memory creationCode)
