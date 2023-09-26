@@ -57,7 +57,8 @@ abstract contract V4Router is IV4Router {
             params.sqrtPriceLimitX96,
             msgSender,
             true,
-            true
+            true,
+            params.hookData
         );
     }
 
@@ -75,7 +76,8 @@ abstract contract V4Router is IV4Router {
                         0,
                         msgSender,
                         i == 0,
-                        i == pathLength - 1
+                        i == pathLength - 1,
+                        params.path[i].hookData
                     )
                 );
 
@@ -95,7 +97,8 @@ abstract contract V4Router is IV4Router {
             params.sqrtPriceLimitX96,
             msgSender,
             true,
-            true
+            true,
+            params.hookData
         );
     }
 
@@ -114,7 +117,8 @@ abstract contract V4Router is IV4Router {
                         0,
                         msgSender,
                         i == 1,
-                        i == pathLength
+                        i == pathLength,
+                        params.path[i - 1].hookData
                     )
                 );
 
@@ -132,7 +136,8 @@ abstract contract V4Router is IV4Router {
         uint160 sqrtPriceLimitX96,
         address msgSender,
         bool settle,
-        bool take
+        bool take,
+        bytes memory hookData
     ) private returns (int128 reciprocalAmount) {
         BalanceDelta delta = poolManager.swap(
             poolKey,
@@ -143,7 +148,7 @@ abstract contract V4Router is IV4Router {
                     ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
                     : sqrtPriceLimitX96
             ),
-            bytes("")
+            hookData
         );
 
         if (zeroForOne) {
