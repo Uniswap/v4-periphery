@@ -200,7 +200,7 @@ contract TestLimitOrder is Test, Deployers, TokenFixture {
         );
 
         assertEq(limitOrder.getTickLowerLast(id), 60);
-        (, int24 tick,,,,) = manager.getSlot0(id);
+        (, int24 tick,,) = manager.getSlot0(id);
         assertEq(tick, 60);
 
         (bool filled,,, uint256 token0Total, uint256 token1Total,) = limitOrder.epochInfos(Epoch.wrap(1));

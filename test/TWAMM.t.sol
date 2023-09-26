@@ -369,7 +369,9 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
 
         token0.approve(address(twamm), 100e18);
         token1.approve(address(twamm), 100e18);
-        modifyPositionRouter.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-2400, 2400, 10 ether));
+        modifyPositionRouter.modifyPosition(
+            poolKey, IPoolManager.ModifyPositionParams(-2400, 2400, 10 ether), ZERO_BYTES
+        );
 
         vm.warp(10000);
         twamm.submitOrder(poolKey, orderKey1, orderAmount);

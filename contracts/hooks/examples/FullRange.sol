@@ -115,7 +115,7 @@ contract FullRange is BaseHook, ILockCallback {
 
         PoolId poolId = key.toId();
 
-        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
 
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
@@ -172,7 +172,7 @@ contract FullRange is BaseHook, ILockCallback {
 
         PoolId poolId = key.toId();
 
-        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
 
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
@@ -332,7 +332,7 @@ contract FullRange is BaseHook, ILockCallback {
             ) * FixedPointMathLib.sqrt(FixedPoint96.Q96)
         ).toUint160();
 
-        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
 
         poolManager.swap(
             key,
