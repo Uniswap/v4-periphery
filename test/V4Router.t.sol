@@ -44,9 +44,9 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         token2 = new MockERC20("Test2", "2", 18, 2 ** 128);
         token3 = new MockERC20("Test3", "3", 18, 2 ** 128);
 
-        key0 = createPoolKey(token0, token1);
-        key1 = createPoolKey(token1, token2);
-        key2 = createPoolKey(token2, token3);
+        key0 = createPoolKey(token0, token1, address(0));
+        key1 = createPoolKey(token1, token2, address(0));
+        key2 = createPoolKey(token2, token3, address(0));
 
         setupPool(key0);
         setupPool(key1);
@@ -67,7 +67,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 expectedAmountOut = 992054607780215625;
 
         IV4Router.ExactInputSingleParams memory params =
-            IV4Router.ExactInputSingleParams(key0, true, address(this), uint128(amountIn), 0, 0);
+            IV4Router.ExactInputSingleParams(key0, true, address(this), uint128(amountIn), 0, 0, bytes(""));
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -88,7 +88,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 expectedAmountOut = 992054607780215625;
 
         IV4Router.ExactInputSingleParams memory params =
-            IV4Router.ExactInputSingleParams(key0, false, address(this), uint128(amountIn), 0, 0);
+            IV4Router.ExactInputSingleParams(key0, false, address(this), uint128(amountIn), 0, 0, bytes(""));
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -205,7 +205,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 expectedAmountIn = 1008049273448486163;
 
         IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, true, address(this), uint128(amountOut), 0, 0);
+            IV4Router.ExactOutputSingleParams(key0, true, address(this), uint128(amountOut), 0, 0, bytes(""));
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -226,7 +226,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 expectedAmountIn = 1008049273448486163;
 
         IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, false, address(this), uint128(amountOut), 0, 0);
+            IV4Router.ExactOutputSingleParams(key0, false, address(this), uint128(amountOut), 0, 0, bytes(""));
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -341,9 +341,9 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(token3.balanceOf(address(router)), 0);
     }
 
-    function createPoolKey(MockERC20 tokenA, MockERC20 tokenB) internal pure returns (PoolKey memory) {
+    function createPoolKey(MockERC20 tokenA, MockERC20 tokenB, address hookAddr) internal pure returns (PoolKey memory) {
         if (address(tokenA) > address(tokenB)) (tokenA, tokenB) = (tokenB, tokenA);
-        return PoolKey(Currency.wrap(address(tokenA)), Currency.wrap(address(tokenB)), 3000, 60, IHooks(address(0)));
+        return PoolKey(Currency.wrap(address(tokenA)), Currency.wrap(address(tokenB)), 3000, 60, IHooks(hookAddr));
     }
 
     function setupPool(PoolKey memory poolKey) internal {
@@ -364,7 +364,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
     {
         IV4Router.PathKey[] memory path = new IV4Router.PathKey[](_tokenPath.length - 1);
         for (uint256 i = 0; i < _tokenPath.length - 1; i++) {
-            path[i] = IV4Router.PathKey(Currency.wrap(address(_tokenPath[i + 1])), 3000, 60, IHooks(address(0)));
+            path[i] = IV4Router.PathKey(Currency.wrap(address(_tokenPath[i + 1])), 3000, 60, IHooks(address(0)), bytes(""));
         }
 
         params.currencyIn = Currency.wrap(address(_tokenPath[0]));
@@ -381,7 +381,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
     {
         IV4Router.PathKey[] memory path = new IV4Router.PathKey[](_tokenPath.length - 1);
         for (uint256 i = _tokenPath.length - 1; i > 0; i--) {
-            path[i - 1] = IV4Router.PathKey(Currency.wrap(address(_tokenPath[i - 1])), 3000, 60, IHooks(address(0)));
+            path[i - 1] = IV4Router.PathKey(Currency.wrap(address(_tokenPath[i - 1])), 3000, 60, IHooks(address(0)), bytes(""));
         }
 
         params.currencyOut = Currency.wrap(address(_tokenPath[_tokenPath.length - 1]));

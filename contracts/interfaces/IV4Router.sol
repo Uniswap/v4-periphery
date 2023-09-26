@@ -29,6 +29,7 @@ interface IV4Router {
         uint24 fee;
         int24 tickSpacing;
         IHooks hooks;
+        bytes hookData;
     }
 
     struct ExactInputSingleParams {
@@ -38,6 +39,7 @@ interface IV4Router {
         uint128 amountIn;
         uint128 amountOutMinimum;
         uint160 sqrtPriceLimitX96;
+        bytes hookData;
     }
 
     struct ExactInputParams {
@@ -55,6 +57,7 @@ interface IV4Router {
         uint128 amountOut;
         uint128 amountInMaximum;
         uint160 sqrtPriceLimitX96;
+        bytes hookData;
     }
 
     struct ExactOutputParams {
