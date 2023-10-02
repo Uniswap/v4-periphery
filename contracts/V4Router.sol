@@ -65,10 +65,11 @@ abstract contract V4Router is IV4Router {
     function _swapExactInput(ExactInputParams memory params, address msgSender) private {
         unchecked {
             uint256 pathLength = params.path.length;
+            uint128 amountOut;
 
             for (uint256 i = 0; i < pathLength; i++) {
                 (PoolKey memory poolKey, bool zeroForOne) = _getPoolAndSwapDirection(params.path[i], params.currencyIn);
-                uint128 amountOut = uint128(
+                amountOut = uint128(
                     -_swapExactPrivate(
                         poolKey,
                         zeroForOne,
@@ -85,7 +86,7 @@ abstract contract V4Router is IV4Router {
                 params.currencyIn = params.path[i].intermediateCurrency;
             }
 
-            if (params.amountIn < params.amountOutMinimum) revert TooLittleReceived();
+            if (amountOut < params.amountOutMinimum) revert TooLittleReceived();
         }
     }
 
@@ -105,11 +106,12 @@ abstract contract V4Router is IV4Router {
     function _swapExactOutput(ExactOutputParams memory params, address msgSender) private {
         unchecked {
             uint256 pathLength = params.path.length;
+            uint128 amountIn;
 
             for (uint256 i = pathLength; i > 0; i--) {
                 (PoolKey memory poolKey, bool oneForZero) =
                     _getPoolAndSwapDirection(params.path[i - 1], params.currencyOut);
-                uint128 amountIn = uint128(
+                amountIn = uint128(
                     _swapExactPrivate(
                         poolKey,
                         !oneForZero,
@@ -125,7 +127,7 @@ abstract contract V4Router is IV4Router {
                 params.amountOut = amountIn;
                 params.currencyOut = params.path[i - 1].intermediateCurrency;
             }
-            if (params.amountOut > params.amountInMaximum) revert TooMuchRequested();
+            if (amountIn > params.amountInMaximum) revert TooMuchRequested();
         }
     }
 
