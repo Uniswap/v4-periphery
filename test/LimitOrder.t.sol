@@ -108,7 +108,10 @@ contract TestLimitOrder is Test, Deployers, TokenFixture {
     function testZeroForOneInRangeRevert() public {
         // swapping is free, there's no liquidity in the pool, so we only need to specify 1 wei
         swapRouter.swap(
-            key, IPoolManager.SwapParams(false, 1, SQRT_RATIO_1_1 + 1), PoolSwapTest.TestSettings(true, true)
+            key,
+            IPoolManager.SwapParams(false, 1, SQRT_RATIO_1_1 + 1),
+            PoolSwapTest.TestSettings(true, true),
+            ZERO_BYTES
         );
         vm.expectRevert(LimitOrder.InRange.selector);
         limitOrder.place(key, 0, true, 1000000);
@@ -131,7 +134,7 @@ contract TestLimitOrder is Test, Deployers, TokenFixture {
     function testNotZeroForOneInRangeRevert() public {
         // swapping is free, there's no liquidity in the pool, so we only need to specify 1 wei
         swapRouter.swap(
-            key, IPoolManager.SwapParams(true, 1, SQRT_RATIO_1_1 - 1), PoolSwapTest.TestSettings(true, true)
+            key, IPoolManager.SwapParams(true, 1, SQRT_RATIO_1_1 - 1), PoolSwapTest.TestSettings(true, true), ZERO_BYTES
         );
         vm.expectRevert(LimitOrder.InRange.selector);
         limitOrder.place(key, -60, false, 1000000);
@@ -192,11 +195,12 @@ contract TestLimitOrder is Test, Deployers, TokenFixture {
         swapRouter.swap(
             key,
             IPoolManager.SwapParams(false, 1e18, TickMath.getSqrtRatioAtTick(60)),
-            PoolSwapTest.TestSettings(true, true)
+            PoolSwapTest.TestSettings(true, true),
+            ZERO_BYTES
         );
 
         assertEq(limitOrder.getTickLowerLast(id), 60);
-        (, int24 tick,,,,) = manager.getSlot0(id);
+        (, int24 tick,,) = manager.getSlot0(id);
         assertEq(tick, 60);
 
         (bool filled,,, uint256 token0Total, uint256 token1Total,) = limitOrder.epochInfos(Epoch.wrap(1));

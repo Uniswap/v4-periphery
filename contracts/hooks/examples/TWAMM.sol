@@ -138,7 +138,7 @@ contract TWAMM is BaseHook, ITWAMM {
     /// @inheritdoc ITWAMM
     function executeTWAMMOrders(PoolKey memory key) public {
         PoolId poolId = key.toId();
-        (uint160 sqrtPriceX96,,,,,) = poolManager.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         State storage twamm = twammStates[poolId];
 
         (bool zeroForOne, uint160 sqrtPriceLimitX96) = _executeTWAMMOrders(

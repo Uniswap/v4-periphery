@@ -107,7 +107,7 @@ contract LimitOrder is BaseHook {
     }
 
     function getTick(PoolId poolId) private view returns (int24 tick) {
-        (, tick,,,,) = poolManager.getSlot0(poolId);
+        (, tick,,) = poolManager.getSlot0(poolId);
     }
 
     function getTickLower(int24 tick, int24 tickSpacing) private pure returns (int24) {
