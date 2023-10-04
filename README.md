@@ -56,4 +56,7 @@ contract CoolHook is BaseHook {
 
 ## License
 
-The license for Uniswap V4 Periphery is the GNU General Public License (GPL 2.0), see [LICENSE](https://github.com/Uniswap/periphery-next/blob/main/LICENSE).
+The primary license for Uniswap V4 Periphery is the GNU General Public License (GPL 2.0), see [LICENSE](https://github.com/Uniswap/periphery-next/blob/main/LICENSE). Minus the following exceptions:
+- [BaseHook.sol](/contracts/BaseHook.sol) has an MIT License
+
+This file states its license type.
