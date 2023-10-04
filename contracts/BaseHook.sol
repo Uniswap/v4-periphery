@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
