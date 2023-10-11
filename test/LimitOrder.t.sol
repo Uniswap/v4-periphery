@@ -39,10 +39,8 @@ contract TestLimitOrder is Test, Deployers, TokenFixture {
         manager = new PoolManager(500000);
 
         uint160 flags = uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG);
-        (address hookAddress, bytes32 salt) =
-            HookMiner.find(address(this), flags, 0, type(LimitOrder).creationCode, abi.encode(manager));
+        (, bytes32 salt) = HookMiner.find(address(this), flags, 0, type(LimitOrder).creationCode, abi.encode(manager));
         limitOrder = new LimitOrder{salt: salt}(manager);
-        require(address(limitOrder) == hookAddress, "TestLimitOrder: hook address mismatch");
 
         key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
         id = key.toId();

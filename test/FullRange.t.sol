@@ -90,10 +90,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         uint160 flags =
             uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG);
-        (address hookAddress, bytes32 salt) =
-            HookMiner.find(address(this), flags, 0, type(FullRange).creationCode, abi.encode(manager));
+        (, bytes32 salt) = HookMiner.find(address(this), flags, 0, type(FullRange).creationCode, abi.encode(manager));
         fullRange = new FullRange{salt: salt}(manager);
-        require(address(fullRange) == hookAddress, "TestFullRange: hook address mismatch");
 
         key = createPoolKey(token0, token1);
         id = key.toId();

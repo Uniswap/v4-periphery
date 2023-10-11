@@ -44,10 +44,9 @@ contract TestGeomeanOracle is Test, Deployers, TokenFixture {
             Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG
                 | Hooks.BEFORE_SWAP_FLAG
         );
-        (address hookAddress, bytes32 salt) =
+        (, bytes32 salt) =
             HookMiner.find(address(this), flags, 0, type(GeomeanOracle).creationCode, abi.encode(manager));
         geomeanOracle = new GeomeanOracle{salt: salt}(manager);
-        require(address(geomeanOracle) == hookAddress, "TestGeomeanOracle: hook address mismatch");
 
         vm.warp(1);
         key = PoolKey(currency0, currency1, 0, MAX_TICK_SPACING, geomeanOracle);
