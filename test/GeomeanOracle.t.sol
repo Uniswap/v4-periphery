@@ -118,7 +118,8 @@ contract TestGeomeanOracle is Test, Deployers, TokenFixture {
             key,
             IPoolManager.ModifyPositionParams(
                 TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
-            )
+            ),
+            ZERO_BYTES
         );
 
         GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
@@ -140,7 +141,8 @@ contract TestGeomeanOracle is Test, Deployers, TokenFixture {
             key,
             IPoolManager.ModifyPositionParams(
                 TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
-            )
+            ),
+            ZERO_BYTES
         );
 
         GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
@@ -168,7 +170,8 @@ contract TestGeomeanOracle is Test, Deployers, TokenFixture {
             key,
             IPoolManager.ModifyPositionParams(
                 TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
-            )
+            ),
+            ZERO_BYTES
         );
 
         // cardinality is updated

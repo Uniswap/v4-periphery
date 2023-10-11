@@ -284,7 +284,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
         snapStart("FullRangeSwap");
-        swapRouter.swap(key, params, settings);
+        swapRouter.swap(key, params, settings, ZERO_BYTES);
         snapEnd();
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
@@ -321,7 +321,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         PoolSwapTest.TestSettings memory settings =
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-        swapRouter.swap(key, params, settings);
+        swapRouter.swap(key, params, settings, ZERO_BYTES);
 
         vm.expectRevert(FullRange.TooMuchSlippage.selector);
         fullRange.addLiquidity(
@@ -347,14 +347,14 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
         snapStart("FullRangeFirstSwap");
-        swapRouter.swap(testKey, params, settings);
+        swapRouter.swap(testKey, params, settings, ZERO_BYTES);
         snapEnd();
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
         assertEq(hasAccruedFees, true);
 
         snapStart("FullRangeSecondSwap");
-        swapRouter.swap(testKey, params, settings);
+        swapRouter.swap(testKey, params, settings, ZERO_BYTES);
         snapEnd();
 
         (hasAccruedFees,) = fullRange.poolInfo(id);
@@ -382,8 +382,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         PoolSwapTest.TestSettings memory testSettings =
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-        swapRouter.swap(key, params, testSettings);
-        swapRouter.swap(key2, params, testSettings);
+        swapRouter.swap(key, params, testSettings, ZERO_BYTES);
+        swapRouter.swap(key2, params, testSettings, ZERO_BYTES);
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
         assertEq(hasAccruedFees, true);
@@ -565,7 +565,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         PoolSwapTest.TestSettings memory testSettings =
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-        swapRouter.swap(keyWithLiq, params, testSettings);
+        swapRouter.swap(keyWithLiq, params, testSettings, ZERO_BYTES);
 
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
@@ -692,7 +692,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         PoolSwapTest.TestSettings memory testSettings =
             PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-        swapRouter.swap(key, params, testSettings);
+        swapRouter.swap(key, params, testSettings, ZERO_BYTES);
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
         assertEq(hasAccruedFees, true);
@@ -747,7 +747,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             PoolSwapTest.TestSettings memory testSettings =
                 PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-            swapRouter.swap(key, params, testSettings);
+            swapRouter.swap(key, params, testSettings, ZERO_BYTES);
 
             // Test contract removes liquidity, succeeds
             UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
@@ -767,7 +767,9 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         vm.expectRevert(FullRange.SenderMustBeHook.selector);
         modifyPositionRouter.modifyPosition(
-            key, IPoolManager.ModifyPositionParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: 100})
+            key,
+            IPoolManager.ModifyPositionParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: 100}),
+            ZERO_BYTES
         );
     }
 
