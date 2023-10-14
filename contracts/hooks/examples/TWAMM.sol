@@ -141,12 +141,14 @@ contract TWAMM is BaseHook, ITWAMM {
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         State storage twamm = twammStates[poolId];
 
-        (bool zeroForOne, uint160 sqrtPriceLimitX96) = _executeTWAMMOrders(
-            twamm, poolManager, key, PoolParamsOnExecute(sqrtPriceX96, poolManager.getLiquidity(poolId))
+        (bool zeroForOne, uint160 sqrtPriceLimitX96, uint256 maxAmountToSwap) = _executeTWAMMOrders(
+            twamm, poolManager, key, PoolParamsOnExecute(sqrtPriceX96, poolManager.getLiquidity(poolId), 0)
         );
 
         if (sqrtPriceLimitX96 != 0 && sqrtPriceLimitX96 != sqrtPriceX96) {
-            poolManager.lock(abi.encode(key, IPoolManager.SwapParams(zeroForOne, type(int256).max, sqrtPriceLimitX96)));
+            poolManager.lock(
+                abi.encode(key, IPoolManager.SwapParams(zeroForOne, int256(maxAmountToSwap), sqrtPriceLimitX96))
+            );
         }
     }
 
@@ -335,6 +337,7 @@ contract TWAMM is BaseHook, ITWAMM {
     struct PoolParamsOnExecute {
         uint160 sqrtPriceX96;
         uint128 liquidity;
+        uint256 maxAmountToSwap;
     }
 
     /// @notice Executes all existing long term orders in the TWAMM
@@ -344,10 +347,10 @@ contract TWAMM is BaseHook, ITWAMM {
         IPoolManager poolManager,
         PoolKey memory key,
         PoolParamsOnExecute memory pool
-    ) internal returns (bool zeroForOne, uint160 newSqrtPriceX96) {
+    ) internal returns (bool zeroForOne, uint160 newSqrtPriceX96, uint256 maxAmountToSwap) {
         if (!_hasOutstandingOrders(self)) {
             self.lastVirtualOrderTimestamp = block.timestamp;
-            return (false, 0);
+            return (false, 0, 0);
         }
 
         uint160 initialSqrtPriceX96 = pool.sqrtPriceX96;
@@ -424,6 +427,7 @@ contract TWAMM is BaseHook, ITWAMM {
         self.lastVirtualOrderTimestamp = block.timestamp;
         newSqrtPriceX96 = pool.sqrtPriceX96;
         zeroForOne = initialSqrtPriceX96 > newSqrtPriceX96;
+        maxAmountToSwap = pool.maxAmountToSwap;
     }
 
     struct AdvanceParams {
@@ -440,18 +444,20 @@ contract TWAMM is BaseHook, ITWAMM {
         AdvanceParams memory params
     ) private returns (PoolParamsOnExecute memory) {
         uint160 finalSqrtPriceX96;
+        uint160 initialSqrtPriceX96 = params.pool.sqrtPriceX96;
         uint256 secondsElapsedX96 = params.secondsElapsed * FixedPoint96.Q96;
 
-        OrderPool.State storage orderPool0For1 = self.orderPool0For1;
-        OrderPool.State storage orderPool1For0 = self.orderPool1For0;
+        //Remove these 2 variables to prevent "stack too deep" error
+        //OrderPool.State storage orderPool0For1 = self.orderPool0For1;
+        //OrderPool.State storage orderPool1For0 = self.orderPool1For0;
 
         while (true) {
             TwammMath.ExecutionUpdateParams memory executionParams = TwammMath.ExecutionUpdateParams(
                 secondsElapsedX96,
                 params.pool.sqrtPriceX96,
                 params.pool.liquidity,
-                orderPool0For1.sellRateCurrent,
-                orderPool1For0.sellRateCurrent
+                self.orderPool0For1.sellRateCurrent,
+                self.orderPool1For0.sellRateCurrent
             );
 
             finalSqrtPriceX96 = TwammMath.getNewSqrtPriceX96(executionParams);
@@ -472,12 +478,19 @@ contract TWAMM is BaseHook, ITWAMM {
                     (uint256 earningsFactorPool0, uint256 earningsFactorPool1) =
                         TwammMath.calculateEarningsUpdates(executionParams, finalSqrtPriceX96);
 
+                    params.pool.maxAmountToSwap += params.secondsElapsed
+                        * (
+                            (initialSqrtPriceX96 > finalSqrtPriceX96)
+                                ? (self.orderPool0For1.sellRateCurrent)
+                                : (self.orderPool1For0.sellRateCurrent)
+                        );
+
                     if (params.nextTimestamp % params.expirationInterval == 0) {
-                        orderPool0For1.advanceToInterval(params.nextTimestamp, earningsFactorPool0);
-                        orderPool1For0.advanceToInterval(params.nextTimestamp, earningsFactorPool1);
+                        self.orderPool0For1.advanceToInterval(params.nextTimestamp, earningsFactorPool0);
+                        self.orderPool1For0.advanceToInterval(params.nextTimestamp, earningsFactorPool1);
                     } else {
-                        orderPool0For1.advanceToCurrentTime(earningsFactorPool0);
-                        orderPool1For0.advanceToCurrentTime(earningsFactorPool1);
+                        self.orderPool0For1.advanceToCurrentTime(earningsFactorPool0);
+                        self.orderPool1For0.advanceToCurrentTime(earningsFactorPool1);
                     }
                     params.pool.sqrtPriceX96 = finalSqrtPriceX96;
                     break;
@@ -496,6 +509,13 @@ contract TWAMM is BaseHook, ITWAMM {
         bool zeroForOne;
     }
 
+    struct WithinFuncStruct_advanceSingle {
+        uint256 sellRateCurrent;
+        uint256 amountSelling;
+        uint256 totalEarnings;
+        uint160 finalSqrtPriceX96;
+    }
+
     function _advanceTimestampForSinglePoolSell(
         State storage self,
         IPoolManager poolManager,
@@ -503,17 +523,17 @@ contract TWAMM is BaseHook, ITWAMM {
         AdvanceSingleParams memory params
     ) private returns (PoolParamsOnExecute memory) {
         OrderPool.State storage orderPool = params.zeroForOne ? self.orderPool0For1 : self.orderPool1For0;
-        uint256 sellRateCurrent = orderPool.sellRateCurrent;
-        uint256 amountSelling = sellRateCurrent * params.secondsElapsed;
-        uint256 totalEarnings;
+        WithinFuncStruct_advanceSingle memory _p = WithinFuncStruct_advanceSingle(
+            orderPool.sellRateCurrent, orderPool.sellRateCurrent * params.secondsElapsed, 0, 0
+        );
 
         while (true) {
-            uint160 finalSqrtPriceX96 = SqrtPriceMath.getNextSqrtPriceFromInput(
-                params.pool.sqrtPriceX96, params.pool.liquidity, amountSelling, params.zeroForOne
+            _p.finalSqrtPriceX96 = SqrtPriceMath.getNextSqrtPriceFromInput(
+                params.pool.sqrtPriceX96, params.pool.liquidity, _p.amountSelling, params.zeroForOne
             );
 
             (bool crossingInitializedTick, int24 tick) =
-                _isCrossingInitializedTick(params.pool, poolManager, poolKey, finalSqrtPriceX96);
+                _isCrossingInitializedTick(params.pool, poolManager, poolKey, _p.finalSqrtPriceX96);
 
             if (crossingInitializedTick) {
                 int128 liquidityNetAtTick = poolManager.getNetLiquidityAtTick(poolKey.toId(), tick);
@@ -526,34 +546,40 @@ contract TWAMM is BaseHook, ITWAMM {
                     params.pool.sqrtPriceX96, initializedSqrtPrice, params.pool.liquidity, true
                 );
 
-                params.pool.liquidity = params.zeroForOne
-                    ? params.pool.liquidity - uint128(liquidityNetAtTick)
-                    : params.pool.liquidity + uint128(-liquidityNetAtTick);
+                //params.pool.liquidity = params.zeroForOne
+                //    ? params.pool.liquidity - uint128(liquidityNetAtTick)
+                //    : params.pool.liquidity + uint128(-liquidityNetAtTick);
+                uint128 liqudityNetAbs =
+                    liquidityNetAtTick > 0 ? uint128(liquidityNetAtTick) : uint128(-liquidityNetAtTick);
+                params.pool.liquidity = params.zeroForOne == (liquidityNetAtTick > 0)
+                    ? params.pool.liquidity - liqudityNetAbs
+                    : params.pool.liquidity + liqudityNetAbs;
                 params.pool.sqrtPriceX96 = initializedSqrtPrice;
 
                 unchecked {
-                    totalEarnings += params.zeroForOne ? swapDelta1 : swapDelta0;
-                    amountSelling -= params.zeroForOne ? swapDelta0 : swapDelta1;
+                    _p.totalEarnings += params.zeroForOne ? swapDelta1 : swapDelta0;
+                    _p.amountSelling -= params.zeroForOne ? swapDelta0 : swapDelta1;
                 }
             } else {
                 if (params.zeroForOne) {
-                    totalEarnings += SqrtPriceMath.getAmount1Delta(
-                        params.pool.sqrtPriceX96, finalSqrtPriceX96, params.pool.liquidity, true
+                    _p.totalEarnings += SqrtPriceMath.getAmount1Delta(
+                        params.pool.sqrtPriceX96, _p.finalSqrtPriceX96, params.pool.liquidity, true
                     );
                 } else {
-                    totalEarnings += SqrtPriceMath.getAmount0Delta(
-                        params.pool.sqrtPriceX96, finalSqrtPriceX96, params.pool.liquidity, true
+                    _p.totalEarnings += SqrtPriceMath.getAmount0Delta(
+                        params.pool.sqrtPriceX96, _p.finalSqrtPriceX96, params.pool.liquidity, true
                     );
                 }
 
-                uint256 accruedEarningsFactor = (totalEarnings * FixedPoint96.Q96) / sellRateCurrent;
+                uint256 accruedEarningsFactor = (_p.totalEarnings * FixedPoint96.Q96) / _p.sellRateCurrent;
+                params.pool.maxAmountToSwap += params.secondsElapsed * orderPool.sellRateCurrent;
 
                 if (params.nextTimestamp % params.expirationInterval == 0) {
                     orderPool.advanceToInterval(params.nextTimestamp, accruedEarningsFactor);
                 } else {
                     orderPool.advanceToCurrentTime(accruedEarningsFactor);
                 }
-                params.pool.sqrtPriceX96 = finalSqrtPriceX96;
+                params.pool.sqrtPriceX96 = _p.finalSqrtPriceX96;
                 break;
             }
         }

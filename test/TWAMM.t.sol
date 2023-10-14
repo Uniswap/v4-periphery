@@ -436,4 +436,110 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
         twamm.submitOrder(poolKey, key1, amount);
         twamm.submitOrder(poolKey, key2, amount);
     }
+
+    function submitOrderSingleDirection(bool zeroForOne, uint256 amount, uint256 endingtime)
+        internal
+        returns (ITWAMM.OrderKey memory key)
+    {
+        key = ITWAMM.OrderKey(address(this), uint160(endingtime), zeroForOne);
+
+        token0.approve(address(twamm), amount);
+        token1.approve(address(twamm), amount);
+
+        twamm.submitOrder(poolKey, key, amount);
+    }
+
+    function otherUserSwapTriggerTWAMMorder(uint256 amount) internal {
+        PoolSwapTest.TestSettings memory testSwapSet =
+            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+        (uint160 sqrtPriceX96,,,) = manager.getSlot0(poolId);
+        IPoolManager.SwapParams memory params = IPoolManager.SwapParams(false, int256(amount), sqrtPriceX96 * 115 / 100);
+
+        token1.approve(address(swapRouter), amount);
+        swapRouter.swap(poolKey, params, testSwapSet, ZERO_BYTES);
+    }
+
+    function testTWAMM_OrderFill_SingleSide_OneForZero_Crosstick() public {
+        bool zeroForOne = false;
+        uint256 twammAmount = 1 ether;
+        uint256 endingTime = 30_000;
+
+        uint256 lasttimestep = 10000;
+        vm.warp(lasttimestep);
+        submitOrderSingleDirection(zeroForOne, twammAmount, endingTime);
+
+        uint256 balanceTWAMMBefore = token1.balanceOf(address(twamm));
+        uint256 orderDuration = endingTime - lasttimestep;
+        (uint256 sellRateCurrent,) = twamm.getOrderPool(poolKey, zeroForOne);
+
+        assertEq(balanceTWAMMBefore, twammAmount);
+        assertEq(sellRateCurrent, twammAmount / orderDuration);
+
+        // set timestamp to halfway through the order
+        lasttimestep = 30000;
+        vm.warp(lasttimestep);
+
+        //twamm.executeTWAMMOrders(poolKey);
+        otherUserSwapTriggerTWAMMorder(0.001 ether);
+
+        uint256 balanceTWAMMAfter = token1.balanceOf(address(twamm));
+        assertEq(
+            balanceTWAMMAfter, lasttimestep > endingTime ? 0 : twammAmount * (endingTime - lasttimestep) / orderDuration
+        );
+    }
+
+    function testTWAMM_OrderFill_SingleSide_ZeroForOne_Crosstick() public {
+        bool zeroForOne = true;
+        uint256 twammAmount = 1 ether;
+        uint256 endingTime = 30_000;
+
+        uint256 lasttimestep = 10000;
+        vm.warp(lasttimestep);
+        submitOrderSingleDirection(zeroForOne, twammAmount, endingTime);
+
+        uint256 orderDuration = endingTime - lasttimestep;
+        (uint256 sellRateCurrent,) = twamm.getOrderPool(poolKey, zeroForOne);
+
+        assertEq(token0.balanceOf(address(twamm)), twammAmount);
+        assertEq(sellRateCurrent, twammAmount / orderDuration);
+
+        // set timestamp to halfway through the order
+        lasttimestep = 20000;
+        vm.warp(lasttimestep);
+
+        //twamm.executeTWAMMOrders(poolKey);
+        otherUserSwapTriggerTWAMMorder(0.001 ether);
+
+        uint256 balanceTWAMMAfter = token0.balanceOf(address(twamm));
+        assertEq(
+            balanceTWAMMAfter, lasttimestep > endingTime ? 0 : twammAmount * (endingTime - lasttimestep) / orderDuration
+        );
+    }
+
+    function testTWAMM_OrderFill_SingleSide_ZeroForOne_NoCross() public {
+        bool zeroForOne = true;
+        uint256 twammAmount = 0.001 ether;
+        uint256 endingTime = 20_000;
+        uint256 startingTime = 10_000;
+        uint256 lasttimestep = startingTime;
+        vm.warp(lasttimestep);
+        submitOrderSingleDirection(zeroForOne, twammAmount, endingTime);
+
+        uint256 orderDuration = endingTime - startingTime;
+        (uint256 sellRateCurrent,) = twamm.getOrderPool(poolKey, zeroForOne); //uint256 earningsFactorCurrent
+        assertEq(token0.balanceOf(address(twamm)), twammAmount);
+        assertEq(sellRateCurrent, twammAmount / orderDuration);
+
+        // set timestamp to halfway through the order
+        lasttimestep = 30000;
+        vm.warp(lasttimestep);
+
+        otherUserSwapTriggerTWAMMorder(0.001 ether);
+
+        uint256 balance0TWAMMAfter = token0.balanceOf(address(twamm));
+        assertEq(
+            balance0TWAMMAfter,
+            lasttimestep > endingTime ? 0 : (endingTime - lasttimestep) * twammAmount / orderDuration
+        );
+    }
 }
