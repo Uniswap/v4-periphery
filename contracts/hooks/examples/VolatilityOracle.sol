@@ -15,11 +15,7 @@ contract VolatilityOracle is BaseHook, IDynamicFeeManager {
 
     uint32 deployTimestamp;
 
-    function getFee(address, PoolKey calldata)
-        external
-        view
-        returns (uint24)
-    {
+    function getFee(address, PoolKey calldata) external view returns (uint24) {
         uint24 startingFee = 3000;
         uint32 lapsed = _blockTimestamp() - deployTimestamp;
         return startingFee + (uint24(lapsed) * 100) / 60; // 100 bps a minute
