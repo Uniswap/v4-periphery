@@ -3,7 +3,7 @@ pragma solidity ^0.8.15;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
-import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
+import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 import {TWAMMImplementation} from "./shared/implementation/TWAMMImplementation.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";

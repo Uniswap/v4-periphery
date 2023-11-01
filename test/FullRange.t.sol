@@ -9,7 +9,7 @@ import {FullRangeImplementation} from "./shared/implementation/FullRangeImplemen
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
+import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
@@ -84,9 +84,12 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     PoolSwapTest swapRouter;
 
     function setUp() public {
-        token0 = new MockERC20("TestA", "A", 18, 2 ** 128);
-        token1 = new MockERC20("TestB", "B", 18, 2 ** 128);
-        token2 = new MockERC20("TestC", "C", 18, 2 ** 128);
+        token0 = new MockERC20("TestA", "A", 18);
+        token0.mint(address(this), 2 ** 128);
+        token1 = new MockERC20("TestB", "B", 18);
+        token1.mint(address(this), 2 ** 128);
+        token2 = new MockERC20("TestC", "C", 18);
+        token2.mint(address(this), 2 ** 128);
 
         manager = new PoolManager(500000);
 
