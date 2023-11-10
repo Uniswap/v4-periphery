@@ -45,5 +45,5 @@ interface IQuoter {
 
     function quoteExactInputSingle(ExactInputSingleParams calldata params)
         external
-        returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed);
+        returns (int128 amount0Delta, int128 amount1Delta, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed);
 }

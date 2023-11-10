@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
+import "forge-std/console.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 import {SwapInfo, SwapType, ExactInputSingleParams} from "../libraries/SwapIntention.sol";
@@ -60,10 +61,11 @@ contract Quoter is IQuoter {
     */
     function parseRevertReason(bytes memory reason)
         private
-        pure
-        returns (uint256 amount, uint160 sqrtPriceX96After, int24 tickAfter)
+        view
+        returns (int128 amount0Delta, int128 amount1Delta, uint160 sqrtPriceX96After, int24 tickAfter)
     {
-        if (reason.length != 96) {
+        if (reason.length != 128) {
+            // function selector + length of bytes as uint256 + min length of revert reason padded to multiple of 32 bytes
             if (reason.length < 68) {
                 revert UnexpectedRevertBytes();
             }
@@ -72,23 +74,25 @@ contract Quoter is IQuoter {
             }
             revert(abi.decode(reason, (string)));
         }
-        return abi.decode(reason, (uint256, uint160, int24));
+        console.logBytes(reason);
+        return abi.decode(reason, (int128, int128, uint160, int24));
     }
 
     function handleRevert(bytes memory reason, PoolKey memory poolKey)
         private
         view
-        returns (uint256 amount, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
+        returns (int128 amount0Delta, int128 amount1Delta, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
     {
         int24 tickBefore;
         int24 tickAfter;
         (, tickBefore,,) = poolManager.getSlot0(poolKey.toId());
-        (amount, sqrtPriceX96After, tickAfter) = parseRevertReason(reason);
+        (amount0Delta, amount1Delta, sqrtPriceX96After, tickAfter) = parseRevertReason(reason);
+        console.log("after parse");
 
         initializedTicksCrossed =
             PoolTicksCounter.countInitializedTicksCrossed(poolManager, poolKey, tickBefore, tickAfter);
 
-        return (amount, sqrtPriceX96After, initializedTicksCrossed);
+        return (amount0Delta, amount1Delta, sqrtPriceX96After, initializedTicksCrossed);
     }
 
     function lockAcquired(bytes calldata encodedSwapIntention) external returns (bytes memory) {
@@ -121,7 +125,7 @@ contract Quoter is IQuoter {
     function quoteExactInputSingle(ExactInputSingleParams memory params)
         external
         override
-        returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
+        returns (int128 amount0Delta, int128 amount1Delta, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
     {
         try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
         catch (bytes memory reason) {
@@ -153,10 +157,7 @@ contract Quoter is IQuoter {
         uint160 sqrtPriceLimitX96;
     }
     */
-    function _quoteExactInputSingle(ExactInputSingleParams memory params)
-        private
-        returns (uint256 amountOut, uint160 sqrtPriceX96After, int24 tickAfter)
-    {
+    function _quoteExactInputSingle(ExactInputSingleParams memory params) private {
         BalanceDelta delta = poolManager.swap(
             params.poolKey,
             IPoolManager.SwapParams({
@@ -169,19 +170,24 @@ contract Quoter is IQuoter {
             params.hookData
         );
 
-        (sqrtPriceX96After, tickAfter,,) = poolManager.getSlot0(params.poolKey.toId());
-        if (params.zeroForOne) {
-            amountOut = uint128(-delta.amount1());
-        } else {
-            amountOut = uint128(-delta.amount0());
-        }
+        (uint160 sqrtPriceX96After, int24 tickAfter,,) = poolManager.getSlot0(params.poolKey.toId());
+        int128 amount0Delta = delta.amount0();
+        int128 amount1Delta = delta.amount1();
+        console.logInt(amount0Delta);
+        console.logInt(amount1Delta);
+        // if (params.zeroForOne) {
+        //     amountOut = uint128(-delta.amount1());
+        // } else {
+        //     amountOut = uint128(-delta.amount0());
+        // }
 
         assembly {
             let ptr := mload(0x40)
-            mstore(ptr, amountOut)
-            mstore(add(ptr, 0x20), sqrtPriceX96After)
-            mstore(add(ptr, 0x40), tickAfter)
-            revert(ptr, 96)
+            mstore(ptr, amount0Delta)
+            mstore(add(ptr, 0x20), amount1Delta)
+            mstore(add(ptr, 0x40), sqrtPriceX96After)
+            mstore(add(ptr, 0x60), tickAfter)
+            revert(ptr, 128)
         }
     }
 }
