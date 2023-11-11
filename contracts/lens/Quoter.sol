@@ -2,9 +2,9 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/console.sol";
+import "../libraries/SwapIntention.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
-import {SwapInfo, SwapType, ExactInputSingleParams} from "../libraries/SwapIntention.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
 import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
@@ -105,26 +105,13 @@ contract Quoter is IQuoter {
 
         if (swapInfo.swapType == SwapType.ExactInputSingle) {
             _quoteExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)));
+        } else if (swapInfo.swapType == SwapType.ExactInput) {
+            _quoteExactInput(abi.decode(swapInfo.params, (ExactInputParams)));
         } else {
             revert InvalidQuoteType();
         }
     }
 
-    /*
-    struct SwapInfo {
-        SwapType swapType;
-        address swapper;
-        bytes params;
-    }
-    struct ExactInputSingleParams {
-        PoolKey poolKey;
-        bool zeroForOne;
-        address recipient;
-        uint128 amountIn;
-        uint160 sqrtPriceLimitX96;
-        bytes hookData;
-    }
-    */
     function quoteExactInputSingle(ExactInputSingleParams memory params)
         external
         override
@@ -133,6 +120,35 @@ contract Quoter is IQuoter {
         try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
         catch (bytes memory reason) {
             return handleRevert(reason, params.poolKey);
+        }
+    }
+
+    function quoteExactInput(ExactInputParams memory params)
+        external
+        override
+        returns (int128[] deltaAmounts, uint160[] sqrtPriceX96AfterList, uint32[] initializedTicksCrossedList)
+    {
+        try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
+        catch (bytes memory reason) {
+            return handleRevert(reason, params.poolKey);
+        }
+    }
+
+    function _quoteExactInput(ExactInputParams memory params) private {
+        uint256 pathLength = params.path.length;
+        BalanceDelta memory deltas;
+        for (uint256 i = 0; i < pathLength; i++) {
+            (PoolKey memory poolKey, bool zeroForOne) =
+                SwapIntention.getPoolAndSwapDirection(params.path[i], params.currencyIn);
+            ExactInputSingleParams singleParams = ExactInputSingleParams({
+                poolKey: poolKey,
+                zeroForOne: zeroForOne,
+                recipient: params.recipient,
+                amountIn: params.amountIn,
+                sqrtPriceLimitX96: 0,
+                hookData: params.path[i].hookData
+            });
+            deltas = _quoteExactInputSingle(params);
         }
     }
 
@@ -176,11 +192,6 @@ contract Quoter is IQuoter {
         (uint160 sqrtPriceX96After, int24 tickAfter,,) = poolManager.getSlot0(params.poolKey.toId());
         int256 amount0Delta = int256(delta.amount0());
         int256 amount1Delta = int256(delta.amount1());
-        // if (params.zeroForOne) {
-        //     amountOut = uint128(-delta.amount1());
-        // } else {
-        //     amountOut = uint128(-delta.amount0());
-        // }
 
         assembly {
             let ptr := mload(0x40)

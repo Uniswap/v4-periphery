@@ -58,3 +58,18 @@ struct ExactOutputParams {
     uint128 amountOut;
     uint160 sqrtPriceLimitX96;
 }
+
+library SwapIntention {
+    function getPoolAndSwapDirection(PathKey memory params, Currency currencyIn)
+        private
+        pure
+        returns (PoolKey memory poolKey, bool zeroForOne)
+    {
+        (Currency currency0, Currency currency1) = currencyIn < params.intermediateCurrency
+            ? (currencyIn, params.intermediateCurrency)
+            : (params.intermediateCurrency, currencyIn);
+
+        zeroForOne = currencyIn == currency0;
+        poolKey = PoolKey(currency0, currency1, params.fee, params.tickSpacing, params.hooks);
+    }
+}
