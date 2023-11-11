@@ -61,7 +61,7 @@ contract Quoter is IQuoter {
     */
     function parseRevertReason(bytes memory reason)
         private
-        view
+        pure
         returns (int128 amount0Delta, int128 amount1Delta, uint160 sqrtPriceX96After, int24 tickAfter)
     {
         if (reason.length != 128) {
@@ -74,8 +74,12 @@ contract Quoter is IQuoter {
             }
             revert(abi.decode(reason, (string)));
         }
-        console.logBytes(reason);
-        return abi.decode(reason, (int128, int128, uint160, int24));
+        (int256 _amount0Delta, int256 _amount1Delta, uint160 _sqrtPriceX96After, int24 _tickAfter) =
+            abi.decode(reason, (int128, int128, uint160, int24));
+        amount0Delta = _amount0Delta.toInt128();
+        amount1Delta = _amount1Delta.toInt128();
+        sqrtPriceX96After = _sqrtPriceX96After;
+        tickAfter = _tickAfter;
     }
 
     function handleRevert(bytes memory reason, PoolKey memory poolKey)
@@ -87,7 +91,6 @@ contract Quoter is IQuoter {
         int24 tickAfter;
         (, tickBefore,,) = poolManager.getSlot0(poolKey.toId());
         (amount0Delta, amount1Delta, sqrtPriceX96After, tickAfter) = parseRevertReason(reason);
-        console.log("after parse");
 
         initializedTicksCrossed =
             PoolTicksCounter.countInitializedTicksCrossed(poolManager, poolKey, tickBefore, tickAfter);
@@ -171,10 +174,8 @@ contract Quoter is IQuoter {
         );
 
         (uint160 sqrtPriceX96After, int24 tickAfter,,) = poolManager.getSlot0(params.poolKey.toId());
-        int128 amount0Delta = delta.amount0();
-        int128 amount1Delta = delta.amount1();
-        console.logInt(amount0Delta);
-        console.logInt(amount1Delta);
+        int256 amount0Delta = int256(delta.amount0());
+        int256 amount1Delta = int256(delta.amount1());
         // if (params.zeroForOne) {
         //     amountOut = uint128(-delta.amount1());
         // } else {

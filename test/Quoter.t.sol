@@ -107,8 +107,7 @@ contract QuoterTest is Test, Deployers {
         uint256 expectedAmountOut = 9871;
         uint160 expectedSqrtPriceX96After = 80001962924147897865541384515;
 
-        (, int128 amount1Delta, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed) = quoter
-            .quoteExactInputSingle(
+        (int128 amount0Delta,, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed) = quoter.quoteExactInputSingle(
             ExactInputSingleParams({
                 poolKey: key02,
                 zeroForOne: false,
@@ -119,7 +118,7 @@ contract QuoterTest is Test, Deployers {
             })
         );
 
-        assertEq(uint128(-amount1Delta), expectedAmountOut);
+        assertEq(uint128(-amount0Delta), expectedAmountOut);
         assertEq(sqrtPriceX96After, expectedSqrtPriceX96After);
         assertEq(initializedTicksCrossed, 2);
     }
