@@ -8,6 +8,7 @@ import {ExactInputSingleParams} from "../contracts/libraries/SwapIntention.sol";
 import {Quoter} from "../contracts/lens/Quoter.sol";
 import {LiquidityAmounts} from "../contracts/libraries/LiquidityAmounts.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
@@ -72,11 +73,11 @@ contract QuoterTest is Test, Deployers {
             hookData: ZERO_BYTES
         });
 
-        (, int128 amount1Delta, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed) =
+        (BalanceDelta deltas, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed) =
             quoter.quoteExactInputSingle(params);
 
         console.log(sqrtPriceX96After);
-        assertEq(uint128(-amount1Delta), expectedAmountOut);
+        assertEq(uint128(-deltas.amount1()), expectedAmountOut);
         assertEq(initializedTicksCrossed, 0);
     }
 
@@ -85,8 +86,7 @@ contract QuoterTest is Test, Deployers {
         uint256 expectedAmountOut = 9871;
         uint160 expectedSqrtPriceX96After = 78461846509168490764501028180;
 
-        (, int128 amount1Delta, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed) = quoter
-            .quoteExactInputSingle(
+        (BalanceDelta deltas, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed) = quoter.quoteExactInputSingle(
             ExactInputSingleParams({
                 poolKey: key02,
                 zeroForOne: true,
@@ -97,7 +97,7 @@ contract QuoterTest is Test, Deployers {
             })
         );
 
-        assertEq(uint128(-amount1Delta), expectedAmountOut);
+        assertEq(uint128(-deltas.amount1()), expectedAmountOut);
         assertEq(sqrtPriceX96After, expectedSqrtPriceX96After);
         assertEq(initializedTicksCrossed, 2);
     }
@@ -107,7 +107,7 @@ contract QuoterTest is Test, Deployers {
         uint256 expectedAmountOut = 9871;
         uint160 expectedSqrtPriceX96After = 80001962924147897865541384515;
 
-        (int128 amount0Delta,, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed) = quoter.quoteExactInputSingle(
+        (BalanceDelta deltas, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed) = quoter.quoteExactInputSingle(
             ExactInputSingleParams({
                 poolKey: key02,
                 zeroForOne: false,
@@ -118,7 +118,7 @@ contract QuoterTest is Test, Deployers {
             })
         );
 
-        assertEq(uint128(-amount0Delta), expectedAmountOut);
+        assertEq(uint128(-deltas.amount0()), expectedAmountOut);
         assertEq(sqrtPriceX96After, expectedSqrtPriceX96After);
         assertEq(initializedTicksCrossed, 2);
     }
