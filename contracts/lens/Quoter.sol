@@ -54,7 +54,19 @@ contract Quoter is IQuoter {
         return abi.decode(reason, (BalanceDelta, uint160, int24));
     }
 
-    function handleRevert(bytes memory reason, PoolKey memory poolKey)
+    function handleRevert(bytes memory reason, SwapType swapType, PoolKey memory poolKey)
+        private
+        view
+        returns (BalanceDelta deltas, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
+    {
+        if (swapType == SwapType.ExactInputSingle) {
+            return _handleRevertExactInputSingle(reason, poolKey);
+        } else {
+            revert InvalidQuoteTypeInRevert();
+        }
+    }
+
+    function _handleRevertExactInputSingle(bytes memory reason, PoolKey memory poolKey)
         private
         view
         returns (BalanceDelta deltas, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
@@ -76,7 +88,6 @@ contract Quoter is IQuoter {
         if (swapInfo.swapType == SwapType.ExactInputSingle) {
             (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
                 _quoteExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)));
-            console.logInt(deltas.amount0());
             assembly {
                 let ptr := mload(0x40)
                 mstore(ptr, deltas)
@@ -98,59 +109,59 @@ contract Quoter is IQuoter {
     {
         try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
         catch (bytes memory reason) {
-            return handleRevert(reason, SwapType.ExactInSingle, params.poolKey);
+            return handleRevert(reason, SwapType.ExactInputSingle, params.poolKey);
         }
     }
 
-    function quoteExactInput(ExactInputParams memory params)
-        external
-        override
-        returns (int128[] deltaAmounts, uint160[] sqrtPriceX96AfterList, uint32[] initializedTicksCrossedList)
-    {
-        try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
-        catch (bytes memory reason) {
-            return handleRevert(reason, params.poolKey);
-        }
-    }
+    // function quoteExactInput(ExactInputParams memory params)
+    //     external
+    //     override
+    //     returns (int128[] deltaAmounts, uint160[] sqrtPriceX96AfterList, uint32[] initializedTicksCrossedList)
+    // {
+    //     try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
+    //     catch (bytes memory reason) {
+    //         return handleRevert(reason, SwapType.ExactInput, params.poolKey);
+    //     }
+    // }
 
-    function _quoteExactInput(ExactInputParams memory params)
-        private
-        returns (
-            BalanceDelta[] memory deltaAmounts,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
-        )
-    {
-        uint256 pathLength = params.path.length;
-        BalanceDelta prevDeltas;
-        boolean prevZeroForOne;
+    // function _quoteExactInput(ExactInputParams memory params)
+    //     private
+    //     returns (
+    //         BalanceDelta[] memory deltaAmounts,
+    //         uint160[] memory sqrtPriceX96AfterList,
+    //         uint32[] memory initializedTicksCrossedList
+    //     )
+    // {
+    //     uint256 pathLength = params.path.length;
+    //     BalanceDelta prevDeltas;
+    //     boolean prevZeroForOne;
 
-        deltaAmounts = new BalanceDelta[](pathLength);
-        sqrtPriceX96AfterList = new uint160[](pathLength);
-        initializedTicksCrossedList = new uint32[](pathLength);
+    //     deltaAmounts = new BalanceDelta[](pathLength);
+    //     sqrtPriceX96AfterList = new uint160[](pathLength);
+    //     initializedTicksCrossedList = new uint32[](pathLength);
 
-        for (uint256 i = 0; i < pathLength; i++) {
-            (PoolKey memory poolKey, bool zeroForOne) = SwapIntention.getPoolAndSwapDirection(
-                params.path[i], i == 0 ? params.currencyIn : params.path[i - 1].intermediateCurrency
-            );
+    //     for (uint256 i = 0; i < pathLength; i++) {
+    //         (PoolKey memory poolKey, bool zeroForOne) = SwapIntention.getPoolAndSwapDirection(
+    //             params.path[i], i == 0 ? params.currencyIn : params.path[i - 1].intermediateCurrency
+    //         );
 
-            int128 curAmountIn =
-                i == 0 ? params.amountIn : (prevZeroForOne ? -prevDeltas.amount1() : -prevDeltas.amount0());
+    //         int128 curAmountIn =
+    //             i == 0 ? params.amountIn : (prevZeroForOne ? -prevDeltas.amount1() : -prevDeltas.amount0());
 
-            ExactInputSingleParams memory singleParams = ExactInputSingleParams({
-                poolKey: poolKey,
-                zeroForOne: zeroForOne,
-                recipient: params.recipient,
-                amountIn: cureAmountIn,
-                sqrtPriceLimitX96: 0,
-                hookData: params.path[i].hookData
-            });
-            (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _quoteExactInputSingle(params);
+    //         ExactInputSingleParams memory singleParams = ExactInputSingleParams({
+    //             poolKey: poolKey,
+    //             zeroForOne: zeroForOne,
+    //             recipient: params.recipient,
+    //             amountIn: cureAmountIn,
+    //             sqrtPriceLimitX96: 0,
+    //             hookData: params.path[i].hookData
+    //         });
+    //         (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _quoteExactInputSingle(params);
 
-            sqrtPriceX96AfterList[i] = sqrtPriceX96After;
-            tickAfterList
-        }
-    }
+    //         sqrtPriceX96AfterList[i] = sqrtPriceX96After;
+    //         tickAfterList
+    //     }
+    // }
 
     /*
     struct PathKey {

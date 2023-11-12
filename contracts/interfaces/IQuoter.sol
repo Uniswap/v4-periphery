@@ -9,6 +9,7 @@ import {ExactInputSingleParams} from "../libraries/SwapIntention.sol";
 
 interface IQuoter {
     error InvalidQuoteType();
+    error InvalidQuoteTypeInRevert();
     error UnexpectedRevertBytes();
     //function quoteExactInput(Path.PathKey calldata path, uint256 amountIn)
     //    external
