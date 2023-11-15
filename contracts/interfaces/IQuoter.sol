@@ -11,39 +11,6 @@ interface IQuoter {
     error InvalidQuoteType();
     error InvalidQuoteTypeInRevert();
     error UnexpectedRevertBytes();
-    //function quoteExactInput(Path.PathKey calldata path, uint256 amountIn)
-    //    external
-    //    returns (uint256 amountOut, uint160[] memory sqrtPriceX96AfterList, uint32[] memory initializedTicksList);
-
-    // enum QuoteType {
-    //     ExactInput,
-    //     ExactInputSingle,
-    //     ExactOutput,
-    //     ExactOutputSingle
-    // }
-
-    // struct QuoteInfo {
-    //     QuoteType quoteType;
-    //     address swapper;
-    //     bytes params;
-    // }
-
-    // struct QuoteCallBackData {
-    //     address swapper;
-    //     PoolKey key;
-    //     IPoolManager.SwapParams params;
-    //     bytes hookData;
-    // }
-
-    // struct QuoteExactInputSingleParams {
-    //     address swapper;
-    //     Currency tokenIn;
-    //     Currency tokenOut;
-    //     PoolKey poolKey;
-    //     uint256 amountIn;
-    //     uint160 sqrtPriceLimitX96;
-    //     bytes hookData;
-    // }
 
     struct NonZeroDeltaCurrency {
         Currency currency;
