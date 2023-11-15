@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import "forge-std/console.sol";
+import "forge-std/console2.sol";
 import "../libraries/SwapIntention.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
@@ -36,12 +36,8 @@ contract Quoter is IQuoter {
         return slot0;
     }
 
-    function parseRevertReason(bytes memory reason)
-        private
-        pure
-        returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter)
-    {
-        if (reason.length != 96) {
+    function validateRevertReason(bytes memory reason) private pure returns (bytes memory) {
+        if (reason.length < 96) {
             // function selector + length of bytes as uint256 + min length of revert reason padded to multiple of 32 bytes
             if (reason.length < 68) {
                 revert UnexpectedRevertBytes();
@@ -51,33 +47,40 @@ contract Quoter is IQuoter {
             }
             revert(abi.decode(reason, (string)));
         }
-        return abi.decode(reason, (BalanceDelta, uint160, int24));
-    }
-
-    function handleRevert(bytes memory reason, SwapType swapType, PoolKey memory poolKey)
-        private
-        view
-        returns (BalanceDelta deltas, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
-    {
-        if (swapType == SwapType.ExactInputSingle) {
-            return _handleRevertExactInputSingle(reason, poolKey);
-        } else {
-            revert InvalidQuoteTypeInRevert();
-        }
+        return reason;
     }
 
     function _handleRevertExactInputSingle(bytes memory reason, PoolKey memory poolKey)
         private
         view
-        returns (BalanceDelta deltas, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
     {
         int24 tickBefore;
         int24 tickAfter;
+        BalanceDelta deltas;
+        deltaAmounts = new int128[](2);
         (, tickBefore,,) = poolManager.getSlot0(poolKey.toId());
-        (deltas, sqrtPriceX96After, tickAfter) = parseRevertReason(reason);
+        reason = validateRevertReason(reason);
+        (deltas, sqrtPriceX96After, tickAfter) = abi.decode(reason, (BalanceDelta, uint160, int24));
+        deltaAmounts[0] = deltas.amount0();
+        deltaAmounts[1] = deltas.amount1();
 
         initializedTicksCrossed =
             PoolTicksCounter.countInitializedTicksCrossed(poolManager, poolKey, tickBefore, tickAfter);
+    }
+
+    function _handleRevertExactInput(bytes memory reason)
+        private
+        pure
+        returns (
+            int128[] memory deltaAmounts,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksCrossedList
+        )
+    {
+        reason = validateRevertReason(reason);
+        (deltaAmounts, sqrtPriceX96AfterList, initializedTicksCrossedList) =
+            abi.decode(reason, (int128[], uint160[], uint32[]));
     }
 
     function lockAcquired(bytes calldata encodedSwapIntention) external returns (bytes memory) {
@@ -95,8 +98,72 @@ contract Quoter is IQuoter {
                 mstore(add(ptr, 0x40), tickAfter)
                 revert(ptr, 96)
             }
-            // } else if (swapInfo.swapType == SwapType.ExactInput) {
-            //     _quoteExactInput(abi.decode(swapInfo.params, (ExactInputParams)));
+        } else if (swapInfo.swapType == SwapType.ExactInput) {
+            (
+                int128[] memory deltaAmounts,
+                uint160[] memory sqrtPriceX96AfterList,
+                uint32[] memory initializedTicksCrossedList
+            ) = _quoteExactInput(abi.decode(swapInfo.params, (ExactInputParams)));
+
+            assembly {
+                // function storeArray(offset, length) -> result {
+                //     switch exponent
+                //     case 0 { result := 1 }
+                //     case 1 { result := base }
+                //     default {
+                //         result := power(mul(base, base), div(exponent, 2))
+                //         switch mod(exponent, 2)
+                //         case 1 { result := mul(base, result) }
+                //     }
+                // }
+
+                let originalPtr := mload(0x40)
+                let ptr := mload(0x40)
+
+                let deltaLength := mload(deltaAmounts)
+                let sqrtPriceLength := mload(sqrtPriceX96AfterList)
+                let initializedTicksLength := mload(initializedTicksCrossedList)
+
+                let deltaOffset := 0x60
+                let sqrtPriceOffset := add(deltaOffset, add(0x20, mul(0x20, deltaLength)))
+                let initializedTicksOffset := add(sqrtPriceOffset, add(0x20, mul(0x20, sqrtPriceLength)))
+
+                // storing offsets to dynamic arrays
+                mstore(ptr, deltaOffset)
+                ptr := add(ptr, 0x20)
+                mstore(ptr, sqrtPriceOffset)
+                ptr := add(ptr, 0x20)
+                mstore(ptr, initializedTicksOffset)
+                ptr := add(ptr, 0x20)
+
+                // storing length + contents of dynamic arrays
+                mstore(ptr, deltaLength)
+                ptr := add(ptr, 0x20)
+                for { let i := 0 } lt(i, deltaLength) { i := add(i, 1) } {
+                    let value := mload(add(deltaAmounts, add(mul(i, 0x20), 0x20)))
+                    mstore(ptr, value)
+                    ptr := add(ptr, 0x20)
+                }
+
+                mstore(ptr, sqrtPriceLength)
+                ptr := add(ptr, 0x20)
+                for { let i := 0 } lt(i, sqrtPriceLength) { i := add(i, 1) } {
+                    let value := mload(add(sqrtPriceX96AfterList, add(mul(i, 0x20), 0x20)))
+                    mstore(ptr, value)
+                    ptr := add(ptr, 0x20)
+                }
+
+                mstore(ptr, initializedTicksLength)
+                ptr := add(ptr, 0x20)
+                for { let i := 0 } lt(i, initializedTicksLength) { i := add(i, 1) } {
+                    let value := mload(add(initializedTicksCrossedList, add(mul(i, 0x20), 0x20)))
+                    mstore(ptr, value)
+                    ptr := add(ptr, 0x20)
+                }
+
+                revert(originalPtr, sub(ptr, originalPtr))
+                //revert(ptr, add(mul(0x20, add(add(deltaLength, sqrtPriceLength), initializedTicksLength)), 0x60))
+            }
         } else {
             revert InvalidQuoteType();
         }
@@ -105,63 +172,69 @@ contract Quoter is IQuoter {
     function quoteExactInputSingle(ExactInputSingleParams memory params)
         external
         override
-        returns (BalanceDelta deltas, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
     {
         try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
         catch (bytes memory reason) {
-            return handleRevert(reason, SwapType.ExactInputSingle, params.poolKey);
+            return _handleRevertExactInputSingle(reason, params.poolKey);
         }
     }
 
-    // function quoteExactInput(ExactInputParams memory params)
-    //     external
-    //     override
-    //     returns (int128[] deltaAmounts, uint160[] sqrtPriceX96AfterList, uint32[] initializedTicksCrossedList)
-    // {
-    //     try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
-    //     catch (bytes memory reason) {
-    //         return handleRevert(reason, SwapType.ExactInput, params.poolKey);
-    //     }
-    // }
+    function quoteExactInput(ExactInputParams memory params)
+        external
+        returns (
+            int128[] memory deltaAmounts,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksCrossedList
+        )
+    {
+        try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
+        catch (bytes memory reason) {
+            return _handleRevertExactInput(reason);
+        }
+    }
 
-    // function _quoteExactInput(ExactInputParams memory params)
-    //     private
-    //     returns (
-    //         BalanceDelta[] memory deltaAmounts,
-    //         uint160[] memory sqrtPriceX96AfterList,
-    //         uint32[] memory initializedTicksCrossedList
-    //     )
-    // {
-    //     uint256 pathLength = params.path.length;
-    //     BalanceDelta prevDeltas;
-    //     boolean prevZeroForOne;
+    function _quoteExactInput(ExactInputParams memory params)
+        private
+        returns (
+            int128[] memory deltaAmounts,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksCrossedList
+        )
+    {
+        uint256 pathLength = params.path.length;
 
-    //     deltaAmounts = new BalanceDelta[](pathLength);
-    //     sqrtPriceX96AfterList = new uint160[](pathLength);
-    //     initializedTicksCrossedList = new uint32[](pathLength);
+        //mapping(Currency currency => int128) memory currencyDeltas;
 
-    //     for (uint256 i = 0; i < pathLength; i++) {
-    //         (PoolKey memory poolKey, bool zeroForOne) = SwapIntention.getPoolAndSwapDirection(
-    //             params.path[i], i == 0 ? params.currencyIn : params.path[i - 1].intermediateCurrency
-    //         );
+        deltaAmounts = new int128[](pathLength + 1);
+        sqrtPriceX96AfterList = new uint160[](pathLength);
+        initializedTicksCrossedList = new uint32[](pathLength);
 
-    //         int128 curAmountIn =
-    //             i == 0 ? params.amountIn : (prevZeroForOne ? -prevDeltas.amount1() : -prevDeltas.amount0());
+        for (uint256 i = 0; i < pathLength; i++) {
+            (PoolKey memory poolKey, bool zeroForOne) =
+                SwapIntention.getPoolAndSwapDirection(params.path[i], params.currencyIn);
+            (, int24 tickBefore,,) = poolManager.getSlot0(poolKey.toId());
 
-    //         ExactInputSingleParams memory singleParams = ExactInputSingleParams({
-    //             poolKey: poolKey,
-    //             zeroForOne: zeroForOne,
-    //             recipient: params.recipient,
-    //             amountIn: cureAmountIn,
-    //             sqrtPriceLimitX96: 0,
-    //             hookData: params.path[i].hookData
-    //         });
-    //         (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _quoteExactInputSingle(params);
+            ExactInputSingleParams memory singleParams = ExactInputSingleParams({
+                poolKey: poolKey,
+                zeroForOne: zeroForOne,
+                recipient: params.recipient,
+                amountIn: params.amountIn,
+                sqrtPriceLimitX96: 0,
+                hookData: params.path[i].hookData
+            });
+            (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _quoteExactInputSingle(singleParams);
 
-    //         sqrtPriceX96AfterList[i] = sqrtPriceX96After;
-    //         tickAfterList
-    //     }
-    // }
+            deltaAmounts[i] += zeroForOne ? curDeltas.amount0() : curDeltas.amount1();
+            deltaAmounts[i + 1] += zeroForOne ? curDeltas.amount1() : curDeltas.amount0();
+
+            params.amountIn = zeroForOne ? uint128(-curDeltas.amount1()) : uint128(-curDeltas.amount0());
+            params.currencyIn = params.path[i].intermediateCurrency;
+            sqrtPriceX96AfterList[i] = sqrtPriceX96After;
+            initializedTicksCrossedList[i] =
+                PoolTicksCounter.countInitializedTicksCrossed(poolManager, poolKey, tickBefore, tickAfter);
+        }
+    }
 
     /*
     struct PathKey {
@@ -191,18 +264,33 @@ contract Quoter is IQuoter {
         private
         returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter)
     {
-        deltas = poolManager.swap(
+        return _quoteExact(
             params.poolKey,
-            IPoolManager.SwapParams({
-                zeroForOne: params.zeroForOne,
-                amountSpecified: int256(int128(params.amountIn)),
-                sqrtPriceLimitX96: params.sqrtPriceLimitX96 == 0
-                    ? params.zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1
-                    : params.sqrtPriceLimitX96
-            }),
+            params.zeroForOne,
+            int256(int128(params.amountIn)),
+            params.sqrtPriceLimitX96,
             params.hookData
         );
+    }
 
-        (sqrtPriceX96After, tickAfter,,) = poolManager.getSlot0(params.poolKey.toId());
+    function _quoteExact(
+        PoolKey memory poolKey,
+        bool zeroForOne,
+        int256 amountSpecified,
+        uint160 sqrtPriceLimitX96,
+        bytes memory hookData
+    ) private returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) {
+        deltas = poolManager.swap(
+            poolKey,
+            IPoolManager.SwapParams({
+                zeroForOne: zeroForOne,
+                amountSpecified: amountSpecified,
+                sqrtPriceLimitX96: sqrtPriceLimitX96 == 0
+                    ? zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1
+                    : sqrtPriceLimitX96
+            }),
+            hookData
+        );
+        (sqrtPriceX96After, tickAfter,,) = poolManager.getSlot0(poolKey.toId());
     }
 }

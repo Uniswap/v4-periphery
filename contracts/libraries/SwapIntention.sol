@@ -61,7 +61,7 @@ struct ExactOutputParams {
 
 library SwapIntention {
     function getPoolAndSwapDirection(PathKey memory params, Currency currencyIn)
-        private
+        internal
         pure
         returns (PoolKey memory poolKey, bool zeroForOne)
     {
