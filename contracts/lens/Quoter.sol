@@ -30,7 +30,7 @@ contract Quoter is IQuoter {
     }
 
     function fillSlot0(PoolId id) private view returns (Pool.Slot0 memory slot0) {
-        //TODO: extsload when storage is stable
+        //TODO: extsload when storage is stable?
         (slot0.sqrtPriceX96, slot0.tick,,) = poolManager.getSlot0(id);
 
         return slot0;
@@ -106,14 +106,13 @@ contract Quoter is IQuoter {
             ) = _quoteExactInput(abi.decode(swapInfo.params, (ExactInputParams)));
 
             assembly {
-                // function storeArray(offset, length) -> result {
-                //     switch exponent
-                //     case 0 { result := 1 }
-                //     case 1 { result := base }
-                //     default {
-                //         result := power(mul(base, base), div(exponent, 2))
-                //         switch mod(exponent, 2)
-                //         case 1 { result := mul(base, result) }
+                // function storeArray(offset, length, array) {
+                //     mstore(offset, length)
+                //     offset := add(offset, 0x20)
+                //     for { let i := 0 } lt(i, length) { i := add(i, 1) } {
+                //         let value := mload(add(array, add(mul(i, 0x20), 0x20)))
+                //         mstore(offset, value)
+                //         offset := add(offset, 0x20)
                 //     }
                 // }
 
@@ -136,7 +135,7 @@ contract Quoter is IQuoter {
                 mstore(ptr, initializedTicksOffset)
                 ptr := add(ptr, 0x20)
 
-                // storing length + contents of dynamic arrays
+                //storing length + contents of dynamic arrays
                 mstore(ptr, deltaLength)
                 ptr := add(ptr, 0x20)
                 for { let i := 0 } lt(i, deltaLength) { i := add(i, 1) } {
@@ -162,7 +161,6 @@ contract Quoter is IQuoter {
                 }
 
                 revert(originalPtr, sub(ptr, originalPtr))
-                //revert(ptr, add(mul(0x20, add(add(deltaLength, sqrtPriceLength), initializedTicksLength)), 0x60))
             }
         } else {
             revert InvalidQuoteType();

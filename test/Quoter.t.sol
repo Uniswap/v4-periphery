@@ -271,11 +271,6 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactInput_2to1() public {
         tokenPath.push(token2);
         tokenPath.push(token1);
-        console.logString("===== testQuoter_quoteExactInput_2to1 ======");
-        console.logString("Token2: ");
-        console.logAddress(address(token2));
-        console.logString("Token1: ");
-        console.logAddress(address(token1));
         ExactInputParams memory params = getExactInputParams(tokenPath, 10000);
 
         (
@@ -283,9 +278,7 @@ contract QuoterTest is Test, Deployers {
             uint160[] memory sqrtPriceX96AfterList,
             uint32[] memory initializedTicksCrossedList
         ) = quoter.quoteExactInput(params);
-        logDeltas(deltaAmounts);
         assertEq(-deltaAmounts[1], 9871);
-        logSqrtPrices(sqrtPriceX96AfterList);
         assertEq(sqrtPriceX96AfterList[0], 80018067294531553039351583520);
         assertEq(initializedTicksCrossedList[0], 0);
     }
@@ -301,9 +294,6 @@ contract QuoterTest is Test, Deployers {
             uint160[] memory sqrtPriceX96AfterList,
             uint32[] memory initializedTicksCrossedList
         ) = quoter.quoteExactInput(params);
-
-        logDeltas(deltaAmounts);
-        logSqrtPrices(sqrtPriceX96AfterList);
 
         assertEq(-deltaAmounts[2], 9745);
         assertEq(sqrtPriceX96AfterList[0], 78461846509168490764501028180);
