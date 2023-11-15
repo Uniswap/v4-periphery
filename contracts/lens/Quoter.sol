@@ -236,30 +236,6 @@ contract Quoter is IQuoter {
         }
     }
 
-    /*
-    struct PathKey {
-        Currency intermediateCurrency;
-        uint24 fee;
-        int24 tickSpacing;
-        IHooks hooks;
-        bytes hookData;
-    }
-
-    struct ExactInputSingleParams {
-        PoolKey poolKey;
-        bool zeroForOne;
-        address recipient;
-        uint128 amountIn;
-        uint160 sqrtPriceLimitX96;
-        bytes hookData;
-    }
-
-    struct IPoolManager.SwapParams {
-        bool zeroForOne;
-        int256 amountSpecified;
-        uint160 sqrtPriceLimitX96;
-    }
-    */
     function _quoteExactInputSingle(ExactInputSingleParams memory params)
         private
         returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter)

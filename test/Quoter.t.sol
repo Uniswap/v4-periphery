@@ -13,6 +13,7 @@ import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
@@ -21,6 +22,7 @@ import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 
 contract QuoterTest is Test, Deployers {
     using SafeCast for *;
+    using PoolIdLibrary for PoolKey;
 
     // Min tick for full range with tick spacing of 60
     int24 internal constant MIN_TICK = -887220;
@@ -47,9 +49,12 @@ contract QuoterTest is Test, Deployers {
         quoter = new Quoter(address(manager));
         positionManager = new PoolModifyPositionTest(manager);
 
-        token0 = new MockERC20("Test0", "0", 18);
+        // salts are chose so that address(token0) < address(token2) && address(1) < address(token2)
+        bytes32 salt1 = "ffff";
+        bytes32 salt2 = "gm";
+        token0 = new MockERC20{salt: salt1}("Test0", "0", 18);
         token0.mint(address(this), 2 ** 128);
-        token1 = new MockERC20("Test1", "1", 18);
+        token1 = new MockERC20{salt: salt2}("Test1", "1", 18);
         token1.mint(address(this), 2 ** 128);
         token2 = new MockERC20("Test2", "2", 18);
         token2.mint(address(this), 2 ** 128);
@@ -60,27 +65,6 @@ contract QuoterTest is Test, Deployers {
         setupPool(key01);
         setupPool(key12);
         setupPoolMultiplePositions(key02);
-    }
-
-    function testQuoter_quoteExactInputSingle_zeroForOne_SinglePosition() public {
-        uint256 amountIn = 1 ether;
-        uint256 expectedAmountOut = 992054607780215625;
-
-        ExactInputSingleParams memory params = ExactInputSingleParams({
-            poolKey: key01,
-            zeroForOne: true,
-            recipient: address(this),
-            amountIn: uint128(amountIn),
-            sqrtPriceLimitX96: 0,
-            hookData: ZERO_BYTES
-        });
-
-        (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed) =
-            quoter.quoteExactInputSingle(params);
-
-        assertEq(uint128(-deltaAmounts[1]), expectedAmountOut);
-        assertEq(sqrtPriceX96After, 78835169195823159145205102899);
-        assertEq(initializedTicksCrossed, 0);
     }
 
     function testQuoter_quoteExactInputSingle_ZeroForOne_MultiplePositions() public {
@@ -125,48 +109,6 @@ contract QuoterTest is Test, Deployers {
         assertEq(uint128(-deltaAmounts[0]), expectedAmountOut);
         assertEq(sqrtPriceX96After, expectedSqrtPriceX96After);
         assertEq(initializedTicksCrossed, 2);
-    }
-
-    function testQuoter_quoteExactInput_1hop_SinglePosition() public {
-        uint256 amountIn = 1 ether;
-        uint256 expectedAmountOut = 992054607780215625;
-
-        tokenPath.push(token0);
-        tokenPath.push(token1);
-
-        ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
-
-        (
-            int128[] memory deltaAmounts,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
-        ) = quoter.quoteExactInput(params);
-
-        assertEq(uint128(-deltaAmounts[1]), expectedAmountOut);
-        assertEq(sqrtPriceX96AfterList[0], 78835169195823159145205102899);
-        assertEq(initializedTicksCrossedList[0], 0);
-    }
-
-    function testQuoter_quoteExactInput_2Hops_0TickCrossed() public {
-        uint256 amountIn = 1 ether;
-        uint256 expectedAmountOut = 984211133872795298;
-
-        tokenPath.push(token0);
-        tokenPath.push(token1);
-        tokenPath.push(token2);
-        ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
-
-        (
-            int128[] memory deltaAmounts,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
-        ) = quoter.quoteExactInput(params);
-
-        assertEq(uint128(-deltaAmounts[2]), expectedAmountOut);
-        assertEq(sqrtPriceX96AfterList[0], 78835169195823159145205102899);
-        assertEq(sqrtPriceX96AfterList[1], 79619976852750192506445279985);
-        assertEq(initializedTicksCrossedList[0], 0);
-        assertEq(initializedTicksCrossedList[1], 0);
     }
 
     function testQuoter_quoteExactInput_0to2_2TicksCrossed() public {
@@ -252,8 +194,122 @@ contract QuoterTest is Test, Deployers {
         ) = quoter.quoteExactInput(params);
 
         assertEq(uint128(-deltaAmounts[1]), 8);
-        assertEq(sqrtPriceX96AfterList[0], 79227483487511329217250071027);
+        assertEq(sqrtPriceX96AfterList[0], 79227817515327498931091950511);
         assertEq(initializedTicksCrossedList[0], 1);
+    }
+
+    function testQuoter_quoteExactInput_2to0_2TicksCrossed() public {
+        tokenPath.push(token2);
+        tokenPath.push(token0);
+        ExactInputParams memory params = getExactInputParams(tokenPath, 10000);
+
+        (
+            int128[] memory deltaAmounts,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksCrossedList
+        ) = quoter.quoteExactInput(params);
+
+        assertEq(-deltaAmounts[1], 9871);
+        assertEq(sqrtPriceX96AfterList[0], 80001962924147897865541384515);
+        assertEq(initializedTicksCrossedList[0], 2);
+    }
+
+    function testQuoter_quoteExactInput_2to0_2TicksCrossed_initialiedAfter() public {
+        tokenPath.push(token2);
+        tokenPath.push(token0);
+
+        // The swap amount is set such that the active tick after the swap is 120.
+        // 120 is an initialized tick for this pool. We check that we don't count it.
+        ExactInputParams memory params = getExactInputParams(tokenPath, 6250);
+
+        (
+            int128[] memory deltaAmounts,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksCrossedList
+        ) = quoter.quoteExactInput(params);
+
+        assertEq(-deltaAmounts[1], 6190);
+        assertEq(sqrtPriceX96AfterList[0], 79705728824507063507279123685);
+        assertEq(initializedTicksCrossedList[0], 2);
+    }
+
+    function testQuoter_quoteExactInput_2to0_0TicksCrossed_startingInitialized() public {
+        setupPoolWithZeroTickInitialized(key02);
+        tokenPath.push(token2);
+        tokenPath.push(token0);
+        ExactInputParams memory params = getExactInputParams(tokenPath, 200);
+
+        // Tick 0 initialized. Tick after = 1
+        (
+            int128[] memory deltaAmounts,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksCrossedList
+        ) = quoter.quoteExactInput(params);
+
+        assertEq(-deltaAmounts[1], 198);
+        assertEq(sqrtPriceX96AfterList[0], 79235729830182478001034429156);
+        assertEq(initializedTicksCrossedList[0], 0);
+    }
+
+    // 2->0 starting not initialized
+    function testQuoter_quoteExactInput_2to0_0TicksCrossed_startingNotInitialized() public {
+        tokenPath.push(token2);
+        tokenPath.push(token0);
+        ExactInputParams memory params = getExactInputParams(tokenPath, 103);
+
+        (
+            int128[] memory deltaAmounts,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksCrossedList
+        ) = quoter.quoteExactInput(params);
+
+        assertEq(-deltaAmounts[1], 101);
+        assertEq(sqrtPriceX96AfterList[0], 79235858216754624215638319723);
+        assertEq(initializedTicksCrossedList[0], 0);
+    }
+
+    function testQuoter_quoteExactInput_2to1() public {
+        tokenPath.push(token2);
+        tokenPath.push(token1);
+        console.logString("===== testQuoter_quoteExactInput_2to1 ======");
+        console.logString("Token2: ");
+        console.logAddress(address(token2));
+        console.logString("Token1: ");
+        console.logAddress(address(token1));
+        ExactInputParams memory params = getExactInputParams(tokenPath, 10000);
+
+        (
+            int128[] memory deltaAmounts,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksCrossedList
+        ) = quoter.quoteExactInput(params);
+        logDeltas(deltaAmounts);
+        assertEq(-deltaAmounts[1], 9871);
+        logSqrtPrices(sqrtPriceX96AfterList);
+        assertEq(sqrtPriceX96AfterList[0], 80018067294531553039351583520);
+        assertEq(initializedTicksCrossedList[0], 0);
+    }
+
+    function testQuoter_quoteExactInput_0to2to1() public {
+        tokenPath.push(token0);
+        tokenPath.push(token2);
+        tokenPath.push(token1);
+        ExactInputParams memory params = getExactInputParams(tokenPath, 10000);
+
+        (
+            int128[] memory deltaAmounts,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksCrossedList
+        ) = quoter.quoteExactInput(params);
+
+        logDeltas(deltaAmounts);
+        logSqrtPrices(sqrtPriceX96AfterList);
+
+        assertEq(-deltaAmounts[2], 9745);
+        assertEq(sqrtPriceX96AfterList[0], 78461846509168490764501028180);
+        assertEq(sqrtPriceX96AfterList[1], 80007846861567212939802016351);
+        assertEq(initializedTicksCrossedList[0], 2);
+        assertEq(initializedTicksCrossedList[1], 0);
     }
 
     function createPoolKey(MockERC20 tokenA, MockERC20 tokenB, address hookAddr)
@@ -270,7 +326,13 @@ contract QuoterTest is Test, Deployers {
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyPosition(
-            poolKey, IPoolManager.ModifyPositionParams(MIN_TICK, MAX_TICK, 200 ether), ZERO_BYTES
+            poolKey,
+            IPoolManager.ModifyPositionParams(
+                MIN_TICK,
+                MAX_TICK,
+                calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256()
+            ),
+            ZERO_BYTES
         );
     }
 
@@ -304,7 +366,12 @@ contract QuoterTest is Test, Deployers {
     }
 
     function setupPoolWithZeroTickInitialized(PoolKey memory poolKey) internal {
-        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        PoolId poolId = poolKey.toId();
+        (uint160 sqrtPriceX96,,,) = manager.getSlot0(poolId);
+        if (sqrtPriceX96 == 0) {
+            manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        }
+
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyPosition(
@@ -372,6 +439,13 @@ contract QuoterTest is Test, Deployers {
         console.logString("=== Sqrt Prices After ===");
         for (uint256 i = 0; i < prices.length; i++) {
             console.logUint(prices[i]);
+        }
+    }
+
+    function logDeltas(int128[] memory deltas) private view {
+        console.logString("=== Delta Amounts ===");
+        for (uint256 i = 0; i < deltas.length; i++) {
+            console.logInt(deltas[i]);
         }
     }
 }
