@@ -7,6 +7,7 @@ import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 interface IQuoter {
     error InvalidQuoteType();
     error InvalidQuoteTypeInRevert();
+    error InvalidLockAcquiredSender();
     error UnexpectedRevertBytes();
 
     struct NonZeroDeltaCurrency {

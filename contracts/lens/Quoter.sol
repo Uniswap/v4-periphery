@@ -1,31 +1,27 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import "forge-std/console2.sol";
 import "../libraries/SwapIntention.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
-import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 
 contract Quoter is IQuoter {
     using PoolIdLibrary for PoolKey;
     using Hooks for IHooks;
 
     // v4 Singleton contract
-    IPoolManager immutable poolManager;
+    IPoolManager private immutable MANAGER;
 
     constructor(address _poolManager) {
-        poolManager = IPoolManager(_poolManager);
+        MANAGER = IPoolManager(_poolManager);
     }
 
     function quoteExactInputSingle(ExactInputSingleParams memory params)
@@ -33,7 +29,7 @@ contract Quoter is IQuoter {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
+        try MANAGER.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
         catch (bytes memory reason) {
             return _handleRevertExactInputSingle(reason, params.poolKey);
         }
@@ -47,14 +43,16 @@ contract Quoter is IQuoter {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
+        try MANAGER.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
         catch (bytes memory reason) {
             return _handleRevertExactInput(reason);
         }
     }
 
     function lockAcquired(bytes calldata encodedSwapIntention) external returns (bytes memory) {
-        require(msg.sender == address(poolManager));
+        if (msg.sender != address(MANAGER)) {
+            revert InvalidLockAcquiredSender();
+        }
 
         SwapInfo memory swapInfo = abi.decode(encodedSwapIntention, (SwapInfo));
 
@@ -105,14 +103,13 @@ contract Quoter is IQuoter {
         int24 tickAfter;
         BalanceDelta deltas;
         deltaAmounts = new int128[](2);
-        (, tickBefore,,) = poolManager.getSlot0(poolKey.toId());
+        (, tickBefore,,) = MANAGER.getSlot0(poolKey.toId());
         reason = validateRevertReason(reason);
         (deltas, sqrtPriceX96After, tickAfter) = abi.decode(reason, (BalanceDelta, uint160, int24));
         deltaAmounts[0] = deltas.amount0();
         deltaAmounts[1] = deltas.amount1();
 
-        initializedTicksLoaded =
-            PoolTicksCounter.countInitializedTicksLoaded(poolManager, poolKey, tickBefore, tickAfter);
+        initializedTicksLoaded = PoolTicksCounter.countInitializedTicksLoaded(MANAGER, poolKey, tickBefore, tickAfter);
     }
 
     function _handleRevertExactInput(bytes memory reason)
@@ -148,7 +145,7 @@ contract Quoter is IQuoter {
         for (uint256 i = 0; i < pathLength; i++) {
             (PoolKey memory poolKey, bool zeroForOne) =
                 SwapIntention.getPoolAndSwapDirection(params.path[i], i == 0 ? params.currencyIn : prevCurrencyOut);
-            (, int24 tickBefore,,) = poolManager.getSlot0(poolKey.toId());
+            (, int24 tickBefore,,) = MANAGER.getSlot0(poolKey.toId());
 
             ExactInputSingleParams memory singleParams = ExactInputSingleParams({
                 poolKey: poolKey,
@@ -169,7 +166,7 @@ contract Quoter is IQuoter {
             prevCurrencyOut = params.path[i].intermediateCurrency;
             sqrtPriceX96AfterList[i] = sqrtPriceX96After;
             initializedTicksLoadedList[i] =
-                PoolTicksCounter.countInitializedTicksLoaded(poolManager, poolKey, tickBefore, tickAfter);
+                PoolTicksCounter.countInitializedTicksLoaded(MANAGER, poolKey, tickBefore, tickAfter);
         }
     }
 
@@ -193,7 +190,7 @@ contract Quoter is IQuoter {
         uint160 sqrtPriceLimitX96,
         bytes memory hookData
     ) private returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) {
-        deltas = poolManager.swap(
+        deltas = MANAGER.swap(
             poolKey,
             IPoolManager.SwapParams({
                 zeroForOne: zeroForOne,
@@ -202,7 +199,7 @@ contract Quoter is IQuoter {
             }),
             hookData
         );
-        (sqrtPriceX96After, tickAfter,,) = poolManager.getSlot0(poolKey.toId());
+        (sqrtPriceX96After, tickAfter,,) = MANAGER.getSlot0(poolKey.toId());
     }
 
     function _sqrtPriceLimitOrDefault(uint160 sqrtPriceLimitX96, bool zeroForOne) private pure returns (uint160) {
