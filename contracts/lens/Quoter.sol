@@ -61,12 +61,10 @@ contract Quoter is IQuoter {
         if (swapInfo.swapType == SwapType.ExactInputSingle) {
             (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
                 _quoteExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)));
+
+            bytes memory result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
             assembly {
-                let ptr := mload(0x40)
-                mstore(ptr, deltas)
-                mstore(add(ptr, 0x20), sqrtPriceX96After)
-                mstore(add(ptr, 0x40), tickAfter)
-                revert(ptr, 96)
+                revert(add(0x20, result), mload(result))
             }
         } else if (swapInfo.swapType == SwapType.ExactInput) {
             (
@@ -75,65 +73,9 @@ contract Quoter is IQuoter {
                 uint32[] memory initializedTicksLoadedList
             ) = _quoteExactInput(abi.decode(swapInfo.params, (ExactInputParams)));
 
-            // bytes memory result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
-            // uint256 resultLength = result.length;
+            bytes memory result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
             assembly {
-                //revert(result, resultLength)
-                function storeArray(offset, length, array) {
-                    mstore(offset, length)
-                    offset := add(offset, 0x20)
-                    for { let i := 0 } lt(i, length) { i := add(i, 1) } {
-                        let value := mload(add(array, add(mul(i, 0x20), 0x20)))
-                        mstore(offset, value)
-                        offset := add(offset, 0x20)
-                    }
-                }
-
-                let originalPtr := mload(0x40)
-                let ptr := mload(0x40)
-
-                let deltaLength := mload(deltaAmounts)
-                let sqrtPriceLength := mload(sqrtPriceX96AfterList)
-                let initializedTicksLength := mload(initializedTicksLoadedList)
-
-                let deltaOffset := 0x60
-                let sqrtPriceOffset := add(deltaOffset, add(0x20, mul(0x20, deltaLength)))
-                let initializedTicksOffset := add(sqrtPriceOffset, add(0x20, mul(0x20, sqrtPriceLength)))
-
-                // storing offsets to dynamic arrays
-                mstore(ptr, deltaOffset)
-                ptr := add(ptr, 0x20)
-                mstore(ptr, sqrtPriceOffset)
-                ptr := add(ptr, 0x20)
-                mstore(ptr, initializedTicksOffset)
-                ptr := add(ptr, 0x20)
-
-                //storing length + contents of dynamic arrays
-                mstore(ptr, deltaLength)
-                ptr := add(ptr, 0x20)
-                for { let i := 0 } lt(i, deltaLength) { i := add(i, 1) } {
-                    let value := mload(add(deltaAmounts, add(mul(i, 0x20), 0x20)))
-                    mstore(ptr, value)
-                    ptr := add(ptr, 0x20)
-                }
-
-                mstore(ptr, sqrtPriceLength)
-                ptr := add(ptr, 0x20)
-                for { let i := 0 } lt(i, sqrtPriceLength) { i := add(i, 1) } {
-                    let value := mload(add(sqrtPriceX96AfterList, add(mul(i, 0x20), 0x20)))
-                    mstore(ptr, value)
-                    ptr := add(ptr, 0x20)
-                }
-
-                mstore(ptr, initializedTicksLength)
-                ptr := add(ptr, 0x20)
-                for { let i := 0 } lt(i, initializedTicksLength) { i := add(i, 1) } {
-                    let value := mload(add(initializedTicksLoadedList, add(mul(i, 0x20), 0x20)))
-                    mstore(ptr, value)
-                    ptr := add(ptr, 0x20)
-                }
-
-                revert(originalPtr, sub(ptr, originalPtr))
+                revert(add(0x20, result), mload(result))
             }
         } else {
             revert InvalidQuoteType();
