@@ -55,6 +55,9 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     PoolId poolId;
 
     function setUp() public {
+        deployFreshManagerAndRouters();
+        (currency0, currency1) = deployMintAndApprove2Currencies();
+
         token0 = MockERC20(Currency.unwrap(currency0));
         token1 = MockERC20(Currency.unwrap(currency1));
 

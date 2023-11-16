@@ -76,6 +76,9 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     PoolId idWithLiq;
 
     function setUp() public {
+        deployFreshManagerAndRouters();
+        (currency0, currency1) = deployMintAndApprove2Currencies();
+
         token0 = new MockERC20("TestA", "A", 18);
         token1 = new MockERC20("TestB", "B", 18);
         token2 = new MockERC20("TestC", "C", 18);

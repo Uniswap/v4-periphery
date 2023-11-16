@@ -27,6 +27,9 @@ contract TestLimitOrder is Test, Deployers {
     PoolId id;
 
     function setUp() public {
+        deployFreshManagerAndRouters();
+        (currency0, currency1) = deployMintAndApprove2Currencies();
+
         token0 = TestERC20(Currency.unwrap(currency0));
         token1 = TestERC20(Currency.unwrap(currency1));
 
