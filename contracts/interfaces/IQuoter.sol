@@ -2,10 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "../libraries/SwapIntention.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 
 interface IQuoter {
     error InvalidQuoteType();

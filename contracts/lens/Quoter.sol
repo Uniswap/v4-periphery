@@ -19,68 +19,38 @@ import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
 
 contract Quoter is IQuoter {
     using PoolIdLibrary for PoolKey;
-    using SafeCast for *;
     using Hooks for IHooks;
 
     // v4 Singleton contract
-    IPoolManager poolManager;
+    IPoolManager immutable poolManager;
 
     constructor(address _poolManager) {
         poolManager = IPoolManager(_poolManager);
     }
 
-    function fillSlot0(PoolId id) private view returns (Pool.Slot0 memory slot0) {
-        //TODO: extsload when storage is stable?
-        (slot0.sqrtPriceX96, slot0.tick,,) = poolManager.getSlot0(id);
-
-        return slot0;
-    }
-
-    function validateRevertReason(bytes memory reason) private pure returns (bytes memory) {
-        if (reason.length < 96) {
-            // function selector + length of bytes as uint256 + min length of revert reason padded to multiple of 32 bytes
-            if (reason.length < 68) {
-                revert UnexpectedRevertBytes();
-            }
-            assembly {
-                reason := add(reason, 0x04)
-            }
-            revert(abi.decode(reason, (string)));
-        }
-        return reason;
-    }
-
-    function _handleRevertExactInputSingle(bytes memory reason, PoolKey memory poolKey)
-        private
-        view
+    function quoteExactInputSingle(ExactInputSingleParams memory params)
+        external
+        override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
     {
-        int24 tickBefore;
-        int24 tickAfter;
-        BalanceDelta deltas;
-        deltaAmounts = new int128[](2);
-        (, tickBefore,,) = poolManager.getSlot0(poolKey.toId());
-        reason = validateRevertReason(reason);
-        (deltas, sqrtPriceX96After, tickAfter) = abi.decode(reason, (BalanceDelta, uint160, int24));
-        deltaAmounts[0] = deltas.amount0();
-        deltaAmounts[1] = deltas.amount1();
-
-        initializedTicksCrossed =
-            PoolTicksCounter.countInitializedTicksCrossed(poolManager, poolKey, tickBefore, tickAfter);
+        try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
+        catch (bytes memory reason) {
+            return _handleRevertExactInputSingle(reason, params.poolKey);
+        }
     }
 
-    function _handleRevertExactInput(bytes memory reason)
-        private
-        pure
+    function quoteExactInput(ExactInputParams memory params)
+        external
         returns (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
             uint32[] memory initializedTicksCrossedList
         )
     {
-        reason = validateRevertReason(reason);
-        (deltaAmounts, sqrtPriceX96AfterList, initializedTicksCrossedList) =
-            abi.decode(reason, (int128[], uint160[], uint32[]));
+        try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
+        catch (bytes memory reason) {
+            return _handleRevertExactInput(reason);
+        }
     }
 
     function lockAcquired(bytes calldata encodedSwapIntention) external returns (bytes memory) {
@@ -167,29 +137,51 @@ contract Quoter is IQuoter {
         }
     }
 
-    function quoteExactInputSingle(ExactInputSingleParams memory params)
-        external
-        override
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
-    {
-        try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
-        catch (bytes memory reason) {
-            return _handleRevertExactInputSingle(reason, params.poolKey);
+    function validateRevertReason(bytes memory reason) private pure returns (bytes memory) {
+        if (reason.length < 96) {
+            // function selector + length of bytes as uint256 + min length of revert reason padded to multiple of 32 bytes
+            if (reason.length < 68) {
+                revert UnexpectedRevertBytes();
+            }
+            assembly {
+                reason := add(reason, 0x04)
+            }
+            revert(abi.decode(reason, (string)));
         }
+        return reason;
     }
 
-    function quoteExactInput(ExactInputParams memory params)
-        external
+    function _handleRevertExactInputSingle(bytes memory reason, PoolKey memory poolKey)
+        private
+        view
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
+    {
+        int24 tickBefore;
+        int24 tickAfter;
+        BalanceDelta deltas;
+        deltaAmounts = new int128[](2);
+        (, tickBefore,,) = poolManager.getSlot0(poolKey.toId());
+        reason = validateRevertReason(reason);
+        (deltas, sqrtPriceX96After, tickAfter) = abi.decode(reason, (BalanceDelta, uint160, int24));
+        deltaAmounts[0] = deltas.amount0();
+        deltaAmounts[1] = deltas.amount1();
+
+        initializedTicksCrossed =
+            PoolTicksCounter.countInitializedTicksCrossed(poolManager, poolKey, tickBefore, tickAfter);
+    }
+
+    function _handleRevertExactInput(bytes memory reason)
+        private
+        pure
         returns (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
             uint32[] memory initializedTicksCrossedList
         )
     {
-        try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
-        catch (bytes memory reason) {
-            return _handleRevertExactInput(reason);
-        }
+        reason = validateRevertReason(reason);
+        (deltaAmounts, sqrtPriceX96AfterList, initializedTicksCrossedList) =
+            abi.decode(reason, (int128[], uint160[], uint32[]));
     }
 
     function _quoteExactInput(ExactInputParams memory params)
