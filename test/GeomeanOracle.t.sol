@@ -3,22 +3,21 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {GetSender} from "./shared/GetSender.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {GeomeanOracle} from "../contracts/hooks/examples/GeomeanOracle.sol";
 import {GeomeanOracleImplementation} from "./shared/implementation/GeomeanOracleImplementation.sol";
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-import {TokenFixture} from "@uniswap/v4-core/test/foundry-tests/utils/TokenFixture.sol";
-import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {TestERC20} from "@uniswap/v4-core/src/test/TestERC20.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolModifyPositionTest} from "@uniswap/v4-core/src/test/PoolModifyPositionTest.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Oracle} from "../contracts/libraries/Oracle.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-contract TestGeomeanOracle is Test, Deployers, TokenFixture {
+contract TestGeomeanOracle is Test, Deployers {
     using PoolIdLibrary for PoolKey;
 
     int24 constant MAX_TICK_SPACING = 32767;
@@ -26,7 +25,6 @@ contract TestGeomeanOracle is Test, Deployers, TokenFixture {
 
     TestERC20 token0;
     TestERC20 token1;
-    PoolManager manager;
     GeomeanOracleImplementation geomeanOracle = GeomeanOracleImplementation(
         address(
             uint160(
@@ -35,17 +33,11 @@ contract TestGeomeanOracle is Test, Deployers, TokenFixture {
             )
         )
     );
-    PoolKey key;
     PoolId id;
 
-    PoolModifyPositionTest modifyPositionRouter;
-
     function setUp() public {
-        initializeTokens();
         token0 = TestERC20(Currency.unwrap(currency0));
         token1 = TestERC20(Currency.unwrap(currency1));
-
-        manager = new PoolManager(500000);
 
         vm.record();
         GeomeanOracleImplementation impl = new GeomeanOracleImplementation(manager, geomeanOracle);

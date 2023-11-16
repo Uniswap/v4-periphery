@@ -2,9 +2,9 @@
 pragma solidity ^0.8.15;
 
 import {ABDKMathQuad} from "./ABDKMathQuad.sol";
-import {FixedPoint96} from "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
-import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 /// @title TWAMM Math - Pure functions for TWAMM math calculations
 library TwammMath {

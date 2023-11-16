@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.15;
 
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {TickBitmap} from "@uniswap/v4-core/contracts/libraries/TickBitmap.sol";
-import {SqrtPriceMath} from "@uniswap/v4-core/contracts/libraries/SqrtPriceMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {TickBitmap} from "@uniswap/v4-core/src/libraries/TickBitmap.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {BaseHook} from "../../BaseHook.sol";
-import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ITWAMM} from "../../interfaces/ITWAMM.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {TransferHelper} from "../../libraries/TransferHelper.sol";
 import {TwammMath} from "../../libraries/TWAMM/TwammMath.sol";
 import {OrderPool} from "../../libraries/TWAMM/OrderPool.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolGetters} from "../../libraries/PoolGetters.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 contract TWAMM is BaseHook, ITWAMM {
     using TransferHelper for IERC20Minimal;

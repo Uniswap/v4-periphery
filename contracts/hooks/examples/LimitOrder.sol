@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
-import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
-import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {BaseHook} from "../../BaseHook.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 type Epoch is uint232;
 
@@ -204,8 +204,12 @@ contract LimitOrder is BaseHook {
             ZERO_BYTES
         );
 
-        if (delta.amount0() < 0) poolManager.mint(key.currency0, address(this), amount0 = uint128(-delta.amount0()));
-        if (delta.amount1() < 0) poolManager.mint(key.currency1, address(this), amount1 = uint128(-delta.amount1()));
+        if (delta.amount0() < 0) {
+            poolManager.mint(key.currency0, address(this), amount0 = uint128(-delta.amount0()));
+        }
+        if (delta.amount1() < 0) {
+            poolManager.mint(key.currency1, address(this), amount1 = uint128(-delta.amount1()));
+        }
     }
 
     function place(PoolKey calldata key, int24 tickLower, bool zeroForOne, uint128 liquidity)
@@ -352,8 +356,12 @@ contract LimitOrder is BaseHook {
             ZERO_BYTES
         );
 
-        if (delta.amount0() < 0) poolManager.take(key.currency0, to, amount0 = uint128(-delta.amount0()));
-        if (delta.amount1() < 0) poolManager.take(key.currency1, to, amount1 = uint128(-delta.amount1()));
+        if (delta.amount0() < 0) {
+            poolManager.take(key.currency0, to, amount0 = uint128(-delta.amount0()));
+        }
+        if (delta.amount1() < 0) {
+            poolManager.take(key.currency1, to, amount1 = uint128(-delta.amount1()));
+        }
     }
 
     function withdraw(Epoch epoch, address to) external returns (uint256 amount0, uint256 amount1) {
@@ -391,15 +399,11 @@ contract LimitOrder is BaseHook {
         address to
     ) external selfOnly {
         if (token0Amount > 0) {
-            poolManager.safeTransferFrom(
-                address(this), address(poolManager), uint256(uint160(Currency.unwrap(currency0))), token0Amount, ""
-            );
+            poolManager.burn(currency0, token0Amount);
             poolManager.take(currency0, to, token0Amount);
         }
         if (token1Amount > 0) {
-            poolManager.safeTransferFrom(
-                address(this), address(poolManager), uint256(uint160(Currency.unwrap(currency1))), token1Amount, ""
-            );
+            poolManager.burn(currency1, token1Amount);
             poolManager.take(currency1, to, token1Amount);
         }
     }

@@ -3,26 +3,25 @@ pragma solidity ^0.8.15;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
-import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
-import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
+import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
 import {TWAMMImplementation} from "./shared/implementation/TWAMMImplementation.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
-import {PoolDonateTest} from "@uniswap/v4-core/contracts/test/PoolDonateTest.sol";
-import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-import {TokenFixture} from "@uniswap/v4-core/test/foundry-tests/utils/TokenFixture.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolModifyPositionTest} from "@uniswap/v4-core/src/test/PoolModifyPositionTest.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
+import {PoolDonateTest} from "@uniswap/v4-core/src/test/PoolDonateTest.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TWAMM} from "../contracts/hooks/examples/TWAMM.sol";
 import {ITWAMM} from "../contracts/interfaces/ITWAMM.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
+contract TWAMMTest is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
 
@@ -49,10 +48,6 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
         address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG))
     );
     // TWAMM twamm;
-    PoolManager manager;
-    PoolModifyPositionTest modifyPositionRouter;
-    PoolSwapTest swapRouter;
-    PoolDonateTest donateRouter;
     address hookAddress;
     MockERC20 token0;
     MockERC20 token1;
@@ -60,10 +55,8 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
     PoolId poolId;
 
     function setUp() public {
-        initializeTokens();
         token0 = MockERC20(Currency.unwrap(currency0));
         token1 = MockERC20(Currency.unwrap(currency1));
-        manager = new PoolManager(500000);
 
         TWAMMImplementation impl = new TWAMMImplementation(manager, 10_000, twamm);
         (, bytes32[] memory writes) = vm.accesses(address(impl));
@@ -75,9 +68,6 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
                 vm.store(address(twamm), slot, vm.load(address(impl), slot));
             }
         }
-
-        modifyPositionRouter = new PoolModifyPositionTest(IPoolManager(address(manager)));
-        swapRouter = new PoolSwapTest(IPoolManager(address(manager)));
 
         poolKey = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, twamm);
         poolId = poolKey.toId();

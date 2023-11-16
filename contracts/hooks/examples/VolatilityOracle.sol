@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {IDynamicFeeManager} from "@uniswap/v4-core/contracts/interfaces/IDynamicFeeManager.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {FeeLibrary} from "@uniswap/v4-core/contracts/libraries/FeeLibrary.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IDynamicFeeManager} from "@uniswap/v4-core/src/interfaces/IDynamicFeeManager.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {FeeLibrary} from "@uniswap/v4-core/src/libraries/FeeLibrary.sol";
 import {BaseHook} from "../../BaseHook.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 contract VolatilityOracle is BaseHook, IDynamicFeeManager {
     using FeeLibrary for uint24;
@@ -15,11 +15,7 @@ contract VolatilityOracle is BaseHook, IDynamicFeeManager {
 
     uint32 deployTimestamp;
 
-    function getFee(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
-        external
-        view
-        returns (uint24)
-    {
+    function getFee(address, PoolKey calldata) external view returns (uint24) {
         uint24 startingFee = 3000;
         uint32 lapsed = _blockTimestamp() - deployTimestamp;
         return startingFee + (uint24(lapsed) * 100) / 60; // 100 bps a minute

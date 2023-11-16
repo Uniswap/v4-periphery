@@ -3,22 +3,22 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {FullRange} from "../contracts/hooks/examples/FullRange.sol";
 import {FullRangeImplementation} from "./shared/implementation/FullRangeImplementation.sol";
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolModifyPositionTest} from "@uniswap/v4-core/src/test/PoolModifyPositionTest.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {UniswapV4ERC20} from "../contracts/libraries/UniswapV4ERC20.sol";
-import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
-import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -62,15 +62,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     MockERC20 token1;
     MockERC20 token2;
 
-    Currency currency0;
-    Currency currency1;
-
-    PoolManager manager;
     FullRangeImplementation fullRange = FullRangeImplementation(
         address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG))
     );
 
-    PoolKey key;
     PoolId id;
 
     PoolKey key2;
@@ -80,20 +75,14 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     PoolKey keyWithLiq;
     PoolId idWithLiq;
 
-    PoolModifyPositionTest modifyPositionRouter;
-    PoolSwapTest swapRouter;
-
     function setUp() public {
-        token0 = new MockERC20("TestA", "A", 18, 2 ** 128);
-        token1 = new MockERC20("TestB", "B", 18, 2 ** 128);
-        token2 = new MockERC20("TestC", "C", 18, 2 ** 128);
-
-        manager = new PoolManager(500000);
+        token0 = new MockERC20("TestA", "A", 18);
+        token1 = new MockERC20("TestB", "B", 18);
+        token2 = new MockERC20("TestC", "C", 18);
 
         FullRangeImplementation impl = new FullRangeImplementation(manager, fullRange);
         vm.etch(address(fullRange), address(impl).code);
 
-        key = createPoolKey(token0, token1);
         id = key.toId();
 
         key2 = createPoolKey(token1, token2);
@@ -101,9 +90,6 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         keyWithLiq = createPoolKey(token0, token2);
         idWithLiq = keyWithLiq.toId();
-
-        modifyPositionRouter = new PoolModifyPositionTest(manager);
-        swapRouter = new PoolSwapTest(manager);
 
         token0.approve(address(fullRange), type(uint256).max);
         token1.approve(address(fullRange), type(uint256).max);

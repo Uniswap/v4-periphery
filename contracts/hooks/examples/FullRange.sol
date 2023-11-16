@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {BaseHook} from "../../BaseHook.sol";
-import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
-import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
-import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
+import {ILockCallback} from "@uniswap/v4-core/src/interfaces/callback/ILockCallback.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {UniswapV4ERC20} from "../../libraries/UniswapV4ERC20.sol";
-import {FixedPoint96} from "@uniswap/v4-core/contracts/libraries/FixedPoint96.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
