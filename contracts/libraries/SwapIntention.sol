@@ -2,6 +2,7 @@
 
 pragma solidity ^0.8.20;
 
+import {PathKey} from "./PathKey.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
@@ -16,14 +17,6 @@ enum SwapType {
 struct SwapInfo {
     SwapType swapType;
     bytes params;
-}
-
-struct PathKey {
-    Currency intermediateCurrency;
-    uint24 fee;
-    int24 tickSpacing;
-    IHooks hooks;
-    bytes hookData;
 }
 
 struct ExactInputSingleParams {
