@@ -253,12 +253,16 @@ contract Quoter is IQuoter {
             IPoolManager.SwapParams({
                 zeroForOne: zeroForOne,
                 amountSpecified: amountSpecified,
-                sqrtPriceLimitX96: sqrtPriceLimitX96 == 0
-                    ? zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1
-                    : sqrtPriceLimitX96
+                sqrtPriceLimitX96: _sqrtPriceLimitOrDefault(sqrtPriceLimitX96, zeroForOne)
             }),
             hookData
         );
         (sqrtPriceX96After, tickAfter,,) = poolManager.getSlot0(poolKey.toId());
+    }
+
+    function _sqrtPriceLimitOrDefault(uint160 sqrtPriceLimitX96, bool zeroForOne) private pure returns (uint160) {
+        return sqrtPriceLimitX96 == 0
+            ? zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1
+            : sqrtPriceLimitX96;
     }
 }
