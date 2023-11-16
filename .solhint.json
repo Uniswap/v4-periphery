@@ -1,0 +1,9 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "no-inline-assembly": "off",
+    "no-global-import": "off",
+    "no-empty-blocks": "off",
+    "func-visibility": ["warn", { "ignoreConstructors": true }]
+  }
+}
