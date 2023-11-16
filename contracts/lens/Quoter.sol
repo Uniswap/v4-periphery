@@ -194,32 +194,34 @@ contract Quoter is IQuoter {
     {
         uint256 pathLength = params.path.length;
 
-        //mapping(Currency currency => int128) memory currencyDeltas;
-
         deltaAmounts = new int128[](pathLength + 1);
         sqrtPriceX96AfterList = new uint160[](pathLength);
         initializedTicksCrossedList = new uint32[](pathLength);
+        Currency prevCurrencyOut;
+        uint128 prevAmountOut;
 
         for (uint256 i = 0; i < pathLength; i++) {
             (PoolKey memory poolKey, bool zeroForOne) =
-                SwapIntention.getPoolAndSwapDirection(params.path[i], params.currencyIn);
+                SwapIntention.getPoolAndSwapDirection(params.path[i], i == 0 ? params.currencyIn : prevCurrencyOut);
             (, int24 tickBefore,,) = poolManager.getSlot0(poolKey.toId());
 
             ExactInputSingleParams memory singleParams = ExactInputSingleParams({
                 poolKey: poolKey,
                 zeroForOne: zeroForOne,
                 recipient: params.recipient,
-                amountIn: params.amountIn,
+                amountIn: i == 0 ? params.amountIn : prevAmountOut,
                 sqrtPriceLimitX96: 0,
                 hookData: params.path[i].hookData
             });
             (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _quoteExactInputSingle(singleParams);
 
-            deltaAmounts[i] += zeroForOne ? curDeltas.amount0() : curDeltas.amount1();
-            deltaAmounts[i + 1] += zeroForOne ? curDeltas.amount1() : curDeltas.amount0();
+            (int128 deltaIn, int128 deltaOut) =
+                zeroForOne ? (curDeltas.amount0(), curDeltas.amount1()) : (curDeltas.amount1(), curDeltas.amount0());
+            deltaAmounts[i] += deltaIn;
+            deltaAmounts[i + 1] += deltaOut;
 
-            params.amountIn = zeroForOne ? uint128(-curDeltas.amount1()) : uint128(-curDeltas.amount0());
-            params.currencyIn = params.path[i].intermediateCurrency;
+            prevAmountOut = zeroForOne ? uint128(-curDeltas.amount1()) : uint128(-curDeltas.amount0());
+            prevCurrencyOut = params.path[i].intermediateCurrency;
             sqrtPriceX96AfterList[i] = sqrtPriceX96After;
             initializedTicksCrossedList[i] =
                 PoolTicksCounter.countInitializedTicksCrossed(poolManager, poolKey, tickBefore, tickAfter);
