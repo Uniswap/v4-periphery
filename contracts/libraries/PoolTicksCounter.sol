@@ -13,7 +13,7 @@ library PoolTicksCounter {
     /// When tickBefore and/or tickAfter themselves are initialized, the logic over whether we should count them depends on the
     /// direction of the swap. If we are swapping upwards (tickAfter > tickBefore) we don't want to count tickBefore but we do
     /// want to count tickAfter. The opposite is true if we are swapping downwards.
-    function countInitializedTicksCrossed(IPoolManager self, PoolKey memory key, int24 tickBefore, int24 tickAfter)
+    function countInitializedTicksLoaded(IPoolManager self, PoolKey memory key, int24 tickBefore, int24 tickAfter)
         internal
         view
         returns (uint32 initializedTicksCrossed)

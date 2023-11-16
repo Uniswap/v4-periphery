@@ -16,13 +16,13 @@ interface IQuoter {
 
     function quoteExactInputSingle(ExactInputSingleParams calldata params)
         external
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed);
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
 
     function quoteExactInput(ExactInputParams memory params)
         external
         returns (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         );
 }

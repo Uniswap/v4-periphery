@@ -72,7 +72,7 @@ contract QuoterTest is Test, Deployers {
         uint256 expectedAmountOut = 9871;
         uint160 expectedSqrtPriceX96After = 78461846509168490764501028180;
 
-        (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed) = quoter
+        (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) = quoter
             .quoteExactInputSingle(
             ExactInputSingleParams({
                 poolKey: key02,
@@ -86,7 +86,7 @@ contract QuoterTest is Test, Deployers {
 
         assertEq(uint128(-deltaAmounts[1]), expectedAmountOut);
         assertEq(sqrtPriceX96After, expectedSqrtPriceX96After);
-        assertEq(initializedTicksCrossed, 2);
+        assertEq(initializedTicksLoaded, 2);
     }
 
     function testQuoter_quoteExactInputSingle_OneForZero_MultiplePositions() public {
@@ -94,7 +94,7 @@ contract QuoterTest is Test, Deployers {
         uint256 expectedAmountOut = 9871;
         uint160 expectedSqrtPriceX96After = 80001962924147897865541384515;
 
-        (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed) = quoter
+        (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) = quoter
             .quoteExactInputSingle(
             ExactInputSingleParams({
                 poolKey: key02,
@@ -108,10 +108,10 @@ contract QuoterTest is Test, Deployers {
 
         assertEq(uint128(-deltaAmounts[0]), expectedAmountOut);
         assertEq(sqrtPriceX96After, expectedSqrtPriceX96After);
-        assertEq(initializedTicksCrossed, 2);
+        assertEq(initializedTicksLoaded, 2);
     }
 
-    function testQuoter_quoteExactInput_0to2_2TicksCrossed() public {
+    function testQuoter_quoteExactInput_0to2_2TicksLoaded() public {
         tokenPath.push(token0);
         tokenPath.push(token2);
         ExactInputParams memory params = getExactInputParams(tokenPath, 10000);
@@ -119,15 +119,15 @@ contract QuoterTest is Test, Deployers {
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactInput(params);
 
         assertEq(uint128(-deltaAmounts[1]), 9871);
         assertEq(sqrtPriceX96AfterList[0], 78461846509168490764501028180);
-        assertEq(initializedTicksCrossedList[0], 2);
+        assertEq(initializedTicksLoadedList[0], 2);
     }
 
-    function testQuoter_quoteExactInput_0to2_2TicksCrossed_initialiedAfter() public {
+    function testQuoter_quoteExactInput_0to2_2TicksLoaded_initialiedAfter() public {
         tokenPath.push(token0);
         tokenPath.push(token2);
 
@@ -138,15 +138,15 @@ contract QuoterTest is Test, Deployers {
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactInput(params);
 
         assertEq(uint128(-deltaAmounts[1]), 6143);
         assertEq(sqrtPriceX96AfterList[0], 78757224507315167622282810783);
-        assertEq(initializedTicksCrossedList[0], 1);
+        assertEq(initializedTicksLoadedList[0], 1);
     }
 
-    function testQuoter_quoteExactInput_0to2_1TicksCrossed() public {
+    function testQuoter_quoteExactInput_0to2_1TicksLoaded() public {
         tokenPath.push(token0);
         tokenPath.push(token2);
 
@@ -157,15 +157,15 @@ contract QuoterTest is Test, Deployers {
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactInput(params);
 
         assertEq(uint128(-deltaAmounts[1]), 3971);
         assertEq(sqrtPriceX96AfterList[0], 78926452400586371254602774705);
-        assertEq(initializedTicksCrossedList[0], 1);
+        assertEq(initializedTicksLoadedList[0], 1);
     }
 
-    function testQuoter_quoteExactInput_0to2_0TicksCrossed_startingNotInitialized() public {
+    function testQuoter_quoteExactInput_0to2_0TicksLoaded_startingNotInitialized() public {
         tokenPath.push(token0);
         tokenPath.push(token2);
         ExactInputParams memory params = getExactInputParams(tokenPath, 10);
@@ -173,15 +173,15 @@ contract QuoterTest is Test, Deployers {
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactInput(params);
 
         assertEq(uint128(-deltaAmounts[1]), 8);
         assertEq(sqrtPriceX96AfterList[0], 79227483487511329217250071027);
-        assertEq(initializedTicksCrossedList[0], 0);
+        assertEq(initializedTicksLoadedList[0], 0);
     }
 
-    function testQuoter_quoteExactInput_0to2_0TicksCrossed_startingInitialized() public {
+    function testQuoter_quoteExactInput_0to2_0TicksLoaded_startingInitialized() public {
         setupPoolWithZeroTickInitialized(key02);
         tokenPath.push(token0);
         tokenPath.push(token2);
@@ -190,15 +190,15 @@ contract QuoterTest is Test, Deployers {
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactInput(params);
 
         assertEq(uint128(-deltaAmounts[1]), 8);
         assertEq(sqrtPriceX96AfterList[0], 79227817515327498931091950511);
-        assertEq(initializedTicksCrossedList[0], 1);
+        assertEq(initializedTicksLoadedList[0], 1);
     }
 
-    function testQuoter_quoteExactInput_2to0_2TicksCrossed() public {
+    function testQuoter_quoteExactInput_2to0_2TicksLoaded() public {
         tokenPath.push(token2);
         tokenPath.push(token0);
         ExactInputParams memory params = getExactInputParams(tokenPath, 10000);
@@ -206,15 +206,15 @@ contract QuoterTest is Test, Deployers {
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactInput(params);
 
         assertEq(-deltaAmounts[1], 9871);
         assertEq(sqrtPriceX96AfterList[0], 80001962924147897865541384515);
-        assertEq(initializedTicksCrossedList[0], 2);
+        assertEq(initializedTicksLoadedList[0], 2);
     }
 
-    function testQuoter_quoteExactInput_2to0_2TicksCrossed_initialiedAfter() public {
+    function testQuoter_quoteExactInput_2to0_2TicksLoaded_initialiedAfter() public {
         tokenPath.push(token2);
         tokenPath.push(token0);
 
@@ -225,15 +225,15 @@ contract QuoterTest is Test, Deployers {
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactInput(params);
 
         assertEq(-deltaAmounts[1], 6190);
         assertEq(sqrtPriceX96AfterList[0], 79705728824507063507279123685);
-        assertEq(initializedTicksCrossedList[0], 2);
+        assertEq(initializedTicksLoadedList[0], 2);
     }
 
-    function testQuoter_quoteExactInput_2to0_0TicksCrossed_startingInitialized() public {
+    function testQuoter_quoteExactInput_2to0_0TicksLoaded_startingInitialized() public {
         setupPoolWithZeroTickInitialized(key02);
         tokenPath.push(token2);
         tokenPath.push(token0);
@@ -243,16 +243,16 @@ contract QuoterTest is Test, Deployers {
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactInput(params);
 
         assertEq(-deltaAmounts[1], 198);
         assertEq(sqrtPriceX96AfterList[0], 79235729830182478001034429156);
-        assertEq(initializedTicksCrossedList[0], 0);
+        assertEq(initializedTicksLoadedList[0], 0);
     }
 
     // 2->0 starting not initialized
-    function testQuoter_quoteExactInput_2to0_0TicksCrossed_startingNotInitialized() public {
+    function testQuoter_quoteExactInput_2to0_0TicksLoaded_startingNotInitialized() public {
         tokenPath.push(token2);
         tokenPath.push(token0);
         ExactInputParams memory params = getExactInputParams(tokenPath, 103);
@@ -260,12 +260,12 @@ contract QuoterTest is Test, Deployers {
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactInput(params);
 
         assertEq(-deltaAmounts[1], 101);
         assertEq(sqrtPriceX96AfterList[0], 79235858216754624215638319723);
-        assertEq(initializedTicksCrossedList[0], 0);
+        assertEq(initializedTicksLoadedList[0], 0);
     }
 
     function testQuoter_quoteExactInput_2to1() public {
@@ -276,11 +276,11 @@ contract QuoterTest is Test, Deployers {
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactInput(params);
         assertEq(-deltaAmounts[1], 9871);
         assertEq(sqrtPriceX96AfterList[0], 80018067294531553039351583520);
-        assertEq(initializedTicksCrossedList[0], 0);
+        assertEq(initializedTicksLoadedList[0], 0);
     }
 
     function testQuoter_quoteExactInput_0to2to1() public {
@@ -292,14 +292,14 @@ contract QuoterTest is Test, Deployers {
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactInput(params);
 
         assertEq(-deltaAmounts[2], 9745);
         assertEq(sqrtPriceX96AfterList[0], 78461846509168490764501028180);
         assertEq(sqrtPriceX96AfterList[1], 80007846861567212939802016351);
-        assertEq(initializedTicksCrossedList[0], 2);
-        assertEq(initializedTicksCrossedList[1], 0);
+        assertEq(initializedTicksLoadedList[0], 2);
+        assertEq(initializedTicksLoadedList[1], 0);
     }
 
     function createPoolKey(MockERC20 tokenA, MockERC20 tokenB, address hookAddr)
@@ -418,7 +418,7 @@ contract QuoterTest is Test, Deployers {
         params.amountIn = uint128(amountIn);
     }
 
-    function logTicksCrossed(uint32[] memory num) private view {
+    function logTicksLoaded(uint32[] memory num) private view {
         console.logString("=== Num Ticks Crossed ===");
         for (uint256 i = 0; i < num.length; i++) {
             console.logUint(num[i]);

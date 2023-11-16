@@ -31,7 +31,7 @@ contract Quoter is IQuoter {
     function quoteExactInputSingle(ExactInputSingleParams memory params)
         external
         override
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
         try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
         catch (bytes memory reason) {
@@ -44,7 +44,7 @@ contract Quoter is IQuoter {
         returns (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         )
     {
         try poolManager.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
@@ -72,26 +72,29 @@ contract Quoter is IQuoter {
             (
                 int128[] memory deltaAmounts,
                 uint160[] memory sqrtPriceX96AfterList,
-                uint32[] memory initializedTicksCrossedList
+                uint32[] memory initializedTicksLoadedList
             ) = _quoteExactInput(abi.decode(swapInfo.params, (ExactInputParams)));
 
+            // bytes memory result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
+            // uint256 resultLength = result.length;
             assembly {
-                // function storeArray(offset, length, array) {
-                //     mstore(offset, length)
-                //     offset := add(offset, 0x20)
-                //     for { let i := 0 } lt(i, length) { i := add(i, 1) } {
-                //         let value := mload(add(array, add(mul(i, 0x20), 0x20)))
-                //         mstore(offset, value)
-                //         offset := add(offset, 0x20)
-                //     }
-                // }
+                //revert(result, resultLength)
+                function storeArray(offset, length, array) {
+                    mstore(offset, length)
+                    offset := add(offset, 0x20)
+                    for { let i := 0 } lt(i, length) { i := add(i, 1) } {
+                        let value := mload(add(array, add(mul(i, 0x20), 0x20)))
+                        mstore(offset, value)
+                        offset := add(offset, 0x20)
+                    }
+                }
 
                 let originalPtr := mload(0x40)
                 let ptr := mload(0x40)
 
                 let deltaLength := mload(deltaAmounts)
                 let sqrtPriceLength := mload(sqrtPriceX96AfterList)
-                let initializedTicksLength := mload(initializedTicksCrossedList)
+                let initializedTicksLength := mload(initializedTicksLoadedList)
 
                 let deltaOffset := 0x60
                 let sqrtPriceOffset := add(deltaOffset, add(0x20, mul(0x20, deltaLength)))
@@ -125,7 +128,7 @@ contract Quoter is IQuoter {
                 mstore(ptr, initializedTicksLength)
                 ptr := add(ptr, 0x20)
                 for { let i := 0 } lt(i, initializedTicksLength) { i := add(i, 1) } {
-                    let value := mload(add(initializedTicksCrossedList, add(mul(i, 0x20), 0x20)))
+                    let value := mload(add(initializedTicksLoadedList, add(mul(i, 0x20), 0x20)))
                     mstore(ptr, value)
                     ptr := add(ptr, 0x20)
                 }
@@ -154,7 +157,7 @@ contract Quoter is IQuoter {
     function _handleRevertExactInputSingle(bytes memory reason, PoolKey memory poolKey)
         private
         view
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed)
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
         int24 tickBefore;
         int24 tickAfter;
@@ -166,8 +169,8 @@ contract Quoter is IQuoter {
         deltaAmounts[0] = deltas.amount0();
         deltaAmounts[1] = deltas.amount1();
 
-        initializedTicksCrossed =
-            PoolTicksCounter.countInitializedTicksCrossed(poolManager, poolKey, tickBefore, tickAfter);
+        initializedTicksLoaded =
+            PoolTicksCounter.countInitializedTicksLoaded(poolManager, poolKey, tickBefore, tickAfter);
     }
 
     function _handleRevertExactInput(bytes memory reason)
@@ -176,11 +179,11 @@ contract Quoter is IQuoter {
         returns (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         )
     {
         reason = validateRevertReason(reason);
-        (deltaAmounts, sqrtPriceX96AfterList, initializedTicksCrossedList) =
+        (deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList) =
             abi.decode(reason, (int128[], uint160[], uint32[]));
     }
 
@@ -189,14 +192,14 @@ contract Quoter is IQuoter {
         returns (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksCrossedList
+            uint32[] memory initializedTicksLoadedList
         )
     {
         uint256 pathLength = params.path.length;
 
         deltaAmounts = new int128[](pathLength + 1);
         sqrtPriceX96AfterList = new uint160[](pathLength);
-        initializedTicksCrossedList = new uint32[](pathLength);
+        initializedTicksLoadedList = new uint32[](pathLength);
         Currency prevCurrencyOut;
         uint128 prevAmountOut;
 
@@ -223,8 +226,8 @@ contract Quoter is IQuoter {
             prevAmountOut = zeroForOne ? uint128(-curDeltas.amount1()) : uint128(-curDeltas.amount0());
             prevCurrencyOut = params.path[i].intermediateCurrency;
             sqrtPriceX96AfterList[i] = sqrtPriceX96After;
-            initializedTicksCrossedList[i] =
-                PoolTicksCounter.countInitializedTicksCrossed(poolManager, poolKey, tickBefore, tickAfter);
+            initializedTicksLoadedList[i] =
+                PoolTicksCounter.countInitializedTicksLoaded(poolManager, poolKey, tickBefore, tickAfter);
         }
     }
 
