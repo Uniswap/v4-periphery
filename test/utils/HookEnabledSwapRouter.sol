@@ -2,18 +2,19 @@
 pragma solidity ^0.8.20;
 
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolTestBase} from "@uniswap/v4-core/src/test/PoolTestBase.sol";
 import {Test} from "forge-std/Test.sol";
 
-contract HookEnabledSwapRouter is Test, PoolTestBase {
+contract HookEnabledSwapRouter is PoolTestBase {
     using CurrencyLibrary for Currency;
 
-    constructor(IPoolManager _manager) PoolTestBase(_manager) {}
-
     error NoSwapOccurred();
+
+    constructor(IPoolManager _manager) PoolTestBase(_manager) {}
 
     struct CallbackData {
         address sender;
@@ -54,10 +55,14 @@ contract HookEnabledSwapRouter is Test, PoolTestBase {
 
         if (data.params.zeroForOne) {
             _settle(data.key.currency0, data.sender, delta.amount0(), data.testSettings.settleUsingTransfer);
-            _take(data.key.currency1, data.sender, delta.amount1(), data.testSettings.withdrawTokens);
+            if (delta.amount1() < 0) {
+                _take(data.key.currency1, data.sender, delta.amount1(), data.testSettings.withdrawTokens);
+            }
         } else {
             _settle(data.key.currency1, data.sender, delta.amount1(), data.testSettings.settleUsingTransfer);
-            _take(data.key.currency0, data.sender, delta.amount0(), data.testSettings.withdrawTokens);
+            if (delta.amount0() < 0) {
+                _take(data.key.currency0, data.sender, delta.amount0(), data.testSettings.withdrawTokens);
+            }
         }
 
         return abi.encode(delta);

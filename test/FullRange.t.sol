@@ -108,9 +108,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         token1.approve(address(router), type(uint256).max);
         token2.approve(address(router), type(uint256).max);
 
-        initPool(
-            keyWithLiq.currency0, keyWithLiq.currency1, fullRange, 3000, SQRT_RATIO_1_1, ZERO_BYTES
-        );
+        initPool(keyWithLiq.currency0, keyWithLiq.currency1, fullRange, 3000, SQRT_RATIO_1_1, ZERO_BYTES);
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
                 keyWithLiq.currency0,

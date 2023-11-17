@@ -48,9 +48,7 @@ contract TestLimitOrder is Test, Deployers {
         }
 
         // key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
-        (key, id) = initPoolAndAddLiquidity(
-            currency0, currency1, limitOrder, 3000, SQRT_RATIO_1_1, ZERO_BYTES
-        );
+        (key, id) = initPoolAndAddLiquidity(currency0, currency1, limitOrder, 3000, SQRT_RATIO_1_1, ZERO_BYTES);
 
         token0.approve(address(limitOrder), type(uint256).max);
         token1.approve(address(limitOrder), type(uint256).max);
@@ -130,7 +128,10 @@ contract TestLimitOrder is Test, Deployers {
     function testNotZeroForOneInRangeRevert() public {
         // swapping is free, there's no liquidity in the pool, so we only need to specify 1 wei
         router.swap(
-            key, IPoolManager.SwapParams(true, 1, SQRT_RATIO_1_1 - 1), HookEnabledSwapRouter.TestSettings(true, true), ZERO_BYTES
+            key,
+            IPoolManager.SwapParams(true, 1 ether, SQRT_RATIO_1_1 - 1),
+            HookEnabledSwapRouter.TestSettings(true, true),
+            ZERO_BYTES
         );
         vm.expectRevert(LimitOrder.InRange.selector);
         limitOrder.place(key, -60, false, 1000000);

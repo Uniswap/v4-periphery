@@ -61,7 +61,11 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         token0 = MockERC20(Currency.unwrap(currency0));
         token1 = MockERC20(Currency.unwrap(currency1));
 
-        TWAMMImplementation impl = new TWAMMImplementation(manager, 10_000, twamm);
+        TWAMMImplementation impl = new TWAMMImplementation(
+            manager,
+            10_000,
+            twamm
+        );
         (, bytes32[] memory writes) = vm.accesses(address(impl));
         vm.etch(address(twamm), address(impl).code);
         // for each storage key that was written during the hook implementation, copy the value over
@@ -236,7 +240,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey1.owner);
 
         // takes 10% off the remaining half (so 80% of original sellrate)
-        assertEq(updatedSellRate, originalSellRate * 80 / 100);
+        assertEq(updatedSellRate, (originalSellRate * 80) / 100);
         assertEq(token0Owed, uint256(-amountDelta));
         assertEq(token1Owed, orderAmount / 2);
     }
@@ -261,7 +265,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey1.owner);
 
         // takes 10% off the remaining half (so 80% of original sellrate)
-        assertEq(updatedSellRate, originalSellRate * 80 / 100);
+        assertEq(updatedSellRate, (originalSellRate * 80) / 100);
         assertEq(token0Owed, orderAmount / 2);
         assertEq(token1Owed, uint256(-amountDelta));
     }
