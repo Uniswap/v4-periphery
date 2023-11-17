@@ -93,6 +93,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         (PoolKey memory initKey, PoolId initId) = newPoolKeyWithTWAMM(twamm);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
+
         manager.initialize(initKey, SQRT_RATIO_1_1, ZERO_BYTES);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 10000);
     }
@@ -185,8 +186,8 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         assertEq(sellRate0For1, 2e18 / (expiration2 - submitTimestamp2));
         assertEq(sellRate1For0, 3e18 / (expiration2 - submitTimestamp1));
-        assertEq(earningsFactor0For1, 1712020976636017581269515821040000);
-        assertEq(earningsFactor1For0, 1470157410324350030712806974476955);
+        assertEq(earningsFactor0For1, 1636776489931663248324424309240000);
+        assertEq(earningsFactor1For0, 1534530274609724617872321172427618);
     }
 
     function testTWAMM_submitOrder_EmitsEvent() public {
@@ -409,8 +410,8 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
     }
 
     function newPoolKeyWithTWAMM(IHooks hooks) public returns (PoolKey memory, PoolId) {
-        MockERC20[] memory tokens = deployTokens(2, 2 ** 255);
-        PoolKey memory key = PoolKey(Currency.wrap(address(tokens[0])), Currency.wrap(address(tokens[1])), 0, 60, hooks);
+        (Currency _token0, Currency _token1) = deployMintAndApprove2Currencies();
+        PoolKey memory key = PoolKey(_token0, _token1, 0, 60, hooks);
         return (key, key.toId());
     }
 

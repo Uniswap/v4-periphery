@@ -12,15 +12,16 @@ import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {TestERC20} from "@uniswap/v4-core/src/test/TestERC20.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 
 contract TestLimitOrder is Test, Deployers {
     using PoolIdLibrary for PoolKey;
 
     uint160 constant SQRT_RATIO_10_1 = 250541448375047931186413801569;
 
+    HookEnabledSwapRouter router;
     TestERC20 token0;
     TestERC20 token1;
     LimitOrder limitOrder = LimitOrder(address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG)));
@@ -30,6 +31,7 @@ contract TestLimitOrder is Test, Deployers {
         deployFreshManagerAndRouters();
         (currency0, currency1) = deployMintAndApprove2Currencies();
 
+        router = new HookEnabledSwapRouter(manager);
         token0 = TestERC20(Currency.unwrap(currency0));
         token1 = TestERC20(Currency.unwrap(currency1));
 
@@ -45,14 +47,15 @@ contract TestLimitOrder is Test, Deployers {
             }
         }
 
-        key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
-        id = key.toId();
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        // key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
+        (key, id) = initPoolAndAddLiquidity(
+            currency0, currency1, limitOrder, 3000, SQRT_RATIO_1_1, ZERO_BYTES
+        );
 
         token0.approve(address(limitOrder), type(uint256).max);
         token1.approve(address(limitOrder), type(uint256).max);
-        token0.approve(address(swapRouter), type(uint256).max);
-        token1.approve(address(swapRouter), type(uint256).max);
+        token0.approve(address(router), type(uint256).max);
+        token1.approve(address(router), type(uint256).max);
     }
 
     function testGetTickLowerLast() public {
@@ -100,10 +103,10 @@ contract TestLimitOrder is Test, Deployers {
 
     function testZeroForOneInRangeRevert() public {
         // swapping is free, there's no liquidity in the pool, so we only need to specify 1 wei
-        swapRouter.swap(
+        router.swap(
             key,
-            IPoolManager.SwapParams(false, 1, SQRT_RATIO_1_1 + 1),
-            PoolSwapTest.TestSettings(true, true),
+            IPoolManager.SwapParams(false, 1 ether, SQRT_RATIO_1_1 + 1),
+            HookEnabledSwapRouter.TestSettings(true, true),
             ZERO_BYTES
         );
         vm.expectRevert(LimitOrder.InRange.selector);
@@ -126,8 +129,8 @@ contract TestLimitOrder is Test, Deployers {
 
     function testNotZeroForOneInRangeRevert() public {
         // swapping is free, there's no liquidity in the pool, so we only need to specify 1 wei
-        swapRouter.swap(
-            key, IPoolManager.SwapParams(true, 1, SQRT_RATIO_1_1 - 1), PoolSwapTest.TestSettings(true, true), ZERO_BYTES
+        router.swap(
+            key, IPoolManager.SwapParams(true, 1, SQRT_RATIO_1_1 - 1), HookEnabledSwapRouter.TestSettings(true, true), ZERO_BYTES
         );
         vm.expectRevert(LimitOrder.InRange.selector);
         limitOrder.place(key, -60, false, 1000000);
@@ -185,10 +188,10 @@ contract TestLimitOrder is Test, Deployers {
         uint128 liquidity = 1000000;
         limitOrder.place(key, tickLower, zeroForOne, liquidity);
 
-        swapRouter.swap(
+        router.swap(
             key,
             IPoolManager.SwapParams(false, 1e18, TickMath.getSqrtRatioAtTick(60)),
-            PoolSwapTest.TestSettings(true, true),
+            HookEnabledSwapRouter.TestSettings(true, true),
             ZERO_BYTES
         );
 
