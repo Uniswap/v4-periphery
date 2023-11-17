@@ -18,10 +18,10 @@ contract Quoter is IQuoter {
     using Hooks for IHooks;
 
     // v4 Singleton contract
-    IPoolManager private immutable MANAGER;
+    IPoolManager public immutable manager;
 
     constructor(address _poolManager) {
-        MANAGER = IPoolManager(_poolManager);
+        manager = IPoolManager(_poolManager);
     }
 
     function quoteExactInputSingle(ExactInputSingleParams memory params)
@@ -29,7 +29,7 @@ contract Quoter is IQuoter {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        try MANAGER.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
+        try manager.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
         catch (bytes memory reason) {
             return _handleRevertExactInputSingle(reason, params.poolKey);
         }
@@ -43,14 +43,14 @@ contract Quoter is IQuoter {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try MANAGER.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
+        try manager.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
         catch (bytes memory reason) {
             return _handleRevertExactInput(reason);
         }
     }
 
     function lockAcquired(bytes calldata encodedSwapIntention) external returns (bytes memory) {
-        if (msg.sender != address(MANAGER)) {
+        if (msg.sender != address(manager)) {
             revert InvalidLockAcquiredSender();
         }
 
@@ -103,13 +103,13 @@ contract Quoter is IQuoter {
         int24 tickAfter;
         BalanceDelta deltas;
         deltaAmounts = new int128[](2);
-        (, tickBefore,,) = MANAGER.getSlot0(poolKey.toId());
+        (, tickBefore,,) = manager.getSlot0(poolKey.toId());
         reason = validateRevertReason(reason);
         (deltas, sqrtPriceX96After, tickAfter) = abi.decode(reason, (BalanceDelta, uint160, int24));
         deltaAmounts[0] = deltas.amount0();
         deltaAmounts[1] = deltas.amount1();
 
-        initializedTicksLoaded = PoolTicksCounter.countInitializedTicksLoaded(MANAGER, poolKey, tickBefore, tickAfter);
+        initializedTicksLoaded = PoolTicksCounter.countInitializedTicksLoaded(manager, poolKey, tickBefore, tickAfter);
     }
 
     function _handleRevertExactInput(bytes memory reason)
@@ -145,7 +145,7 @@ contract Quoter is IQuoter {
         for (uint256 i = 0; i < pathLength; i++) {
             (PoolKey memory poolKey, bool zeroForOne) =
                 SwapIntention.getPoolAndSwapDirection(params.path[i], i == 0 ? params.currencyIn : prevCurrencyOut);
-            (, int24 tickBefore,,) = MANAGER.getSlot0(poolKey.toId());
+            (, int24 tickBefore,,) = manager.getSlot0(poolKey.toId());
 
             ExactInputSingleParams memory singleParams = ExactInputSingleParams({
                 poolKey: poolKey,
@@ -166,7 +166,7 @@ contract Quoter is IQuoter {
             prevCurrencyOut = params.path[i].intermediateCurrency;
             sqrtPriceX96AfterList[i] = sqrtPriceX96After;
             initializedTicksLoadedList[i] =
-                PoolTicksCounter.countInitializedTicksLoaded(MANAGER, poolKey, tickBefore, tickAfter);
+                PoolTicksCounter.countInitializedTicksLoaded(manager, poolKey, tickBefore, tickAfter);
         }
     }
 
@@ -190,7 +190,7 @@ contract Quoter is IQuoter {
         uint160 sqrtPriceLimitX96,
         bytes memory hookData
     ) private returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) {
-        deltas = MANAGER.swap(
+        deltas = manager.swap(
             poolKey,
             IPoolManager.SwapParams({
                 zeroForOne: zeroForOne,
@@ -199,7 +199,7 @@ contract Quoter is IQuoter {
             }),
             hookData
         );
-        (sqrtPriceX96After, tickAfter,,) = MANAGER.getSlot0(poolKey.toId());
+        (sqrtPriceX96After, tickAfter,,) = manager.getSlot0(poolKey.toId());
     }
 
     function _sqrtPriceLimitOrDefault(uint160 sqrtPriceLimitX96, bool zeroForOne) private pure returns (uint160) {

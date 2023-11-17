@@ -29,6 +29,8 @@ contract QuoterTest is Test, Deployers {
     // Max tick for full range with tick spacing of 60
     int24 internal constant MAX_TICK = -MIN_TICK;
 
+    uint256 internal constant CONTROLLER_GAS_LIMIT = 500000;
+
     Quoter quoter;
 
     PoolManager manager;
@@ -45,7 +47,7 @@ contract QuoterTest is Test, Deployers {
     MockERC20[] tokenPath;
 
     function setUp() public {
-        manager = new PoolManager(500000);
+        manager = new PoolManager(CONTROLLER_GAS_LIMIT);
         quoter = new Quoter(address(manager));
         positionManager = new PoolModifyPositionTest(manager);
 
