@@ -5,6 +5,7 @@ pragma solidity ^0.8.20;
 import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import "../contracts/libraries/SwapIntention.sol";
+import {IQuoter} from "../contracts/interfaces/IQuoter.sol";
 import {Quoter} from "../contracts/lens/Quoter.sol";
 import {LiquidityAmounts} from "../contracts/libraries/LiquidityAmounts.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
@@ -51,7 +52,7 @@ contract QuoterTest is Test, Deployers {
         quoter = new Quoter(address(manager));
         positionManager = new PoolModifyPositionTest(manager);
 
-        // salts are chose so that address(token0) < address(token2) && address(1) < address(token2)
+        // salts are chosen so that address(token0) < address(token2) && address(1) < address(token2)
         bytes32 salt1 = "ffff";
         bytes32 salt2 = "gm";
         token0 = new MockERC20{salt: salt1}("Test0", "0", 18);
@@ -111,6 +112,55 @@ contract QuoterTest is Test, Deployers {
         assertEq(uint128(-deltaAmounts[0]), expectedAmountOut);
         assertEq(sqrtPriceX96After, expectedSqrtPriceX96After);
         assertEq(initializedTicksLoaded, 2);
+    }
+
+    function testQuoter_quoteExactInputBatch() public {
+        bool[] memory zeroForOnes = new bool[](2);
+        zeroForOnes[0] = true;
+        zeroForOnes[1] = false;
+
+        address[] memory recipients = new address[](2);
+        recipients[0] = address(this);
+        recipients[1] = address(this);
+
+        // repeat for the three arrays below
+        uint128[] memory amountIns = new uint128[](2);
+        amountIns[0] = 10000;
+        amountIns[1] = 10000;
+
+        uint160[] memory sqrtPriceLimitX96s = new uint160[](2);
+        sqrtPriceLimitX96s[0] = 0;
+        sqrtPriceLimitX96s[1] = 0;
+
+        bytes[] memory hookData = new bytes[](2);
+        hookData[0] = ZERO_BYTES;
+        hookData[1] = ZERO_BYTES;
+
+        (
+            IQuoter.PoolDeltas[] memory deltas,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksLoadedList
+        ) = quoter.quoteExactInputBatch(
+            ExactInputSingleBatchParams({
+                poolKey: key02,
+                zeroForOnes: zeroForOnes,
+                recipients: recipients,
+                amountIns: amountIns,
+                sqrtPriceLimitX96s: sqrtPriceLimitX96s,
+                hookData: hookData
+            })
+        );
+        assertEq(deltas.length, 2);
+        assertEq(uint128(-deltas[0].currency1Delta), 9871);
+        assertEq(uint128(-deltas[1].currency0Delta), 9871);
+
+        assertEq(sqrtPriceX96AfterList.length, 2);
+        assertEq(sqrtPriceX96AfterList[0], 78461846509168490764501028180);
+        assertEq(sqrtPriceX96AfterList[1], 80001962924147897865541384515);
+
+        assertEq(initializedTicksLoadedList.length, 2);
+        assertEq(initializedTicksLoadedList[0], 2);
+        assertEq(initializedTicksLoadedList[1], 2);
     }
 
     function testQuoter_quoteExactInput_0to2_2TicksLoaded() public {

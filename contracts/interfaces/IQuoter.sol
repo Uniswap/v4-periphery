@@ -13,12 +13,14 @@ interface IQuoter {
     error InvalidQuoteType();
     error InvalidQuoteTypeInRevert();
     error InvalidLockAcquiredSender();
+    error InvalidQuoteBatchParams();
     error UnexpectedRevertBytes();
 
-    struct NonZeroDeltaCurrency {
-        Currency currency;
-        int128 deltaAmount;
+    struct PoolDeltas {
+        int128 currency0Delta;
+        int128 currency1Delta;
     }
+
     /// @notice Returns the delta amounts for a given exact input but for a swap of a single pool
     /// @param params The params for the quote, encoded as `ExactInputSingleParams`
     /// poolKey The key for identifying a V4 pool
