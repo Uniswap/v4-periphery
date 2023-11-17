@@ -24,6 +24,7 @@ contract Quoter is IQuoter {
         manager = IPoolManager(_poolManager);
     }
 
+    /// @inheritdoc IQuoter
     function quoteExactInputSingle(ExactInputSingleParams memory params)
         external
         override
@@ -35,6 +36,7 @@ contract Quoter is IQuoter {
         }
     }
 
+    /// @inheritdoc IQuoter
     function quoteExactInput(ExactInputParams memory params)
         external
         returns (
