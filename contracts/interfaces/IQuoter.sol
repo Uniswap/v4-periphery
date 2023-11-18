@@ -21,7 +21,7 @@ interface IQuoter {
         int128 currency1Delta;
     }
 
-    /// @notice Returns the delta amounts for a given exact input but for a swap of a single pool
+    /// @notice Returns the delta amounts for a given exact input swap of a single pool
     /// @param params The params for the quote, encoded as `ExactInputSingleParams`
     /// poolKey The key for identifying a V4 pool
     /// zeroForOne If the swap is from currency0 to currency1
@@ -53,4 +53,20 @@ interface IQuoter {
             uint160[] memory sqrtPriceX96AfterList,
             uint32[] memory initializedTicksLoadedList
         );
+
+    /// @notice Returns the delta amounts for a given exact output swap of a single pool
+    /// @param params The params for the quote, encoded as `ExactOutputSingleParams`
+    /// poolKey The key for identifying a V4 pool
+    /// zeroForOne If the swap is from currency0 to currency1
+    /// recipient The indented recipient of the output tokens
+    /// amountOut The desired input amount
+    /// sqrtPriceLimitX96 The price limit of the pool that cannot be exceeded by the swap
+    /// hookData arbitrary hookData to pass into the associated hooks
+    /// @return deltaAmounts Delta amounts resulted from the swap
+    /// @return sqrtPriceX96After The sqrt price of the pool after the swap
+    /// @return initializedTicksLoaded The number of initialized ticks that the swap loaded
+
+    function quoteExactOutputSingle(ExactOutputSingleParams calldata params)
+        external
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
 }

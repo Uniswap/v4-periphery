@@ -354,6 +354,28 @@ contract QuoterTest is Test, Deployers {
         assertEq(initializedTicksLoadedList[1], 0);
     }
 
+    function testQuoter_quoteExactOutputSingle_0to1() public {
+        // encodePriceSqrt(100, 102)
+        uint160 sqrtPriceLimit = 78447570448055484695608110440;
+
+        (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) = quoter
+            .quoteExactOutputSingle(
+            ExactOutputSingleParams({
+                poolKey: key01,
+                zeroForOne: true,
+                recipient: address(this),
+                amountOut: type(uint128).max,
+                sqrtPriceLimitX96: sqrtPriceLimit,
+                hookData: ZERO_BYTES
+            })
+        );
+
+        logDeltas(deltaAmounts);
+        assertEq(-deltaAmounts[0], 9981);
+        assertEq(sqrtPriceX96After, 78447570448055484695608110440);
+        assertEq(initializedTicksLoaded, 0);
+    }
+
     function createPoolKey(MockERC20 tokenA, MockERC20 tokenB, address hookAddr)
         internal
         pure

@@ -17,6 +17,9 @@ contract Quoter is IQuoter {
     using PoolIdLibrary for PoolKey;
     using Hooks for IHooks;
 
+    /// @dev Transient storage variable used to check a safety condition in exact output swaps.
+    uint256 private amountOutCached;
+
     // v4 Singleton contract
     IPoolManager public immutable manager;
 
@@ -32,7 +35,7 @@ contract Quoter is IQuoter {
     {
         try manager.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
         catch (bytes memory reason) {
-            return _handleRevertExactInputSingle(reason, params.poolKey);
+            return _handleRevertSingle(reason, params.poolKey);
         }
     }
 
@@ -89,6 +92,18 @@ contract Quoter is IQuoter {
         }
     }
 
+    /// @inheritdoc IQuoter
+    function quoteExactOutputSingle(ExactOutputSingleParams memory params)
+        public
+        override
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
+    {
+        try manager.lock(abi.encode(SwapInfo(SwapType.ExactOutputSingle, abi.encode(params)))) {}
+        catch (bytes memory reason) {
+            return _handleRevertSingle(reason, params.poolKey);
+        }
+    }
+
     function lockAcquired(bytes calldata encodedSwapIntention) external returns (bytes memory) {
         if (msg.sender != address(manager)) {
             revert InvalidLockAcquiredSender();
@@ -99,6 +114,14 @@ contract Quoter is IQuoter {
         if (swapInfo.swapType == SwapType.ExactInputSingle) {
             (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
                 _quoteExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)));
+
+            bytes memory result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
+            assembly {
+                revert(add(0x20, result), mload(result))
+            }
+        } else if (swapInfo.swapType == SwapType.ExactOutputSingle) {
+            (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
+                _quoteExactOutputSingle(abi.decode(swapInfo.params, (ExactOutputSingleParams)));
 
             bytes memory result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
             assembly {
@@ -134,7 +157,7 @@ contract Quoter is IQuoter {
         return reason;
     }
 
-    function _handleRevertExactInputSingle(bytes memory reason, PoolKey memory poolKey)
+    function _handleRevertSingle(bytes memory reason, PoolKey memory poolKey)
         private
         view
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
@@ -218,6 +241,19 @@ contract Quoter is IQuoter {
             params.poolKey,
             params.zeroForOne,
             int256(int128(params.amountIn)),
+            params.sqrtPriceLimitX96,
+            params.hookData
+        );
+    }
+
+    function _quoteExactOutputSingle(ExactOutputSingleParams memory params)
+        private
+        returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter)
+    {
+        return _quoteExact(
+            params.poolKey,
+            params.zeroForOne,
+            -int256(int128(params.amountOut)),
             params.sqrtPriceLimitX96,
             params.hookData
         );
