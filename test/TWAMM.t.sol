@@ -76,9 +76,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
             }
         }
 
-        poolKey = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, twamm);
-        poolId = poolKey.toId();
-        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        (poolKey, poolId) = initPool(currency0, currency1, twamm, 3000, SQRT_RATIO_1_1, ZERO_BYTES);
 
         token0.approve(address(modifyPositionRouter), 100 ether);
         token1.approve(address(modifyPositionRouter), 100 ether);

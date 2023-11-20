@@ -80,14 +80,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     function setUp() public {
         deployFreshManagerAndRouters();
         router = new HookEnabledSwapRouter(manager);
-        (currency0, currency1) = deployMintAndApprove2Currencies();
-
-        token0 = new MockERC20("TestA", "A", 18);
-        token0.mint(address(this), 2 ** 128);
-        token1 = new MockERC20("TestB", "B", 18);
-        token1.mint(address(this), 2 ** 128);
-        token2 = new MockERC20("TestC", "C", 18);
-        token2.mint(address(this), 2 ** 128);
+        MockERC20[] memory tokens = deployTokens(3, 2 ** 128);
+        token0 = tokens[0];
+        token1 = tokens[1];
+        token2 = tokens[2];
 
         FullRangeImplementation impl = new FullRangeImplementation(manager, fullRange);
         vm.etch(address(fullRange), address(impl).code);
