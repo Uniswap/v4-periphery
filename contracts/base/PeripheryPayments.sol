@@ -12,6 +12,7 @@ using TransferHelper for address;
 using TransferHelper for IERC20Minimal;
 
 error InsufficientToken();
+error NativeTokenTransferFrom();
 
 abstract contract PeripheryPayments is IPeripheryPayments {
     /// @inheritdoc IPeripheryPayments
@@ -24,17 +25,18 @@ abstract contract PeripheryPayments is IPeripheryPayments {
         }
     }
 
-    /// @param token The token to pay
+    /// @param currency The currency to pay
     /// @param payer The entity that must pay
     /// @param recipient The entity that will receive payment
     /// @param value The amount to pay
-    function pay(address token, address payer, address recipient, uint256 value) internal {
+    function pay(Currency currency, address payer, address recipient, uint256 value) internal {
         if (payer == address(this)) {
             // pay with tokens already in the contract (for the exact input multihop case)
-            IERC20Minimal(token).safeTransfer(recipient, value);
+            currency.transfer(recipient, value);
         } else {
+            if (currency.isNative()) revert NativeTokenTransferFrom();
             // pull payment
-            IERC20Minimal(token).safeTransferFrom(payer, recipient, value);
+            IERC20Minimal(Currency.unwrap(currency)).safeTransferFrom(payer, recipient, value);
         }
     }
 }
