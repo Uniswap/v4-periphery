@@ -8,6 +8,9 @@ import {IPeripheryPayments} from "../interfaces/IPeripheryPayments.sol";
 
 import "../libraries/TransferHelper.sol";
 
+using TransferHelper for address;
+using TransferHelper for IERC20Minimal;
+
 error InsufficientToken();
 
 abstract contract PeripheryPayments is IPeripheryPayments {
@@ -17,13 +20,13 @@ abstract contract PeripheryPayments is IPeripheryPayments {
         if (balanceToken < amountMinimum) revert InsufficientToken();
 
         if (balanceToken > 0) {
-            TransferHelper.safeTransfer(IERC20Minimal(token), recipient, balanceToken);
+            IERC20Minimal(token).safeTransfer(recipient, balanceToken);
         }
     }
 
     /// @inheritdoc IPeripheryPayments
     function refundETH() external payable override {
-        if (address(this).balance > 0) TransferHelper.safeTransferETH(msg.sender, address(this).balance);
+        if (address(this).balance > 0) msg.sender.safeTransferETH(address(this).balance);
     }
 
     /// @param token The token to pay
@@ -33,10 +36,10 @@ abstract contract PeripheryPayments is IPeripheryPayments {
     function pay(address token, address payer, address recipient, uint256 value) internal {
         if (payer == address(this)) {
             // pay with tokens already in the contract (for the exact input multihop case)
-            TransferHelper.safeTransfer(IERC20Minimal(token), recipient, value);
+            IERC20Minimal(token).safeTransfer(recipient, value);
         } else {
             // pull payment
-            TransferHelper.safeTransferFrom(IERC20Minimal(token), payer, recipient, value);
+            IERC20Minimal(token).safeTransferFrom(payer, recipient, value);
         }
     }
 }

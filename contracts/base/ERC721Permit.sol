@@ -69,7 +69,10 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
         if (spender == owner) revert ApprovalToOwner();
 
         if (owner.code.length > 0) {
-            if (IERC1271(owner).isValidSignature(digest, abi.encodePacked(r, s, v)) != IERC1271.isValidSignature.selector) {
+            if (
+                IERC1271(owner).isValidSignature(digest, abi.encodePacked(r, s, v))
+                    != IERC1271.isValidSignature.selector
+            ) {
                 revert Unauthorized();
             }
         } else {
