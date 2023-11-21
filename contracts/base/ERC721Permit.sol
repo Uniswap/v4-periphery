@@ -7,11 +7,10 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ChainId} from "../libraries/ChainId.sol";
 import {IERC1271} from "../interfaces/external/IERC1271.sol";
 import {IERC721Permit} from "../interfaces/IERC721Permit.sol";
-import {BlockTimestamp} from "./BlockTimestamp.sol";
 
 /// @title ERC721 with permit
 /// @notice Nonfungible tokens that support an approve via signature, i.e. permit
-abstract contract ERC721Permit is BlockTimestamp, ERC721, IERC721Permit {
+abstract contract ERC721Permit is ERC721, IERC721Permit {
     /// @dev Gets the current nonce for a token ID and then increments it, returning the original value
     function _getAndIncrementNonce(uint256 tokenId) internal virtual returns (uint256);
 
@@ -52,7 +51,7 @@ abstract contract ERC721Permit is BlockTimestamp, ERC721, IERC721Permit {
         payable
         override
     {
-        require(_blockTimestamp() <= deadline, "Permit expired");
+        require(block.timestamp <= deadline, "Permit expired");
 
         bytes32 digest = keccak256(
             abi.encodePacked(
