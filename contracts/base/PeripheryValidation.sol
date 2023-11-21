@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
+error TransactionTooOld();
+
 abstract contract PeripheryValidation {
     modifier checkDeadline(uint256 deadline) {
-        require(block.timestamp <= deadline, "Transaction too old");
+        if (block.timestamp > deadline) revert TransactionTooOld();
         _;
     }
 }

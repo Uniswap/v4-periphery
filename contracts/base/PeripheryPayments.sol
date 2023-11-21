@@ -8,11 +8,13 @@ import {IPeripheryPayments} from "../interfaces/IPeripheryPayments.sol";
 
 import "../libraries/TransferHelper.sol";
 
+error InsufficientToken();
+
 abstract contract PeripheryPayments is IPeripheryPayments {
     /// @inheritdoc IPeripheryPayments
     function sweepToken(address token, uint256 amountMinimum, address recipient) public payable override {
         uint256 balanceToken = IERC20(token).balanceOf(address(this));
-        require(balanceToken >= amountMinimum, "Insufficient token");
+        if (balanceToken < amountMinimum) revert InsufficientToken();
 
         if (balanceToken > 0) {
             TransferHelper.safeTransfer(IERC20Minimal(token), recipient, balanceToken);

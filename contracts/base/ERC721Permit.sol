@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 import {ChainId} from "../libraries/ChainId.sol";
 import {IERC1271} from "../interfaces/external/IERC1271.sol";
 import {IERC721Permit} from "../interfaces/IERC721Permit.sol";
+
+error PermitExpired();
+error InvalidSignature();
+error ApprovalToOwner();
+error Unauthorized();
 
 /// @title ERC721 with permit
 /// @notice Nonfungible tokens that support an approve via signature, i.e. permit
@@ -51,7 +56,7 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
         payable
         override
     {
-        require(block.timestamp <= deadline, "Permit expired");
+        if (block.timestamp > deadline) revert PermitExpired();
 
         bytes32 digest = keccak256(
             abi.encodePacked(
@@ -61,14 +66,16 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
             )
         );
         address owner = ownerOf(tokenId);
-        require(spender != owner, "ERC721Permit: approval to current owner");
+        if (spender == owner) revert ApprovalToOwner();
 
         if (owner.code.length > 0) {
-            require(IERC1271(owner).isValidSignature(digest, abi.encodePacked(r, s, v)) == 0x1626ba7e, "Unauthorized");
+            if (IERC1271(owner).isValidSignature(digest, abi.encodePacked(r, s, v)) != IERC1271.isValidSignature.selector) {
+                revert Unauthorized();
+            }
         } else {
             address recoveredAddress = ecrecover(digest, v, r, s);
-            require(recoveredAddress != address(0), "Invalid signature");
-            require(recoveredAddress == owner, "Unauthorized");
+            if (recoveredAddress == address(0)) revert InvalidSignature();
+            if (recoveredAddress != owner) revert Unauthorized();
         }
 
         _approve(spender, tokenId);
