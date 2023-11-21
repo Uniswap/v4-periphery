@@ -53,6 +53,15 @@ struct ExactOutputSingleParams {
     bytes hookData;
 }
 
+struct ExactOutputSingleBatchParams {
+    PoolKey poolKey;
+    bool[] zeroForOnes;
+    address[] recipients;
+    uint128[] amountOuts;
+    uint160[] sqrtPriceLimitX96s;
+    bytes[] hookData;
+}
+
 struct ExactOutputParams {
     Currency currencyOut;
     PathKey[] path;
@@ -64,7 +73,7 @@ struct ExactOutputParams {
 library SwapIntention {
     function getPoolAndSwapDirection(PathKey memory params, Currency currencyIn)
         internal
-        view
+        pure
         returns (PoolKey memory poolKey, bool zeroForOne)
     {
         (Currency currency0, Currency currency1) = currencyIn < params.intermediateCurrency

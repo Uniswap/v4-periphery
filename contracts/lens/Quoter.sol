@@ -118,6 +118,45 @@ contract Quoter is IQuoter {
         }
     }
 
+    function quoteExactOutputBatch(ExactOutputSingleBatchParams memory params)
+        external
+        returns (
+            IQuoter.PoolDeltas[] memory deltas,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksLoadedList
+        )
+    {
+        if (
+            params.zeroForOnes.length != params.recipients.length
+                || params.recipients.length != params.amountOuts.length
+                || params.amountOuts.length != params.sqrtPriceLimitX96s.length
+                || params.sqrtPriceLimitX96s.length != params.hookData.length
+        ) {
+            revert InvalidQuoteBatchParams();
+        }
+
+        deltas = new IQuoter.PoolDeltas[](params.amountOuts.length);
+        sqrtPriceX96AfterList = new uint160[](params.amountOuts.length);
+        initializedTicksLoadedList = new uint32[](params.amountOuts.length);
+
+        for (uint256 i = 0; i < params.amountOuts.length; i++) {
+            ExactOutputSingleParams memory singleParams = ExactOutputSingleParams({
+                poolKey: params.poolKey,
+                zeroForOne: params.zeroForOnes[i],
+                recipient: params.recipients[i],
+                amountOut: params.amountOuts[i],
+                sqrtPriceLimitX96: params.sqrtPriceLimitX96s[i],
+                hookData: params.hookData[i]
+            });
+            (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) =
+                quoteExactOutputSingle(singleParams);
+
+            deltas[i] = IQuoter.PoolDeltas({currency0Delta: deltaAmounts[0], currency1Delta: deltaAmounts[1]});
+            sqrtPriceX96AfterList[i] = sqrtPriceX96After;
+            initializedTicksLoadedList[i] = initializedTicksLoaded;
+        }
+    }
+
     function lockAcquired(bytes calldata encodedSwapIntention) external returns (bytes memory) {
         if (msg.sender != address(manager)) {
             revert InvalidLockAcquiredSender();

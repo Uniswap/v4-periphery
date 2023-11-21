@@ -29,6 +29,9 @@ contract QuoterTest is Test, Deployers {
     // Max tick for full range with tick spacing of 60
     int24 internal constant MAX_TICK = -MIN_TICK;
 
+    uint160 internal constant SQRT_RATIO_100_102 = 78447570448055484695608110440;
+    uint160 internal constant SQRT_RATIO_102_100 = 80016521857016594389520272648;
+
     uint256 internal constant CONTROLLER_GAS_LIMIT = 500000;
 
     Quoter quoter;
@@ -354,9 +357,6 @@ contract QuoterTest is Test, Deployers {
     }
 
     function testQuoter_quoteExactOutputSingle_0to1() public {
-        //SQRT_RATIO_100_102
-        uint160 sqrtPriceLimit = 78447570448055484695608110440;
-
         (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) = quoter
             .quoteExactOutputSingle(
             ExactOutputSingleParams({
@@ -364,20 +364,17 @@ contract QuoterTest is Test, Deployers {
                 zeroForOne: true,
                 recipient: address(this),
                 amountOut: type(uint128).max,
-                sqrtPriceLimitX96: sqrtPriceLimit,
+                sqrtPriceLimitX96: SQRT_RATIO_100_102,
                 hookData: ZERO_BYTES
             })
         );
 
         assertEq(deltaAmounts[0], 9981);
-        assertEq(sqrtPriceX96After, sqrtPriceLimit);
+        assertEq(sqrtPriceX96After, SQRT_RATIO_100_102);
         assertEq(initializedTicksLoaded, 0);
     }
 
     function testQuoter_quoteExactOutputSingle_1to0() public {
-        //SQRT_RATIO_102_100
-        uint160 sqrtPriceLimit = 80016521857016594389520272648;
-
         (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) = quoter
             .quoteExactOutputSingle(
             ExactOutputSingleParams({
@@ -385,14 +382,63 @@ contract QuoterTest is Test, Deployers {
                 zeroForOne: false,
                 recipient: address(this),
                 amountOut: type(uint128).max,
-                sqrtPriceLimitX96: sqrtPriceLimit,
+                sqrtPriceLimitX96: SQRT_RATIO_102_100,
                 hookData: ZERO_BYTES
             })
         );
 
         assertEq(deltaAmounts[1], 9981);
-        assertEq(sqrtPriceX96After, sqrtPriceLimit);
+        assertEq(sqrtPriceX96After, SQRT_RATIO_102_100);
         assertEq(initializedTicksLoaded, 0);
+    }
+
+    function testQuoter_quoteExactOutputBatch() public {
+        bool[] memory zeroForOnes = new bool[](2);
+        zeroForOnes[0] = true;
+        zeroForOnes[1] = false;
+
+        address[] memory recipients = new address[](2);
+        recipients[0] = address(this);
+        recipients[1] = address(this);
+
+        // repeat for the three arrays below
+        uint128[] memory amountOuts = new uint128[](2);
+        amountOuts[0] = type(uint128).max;
+        amountOuts[1] = type(uint128).max;
+
+        uint160[] memory sqrtPriceLimitX96s = new uint160[](2);
+        sqrtPriceLimitX96s[0] = SQRT_RATIO_100_102;
+        sqrtPriceLimitX96s[1] = SQRT_RATIO_102_100;
+
+        bytes[] memory hookData = new bytes[](2);
+        hookData[0] = ZERO_BYTES;
+        hookData[1] = ZERO_BYTES;
+
+        (
+            IQuoter.PoolDeltas[] memory deltas,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksLoadedList
+        ) = quoter.quoteExactOutputBatch(
+            ExactOutputSingleBatchParams({
+                poolKey: key01,
+                zeroForOnes: zeroForOnes,
+                recipients: recipients,
+                amountOuts: amountOuts,
+                sqrtPriceLimitX96s: sqrtPriceLimitX96s,
+                hookData: hookData
+            })
+        );
+        assertEq(deltas.length, 2);
+        assertEq(uint128(deltas[0].currency0Delta), 9981);
+        assertEq(uint128(deltas[1].currency1Delta), 9981);
+
+        assertEq(sqrtPriceX96AfterList.length, 2);
+        assertEq(sqrtPriceX96AfterList[0], SQRT_RATIO_100_102);
+        assertEq(sqrtPriceX96AfterList[1], SQRT_RATIO_102_100);
+
+        assertEq(initializedTicksLoadedList.length, 2);
+        assertEq(initializedTicksLoadedList[0], 0);
+        assertEq(initializedTicksLoadedList[1], 0);
     }
 
     function testQuoter_quoteExactOutput_0to2_2TicksLoaded() public {
