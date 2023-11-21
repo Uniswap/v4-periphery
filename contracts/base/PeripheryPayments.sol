@@ -3,11 +3,11 @@ pragma solidity ^0.8.19;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
-
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {IPeripheryPayments} from "../interfaces/IPeripheryPayments.sol";
+import {TransferHelper} from "../libraries/TransferHelper.sol";
 
-import "../libraries/TransferHelper.sol";
-
+using CurrencyLibrary for Currency;
 using TransferHelper for address;
 using TransferHelper for IERC20Minimal;
 
@@ -15,18 +15,13 @@ error InsufficientToken();
 
 abstract contract PeripheryPayments is IPeripheryPayments {
     /// @inheritdoc IPeripheryPayments
-    function sweepToken(address token, uint256 amountMinimum, address recipient) public payable override {
-        uint256 balanceToken = IERC20(token).balanceOf(address(this));
-        if (balanceToken < amountMinimum) revert InsufficientToken();
+    function sweepToken(Currency currency, uint256 amountMinimum, address recipient) public payable override {
+        uint256 balanceCurrency = currency.balanceOfSelf();
+        if (balanceCurrency < amountMinimum) revert InsufficientToken();
 
-        if (balanceToken > 0) {
-            IERC20Minimal(token).safeTransfer(recipient, balanceToken);
+        if (balanceCurrency > 0) {
+            currency.transfer(recipient, balanceCurrency);
         }
-    }
-
-    /// @inheritdoc IPeripheryPayments
-    function refundETH() external payable override {
-        if (address(this).balance > 0) msg.sender.safeTransferETH(address(this).balance);
     }
 
     /// @param token The token to pay
