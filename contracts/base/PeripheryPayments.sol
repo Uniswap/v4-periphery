@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
+import {ERC20} from "solmate/tokens/ERC20.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 import {IPeripheryPayments} from "../interfaces/IPeripheryPayments.sol";
-import {TransferHelper} from "../libraries/TransferHelper.sol";
 
 using CurrencyLibrary for Currency;
-using TransferHelper for address;
-using TransferHelper for IERC20Minimal;
+using SafeTransferLib for address;
+using SafeTransferLib for ERC20;
 
 error InsufficientToken();
 error NativeTokenTransferFrom();
@@ -36,7 +35,7 @@ abstract contract PeripheryPayments is IPeripheryPayments {
         } else {
             if (currency.isNative()) revert NativeTokenTransferFrom();
             // pull payment
-            IERC20Minimal(Currency.unwrap(currency)).safeTransferFrom(payer, recipient, value);
+            ERC20(Currency.unwrap(currency)).safeTransferFrom(payer, recipient, value);
         }
     }
 }
