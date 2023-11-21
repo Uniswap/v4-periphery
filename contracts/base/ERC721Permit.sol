@@ -4,7 +4,6 @@ pragma solidity ^0.8.19;
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
-import {ChainId} from "../libraries/ChainId.sol";
 import {IERC1271} from "../interfaces/external/IERC1271.sol";
 import {IERC721Permit} from "../interfaces/IERC721Permit.sol";
 
@@ -39,7 +38,7 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
                 0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f,
                 nameHash,
                 versionHash,
-                ChainId.get(),
+                block.chainid,
                 address(this)
             )
         );
