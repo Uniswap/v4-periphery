@@ -2,7 +2,6 @@
 
 pragma solidity ^0.8.20;
 
-import "forge-std/console2.sol";
 import {PathKey} from "./PathKey.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
@@ -68,9 +67,6 @@ library SwapIntention {
         view
         returns (PoolKey memory poolKey, bool zeroForOne)
     {
-        console2.log(
-            "currencyIn: %s; currency0: %s", Currency.unwrap(currencyIn), Currency.unwrap(params.intermediateCurrency)
-        );
         (Currency currency0, Currency currency1) = currencyIn < params.intermediateCurrency
             ? (currencyIn, params.intermediateCurrency)
             : (params.intermediateCurrency, currencyIn);

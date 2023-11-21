@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import "forge-std/console2.sol";
 import "../libraries/SwapIntention.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
@@ -287,12 +286,6 @@ contract Quoter is IQuoter {
         initializedTicksLoadedList = new uint32[](pathLength);
         Currency prevCurrencyIn;
         uint128 prevAmountIn;
-
-        console2.log(
-            "cIn: %s; cOut: %s",
-            Currency.unwrap(params.path[pathLength - 1].intermediateCurrency),
-            Currency.unwrap(params.currencyOut)
-        );
 
         for (uint256 i = pathLength; i > 0; i--) {
             (PoolKey memory poolKey, bool oneForZero) = SwapIntention.getPoolAndSwapDirection(
