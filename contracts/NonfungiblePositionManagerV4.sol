@@ -10,7 +10,6 @@ import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.s
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 
 import {INonfungiblePositionManagerV4} from "./interfaces/INonfungiblePositionManagerV4.sol";
-import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {PeripheryValidation} from "./base/PeripheryValidation.sol";
 import {PeripheryPayments} from "./base/PeripheryPayments.sol";
 import {SelfPermit} from "./base/SelfPermit.sol";
@@ -23,7 +22,7 @@ error NonexistentToken();
 
 contract NonfungiblePositionManagerV4 is
     INonfungiblePositionManagerV4,
-    ERC721Permit,
+    ERC721,
     PeripheryValidation,
     PeripheryPayments,
     SelfPermit,
@@ -67,7 +66,7 @@ contract NonfungiblePositionManagerV4 is
     // TODO: does it still need WETH address in the constructor here?
     // TODO: use ERC721Permit2 here
     constructor(IPoolManager _poolManager, address _tokenDescriptor_)
-        ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
+        ERC721("Uniswap V4 Positions NFT-V1", "UNI-V4-POS")
     {
         poolManager = _poolManager;
         _tokenDescriptor = _tokenDescriptor_;
@@ -180,10 +179,6 @@ contract NonfungiblePositionManagerV4 is
         if (position.liquidity != 0 || position.tokensOwed0 != 0 || position.tokensOwed1 != 0) revert NotCleared();
         delete _positions[tokenId];
         _burn(tokenId);
-    }
-
-    function _getAndIncrementNonce(uint256 tokenId) internal override returns (uint256) {
-        return uint256(_positions[tokenId].nonce++);
     }
 
     /// @inheritdoc IERC721
