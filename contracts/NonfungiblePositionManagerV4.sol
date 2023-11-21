@@ -8,6 +8,7 @@ import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 
 import {INonfungiblePositionManagerV4} from "./interfaces/INonfungiblePositionManagerV4.sol";
 import {ERC721Permit} from "./base/ERC721Permit.sol";
@@ -24,7 +25,7 @@ contract NonfungiblePositionManagerV4 is
     SelfPermit,
     Multicall
 {
-    IPoolManager public immutable override poolManager;
+    IPoolManager public immutable poolManager;
 
     // details about the Uniswap position
     struct Position {
