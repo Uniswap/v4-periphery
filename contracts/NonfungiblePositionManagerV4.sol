@@ -2,7 +2,6 @@
 pragma solidity ^0.8.19;
 
 import {IERC721Metadata} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
-import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
@@ -195,17 +194,14 @@ contract NonfungiblePositionManagerV4 is
         emit Approval(ownerOf(tokenId), to, tokenId);
     }
 
-    /// @inheritdoc IERC721Enumerable
     function tokenByIndex(uint256 index) external view returns (uint256) {
         // TODO: implement this
     }
 
-    /// @inheritdoc IERC721Enumerable
     function tokenOfOwnerByIndex(address owner, uint256 index) external view returns (uint256) {
         // TODO: implement this
     }
 
-    /// @inheritdoc IERC721Enumerable
     function totalSupply() external view returns (uint256) {
         // TODO: implement this
     }
