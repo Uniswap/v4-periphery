@@ -16,6 +16,11 @@ import {PeripheryPayments} from "./base/PeripheryPayments.sol";
 import {SelfPermit} from "./base/SelfPermit.sol";
 import {Multicall} from "./base/Multicall.sol";
 
+error InvalidTokenID();
+error NotApproved();
+error NotCleared();
+error NonexistentToken();
+
 contract NonfungiblePositionManagerV4 is
     INonfungiblePositionManagerV4,
     ERC721Permit,
@@ -89,7 +94,7 @@ contract NonfungiblePositionManagerV4 is
         )
     {
         Position memory position = _positions[tokenId];
-        require(position.poolId != 0, "Invalid token ID");
+        if (position.poolId == 0) revert InvalidTokenID();
         PoolKey memory poolKey = _poolIdToPoolKey[position.poolId];
         return (
             position.nonce,
@@ -127,7 +132,7 @@ contract NonfungiblePositionManagerV4 is
     }
 
     modifier isAuthorizedForToken(uint256 tokenId) {
-        require(_isApprovedOrOwner(msg.sender, tokenId), "Not approved");
+        if (!_isApprovedOrOwner(msg.sender, tokenId)) revert NotApproved();
         _;
     }
 
@@ -172,7 +177,7 @@ contract NonfungiblePositionManagerV4 is
     /// @inheritdoc INonfungiblePositionManagerV4
     function burn(uint256 tokenId) external payable override isAuthorizedForToken(tokenId) {
         Position storage position = _positions[tokenId];
-        require(position.liquidity == 0 && position.tokensOwed0 == 0 && position.tokensOwed1 == 0, "Not cleared");
+        if (position.liquidity != 0 || position.tokensOwed0 != 0 || position.tokensOwed1 != 0) revert NotCleared();
         delete _positions[tokenId];
         _burn(tokenId);
     }
@@ -183,7 +188,7 @@ contract NonfungiblePositionManagerV4 is
 
     /// @inheritdoc IERC721
     function getApproved(uint256 tokenId) public view override(ERC721, IERC721) returns (address) {
-        require(_exists(tokenId), "ERC721: approved query for nonexistent token");
+        if (!_exists(tokenId)) revert NonexistentToken();
 
         return _positions[tokenId].operator;
     }
