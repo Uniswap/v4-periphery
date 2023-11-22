@@ -208,6 +208,7 @@ contract Quoter is IQuoter {
         }
     }
 
+    /// @dev check revert bytes and pass through if considered valid; otherwise revert with different message
     function validateRevertReason(bytes memory reason) private pure returns (bytes memory) {
         if (reason.length < MINIMUM_VALID_REASON_LENGTH) {
             if (reason.length < MINIMUM_REASON_LENGTH) {
@@ -221,6 +222,7 @@ contract Quoter is IQuoter {
         return reason;
     }
 
+    /// @dev parse revert bytes from a single-pool quote
     function _handleRevertSingle(bytes memory reason, PoolKey memory poolKey)
         private
         view
@@ -239,6 +241,7 @@ contract Quoter is IQuoter {
         initializedTicksLoaded = PoolTicksCounter.countInitializedTicksLoaded(manager, poolKey, tickBefore, tickAfter);
     }
 
+    /// @dev parse revert bytes from a potentially multi-hop quote and return the delta amounts, sqrtPriceX96After, and initializedTicksLoaded
     function _handleRevert(bytes memory reason)
         private
         pure
@@ -301,7 +304,7 @@ contract Quoter is IQuoter {
         private
         returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter)
     {
-        return _quoteExact(
+        return _swap(
             params.poolKey,
             params.zeroForOne,
             int256(int128(params.amountIn)),
@@ -360,7 +363,7 @@ contract Quoter is IQuoter {
         private
         returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter)
     {
-        return _quoteExact(
+        return _swap(
             params.poolKey,
             params.zeroForOne,
             -int256(uint256(params.amountOut)),
@@ -369,7 +372,8 @@ contract Quoter is IQuoter {
         );
     }
 
-    function _quoteExact(
+    /// @dev Execute a swap and return the amounts delta, as well as relevant pool state
+    function _swap(
         PoolKey memory poolKey,
         bool zeroForOne,
         int256 amountSpecified,
@@ -388,6 +392,7 @@ contract Quoter is IQuoter {
         (sqrtPriceX96After, tickAfter,,) = manager.getSlot0(poolKey.toId());
     }
 
+    /// @dev return either the sqrtPriceLimit from user input, or the max/min value possible depending on trade direction
     function _sqrtPriceLimitOrDefault(uint160 sqrtPriceLimitX96, bool zeroForOne) private pure returns (uint160) {
         return sqrtPriceLimitX96 == 0
             ? zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1
