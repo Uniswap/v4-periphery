@@ -32,7 +32,6 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts resulted from the swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     /// @return initializedTicksLoaded The number of initialized ticks that the swap loaded
-
     function quoteExactInputSingle(ExactInputSingleParams calldata params)
         external
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
@@ -65,7 +64,6 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts resulted from the swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     /// @return initializedTicksLoaded The number of initialized ticks that the swap loaded
-
     function quoteExactOutputSingle(ExactOutputSingleParams calldata params)
         external
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
