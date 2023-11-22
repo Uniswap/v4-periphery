@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import "../libraries/SwapIntention.sol";
-import {IQuoter} from "../interfaces/IQuoter.sol";
-import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
@@ -12,6 +9,9 @@ import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
+import "../libraries/SwapIntention.sol";
+import {IQuoter} from "../interfaces/IQuoter.sol";
+import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 
 contract Quoter is IQuoter {
     using PoolIdLibrary for PoolKey;
@@ -165,23 +165,18 @@ contract Quoter is IQuoter {
         }
 
         SwapInfo memory swapInfo = abi.decode(encodedSwapIntention, (SwapInfo));
+        bytes memory result;
 
         if (swapInfo.swapType == SwapType.ExactInputSingle) {
             (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
                 _quoteExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)));
 
-            bytes memory result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
-            assembly {
-                revert(add(0x20, result), mload(result))
-            }
+            result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
         } else if (swapInfo.swapType == SwapType.ExactOutputSingle) {
             (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
                 _quoteExactOutputSingle(abi.decode(swapInfo.params, (ExactOutputSingleParams)));
 
-            bytes memory result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
-            assembly {
-                revert(add(0x20, result), mload(result))
-            }
+            result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
         } else if (swapInfo.swapType == SwapType.ExactInput) {
             (
                 int128[] memory deltaAmounts,
@@ -189,10 +184,7 @@ contract Quoter is IQuoter {
                 uint32[] memory initializedTicksLoadedList
             ) = _quoteExactInput(abi.decode(swapInfo.params, (ExactInputParams)));
 
-            bytes memory result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
-            assembly {
-                revert(add(0x20, result), mload(result))
-            }
+            result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
         } else if (swapInfo.swapType == SwapType.ExactOutput) {
             (
                 int128[] memory deltaAmounts,
@@ -200,12 +192,12 @@ contract Quoter is IQuoter {
                 uint32[] memory initializedTicksLoadedList
             ) = _quoteExactOutput(abi.decode(swapInfo.params, (ExactOutputParams)));
 
-            bytes memory result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
-            assembly {
-                revert(add(0x20, result), mload(result))
-            }
+            result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
         } else {
             revert InvalidQuoteType();
+        }
+        assembly {
+            revert(add(0x20, result), mload(result))
         }
     }
 
