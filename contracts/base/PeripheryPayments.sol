@@ -12,7 +12,7 @@ abstract contract PeripheryPayments is IPeripheryPayments {
     using SafeTransferLib for ERC20;
 
     error InsufficientToken();
-    error NativeTokenTransferFrom();    
+    error NativeTokenTransferFrom();
 
     /// @inheritdoc IPeripheryPayments
     function sweepToken(Currency currency, uint256 amountMinimum, address recipient) public payable override {
