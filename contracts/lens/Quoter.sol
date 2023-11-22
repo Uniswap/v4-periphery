@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
+import "forge-std/console2.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
@@ -22,6 +23,12 @@ contract Quoter is IQuoter {
 
     // v4 Singleton contract
     IPoolManager public immutable manager;
+
+    /// @dev function selector + length of bytes as uint256 + min length of revert reason padded to multiple of 32 bytes
+    uint256 internal constant MINIMUM_REASON_LENGTH = 68;
+
+    /// @dev int128[2] + sqrtPriceX96After padded to 32bytes + intializeTicksLoaded padded to 32bytes
+    uint256 internal constant MINIMUM_VALID_REASON_LENGTH = 96;
 
     constructor(address _poolManager) {
         manager = IPoolManager(_poolManager);
@@ -202,9 +209,8 @@ contract Quoter is IQuoter {
     }
 
     function validateRevertReason(bytes memory reason) private pure returns (bytes memory) {
-        if (reason.length < 96) {
-            // function selector + length of bytes as uint256 + min length of revert reason padded to multiple of 32 bytes
-            if (reason.length < 68) {
+        if (reason.length < MINIMUM_VALID_REASON_LENGTH) {
+            if (reason.length < MINIMUM_REASON_LENGTH) {
                 revert UnexpectedRevertBytes();
             }
             assembly {
