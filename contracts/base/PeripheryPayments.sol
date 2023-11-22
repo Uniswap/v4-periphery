@@ -6,14 +6,14 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Curren
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 import {IPeripheryPayments} from "../interfaces/IPeripheryPayments.sol";
 
-using CurrencyLibrary for Currency;
-using SafeTransferLib for address;
-using SafeTransferLib for ERC20;
-
 error InsufficientToken();
 error NativeTokenTransferFrom();
 
 abstract contract PeripheryPayments is IPeripheryPayments {
+    using CurrencyLibrary for Currency;
+    using SafeTransferLib for address;
+    using SafeTransferLib for ERC20;
+
     /// @inheritdoc IPeripheryPayments
     function sweepToken(Currency currency, uint256 amountMinimum, address recipient) public payable override {
         uint256 balanceCurrency = currency.balanceOfSelf();
