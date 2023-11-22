@@ -3,10 +3,6 @@ pragma solidity ^0.8.15;
 
 import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
 
-error TransferFailed();
-error STF();
-error STE();
-
 /// @title TransferHelper
 /// @notice Contains helper methods for interacting with ERC20 tokens that do not consistently return true/false
 /// @dev implementation from https://github.com/Rari-Capital/solmate/blob/main/src/utils/SafeTransferLib.sol#L63
@@ -41,7 +37,7 @@ library TransferHelper {
                 )
         }
 
-        if (!success) revert TransferFailed();
+        require(success, "TRANSFER_FAILED");
     }
 
     /// @notice Transfers tokens from from to a recipient
@@ -53,15 +49,6 @@ library TransferHelper {
     function safeTransferFrom(IERC20Minimal token, address from, address to, uint256 value) internal {
         (bool success, bytes memory data) =
             address(token).call(abi.encodeWithSelector(IERC20Minimal.transferFrom.selector, from, to, value));
-        if (!success || !(data.length == 0 || abi.decode(data, (bool)))) revert STF();
-    }
-
-    /// @notice Transfers ETH to the recipient address
-    /// @dev Fails with `STE`
-    /// @param to The destination of the transfer
-    /// @param value The value to be transferred
-    function safeTransferETH(address to, uint256 value) internal {
-        (bool success,) = to.call{value: value}(new bytes(0));
-        if (!success) revert STE();
+        require(success && (data.length == 0 || abi.decode(data, (bool))), "STF");
     }
 }
