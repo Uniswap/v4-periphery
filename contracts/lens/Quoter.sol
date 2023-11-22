@@ -104,8 +104,10 @@ contract Quoter is IQuoter {
         }
     }
 
+    /// @inheritdoc IQuoter
     function quoteExactOutput(ExactOutputParams memory params)
-        external
+        public
+        override
         returns (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,

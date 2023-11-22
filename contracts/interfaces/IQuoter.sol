@@ -67,4 +67,21 @@ interface IQuoter {
     function quoteExactOutputSingle(ExactOutputSingleParams calldata params)
         external
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
+
+    /// @notice Returns the delta amounts along the swap path for a given exact output swap
+    /// @param params the params for the quote, encoded as 'ExactInputParams'
+    /// currencyOut The output currency of the swap
+    /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
+    /// recipient The indented recipient of the output tokens
+    /// amountOut The desired output amount
+    /// @return deltaAmounts Delta amounts along the path resulted from the swap
+    /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
+    /// @return initializedTicksLoadedList List of the initialized ticks that the swap loaded for each pool in the path
+    function quoteExactOutput(ExactOutputParams memory params)
+        external
+        returns (
+            int128[] memory deltaAmounts,
+            uint160[] memory sqrtPriceX96AfterList,
+            uint32[] memory initializedTicksLoadedList
+        );
 }
