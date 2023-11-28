@@ -76,9 +76,7 @@ interface INonfungiblePositionManagerV4 is ILockCallback, IPeripheryPayments, IE
         );
 
     struct MintParams {
-        address token0;
-        address token1;
-        uint24 fee;
+        PoolKey poolKey;
         int24 tickLower;
         int24 tickUpper;
         uint256 amount0Desired;
