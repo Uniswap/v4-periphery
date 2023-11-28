@@ -14,6 +14,7 @@ interface IQuoter {
     error InvalidQuoteTypeInRevert();
     error InvalidLockAcquiredSender();
     error InvalidQuoteBatchParams();
+    error NotSelf();
     error UnexpectedRevertBytes();
 
     struct PoolDeltas {

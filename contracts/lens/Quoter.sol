@@ -10,7 +10,17 @@ import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import "../libraries/SwapIntention.sol";
+import {
+    SwapType,
+    SwapInfo,
+    SwapIntention,
+    ExactInputSingleParams,
+    ExactInputSingleBatchParams,
+    ExactInputParams,
+    ExactOutputSingleParams,
+    ExactOutputSingleBatchParams,
+    ExactOutputParams
+} from "../libraries/SwapIntention.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 
@@ -30,6 +40,12 @@ contract Quoter is IQuoter {
     /// @dev min valid reason is 3-words long
     /// @dev int128[2] + sqrtPriceX96After padded to 32bytes + intializeTicksLoaded padded to 32bytes
     uint256 internal constant MINIMUM_VALID_REASON_LENGTH = 96;
+
+    /// @dev Only this address may call this function
+    modifier selfOnly() {
+        if (msg.sender != address(this)) revert NotSelf();
+        _;
+    }
 
     constructor(address _poolManager) {
         manager = IPoolManager(_poolManager);
