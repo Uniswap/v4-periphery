@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import {IERC721Metadata} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
 import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
+import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback//ILockCallback.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 
@@ -11,7 +12,7 @@ import {IPeripheryPayments} from "./IPeripheryPayments.sol";
 /// @title Non-fungible token for positions
 /// @notice Wraps Uniswap V4 positions in a non-fungible token interface which allows for them to be transferred
 /// and authorized.
-interface INonfungiblePositionManagerV4 is IPeripheryPayments, IERC721Metadata, IERC721Enumerable {
+interface INonfungiblePositionManagerV4 is ILockCallback, IPeripheryPayments, IERC721Metadata, IERC721Enumerable {
     /// @notice Emitted when liquidity is increased for a position NFT
     /// @dev Also emitted when a token is minted
     /// @param tokenId The ID of the token for which liquidity was increased

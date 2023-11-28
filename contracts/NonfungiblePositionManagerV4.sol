@@ -15,11 +15,6 @@ import {PeripheryPayments} from "./base/PeripheryPayments.sol";
 import {SelfPermit} from "./base/SelfPermit.sol";
 import {Multicall} from "./base/Multicall.sol";
 
-error InvalidTokenID();
-error NotApproved();
-error NotCleared();
-error NonexistentToken();
-
 contract NonfungiblePositionManagerV4 is
     INonfungiblePositionManagerV4,
     ERC721,
@@ -29,6 +24,11 @@ contract NonfungiblePositionManagerV4 is
     Multicall
 {
     IPoolManager public immutable poolManager;
+
+    error InvalidTokenID();
+    error NotApproved();
+    error NotCleared();
+    error NonexistentToken();
 
     // details about the Uniswap position
     struct Position {
@@ -109,6 +109,10 @@ contract NonfungiblePositionManagerV4 is
             position.tokensOwed0,
             position.tokensOwed1
         );
+    }
+
+    function lockAcquired(bytes calldata rawData) external returns (bytes memory) {
+        // TODO: implement this
     }
 
     /// @inheritdoc INonfungiblePositionManagerV4
