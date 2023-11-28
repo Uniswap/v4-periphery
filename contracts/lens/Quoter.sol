@@ -27,6 +27,7 @@ contract Quoter is IQuoter {
     /// @dev function selector + length of bytes as uint256 + min length of revert reason padded to multiple of 32 bytes
     uint256 internal constant MINIMUM_REASON_LENGTH = 68;
 
+    /// @dev min valid reason is 3-words long
     /// @dev int128[2] + sqrtPriceX96After padded to 32bytes + intializeTicksLoaded padded to 32bytes
     uint256 internal constant MINIMUM_VALID_REASON_LENGTH = 96;
 
