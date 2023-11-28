@@ -5,7 +5,7 @@ import {IERC721Metadata} from "@openzeppelin/contracts/token/ERC721/extensions/I
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 
@@ -23,6 +23,8 @@ contract NonfungiblePositionManagerV4 is
     SelfPermit,
     Multicall
 {
+    using PoolIdLibrary for PoolKey;
+
     IPoolManager public immutable poolManager;
 
     error InvalidTokenID();
@@ -31,13 +33,13 @@ contract NonfungiblePositionManagerV4 is
     error NonexistentToken();
 
     // details about the Uniswap position
-    struct Position {
+    struct TokenPosition {
         // the nonce for permits
         uint96 nonce;
         // the address that is approved for spending this token
         address operator;
         // the hashed poolKey of the pool with which this token is connected
-        bytes32 poolId;
+        PoolId poolId;
         // the tick range of the position
         int24 tickLower;
         int24 tickUpper;
@@ -55,7 +57,7 @@ contract NonfungiblePositionManagerV4 is
     mapping(bytes32 => PoolKey) private _poolIdToPoolKey;
 
     /// @dev The token ID position data
-    mapping(uint256 => Position) private _positions;
+    mapping(uint256 => TokenPosition) private _positions;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint176 private _nextId = 1;
@@ -92,9 +94,9 @@ contract NonfungiblePositionManagerV4 is
             uint128 tokensOwed1
         )
     {
-        Position memory position = _positions[tokenId];
-        if (position.poolId == 0) revert InvalidTokenID();
-        PoolKey memory poolKey = _poolIdToPoolKey[position.poolId];
+        TokenPosition memory position = _positions[tokenId];
+        if (PoolId.unwrap(position.poolId) == 0) revert InvalidTokenID();
+        PoolKey memory poolKey = _poolIdToPoolKey[PoolId.unwrap(position.poolId)];
         return (
             position.nonce,
             position.operator,
@@ -179,7 +181,7 @@ contract NonfungiblePositionManagerV4 is
 
     /// @inheritdoc INonfungiblePositionManagerV4
     function burn(uint256 tokenId) external payable override isAuthorizedForToken(tokenId) {
-        Position storage position = _positions[tokenId];
+        TokenPosition storage position = _positions[tokenId];
         if (position.liquidity != 0 || position.tokensOwed0 != 0 || position.tokensOwed1 != 0) revert NotCleared();
         delete _positions[tokenId];
         _burn(tokenId);
