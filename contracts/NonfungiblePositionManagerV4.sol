@@ -113,14 +113,6 @@ contract NonfungiblePositionManagerV4 is
     }
 
     /// @inheritdoc INonfungiblePositionManagerV4
-    function createAndInitializePoolIfNecessary(PoolKey memory poolkey, uint160 sqrtPriceX96, bytes memory initData)
-        external
-        payable
-    {
-        // TODO: implement this
-    }
-
-    /// @inheritdoc INonfungiblePositionManagerV4
     function mint(MintParams calldata params)
         external
         payable

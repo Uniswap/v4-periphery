@@ -34,14 +34,6 @@ interface INonfungiblePositionManagerV4 is IPeripheryImmutableState, IERC721Meta
     /// @param amount1 The amount of token1 owed to the position that was collected
     event Collect(uint256 indexed tokenId, address recipient, uint256 amount0, uint256 amount1);
 
-    /// @notice Creates a new pool if it does not exist, then initializes if not initialized
-    /// @dev This method can be bundled with others via IMulticall for the first action (e.g. mint) performed against a pool
-    /// @param sqrtPriceX96 The initial square root price of the pool as a Q64.96 value
-    /// @param initData The initial square root price of the pool as a Q64.96 value
-    function createAndInitializePoolIfNecessary(PoolKey memory poolkey, uint160 sqrtPriceX96, bytes memory initData)
-        external
-        payable;
-
     /// @notice Returns the position information associated with a given token ID.
     /// @dev Throws if the token ID is not valid.
     /// @param tokenId The ID of the token that represents the position
