@@ -14,6 +14,7 @@ import {PeripheryValidation} from "./base/PeripheryValidation.sol";
 import {PeripheryPayments} from "./base/PeripheryPayments.sol";
 import {PeripheryImmutableState} from "./base/PeripheryImmutableState.sol";
 import {SelfPermit} from "./base/SelfPermit.sol";
+import {LiquidityManagement} from "./base/LiquidityManagement.sol";
 import {Multicall} from "./base/Multicall.sol";
 
 contract NonfungiblePositionManagerV4 is
@@ -22,6 +23,7 @@ contract NonfungiblePositionManagerV4 is
     PeripheryImmutableState,
     PeripheryValidation,
     PeripheryPayments,
+    LiquidityManagement,
     SelfPermit,
     Multicall
 {

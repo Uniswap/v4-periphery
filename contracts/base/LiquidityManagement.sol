@@ -16,7 +16,7 @@ abstract contract LiquidityManagement is ILockCallback, ILiquidityManagement, Pe
     }
 
     function lockAcquired(bytes calldata rawData) external override returns (bytes memory) {
-        // TODO: handle mint/add liquidity here
+        // TODO: handle mint/add/decrease liquidity here
         return abi.encode(0);
     }
 }
