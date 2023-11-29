@@ -8,6 +8,7 @@ import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {Position} from "@uniswap/v4-core/contracts/libraries/Position.sol";
 
 import {INonfungiblePositionManagerV4} from "./interfaces/INonfungiblePositionManagerV4.sol";
 import {PeripheryValidation} from "./base/PeripheryValidation.sol";
@@ -112,6 +113,15 @@ contract NonfungiblePositionManagerV4 is
         );
     }
 
+    /// @dev Caches a pool key
+    function cachePoolKey(PoolKey memory poolKey) private returns (PoolId poolId) {
+        poolId = poolKey.toId();
+        // uninitialized check
+        if (_poolIdToPoolKey[PoolId.unwrap(poolId)].tickSpacing == 0) {
+            _poolIdToPoolKey[PoolId.unwrap(poolId)] = poolKey;
+        }
+    }
+
     /// @inheritdoc INonfungiblePositionManagerV4
     function mint(MintParams calldata params)
         external
@@ -120,7 +130,37 @@ contract NonfungiblePositionManagerV4 is
         checkDeadline(params.deadline)
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
-        // TODO: implement this
+        (liquidity, amount0, amount1) = addLiquidity(
+            AddLiquidityParams({
+                poolKey: params.poolKey,
+                tickLower: params.tickLower,
+                tickUpper: params.tickUpper,
+                amount0Desired: params.amount0Desired,
+                amount1Desired: params.amount1Desired,
+                amount0Min: params.amount0Min,
+                amount1Min: params.amount1Min,
+                hookData: params.hookData
+            })
+        );
+
+        tokenId = _nextId++;
+        _mint(params.recipient, tokenId);
+
+        PoolId poolId = cachePoolKey(params.poolKey);
+        Position.Info memory positionInfo =
+            poolManager.getPosition(poolId, address(this), params.tickLower, params.tickUpper);
+        _positions[tokenId] = TokenPosition({
+            nonce: 0,
+            operator: address(0),
+            poolId: poolId,
+            tickLower: params.tickLower,
+            tickUpper: params.tickUpper,
+            liquidity: liquidity,
+            feeGrowthInside0LastX128: positionInfo.feeGrowthInside0LastX128,
+            feeGrowthInside1LastX128: positionInfo.feeGrowthInside1LastX128,
+            tokensOwed0: 0,
+            tokensOwed1: 0
+        });
     }
 
     /// @inheritdoc INonfungiblePositionManagerV4
