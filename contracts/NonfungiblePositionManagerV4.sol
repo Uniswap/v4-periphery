@@ -65,8 +65,6 @@ contract NonfungiblePositionManagerV4 is
     /// @dev The address of the token descriptor contract, which handles generating token URIs for position tokens
     address private immutable _tokenDescriptor;
 
-    // TODO: does it still need WETH address in the constructor here?
-    // TODO: use ERC721Permit2 here
     constructor(IPoolManager _poolManager, address _tokenDescriptor_)
         PeripheryImmutableState(_poolManager)
         ERC721("Uniswap V4 Positions NFT-V1", "UNI-V4-POS")
@@ -113,10 +111,6 @@ contract NonfungiblePositionManagerV4 is
         );
     }
 
-    function lockAcquired(bytes calldata rawData) external returns (bytes memory) {
-        // TODO: implement this
-    }
-
     /// @inheritdoc INonfungiblePositionManagerV4
     function createAndInitializePoolIfNecessary(PoolKey memory poolkey, uint160 sqrtPriceX96, bytes memory initData)
         external
@@ -134,6 +128,7 @@ contract NonfungiblePositionManagerV4 is
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         // TODO: implement this
+        // will do something like return mintEntry(params)
     }
 
     modifier isAuthorizedForToken(uint256 tokenId) {
