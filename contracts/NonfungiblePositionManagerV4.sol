@@ -12,20 +12,20 @@ import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {INonfungiblePositionManagerV4} from "./interfaces/INonfungiblePositionManagerV4.sol";
 import {PeripheryValidation} from "./base/PeripheryValidation.sol";
 import {PeripheryPayments} from "./base/PeripheryPayments.sol";
+import {PeripheryImmutableState} from "./base/PeripheryImmutableState.sol";
 import {SelfPermit} from "./base/SelfPermit.sol";
 import {Multicall} from "./base/Multicall.sol";
 
 contract NonfungiblePositionManagerV4 is
     INonfungiblePositionManagerV4,
     ERC721,
+    PeripheryImmutableState,
     PeripheryValidation,
     PeripheryPayments,
     SelfPermit,
     Multicall
 {
     using PoolIdLibrary for PoolKey;
-
-    IPoolManager public immutable poolManager;
 
     error InvalidTokenID();
     error NotApproved();
@@ -68,9 +68,9 @@ contract NonfungiblePositionManagerV4 is
     // TODO: does it still need WETH address in the constructor here?
     // TODO: use ERC721Permit2 here
     constructor(IPoolManager _poolManager, address _tokenDescriptor_)
+        PeripheryImmutableState(_poolManager)
         ERC721("Uniswap V4 Positions NFT-V1", "UNI-V4-POS")
     {
-        poolManager = _poolManager;
         _tokenDescriptor = _tokenDescriptor_;
     }
 
