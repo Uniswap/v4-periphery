@@ -97,7 +97,7 @@ abstract contract LiquidityManagement is ILockCallback, PeripheryImmutableState,
             return abi.encode(liquidity, delta.amount0(), delta.amount1());
         }
 
-        // TODO: handle add/decrease liquidity here
+        // TODO: handle decrease liquidity here
         return abi.encode(0);
     }
 }
