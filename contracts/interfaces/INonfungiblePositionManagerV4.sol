@@ -7,19 +7,12 @@ import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 
 import {IPeripheryPayments} from "./IPeripheryPayments.sol";
-import {ILiquidityManagement} from "./ILiquidityManagement.sol";
 import {IPeripheryImmutableState} from "./IPeripheryImmutableState.sol";
 
 /// @title Non-fungible token for positions
 /// @notice Wraps Uniswap V4 positions in a non-fungible token interface which allows for them to be transferred
 /// and authorized.
-interface INonfungiblePositionManagerV4 is
-    ILiquidityManagement,
-    IPeripheryPayments,
-    IPeripheryImmutableState,
-    IERC721Metadata,
-    IERC721Enumerable
-{
+interface INonfungiblePositionManagerV4 is IPeripheryImmutableState, IERC721Metadata, IERC721Enumerable {
     /// @notice Emitted when liquidity is increased for a position NFT
     /// @dev Also emitted when a token is minted
     /// @param tokenId The ID of the token for which liquidity was increased
@@ -82,6 +75,19 @@ interface INonfungiblePositionManagerV4 is
             uint128 tokensOwed1
         );
 
+    struct MintParams {
+        PoolKey poolKey;
+        int24 tickLower;
+        int24 tickUpper;
+        uint256 amount0Desired;
+        uint256 amount1Desired;
+        uint256 amount0Min;
+        uint256 amount1Min;
+        address recipient;
+        uint256 deadline;
+        bytes hookData;
+    }
+
     /// @notice Creates a new position wrapped in a NFT
     /// @dev Call this when the pool does exist and is initialized. Note that if the pool is created but not initialized
     /// a method does not exist, i.e. the pool is assumed to be initialized.
@@ -94,6 +100,15 @@ interface INonfungiblePositionManagerV4 is
         external
         payable
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
+
+    struct IncreaseLiquidityParams {
+        uint256 tokenId;
+        uint256 amount0Desired;
+        uint256 amount1Desired;
+        uint256 amount0Min;
+        uint256 amount1Min;
+        uint256 deadline;
+    }
 
     /// @notice Increases the amount of liquidity in a position, with tokens paid by the `msg.sender`
     /// @param params tokenId The ID of the token for which liquidity is being increased,
@@ -110,6 +125,14 @@ interface INonfungiblePositionManagerV4 is
         payable
         returns (uint128 liquidity, uint256 amount0, uint256 amount1);
 
+    struct DecreaseLiquidityParams {
+        uint256 tokenId;
+        uint128 liquidity;
+        uint256 amount0Min;
+        uint256 amount1Min;
+        uint256 deadline;
+    }
+
     /// @notice Decreases the amount of liquidity in a position and accounts it to the position
     /// @param params tokenId The ID of the token for which liquidity is being decreased,
     /// amount The amount by which liquidity will be decreased,
@@ -122,6 +145,13 @@ interface INonfungiblePositionManagerV4 is
         external
         payable
         returns (uint256 amount0, uint256 amount1);
+
+    struct CollectParams {
+        uint256 tokenId;
+        address recipient;
+        uint128 amount0Max;
+        uint128 amount1Max;
+    }
 
     /// @notice Collects up to a maximum amount of fees owed to a specific position to the recipient
     /// @param params tokenId The ID of the NFT for which tokens are being collected,

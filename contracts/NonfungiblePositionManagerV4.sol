@@ -22,7 +22,6 @@ contract NonfungiblePositionManagerV4 is
     ERC721,
     PeripheryImmutableState,
     PeripheryValidation,
-    PeripheryPayments,
     LiquidityManagement,
     SelfPermit,
     Multicall
@@ -130,7 +129,6 @@ contract NonfungiblePositionManagerV4 is
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         // TODO: implement this
-        // will do something like return mintEntry(params)
     }
 
     /// @inheritdoc INonfungiblePositionManagerV4
