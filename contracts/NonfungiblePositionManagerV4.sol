@@ -133,15 +133,6 @@ contract NonfungiblePositionManagerV4 is
         // will do something like return mintEntry(params)
     }
 
-    modifier isAuthorizedForToken(uint256 tokenId) {
-        if (!_isApprovedOrOwner(msg.sender, tokenId)) revert NotApproved();
-        _;
-    }
-
-    function tokenURI(uint256 tokenId) public view override(ERC721, IERC721Metadata) returns (string memory) {
-        // TODO: implement this
-    }
-
     /// @inheritdoc INonfungiblePositionManagerV4
     function increaseLiquidity(IncreaseLiquidityParams calldata params)
         external
@@ -182,6 +173,15 @@ contract NonfungiblePositionManagerV4 is
         if (position.liquidity != 0 || position.tokensOwed0 != 0 || position.tokensOwed1 != 0) revert NotCleared();
         delete _positions[tokenId];
         _burn(tokenId);
+    }
+
+    modifier isAuthorizedForToken(uint256 tokenId) {
+        if (!_isApprovedOrOwner(msg.sender, tokenId)) revert NotApproved();
+        _;
+    }
+
+    function tokenURI(uint256 tokenId) public view override(ERC721, IERC721Metadata) returns (string memory) {
+        // TODO: implement this
     }
 
     /// @inheritdoc IERC721
