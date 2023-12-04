@@ -57,7 +57,7 @@ contract Quoter is IQuoter {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        try manager.lock(abi.encode(SwapInfo(SwapType.ExactInputSingle, abi.encode(params)))) {}
+        try manager.lock(abi.encodeWithSelector(this._quoteExactInputSingle.selector, params)) {}
         catch (bytes memory reason) {
             return _handleRevertSingle(reason, params.poolKey);
         }
@@ -72,7 +72,7 @@ contract Quoter is IQuoter {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try manager.lock(abi.encode(SwapInfo(SwapType.ExactInput, abi.encode(params)))) {}
+        try manager.lock(abi.encodeWithSelector(this._quoteExactInput.selector, params)) {}
         catch (bytes memory reason) {
             return _handleRevert(reason);
         }
@@ -122,7 +122,7 @@ contract Quoter is IQuoter {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        try manager.lock(abi.encode(SwapInfo(SwapType.ExactOutputSingle, abi.encode(params)))) {}
+        try manager.lock(abi.encodeWithSelector(this._quoteExactOutputSingle.selector, params)) {}
         catch (bytes memory reason) {
             return _handleRevertSingle(reason, params.poolKey);
         }
@@ -138,7 +138,7 @@ contract Quoter is IQuoter {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try manager.lock(abi.encode(SwapInfo(SwapType.ExactOutput, abi.encode(params)))) {}
+        try manager.lock(abi.encodeWithSelector(this._quoteExactOutput.selector, params)) {}
         catch (bytes memory reason) {
             return _handleRevert(reason);
         }
@@ -183,46 +183,54 @@ contract Quoter is IQuoter {
         }
     }
 
-    function lockAcquired(bytes calldata encodedSwapIntention) external returns (bytes memory) {
+    function lockAcquired(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(manager)) {
             revert InvalidLockAcquiredSender();
         }
 
-        SwapInfo memory swapInfo = abi.decode(encodedSwapIntention, (SwapInfo));
-        bytes memory result;
-
-        if (swapInfo.swapType == SwapType.ExactInputSingle) {
-            (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
-                _quoteExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)));
-
-            result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
-        } else if (swapInfo.swapType == SwapType.ExactOutputSingle) {
-            (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
-                _quoteExactOutputSingle(abi.decode(swapInfo.params, (ExactOutputSingleParams)));
-
-            result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
-        } else if (swapInfo.swapType == SwapType.ExactInput) {
-            (
-                int128[] memory deltaAmounts,
-                uint160[] memory sqrtPriceX96AfterList,
-                uint32[] memory initializedTicksLoadedList
-            ) = _quoteExactInput(abi.decode(swapInfo.params, (ExactInputParams)));
-
-            result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
-        } else if (swapInfo.swapType == SwapType.ExactOutput) {
-            (
-                int128[] memory deltaAmounts,
-                uint160[] memory sqrtPriceX96AfterList,
-                uint32[] memory initializedTicksLoadedList
-            ) = _quoteExactOutput(abi.decode(swapInfo.params, (ExactOutputParams)));
-
-            result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
-        } else {
-            revert InvalidQuoteType();
-        }
+        (bool success, bytes memory returnData) = address(this).call(data);
+        if (success) return returnData;
+        if (returnData.length == 0) revert LockFailure();
+        // if the call failed, bubble up the reason
+        /// @solidity memory-safe-assembly
         assembly {
-            revert(add(0x20, result), mload(result))
+            revert(add(returnData, 32), mload(returnData))
         }
+        // SwapInfo memory swapInfo = abi.decode(encodedSwapIntention, (SwapInfo));
+        // bytes memory result;
+
+        // if (swapInfo.swapType == SwapType.ExactInputSingle) {
+        //     (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
+        //         _quoteExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)));
+
+        //     result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
+        // } else if (swapInfo.swapType == SwapType.ExactOutputSingle) {
+        //     (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
+        //         _quoteExactOutputSingle(abi.decode(swapInfo.params, (ExactOutputSingleParams)));
+
+        //     result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
+        // } else if (swapInfo.swapType == SwapType.ExactInput) {
+        //     (
+        //         int128[] memory deltaAmounts,
+        //         uint160[] memory sqrtPriceX96AfterList,
+        //         uint32[] memory initializedTicksLoadedList
+        //     ) = _quoteExactInput(abi.decode(swapInfo.params, (ExactInputParams)));
+
+        //     result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
+        // } else if (swapInfo.swapType == SwapType.ExactOutput) {
+        //     (
+        //         int128[] memory deltaAmounts,
+        //         uint160[] memory sqrtPriceX96AfterList,
+        //         uint32[] memory initializedTicksLoadedList
+        //     ) = _quoteExactOutput(abi.decode(swapInfo.params, (ExactOutputParams)));
+
+        //     result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
+        // } else {
+        //     revert InvalidQuoteType();
+        // }
+        // assembly {
+        //     revert(add(0x20, result), mload(result))
+        // }
     }
 
     /// @dev check revert bytes and pass through if considered valid; otherwise revert with different message
@@ -273,19 +281,12 @@ contract Quoter is IQuoter {
             abi.decode(reason, (int128[], uint160[], uint32[]));
     }
 
-    function _quoteExactInput(ExactInputParams memory params)
-        private
-        returns (
-            int128[] memory deltaAmounts,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksLoadedList
-        )
-    {
+    function _quoteExactInput(ExactInputParams memory params) public selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
-        deltaAmounts = new int128[](pathLength + 1);
-        sqrtPriceX96AfterList = new uint160[](pathLength);
-        initializedTicksLoadedList = new uint32[](pathLength);
+        int128[] memory deltaAmounts = new int128[](pathLength + 1);
+        uint160[] memory sqrtPriceX96AfterList = new uint160[](pathLength);
+        uint32[] memory initializedTicksLoadedList = new uint32[](pathLength);
         Currency prevCurrencyOut;
         uint128 prevAmountOut;
 
@@ -294,15 +295,13 @@ contract Quoter is IQuoter {
                 SwapIntention.getPoolAndSwapDirection(params.path[i], i == 0 ? params.currencyIn : prevCurrencyOut);
             (, int24 tickBefore,,) = manager.getSlot0(poolKey.toId());
 
-            ExactInputSingleParams memory singleParams = ExactInputSingleParams({
-                poolKey: poolKey,
-                zeroForOne: zeroForOne,
-                recipient: params.recipient,
-                amountIn: i == 0 ? params.amountIn : prevAmountOut,
-                sqrtPriceLimitX96: 0,
-                hookData: params.path[i].hookData
-            });
-            (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _quoteExactInputSingle(singleParams);
+            (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
+                poolKey,
+                zeroForOne,
+                int256(int128(i == 0 ? params.amountIn : prevAmountOut)),
+                0,
+                params.path[i].hookData
+            );
 
             (int128 deltaIn, int128 deltaOut) =
                 zeroForOne ? (curDeltas.amount0(), curDeltas.amount1()) : (curDeltas.amount1(), curDeltas.amount0());
@@ -315,34 +314,32 @@ contract Quoter is IQuoter {
             initializedTicksLoadedList[i] =
                 PoolTicksCounter.countInitializedTicksLoaded(manager, poolKey, tickBefore, tickAfter);
         }
+        bytes memory result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
+        assembly {
+            revert(add(0x20, result), mload(result))
+        }
     }
 
-    function _quoteExactInputSingle(ExactInputSingleParams memory params)
-        private
-        returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter)
-    {
-        return _swap(
+    function _quoteExactInputSingle(ExactInputSingleParams memory params) public selfOnly returns (bytes memory) {
+        (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
             params.poolKey,
             params.zeroForOne,
             int256(int128(params.amountIn)),
             params.sqrtPriceLimitX96,
             params.hookData
         );
+        bytes memory result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
+        assembly {
+            revert(add(0x20, result), mload(result))
+        }
     }
 
-    function _quoteExactOutput(ExactOutputParams memory params)
-        private
-        returns (
-            int128[] memory deltaAmounts,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksLoadedList
-        )
-    {
+    function _quoteExactOutput(ExactOutputParams memory params) public selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
-        deltaAmounts = new int128[](pathLength + 1);
-        sqrtPriceX96AfterList = new uint160[](pathLength);
-        initializedTicksLoadedList = new uint32[](pathLength);
+        int128[] memory deltaAmounts = new int128[](pathLength + 1);
+        uint160[] memory sqrtPriceX96AfterList = new uint160[](pathLength);
+        uint32[] memory initializedTicksLoadedList = new uint32[](pathLength);
         Currency prevCurrencyIn;
         uint128 prevAmountIn;
 
@@ -353,15 +350,13 @@ contract Quoter is IQuoter {
 
             (, int24 tickBefore,,) = manager.getSlot0(poolKey.toId());
 
-            ExactOutputSingleParams memory singleParams = ExactOutputSingleParams({
-                poolKey: poolKey,
-                zeroForOne: !oneForZero,
-                recipient: params.recipient,
-                amountOut: i == pathLength ? params.amountOut : prevAmountIn,
-                sqrtPriceLimitX96: 0,
-                hookData: params.path[i - 1].hookData
-            });
-            (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _quoteExactOutputSingle(singleParams);
+            (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
+                poolKey,
+                !oneForZero,
+                -int256(int128(i == pathLength ? params.amountOut : prevAmountIn)),
+                0,
+                params.path[i - 1].hookData
+            );
 
             (int128 deltaIn, int128 deltaOut) =
                 !oneForZero ? (curDeltas.amount0(), curDeltas.amount1()) : (curDeltas.amount1(), curDeltas.amount0());
@@ -374,19 +369,24 @@ contract Quoter is IQuoter {
             initializedTicksLoadedList[i - 1] =
                 PoolTicksCounter.countInitializedTicksLoaded(manager, poolKey, tickBefore, tickAfter);
         }
+        bytes memory result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
+        assembly {
+            revert(add(0x20, result), mload(result))
+        }
     }
 
-    function _quoteExactOutputSingle(ExactOutputSingleParams memory params)
-        private
-        returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter)
-    {
-        return _swap(
+    function _quoteExactOutputSingle(ExactOutputSingleParams memory params) public selfOnly returns (bytes memory) {
+        (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
             params.poolKey,
             params.zeroForOne,
             -int256(uint256(params.amountOut)),
             params.sqrtPriceLimitX96,
             params.hookData
         );
+        bytes memory result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
+        assembly {
+            revert(add(0x20, result), mload(result))
+        }
     }
 
     /// @dev Execute a swap and return the amounts delta, as well as relevant pool state
