@@ -196,41 +196,6 @@ contract Quoter is IQuoter {
         assembly {
             revert(add(returnData, 32), mload(returnData))
         }
-        // SwapInfo memory swapInfo = abi.decode(encodedSwapIntention, (SwapInfo));
-        // bytes memory result;
-
-        // if (swapInfo.swapType == SwapType.ExactInputSingle) {
-        //     (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
-        //         _quoteExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)));
-
-        //     result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
-        // } else if (swapInfo.swapType == SwapType.ExactOutputSingle) {
-        //     (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) =
-        //         _quoteExactOutputSingle(abi.decode(swapInfo.params, (ExactOutputSingleParams)));
-
-        //     result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
-        // } else if (swapInfo.swapType == SwapType.ExactInput) {
-        //     (
-        //         int128[] memory deltaAmounts,
-        //         uint160[] memory sqrtPriceX96AfterList,
-        //         uint32[] memory initializedTicksLoadedList
-        //     ) = _quoteExactInput(abi.decode(swapInfo.params, (ExactInputParams)));
-
-        //     result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
-        // } else if (swapInfo.swapType == SwapType.ExactOutput) {
-        //     (
-        //         int128[] memory deltaAmounts,
-        //         uint160[] memory sqrtPriceX96AfterList,
-        //         uint32[] memory initializedTicksLoadedList
-        //     ) = _quoteExactOutput(abi.decode(swapInfo.params, (ExactOutputParams)));
-
-        //     result = abi.encode(deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList);
-        // } else {
-        //     revert InvalidQuoteType();
-        // }
-        // assembly {
-        //     revert(add(0x20, result), mload(result))
-        // }
     }
 
     /// @dev check revert bytes and pass through if considered valid; otherwise revert with different message
