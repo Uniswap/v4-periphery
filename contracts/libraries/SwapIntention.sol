@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.20;
 
-import {PathKey} from "./PathKey.sol";
+import {PathKey, PathKeyLib} from "./PathKey.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
@@ -70,17 +70,4 @@ struct ExactOutputParams {
     uint160 sqrtPriceLimitX96;
 }
 
-library SwapIntention {
-    function getPoolAndSwapDirection(PathKey memory params, Currency currencyIn)
-        internal
-        pure
-        returns (PoolKey memory poolKey, bool zeroForOne)
-    {
-        (Currency currency0, Currency currency1) = currencyIn < params.intermediateCurrency
-            ? (currencyIn, params.intermediateCurrency)
-            : (params.intermediateCurrency, currencyIn);
-
-        zeroForOne = currencyIn == currency0;
-        poolKey = PoolKey(currency0, currency1, params.fee, params.tickSpacing, params.hooks);
-    }
-}
+library SwapIntention {}

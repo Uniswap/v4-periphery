@@ -12,7 +12,6 @@ import {PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {
     SwapType,
     SwapInfo,
-    SwapIntention,
     ExactInputSingleParams,
     ExactInputSingleBatchParams,
     ExactInputParams,
@@ -22,6 +21,7 @@ import {
 } from "../libraries/SwapIntention.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
+import {PathKeyLib} from "../libraries/PathKey.sol";
 
 contract Quoter is IQuoter {
     using PoolIdLibrary for PoolKey;
@@ -256,7 +256,7 @@ contract Quoter is IQuoter {
 
         for (uint256 i = 0; i < pathLength; i++) {
             (PoolKey memory poolKey, bool zeroForOne) =
-                SwapIntention.getPoolAndSwapDirection(params.path[i], i == 0 ? params.currencyIn : prevCurrencyOut);
+                PathKeyLib.getPoolAndSwapDirection(params.path[i], i == 0 ? params.currencyIn : prevCurrencyOut);
             (, int24 tickBefore,,) = manager.getSlot0(poolKey.toId());
 
             (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
@@ -308,7 +308,7 @@ contract Quoter is IQuoter {
         uint128 prevAmountIn;
 
         for (uint256 i = pathLength; i > 0; i--) {
-            (PoolKey memory poolKey, bool oneForZero) = SwapIntention.getPoolAndSwapDirection(
+            (PoolKey memory poolKey, bool oneForZero) = PathKeyLib.getPoolAndSwapDirection(
                 params.path[i - 1], i == pathLength ? params.currencyOut : prevCurrencyIn
             );
 

@@ -3,7 +3,17 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import "../contracts/libraries/SwapIntention.sol";
+import {
+    SwapType,
+    SwapInfo,
+    ExactInputSingleParams,
+    ExactInputSingleBatchParams,
+    ExactInputParams,
+    ExactOutputSingleParams,
+    ExactOutputSingleBatchParams,
+    ExactOutputParams
+} from "../contracts/libraries/SwapIntention.sol";
+import {PathKey} from "../contracts/libraries/PathKey.sol";
 import {IQuoter} from "../contracts/interfaces/IQuoter.sol";
 import {Quoter} from "../contracts/lens/Quoter.sol";
 import {LiquidityAmounts} from "../contracts/libraries/LiquidityAmounts.sol";
