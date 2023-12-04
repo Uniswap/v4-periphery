@@ -16,7 +16,7 @@ library PoolTicksCounter {
     function countInitializedTicksLoaded(IPoolManager self, PoolKey memory key, int24 tickBefore, int24 tickAfter)
         internal
         view
-        returns (uint32 initializedTicksCrossed)
+        returns (uint32 initializedTicksLoaded)
     {
         int16 wordPosLower;
         int16 wordPosHigher;
@@ -72,21 +72,21 @@ library PoolTicksCounter {
 
             uint256 bmLower = PoolGetters.getTickBitmapAtWord(self, key.toId(), wordPosLower);
             uint256 masked = bmLower & mask;
-            initializedTicksCrossed += countOneBits(masked);
+            initializedTicksLoaded += countOneBits(masked);
             wordPosLower++;
             // Reset our mask so we consider all bits on the next iteration.
             mask = type(uint256).max;
         }
 
         if (tickAfterInitialized) {
-            initializedTicksCrossed -= 1;
+            initializedTicksLoaded -= 1;
         }
 
         if (tickBeforeInitialized) {
-            initializedTicksCrossed -= 1;
+            initializedTicksLoaded -= 1;
         }
 
-        return initializedTicksCrossed;
+        return initializedTicksLoaded;
     }
 
     function countOneBits(uint256 x) private pure returns (uint16) {

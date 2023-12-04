@@ -27,7 +27,7 @@ contract Quoter is IQuoter {
     using PoolIdLibrary for PoolKey;
     using Hooks for IHooks;
 
-    /// @dev Transient storage variable used to check a safety condition in exact output swaps.
+    /// @dev cache used to check a safety condition in exact output swaps.
     uint256 private amountOutCached;
 
     // v4 Singleton contract
@@ -121,8 +121,11 @@ contract Quoter is IQuoter {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
+        if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.amountOut;
+
         try manager.lock(abi.encodeWithSelector(this._quoteExactOutputSingle.selector, params)) {}
         catch (bytes memory reason) {
+            if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
             return _handleRevertSingle(reason, params.poolKey);
         }
     }
