@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
+import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
@@ -23,7 +24,7 @@ import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 import {PathKeyLib} from "../libraries/PathKey.sol";
 
-contract Quoter is IQuoter {
+contract Quoter is IQuoter, ILockCallback {
     using PoolIdLibrary for PoolKey;
     using Hooks for IHooks;
 
