@@ -14,15 +14,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
     error LockFailure();
     error HookNotImplemented();
 
-    /// @notice The address of the pool manager
-    IPoolManager public immutable poolManager;
-
-    function manager() public view override returns (IPoolManager) {
-        return poolManager;
-    }
-
-    constructor(IPoolManager _poolManager) {
-        poolManager = _poolManager;
+    constructor(IPoolManager _poolManager) SafeCallback(_poolManager) {
         validateHookAddress(this);
     }
 
@@ -47,7 +39,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
         Hooks.validateHookAddress(_this, getHooksCalls());
     }
 
-    function lockAcquired(bytes calldata data) external virtual override onlyByManager returns (bytes memory) {
+    function _lockAcquired(bytes calldata data) internal virtual override returns (bytes memory) {
         (bool success, bytes memory returnData) = address(this).call(data);
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();

@@ -295,7 +295,7 @@ contract FullRange is BaseHook {
         pool.hasAccruedFees = false;
     }
 
-    function lockAcquired(bytes calldata rawData) external override(BaseHook) onlyByManager returns (bytes memory) {
+    function _lockAcquired(bytes calldata rawData) internal override returns (bytes memory) {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         BalanceDelta delta;
 

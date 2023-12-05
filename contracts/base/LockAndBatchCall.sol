@@ -21,14 +21,14 @@ abstract contract LockAndBatchCall is SafeCallback {
     }
 
     function execute(bytes memory executeData, bytes memory settleData) external {
-        (bytes memory lockReturnData) = manager().lock(abi.encode(executeData, settleData));
+        (bytes memory lockReturnData) = poolManager.lock(abi.encode(executeData, settleData));
         (bytes memory executeReturnData, bytes memory settleReturnData) = abi.decode(lockReturnData, (bytes, bytes));
         _handleAfterExecute(executeReturnData, settleReturnData);
     }
 
     /// @param data Data passed from the top-level execute function to the internal (and overrideable) _executeWithLockCalls and _settle function.
     /// @dev lockAcquired is responsible for executing the internal calls under the lock and settling open deltas left on the pool
-    function lockAcquired(bytes calldata data) external override onlyByManager returns (bytes memory) {
+    function _lockAcquired(bytes calldata data) internal override returns (bytes memory) {
         (bytes memory executeData, bytes memory settleData) = abi.decode(data, (bytes, bytes));
         bytes memory executeReturnData = _executeWithLockCalls(executeData);
         bytes memory settleReturnData = _settle(settleData);
@@ -40,7 +40,7 @@ abstract contract LockAndBatchCall is SafeCallback {
         onlyBySelf
         returns (bytes memory)
     {
-        return abi.encode(manager().initialize(key, sqrtPriceX96, hookData));
+        return abi.encode(poolManager.initialize(key, sqrtPriceX96, hookData));
     }
 
     function modifyPositionWithLock(
@@ -48,7 +48,7 @@ abstract contract LockAndBatchCall is SafeCallback {
         IPoolManager.ModifyPositionParams calldata params,
         bytes calldata hookData
     ) external onlyBySelf returns (bytes memory) {
-        return abi.encode(manager().modifyPosition(key, params, hookData));
+        return abi.encode(poolManager.modifyPosition(key, params, hookData));
     }
 
     function swapWithLock(PoolKey memory key, IPoolManager.SwapParams memory params, bytes calldata hookData)
@@ -56,7 +56,7 @@ abstract contract LockAndBatchCall is SafeCallback {
         onlyBySelf
         returns (bytes memory)
     {
-        return abi.encode(manager().swap(key, params, hookData));
+        return abi.encode(poolManager.swap(key, params, hookData));
     }
 
     function donateWithLock(PoolKey memory key, uint256 amount0, uint256 amount1, bytes calldata hookData)
@@ -64,10 +64,10 @@ abstract contract LockAndBatchCall is SafeCallback {
         onlyBySelf
         returns (bytes memory)
     {
-        return abi.encode(manager().donate(key, amount0, amount1, hookData));
+        return abi.encode(poolManager.donate(key, amount0, amount1, hookData));
     }
 
-    function _executeWithLockCalls(bytes memory data) internal virtual returns (bytes memory) {
+    function _executeWithLockCalls(bytes memory data) internal returns (bytes memory) {
         bytes[] memory calls = abi.decode(data, (bytes[]));
         bytes[] memory callsReturnData = new bytes[](calls.length);
         for (uint256 i = 0; i < calls.length; i++) {
