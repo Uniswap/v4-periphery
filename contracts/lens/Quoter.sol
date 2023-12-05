@@ -111,6 +111,7 @@ contract Quoter is IQuoter, ILockCallback {
         }
     }
 
+    /// @inheritdoc ILockCallback
     function lockAcquired(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(manager)) {
             revert InvalidLockAcquiredSender();
@@ -180,6 +181,7 @@ contract Quoter is IQuoter, ILockCallback {
             abi.decode(reason, (int128[], uint160[], uint32[]));
     }
 
+    /// @dev quote an ExactInput swap along a path of tokens, then revert with the result
     function _quoteExactInput(ExactInputParams memory params) public selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
@@ -219,6 +221,7 @@ contract Quoter is IQuoter, ILockCallback {
         }
     }
 
+    /// @dev quote an ExactInput swap on a pool, then revert with the result
     function _quoteExactInputSingle(ExactInputSingleParams memory params) public selfOnly returns (bytes memory) {
         (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
             params.poolKey,
@@ -233,6 +236,7 @@ contract Quoter is IQuoter, ILockCallback {
         }
     }
 
+    /// @dev quote an ExactOutput swap along a path of tokens, then revert with the result
     function _quoteExactOutput(ExactOutputParams memory params) public selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
@@ -274,6 +278,7 @@ contract Quoter is IQuoter, ILockCallback {
         }
     }
 
+    /// @dev quote an ExactOutput swap on a pool, then revert with the result
     function _quoteExactOutputSingle(ExactOutputSingleParams memory params) public selfOnly returns (bytes memory) {
         (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
             params.poolKey,
