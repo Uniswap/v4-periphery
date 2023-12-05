@@ -41,7 +41,7 @@ contract Quoter is IQuoter, ILockCallback {
 
     /// @dev min valid reason is 3-words long
     /// @dev int128[2] + sqrtPriceX96After padded to 32bytes + intializeTicksLoaded padded to 32bytes
-    uint256 internal constant MINIMUM_VALID_REASON_LENGTH = 96;
+    uint256 internal constant MINIMUM_VALID_RESPONSE_LENGTH = 96;
 
     /// @dev Only this address may call this function
     modifier selfOnly() {
@@ -128,7 +128,7 @@ contract Quoter is IQuoter, ILockCallback {
 
     /// @dev check revert bytes and pass through if considered valid; otherwise revert with different message
     function validateRevertReason(bytes memory reason) private pure returns (bytes memory) {
-        if (reason.length < MINIMUM_VALID_REASON_LENGTH) {
+        if (reason.length < MINIMUM_VALID_RESPONSE_LENGTH) {
             //if InvalidLockAcquiredSender()
             if (reason.length == MINIMUM_CUSTOM_ERROR_LENGTH) {
                 assembly {
