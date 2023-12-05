@@ -126,11 +126,12 @@ contract QuoterTest is Test, Deployers {
         assertEq(initializedTicksLoaded, 2);
     }
 
-    // function testQuoter_callLockAcquired_reverts() public {
-    //     vm.expectRevert()
-    //     vm.prank(address(0));
-    //     quoter.callLockAcquired();
-    // }
+    // nested self-call into lockAcquired reverts
+    function testQuoter_callLockAcquired_reverts() public {
+        vm.expectRevert(IQuoter.InvalidLockAcquiredSender.selector);
+        vm.prank(address(manager));
+        quoter.lockAcquired(abi.encodeWithSelector(quoter.lockAcquired.selector, "0x"));
+    }
 
     function testQuoter_quoteExactInputBatch() public {
         bool[] memory zeroForOnes = new bool[](2);

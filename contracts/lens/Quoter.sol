@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
+import "forge-std/console2.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
@@ -33,6 +34,9 @@ contract Quoter is IQuoter, ILockCallback {
 
     // v4 Singleton contract
     IPoolManager public immutable manager;
+
+    /// @dev custom error function selector length
+    uint256 internal constant MINIMUM_CUSTOM_ERROR_LENGTH = 4;
 
     /// @dev function selector + length of bytes as uint256 + min length of revert reason padded to multiple of 32 bytes
     uint256 internal constant MINIMUM_REASON_LENGTH = 68;
@@ -204,6 +208,12 @@ contract Quoter is IQuoter, ILockCallback {
     /// @dev check revert bytes and pass through if considered valid; otherwise revert with different message
     function validateRevertReason(bytes memory reason) private pure returns (bytes memory) {
         if (reason.length < MINIMUM_VALID_REASON_LENGTH) {
+            //if InvalidLockAcquiredSender()
+            if (reason.length == MINIMUM_CUSTOM_ERROR_LENGTH) {
+                assembly {
+                    revert(reason, 4)
+                }
+            }
             if (reason.length < MINIMUM_REASON_LENGTH) {
                 revert UnexpectedRevertBytes();
             }
