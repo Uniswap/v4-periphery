@@ -13,7 +13,6 @@ import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
 import {
     SwapType,
-    SwapInfo,
     ExactInputSingleParams,
     ExactInputParams,
     ExactOutputSingleParams,
