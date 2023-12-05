@@ -119,7 +119,7 @@ contract LimitOrder is BaseHook {
     function afterInitialize(address, PoolKey calldata key, uint160, int24 tick, bytes calldata)
         external
         override
-        poolManagerOnly
+        onlyByManager
         returns (bytes4)
     {
         setTickLowerLast(key.toId(), getTickLower(tick, key.tickSpacing));
@@ -132,7 +132,7 @@ contract LimitOrder is BaseHook {
         IPoolManager.SwapParams calldata params,
         BalanceDelta,
         bytes calldata
-    ) external override poolManagerOnly returns (bytes4) {
+    ) external override onlyByManager returns (bytes4) {
         (int24 tickLower, int24 lower, int24 upper) = _getCrossedTicks(key.toId(), key.tickSpacing);
         if (lower > upper) return LimitOrder.afterSwap.selector;
 

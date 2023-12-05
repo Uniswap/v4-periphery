@@ -77,7 +77,7 @@ contract TWAMM is BaseHook, ITWAMM {
         external
         virtual
         override
-        poolManagerOnly
+        onlyByManager
         returns (bytes4)
     {
         // one-time initialization enforced in PoolManager
@@ -90,7 +90,7 @@ contract TWAMM is BaseHook, ITWAMM {
         PoolKey calldata key,
         IPoolManager.ModifyPositionParams calldata,
         bytes calldata
-    ) external override poolManagerOnly returns (bytes4) {
+    ) external override onlyByManager returns (bytes4) {
         executeTWAMMOrders(key);
         return BaseHook.beforeModifyPosition.selector;
     }
@@ -98,7 +98,7 @@ contract TWAMM is BaseHook, ITWAMM {
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
-        poolManagerOnly
+        onlyByManager
         returns (bytes4)
     {
         executeTWAMMOrders(key);
@@ -302,7 +302,7 @@ contract TWAMM is BaseHook, ITWAMM {
         IERC20Minimal(Currency.unwrap(token)).safeTransfer(to, amountTransferred);
     }
 
-    function lockAcquired(bytes calldata rawData) external override poolManagerOnly returns (bytes memory) {
+    function lockAcquired(bytes calldata rawData) external override onlyByManager returns (bytes memory) {
         (PoolKey memory key, IPoolManager.SwapParams memory swapParams) =
             abi.decode(rawData, (PoolKey, IPoolManager.SwapParams));
 

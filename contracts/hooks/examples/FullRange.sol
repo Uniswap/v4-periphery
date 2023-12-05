@@ -23,7 +23,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 import "../../libraries/LiquidityAmounts.sol";
 
-contract FullRange is BaseHook, ILockCallback {
+contract FullRange is BaseHook {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
@@ -295,12 +295,7 @@ contract FullRange is BaseHook, ILockCallback {
         pool.hasAccruedFees = false;
     }
 
-    function lockAcquired(bytes calldata rawData)
-        external
-        override(ILockCallback, BaseHook)
-        poolManagerOnly
-        returns (bytes memory)
-    {
+    function lockAcquired(bytes calldata rawData) external override(BaseHook) onlyByManager returns (bytes memory) {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         BalanceDelta delta;
 

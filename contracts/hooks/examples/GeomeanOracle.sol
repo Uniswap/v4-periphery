@@ -77,7 +77,7 @@ contract GeomeanOracle is BaseHook {
         external
         view
         override
-        poolManagerOnly
+        onlyByManager
         returns (bytes4)
     {
         // This is to limit the fragmentation of pools using this oracle hook. In other words,
@@ -90,7 +90,7 @@ contract GeomeanOracle is BaseHook {
     function afterInitialize(address, PoolKey calldata key, uint160, int24, bytes calldata)
         external
         override
-        poolManagerOnly
+        onlyByManager
         returns (bytes4)
     {
         PoolId id = key.toId();
@@ -115,7 +115,7 @@ contract GeomeanOracle is BaseHook {
         PoolKey calldata key,
         IPoolManager.ModifyPositionParams calldata params,
         bytes calldata
-    ) external override poolManagerOnly returns (bytes4) {
+    ) external override onlyByManager returns (bytes4) {
         if (params.liquidityDelta < 0) revert OraclePoolMustLockLiquidity();
         int24 maxTickSpacing = poolManager.MAX_TICK_SPACING();
         if (
@@ -129,7 +129,7 @@ contract GeomeanOracle is BaseHook {
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
-        poolManagerOnly
+        onlyByManager
         returns (bytes4)
     {
         _updatePool(key);

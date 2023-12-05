@@ -6,9 +6,9 @@ import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.s
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {SafeCallback} from "./base/SafeCallback.sol";
 
-abstract contract BaseHook is IHooks {
-    error NotPoolManager();
+abstract contract BaseHook is IHooks, SafeCallback {
     error NotSelf();
     error InvalidPool();
     error LockFailure();
@@ -17,15 +17,13 @@ abstract contract BaseHook is IHooks {
     /// @notice The address of the pool manager
     IPoolManager public immutable poolManager;
 
+    function manager() public view override returns (IPoolManager) {
+        return poolManager;
+    }
+
     constructor(IPoolManager _poolManager) {
         poolManager = _poolManager;
         validateHookAddress(this);
-    }
-
-    /// @dev Only the pool manager may call this function
-    modifier poolManagerOnly() {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
-        _;
     }
 
     /// @dev Only this address may call this function
@@ -49,7 +47,7 @@ abstract contract BaseHook is IHooks {
         Hooks.validateHookAddress(_this, getHooksCalls());
     }
 
-    function lockAcquired(bytes calldata data) external virtual poolManagerOnly returns (bytes memory) {
+    function lockAcquired(bytes calldata data) external virtual override onlyByManager returns (bytes memory) {
         (bool success, bytes memory returnData) = address(this).call(data);
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();
