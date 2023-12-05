@@ -15,10 +15,8 @@ import {
     SwapType,
     SwapInfo,
     ExactInputSingleParams,
-    ExactInputSingleBatchParams,
     ExactInputParams,
     ExactOutputSingleParams,
-    ExactOutputSingleBatchParams,
     ExactOutputParams
 } from "../libraries/SwapIntention.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
@@ -82,44 +80,6 @@ contract Quoter is IQuoter, ILockCallback {
         }
     }
 
-    function quoteExactInputBatch(ExactInputSingleBatchParams memory params)
-        external
-        returns (
-            IQuoter.PoolDeltas[] memory deltas,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksLoadedList
-        )
-    {
-        if (
-            params.zeroForOnes.length != params.recipients.length || params.recipients.length != params.amountIns.length
-                || params.amountIns.length != params.sqrtPriceLimitX96s.length
-                || params.sqrtPriceLimitX96s.length != params.hookData.length
-        ) {
-            revert InvalidQuoteBatchParams();
-        }
-
-        deltas = new IQuoter.PoolDeltas[](params.amountIns.length);
-        sqrtPriceX96AfterList = new uint160[](params.amountIns.length);
-        initializedTicksLoadedList = new uint32[](params.amountIns.length);
-
-        for (uint256 i = 0; i < params.amountIns.length; i++) {
-            ExactInputSingleParams memory singleParams = ExactInputSingleParams({
-                poolKey: params.poolKey,
-                zeroForOne: params.zeroForOnes[i],
-                recipient: params.recipients[i],
-                amountIn: params.amountIns[i],
-                sqrtPriceLimitX96: params.sqrtPriceLimitX96s[i],
-                hookData: params.hookData[i]
-            });
-            (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) =
-                quoteExactInputSingle(singleParams);
-
-            deltas[i] = IQuoter.PoolDeltas({currency0Delta: deltaAmounts[0], currency1Delta: deltaAmounts[1]});
-            sqrtPriceX96AfterList[i] = sqrtPriceX96After;
-            initializedTicksLoadedList[i] = initializedTicksLoaded;
-        }
-    }
-
     /// @inheritdoc IQuoter
     function quoteExactOutputSingle(ExactOutputSingleParams memory params)
         public
@@ -148,45 +108,6 @@ contract Quoter is IQuoter, ILockCallback {
         try manager.lock(abi.encodeWithSelector(this._quoteExactOutput.selector, params)) {}
         catch (bytes memory reason) {
             return _handleRevert(reason);
-        }
-    }
-
-    function quoteExactOutputBatch(ExactOutputSingleBatchParams memory params)
-        external
-        returns (
-            IQuoter.PoolDeltas[] memory deltas,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksLoadedList
-        )
-    {
-        if (
-            params.zeroForOnes.length != params.recipients.length
-                || params.recipients.length != params.amountOuts.length
-                || params.amountOuts.length != params.sqrtPriceLimitX96s.length
-                || params.sqrtPriceLimitX96s.length != params.hookData.length
-        ) {
-            revert InvalidQuoteBatchParams();
-        }
-
-        deltas = new IQuoter.PoolDeltas[](params.amountOuts.length);
-        sqrtPriceX96AfterList = new uint160[](params.amountOuts.length);
-        initializedTicksLoadedList = new uint32[](params.amountOuts.length);
-
-        for (uint256 i = 0; i < params.amountOuts.length; i++) {
-            ExactOutputSingleParams memory singleParams = ExactOutputSingleParams({
-                poolKey: params.poolKey,
-                zeroForOne: params.zeroForOnes[i],
-                recipient: params.recipients[i],
-                amountOut: params.amountOuts[i],
-                sqrtPriceLimitX96: params.sqrtPriceLimitX96s[i],
-                hookData: params.hookData[i]
-            });
-            (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) =
-                quoteExactOutputSingle(singleParams);
-
-            deltas[i] = IQuoter.PoolDeltas({currency0Delta: deltaAmounts[0], currency1Delta: deltaAmounts[1]});
-            sqrtPriceX96AfterList[i] = sqrtPriceX96After;
-            initializedTicksLoadedList[i] = initializedTicksLoaded;
         }
     }
 

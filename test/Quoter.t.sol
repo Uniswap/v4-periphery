@@ -7,10 +7,8 @@ import {
     SwapType,
     SwapInfo,
     ExactInputSingleParams,
-    ExactInputSingleBatchParams,
     ExactInputParams,
     ExactOutputSingleParams,
-    ExactOutputSingleBatchParams,
     ExactOutputParams
 } from "../contracts/libraries/SwapIntention.sol";
 import {PathKey} from "../contracts/libraries/PathKey.sol";
@@ -131,55 +129,6 @@ contract QuoterTest is Test, Deployers {
         vm.expectRevert(IQuoter.InvalidLockAcquiredSender.selector);
         vm.prank(address(manager));
         quoter.lockAcquired(abi.encodeWithSelector(quoter.lockAcquired.selector, "0x"));
-    }
-
-    function testQuoter_quoteExactInputBatch() public {
-        bool[] memory zeroForOnes = new bool[](2);
-        zeroForOnes[0] = true;
-        zeroForOnes[1] = false;
-
-        address[] memory recipients = new address[](2);
-        recipients[0] = address(this);
-        recipients[1] = address(this);
-
-        // repeat for the three arrays below
-        uint128[] memory amountIns = new uint128[](2);
-        amountIns[0] = 10000;
-        amountIns[1] = 10000;
-
-        uint160[] memory sqrtPriceLimitX96s = new uint160[](2);
-        sqrtPriceLimitX96s[0] = 0;
-        sqrtPriceLimitX96s[1] = 0;
-
-        bytes[] memory hookData = new bytes[](2);
-        hookData[0] = ZERO_BYTES;
-        hookData[1] = ZERO_BYTES;
-
-        (
-            IQuoter.PoolDeltas[] memory deltas,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksLoadedList
-        ) = quoter.quoteExactInputBatch(
-            ExactInputSingleBatchParams({
-                poolKey: key02,
-                zeroForOnes: zeroForOnes,
-                recipients: recipients,
-                amountIns: amountIns,
-                sqrtPriceLimitX96s: sqrtPriceLimitX96s,
-                hookData: hookData
-            })
-        );
-        assertEq(deltas.length, 2);
-        assertEq(uint128(-deltas[0].currency1Delta), 9871);
-        assertEq(uint128(-deltas[1].currency0Delta), 9871);
-
-        assertEq(sqrtPriceX96AfterList.length, 2);
-        assertEq(sqrtPriceX96AfterList[0], 78461846509168490764501028180);
-        assertEq(sqrtPriceX96AfterList[1], 80001962924147897865541384515);
-
-        assertEq(initializedTicksLoadedList.length, 2);
-        assertEq(initializedTicksLoadedList[0], 2);
-        assertEq(initializedTicksLoadedList[1], 2);
     }
 
     function testQuoter_quoteExactInput_0to2_2TicksLoaded() public {
@@ -407,55 +356,6 @@ contract QuoterTest is Test, Deployers {
         assertEq(deltaAmounts[1], 9981);
         assertEq(sqrtPriceX96After, SQRT_RATIO_102_100);
         assertEq(initializedTicksLoaded, 0);
-    }
-
-    function testQuoter_quoteExactOutputBatch() public {
-        bool[] memory zeroForOnes = new bool[](2);
-        zeroForOnes[0] = true;
-        zeroForOnes[1] = false;
-
-        address[] memory recipients = new address[](2);
-        recipients[0] = address(this);
-        recipients[1] = address(this);
-
-        // repeat for the three arrays below
-        uint128[] memory amountOuts = new uint128[](2);
-        amountOuts[0] = type(uint128).max;
-        amountOuts[1] = type(uint128).max;
-
-        uint160[] memory sqrtPriceLimitX96s = new uint160[](2);
-        sqrtPriceLimitX96s[0] = SQRT_RATIO_100_102;
-        sqrtPriceLimitX96s[1] = SQRT_RATIO_102_100;
-
-        bytes[] memory hookData = new bytes[](2);
-        hookData[0] = ZERO_BYTES;
-        hookData[1] = ZERO_BYTES;
-
-        (
-            IQuoter.PoolDeltas[] memory deltas,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksLoadedList
-        ) = quoter.quoteExactOutputBatch(
-            ExactOutputSingleBatchParams({
-                poolKey: key01,
-                zeroForOnes: zeroForOnes,
-                recipients: recipients,
-                amountOuts: amountOuts,
-                sqrtPriceLimitX96s: sqrtPriceLimitX96s,
-                hookData: hookData
-            })
-        );
-        assertEq(deltas.length, 2);
-        assertEq(uint128(deltas[0].currency0Delta), 9981);
-        assertEq(uint128(deltas[1].currency1Delta), 9981);
-
-        assertEq(sqrtPriceX96AfterList.length, 2);
-        assertEq(sqrtPriceX96AfterList[0], SQRT_RATIO_100_102);
-        assertEq(sqrtPriceX96AfterList[1], SQRT_RATIO_102_100);
-
-        assertEq(initializedTicksLoadedList.length, 2);
-        assertEq(initializedTicksLoadedList[0], 0);
-        assertEq(initializedTicksLoadedList[1], 0);
     }
 
     function testQuoter_quoteExactOutput_0to2_2TicksLoaded() public {

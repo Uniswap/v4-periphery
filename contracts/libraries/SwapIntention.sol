@@ -28,15 +28,6 @@ struct ExactInputSingleParams {
     bytes hookData;
 }
 
-struct ExactInputSingleBatchParams {
-    PoolKey poolKey;
-    bool[] zeroForOnes;
-    address[] recipients;
-    uint128[] amountIns;
-    uint160[] sqrtPriceLimitX96s;
-    bytes[] hookData;
-}
-
 struct ExactInputParams {
     Currency currencyIn;
     PathKey[] path;
@@ -51,15 +42,6 @@ struct ExactOutputSingleParams {
     uint128 amountOut;
     uint160 sqrtPriceLimitX96;
     bytes hookData;
-}
-
-struct ExactOutputSingleBatchParams {
-    PoolKey poolKey;
-    bool[] zeroForOnes;
-    address[] recipients;
-    uint128[] amountOuts;
-    uint160[] sqrtPriceLimitX96s;
-    bytes[] hookData;
 }
 
 struct ExactOutputParams {
