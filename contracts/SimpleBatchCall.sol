@@ -19,8 +19,6 @@ contract SimpleBatchCall is LockAndBatchCall {
         bool settleUsingTransfer; // If true, sends the underlying ERC20s.
     }
 
-    mapping(address locker => mapping(Currency currency => int256 currencyDelta)) public currencyDelta;
-
     /// @notice We naively settle all currencies that are touched by the batch call. This data is passed in intially to `execute`.
     function _settle(address sender, bytes memory data) internal override returns (bytes memory settleData) {
         if (data.length != 0) {
