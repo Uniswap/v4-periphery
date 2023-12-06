@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import "../libraries/SwapIntention.sol";
+import {
+    ExactInputSingleParams,
+    ExactInputParams,
+    ExactOutputSingleParams,
+    ExactOutputParams
+} from "../libraries/SwapParameters.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 
 /// @title Quoter Interface

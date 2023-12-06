@@ -9,7 +9,7 @@ import {
     ExactInputParams,
     ExactOutputSingleParams,
     ExactOutputParams
-} from "../contracts/libraries/SwapIntention.sol";
+} from "../contracts/libraries/SwapParameters.sol";
 import {PathKey} from "../contracts/libraries/PathKey.sol";
 import {IQuoter} from "../contracts/interfaces/IQuoter.sol";
 import {Quoter} from "../contracts/lens/Quoter.sol";

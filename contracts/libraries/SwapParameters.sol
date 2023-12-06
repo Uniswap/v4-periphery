@@ -51,5 +51,3 @@ struct ExactOutputParams {
     uint128 amountOut;
     uint160 sqrtPriceLimitX96;
 }
-
-library SwapIntention {}

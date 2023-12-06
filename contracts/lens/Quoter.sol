@@ -17,7 +17,7 @@ import {
     ExactInputParams,
     ExactOutputSingleParams,
     ExactOutputParams
-} from "../libraries/SwapIntention.sol";
+} from "../libraries/SwapParameters.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 import {PathKeyLib} from "../libraries/PathKey.sol";
