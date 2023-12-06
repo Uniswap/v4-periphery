@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import {
-    ExactInputSingleParams,
-    ExactInputParams,
-    ExactOutputSingleParams,
-    ExactOutputParams
-} from "../libraries/SwapParameters.sol";
+import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {PathKey} from "../libraries/PathKey.sol";
 
 /// @title Quoter Interface
 /// @notice Supports quoting the delta amounts from exact input or exact output swaps.
@@ -26,8 +22,41 @@ interface IQuoter {
         int128 currency1Delta;
     }
 
+    struct QuoteExactInputSingleParams {
+        PoolKey poolKey;
+        bool zeroForOne;
+        address recipient;
+        uint128 amountIn;
+        uint160 sqrtPriceLimitX96;
+        bytes hookData;
+    }
+
+    struct QuoteExactInputParams {
+        Currency currencyIn;
+        PathKey[] path;
+        address recipient;
+        uint128 amountIn;
+    }
+
+    struct QuoteExactOutputSingleParams {
+        PoolKey poolKey;
+        bool zeroForOne;
+        address recipient;
+        uint128 amountOut;
+        uint160 sqrtPriceLimitX96;
+        bytes hookData;
+    }
+
+    struct QuoteExactOutputParams {
+        Currency currencyOut;
+        PathKey[] path;
+        address recipient;
+        uint128 amountOut;
+        uint160 sqrtPriceLimitX96;
+    }
+
     /// @notice Returns the delta amounts for a given exact input swap of a single pool
-    /// @param params The params for the quote, encoded as `ExactInputSingleParams`
+    /// @param params The params for the quote, encoded as `QuoteExactInputSingleParams`
     /// poolKey The key for identifying a V4 pool
     /// zeroForOne If the swap is from currency0 to currency1
     /// recipient The indented recipient of the output tokens
@@ -37,12 +66,12 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts resulted from the swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     /// @return initializedTicksLoaded The number of initialized ticks that the swap loaded
-    function quoteExactInputSingle(ExactInputSingleParams calldata params)
+    function quoteExactInputSingle(QuoteExactInputSingleParams calldata params)
         external
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
 
     /// @notice Returns the delta amounts along the swap path for a given exact input swap
-    /// @param params the params for the quote, encoded as 'ExactInputParams'
+    /// @param params the params for the quote, encoded as 'QuoteExactInputParams'
     /// currencyIn The input currency of the swap
     /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
     /// recipient The indented recipient of the output tokens
@@ -50,7 +79,7 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     /// @return initializedTicksLoadedList List of the initialized ticks that the swap loaded for each pool in the path
-    function quoteExactInput(ExactInputParams memory params)
+    function quoteExactInput(QuoteExactInputParams memory params)
         external
         returns (
             int128[] memory deltaAmounts,
@@ -59,7 +88,7 @@ interface IQuoter {
         );
 
     /// @notice Returns the delta amounts for a given exact output swap of a single pool
-    /// @param params The params for the quote, encoded as `ExactOutputSingleParams`
+    /// @param params The params for the quote, encoded as `QuoteExactOutputSingleParams`
     /// poolKey The key for identifying a V4 pool
     /// zeroForOne If the swap is from currency0 to currency1
     /// recipient The indented recipient of the output tokens
@@ -69,12 +98,12 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts resulted from the swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     /// @return initializedTicksLoaded The number of initialized ticks that the swap loaded
-    function quoteExactOutputSingle(ExactOutputSingleParams calldata params)
+    function quoteExactOutputSingle(QuoteExactOutputSingleParams calldata params)
         external
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
 
     /// @notice Returns the delta amounts along the swap path for a given exact output swap
-    /// @param params the params for the quote, encoded as 'ExactInputParams'
+    /// @param params the params for the quote, encoded as 'QuoteExactInputParams'
     /// currencyOut The output currency of the swap
     /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
     /// recipient The indented recipient of the output tokens
@@ -82,7 +111,7 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     /// @return initializedTicksLoadedList List of the initialized ticks that the swap loaded for each pool in the path
-    function quoteExactOutput(ExactOutputParams memory params)
+    function quoteExactOutput(QuoteExactOutputParams memory params)
         external
         returns (
             int128[] memory deltaAmounts,

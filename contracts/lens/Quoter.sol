@@ -11,13 +11,6 @@ import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {
-    SwapType,
-    ExactInputSingleParams,
-    ExactInputParams,
-    ExactOutputSingleParams,
-    ExactOutputParams
-} from "../libraries/SwapParameters.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 import {PathKeyLib} from "../libraries/PathKey.sol";
@@ -53,7 +46,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @inheritdoc IQuoter
-    function quoteExactInputSingle(ExactInputSingleParams memory params)
+    function quoteExactInputSingle(QuoteExactInputSingleParams memory params)
         public
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
@@ -65,7 +58,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @inheritdoc IQuoter
-    function quoteExactInput(ExactInputParams memory params)
+    function quoteExactInput(QuoteExactInputParams memory params)
         external
         returns (
             int128[] memory deltaAmounts,
@@ -80,7 +73,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @inheritdoc IQuoter
-    function quoteExactOutputSingle(ExactOutputSingleParams memory params)
+    function quoteExactOutputSingle(QuoteExactOutputSingleParams memory params)
         public
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
@@ -95,7 +88,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @inheritdoc IQuoter
-    function quoteExactOutput(ExactOutputParams memory params)
+    function quoteExactOutput(QuoteExactOutputParams memory params)
         public
         override
         returns (
@@ -181,7 +174,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @dev quote an ExactInput swap along a path of tokens, then revert with the result
-    function _quoteExactInput(ExactInputParams memory params) public selfOnly returns (bytes memory) {
+    function _quoteExactInput(QuoteExactInputParams memory params) public selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
         int128[] memory deltaAmounts = new int128[](pathLength + 1);
@@ -221,7 +214,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @dev quote an ExactInput swap on a pool, then revert with the result
-    function _quoteExactInputSingle(ExactInputSingleParams memory params) public selfOnly returns (bytes memory) {
+    function _quoteExactInputSingle(QuoteExactInputSingleParams memory params) public selfOnly returns (bytes memory) {
         (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
             params.poolKey,
             params.zeroForOne,
@@ -236,7 +229,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @dev quote an ExactOutput swap along a path of tokens, then revert with the result
-    function _quoteExactOutput(ExactOutputParams memory params) public selfOnly returns (bytes memory) {
+    function _quoteExactOutput(QuoteExactOutputParams memory params) public selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
         int128[] memory deltaAmounts = new int128[](pathLength + 1);
@@ -278,7 +271,11 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @dev quote an ExactOutput swap on a pool, then revert with the result
-    function _quoteExactOutputSingle(ExactOutputSingleParams memory params) public selfOnly returns (bytes memory) {
+    function _quoteExactOutputSingle(QuoteExactOutputSingleParams memory params)
+        public
+        selfOnly
+        returns (bytes memory)
+    {
         (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
             params.poolKey,
             params.zeroForOne,
