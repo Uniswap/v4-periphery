@@ -7,6 +7,7 @@ import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
+import {ImmutableState} from "./base/ImmutableState.sol";
 
 abstract contract BaseHook is IHooks, SafeCallback {
     error NotSelf();
@@ -14,7 +15,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
     error LockFailure();
     error HookNotImplemented();
 
-    constructor(IPoolManager _poolManager) SafeCallback(_poolManager) {
+    constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {
         validateHookAddress(this);
     }
 

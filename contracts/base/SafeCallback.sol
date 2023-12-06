@@ -3,15 +3,10 @@ pragma solidity ^0.8.19;
 
 import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {ImmutableState} from "./ImmutableState.sol";
 
-abstract contract SafeCallback is ILockCallback {
+abstract contract SafeCallback is ImmutableState, ILockCallback {
     error NotManager();
-
-    IPoolManager public immutable poolManager;
-
-    constructor(IPoolManager _manager) {
-        poolManager = _manager;
-    }
 
     modifier onlyByManager() {
         if (msg.sender != address(poolManager)) revert NotManager();
