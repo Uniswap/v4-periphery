@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 /// @title Periphery Payments
 /// @notice Functions to ease deposits and withdrawals of ETH
