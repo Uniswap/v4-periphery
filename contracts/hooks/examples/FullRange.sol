@@ -39,10 +39,18 @@ contract FullRange is BaseHook, ILockCallback {
 
     bytes internal constant ZERO_BYTES = bytes("");
 
-    /// @dev Min tick for full range with tick spacing of 60
-    int24 internal constant MIN_TICK = -887220;
-    /// @dev Max tick for full range with tick spacing of 60
+    /// @dev Set tick spacing to a large number that's <= type(int16).max
+    int24 internal constant TICK_SPACING = 0x7000;
+
+    /// @dev Min tick for full range with tick spacing of TICK_SPACING
+    int24 internal constant MIN_TICK = (TickMath.MIN_TICK / TICK_SPACING + 1) * TICK_SPACING;
+    /// @dev Max tick for full range with tick spacing of TICK_SPACING
     int24 internal constant MAX_TICK = -MIN_TICK;
+
+    /// @dev TickMath.getSqrtRatioAtTick(MIN_TICK), cached for optimization
+    uint160 internal immutable MIN_SQRT_RATIO = TickMath.getSqrtRatioAtTick(MIN_TICK);
+    /// @dev TickMath.getSqrtRatioAtTick(MIN_TICK), cached for optimization
+    uint160 internal immutable MAX_SQRT_RATIO = TickMath.getSqrtRatioAtTick(MAX_TICK);
 
     int256 internal constant MAX_INT = type(int256).max;
     uint16 internal constant MINIMUM_LIQUIDITY = 1000;
@@ -109,7 +117,7 @@ contract FullRange is BaseHook, ILockCallback {
             currency0: params.currency0,
             currency1: params.currency1,
             fee: params.fee,
-            tickSpacing: 60,
+            tickSpacing: TICK_SPACING,
             hooks: IHooks(address(this))
         });
 
@@ -124,11 +132,7 @@ contract FullRange is BaseHook, ILockCallback {
         uint128 poolLiquidity = poolManager.getLiquidity(poolId);
 
         liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtRatioAtTick(MIN_TICK),
-            TickMath.getSqrtRatioAtTick(MAX_TICK),
-            params.amount0Desired,
-            params.amount1Desired
+            sqrtPriceX96, MIN_SQRT_RATIO, MAX_SQRT_RATIO, params.amount0Desired, params.amount1Desired
         );
 
         if (poolLiquidity == 0 && liquidity <= MINIMUM_LIQUIDITY) {
@@ -166,7 +170,7 @@ contract FullRange is BaseHook, ILockCallback {
             currency0: params.currency0,
             currency1: params.currency1,
             fee: params.fee,
-            tickSpacing: 60,
+            tickSpacing: TICK_SPACING,
             hooks: IHooks(address(this))
         });
 
@@ -195,7 +199,7 @@ contract FullRange is BaseHook, ILockCallback {
         override
         returns (bytes4)
     {
-        if (key.tickSpacing != 60) revert TickSpacingNotDefault();
+        if (key.tickSpacing != TICK_SPACING) revert TickSpacingNotDefault();
 
         PoolId poolId = key.toId();
 
@@ -234,11 +238,7 @@ contract FullRange is BaseHook, ILockCallback {
         returns (bytes4)
     {
         PoolId poolId = key.toId();
-
-        if (!poolInfo[poolId].hasAccruedFees) {
-            PoolInfo storage pool = poolInfo[poolId];
-            pool.hasAccruedFees = true;
-        }
+        poolInfo[poolId].hasAccruedFees = true;
 
         return IHooks.beforeSwap.selector;
     }
@@ -282,6 +282,7 @@ contract FullRange is BaseHook, ILockCallback {
 
         if (pool.hasAccruedFees) {
             _rebalance(key);
+            pool.hasAccruedFees = false;
         }
 
         uint256 liquidityToRemove = FullMath.mulDiv(
@@ -292,7 +293,6 @@ contract FullRange is BaseHook, ILockCallback {
 
         params.liquidityDelta = -(liquidityToRemove.toInt256());
         delta = poolManager.modifyPosition(key, params, ZERO_BYTES);
-        pool.hasAccruedFees = false;
     }
 
     function lockAcquired(bytes calldata rawData)
@@ -326,10 +326,11 @@ contract FullRange is BaseHook, ILockCallback {
             ZERO_BYTES
         );
 
+        // The final shift by 48 is equal to multiplying by sqrt(Q96) using unchecked math
         uint160 newSqrtPriceX96 = (
             FixedPointMathLib.sqrt(
                 FullMath.mulDiv(uint128(-balanceDelta.amount1()), FixedPoint96.Q96, uint128(-balanceDelta.amount0()))
-            ) * FixedPointMathLib.sqrt(FixedPoint96.Q96)
+            ) << 48
         ).toUint160();
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
@@ -346,8 +347,8 @@ contract FullRange is BaseHook, ILockCallback {
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             newSqrtPriceX96,
-            TickMath.getSqrtRatioAtTick(MIN_TICK),
-            TickMath.getSqrtRatioAtTick(MAX_TICK),
+            MIN_SQRT_RATIO,
+            MAX_SQRT_RATIO,
             uint256(uint128(-balanceDelta.amount0())),
             uint256(uint128(-balanceDelta.amount1()))
         );

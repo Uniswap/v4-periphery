@@ -19,6 +19,7 @@ import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {UniswapV4ERC20} from "../contracts/libraries/UniswapV4ERC20.sol";
 import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
 import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
+import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 
 contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -47,16 +48,16 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         uint24 fee
     );
 
-    /// @dev Min tick for full range with tick spacing of 60
-    int24 internal constant MIN_TICK = -887220;
-    /// @dev Max tick for full range with tick spacing of 60
-    int24 internal constant MAX_TICK = -MIN_TICK;
-
-    int24 constant TICK_SPACING = 60;
+    int24 constant TICK_SPACING = 0x7000;
     uint16 constant LOCKED_LIQUIDITY = 1000;
     uint256 constant MAX_DEADLINE = 12329839823;
     uint256 constant MAX_TICK_LIQUIDITY = 11505069308564788430434325881101412;
     uint8 constant DUST = 30;
+
+    /// @dev Min tick for full range with tick spacing of TICK_SPACING
+    int24 internal constant MIN_TICK = (TickMath.MIN_TICK / TICK_SPACING + 1) * TICK_SPACING;
+    /// @dev Max tick for full range with tick spacing of TICK_SPACING
+    int24 internal constant MAX_TICK = -MIN_TICK;
 
     MockERC20 token0;
     MockERC20 token1;
@@ -169,10 +170,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         assertEq(manager.getLiquidity(id), liquidityTokenBal + LOCKED_LIQUIDITY);
 
-        assertEq(key.currency0.balanceOf(address(this)), prevBalance0 - 10 ether);
-        assertEq(key.currency1.balanceOf(address(this)), prevBalance1 - 10 ether);
+        assertApproxEqAbs(key.currency0.balanceOf(address(this)), prevBalance0 - 10 ether, DUST);
+        assertApproxEqAbs(key.currency1.balanceOf(address(this)), prevBalance1 - 10 ether, DUST);
 
-        assertEq(liquidityTokenBal, 10 ether - LOCKED_LIQUIDITY);
+        assertApproxEqAbs(liquidityTokenBal, 10 ether - LOCKED_LIQUIDITY, DUST);
         assertEq(hasAccruedFees, false);
     }
 
@@ -235,10 +236,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         assertEq(manager.getLiquidity(idWithLiq), liquidityTokenBal + LOCKED_LIQUIDITY);
 
-        assertEq(keyWithLiq.currency0.balanceOfSelf(), prevBalance0 - 10 ether);
-        assertEq(keyWithLiq.currency1.balanceOfSelf(), prevBalance1 - 10 ether);
+        assertApproxEqAbs(keyWithLiq.currency0.balanceOfSelf(), prevBalance0 - 10 ether, DUST);
+        assertApproxEqAbs(keyWithLiq.currency1.balanceOfSelf(), prevBalance1 - 10 ether, DUST);
 
-        assertEq(liquidityTokenBal, prevLiquidityTokenBal + 10 ether);
+        assertApproxEqAbs(liquidityTokenBal, prevLiquidityTokenBal + 10 ether, DUST);
         assertEq(hasAccruedFees, false);
     }
 
@@ -266,14 +267,21 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
 
-        assertEq(manager.getLiquidity(id), liquidityTokenBal + LOCKED_LIQUIDITY);
-        assertEq(liquidityTokenBal, 10 ether - LOCKED_LIQUIDITY);
-        assertEq(key.currency0.balanceOf(address(this)), prevBalance0 - 10 ether);
-        assertEq(key.currency1.balanceOf(address(this)), prevBalance1 - 10 ether);
+        assertApproxEqAbs(manager.getLiquidity(id), liquidityTokenBal + LOCKED_LIQUIDITY, DUST);
+        assertApproxEqAbs(liquidityTokenBal, 10 ether - LOCKED_LIQUIDITY, DUST);
+        assertApproxEqAbs(key.currency0.balanceOf(address(this)), prevBalance0 - 10 ether, DUST);
+        assertApproxEqAbs(key.currency1.balanceOf(address(this)), prevBalance1 - 10 ether, DUST);
 
         vm.expectEmit(true, true, true, true);
         emit Swap(
-            id, address(swapRouter), 1 ether, -906610893880149131, 72045250990510446115798809072, 10 ether, -1901, 3000
+            id,
+            address(swapRouter),
+            1 ether,
+            -906610893880149131,
+            72045250990510446121024169824,
+            10 ether + 8,
+            -1901,
+            3000
         );
 
         IPoolManager.SwapParams memory params =
@@ -287,7 +295,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
 
-        assertEq(key.currency0.balanceOf(address(this)), prevBalance0 - 10 ether - 1 ether);
+        assertApproxEqAbs(key.currency0.balanceOf(address(this)), prevBalance0 - 10 ether - 1 ether, DUST);
         assertEq(key.currency1.balanceOf(address(this)), prevBalance1 - 9093389106119850869);
         assertEq(hasAccruedFees, true);
 
@@ -301,7 +309,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
 
         assertEq(manager.getLiquidity(id), liquidityTokenBal + LOCKED_LIQUIDITY);
-        assertEq(liquidityTokenBal, 14546694553059925434 - LOCKED_LIQUIDITY);
+        assertEq(liquidityTokenBal, 14546694553059925446 - LOCKED_LIQUIDITY);
         assertEq(hasAccruedFees, true);
     }
 
@@ -310,7 +318,15 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key.currency0, key.currency1, 3000, 10 ether, 10 ether, 10 ether, 10 ether, address(this), MAX_DEADLINE
+                key.currency0,
+                key.currency1,
+                3000,
+                10 ether,
+                10 ether,
+                10 ether - DUST,
+                10 ether - DUST,
+                address(this),
+                MAX_DEADLINE
             )
         );
 
@@ -324,7 +340,15 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         vm.expectRevert(FullRange.TooMuchSlippage.selector);
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
-                key.currency0, key.currency1, 3000, 10 ether, 10 ether, 10 ether, 10 ether, address(this), MAX_DEADLINE
+                key.currency0,
+                key.currency1,
+                3000,
+                10 ether,
+                10 ether,
+                10 ether - DUST,
+                10 ether - DUST,
+                address(this),
+                MAX_DEADLINE
             )
         );
     }
@@ -390,6 +414,32 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         assertEq(hasAccruedFees, true);
     }
 
+    function testFullRange_swap_LargeSwap() public {
+        PoolKey memory testKey = key;
+        manager.initialize(testKey, SQRT_RATIO_1_1, ZERO_BYTES);
+
+        fullRange.addLiquidity(
+            FullRange.AddLiquidityParams(
+                key.currency0, key.currency1, 3000, 10 ether, 10 ether, 9 ether, 9 ether, address(this), MAX_DEADLINE
+            )
+        );
+
+        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+            zeroForOne: true,
+            amountSpecified: 100 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_RATIO + 1
+        });
+        PoolSwapTest.TestSettings memory settings =
+            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+
+        snapStart("FullRangeLargeSwap");
+        swapRouter.swap(testKey, params, settings, ZERO_BYTES);
+        snapEnd();
+
+        (bool hasAccruedFees,) = fullRange.poolInfo(id);
+        assertEq(hasAccruedFees, true);
+    }
+
     function testFullRange_removeLiquidity_InitialRemoveSucceeds() public {
         uint256 prevBalance0 = keyWithLiq.currency0.balanceOfSelf();
         uint256 prevBalance1 = keyWithLiq.currency1.balanceOfSelf();
@@ -409,9 +459,11 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
 
         assertEq(manager.getLiquidity(idWithLiq), liquidityTokenBal + LOCKED_LIQUIDITY);
-        assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 99 ether - LOCKED_LIQUIDITY + 5);
-        assertEq(keyWithLiq.currency0.balanceOfSelf(), prevBalance0 + 1 ether - 1);
-        assertEq(keyWithLiq.currency1.balanceOfSelf(), prevBalance1 + 1 ether - 1);
+        assertApproxEqAbs(
+            UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 99 ether - LOCKED_LIQUIDITY, 3 * DUST
+        );
+        assertApproxEqAbs(keyWithLiq.currency0.balanceOfSelf(), prevBalance0 + 1 ether, DUST);
+        assertApproxEqAbs(keyWithLiq.currency1.balanceOfSelf(), prevBalance1 + 1 ether, DUST);
         assertEq(hasAccruedFees, false);
     }
 
@@ -489,10 +541,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         (, address liquidityToken) = fullRange.poolInfo(id);
 
-        assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether - LOCKED_LIQUIDITY);
+        assertApproxEqAbs(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether - LOCKED_LIQUIDITY, DUST);
 
-        assertEq(key.currency0.balanceOfSelf(), prevBalance0 - 10 ether);
-        assertEq(key.currency1.balanceOfSelf(), prevBalance1 - 10 ether);
+        assertApproxEqAbs(key.currency0.balanceOfSelf(), prevBalance0 - 10 ether, DUST);
+        assertApproxEqAbs(key.currency1.balanceOfSelf(), prevBalance1 - 10 ether, DUST);
 
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
@@ -504,9 +556,9 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
 
         assertEq(manager.getLiquidity(id), liquidityTokenBal + LOCKED_LIQUIDITY);
-        assertEq(liquidityTokenBal, 5 ether - LOCKED_LIQUIDITY);
-        assertEq(key.currency0.balanceOfSelf(), prevBalance0 - 5 ether - 1);
-        assertEq(key.currency1.balanceOfSelf(), prevBalance1 - 5 ether - 1);
+        assertApproxEqAbs(liquidityTokenBal, 5 ether - LOCKED_LIQUIDITY, DUST);
+        assertApproxEqAbs(key.currency0.balanceOfSelf(), prevBalance0 - 5 ether, DUST);
+        assertApproxEqAbs(key.currency1.balanceOfSelf(), prevBalance1 - 5 ether, DUST);
         assertEq(hasAccruedFees, false);
     }
 
@@ -522,12 +574,12 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             )
         );
 
-        assertEq(key.currency0.balanceOf(address(this)), prevBalance0 - 10 ether);
-        assertEq(key.currency1.balanceOf(address(this)), prevBalance1 - 10 ether);
+        assertApproxEqAbs(key.currency0.balanceOf(address(this)), prevBalance0 - 10 ether, DUST);
+        assertApproxEqAbs(key.currency1.balanceOf(address(this)), prevBalance1 - 10 ether, DUST);
 
         (, address liquidityToken) = fullRange.poolInfo(id);
 
-        assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether - LOCKED_LIQUIDITY);
+        assertApproxEqAbs(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 10 ether - LOCKED_LIQUIDITY, DUST);
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
@@ -535,10 +587,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             )
         );
 
-        assertEq(key.currency0.balanceOf(address(this)), prevBalance0 - 12.5 ether);
-        assertEq(key.currency1.balanceOf(address(this)), prevBalance1 - 12.5 ether);
+        assertApproxEqAbs(key.currency0.balanceOf(address(this)), prevBalance0 - 12.5 ether, DUST);
+        assertApproxEqAbs(key.currency1.balanceOf(address(this)), prevBalance1 - 12.5 ether, DUST);
 
-        assertEq(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 12.5 ether - LOCKED_LIQUIDITY);
+        assertApproxEqAbs(UniswapV4ERC20(liquidityToken).balanceOf(address(this)), 12.5 ether - LOCKED_LIQUIDITY, DUST);
 
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
@@ -549,9 +601,9 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
 
         assertEq(manager.getLiquidity(id), liquidityTokenBal + LOCKED_LIQUIDITY);
-        assertEq(liquidityTokenBal, 7.5 ether - LOCKED_LIQUIDITY);
-        assertEq(key.currency0.balanceOf(address(this)), prevBalance0 - 7.5 ether - 1);
-        assertEq(key.currency1.balanceOf(address(this)), prevBalance1 - 7.5 ether - 1);
+        assertApproxEqAbs(liquidityTokenBal, 7.5 ether - LOCKED_LIQUIDITY, DUST);
+        assertApproxEqAbs(key.currency0.balanceOf(address(this)), prevBalance0 - 7.5 ether, DUST);
+        assertApproxEqAbs(key.currency1.balanceOf(address(this)), prevBalance1 - 7.5 ether, DUST);
     }
 
     function testFullRange_removeLiquidity_SwapAndRebalance() public {
@@ -706,7 +758,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         // PoolManager does not have any liquidity left over
         assertTrue(manager.getLiquidity(id) >= LOCKED_LIQUIDITY);
-        assertTrue(manager.getLiquidity(id) < LOCKED_LIQUIDITY + DUST);
+        assertTrue(manager.getLiquidity(id) < LOCKED_LIQUIDITY + 266);
 
         assertEq(hasAccruedFees, false);
     }
