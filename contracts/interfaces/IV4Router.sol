@@ -9,6 +9,7 @@ import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
+import {PathKey} from "../libraries/PathKey.sol";
 
 /// @title UniswapV4Routing
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
@@ -22,14 +23,6 @@ interface IV4Router {
         SwapType swapType;
         address msgSender;
         bytes params;
-    }
-
-    struct PathKey {
-        Currency intermediateCurrency;
-        uint24 fee;
-        int24 tickSpacing;
-        IHooks hooks;
-        bytes hookData;
     }
 
     struct ExactInputSingleParams {

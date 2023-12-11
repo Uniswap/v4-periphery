@@ -71,8 +71,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
-        ExactInputSingleParams memory params =
-            ExactInputSingleParams(key0, true, address(this), uint128(amountIn), 0, 0, bytes(""));
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, true, address(this), uint128(amountIn), 0, 0, bytes(""));
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -92,8 +92,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
-        ExactInputSingleParams memory params =
-            ExactInputSingleParams(key0, false, address(this), uint128(amountIn), 0, 0, bytes(""));
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, false, address(this), uint128(amountIn), 0, 0, bytes(""));
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -113,7 +113,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
 
         tokenPath.push(token0);
         tokenPath.push(token1);
-        ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
+        IV4Router.ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -135,7 +135,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
 
         tokenPath.push(token1);
         tokenPath.push(token0);
-        ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
+        IV4Router.ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
 
@@ -155,7 +155,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token0);
         tokenPath.push(token1);
         tokenPath.push(token2);
-        ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
+        IV4Router.ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -185,7 +185,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token1);
         tokenPath.push(token2);
         tokenPath.push(token3);
-        ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
+        IV4Router.ExactInputParams memory params = getExactInputParams(tokenPath, amountIn);
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance3 = token3.balanceOf(address(this));
@@ -209,8 +209,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        ExactOutputSingleParams memory params =
-            ExactOutputSingleParams(key0, true, address(this), uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params =
+            IV4Router.ExactOutputSingleParams(key0, true, address(this), uint128(amountOut), 0, 0, bytes(""));
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -230,8 +230,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        ExactOutputSingleParams memory params =
-            ExactOutputSingleParams(key0, false, address(this), uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params =
+            IV4Router.ExactOutputSingleParams(key0, false, address(this), uint128(amountOut), 0, 0, bytes(""));
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -251,7 +251,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
 
         tokenPath.push(token0);
         tokenPath.push(token1);
-        ExactOutputParams memory params = getExactOutputParams(tokenPath, amountOut);
+        IV4Router.ExactOutputParams memory params = getExactOutputParams(tokenPath, amountOut);
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -273,7 +273,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
 
         tokenPath.push(token1);
         tokenPath.push(token0);
-        ExactOutputParams memory params = getExactOutputParams(tokenPath, amountOut);
+        IV4Router.ExactOutputParams memory params = getExactOutputParams(tokenPath, amountOut);
         console2.log("==== test case ======");
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
@@ -282,7 +282,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         snapStart("RouterExactOut1Hop");
         bytes memory encoded = abi.encode(params);
         console2.logBytes(encoded);
-        ExactOutputParams memory decoded = abi.decode(encoded, (ExactOutputParams));
+        IV4Router.ExactOutputParams memory decoded = abi.decode(encoded, (IV4Router.ExactOutputParams));
         console2.log("decoded max: %s", decoded.amountInMaximum);
         router.swap(IV4Router.SwapType.ExactOutput, abi.encode(params));
         snapEnd();
@@ -301,7 +301,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token0);
         tokenPath.push(token1);
         tokenPath.push(token2);
-        ExactOutputParams memory params = getExactOutputParams(tokenPath, amountOut);
+        IV4Router.ExactOutputParams memory params = getExactOutputParams(tokenPath, amountOut);
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
@@ -331,7 +331,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token1);
         tokenPath.push(token2);
         tokenPath.push(token3);
-        ExactOutputParams memory params = getExactOutputParams(tokenPath, amountOut);
+        IV4Router.ExactOutputParams memory params = getExactOutputParams(tokenPath, amountOut);
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance3 = token3.balanceOf(address(this));
@@ -374,7 +374,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
     function getExactInputParams(MockERC20[] memory _tokenPath, uint256 amountIn)
         internal
         view
-        returns (ExactInputParams memory params)
+        returns (IV4Router.ExactInputParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
         for (uint256 i = 0; i < _tokenPath.length - 1; i++) {
@@ -391,7 +391,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
     function getExactOutputParams(MockERC20[] memory _tokenPath, uint256 amountOut)
         internal
         view
-        returns (ExactOutputParams memory params)
+        returns (IV4Router.ExactOutputParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
         for (uint256 i = _tokenPath.length - 1; i > 0; i--) {

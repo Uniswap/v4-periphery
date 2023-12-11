@@ -39,13 +39,13 @@ abstract contract V4Router is IV4Router, ILockCallback {
         SwapInfo memory swapInfo = abi.decode(encodedSwapInfo, (SwapInfo));
 
         if (swapInfo.swapType == SwapType.ExactInput) {
-            _swapExactInput(abi.decode(swapInfo.params, (ExactInputParams)), swapInfo.msgSender);
+            _swapExactInput(abi.decode(swapInfo.params, (IV4Router.ExactInputParams)), swapInfo.msgSender);
         } else if (swapInfo.swapType == SwapType.ExactInputSingle) {
-            _swapExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)), swapInfo.msgSender);
+            _swapExactInputSingle(abi.decode(swapInfo.params, (IV4Router.ExactInputSingleParams)), swapInfo.msgSender);
         } else if (swapInfo.swapType == SwapType.ExactOutput) {
             // console2.log("===acquired ===");
             // console2.logBytes(swapInfo.params);
-            // ExactOutputParams memory decoded = abi.decode(swapInfo.params, (ExactOutputParams));
+            // IV4Router.ExactOutputParams memory decoded = abi.decode(swapInfo.params, (IV4Router.ExactOutputParams));
             // console2.logAddress(Currency.unwrap(decoded.currencyOut)); // CurrencyOut
             // console2.logBytes16(bytes16(decoded.amountOut)); // AmountOut
             // console2.logBytes16(bytes16(decoded.amountInMaximum)); // AmountInMaximum
@@ -55,9 +55,9 @@ abstract contract V4Router is IV4Router, ILockCallback {
             //     decoded.amountOut,
             //     uint256(decoded.amountInMaximum)
             // );
-            _swapExactOutput(abi.decode(swapInfo.params, (ExactOutputParams)), swapInfo.msgSender);
+            _swapExactOutput(abi.decode(swapInfo.params, (IV4Router.ExactOutputParams)), swapInfo.msgSender);
         } else if (swapInfo.swapType == SwapType.ExactOutputSingle) {
-            _swapExactOutputSingle(abi.decode(swapInfo.params, (ExactOutputSingleParams)), swapInfo.msgSender);
+            _swapExactOutputSingle(abi.decode(swapInfo.params, (IV4Router.ExactOutputSingleParams)), swapInfo.msgSender);
         } else {
             revert InvalidSwapType();
         }
@@ -65,7 +65,7 @@ abstract contract V4Router is IV4Router, ILockCallback {
         return bytes("");
     }
 
-    function _swapExactInputSingle(ExactInputSingleParams memory params, address msgSender) private {
+    function _swapExactInputSingle(IV4Router.ExactInputSingleParams memory params, address msgSender) private {
         _swapExactPrivate(
             params.poolKey,
             params.zeroForOne,
@@ -78,7 +78,7 @@ abstract contract V4Router is IV4Router, ILockCallback {
         );
     }
 
-    function _swapExactInput(ExactInputParams memory params, address msgSender) private {
+    function _swapExactInput(IV4Router.ExactInputParams memory params, address msgSender) private {
         unchecked {
             uint256 pathLength = params.path.length;
             uint128 amountOut;
@@ -106,7 +106,7 @@ abstract contract V4Router is IV4Router, ILockCallback {
         }
     }
 
-    function _swapExactOutputSingle(ExactOutputSingleParams memory params, address msgSender) private {
+    function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams memory params, address msgSender) private {
         _swapExactPrivate(
             params.poolKey,
             params.zeroForOne,
@@ -119,7 +119,7 @@ abstract contract V4Router is IV4Router, ILockCallback {
         );
     }
 
-    function _swapExactOutput(ExactOutputParams memory params, address msgSender) private {
+    function _swapExactOutput(IV4Router.ExactOutputParams memory params, address msgSender) private {
         unchecked {
             uint256 pathLength = params.path.length;
             uint128 amountIn;
