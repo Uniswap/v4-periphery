@@ -74,6 +74,4 @@ interface IV4Router {
         ExactOutput,
         ExactOutputSingle
     }
-
-    function lockAcquired(bytes calldata encodedSwapInfo) external returns (bytes memory);
 }

@@ -1,18 +1,29 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
+import "forge-std/console2.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
 import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
+import {PathKey} from "./libraries/PathKey.sol";
+import {
+    SwapType,
+    SwapInfo,
+    ExactInputSingleParams,
+    ExactInputParams,
+    ExactOutputSingleParams,
+    ExactOutputParams
+} from "./libraries/SwapIntention.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 
 /// @title UniswapV4Routing
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
-abstract contract V4Router is IV4Router {
+abstract contract V4Router is IV4Router, ILockCallback {
     using CurrencyLibrary for Currency;
 
     IPoolManager immutable poolManager;
@@ -31,7 +42,8 @@ abstract contract V4Router is IV4Router {
         poolManager.lock(abi.encode(SwapInfo(swapType, msg.sender, params)));
     }
 
-    function lockAcquired(bytes calldata encodedSwapInfo) external poolManagerOnly returns (bytes memory) {
+    /// @inheritdoc ILockCallback
+    function lockAcquired(bytes calldata encodedSwapInfo) external override poolManagerOnly returns (bytes memory) {
         SwapInfo memory swapInfo = abi.decode(encodedSwapInfo, (SwapInfo));
 
         if (swapInfo.swapType == SwapType.ExactInput) {
@@ -39,6 +51,18 @@ abstract contract V4Router is IV4Router {
         } else if (swapInfo.swapType == SwapType.ExactInputSingle) {
             _swapExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)), swapInfo.msgSender);
         } else if (swapInfo.swapType == SwapType.ExactOutput) {
+            // console2.log("===acquired ===");
+            // console2.logBytes(swapInfo.params);
+            // ExactOutputParams memory decoded = abi.decode(swapInfo.params, (ExactOutputParams));
+            // console2.logAddress(Currency.unwrap(decoded.currencyOut)); // CurrencyOut
+            // console2.logBytes16(bytes16(decoded.amountOut)); // AmountOut
+            // console2.logBytes16(bytes16(decoded.amountInMaximum)); // AmountInMaximum
+            // console2.log(
+            //     "decoded recipient: %s, amountOut: %s, amountInMaximum: %s",
+            //     decoded.recipient,
+            //     decoded.amountOut,
+            //     uint256(decoded.amountInMaximum)
+            // );
             _swapExactOutput(abi.decode(swapInfo.params, (ExactOutputParams)), swapInfo.msgSender);
         } else if (swapInfo.swapType == SwapType.ExactOutputSingle) {
             _swapExactOutputSingle(abi.decode(swapInfo.params, (ExactOutputSingleParams)), swapInfo.msgSender);
@@ -127,6 +151,7 @@ abstract contract V4Router is IV4Router {
                 params.amountOut = amountIn;
                 params.currencyOut = params.path[i - 1].intermediateCurrency;
             }
+            console2.log("amountIn: %s; max: %s", amountIn, params.amountInMaximum);
             if (amountIn > params.amountInMaximum) revert TooMuchRequested();
         }
     }
