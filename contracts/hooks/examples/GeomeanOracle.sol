@@ -60,8 +60,8 @@ contract GeomeanOracle is BaseHook {
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    function getHooksCalls() public pure override returns (Hooks.Calls memory) {
-        return Hooks.Calls({
+    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+        return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: true,
             beforeModifyPosition: true,
@@ -69,7 +69,9 @@ contract GeomeanOracle is BaseHook {
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: false,
+            noOp: false,
+            accessLock: false
         });
     }
 
@@ -101,7 +103,7 @@ contract GeomeanOracle is BaseHook {
     /// @dev Called before any action that potentially modifies pool price or liquidity, such as swap or modify position
     function _updatePool(PoolKey calldata key) private {
         PoolId id = key.toId();
-        (, int24 tick,,) = poolManager.getSlot0(id);
+        (, int24 tick,) = poolManager.getSlot0(id);
 
         uint128 liquidity = poolManager.getLiquidity(id);
 
@@ -146,7 +148,7 @@ contract GeomeanOracle is BaseHook {
 
         ObservationState memory state = states[id];
 
-        (, int24 tick,,) = poolManager.getSlot0(id);
+        (, int24 tick,) = poolManager.getSlot0(id);
 
         uint128 liquidity = poolManager.getLiquidity(id);
 

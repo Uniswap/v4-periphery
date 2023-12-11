@@ -73,8 +73,8 @@ contract LimitOrder is BaseHook {
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    function getHooksCalls() public pure override returns (Hooks.Calls memory) {
-        return Hooks.Calls({
+    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+        return Hooks.Permissions({
             beforeInitialize: false,
             afterInitialize: true,
             beforeModifyPosition: false,
@@ -82,7 +82,9 @@ contract LimitOrder is BaseHook {
             beforeSwap: false,
             afterSwap: true,
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: false,
+            noOp: false,
+            accessLock: false
         });
     }
 
@@ -107,7 +109,7 @@ contract LimitOrder is BaseHook {
     }
 
     function getTick(PoolId poolId) private view returns (int24 tick) {
-        (, tick,,) = poolManager.getSlot0(poolId);
+        (, tick,) = poolManager.getSlot0(poolId);
     }
 
     function getTickLower(int24 tick, int24 tickSpacing) private pure returns (int24) {
@@ -156,6 +158,7 @@ contract LimitOrder is BaseHook {
 
             (uint256 amount0, uint256 amount1) = abi.decode(
                 poolManager.lock(
+                    address(this),
                     abi.encodeCall(this.lockAcquiredFill, (key, lower, -int256(uint256(epochInfo.liquidityTotal))))
                 ),
                 (uint256, uint256)
@@ -219,6 +222,7 @@ contract LimitOrder is BaseHook {
         if (liquidity == 0) revert ZeroLiquidity();
 
         poolManager.lock(
+            address(this),
             abi.encodeCall(this.lockAcquiredPlace, (key, tickLower, zeroForOne, int256(uint256(liquidity)), msg.sender))
         );
 
@@ -302,6 +306,7 @@ contract LimitOrder is BaseHook {
         uint256 amount1Fee;
         (amount0, amount1, amount0Fee, amount1Fee) = abi.decode(
             poolManager.lock(
+                address(this),
                 abi.encodeCall(
                     this.lockAcquiredKill,
                     (key, tickLower, -int256(uint256(liquidity)), to, liquidity == liquidityTotal)
@@ -385,6 +390,7 @@ contract LimitOrder is BaseHook {
         epochInfo.liquidityTotal = liquidityTotal - liquidity;
 
         poolManager.lock(
+            address(this),
             abi.encodeCall(this.lockAcquiredWithdraw, (epochInfo.currency0, epochInfo.currency1, amount0, amount1, to))
         );
 

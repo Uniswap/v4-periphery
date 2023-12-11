@@ -60,8 +60,8 @@ contract TWAMM is BaseHook, ITWAMM {
         expirationInterval = _expirationInterval;
     }
 
-    function getHooksCalls() public pure override returns (Hooks.Calls memory) {
-        return Hooks.Calls({
+    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+        return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: false,
             beforeModifyPosition: true,
@@ -69,7 +69,9 @@ contract TWAMM is BaseHook, ITWAMM {
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: false,
+            noOp: false,
+            accessLock: false
         });
     }
 
@@ -138,7 +140,7 @@ contract TWAMM is BaseHook, ITWAMM {
     /// @inheritdoc ITWAMM
     function executeTWAMMOrders(PoolKey memory key) public {
         PoolId poolId = key.toId();
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,) = poolManager.getSlot0(poolId);
         State storage twamm = twammStates[poolId];
 
         (bool zeroForOne, uint160 sqrtPriceLimitX96) = _executeTWAMMOrders(
@@ -146,7 +148,9 @@ contract TWAMM is BaseHook, ITWAMM {
         );
 
         if (sqrtPriceLimitX96 != 0 && sqrtPriceLimitX96 != sqrtPriceX96) {
-            poolManager.lock(abi.encode(key, IPoolManager.SwapParams(zeroForOne, type(int256).max, sqrtPriceLimitX96)));
+            poolManager.lock(
+                address(this), abi.encode(key, IPoolManager.SwapParams(zeroForOne, type(int256).max, sqrtPriceLimitX96))
+            );
         }
     }
 
@@ -302,7 +306,12 @@ contract TWAMM is BaseHook, ITWAMM {
         IERC20Minimal(Currency.unwrap(token)).safeTransfer(to, amountTransferred);
     }
 
-    function lockAcquired(bytes calldata rawData) external override poolManagerOnly returns (bytes memory) {
+    function lockAcquired(address sender, bytes calldata rawData)
+        external
+        override
+        poolManagerOnly
+        returns (bytes memory)
+    {
         (PoolKey memory key, IPoolManager.SwapParams memory swapParams) =
             abi.decode(rawData, (PoolKey, IPoolManager.SwapParams));
 

@@ -87,8 +87,8 @@ contract FullRange is BaseHook, ILockCallback {
         _;
     }
 
-    function getHooksCalls() public pure override returns (Hooks.Calls memory) {
-        return Hooks.Calls({
+    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+        return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: false,
             beforeModifyPosition: true,
@@ -96,7 +96,9 @@ contract FullRange is BaseHook, ILockCallback {
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: false,
+            noOp: false,
+            accessLock: false
         });
     }
 
@@ -115,7 +117,7 @@ contract FullRange is BaseHook, ILockCallback {
 
         PoolId poolId = key.toId();
 
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,) = poolManager.getSlot0(poolId);
 
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
@@ -172,7 +174,7 @@ contract FullRange is BaseHook, ILockCallback {
 
         PoolId poolId = key.toId();
 
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,) = poolManager.getSlot0(poolId);
 
         if (sqrtPriceX96 == 0) revert PoolNotInitialized();
 
@@ -247,7 +249,9 @@ contract FullRange is BaseHook, ILockCallback {
         internal
         returns (BalanceDelta delta)
     {
-        delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
+        delta = abi.decode(
+            poolManager.lock(address(this), abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta)
+        );
     }
 
     function _settleDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
@@ -295,7 +299,7 @@ contract FullRange is BaseHook, ILockCallback {
         pool.hasAccruedFees = false;
     }
 
-    function lockAcquired(bytes calldata rawData)
+    function lockAcquired(address, /*sender*/ bytes calldata rawData)
         external
         override(ILockCallback, BaseHook)
         poolManagerOnly
@@ -332,7 +336,7 @@ contract FullRange is BaseHook, ILockCallback {
             ) * FixedPointMathLib.sqrt(FixedPoint96.Q96)
         ).toUint160();
 
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,) = poolManager.getSlot0(poolId);
 
         poolManager.swap(
             key,

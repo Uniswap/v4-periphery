@@ -10,7 +10,7 @@ contract GeomeanOracleImplementation is GeomeanOracle {
     uint32 public time;
 
     constructor(IPoolManager _poolManager, GeomeanOracle addressToEtch) GeomeanOracle(_poolManager) {
-        Hooks.validateHookAddress(addressToEtch, getHooksCalls());
+        Hooks.validateHookPermissions(addressToEtch, getHooksCalls());
     }
 
     // make this a no-op in testing
