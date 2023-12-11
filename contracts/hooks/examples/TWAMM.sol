@@ -525,7 +525,7 @@ contract TWAMM is BaseHook, ITWAMM {
                 _isCrossingInitializedTick(params.pool, poolManager, poolKey, finalSqrtPriceX96);
 
             if (crossingInitializedTick) {
-                int128 liquidityNetAtTick = poolManager.getNetLiquidityAtTick(poolKey.toId(), tick);
+                int128 liquidityNetAtTick = poolManager.getPoolTickInfo(poolKey.toId(), tick).liquidityNet;
                 uint160 initializedSqrtPrice = TickMath.getSqrtRatioAtTick(tick);
 
                 uint256 swapDelta0 = SqrtPriceMath.getAmount0Delta(
@@ -609,7 +609,7 @@ contract TWAMM is BaseHook, ITWAMM {
 
         unchecked {
             // update pool
-            int128 liquidityNet = poolManager.getNetLiquidityAtTick(poolKey.toId(), params.initializedTick);
+            int128 liquidityNet = poolManager.getPoolTickInfo(poolKey.toId(), params.initializedTick).liquidityNet;
             if (initializedSqrtPrice < params.pool.sqrtPriceX96) liquidityNet = -liquidityNet;
             params.pool.liquidity = liquidityNet < 0
                 ? params.pool.liquidity - uint128(-liquidityNet)
