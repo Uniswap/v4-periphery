@@ -11,14 +11,6 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Curren
 import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {PathKey} from "./libraries/PathKey.sol";
-import {
-    SwapType,
-    SwapInfo,
-    ExactInputSingleParams,
-    ExactInputParams,
-    ExactOutputSingleParams,
-    ExactOutputParams
-} from "./libraries/SwapIntention.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 
 /// @title UniswapV4Routing

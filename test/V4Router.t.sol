@@ -16,13 +16,6 @@ import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {PathKey} from "../contracts/libraries/PathKey.sol";
-import {
-    SwapType,
-    ExactInputSingleParams,
-    ExactInputParams,
-    ExactOutputSingleParams,
-    ExactOutputParams
-} from "../contracts/libraries/SwapIntention.sol";
 
 contract V4RouterTest is Test, Deployers, GasSnapshot {
     using CurrencyLibrary for Currency;
