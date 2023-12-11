@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import "forge-std/console2.sol";
 import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
@@ -274,16 +273,13 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token1);
         tokenPath.push(token0);
         IV4Router.ExactOutputParams memory params = getExactOutputParams(tokenPath, amountOut);
-        console2.log("==== test case ======");
 
         uint256 prevBalance0 = token0.balanceOf(address(this));
         uint256 prevBalance1 = token1.balanceOf(address(this));
 
         snapStart("RouterExactOut1Hop");
         bytes memory encoded = abi.encode(params);
-        console2.logBytes(encoded);
         IV4Router.ExactOutputParams memory decoded = abi.decode(encoded, (IV4Router.ExactOutputParams));
-        console2.log("decoded max: %s", decoded.amountInMaximum);
         router.swap(IV4Router.SwapType.ExactOutput, abi.encode(params));
         snapEnd();
 

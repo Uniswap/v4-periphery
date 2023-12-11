@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import "forge-std/console2.sol";
 import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
 import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
@@ -43,18 +42,6 @@ abstract contract V4Router is IV4Router, ILockCallback {
         } else if (swapInfo.swapType == SwapType.ExactInputSingle) {
             _swapExactInputSingle(abi.decode(swapInfo.params, (IV4Router.ExactInputSingleParams)), swapInfo.msgSender);
         } else if (swapInfo.swapType == SwapType.ExactOutput) {
-            // console2.log("===acquired ===");
-            // console2.logBytes(swapInfo.params);
-            // IV4Router.ExactOutputParams memory decoded = abi.decode(swapInfo.params, (IV4Router.ExactOutputParams));
-            // console2.logAddress(Currency.unwrap(decoded.currencyOut)); // CurrencyOut
-            // console2.logBytes16(bytes16(decoded.amountOut)); // AmountOut
-            // console2.logBytes16(bytes16(decoded.amountInMaximum)); // AmountInMaximum
-            // console2.log(
-            //     "decoded recipient: %s, amountOut: %s, amountInMaximum: %s",
-            //     decoded.recipient,
-            //     decoded.amountOut,
-            //     uint256(decoded.amountInMaximum)
-            // );
             _swapExactOutput(abi.decode(swapInfo.params, (IV4Router.ExactOutputParams)), swapInfo.msgSender);
         } else if (swapInfo.swapType == SwapType.ExactOutputSingle) {
             _swapExactOutputSingle(abi.decode(swapInfo.params, (IV4Router.ExactOutputSingleParams)), swapInfo.msgSender);
@@ -143,7 +130,6 @@ abstract contract V4Router is IV4Router, ILockCallback {
                 params.amountOut = amountIn;
                 params.currencyOut = params.path[i - 1].intermediateCurrency;
             }
-            console2.log("amountIn: %s; max: %s", amountIn, params.amountInMaximum);
             if (amountIn > params.amountInMaximum) revert TooMuchRequested();
         }
     }
