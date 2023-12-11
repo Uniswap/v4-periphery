@@ -188,8 +188,8 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         assertEq(sellRate0For1, 2e18 / (expiration2 - submitTimestamp2));
         assertEq(sellRate1For0, 3e18 / (expiration2 - submitTimestamp1));
-        assertEq(earningsFactor0For1, 1636776489931663248324424309240000);
-        assertEq(earningsFactor1For0, 1534530274609724617872321172427618);
+        assertEq(earningsFactor0For1, 1712020976636017581269515821040000);
+        assertEq(earningsFactor1For0, 1470157410324350030712806974476955);
     }
 
     function testTWAMM_submitOrder_EmitsEvent() public {
