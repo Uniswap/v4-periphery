@@ -299,12 +299,14 @@ contract FullRange is BaseHook, ILockCallback {
         pool.hasAccruedFees = false;
     }
 
-    function lockAcquired(address, /*sender*/ bytes calldata rawData)
+    function lockAcquired(address sender, bytes calldata rawData)
         external
         override(ILockCallback, BaseHook)
         poolManagerOnly
         returns (bytes memory)
     {
+        // Now that manager can be called by EOAs with a lock target, it's necessary for lockAcquired to check the original sender if it wants to trust the data passed through.
+        if (sender != address(this)) revert SenderMustBeHook();
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         BalanceDelta delta;
 

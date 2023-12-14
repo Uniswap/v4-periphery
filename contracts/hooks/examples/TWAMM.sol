@@ -131,12 +131,6 @@ contract TWAMM is BaseHook, ITWAMM {
         self.lastVirtualOrderTimestamp = block.timestamp;
     }
 
-    struct CallbackData {
-        address sender;
-        PoolKey key;
-        IPoolManager.SwapParams params;
-    }
-
     /// @inheritdoc ITWAMM
     function executeTWAMMOrders(PoolKey memory key) public {
         PoolId poolId = key.toId();
@@ -306,7 +300,7 @@ contract TWAMM is BaseHook, ITWAMM {
         IERC20Minimal(Currency.unwrap(token)).safeTransfer(to, amountTransferred);
     }
 
-    function lockAcquired(address sender, bytes calldata rawData)
+    function lockAcquired(address, /*sender*/ bytes calldata rawData)
         external
         override
         poolManagerOnly
