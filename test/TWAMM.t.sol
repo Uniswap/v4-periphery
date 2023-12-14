@@ -61,11 +61,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         token0 = MockERC20(Currency.unwrap(currency0));
         token1 = MockERC20(Currency.unwrap(currency1));
 
-        TWAMMImplementation impl = new TWAMMImplementation(
-            manager,
-            10_000,
-            twamm
-        );
+        TWAMMImplementation impl = new TWAMMImplementation(manager, 10_000, twamm);
         (, bytes32[] memory writes) = vm.accesses(address(impl));
         vm.etch(address(twamm), address(impl).code);
         // for each storage key that was written during the hook implementation, copy the value over
