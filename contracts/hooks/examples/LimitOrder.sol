@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
-import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
-import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {BaseHook} from "../../BaseHook.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 type Epoch is uint232;
 
@@ -73,8 +73,8 @@ contract LimitOrder is BaseHook {
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    function getHooksCalls() public pure override returns (Hooks.Calls memory) {
-        return Hooks.Calls({
+    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+        return Hooks.Permissions({
             beforeInitialize: false,
             afterInitialize: true,
             beforeModifyPosition: false,
@@ -82,7 +82,9 @@ contract LimitOrder is BaseHook {
             beforeSwap: false,
             afterSwap: true,
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: false,
+            noOp: false,
+            accessLock: false
         });
     }
 
@@ -107,7 +109,7 @@ contract LimitOrder is BaseHook {
     }
 
     function getTick(PoolId poolId) private view returns (int24 tick) {
-        (, tick,,) = poolManager.getSlot0(poolId);
+        (, tick,) = poolManager.getSlot0(poolId);
     }
 
     function getTickLower(int24 tick, int24 tickSpacing) private pure returns (int24) {
@@ -156,6 +158,7 @@ contract LimitOrder is BaseHook {
 
             (uint256 amount0, uint256 amount1) = abi.decode(
                 poolManager.lock(
+                    address(this),
                     abi.encodeCall(this.lockAcquiredFill, (key, lower, -int256(uint256(epochInfo.liquidityTotal))))
                 ),
                 (uint256, uint256)
@@ -204,8 +207,12 @@ contract LimitOrder is BaseHook {
             ZERO_BYTES
         );
 
-        if (delta.amount0() < 0) poolManager.mint(key.currency0, address(this), amount0 = uint128(-delta.amount0()));
-        if (delta.amount1() < 0) poolManager.mint(key.currency1, address(this), amount1 = uint128(-delta.amount1()));
+        if (delta.amount0() < 0) {
+            poolManager.mint(key.currency0, address(this), amount0 = uint128(-delta.amount0()));
+        }
+        if (delta.amount1() < 0) {
+            poolManager.mint(key.currency1, address(this), amount1 = uint128(-delta.amount1()));
+        }
     }
 
     function place(PoolKey calldata key, int24 tickLower, bool zeroForOne, uint128 liquidity)
@@ -215,6 +222,7 @@ contract LimitOrder is BaseHook {
         if (liquidity == 0) revert ZeroLiquidity();
 
         poolManager.lock(
+            address(this),
             abi.encodeCall(this.lockAcquiredPlace, (key, tickLower, zeroForOne, int256(uint256(liquidity)), msg.sender))
         );
 
@@ -298,6 +306,7 @@ contract LimitOrder is BaseHook {
         uint256 amount1Fee;
         (amount0, amount1, amount0Fee, amount1Fee) = abi.decode(
             poolManager.lock(
+                address(this),
                 abi.encodeCall(
                     this.lockAcquiredKill,
                     (key, tickLower, -int256(uint256(liquidity)), to, liquidity == liquidityTotal)
@@ -352,8 +361,12 @@ contract LimitOrder is BaseHook {
             ZERO_BYTES
         );
 
-        if (delta.amount0() < 0) poolManager.take(key.currency0, to, amount0 = uint128(-delta.amount0()));
-        if (delta.amount1() < 0) poolManager.take(key.currency1, to, amount1 = uint128(-delta.amount1()));
+        if (delta.amount0() < 0) {
+            poolManager.take(key.currency0, to, amount0 = uint128(-delta.amount0()));
+        }
+        if (delta.amount1() < 0) {
+            poolManager.take(key.currency1, to, amount1 = uint128(-delta.amount1()));
+        }
     }
 
     function withdraw(Epoch epoch, address to) external returns (uint256 amount0, uint256 amount1) {
@@ -377,6 +390,7 @@ contract LimitOrder is BaseHook {
         epochInfo.liquidityTotal = liquidityTotal - liquidity;
 
         poolManager.lock(
+            address(this),
             abi.encodeCall(this.lockAcquiredWithdraw, (epochInfo.currency0, epochInfo.currency1, amount0, amount1, to))
         );
 
@@ -391,15 +405,11 @@ contract LimitOrder is BaseHook {
         address to
     ) external selfOnly {
         if (token0Amount > 0) {
-            poolManager.safeTransferFrom(
-                address(this), address(poolManager), uint256(uint160(Currency.unwrap(currency0))), token0Amount, ""
-            );
+            poolManager.burn(currency0, token0Amount);
             poolManager.take(currency0, to, token0Amount);
         }
         if (token1Amount > 0) {
-            poolManager.safeTransferFrom(
-                address(this), address(poolManager), uint256(uint160(Currency.unwrap(currency1))), token1Amount, ""
-            );
+            poolManager.burn(currency1, token1Amount);
             poolManager.take(currency1, to, token1Amount);
         }
     }
