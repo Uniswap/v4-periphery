@@ -2,9 +2,9 @@
 
 pragma solidity ^0.8.20;
 
-import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 struct PathKey {
     Currency intermediateCurrency;

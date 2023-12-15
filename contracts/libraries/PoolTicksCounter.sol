@@ -2,9 +2,9 @@
 pragma solidity >=0.8.20;
 
 import {PoolGetters} from "./PoolGetters.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 library PoolTicksCounter {
     using PoolIdLibrary for PoolKey;
@@ -37,13 +37,15 @@ library PoolTicksCounter {
             // If the initializable tick after the swap is initialized, our original tickAfter is a
             // multiple of tick spacing, and we are swapping downwards we know that tickAfter is initialized
             // and we shouldn't count it.
-            uint256 bmAfter = PoolGetters.getTickBitmapAtWord(self, key.toId(), wordPosAfter);
+            uint256 bmAfter = self.getPoolBitmapInfo(key.toId(), wordPosAfter);
+            //uint256 bmAfter = PoolGetters.getTickBitmapAtWord(self, key.toId(), wordPosAfter);
             tickAfterInitialized =
                 ((bmAfter & (1 << bitPosAfter)) > 0) && ((tickAfter % key.tickSpacing) == 0) && (tickBefore > tickAfter);
 
             // In the case where tickBefore is initialized, we only want to count it if we are swapping upwards.
             // Use the same logic as above to decide whether we should count tickBefore or not.
-            uint256 bmBefore = PoolGetters.getTickBitmapAtWord(self, key.toId(), wordPos);
+            uint256 bmBefore = self.getPoolBitmapInfo(key.toId(), wordPos);
+            //uint256 bmBefore = PoolGetters.getTickBitmapAtWord(self, key.toId(), wordPos);
             tickBeforeInitialized =
                 ((bmBefore & (1 << bitPos)) > 0) && ((tickBefore % key.tickSpacing) == 0) && (tickBefore < tickAfter);
 
@@ -70,7 +72,8 @@ library PoolTicksCounter {
                 mask = mask & (type(uint256).max >> (255 - bitPosHigher));
             }
 
-            uint256 bmLower = PoolGetters.getTickBitmapAtWord(self, key.toId(), wordPosLower);
+            //uint256 bmLower = PoolGetters.getTickBitmapAtWord(self, key.toId(), wordPosLower);
+            uint256 bmLower = self.getPoolBitmapInfo(key.toId(), wordPosLower);
             uint256 masked = bmLower & mask;
             initializedTicksLoaded += countOneBits(masked);
             wordPosLower++;

@@ -2,15 +2,15 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/console2.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
-import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
-import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {ILockCallback} from "@uniswap/v4-core/src/interfaces/callback/ILockCallback.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 import {PathKeyLib} from "../libraries/PathKey.sol";
@@ -51,7 +51,7 @@ contract Quoter is IQuoter, ILockCallback {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        try manager.lock(abi.encodeWithSelector(this._quoteExactInputSingle.selector, params)) {}
+        try manager.lock(address(this), abi.encodeWithSelector(this._quoteExactInputSingle.selector, params)) {}
         catch (bytes memory reason) {
             return _handleRevertSingle(reason, params.poolKey);
         }
@@ -66,7 +66,7 @@ contract Quoter is IQuoter, ILockCallback {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try manager.lock(abi.encodeWithSelector(this._quoteExactInput.selector, params)) {}
+        try manager.lock(address(this), abi.encodeWithSelector(this._quoteExactInput.selector, params)) {}
         catch (bytes memory reason) {
             return _handleRevert(reason);
         }
@@ -80,7 +80,7 @@ contract Quoter is IQuoter, ILockCallback {
     {
         if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.amountOut;
 
-        try manager.lock(abi.encodeWithSelector(this._quoteExactOutputSingle.selector, params)) {}
+        try manager.lock(address(this), abi.encodeWithSelector(this._quoteExactOutputSingle.selector, params)) {}
         catch (bytes memory reason) {
             if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
             return _handleRevertSingle(reason, params.poolKey);
@@ -97,16 +97,19 @@ contract Quoter is IQuoter, ILockCallback {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try manager.lock(abi.encodeWithSelector(this._quoteExactOutput.selector, params)) {}
+        try manager.lock(address(this), abi.encodeWithSelector(this._quoteExactOutput.selector, params)) {}
         catch (bytes memory reason) {
             return _handleRevert(reason);
         }
     }
 
     /// @inheritdoc ILockCallback
-    function lockAcquired(bytes calldata data) external returns (bytes memory) {
+    function lockAcquired(address lockCaller, bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(manager)) {
             revert InvalidLockAcquiredSender();
+        }
+        if (lockCaller != address(this)) {
+            revert InvalidLockCaller();
         }
 
         (bool success, bytes memory returnData) = address(this).call(data);
@@ -149,7 +152,7 @@ contract Quoter is IQuoter, ILockCallback {
         int24 tickAfter;
         BalanceDelta deltas;
         deltaAmounts = new int128[](2);
-        (, tickBefore,,) = manager.getSlot0(poolKey.toId());
+        (, tickBefore,) = manager.getSlot0(poolKey.toId());
         reason = validateRevertReason(reason);
         (deltas, sqrtPriceX96After, tickAfter) = abi.decode(reason, (BalanceDelta, uint160, int24));
         deltaAmounts[0] = deltas.amount0();
@@ -186,7 +189,7 @@ contract Quoter is IQuoter, ILockCallback {
         for (uint256 i = 0; i < pathLength; i++) {
             (PoolKey memory poolKey, bool zeroForOne) =
                 PathKeyLib.getPoolAndSwapDirection(params.path[i], i == 0 ? params.currencyIn : prevCurrencyOut);
-            (, int24 tickBefore,,) = manager.getSlot0(poolKey.toId());
+            (, int24 tickBefore,) = manager.getSlot0(poolKey.toId());
 
             (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
                 poolKey,
@@ -243,7 +246,7 @@ contract Quoter is IQuoter, ILockCallback {
                 params.path[i - 1], i == pathLength ? params.currencyOut : prevCurrencyIn
             );
 
-            (, int24 tickBefore,,) = manager.getSlot0(poolKey.toId());
+            (, int24 tickBefore,) = manager.getSlot0(poolKey.toId());
 
             (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
                 poolKey,
@@ -306,7 +309,7 @@ contract Quoter is IQuoter, ILockCallback {
             }),
             hookData
         );
-        (sqrtPriceX96After, tickAfter,,) = manager.getSlot0(poolKey.toId());
+        (sqrtPriceX96After, tickAfter,) = manager.getSlot0(poolKey.toId());
     }
 
     /// @dev return either the sqrtPriceLimit from user input, or the max/min value possible depending on trade direction

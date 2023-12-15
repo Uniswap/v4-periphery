@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PathKey} from "../libraries/PathKey.sol";
 
 /// @title Quoter Interface
@@ -12,6 +12,7 @@ import {PathKey} from "../libraries/PathKey.sol";
 /// to compute the result. They are also not gas efficient and should not be called on-chain.
 interface IQuoter {
     error InvalidLockAcquiredSender();
+    error InvalidLockCaller();
     error InvalidQuoteBatchParams();
     error LockFailure();
     error NotSelf();

@@ -8,17 +8,17 @@ import {IQuoter} from "../contracts/interfaces/IQuoter.sol";
 import {Quoter} from "../contracts/lens/Quoter.sol";
 import {LiquidityAmounts} from "../contracts/libraries/LiquidityAmounts.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
-import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
-import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {PoolModifyPositionTest} from "@uniswap/v4-core/src/test/PoolModifyPositionTest.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 contract QuoterTest is Test, Deployers {
     using SafeCast for *;
@@ -36,7 +36,6 @@ contract QuoterTest is Test, Deployers {
 
     Quoter quoter;
 
-    PoolManager manager;
     PoolModifyPositionTest positionManager;
 
     MockERC20 token0;
@@ -50,7 +49,7 @@ contract QuoterTest is Test, Deployers {
     MockERC20[] tokenPath;
 
     function setUp() public {
-        manager = new PoolManager(CONTROLLER_GAS_LIMIT);
+        deployFreshManagerAndRouters();
         quoter = new Quoter(address(manager));
         positionManager = new PoolModifyPositionTest(manager);
 
@@ -120,7 +119,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_callLockAcquired_reverts() public {
         vm.expectRevert(IQuoter.InvalidLockAcquiredSender.selector);
         vm.prank(address(manager));
-        quoter.lockAcquired(abi.encodeWithSelector(quoter.lockAcquired.selector, "0x"));
+        quoter.lockAcquired(address(this), abi.encodeWithSelector(quoter.lockAcquired.selector, "0x"));
     }
 
     function testQuoter_quoteExactInput_0to2_2TicksLoaded() public {
@@ -539,7 +538,7 @@ contract QuoterTest is Test, Deployers {
     }
 
     function setupPool(PoolKey memory poolKey) internal {
-        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyPosition(
@@ -554,7 +553,7 @@ contract QuoterTest is Test, Deployers {
     }
 
     function setupPoolMultiplePositions(PoolKey memory poolKey) internal {
-        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyPosition(
@@ -584,9 +583,9 @@ contract QuoterTest is Test, Deployers {
 
     function setupPoolWithZeroTickInitialized(PoolKey memory poolKey) internal {
         PoolId poolId = poolKey.toId();
-        (uint160 sqrtPriceX96,,,) = manager.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,) = manager.getSlot0(poolId);
         if (sqrtPriceX96 == 0) {
-            manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+            initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         }
 
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
