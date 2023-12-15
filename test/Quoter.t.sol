@@ -119,7 +119,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_callLockAcquired_reverts() public {
         vm.expectRevert(IQuoter.InvalidLockAcquiredSender.selector);
         vm.prank(address(manager));
-        quoter.lockAcquired(address(this), abi.encodeWithSelector(quoter.lockAcquired.selector, "0x"));
+        quoter.lockAcquired(address(quoter), abi.encodeWithSelector(quoter.lockAcquired.selector, address(this), "0x"));
     }
 
     function testQuoter_quoteExactInput_0to2_2TicksLoaded() public {
