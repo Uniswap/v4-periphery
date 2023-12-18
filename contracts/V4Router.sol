@@ -12,7 +12,7 @@ import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {PathKey} from "./libraries/PathKey.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 
-/// @title UniswapV4Routing
+/// @title UniswapV4Router
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
 abstract contract V4Router is IV4Router, ILockCallback {
     using CurrencyLibrary for Currency;
