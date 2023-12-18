@@ -52,7 +52,7 @@ contract Quoter is IQuoter, ILockCallback {
     {
         try manager.lock(address(this), abi.encodeWithSelector(this._quoteExactInputSingle.selector, params)) {}
         catch (bytes memory reason) {
-            return _handleRevertSingle(reason, params.poolKey);
+            return _handleRevertSingle(reason);
         }
     }
 
@@ -82,7 +82,7 @@ contract Quoter is IQuoter, ILockCallback {
         try manager.lock(address(this), abi.encodeWithSelector(this._quoteExactOutputSingle.selector, params)) {}
         catch (bytes memory reason) {
             if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
-            return _handleRevertSingle(reason, params.poolKey);
+            return _handleRevertSingle(reason);
         }
     }
 
@@ -142,22 +142,13 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @dev parse revert bytes from a single-pool quote
-    function _handleRevertSingle(bytes memory reason, PoolKey memory poolKey)
+    function _handleRevertSingle(bytes memory reason)
         private
-        view
+        pure
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        int24 tickBefore;
-        int24 tickAfter;
-        BalanceDelta deltas;
-        deltaAmounts = new int128[](2);
-        (, tickBefore,) = manager.getSlot0(poolKey.toId());
         reason = validateRevertReason(reason);
-        (deltas, sqrtPriceX96After, tickAfter) = abi.decode(reason, (BalanceDelta, uint160, int24));
-        deltaAmounts[0] = deltas.amount0();
-        deltaAmounts[1] = deltas.amount1();
-
-        initializedTicksLoaded = PoolTicksCounter.countInitializedTicksLoaded(manager, poolKey, tickBefore, tickAfter);
+        (deltaAmounts, sqrtPriceX96After, initializedTicksLoaded) = abi.decode(reason, (int128[], uint160, uint32));
     }
 
     /// @dev parse revert bytes from a potentially multi-hop quote and return the delta amounts, sqrtPriceX96After, and initializedTicksLoaded
@@ -217,6 +208,8 @@ contract Quoter is IQuoter, ILockCallback {
 
     /// @dev quote an ExactInput swap on a pool, then revert with the result
     function _quoteExactInputSingle(QuoteExactInputSingleParams memory params) public selfOnly returns (bytes memory) {
+        (, int24 tickBefore,) = manager.getSlot0(params.poolKey.toId());
+
         (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
             params.poolKey,
             params.zeroForOne,
@@ -224,7 +217,15 @@ contract Quoter is IQuoter, ILockCallback {
             params.sqrtPriceLimitX96,
             params.hookData
         );
-        bytes memory result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
+
+        int128[] memory deltaAmounts = new int128[](2);
+
+        deltaAmounts[0] = deltas.amount0();
+        deltaAmounts[1] = deltas.amount1();
+
+        uint32 initializedTicksLoaded =
+            PoolTicksCounter.countInitializedTicksLoaded(manager, params.poolKey, tickBefore, tickAfter);
+        bytes memory result = abi.encode(deltaAmounts, sqrtPriceX96After, initializedTicksLoaded);
         assembly {
             revert(add(0x20, result), mload(result))
         }
@@ -278,6 +279,7 @@ contract Quoter is IQuoter, ILockCallback {
         selfOnly
         returns (bytes memory)
     {
+        (, int24 tickBefore,) = manager.getSlot0(params.poolKey.toId());
         (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
             params.poolKey,
             params.zeroForOne,
@@ -285,7 +287,14 @@ contract Quoter is IQuoter, ILockCallback {
             params.sqrtPriceLimitX96,
             params.hookData
         );
-        bytes memory result = abi.encode(deltas, sqrtPriceX96After, tickAfter);
+        int128[] memory deltaAmounts = new int128[](2);
+
+        deltaAmounts[0] = deltas.amount0();
+        deltaAmounts[1] = deltas.amount1();
+
+        uint32 initializedTicksLoaded =
+            PoolTicksCounter.countInitializedTicksLoaded(manager, params.poolKey, tickBefore, tickAfter);
+        bytes memory result = abi.encode(deltaAmounts, sqrtPriceX96After, initializedTicksLoaded);
         assembly {
             revert(add(0x20, result), mload(result))
         }
