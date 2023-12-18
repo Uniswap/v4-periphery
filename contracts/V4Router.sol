@@ -58,7 +58,7 @@ abstract contract V4Router is IV4Router, ILockCallback {
     }
 
     function _swapExactInputSingle(IV4Router.ExactInputSingleParams memory params, address msgSender) private {
-        _swapExactPrivate(
+        _swap(
             params.poolKey,
             params.zeroForOne,
             int256(int128(params.amountIn)),
@@ -78,7 +78,7 @@ abstract contract V4Router is IV4Router, ILockCallback {
             for (uint256 i = 0; i < pathLength; i++) {
                 (PoolKey memory poolKey, bool zeroForOne) = _getPoolAndSwapDirection(params.path[i], params.currencyIn);
                 amountOut = uint128(
-                    -_swapExactPrivate(
+                    -_swap(
                         poolKey,
                         zeroForOne,
                         int256(int128(params.amountIn)),
@@ -99,7 +99,7 @@ abstract contract V4Router is IV4Router, ILockCallback {
     }
 
     function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams memory params, address msgSender) private {
-        _swapExactPrivate(
+        _swap(
             params.poolKey,
             params.zeroForOne,
             -int256(int128(params.amountOut)),
@@ -120,7 +120,7 @@ abstract contract V4Router is IV4Router, ILockCallback {
                 (PoolKey memory poolKey, bool oneForZero) =
                     _getPoolAndSwapDirection(params.path[i - 1], params.currencyOut);
                 amountIn = uint128(
-                    _swapExactPrivate(
+                    _swap(
                         poolKey,
                         !oneForZero,
                         -int256(int128(params.amountOut)),
@@ -139,7 +139,7 @@ abstract contract V4Router is IV4Router, ILockCallback {
         }
     }
 
-    function _swapExactPrivate(
+    function _swap(
         PoolKey memory poolKey,
         bool zeroForOne,
         int256 amountSpecified,
