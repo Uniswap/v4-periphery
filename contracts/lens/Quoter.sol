@@ -57,7 +57,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @inheritdoc IQuoter
-    function quoteExactInput(QuoteExactInputParams memory params)
+    function quoteExactInput(QuoteExactParams memory params)
         external
         returns (
             int128[] memory deltaAmounts,
@@ -87,7 +87,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @inheritdoc IQuoter
-    function quoteExactOutput(QuoteExactOutputParams memory params)
+    function quoteExactOutput(QuoteExactParams memory params)
         public
         override
         returns (
@@ -167,7 +167,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @dev quote an ExactInput swap along a path of tokens, then revert with the result
-    function _quoteExactInput(QuoteExactInputParams memory params) public selfOnly returns (bytes memory) {
+    function _quoteExactInput(QuoteExactParams memory params) public selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
         int128[] memory deltaAmounts = new int128[](pathLength + 1);
@@ -178,13 +178,13 @@ contract Quoter is IQuoter, ILockCallback {
 
         for (uint256 i = 0; i < pathLength; i++) {
             (PoolKey memory poolKey, bool zeroForOne) =
-                PathKeyLib.getPoolAndSwapDirection(params.path[i], i == 0 ? params.currencyIn : prevCurrencyOut);
+                PathKeyLib.getPoolAndSwapDirection(params.path[i], i == 0 ? params.exactCurrency : prevCurrencyOut);
             (, int24 tickBefore,) = manager.getSlot0(poolKey.toId());
 
             (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
                 poolKey,
                 zeroForOne,
-                int256(int128(i == 0 ? params.amountIn : prevAmountOut)),
+                int256(int128(i == 0 ? params.exactAmount : prevAmountOut)),
                 0,
                 params.path[i].hookData
             );
@@ -232,7 +232,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @dev quote an ExactOutput swap along a path of tokens, then revert with the result
-    function _quoteExactOutput(QuoteExactOutputParams memory params) public selfOnly returns (bytes memory) {
+    function _quoteExactOutput(QuoteExactParams memory params) public selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
         int128[] memory deltaAmounts = new int128[](pathLength + 1);
@@ -243,7 +243,7 @@ contract Quoter is IQuoter, ILockCallback {
 
         for (uint256 i = pathLength; i > 0; i--) {
             (PoolKey memory poolKey, bool oneForZero) = PathKeyLib.getPoolAndSwapDirection(
-                params.path[i - 1], i == pathLength ? params.currencyOut : prevCurrencyIn
+                params.path[i - 1], i == pathLength ? params.exactCurrency : prevCurrencyIn
             );
 
             (, int24 tickBefore,) = manager.getSlot0(poolKey.toId());
@@ -251,7 +251,7 @@ contract Quoter is IQuoter, ILockCallback {
             (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
                 poolKey,
                 !oneForZero,
-                -int256(int128(i == pathLength ? params.amountOut : prevAmountIn)),
+                -int256(int128(i == pathLength ? params.exactAmount : prevAmountIn)),
                 0,
                 params.path[i - 1].hookData
             );

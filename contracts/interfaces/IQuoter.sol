@@ -32,19 +32,11 @@ interface IQuoter {
         bytes hookData;
     }
 
-    struct QuoteExactInputParams {
-        Currency currencyIn;
+    struct QuoteExactParams {
+        Currency exactCurrency;
         PathKey[] path;
         address recipient;
-        uint128 amountIn;
-    }
-
-    struct QuoteExactOutputParams {
-        Currency currencyOut;
-        PathKey[] path;
-        address recipient;
-        uint128 amountOut;
-        uint160 sqrtPriceLimitX96;
+        uint128 exactAmount;
     }
 
     /// @notice Returns the delta amounts for a given exact input swap of a single pool
@@ -67,11 +59,11 @@ interface IQuoter {
     /// currencyIn The input currency of the swap
     /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
     /// recipient The intended recipient of the output tokens
-    /// amountIn The desired input amount
+    /// exactAmount The desired input amount
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     /// @return initializedTicksLoadedList List of the initialized ticks that the swap loaded for each pool in the path
-    function quoteExactInput(QuoteExactInputParams memory params)
+    function quoteExactInput(QuoteExactParams memory params)
         external
         returns (
             int128[] memory deltaAmounts,
@@ -99,11 +91,11 @@ interface IQuoter {
     /// currencyOut The output currency of the swap
     /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
     /// recipient The intended recipient of the output tokens
-    /// amountOut The desired output amount
+    /// exactAmount The desired output amount
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     /// @return initializedTicksLoadedList List of the initialized ticks that the swap loaded for each pool in the path
-    function quoteExactOutput(QuoteExactOutputParams memory params)
+    function quoteExactOutput(QuoteExactParams memory params)
         external
         returns (
             int128[] memory deltaAmounts,

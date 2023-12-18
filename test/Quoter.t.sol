@@ -125,7 +125,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactInput_0to2_2TicksLoaded() public {
         tokenPath.push(token0);
         tokenPath.push(token2);
-        IQuoter.QuoteExactInputParams memory params = getExactInputParams(tokenPath, 10000);
+        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
         (
             int128[] memory deltaAmounts,
@@ -144,7 +144,7 @@ contract QuoterTest is Test, Deployers {
 
         // The swap amount is set such that the active tick after the swap is -120.
         // -120 is an initialized tick for this pool. We check that we don't count it.
-        IQuoter.QuoteExactInputParams memory params = getExactInputParams(tokenPath, 6200);
+        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 6200);
 
         (
             int128[] memory deltaAmounts,
@@ -163,7 +163,7 @@ contract QuoterTest is Test, Deployers {
 
         // The swap amount is set such that the active tick after the swap is -60.
         // -60 is an initialized tick for this pool. We check that we don't count it.
-        IQuoter.QuoteExactInputParams memory params = getExactInputParams(tokenPath, 4000);
+        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 4000);
 
         (
             int128[] memory deltaAmounts,
@@ -179,7 +179,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactInput_0to2_0TickLoaded_startingNotInitialized() public {
         tokenPath.push(token0);
         tokenPath.push(token2);
-        IQuoter.QuoteExactInputParams memory params = getExactInputParams(tokenPath, 10);
+        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10);
 
         (
             int128[] memory deltaAmounts,
@@ -196,7 +196,7 @@ contract QuoterTest is Test, Deployers {
         setupPoolWithZeroTickInitialized(key02);
         tokenPath.push(token0);
         tokenPath.push(token2);
-        IQuoter.QuoteExactInputParams memory params = getExactInputParams(tokenPath, 10);
+        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10);
 
         (
             int128[] memory deltaAmounts,
@@ -212,7 +212,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactInput_2to0_2TicksLoaded() public {
         tokenPath.push(token2);
         tokenPath.push(token0);
-        IQuoter.QuoteExactInputParams memory params = getExactInputParams(tokenPath, 10000);
+        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
         (
             int128[] memory deltaAmounts,
@@ -231,7 +231,7 @@ contract QuoterTest is Test, Deployers {
 
         // The swap amount is set such that the active tick after the swap is 120.
         // 120 is an initialized tick for this pool. We check that we don't count it.
-        IQuoter.QuoteExactInputParams memory params = getExactInputParams(tokenPath, 6250);
+        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 6250);
 
         (
             int128[] memory deltaAmounts,
@@ -248,7 +248,7 @@ contract QuoterTest is Test, Deployers {
         setupPoolWithZeroTickInitialized(key02);
         tokenPath.push(token2);
         tokenPath.push(token0);
-        IQuoter.QuoteExactInputParams memory params = getExactInputParams(tokenPath, 200);
+        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 200);
 
         // Tick 0 initialized. Tick after = 1
         (
@@ -266,7 +266,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactInput_2to0_0TickLoaded_startingNotInitialized() public {
         tokenPath.push(token2);
         tokenPath.push(token0);
-        IQuoter.QuoteExactInputParams memory params = getExactInputParams(tokenPath, 103);
+        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 103);
 
         (
             int128[] memory deltaAmounts,
@@ -282,7 +282,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactInput_2to1() public {
         tokenPath.push(token2);
         tokenPath.push(token1);
-        IQuoter.QuoteExactInputParams memory params = getExactInputParams(tokenPath, 10000);
+        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
         (
             int128[] memory deltaAmounts,
@@ -298,7 +298,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token0);
         tokenPath.push(token2);
         tokenPath.push(token1);
-        IQuoter.QuoteExactInputParams memory params = getExactInputParams(tokenPath, 10000);
+        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
         (
             int128[] memory deltaAmounts,
@@ -352,7 +352,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactOutput_0to2_2TicksLoaded() public {
         tokenPath.push(token0);
         tokenPath.push(token2);
-        IQuoter.QuoteExactOutputParams memory params = getExactOutputParams(tokenPath, 15000);
+        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 15000);
 
         (
             int128[] memory deltaAmounts,
@@ -369,7 +369,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token0);
         tokenPath.push(token2);
 
-        IQuoter.QuoteExactOutputParams memory params = getExactOutputParams(tokenPath, 6143);
+        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6143);
 
         (
             int128[] memory deltaAmounts,
@@ -386,7 +386,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token0);
         tokenPath.push(token2);
 
-        IQuoter.QuoteExactOutputParams memory params = getExactOutputParams(tokenPath, 4000);
+        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 4000);
 
         (
             int128[] memory deltaAmounts,
@@ -404,7 +404,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token0);
         tokenPath.push(token2);
 
-        IQuoter.QuoteExactOutputParams memory params = getExactOutputParams(tokenPath, 100);
+        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 100);
 
         // Tick 0 initialized. Tick after = 1
         (
@@ -422,7 +422,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token0);
         tokenPath.push(token2);
 
-        IQuoter.QuoteExactOutputParams memory params = getExactOutputParams(tokenPath, 10);
+        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 10);
 
         (
             int128[] memory deltaAmounts,
@@ -438,7 +438,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactOutput_2to0_2TicksLoaded() public {
         tokenPath.push(token2);
         tokenPath.push(token0);
-        IQuoter.QuoteExactOutputParams memory params = getExactOutputParams(tokenPath, 15000);
+        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 15000);
 
         (
             int128[] memory deltaAmounts,
@@ -456,7 +456,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token2);
         tokenPath.push(token0);
 
-        IQuoter.QuoteExactOutputParams memory params = getExactOutputParams(tokenPath, 6223);
+        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6223);
 
         (
             int128[] memory deltaAmounts,
@@ -474,7 +474,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token2);
         tokenPath.push(token0);
 
-        IQuoter.QuoteExactOutputParams memory params = getExactOutputParams(tokenPath, 6000);
+        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6000);
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
@@ -491,7 +491,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token2);
         tokenPath.push(token1);
 
-        IQuoter.QuoteExactOutputParams memory params = getExactOutputParams(tokenPath, 9871);
+        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 9871);
 
         (
             int128[] memory deltaAmounts,
@@ -510,7 +510,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token2);
         tokenPath.push(token1);
 
-        IQuoter.QuoteExactOutputParams memory params = getExactOutputParams(tokenPath, 9745);
+        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 9745);
 
         (
             int128[] memory deltaAmounts,
@@ -631,32 +631,32 @@ contract QuoterTest is Test, Deployers {
     function getExactInputParams(MockERC20[] memory _tokenPath, uint256 amountIn)
         internal
         view
-        returns (IQuoter.QuoteExactInputParams memory params)
+        returns (IQuoter.QuoteExactParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
         for (uint256 i = 0; i < _tokenPath.length - 1; i++) {
             path[i] = PathKey(Currency.wrap(address(_tokenPath[i + 1])), 3000, 60, IHooks(address(0)), bytes(""));
         }
 
-        params.currencyIn = Currency.wrap(address(_tokenPath[0]));
+        params.exactCurrency = Currency.wrap(address(_tokenPath[0]));
         params.path = path;
         params.recipient = address(this);
-        params.amountIn = uint128(amountIn);
+        params.exactAmount = uint128(amountIn);
     }
 
     function getExactOutputParams(MockERC20[] memory _tokenPath, uint256 amountOut)
         internal
         view
-        returns (IQuoter.QuoteExactOutputParams memory params)
+        returns (IQuoter.QuoteExactParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
         for (uint256 i = _tokenPath.length - 1; i > 0; i--) {
             path[i - 1] = PathKey(Currency.wrap(address(_tokenPath[i - 1])), 3000, 60, IHooks(address(0)), bytes(""));
         }
 
-        params.currencyOut = Currency.wrap(address(_tokenPath[_tokenPath.length - 1]));
+        params.exactCurrency = Currency.wrap(address(_tokenPath[_tokenPath.length - 1]));
         params.path = path;
         params.recipient = address(this);
-        params.amountOut = uint128(amountOut);
+        params.exactAmount = uint128(amountOut);
     }
 }
