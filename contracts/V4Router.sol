@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {ILockCallback} from "@uniswap/v4-core/contracts/interfaces/callback/ILockCallback.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {ILockCallback} from "@uniswap/v4-core/src/interfaces/callback/ILockCallback.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PathKey} from "./libraries/PathKey.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 
@@ -30,11 +30,16 @@ abstract contract V4Router is IV4Router, ILockCallback {
     }
 
     function _v4Swap(SwapType swapType, bytes memory params) internal {
-        poolManager.lock(abi.encode(SwapInfo(swapType, msg.sender, params)));
+        poolManager.lock(address(this), abi.encode(SwapInfo(swapType, msg.sender, params)));
     }
 
     /// @inheritdoc ILockCallback
-    function lockAcquired(bytes calldata encodedSwapInfo) external override poolManagerOnly returns (bytes memory) {
+    function lockAcquired(address, /*lockCaller*/ bytes calldata encodedSwapInfo)
+        external
+        override
+        poolManagerOnly
+        returns (bytes memory)
+    {
         SwapInfo memory swapInfo = abi.decode(encodedSwapInfo, (SwapInfo));
 
         if (swapInfo.swapType == SwapType.ExactInput) {

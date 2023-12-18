@@ -2,24 +2,26 @@
 pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
-import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {V4Router} from "../contracts/V4Router.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolModifyPositionTest} from "@uniswap/v4-core/src/test/PoolModifyPositionTest.sol";
 import {IV4Router} from "../contracts/interfaces/IV4Router.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {V4RouterImplementation} from "./shared/implementation/V4RouterImplementation.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
 import {PathKey} from "../contracts/libraries/PathKey.sol";
+import {UniswapV4ERC20} from "../contracts/libraries/UniswapV4ERC20.sol";
+import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 
 contract V4RouterTest is Test, Deployers, GasSnapshot {
     using CurrencyLibrary for Currency;
 
-    PoolManager manager;
     PoolModifyPositionTest positionManager;
     V4RouterImplementation router;
 
@@ -35,7 +37,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
     MockERC20[] tokenPath;
 
     function setUp() public {
-        manager = new PoolManager(500000);
+        deployFreshManagerAndRouters();
+
         router = new V4RouterImplementation(manager);
         positionManager = new PoolModifyPositionTest(manager);
 
@@ -278,8 +281,6 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 prevBalance1 = token1.balanceOf(address(this));
 
         snapStart("RouterExactOut1Hop");
-        bytes memory encoded = abi.encode(params);
-        IV4Router.ExactOutputParams memory decoded = abi.decode(encoded, (IV4Router.ExactOutputParams));
         router.swap(IV4Router.SwapType.ExactOutput, abi.encode(params));
         snapEnd();
 
@@ -357,7 +358,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
     }
 
     function setupPool(PoolKey memory poolKey) internal {
-        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-887220, 887220, 200 ether), "0x");
