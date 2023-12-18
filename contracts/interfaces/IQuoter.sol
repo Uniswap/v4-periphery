@@ -104,7 +104,7 @@ interface IQuoter {
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
 
     /// @notice Returns the delta amounts along the swap path for a given exact output swap
-    /// @param params the params for the quote, encoded as 'QuoteExactInputParams'
+    /// @param params the params for the quote, encoded as 'QuoteExactOutputParams'
     /// currencyOut The output currency of the swap
     /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
     /// recipient The intended recipient of the output tokens
