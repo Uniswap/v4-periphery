@@ -78,11 +78,11 @@ contract QuoterTest is Test, Deployers {
 
         (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) = quoter
             .quoteExactInputSingle(
-            IQuoter.QuoteExactInputSingleParams({
+            IQuoter.QuoteExactSingleParams({
                 poolKey: key02,
                 zeroForOne: true,
                 recipient: address(this),
-                amountIn: uint128(amountIn),
+                exactAmount: uint128(amountIn),
                 sqrtPriceLimitX96: 0,
                 hookData: ZERO_BYTES
             })
@@ -100,11 +100,11 @@ contract QuoterTest is Test, Deployers {
 
         (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) = quoter
             .quoteExactInputSingle(
-            IQuoter.QuoteExactInputSingleParams({
+            IQuoter.QuoteExactSingleParams({
                 poolKey: key02,
                 zeroForOne: false,
                 recipient: address(this),
-                amountIn: uint128(amountIn),
+                exactAmount: uint128(amountIn),
                 sqrtPriceLimitX96: 0,
                 hookData: ZERO_BYTES
             })
@@ -316,11 +316,11 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactOutputSingle_0to1() public {
         (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) = quoter
             .quoteExactOutputSingle(
-            IQuoter.QuoteExactOutputSingleParams({
+            IQuoter.QuoteExactSingleParams({
                 poolKey: key01,
                 zeroForOne: true,
                 recipient: address(this),
-                amountOut: type(uint128).max,
+                exactAmount: type(uint128).max,
                 sqrtPriceLimitX96: SQRT_RATIO_100_102,
                 hookData: ZERO_BYTES
             })
@@ -334,11 +334,11 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactOutputSingle_1to0() public {
         (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded) = quoter
             .quoteExactOutputSingle(
-            IQuoter.QuoteExactOutputSingleParams({
+            IQuoter.QuoteExactSingleParams({
                 poolKey: key01,
                 zeroForOne: false,
                 recipient: address(this),
-                amountOut: type(uint128).max,
+                exactAmount: type(uint128).max,
                 sqrtPriceLimitX96: SQRT_RATIO_102_100,
                 hookData: ZERO_BYTES
             })

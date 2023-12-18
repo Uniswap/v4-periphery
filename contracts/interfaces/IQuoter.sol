@@ -23,11 +23,11 @@ interface IQuoter {
         int128 currency1Delta;
     }
 
-    struct QuoteExactInputSingleParams {
+    struct QuoteExactSingleParams {
         PoolKey poolKey;
         bool zeroForOne;
         address recipient;
-        uint128 amountIn;
+        uint128 exactAmount;
         uint160 sqrtPriceLimitX96;
         bytes hookData;
     }
@@ -37,15 +37,6 @@ interface IQuoter {
         PathKey[] path;
         address recipient;
         uint128 amountIn;
-    }
-
-    struct QuoteExactOutputSingleParams {
-        PoolKey poolKey;
-        bool zeroForOne;
-        address recipient;
-        uint128 amountOut;
-        uint160 sqrtPriceLimitX96;
-        bytes hookData;
     }
 
     struct QuoteExactOutputParams {
@@ -61,13 +52,13 @@ interface IQuoter {
     /// poolKey The key for identifying a V4 pool
     /// zeroForOne If the swap is from currency0 to currency1
     /// recipient The intended recipient of the output tokens
-    /// amountIn The desired input amount
+    /// exactAmount The desired input amount
     /// sqrtPriceLimitX96 The price limit of the pool that cannot be exceeded by the swap
     /// hookData arbitrary hookData to pass into the associated hooks
     /// @return deltaAmounts Delta amounts resulted from the swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     /// @return initializedTicksLoaded The number of initialized ticks that the swap loaded
-    function quoteExactInputSingle(QuoteExactInputSingleParams calldata params)
+    function quoteExactInputSingle(QuoteExactSingleParams calldata params)
         external
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
 
@@ -93,13 +84,13 @@ interface IQuoter {
     /// poolKey The key for identifying a V4 pool
     /// zeroForOne If the swap is from currency0 to currency1
     /// recipient The intended recipient of the output tokens
-    /// amountOut The desired input amount
+    /// exactAmount The desired input amount
     /// sqrtPriceLimitX96 The price limit of the pool that cannot be exceeded by the swap
     /// hookData arbitrary hookData to pass into the associated hooks
     /// @return deltaAmounts Delta amounts resulted from the swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     /// @return initializedTicksLoaded The number of initialized ticks that the swap loaded
-    function quoteExactOutputSingle(QuoteExactOutputSingleParams calldata params)
+    function quoteExactOutputSingle(QuoteExactSingleParams calldata params)
         external
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
 

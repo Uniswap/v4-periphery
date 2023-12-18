@@ -45,7 +45,7 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @inheritdoc IQuoter
-    function quoteExactInputSingle(QuoteExactInputSingleParams memory params)
+    function quoteExactInputSingle(QuoteExactSingleParams memory params)
         public
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
@@ -72,12 +72,12 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @inheritdoc IQuoter
-    function quoteExactOutputSingle(QuoteExactOutputSingleParams memory params)
+    function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         public
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.amountOut;
+        if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.exactAmount;
 
         try manager.lock(address(this), abi.encodeWithSelector(this._quoteExactOutputSingle.selector, params)) {}
         catch (bytes memory reason) {
@@ -207,13 +207,13 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @dev quote an ExactInput swap on a pool, then revert with the result
-    function _quoteExactInputSingle(QuoteExactInputSingleParams memory params) public selfOnly returns (bytes memory) {
+    function _quoteExactInputSingle(QuoteExactSingleParams memory params) public selfOnly returns (bytes memory) {
         (, int24 tickBefore,) = manager.getSlot0(params.poolKey.toId());
 
         (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
             params.poolKey,
             params.zeroForOne,
-            int256(int128(params.amountIn)),
+            int256(int128(params.exactAmount)),
             params.sqrtPriceLimitX96,
             params.hookData
         );
@@ -274,16 +274,12 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @dev quote an ExactOutput swap on a pool, then revert with the result
-    function _quoteExactOutputSingle(QuoteExactOutputSingleParams memory params)
-        public
-        selfOnly
-        returns (bytes memory)
-    {
+    function _quoteExactOutputSingle(QuoteExactSingleParams memory params) public selfOnly returns (bytes memory) {
         (, int24 tickBefore,) = manager.getSlot0(params.poolKey.toId());
         (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
             params.poolKey,
             params.zeroForOne,
-            -int256(uint256(params.amountOut)),
+            -int256(uint256(params.exactAmount)),
             params.sqrtPriceLimitX96,
             params.hookData
         );
