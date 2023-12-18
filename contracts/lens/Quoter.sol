@@ -15,8 +15,8 @@ import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 import {PathKeyLib} from "../libraries/PathKey.sol";
 
 contract Quoter is IQuoter, ILockCallback {
-    using PoolIdLibrary for PoolKey;
     using Hooks for IHooks;
+    using PoolIdLibrary for PoolKey;
 
     /// @dev cache used to check a safety condition in exact output swaps.
     uint256 private amountOutCached;
