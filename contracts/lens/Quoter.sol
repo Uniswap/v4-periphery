@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
+import "forge-std/console2.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -20,7 +21,7 @@ contract Quoter is IQuoter, ILockCallback {
     using PathKeyLib for PathKey;
 
     /// @dev cache used to check a safety condition in exact output swaps.
-    uint256 private amountOutCached;
+    uint128 private amountOutCached;
 
     // v4 Singleton contract
     IPoolManager public immutable manager;
@@ -239,22 +240,23 @@ contract Quoter is IQuoter, ILockCallback {
         uint32[] memory initializedTicksLoadedList = new uint32[](pathLength);
         Currency prevCurrencyIn;
         uint128 prevAmountIn;
+        uint128 curAmountOut;
 
         for (uint256 i = pathLength; i > 0; i--) {
+            curAmountOut = i == pathLength ? params.exactAmount : prevAmountIn;
+            amountOutCached = curAmountOut;
+
             (PoolKey memory poolKey, bool oneForZero) = PathKeyLib.getPoolAndSwapDirection(
                 params.path[i - 1], i == pathLength ? params.exactCurrency : prevCurrencyIn
             );
 
             (, int24 tickBefore,) = manager.getSlot0(poolKey.toId());
 
-            (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
-                poolKey,
-                !oneForZero,
-                -int256(int128(i == pathLength ? params.exactAmount : prevAmountIn)),
-                0,
-                params.path[i - 1].hookData
-            );
+            (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) =
+                _swap(poolKey, !oneForZero, -int256(uint256(curAmountOut)), 0, params.path[i - 1].hookData);
 
+            // always clear because sqrtPriceLimitX96 is set to 0 always
+            delete amountOutCached;
             (int128 deltaIn, int128 deltaOut) =
                 !oneForZero ? (curDeltas.amount0(), curDeltas.amount1()) : (curDeltas.amount1(), curDeltas.amount0());
             deltaAmounts[i - 1] += deltaIn;
@@ -304,7 +306,7 @@ contract Quoter is IQuoter, ILockCallback {
     function _swap(
         PoolKey memory poolKey,
         bool zeroForOne,
-        int256 amountSpecified,
+        int256 amountSpecified, // exactInput = amountSpecified > 0
         uint160 sqrtPriceLimitX96,
         bytes memory hookData
     ) private returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) {
@@ -318,7 +320,7 @@ contract Quoter is IQuoter, ILockCallback {
             hookData
         );
         // only exactOut case
-        if (amountOutCached != 0 && amountOutCached != uint256(int256(-deltas.amount1()))) {
+        if (amountOutCached != 0 && amountOutCached != uint128(zeroForOne ? -deltas.amount1() : -deltas.amount0())) {
             revert InsufficientAmountOut();
         }
         (sqrtPriceX96After, tickAfter,) = manager.getSlot0(poolKey.toId());
