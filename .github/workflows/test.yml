@@ -22,6 +22,6 @@ jobs:
           version: nightly
 
       - name: Run tests
-        run: forge test -vvv
+        run: forge test -vvv --via-ir
         env:
           FOUNDRY_PROFILE: ci

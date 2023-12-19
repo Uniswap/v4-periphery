@@ -3,22 +3,23 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {FullRange} from "../contracts/hooks/examples/FullRange.sol";
 import {FullRangeImplementation} from "./shared/implementation/FullRangeImplementation.sol";
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolModifyPositionTest} from "@uniswap/v4-core/src/test/PoolModifyPositionTest.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {UniswapV4ERC20} from "../contracts/libraries/UniswapV4ERC20.sol";
-import {FullMath} from "@uniswap/v4-core/contracts/libraries/FullMath.sol";
-import {SafeCast} from "@uniswap/v4-core/contracts/libraries/SafeCast.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 
 contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -47,6 +48,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         uint24 fee
     );
 
+    HookEnabledSwapRouter router;
     /// @dev Min tick for full range with tick spacing of 60
     int24 internal constant MIN_TICK = -887220;
     /// @dev Max tick for full range with tick spacing of 60
@@ -62,15 +64,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     MockERC20 token1;
     MockERC20 token2;
 
-    Currency currency0;
-    Currency currency1;
-
-    PoolManager manager;
     FullRangeImplementation fullRange = FullRangeImplementation(
         address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG))
     );
 
-    PoolKey key;
     PoolId id;
 
     PoolKey key2;
@@ -80,15 +77,13 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     PoolKey keyWithLiq;
     PoolId idWithLiq;
 
-    PoolModifyPositionTest modifyPositionRouter;
-    PoolSwapTest swapRouter;
-
     function setUp() public {
-        token0 = new MockERC20("TestA", "A", 18, 2 ** 128);
-        token1 = new MockERC20("TestB", "B", 18, 2 ** 128);
-        token2 = new MockERC20("TestC", "C", 18, 2 ** 128);
-
-        manager = new PoolManager(500000);
+        deployFreshManagerAndRouters();
+        router = new HookEnabledSwapRouter(manager);
+        MockERC20[] memory tokens = deployTokens(3, 2 ** 128);
+        token0 = tokens[0];
+        token1 = tokens[1];
+        token2 = tokens[2];
 
         FullRangeImplementation impl = new FullRangeImplementation(manager, fullRange);
         vm.etch(address(fullRange), address(impl).code);
@@ -102,17 +97,14 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         keyWithLiq = createPoolKey(token0, token2);
         idWithLiq = keyWithLiq.toId();
 
-        modifyPositionRouter = new PoolModifyPositionTest(manager);
-        swapRouter = new PoolSwapTest(manager);
-
         token0.approve(address(fullRange), type(uint256).max);
         token1.approve(address(fullRange), type(uint256).max);
         token2.approve(address(fullRange), type(uint256).max);
-        token0.approve(address(swapRouter), type(uint256).max);
-        token1.approve(address(swapRouter), type(uint256).max);
-        token2.approve(address(swapRouter), type(uint256).max);
+        token0.approve(address(router), type(uint256).max);
+        token1.approve(address(router), type(uint256).max);
+        token2.approve(address(router), type(uint256).max);
 
-        manager.initialize(keyWithLiq, SQRT_RATIO_1_1, ZERO_BYTES);
+        initPool(keyWithLiq.currency0, keyWithLiq.currency1, fullRange, 3000, SQRT_RATIO_1_1, ZERO_BYTES);
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
                 keyWithLiq.currency0,
@@ -135,7 +127,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         emit Initialize(id, testKey.currency0, testKey.currency1, testKey.fee, testKey.tickSpacing, testKey.hooks);
 
         snapStart("FullRangeInitialize");
-        manager.initialize(testKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(testKey, SQRT_RATIO_1_1, ZERO_BYTES);
         snapEnd();
 
         (, address liquidityToken) = fullRange.poolInfo(id);
@@ -147,11 +139,11 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         PoolKey memory wrongKey = PoolKey(key.currency0, key.currency1, 0, TICK_SPACING + 1, fullRange);
 
         vm.expectRevert(FullRange.TickSpacingNotDefault.selector);
-        manager.initialize(wrongKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(wrongKey, SQRT_RATIO_1_1, ZERO_BYTES);
     }
 
     function testFullRange_addLiquidity_InitialAddSucceeds() public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         uint256 prevBalance0 = key.currency0.balanceOf(address(this));
         uint256 prevBalance1 = key.currency1.balanceOf(address(this));
@@ -177,7 +169,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_addLiquidity_InitialAddFuzz(uint256 amount) public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
         if (amount < LOCKED_LIQUIDITY) {
             vm.expectRevert(FullRange.LiquidityDoesntMeetMinimum.selector);
             fullRange.addLiquidity(
@@ -252,7 +244,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_addLiquidity_SwapThenAddSucceeds() public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         uint256 prevBalance0 = key.currency0.balanceOf(address(this));
         uint256 prevBalance1 = key.currency1.balanceOf(address(this));
@@ -273,16 +265,16 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         vm.expectEmit(true, true, true, true);
         emit Swap(
-            id, address(swapRouter), 1 ether, -906610893880149131, 72045250990510446115798809072, 10 ether, -1901, 3000
+            id, address(router), 1 ether, -906610893880149131, 72045250990510446115798809072, 10 ether, -1901, 3000
         );
 
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
-        PoolSwapTest.TestSettings memory settings =
-            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+        HookEnabledSwapRouter.TestSettings memory settings =
+            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
         snapStart("FullRangeSwap");
-        swapRouter.swap(key, params, settings, ZERO_BYTES);
+        router.swap(key, params, settings, ZERO_BYTES);
         snapEnd();
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
@@ -306,7 +298,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_addLiquidity_FailsIfTooMuchSlippage() public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
@@ -316,10 +308,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1000 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
-        PoolSwapTest.TestSettings memory settings =
-            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+        HookEnabledSwapRouter.TestSettings memory settings =
+            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-        swapRouter.swap(key, params, settings, ZERO_BYTES);
+        router.swap(key, params, settings, ZERO_BYTES);
 
         vm.expectRevert(FullRange.TooMuchSlippage.selector);
         fullRange.addLiquidity(
@@ -331,7 +323,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
     function testFullRange_swap_TwoSwaps() public {
         PoolKey memory testKey = key;
-        manager.initialize(testKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(testKey, SQRT_RATIO_1_1, ZERO_BYTES);
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
@@ -341,18 +333,18 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
-        PoolSwapTest.TestSettings memory settings =
-            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+        HookEnabledSwapRouter.TestSettings memory settings =
+            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
         snapStart("FullRangeFirstSwap");
-        swapRouter.swap(testKey, params, settings, ZERO_BYTES);
+        router.swap(testKey, params, settings, ZERO_BYTES);
         snapEnd();
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
         assertEq(hasAccruedFees, true);
 
         snapStart("FullRangeSecondSwap");
-        swapRouter.swap(testKey, params, settings, ZERO_BYTES);
+        router.swap(testKey, params, settings, ZERO_BYTES);
         snapEnd();
 
         (hasAccruedFees,) = fullRange.poolInfo(id);
@@ -360,8 +352,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_swap_TwoPools() public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
-        manager.initialize(key2, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key2, SQRT_RATIO_1_1, ZERO_BYTES);
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
@@ -377,11 +369,11 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 10000000, sqrtPriceLimitX96: SQRT_RATIO_1_2});
 
-        PoolSwapTest.TestSettings memory testSettings =
-            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+        HookEnabledSwapRouter.TestSettings memory testSettings =
+            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-        swapRouter.swap(key, params, testSettings, ZERO_BYTES);
-        swapRouter.swap(key2, params, testSettings, ZERO_BYTES);
+        router.swap(key, params, testSettings, ZERO_BYTES);
+        router.swap(key2, params, testSettings, ZERO_BYTES);
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
         assertEq(hasAccruedFees, true);
@@ -416,7 +408,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_InitialRemoveFuzz(uint256 amount) public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
@@ -464,7 +456,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_FailsIfNoLiquidity() public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         (, address liquidityToken) = fullRange.poolInfo(id);
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
@@ -476,7 +468,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_SucceedsWithPartial() public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         uint256 prevBalance0 = key.currency0.balanceOfSelf();
         uint256 prevBalance1 = key.currency1.balanceOfSelf();
@@ -511,7 +503,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_DiffRatios() public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         uint256 prevBalance0 = key.currency0.balanceOf(address(this));
         uint256 prevBalance1 = key.currency1.balanceOf(address(this));
@@ -560,10 +552,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
 
-        PoolSwapTest.TestSettings memory testSettings =
-            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+        HookEnabledSwapRouter.TestSettings memory testSettings =
+            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-        swapRouter.swap(keyWithLiq, params, testSettings, ZERO_BYTES);
+        router.swap(keyWithLiq, params, testSettings, ZERO_BYTES);
 
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
 
@@ -579,7 +571,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_RemoveAllFuzz(uint256 amount) public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
         (, address liquidityToken) = fullRange.poolInfo(id);
 
         if (amount <= LOCKED_LIQUIDITY) {
@@ -634,7 +626,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         vm.prank(address(2));
         token1.approve(address(fullRange), type(uint256).max);
 
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
         (, address liquidityToken) = fullRange.poolInfo(id);
 
         // Test contract adds liquidity
@@ -687,10 +679,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: SQRT_RATIO_1_4});
 
-        PoolSwapTest.TestSettings memory testSettings =
-            PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+        HookEnabledSwapRouter.TestSettings memory testSettings =
+            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-        swapRouter.swap(key, params, testSettings, ZERO_BYTES);
+        router.swap(key, params, testSettings, ZERO_BYTES);
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
         assertEq(hasAccruedFees, true);
@@ -712,7 +704,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_SwapRemoveAllFuzz(uint256 amount) public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
         (, address liquidityToken) = fullRange.poolInfo(id);
 
         if (amount <= LOCKED_LIQUIDITY) {
@@ -742,10 +734,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
                 sqrtPriceLimitX96: SQRT_RATIO_1_4
             });
 
-            PoolSwapTest.TestSettings memory testSettings =
-                PoolSwapTest.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+            HookEnabledSwapRouter.TestSettings memory testSettings =
+                HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
-            swapRouter.swap(key, params, testSettings, ZERO_BYTES);
+            router.swap(key, params, testSettings, ZERO_BYTES);
 
             // Test contract removes liquidity, succeeds
             UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
@@ -761,7 +753,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_BeforeModifyPositionFailsWithWrongMsgSender() public {
-        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         vm.expectRevert(FullRange.SenderMustBeHook.selector);
         modifyPositionRouter.modifyPosition(
