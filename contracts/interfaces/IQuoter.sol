@@ -14,6 +14,7 @@ interface IQuoter {
     error InvalidLockAcquiredSender();
     error InvalidLockCaller();
     error InvalidQuoteBatchParams();
+    error InsufficientAmountOut();
     error LockFailure();
     error NotSelf();
     error UnexpectedRevertBytes();

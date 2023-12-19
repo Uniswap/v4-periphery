@@ -77,8 +77,6 @@ contract Quoter is IQuoter, ILockCallback {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.exactAmount;
-
         try manager.lock(address(this), abi.encodeWithSelector(this._quoteExactOutputSingle.selector, params)) {}
         catch (bytes memory reason) {
             if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
@@ -275,6 +273,9 @@ contract Quoter is IQuoter, ILockCallback {
 
     /// @dev quote an ExactOutput swap on a pool, then revert with the result
     function _quoteExactOutputSingle(QuoteExactSingleParams memory params) public selfOnly returns (bytes memory) {
+        // if no price limit has been specified, cache the output amount for comparison in the swap callback
+        if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.exactAmount;
+
         (, int24 tickBefore,) = manager.getSlot0(params.poolKey.toId());
         (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
             params.poolKey,
@@ -283,6 +284,8 @@ contract Quoter is IQuoter, ILockCallback {
             params.sqrtPriceLimitX96,
             params.hookData
         );
+
+        if (amountOutCached != 0) delete amountOutCached;
         int128[] memory deltaAmounts = new int128[](2);
 
         deltaAmounts[0] = deltas.amount0();
@@ -313,6 +316,10 @@ contract Quoter is IQuoter, ILockCallback {
             }),
             hookData
         );
+        // only exactOut case
+        if (amountOutCached != 0 && amountOutCached != uint256(int256(-deltas.amount1()))) {
+            revert InsufficientAmountOut();
+        }
         (sqrtPriceX96After, tickAfter,) = manager.getSlot0(poolKey.toId());
     }
 
