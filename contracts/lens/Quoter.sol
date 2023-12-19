@@ -12,11 +12,12 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
-import {PathKeyLib} from "../libraries/PathKey.sol";
+import {PathKey, PathKeyLib} from "../libraries/PathKey.sol";
 
 contract Quoter is IQuoter, ILockCallback {
     using Hooks for IHooks;
     using PoolIdLibrary for PoolKey;
+    using PathKeyLib for PathKey;
 
     /// @dev cache used to check a safety condition in exact output swaps.
     uint256 private amountOutCached;
@@ -176,7 +177,7 @@ contract Quoter is IQuoter, ILockCallback {
 
         for (uint256 i = 0; i < pathLength; i++) {
             (PoolKey memory poolKey, bool zeroForOne) =
-                PathKeyLib.getPoolAndSwapDirection(params.path[i], i == 0 ? params.exactCurrency : prevCurrencyOut);
+                params.path[i].getPoolAndSwapDirection(i == 0 ? params.exactCurrency : prevCurrencyOut);
             (, int24 tickBefore,) = manager.getSlot0(poolKey.toId());
 
             (BalanceDelta curDeltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
