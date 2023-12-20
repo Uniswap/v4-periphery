@@ -25,9 +25,6 @@ contract Quoter is IQuoter, ILockCallback {
     // v4 Singleton contract
     IPoolManager public immutable manager;
 
-    /// @dev custom error function selector length
-    uint256 internal constant MINIMUM_CUSTOM_ERROR_LENGTH = 4;
-
     /// @dev min valid reason is 3-words long
     /// @dev int128[2] + sqrtPriceX96After padded to 32bytes + intializeTicksLoaded padded to 32bytes
     uint256 internal constant MINIMUM_VALID_RESPONSE_LENGTH = 96;
