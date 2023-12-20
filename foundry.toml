@@ -2,7 +2,8 @@
 src = 'contracts'
 out = 'foundry-out'
 solc_version = '0.8.20'
-optimizer_runs = 800
+via_ir = true
+optimizer_runs = 1000000
 ffi = true
 fs_permissions = [{ access = "read-write", path = ".forge-snapshots/"}]
 cancun = true
