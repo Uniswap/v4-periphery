@@ -17,7 +17,7 @@ interface IQuoter {
     error InsufficientAmountOut();
     error LockFailure();
     error NotSelf();
-    error UnexpectedRevertBytes();
+    error UnexpectedRevertBytes(bytes revertData);
 
     struct PoolDeltas {
         int128 currency0Delta;

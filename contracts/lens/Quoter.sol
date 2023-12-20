@@ -124,13 +124,13 @@ contract Quoter is IQuoter, ILockCallback {
     function validateRevertReason(bytes memory reason) private pure returns (bytes memory) {
         if (reason.length < MINIMUM_VALID_RESPONSE_LENGTH) {
             //if InvalidLockAcquiredSender()
-            if (reason.length == MINIMUM_CUSTOM_ERROR_LENGTH) {
+            if (reason.length <= MINIMUM_CUSTOM_ERROR_LENGTH) {
                 assembly {
                     revert(reason, 4)
                 }
             }
             if (reason.length < MINIMUM_REASON_LENGTH) {
-                revert UnexpectedRevertBytes();
+                revert UnexpectedRevertBytes(reason);
             }
             assembly {
                 reason := add(reason, 0x04)
