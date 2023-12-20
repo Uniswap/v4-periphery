@@ -287,10 +287,11 @@ contract Quoter is IQuoter, ILockCallback {
     }
 
     /// @dev Execute a swap and return the amounts delta, as well as relevant pool state
+    /// @notice if amountSpecified > 0, the swap is exactInput, otherwise exactOutput
     function _swap(
         PoolKey memory poolKey,
         bool zeroForOne,
-        int256 amountSpecified, // exactInput = amountSpecified > 0
+        int256 amountSpecified,
         uint160 sqrtPriceLimitX96,
         bytes memory hookData
     ) private returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) {
