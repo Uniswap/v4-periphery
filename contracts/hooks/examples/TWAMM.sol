@@ -60,7 +60,7 @@ contract TWAMM is BaseHook, ITWAMM {
         expirationInterval = _expirationInterval;
     }
 
-    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: false,

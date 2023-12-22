@@ -40,13 +40,13 @@ abstract contract BaseHook is IHooks {
         _;
     }
 
-    function getHooksCalls() public pure virtual returns (Hooks.Permissions memory);
+    function getHookPermissions() public pure virtual returns (Hooks.Permissions memory);
 
     // this function is virtual so that we can override it during testing,
     // which allows us to deploy an implementation to any address
     // and then etch the bytecode into the correct address
     function validateHookAddress(BaseHook _this) internal pure virtual {
-        Hooks.validateHookPermissions(_this, getHooksCalls());
+        Hooks.validateHookPermissions(_this, getHookPermissions());
     }
 
     function lockAcquired(address, /*sender*/ bytes calldata data)
