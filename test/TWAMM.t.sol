@@ -43,9 +43,8 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 earningsFactorLast
     );
 
-    TWAMM twamm = TWAMM(
-        address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG))
-    );
+    TWAMM twamm =
+        TWAMM(address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG)));
     address hookAddress;
     MockERC20 token0;
     MockERC20 token1;
@@ -76,8 +75,12 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         token1.approve(address(modifyLiquidityRouter), 100 ether);
         token0.mint(address(this), 100 ether);
         token1.mint(address(this), 100 ether);
-        modifyLiquidityRouter.modifyLiquidity(poolKey, IPoolManager.ModifyLiquidityParams(-60, 60, 10 ether), ZERO_BYTES);
-        modifyLiquidityRouter.modifyLiquidity(poolKey, IPoolManager.ModifyLiquidityParams(-120, 120, 10 ether), ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(
+            poolKey, IPoolManager.ModifyLiquidityParams(-60, 60, 10 ether), ZERO_BYTES
+        );
+        modifyLiquidityRouter.modifyLiquidity(
+            poolKey, IPoolManager.ModifyLiquidityParams(-120, 120, 10 ether), ZERO_BYTES
+        );
         modifyLiquidityRouter.modifyLiquidity(
             poolKey,
             IPoolManager.ModifyLiquidityParams(TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether),

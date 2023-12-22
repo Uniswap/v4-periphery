@@ -85,11 +85,12 @@ abstract contract BaseHook is IHooks {
         revert HookNotImplemented();
     }
 
-    function beforeRemoveLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
-        external
-        virtual
-        returns (bytes4)
-    {
+    function beforeRemoveLiquidity(
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        bytes calldata
+    ) external virtual returns (bytes4) {
         revert HookNotImplemented();
     }
 
