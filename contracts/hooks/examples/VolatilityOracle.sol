@@ -34,8 +34,10 @@ contract VolatilityOracle is BaseHook, IDynamicFeeManager {
         return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: false,
-            beforeModifyPosition: false,
-            afterModifyPosition: false,
+            beforeAddLiquidity: false,
+            beforeRemoveLiquidity: false,
+            afterAddLiquidity: false,
+            afterRemoveLiquidity: false,
             beforeSwap: false,
             afterSwap: false,
             beforeDonate: false,
