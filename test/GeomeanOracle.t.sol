@@ -28,7 +28,7 @@ contract TestGeomeanOracle is Test, Deployers {
         address(
             uint160(
                 Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
-                    | Hooks.BEFORE_SWAP_FLAG
+                    | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
             )
         )
     );
@@ -196,5 +196,26 @@ contract TestGeomeanOracle is Test, Deployers {
         assertEq(observation.blockTimestamp, 3);
         assertEq(observation.tickCumulative, 13862);
         assertEq(observation.secondsPerLiquidityCumulativeX128, 680564733841876926926749214863536422912);
+    }
+
+    function testPermanentLiquidity() public {
+        initializeRouter.initialize(key, SQRT_RATIO_2_1, ZERO_BYTES);
+        geomeanOracle.setTime(3); // advance 2 seconds
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams(
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
+            ),
+            ZERO_BYTES
+        );
+
+        vm.expectRevert();
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams(
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), -1000
+            ),
+            ZERO_BYTES
+        );
     }
 }

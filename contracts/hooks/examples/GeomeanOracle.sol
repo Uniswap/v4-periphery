@@ -65,7 +65,7 @@ contract GeomeanOracle is BaseHook {
             beforeInitialize: true,
             afterInitialize: true,
             beforeAddLiquidity: true,
-            beforeRemoveLiquidity: false,
+            beforeRemoveLiquidity: true,
             afterAddLiquidity: false,
             afterRemoveLiquidity: false,
             beforeSwap: true,
@@ -120,7 +120,6 @@ contract GeomeanOracle is BaseHook {
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata
     ) external override poolManagerOnly returns (bytes4) {
-        if (params.liquidityDelta < 0) revert OraclePoolMustLockLiquidity();
         int24 maxTickSpacing = poolManager.MAX_TICK_SPACING();
         if (
             params.tickLower != TickMath.minUsableTick(maxTickSpacing)
@@ -128,6 +127,15 @@ contract GeomeanOracle is BaseHook {
         ) revert OraclePositionsMustBeFullRange();
         _updatePool(key);
         return GeomeanOracle.beforeAddLiquidity.selector;
+    }
+
+    function beforeRemoveLiquidity(
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        bytes calldata
+    ) external view override poolManagerOnly returns (bytes4) {
+        revert OraclePoolMustLockLiquidity();
     }
 
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
