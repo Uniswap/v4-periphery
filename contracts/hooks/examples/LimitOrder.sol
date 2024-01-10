@@ -299,8 +299,6 @@ contract LimitOrder is BaseHook {
         uint128 liquidity = epochInfo.liquidity[msg.sender];
         if (liquidity == 0) revert ZeroLiquidity();
         delete epochInfo.liquidity[msg.sender];
-        uint128 liquidityTotal = epochInfo.liquidityTotal;
-        epochInfo.liquidityTotal = liquidityTotal - liquidity;
 
         uint256 amount0Fee;
         uint256 amount1Fee;
@@ -309,12 +307,12 @@ contract LimitOrder is BaseHook {
                 address(this),
                 abi.encodeCall(
                     this.lockAcquiredKill,
-                    (key, tickLower, -int256(uint256(liquidity)), to, liquidity == liquidityTotal)
+                    (key, tickLower, -int256(uint256(liquidity)), to, liquidity == epochInfo.liquidityTotal)
                 )
             ),
             (uint256, uint256, uint256, uint256)
         );
-
+        epochInfo.liquidityTotal -= liquidity;
         unchecked {
             epochInfo.token0Total += amount0Fee;
             epochInfo.token1Total += amount1Fee;
@@ -378,15 +376,13 @@ contract LimitOrder is BaseHook {
         if (liquidity == 0) revert ZeroLiquidity();
         delete epochInfo.liquidity[msg.sender];
 
-        uint256 token0Total = epochInfo.token0Total;
-        uint256 token1Total = epochInfo.token1Total;
         uint128 liquidityTotal = epochInfo.liquidityTotal;
 
-        amount0 = FullMath.mulDiv(token0Total, liquidity, liquidityTotal);
-        amount1 = FullMath.mulDiv(token1Total, liquidity, liquidityTotal);
+        amount0 = FullMath.mulDiv(epochInfo.token0Total, liquidity, liquidityTotal);
+        amount1 = FullMath.mulDiv(epochInfo.token1Total, liquidity, liquidityTotal);
 
-        epochInfo.token0Total = token0Total - amount0;
-        epochInfo.token1Total = token1Total - amount1;
+        epochInfo.token0Total -= amount0;
+        epochInfo.token1Total -= amount1;
         epochInfo.liquidityTotal = liquidityTotal - liquidity;
 
         poolManager.lock(
