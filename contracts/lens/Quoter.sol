@@ -29,6 +29,23 @@ contract Quoter is IQuoter, ILockCallback {
     /// @dev int128[2] + sqrtPriceX96After padded to 32bytes + intializeTicksLoaded padded to 32bytes
     uint256 internal constant MINIMUM_VALID_RESPONSE_LENGTH = 96;
 
+    struct QuoteResult {
+        int128[] deltaAmounts;
+        uint160[] sqrtPriceX96AfterList;
+        uint32[] initializedTicksLoadedList;
+    }
+
+    struct QuoteCache {
+        BalanceDelta curDeltas;
+        uint128 prevAmount;
+        int128 deltaIn;
+        int128 deltaOut;
+        int24 tickBefore;
+        int24 tickAfter;
+        Currency prevCurrency;
+        uint160 sqrtPriceX96After;
+    }
+
     /// @dev Only this address may call this function
     modifier selfOnly() {
         if (msg.sender != address(this)) revert NotSelf();
@@ -145,23 +162,6 @@ contract Quoter is IQuoter, ILockCallback {
         reason = validateRevertReason(reason);
         (deltaAmounts, sqrtPriceX96AfterList, initializedTicksLoadedList) =
             abi.decode(reason, (int128[], uint160[], uint32[]));
-    }
-
-    struct QuoteResult {
-        int128[] deltaAmounts;
-        uint160[] sqrtPriceX96AfterList;
-        uint32[] initializedTicksLoadedList;
-    }
-
-    struct QuoteCache {
-        Currency prevCurrency;
-        uint128 prevAmount;
-        int128 deltaIn;
-        int128 deltaOut;
-        BalanceDelta curDeltas;
-        uint160 sqrtPriceX96After;
-        int24 tickBefore;
-        int24 tickAfter;
     }
 
     /// @dev quote an ExactInput swap along a path of tokens, then revert with the result
