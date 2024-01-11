@@ -188,8 +188,9 @@ contract Quoter is IQuoter, ILockCallback {
                 params.path[i].hookData
             );
 
-            (cache.deltaIn, cache.deltaOut) =
-                zeroForOne ? (cache.curDeltas.amount0(), cache.curDeltas.amount1()) : (cache.curDeltas.amount1(), cache.curDeltas.amount0());
+            (cache.deltaIn, cache.deltaOut) = zeroForOne
+                ? (cache.curDeltas.amount0(), cache.curDeltas.amount1())
+                : (cache.curDeltas.amount1(), cache.curDeltas.amount0());
             result.deltaAmounts[i] += cache.deltaIn;
             result.deltaAmounts[i + 1] += cache.deltaOut;
 
@@ -199,7 +200,8 @@ contract Quoter is IQuoter, ILockCallback {
             result.initializedTicksLoadedList[i] =
                 PoolTicksCounter.countInitializedTicksLoaded(manager, poolKey, cache.tickBefore, cache.tickAfter);
         }
-        bytes memory r = abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList, result.initializedTicksLoadedList);
+        bytes memory r =
+            abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList, result.initializedTicksLoadedList);
         assembly {
             revert(add(0x20, r), mload(r))
         }
@@ -257,8 +259,9 @@ contract Quoter is IQuoter, ILockCallback {
 
             // always clear because sqrtPriceLimitX96 is set to 0 always
             delete amountOutCached;
-            (cache.deltaIn, cache.deltaOut) =
-                !oneForZero ? (cache.curDeltas.amount0(), cache.curDeltas.amount1()) : (cache.curDeltas.amount1(), cache.curDeltas.amount0());
+            (cache.deltaIn, cache.deltaOut) = !oneForZero
+                ? (cache.curDeltas.amount0(), cache.curDeltas.amount1())
+                : (cache.curDeltas.amount1(), cache.curDeltas.amount0());
             result.deltaAmounts[i - 1] += cache.deltaIn;
             result.deltaAmounts[i] += cache.deltaOut;
 
@@ -268,7 +271,8 @@ contract Quoter is IQuoter, ILockCallback {
             result.initializedTicksLoadedList[i - 1] =
                 PoolTicksCounter.countInitializedTicksLoaded(manager, poolKey, cache.tickBefore, cache.tickAfter);
         }
-        bytes memory r = abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList, result.initializedTicksLoadedList);
+        bytes memory r =
+            abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList, result.initializedTicksLoadedList);
         assembly {
             revert(add(0x20, r), mload(r))
         }
