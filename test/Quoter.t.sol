@@ -19,7 +19,6 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {console2} from "forge-std/console2.sol";
 
 contract QuoterTest is Test, Deployers {
     using SafeCast for *;
@@ -297,9 +296,6 @@ contract QuoterTest is Test, Deployers {
     }
 
     function testQuoter_quoteExactInput_0to2to1() public {
-        console2.log(address(token0));
-        console2.log(address(token1));
-        console2.log(address(token2));
         tokenPath.push(token0);
         tokenPath.push(token2);
         tokenPath.push(token1);
