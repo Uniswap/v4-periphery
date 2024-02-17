@@ -54,14 +54,17 @@ contract QuoterTest is Test, Deployers {
         positionManager = new PoolModifyLiquidityTest(manager);
 
         // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)
-        bytes32 salt0 = "1234";
-        bytes32 salt1 = "gm uniswap";
-        bytes32 salt2 = "ffff";
-        token0 = new MockERC20{salt: salt0}("Test0", "0", 18);
+        token0 = new MockERC20("Test0", "0", 18);
+        vm.etch(address(0x1111), address(token0).code);
+        token0 = MockERC20(address(0x1111));
         token0.mint(address(this), 2 ** 128);
-        token1 = new MockERC20{salt: salt1}("Test1", "1", 18);
+        
+        vm.etch(address(0x2222), address(token0).code);
+        token1 = MockERC20(address(0x2222));
         token1.mint(address(this), 2 ** 128);
-        token2 = new MockERC20{salt: salt2}("Test2", "2", 18);
+
+        vm.etch(address(0x3333), address(token0).code);
+        token2 = MockERC20(address(0x3333));
         token2.mint(address(this), 2 ** 128);
 
         key01 = createPoolKey(token0, token1, address(0));
