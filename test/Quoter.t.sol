@@ -53,14 +53,15 @@ contract QuoterTest is Test, Deployers {
         quoter = new Quoter(address(manager));
         positionManager = new PoolModifyPositionTest(manager);
 
-        // salts are chosen so that address(token0) < address(token2) && address(1) < address(token2)
-        bytes32 salt1 = "ffff";
-        bytes32 salt2 = "gm";
-        token0 = new MockERC20{salt: salt1}("Test0", "0", 18);
+        // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)
+        bytes32 salt0 = "1234";
+        bytes32 salt1 = "gm uniswap";
+        bytes32 salt2 = "ffff";
+        token0 = new MockERC20{salt: salt0}("Test0", "0", 18);
         token0.mint(address(this), 2 ** 128);
-        token1 = new MockERC20{salt: salt2}("Test1", "1", 18);
+        token1 = new MockERC20{salt: salt1}("Test1", "1", 18);
         token1.mint(address(this), 2 ** 128);
-        token2 = new MockERC20("Test2", "2", 18);
+        token2 = new MockERC20{salt: salt2}("Test2", "2", 18);
         token2.mint(address(this), 2 ** 128);
 
         key01 = createPoolKey(token0, token1, address(0));
