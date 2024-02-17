@@ -9,6 +9,5 @@ evm_version = "cancun"
 
 [profile.ci]
 fuzz_runs = 100000
-solc = "./lib/v4-core/bin/solc-static-linux"
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
