@@ -58,7 +58,7 @@ contract QuoterTest is Test, Deployers {
         vm.etch(address(0x1111), address(token0).code);
         token0 = MockERC20(address(0x1111));
         token0.mint(address(this), 2 ** 128);
-        
+
         vm.etch(address(0x2222), address(token0).code);
         token1 = MockERC20(address(0x2222));
         token1.mint(address(this), 2 ** 128);
