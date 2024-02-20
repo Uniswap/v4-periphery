@@ -209,7 +209,7 @@ contract TestGeomeanOracle is Test, Deployers {
             ZERO_BYTES
         );
 
-        vm.expectRevert();
+        vm.expectRevert(GeomeanOracle.OraclePoolMustLockLiquidity.selector);
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
