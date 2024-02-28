@@ -60,12 +60,14 @@ contract TWAMM is BaseHook, ITWAMM {
         expirationInterval = _expirationInterval;
     }
 
-    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: false,
-            beforeModifyPosition: true,
-            afterModifyPosition: false,
+            beforeAddLiquidity: true,
+            beforeRemoveLiquidity: false,
+            afterAddLiquidity: false,
+            afterRemoveLiquidity: false,
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
@@ -87,14 +89,14 @@ contract TWAMM is BaseHook, ITWAMM {
         return BaseHook.beforeInitialize.selector;
     }
 
-    function beforeModifyPosition(
+    function beforeAddLiquidity(
         address,
         PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
     ) external override poolManagerOnly returns (bytes4) {
         executeTWAMMOrders(key);
-        return BaseHook.beforeModifyPosition.selector;
+        return BaseHook.beforeAddLiquidity.selector;
     }
 
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)

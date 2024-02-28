@@ -60,12 +60,14 @@ contract GeomeanOracle is BaseHook {
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: true,
-            beforeModifyPosition: true,
-            afterModifyPosition: false,
+            beforeAddLiquidity: true,
+            beforeRemoveLiquidity: true,
+            afterAddLiquidity: false,
+            afterRemoveLiquidity: false,
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
@@ -112,20 +114,28 @@ contract GeomeanOracle is BaseHook {
         );
     }
 
-    function beforeModifyPosition(
+    function beforeAddLiquidity(
         address,
         PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata params,
+        IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata
     ) external override poolManagerOnly returns (bytes4) {
-        if (params.liquidityDelta < 0) revert OraclePoolMustLockLiquidity();
         int24 maxTickSpacing = poolManager.MAX_TICK_SPACING();
         if (
             params.tickLower != TickMath.minUsableTick(maxTickSpacing)
                 || params.tickUpper != TickMath.maxUsableTick(maxTickSpacing)
         ) revert OraclePositionsMustBeFullRange();
         _updatePool(key);
-        return GeomeanOracle.beforeModifyPosition.selector;
+        return GeomeanOracle.beforeAddLiquidity.selector;
+    }
+
+    function beforeRemoveLiquidity(
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        bytes calldata
+    ) external view override poolManagerOnly returns (bytes4) {
+        revert OraclePoolMustLockLiquidity();
     }
 
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)

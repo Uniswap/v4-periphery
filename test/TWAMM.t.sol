@@ -12,7 +12,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/src/test/PoolModifyPositionTest.sol";
+import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {PoolDonateTest} from "@uniswap/v4-core/src/test/PoolDonateTest.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
@@ -43,11 +43,8 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 earningsFactorLast
     );
 
-    // address constant TWAMMAddr = address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG));
-    TWAMM twamm = TWAMM(
-        address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG))
-    );
-    // TWAMM twamm;
+    TWAMM twamm =
+        TWAMM(address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG)));
     address hookAddress;
     MockERC20 token0;
     MockERC20 token1;
@@ -74,15 +71,19 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         (poolKey, poolId) = initPool(currency0, currency1, twamm, 3000, SQRT_RATIO_1_1, ZERO_BYTES);
 
-        token0.approve(address(modifyPositionRouter), 100 ether);
-        token1.approve(address(modifyPositionRouter), 100 ether);
+        token0.approve(address(modifyLiquidityRouter), 100 ether);
+        token1.approve(address(modifyLiquidityRouter), 100 ether);
         token0.mint(address(this), 100 ether);
         token1.mint(address(this), 100 ether);
-        modifyPositionRouter.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-60, 60, 10 ether), ZERO_BYTES);
-        modifyPositionRouter.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-120, 120, 10 ether), ZERO_BYTES);
-        modifyPositionRouter.modifyPosition(
+        modifyLiquidityRouter.modifyLiquidity(
+            poolKey, IPoolManager.ModifyLiquidityParams(-60, 60, 10 ether), ZERO_BYTES
+        );
+        modifyLiquidityRouter.modifyLiquidity(
+            poolKey, IPoolManager.ModifyLiquidityParams(-120, 120, 10 ether), ZERO_BYTES
+        );
+        modifyLiquidityRouter.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether),
+            IPoolManager.ModifyLiquidityParams(TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether),
             ZERO_BYTES
         );
     }
@@ -361,8 +362,8 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         token0.approve(address(twamm), 100e18);
         token1.approve(address(twamm), 100e18);
-        modifyPositionRouter.modifyPosition(
-            poolKey, IPoolManager.ModifyPositionParams(-2400, 2400, 10 ether), ZERO_BYTES
+        modifyLiquidityRouter.modifyLiquidity(
+            poolKey, IPoolManager.ModifyLiquidityParams(-2400, 2400, 10 ether), ZERO_BYTES
         );
 
         vm.warp(10000);

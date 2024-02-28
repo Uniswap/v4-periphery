@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.24;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -40,13 +40,13 @@ abstract contract BaseHook is IHooks {
         _;
     }
 
-    function getHooksCalls() public pure virtual returns (Hooks.Permissions memory);
+    function getHookPermissions() public pure virtual returns (Hooks.Permissions memory);
 
     // this function is virtual so that we can override it during testing,
     // which allows us to deploy an implementation to any address
     // and then etch the bytecode into the correct address
     function validateHookAddress(BaseHook _this) internal pure virtual {
-        Hooks.validateHookPermissions(_this, getHooksCalls());
+        Hooks.validateHookPermissions(_this, getHookPermissions());
     }
 
     function lockAcquired(address, /*sender*/ bytes calldata data)
@@ -77,7 +77,7 @@ abstract contract BaseHook is IHooks {
         revert HookNotImplemented();
     }
 
-    function beforeModifyPosition(address, PoolKey calldata, IPoolManager.ModifyPositionParams calldata, bytes calldata)
+    function beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
         external
         virtual
         returns (bytes4)
@@ -85,10 +85,29 @@ abstract contract BaseHook is IHooks {
         revert HookNotImplemented();
     }
 
-    function afterModifyPosition(
+    function beforeRemoveLiquidity(
         address,
         PoolKey calldata,
-        IPoolManager.ModifyPositionParams calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        bytes calldata
+    ) external virtual returns (bytes4) {
+        revert HookNotImplemented();
+    }
+
+    function afterAddLiquidity(
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        BalanceDelta,
+        bytes calldata
+    ) external virtual returns (bytes4) {
+        revert HookNotImplemented();
+    }
+
+    function afterRemoveLiquidity(
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
     ) external virtual returns (bytes4) {

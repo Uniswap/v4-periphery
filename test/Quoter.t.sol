@@ -12,7 +12,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/src/test/PoolModifyPositionTest.sol";
+import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
@@ -36,7 +36,7 @@ contract QuoterTest is Test, Deployers {
 
     Quoter quoter;
 
-    PoolModifyPositionTest positionManager;
+    PoolModifyLiquidityTest positionManager;
 
     MockERC20 token0;
     MockERC20 token1;
@@ -51,17 +51,20 @@ contract QuoterTest is Test, Deployers {
     function setUp() public {
         deployFreshManagerAndRouters();
         quoter = new Quoter(address(manager));
-        positionManager = new PoolModifyPositionTest(manager);
+        positionManager = new PoolModifyLiquidityTest(manager);
 
         // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)
-        bytes32 salt0 = "1234";
-        bytes32 salt1 = "gm uniswap";
-        bytes32 salt2 = "ffff";
-        token0 = new MockERC20{salt: salt0}("Test0", "0", 18);
+        token0 = new MockERC20("Test0", "0", 18);
+        vm.etch(address(0x1111), address(token0).code);
+        token0 = MockERC20(address(0x1111));
         token0.mint(address(this), 2 ** 128);
-        token1 = new MockERC20{salt: salt1}("Test1", "1", 18);
+
+        vm.etch(address(0x2222), address(token0).code);
+        token1 = MockERC20(address(0x2222));
         token1.mint(address(this), 2 ** 128);
-        token2 = new MockERC20{salt: salt2}("Test2", "2", 18);
+
+        vm.etch(address(0x3333), address(token0).code);
+        token2 = MockERC20(address(0x3333));
         token2.mint(address(this), 2 ** 128);
 
         key01 = createPoolKey(token0, token1, address(0));
@@ -542,9 +545,9 @@ contract QuoterTest is Test, Deployers {
         initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
                 calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256()
@@ -557,25 +560,25 @@ contract QuoterTest is Test, Deployers {
         initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
                 calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256()
             ),
             ZERO_BYTES
         );
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 -60, 60, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -60, 60, 100, 100).toInt256()
             ),
             ZERO_BYTES
         );
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 -120, 120, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -120, 120, 100, 100).toInt256()
             ),
             ZERO_BYTES
@@ -591,25 +594,25 @@ contract QuoterTest is Test, Deployers {
 
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
                 calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256()
             ),
             ZERO_BYTES
         );
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 0, 60, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, 0, 60, 100, 100).toInt256()
             ),
             ZERO_BYTES
         );
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 -120, 0, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -120, 0, 100, 100).toInt256()
             ),
             ZERO_BYTES

@@ -50,7 +50,7 @@ contract FullRange is BaseHook, ILockCallback {
     struct CallbackData {
         address sender;
         PoolKey key;
-        IPoolManager.ModifyPositionParams params;
+        IPoolManager.ModifyLiquidityParams params;
     }
 
     struct PoolInfo {
@@ -87,12 +87,14 @@ contract FullRange is BaseHook, ILockCallback {
         _;
     }
 
-    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: false,
-            beforeModifyPosition: true,
-            afterModifyPosition: false,
+            beforeAddLiquidity: true,
+            beforeRemoveLiquidity: false,
+            afterAddLiquidity: false,
+            afterRemoveLiquidity: false,
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
@@ -138,7 +140,7 @@ contract FullRange is BaseHook, ILockCallback {
         }
         BalanceDelta addedDelta = modifyPosition(
             key,
-            IPoolManager.ModifyPositionParams({
+            IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
                 liquidityDelta: liquidity.toInt256()
@@ -182,7 +184,7 @@ contract FullRange is BaseHook, ILockCallback {
 
         delta = modifyPosition(
             key,
-            IPoolManager.ModifyPositionParams({
+            IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
                 liquidityDelta: -(params.liquidity.toInt256())
@@ -219,15 +221,15 @@ contract FullRange is BaseHook, ILockCallback {
         return FullRange.beforeInitialize.selector;
     }
 
-    function beforeModifyPosition(
+    function beforeAddLiquidity(
         address sender,
         PoolKey calldata,
-        IPoolManager.ModifyPositionParams calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
     ) external view override returns (bytes4) {
         if (sender != address(this)) revert SenderMustBeHook();
 
-        return FullRange.beforeModifyPosition.selector;
+        return FullRange.beforeAddLiquidity.selector;
     }
 
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
@@ -245,7 +247,7 @@ contract FullRange is BaseHook, ILockCallback {
         return IHooks.beforeSwap.selector;
     }
 
-    function modifyPosition(PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
+    function modifyPosition(PoolKey memory key, IPoolManager.ModifyLiquidityParams memory params)
         internal
         returns (BalanceDelta delta)
     {
@@ -277,7 +279,7 @@ contract FullRange is BaseHook, ILockCallback {
         poolManager.take(key.currency1, sender, uint256(uint128(-delta.amount1())));
     }
 
-    function _removeLiquidity(PoolKey memory key, IPoolManager.ModifyPositionParams memory params)
+    function _removeLiquidity(PoolKey memory key, IPoolManager.ModifyLiquidityParams memory params)
         internal
         returns (BalanceDelta delta)
     {
@@ -295,7 +297,7 @@ contract FullRange is BaseHook, ILockCallback {
         );
 
         params.liquidityDelta = -(liquidityToRemove.toInt256());
-        delta = poolManager.modifyPosition(key, params, ZERO_BYTES);
+        delta = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
         pool.hasAccruedFees = false;
     }
 
@@ -314,7 +316,7 @@ contract FullRange is BaseHook, ILockCallback {
             delta = _removeLiquidity(data.key, data.params);
             _takeDeltas(data.sender, data.key, delta);
         } else {
-            delta = poolManager.modifyPosition(data.key, data.params, ZERO_BYTES);
+            delta = poolManager.modifyLiquidity(data.key, data.params, ZERO_BYTES);
             _settleDeltas(data.sender, data.key, delta);
         }
         return abi.encode(delta);
@@ -322,9 +324,9 @@ contract FullRange is BaseHook, ILockCallback {
 
     function _rebalance(PoolKey memory key) public {
         PoolId poolId = key.toId();
-        BalanceDelta balanceDelta = poolManager.modifyPosition(
+        BalanceDelta balanceDelta = poolManager.modifyLiquidity(
             key,
-            IPoolManager.ModifyPositionParams({
+            IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
                 liquidityDelta: -(poolManager.getLiquidity(poolId).toInt256())
@@ -358,9 +360,9 @@ contract FullRange is BaseHook, ILockCallback {
             uint256(uint128(-balanceDelta.amount1()))
         );
 
-        BalanceDelta balanceDeltaAfter = poolManager.modifyPosition(
+        BalanceDelta balanceDeltaAfter = poolManager.modifyLiquidity(
             key,
-            IPoolManager.ModifyPositionParams({
+            IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
                 liquidityDelta: liquidity.toInt256()
