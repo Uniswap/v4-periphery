@@ -34,9 +34,7 @@ contract SimpleBatchCall is LockAndBatchCall {
                         ERC20(Currency.unwrap(currency)).transferFrom(sender, address(poolManager), uint256(delta));
                         poolManager.settle(currency);
                     } else {
-                        poolManager.transferFrom(
-                             address(poolManager), address(this), currency.toId(), uint256(delta)
-                        );
+                        poolManager.transferFrom(address(poolManager), address(this), currency.toId(), uint256(delta));
                     }
                 }
                 if (delta < 0) {
