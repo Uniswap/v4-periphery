@@ -2,9 +2,9 @@
 pragma solidity ^0.8.19;
 
 import {LockAndBatchCall} from "./base/LockAndBatchCall.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "./base/ImmutableState.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /// @title SimpleBatchCall
@@ -34,14 +34,14 @@ contract SimpleBatchCall is LockAndBatchCall {
                         ERC20(Currency.unwrap(currency)).transferFrom(sender, address(poolManager), uint256(delta));
                         poolManager.settle(currency);
                     } else {
-                        poolManager.safeTransferFrom(
-                            address(this), address(poolManager), currency.toId(), uint256(delta), new bytes(0)
+                        poolManager.transferFrom(
+                             address(poolManager), address(this), currency.toId(), uint256(delta)
                         );
                     }
                 }
                 if (delta < 0) {
                     if (config.withdrawTokens) {
-                        poolManager.mint(currency, address(this), uint256(-delta));
+                        poolManager.mint(address(this), currency.toId(), uint256(-delta));
                     } else {
                         poolManager.take(currency, address(this), uint256(-delta));
                     }

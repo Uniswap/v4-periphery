@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.19;
 
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ImmutableState} from "./ImmutableState.sol";
 import {ICallsWithLock} from "../interfaces/ICallsWithLock.sol";
 
@@ -26,10 +26,10 @@ abstract contract CallsWithLock is ICallsWithLock, ImmutableState {
 
     function modifyPositionWithLock(
         PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata params,
+        IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata hookData
     ) external onlyBySelf returns (bytes memory) {
-        return abi.encode(poolManager.modifyPosition(key, params, hookData));
+        return abi.encode(poolManager.modifyLiquidity(key, params, hookData));
     }
 
     function swapWithLock(PoolKey memory key, IPoolManager.SwapParams memory params, bytes calldata hookData)

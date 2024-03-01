@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 interface ICallsWithLock {
     function initializeWithLock(PoolKey memory key, uint160 sqrtPriceX96, bytes calldata hookData)
@@ -11,7 +11,7 @@ interface ICallsWithLock {
 
     function modifyPositionWithLock(
         PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata params,
+        IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata hookData
     ) external returns (bytes memory);
 

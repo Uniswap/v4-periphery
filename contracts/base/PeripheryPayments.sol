@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {ERC20} from "solmate/tokens/ERC20.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 import {IPeripheryPayments} from "../interfaces/IPeripheryPayments.sol";
 
