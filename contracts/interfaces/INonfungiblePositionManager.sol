@@ -7,10 +7,13 @@ import {IBaseLiquidityManagement} from "./IBaseLiquidityManagement.sol";
 
 interface INonfungiblePositionManager is IBaseLiquidityManagement {
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
-    function mint(LiquidityPosition memory position, uint256 liquidity, uint256 deadline)
-        external
-        payable
-        returns (uint256 tokenId);
+    function mint(
+        LiquidityPosition memory position,
+        uint256 liquidity,
+        uint256 deadline,
+        address recipient,
+        bytes calldata hookData
+    ) external payable returns (uint256 tokenId);
 
     // NOTE: more expensive since LiquidityAmounts is used onchain
     function mint(
