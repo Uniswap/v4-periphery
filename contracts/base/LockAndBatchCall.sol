@@ -2,8 +2,8 @@
 pragma solidity ^0.8.19;
 
 import {SafeCallback} from "./SafeCallback.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {CallsWithLock} from "./CallsWithLock.sol";
 
 abstract contract LockAndBatchCall is CallsWithLock, SafeCallback {
@@ -14,7 +14,8 @@ abstract contract LockAndBatchCall is CallsWithLock, SafeCallback {
 
     /// @param executeData The function selectors and calldata for any of the function selectors in ICallsWithLock encoded as an array of bytes.
     function execute(bytes memory executeData, bytes memory settleData) external {
-        (bytes memory lockReturnData) = poolManager.lock(abi.encode(executeData, abi.encode(msg.sender, settleData)));
+        (bytes memory lockReturnData) =
+            poolManager.lock(address(this), abi.encode(executeData, abi.encode(msg.sender, settleData)));
         (bytes memory executeReturnData, bytes memory settleReturnData) = abi.decode(lockReturnData, (bytes, bytes));
         _handleAfterExecute(executeReturnData, settleReturnData);
     }
