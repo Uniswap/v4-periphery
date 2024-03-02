@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {LiquidityPosition, LiquidityPositionId, LiquidityPositionIdLibrary} from "../types/LiquidityPositionId.sol";
 import {IBaseLiquidityManagement} from "../interfaces/IBaseLiquidityManagement.sol";
 import {SafeCallback} from "./SafeCallback.sol";
@@ -18,7 +18,7 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
     struct CallbackData {
         address sender;
         PoolKey key;
-        IPoolManager.ModifyPositionParams params;
+        IPoolManager.ModifyLiquidityParams params;
         bytes hookData;
     }
 
@@ -29,15 +29,16 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
     // NOTE: handles add/remove/collect
     function modifyLiquidity(
         PoolKey memory key,
-        IPoolManager.ModifyPositionParams memory params,
+        IPoolManager.ModifyLiquidityParams memory params,
         bytes calldata hookData,
         address owner
     ) public payable override returns (BalanceDelta delta) {
         // if removing liquidity, check that the owner is the sender?
         if (params.liquidityDelta < 0) require(msg.sender == owner, "Cannot redeem position");
 
-        delta =
-            abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params, hookData))), (BalanceDelta));
+        delta = abi.decode(
+            poolManager.lock(address(this), abi.encode(CallbackData(msg.sender, key, params, hookData))), (BalanceDelta)
+        );
 
         params.liquidityDelta < 0
             ? liquidityOf[owner][LiquidityPosition(key, params.tickLower, params.tickUpper).toId()] -=
@@ -55,7 +56,7 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
     function _lockAcquired(bytes calldata rawData) internal override returns (bytes memory result) {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
 
-        BalanceDelta delta = poolManager.modifyPosition(data.key, data.params, data.hookData);
+        BalanceDelta delta = poolManager.modifyLiquidity(data.key, data.params, data.hookData);
 
         if (data.params.liquidityDelta <= 0) {
             // removing liquidity/fees so take tokens

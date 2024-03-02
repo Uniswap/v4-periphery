@@ -3,15 +3,14 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
-import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
@@ -28,23 +27,19 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot {
     using LiquidityPositionIdLibrary for LiquidityPosition;
 
     NonfungiblePositionManager lpm;
-    Currency currency0;
-    Currency currency1;
-    PoolKey key;
+
     PoolId poolId;
-    IPoolManager poolManager;
 
     function setUp() public {
-        poolManager = createFreshManager();
-        (currency0, currency1) = deployCurrencies(2 ** 255);
+        Deployers.deployFreshManagerAndRouters();
+        Deployers.deployMintAndApprove2Currencies();
 
-        (key, poolId) =
-            createPool(PoolManager(payable(address(poolManager))), IHooks(address(0x0)), uint24(3000), SQRT_RATIO_1_1);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_RATIO_1_1, ZERO_BYTES);
 
-        lpm = new NonfungiblePositionManager(poolManager);
+        lpm = new NonfungiblePositionManager(manager);
 
-        MockERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        MockERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
     }
 
     function test_mint() public {

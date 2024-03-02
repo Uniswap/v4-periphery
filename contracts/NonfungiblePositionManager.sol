@@ -47,7 +47,7 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
     ) external payable returns (uint256 tokenId) {
         BaseLiquidityManagement.modifyLiquidity(
             position.key,
-            IPoolManager.ModifyPositionParams({
+            IPoolManager.ModifyLiquidityParams({
                 tickLower: position.tickLower,
                 tickUpper: position.tickUpper,
                 liquidityDelta: int256(liquidity)

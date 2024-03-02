@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IBaseLiquidityManagement} from "./IBaseLiquidityManagement.sol";
 import {LiquidityPosition} from "../types/LiquidityPositionId.sol";
 
