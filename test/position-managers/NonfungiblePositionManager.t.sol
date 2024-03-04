@@ -13,6 +13,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -24,7 +25,9 @@ import {
     LiquidityPositionIdLibrary
 } from "../../contracts/types/LiquidityPositionId.sol";
 
-contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot {
+import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
+
+contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
     using CurrencyLibrary for Currency;
     using LiquidityPositionIdLibrary for LiquidityPosition;
 
@@ -32,6 +35,9 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot {
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
+
+    // unused value for the fuzz helper functions
+    uint128 constant DEAD_VALUE = 6969.6969 ether;
 
     function setUp() public {
         Deployers.deployFreshManagerAndRouters();
@@ -45,27 +51,30 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot {
         IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
     }
 
-    function test_mint_withLiquidityDelta() public {
-        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: -600, tickUpper: 600});
+    function test_mint_withLiquidityDelta(int24 tickLower, int24 tickUpper, uint128 liquidityDelta) public {
+        (tickLower, tickUpper, liquidityDelta) = createFuzzyLiquidityParams(key, tickLower, tickUpper, liquidityDelta);
+        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
         (uint256 tokenId, BalanceDelta delta) =
-            lpm.mint(position, 1_00 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+            lpm.mint(position, liquidityDelta, block.timestamp + 1, address(this), ZERO_BYTES);
         uint256 balance0After = currency0.balanceOfSelf();
-        uint256 balance1After = currency0.balanceOfSelf();
+        uint256 balance1After = currency1.balanceOfSelf();
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
-        assertEq(balance0Before - balance0After, uint256(int256(delta.amount0())));
-        assertEq(balance1Before - balance1After, uint256(int256(delta.amount1())));
+        assertEq(lpm.liquidityOf(address(this), position.toId()), liquidityDelta);
+        assertEq(balance0Before - balance0After, uint256(int256(delta.amount0())), "incorrect amount0");
+        assertEq(balance1Before - balance1After, uint256(int256(delta.amount1())), "incorrect amount1");
     }
 
-    function test_mint() public {
-        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: -600, tickUpper: 600});
+    function test_mint(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired) public {
+        (tickLower, tickUpper,) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
+        (amount0Desired, amount1Desired) =
+            createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
 
-        uint256 amount0Desired = 100e18;
-        uint256 amount1Desired = 100e18;
+        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
@@ -81,7 +90,37 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot {
         });
         (uint256 tokenId, BalanceDelta delta) = lpm.mint(params);
         uint256 balance0After = currency0.balanceOfSelf();
-        uint256 balance1After = currency0.balanceOfSelf();
+        uint256 balance1After = currency1.balanceOfSelf();
+
+        assertEq(tokenId, 1);
+        assertEq(lpm.ownerOf(1), address(this));
+        assertEq(balance0Before - balance0After, uint256(int256(delta.amount0())));
+        assertEq(balance1Before - balance1After, uint256(int256(delta.amount1())));
+    }
+
+    // minting with perfect token ratios will use all of the tokens
+    function test_mint_perfect() public {
+        int24 tickLower = -int24(key.tickSpacing);
+        int24 tickUpper = int24(key.tickSpacing);
+        uint256 amount0Desired = 100e18;
+        uint256 amount1Desired = 100e18;
+        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+        INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
+            position: position,
+            amount0Desired: amount0Desired,
+            amount1Desired: amount1Desired,
+            amount0Min: 0,
+            amount1Min: 0,
+            deadline: block.timestamp + 1,
+            recipient: address(this),
+            hookData: ZERO_BYTES
+        });
+        (uint256 tokenId, BalanceDelta delta) = lpm.mint(params);
+        uint256 balance0After = currency0.balanceOfSelf();
+        uint256 balance1After = currency1.balanceOfSelf();
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
@@ -91,10 +130,14 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot {
         assertEq(balance1Before - balance1After, uint256(int256(delta.amount1())));
     }
 
-    function test_mint_recipient() public {
-        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: -600, tickUpper: 600});
-        uint256 amount0Desired = 100e18;
-        uint256 amount1Desired = 100e18;
+    function test_mint_recipient(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
+        public
+    {
+        (tickLower, tickUpper,) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
+        (amount0Desired, amount1Desired) =
+            createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
+
+        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
             position: position,
             amount0Desired: amount0Desired,
@@ -109,8 +152,6 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot {
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), alice);
     }
-
-    function test_mint_withLiquidityDelta_recipient() public {}
 
     function test_mint_slippageRevert() public {}
 
