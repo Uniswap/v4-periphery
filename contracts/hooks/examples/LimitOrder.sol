@@ -73,12 +73,14 @@ contract LimitOrder is BaseHook {
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
             afterInitialize: true,
-            beforeModifyPosition: false,
-            afterModifyPosition: false,
+            beforeAddLiquidity: false,
+            beforeRemoveLiquidity: false,
+            afterAddLiquidity: false,
+            afterRemoveLiquidity: false,
             beforeSwap: false,
             afterSwap: true,
             beforeDonate: false,
@@ -197,9 +199,9 @@ contract LimitOrder is BaseHook {
         selfOnly
         returns (uint128 amount0, uint128 amount1)
     {
-        BalanceDelta delta = poolManager.modifyPosition(
+        BalanceDelta delta = poolManager.modifyLiquidity(
             key,
-            IPoolManager.ModifyPositionParams({
+            IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
                 tickUpper: tickLower + key.tickSpacing,
                 liquidityDelta: liquidityDelta
@@ -208,10 +210,10 @@ contract LimitOrder is BaseHook {
         );
 
         if (delta.amount0() < 0) {
-            poolManager.mint(key.currency0, address(this), amount0 = uint128(-delta.amount0()));
+            poolManager.mint(address(this), key.currency0.toId(), amount0 = uint128(-delta.amount0()));
         }
         if (delta.amount1() < 0) {
-            poolManager.mint(key.currency1, address(this), amount1 = uint128(-delta.amount1()));
+            poolManager.mint(address(this), key.currency1.toId(), amount1 = uint128(-delta.amount1()));
         }
     }
 
@@ -258,9 +260,9 @@ contract LimitOrder is BaseHook {
         int256 liquidityDelta,
         address owner
     ) external selfOnly {
-        BalanceDelta delta = poolManager.modifyPosition(
+        BalanceDelta delta = poolManager.modifyLiquidity(
             key,
-            IPoolManager.ModifyPositionParams({
+            IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
                 tickUpper: tickLower + key.tickSpacing,
                 liquidityDelta: liquidityDelta
@@ -335,23 +337,23 @@ contract LimitOrder is BaseHook {
         // could be unfairly diluted by a user sychronously placing then killing a limit order to skim off fees.
         // to prevent this, we allocate all fee revenue to remaining limit order placers, unless this is the last order.
         if (!removingAllLiquidity) {
-            BalanceDelta deltaFee = poolManager.modifyPosition(
+            BalanceDelta deltaFee = poolManager.modifyLiquidity(
                 key,
-                IPoolManager.ModifyPositionParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0}),
+                IPoolManager.ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0}),
                 ZERO_BYTES
             );
 
             if (deltaFee.amount0() < 0) {
-                poolManager.mint(key.currency0, address(this), amount0Fee = uint128(-deltaFee.amount0()));
+                poolManager.mint(address(this), key.currency0.toId(), amount0Fee = uint128(-deltaFee.amount0()));
             }
             if (deltaFee.amount1() < 0) {
-                poolManager.mint(key.currency1, address(this), amount1Fee = uint128(-deltaFee.amount1()));
+                poolManager.mint(address(this), key.currency1.toId(), amount1Fee = uint128(-deltaFee.amount1()));
             }
         }
 
-        BalanceDelta delta = poolManager.modifyPosition(
+        BalanceDelta delta = poolManager.modifyLiquidity(
             key,
-            IPoolManager.ModifyPositionParams({
+            IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
                 tickUpper: tickUpper,
                 liquidityDelta: liquidityDelta
@@ -401,11 +403,11 @@ contract LimitOrder is BaseHook {
         address to
     ) external selfOnly {
         if (token0Amount > 0) {
-            poolManager.burn(currency0, token0Amount);
+            poolManager.burn(address(this), currency0.toId(), token0Amount);
             poolManager.take(currency0, to, token0Amount);
         }
         if (token1Amount > 0) {
-            poolManager.burn(currency1, token1Amount);
+            poolManager.burn(address(this), currency1.toId(), token1Amount);
             poolManager.take(currency1, to, token1Amount);
         }
     }

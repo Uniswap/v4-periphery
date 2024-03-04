@@ -30,12 +30,14 @@ contract VolatilityOracle is BaseHook, IDynamicFeeManager {
         deployTimestamp = _blockTimestamp();
     }
 
-    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: false,
-            beforeModifyPosition: false,
-            afterModifyPosition: false,
+            beforeAddLiquidity: false,
+            beforeRemoveLiquidity: false,
+            afterAddLiquidity: false,
+            afterRemoveLiquidity: false,
             beforeSwap: false,
             afterSwap: false,
             beforeDonate: false,

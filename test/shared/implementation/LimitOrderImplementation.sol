@@ -8,7 +8,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 contract LimitOrderImplementation is LimitOrder {
     constructor(IPoolManager _poolManager, LimitOrder addressToEtch) LimitOrder(_poolManager) {
-        Hooks.validateHookPermissions(addressToEtch, getHooksCalls());
+        Hooks.validateHookPermissions(addressToEtch, getHookPermissions());
     }
 
     // make this a no-op in testing

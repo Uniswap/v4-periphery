@@ -45,7 +45,7 @@ contract CoolHook is BaseHook {
     function beforeModifyPosition(
         address,
         IPoolManager.PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata params
+        IPoolManager.ModifyLiquidityParams calldata params
     ) external override poolManagerOnly returns (bytes4) {
         // hook logic
         return BaseHook.beforeModifyPosition.selector;
