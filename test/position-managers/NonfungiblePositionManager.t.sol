@@ -112,8 +112,8 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
             position: position,
             amount0Desired: amount0Desired,
             amount1Desired: amount1Desired,
-            amount0Min: 0,
-            amount1Min: 0,
+            amount0Min: amount0Desired,
+            amount1Min: amount1Desired,
             deadline: block.timestamp + 1,
             recipient: address(this),
             hookData: ZERO_BYTES
@@ -153,7 +153,51 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         assertEq(lpm.ownerOf(tokenId), alice);
     }
 
-    function test_mint_slippageRevert() public {}
+    function test_mint_slippageRevert(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
+        public
+    {
+        (tickLower, tickUpper,) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
+        vm.assume(tickLower < 0);
+        vm.assume(tickUpper > 0);
+
+        (amount0Desired, amount1Desired) =
+            createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
+        vm.assume(0.00001e18 < amount0Desired);
+        vm.assume(0.00001e18 < amount1Desired);
+
+        uint256 amount0Min = amount0Desired - 1;
+        uint256 amount1Min = amount1Desired - 1;
+
+        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+        INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
+            position: position,
+            amount0Desired: amount0Desired,
+            amount1Desired: amount1Desired,
+            amount0Min: amount0Min,
+            amount1Min: amount1Min,
+            deadline: block.timestamp + 1,
+            recipient: address(this),
+            hookData: ZERO_BYTES
+        });
+
+        // seed some liquidity so we can move the price
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: TickMath.minUsableTick(key.tickSpacing),
+                tickUpper: TickMath.maxUsableTick(key.tickSpacing),
+                liquidityDelta: 100_000e18
+            }),
+            ZERO_BYTES
+        );
+
+        // swap to move the price
+        swap(key, true, 1000e18, ZERO_BYTES);
+
+        // will revert because amount0Min and amount1Min are very strict
+        vm.expectRevert();
+        lpm.mint(params);
+    }
 
     function test_burn() public {}
     function test_collect() public {}

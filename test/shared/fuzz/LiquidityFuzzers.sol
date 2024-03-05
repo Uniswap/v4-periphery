@@ -86,9 +86,9 @@ contract LiquidityFuzzers is StdUtils {
     ) internal view returns (uint256 _amount0, uint256 _amount1) {
         // fuzzing amount desired is a nice to have instead of using liquidityDelta, however we often violate TickOverflow
         // (too many tokens in a tight range) -- need to figure out how to bound it better
-        bool tight = (tickUpper - tickLower) < 100 * key.tickSpacing;
-        uint256 maxAmount0 = tight ? 1_000e18 : 10_000e18;
-        uint256 maxAmount1 = tight ? 1_000e18 : 10_000e18;
+        bool tight = (tickUpper - tickLower) < 200 * key.tickSpacing;
+        uint256 maxAmount0 = tight ? 100e18 : 1_000e18;
+        uint256 maxAmount1 = tight ? 100e18 : 1_000e18;
         _amount0 = bound(amount0, 0, maxAmount0);
         _amount1 = bound(amount1, 0, maxAmount1);
         _vm.assume(_amount0 != 0 && _amount1 != 0);

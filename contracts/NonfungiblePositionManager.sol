@@ -97,6 +97,8 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
             params.recipient,
             params.hookData
         );
+        require(params.amount0Min <= uint256(uint128(delta.amount0())), "INSUFFICIENT_AMOUNT0");
+        require(params.amount1Min <= uint256(uint128(delta.amount1())), "INSUFFICIENT_AMOUNT1");
     }
 
     function burn(uint256 tokenId) external {}
