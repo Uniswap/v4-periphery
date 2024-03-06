@@ -234,7 +234,30 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
     function test_collect() public {}
     function test_increaseLiquidity() public {}
-    function test_decreaseLiquidity() public {}
+    
+    function test_decreaseLiquidity(int24 tickLower, int24 tickUpper, uint128 liquidityDelta, uint128 decreaseLiquidityDelta) public {
+        uint256 tokenId;
+        (tokenId, tickLower, tickUpper, liquidityDelta,) =
+            createFuzzyLiquidity(lpm, address(this), key, tickLower, tickUpper, liquidityDelta, ZERO_BYTES);
+        vm.assume(0 < decreaseLiquidityDelta);
+        vm.assume(decreaseLiquidityDelta <= liquidityDelta);
+
+        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+        INonfungiblePositionManager.DecreaseLiquidityParams memory params = INonfungiblePositionManager.DecreaseLiquidityParams({
+            tokenId: tokenId,
+            liquidityDelta: decreaseLiquidityDelta,
+            amount0Min: 0,
+            amount1Min: 0,
+            deadline: block.timestamp + 1
+        });
+        BalanceDelta delta = lpm.decreaseLiquidity(params, ZERO_BYTES);
+        assertEq(lpm.liquidityOf(address(this), position.toId()), liquidityDelta - decreaseLiquidityDelta);
+        assertEq(currency0.balanceOfSelf() - balance0Before, uint256(int256(-delta.amount0())));
+        assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(-delta.amount1())));
+    }
 
     function test_mintTransferBurn() public {}
     function test_mintTransferCollect() public {}
