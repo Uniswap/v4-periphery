@@ -16,6 +16,7 @@ import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 import {INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
@@ -199,7 +200,38 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         lpm.mint(params);
     }
 
-    function test_burn() public {}
+    function test_burn(int24 tickLower, int24 tickUpper, uint128 liquidityDelta) public {
+        uint256 balance0Start = currency0.balanceOfSelf();
+        uint256 balance1Start = currency1.balanceOfSelf();
+
+        // create liquidity we can burn
+        uint256 tokenId;
+        (tokenId, tickLower, tickUpper, liquidityDelta,) =
+            createFuzzyLiquidity(lpm, address(this), key, tickLower, tickUpper, liquidityDelta, ZERO_BYTES);
+        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+        assertEq(tokenId, 1);
+        assertEq(lpm.ownerOf(1), address(this));
+        assertEq(lpm.liquidityOf(address(this), position.toId()), liquidityDelta);
+
+        // burn liquidity
+        uint256 balance0BeforeBurn = currency0.balanceOfSelf();
+        uint256 balance1BeforeBurn = currency1.balanceOfSelf();
+        BalanceDelta delta = lpm.burn(tokenId, ZERO_BYTES);
+        assertEq(lpm.liquidityOf(address(this), position.toId()), 0);
+
+        // TODO: slightly off by 1 bip (0.0001%)
+        assertApproxEqRel(currency0.balanceOfSelf(), balance0BeforeBurn + uint256(int256(-delta.amount0())), 0.0001e18);
+        assertApproxEqRel(currency1.balanceOfSelf(), balance1BeforeBurn + uint256(int256(-delta.amount1())), 0.0001e18);
+
+        // OZ 721 will revert if the token does not exist
+        vm.expectRevert();
+        lpm.ownerOf(1);
+
+        // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
+        assertApproxEqAbs(currency0.balanceOfSelf(), balance0Start, 1 wei);
+        assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
+    }
+
     function test_collect() public {}
     function test_increaseLiquidity() public {}
     function test_decreaseLiquidity() public {}

@@ -101,8 +101,84 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
         require(params.amount1Min <= uint256(uint128(delta.amount1())), "INSUFFICIENT_AMOUNT1");
     }
 
-    function burn(uint256 tokenId) external {}
+    function decreaseLiquidity(DecreaseLiquidityParams memory params, bytes calldata hookData)
+        public
+        isAuthorizedForToken(params.tokenId)
+        returns (BalanceDelta delta)
+    {
+        require(params.liquidityDelta != 0, "Must decrease liquidity");
+        Position storage position = positions[params.tokenId];
+        delta = BaseLiquidityManagement.modifyLiquidity(
+            position.position.key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: position.position.tickLower,
+                tickUpper: position.position.tickUpper,
+                liquidityDelta: -int256(uint256(params.liquidityDelta))
+            }),
+            hookData,
+            ownerOf(params.tokenId)
+        );
+        require(params.amount0Min <= uint256(uint128(-delta.amount0())), "INSUFFICIENT_AMOUNT0");
+        require(params.amount1Min <= uint256(uint128(-delta.amount1())), "INSUFFICIENT_AMOUNT1");
+
+        // position.tokensOwed0 +=
+        //     uint128(amount0) +
+        //     uint128(
+        //         FullMath.mulDiv(
+        //             feeGrowthInside0LastX128 - position.feeGrowthInside0LastX128,
+        //             positionLiquidity,
+        //             FixedPoint128.Q128
+        //         )
+        //     );
+        // position.tokensOwed1 +=
+        //     uint128(amount1) +
+        //     uint128(
+        //         FullMath.mulDiv(
+        //             feeGrowthInside1LastX128 - position.feeGrowthInside1LastX128,
+        //             positionLiquidity,
+        //             FixedPoint128.Q128
+        //         )
+        //     );
+
+        // position.feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
+        // position.feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
+
+        // update the position
+        position.liquidity -= params.liquidityDelta;
+    }
+
+    function burn(uint256 tokenId, bytes calldata hookData)
+        external
+        isAuthorizedForToken(tokenId)
+        returns (BalanceDelta delta)
+    {
+        // remove liquidity
+        Position storage position = positions[tokenId];
+        if (0 < position.liquidity) {
+            decreaseLiquidity(
+                DecreaseLiquidityParams({
+                    tokenId: tokenId,
+                    liquidityDelta: position.liquidity,
+                    amount0Min: 0,
+                    amount1Min: 0,
+                    deadline: block.timestamp
+                }),
+                hookData
+            );
+        }
+
+        require(position.tokensOwed0 == 0 && position.tokensOwed1 == 0, "NOT_EMPTY");
+        delete positions[tokenId];
+
+        // burn the token
+        _burn(tokenId);
+    }
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
     function collect(uint256 tokenId, address recipient) external {}
+
+    modifier isAuthorizedForToken(uint256 tokenId) {
+        require(_isApprovedOrOwner(msg.sender, tokenId), "Not approved");
+        _;
+    }
 }
