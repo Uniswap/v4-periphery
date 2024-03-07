@@ -234,8 +234,13 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
     function test_collect() public {}
     function test_increaseLiquidity() public {}
-    
-    function test_decreaseLiquidity(int24 tickLower, int24 tickUpper, uint128 liquidityDelta, uint128 decreaseLiquidityDelta) public {
+
+    function test_decreaseLiquidity(
+        int24 tickLower,
+        int24 tickUpper,
+        uint128 liquidityDelta,
+        uint128 decreaseLiquidityDelta
+    ) public {
         uint256 tokenId;
         (tokenId, tickLower, tickUpper, liquidityDelta,) =
             createFuzzyLiquidity(lpm, address(this), key, tickLower, tickUpper, liquidityDelta, ZERO_BYTES);
@@ -246,7 +251,8 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        INonfungiblePositionManager.DecreaseLiquidityParams memory params = INonfungiblePositionManager.DecreaseLiquidityParams({
+        INonfungiblePositionManager.DecreaseLiquidityParams memory params = INonfungiblePositionManager
+            .DecreaseLiquidityParams({
             tokenId: tokenId,
             liquidityDelta: decreaseLiquidityDelta,
             amount0Min: 0,
@@ -259,7 +265,42 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(-delta.amount1())));
     }
 
-    function test_mintTransferBurn() public {}
+    function test_mintTransferBurn(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
+        public
+    {
+        (tickLower, tickUpper,) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
+        (amount0Desired, amount1Desired) =
+            createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
+
+        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+        INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
+            position: position,
+            amount0Desired: amount0Desired,
+            amount1Desired: amount1Desired,
+            amount0Min: 0,
+            amount1Min: 0,
+            deadline: block.timestamp + 1,
+            recipient: address(this),
+            hookData: ZERO_BYTES
+        });
+        (uint256 tokenId, BalanceDelta delta) = lpm.mint(params);
+        uint256 liquidity = lpm.liquidityOf(address(this), position.toId());
+
+        // transfer to Alice
+        lpm.transferFrom(address(this), alice, tokenId);
+
+        assertEq(lpm.liquidityOf(address(this), position.toId()), 0);
+        assertEq(lpm.ownerOf(tokenId), alice);
+        assertEq(lpm.liquidityOf(alice, position.toId()), liquidity);
+
+        // Alice can burn the token
+        vm.prank(alice);
+        lpm.burn(tokenId, ZERO_BYTES);
+    }
+
     function test_mintTransferCollect() public {}
     function test_mintTransferIncrease() public {}
     function test_mintTransferDecrease() public {}

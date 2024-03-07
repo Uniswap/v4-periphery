@@ -8,7 +8,7 @@ import {BaseLiquidityManagement} from "./base/BaseLiquidityManagement.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {LiquidityPosition} from "./types/LiquidityPositionId.sol";
+import {LiquidityPosition, LiquidityPositionIdLibrary} from "./types/LiquidityPositionId.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
@@ -16,6 +16,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePositionManager, ERC721 {
     using PoolIdLibrary for PoolKey;
+    using LiquidityPositionIdLibrary for LiquidityPosition;
     /// @dev The ID of the next token that will be minted. Skips 0
 
     uint256 private _nextId = 1;
@@ -176,6 +177,13 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
     function collect(uint256 tokenId, address recipient) external {}
+
+    function _afterTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize) internal override {
+        Position storage position = positions[firstTokenId];
+        position.operator = address(0x0);
+        liquidityOf[from][position.position.toId()] -= position.liquidity;
+        liquidityOf[to][position.position.toId()] += position.liquidity;
+    }
 
     modifier isAuthorizedForToken(uint256 tokenId) {
         require(_isApprovedOrOwner(msg.sender, tokenId), "Not approved");
