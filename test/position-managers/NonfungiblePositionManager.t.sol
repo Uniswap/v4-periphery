@@ -232,7 +232,22 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
     }
 
-    function test_collect() public {}
+    function test_collect(int24 tickLower, int24 tickUpper, uint128 liquidityDelta) public {
+        uint256 tokenId;
+        liquidityDelta = uint128(bound(liquidityDelta, 100e18, 100_000e18)); // require nontrivial amount of liquidity
+        (tokenId, tickLower, tickUpper, liquidityDelta,) =
+            createFuzzyLiquidity(lpm, address(this), key, tickLower, tickUpper, liquidityDelta, ZERO_BYTES);
+        vm.assume(tickLower < -60 && 60 < tickUpper); // require two-sided liquidity
+        
+        // swap to create fees
+        swap(key, false, 0.01e18, ZERO_BYTES);
+
+        // collect fees
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+        BalanceDelta delta = lpm.collect(tokenId, address(this));
+    }
+
     function test_increaseLiquidity() public {}
 
     function test_decreaseLiquidity(
