@@ -127,7 +127,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         emit Initialize(id, testKey.currency0, testKey.currency1, testKey.fee, testKey.tickSpacing, testKey.hooks);
 
         snapStart("FullRangeInitialize");
-        initializeRouter.initialize(testKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(testKey, SQRT_RATIO_1_1, ZERO_BYTES);
         snapEnd();
 
         (, address liquidityToken) = fullRange.poolInfo(id);
@@ -139,11 +139,11 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         PoolKey memory wrongKey = PoolKey(key.currency0, key.currency1, 0, TICK_SPACING + 1, fullRange);
 
         vm.expectRevert(FullRange.TickSpacingNotDefault.selector);
-        initializeRouter.initialize(wrongKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(wrongKey, SQRT_RATIO_1_1, ZERO_BYTES);
     }
 
     function testFullRange_addLiquidity_InitialAddSucceeds() public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         uint256 prevBalance0 = key.currency0.balanceOf(address(this));
         uint256 prevBalance1 = key.currency1.balanceOf(address(this));
@@ -169,7 +169,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_addLiquidity_InitialAddFuzz(uint256 amount) public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
         if (amount < LOCKED_LIQUIDITY) {
             vm.expectRevert(FullRange.LiquidityDoesntMeetMinimum.selector);
             fullRange.addLiquidity(
@@ -244,7 +244,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_addLiquidity_SwapThenAddSucceeds() public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         uint256 prevBalance0 = key.currency0.balanceOf(address(this));
         uint256 prevBalance1 = key.currency1.balanceOf(address(this));
@@ -298,7 +298,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_addLiquidity_FailsIfTooMuchSlippage() public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
@@ -323,7 +323,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
     function testFullRange_swap_TwoSwaps() public {
         PoolKey memory testKey = key;
-        initializeRouter.initialize(testKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(testKey, SQRT_RATIO_1_1, ZERO_BYTES);
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
@@ -352,8 +352,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_swap_TwoPools() public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
-        initializeRouter.initialize(key2, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key2, SQRT_RATIO_1_1, ZERO_BYTES);
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
@@ -408,7 +408,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_InitialRemoveFuzz(uint256 amount) public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         fullRange.addLiquidity(
             FullRange.AddLiquidityParams(
@@ -456,7 +456,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_FailsIfNoLiquidity() public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         (, address liquidityToken) = fullRange.poolInfo(id);
         UniswapV4ERC20(liquidityToken).approve(address(fullRange), type(uint256).max);
@@ -468,7 +468,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_SucceedsWithPartial() public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         uint256 prevBalance0 = key.currency0.balanceOfSelf();
         uint256 prevBalance1 = key.currency1.balanceOfSelf();
@@ -503,7 +503,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_DiffRatios() public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         uint256 prevBalance0 = key.currency0.balanceOf(address(this));
         uint256 prevBalance1 = key.currency1.balanceOf(address(this));
@@ -571,7 +571,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_RemoveAllFuzz(uint256 amount) public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
         (, address liquidityToken) = fullRange.poolInfo(id);
 
         if (amount <= LOCKED_LIQUIDITY) {
@@ -626,7 +626,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         vm.prank(address(2));
         token1.approve(address(fullRange), type(uint256).max);
 
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
         (, address liquidityToken) = fullRange.poolInfo(id);
 
         // Test contract adds liquidity
@@ -704,7 +704,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_removeLiquidity_SwapRemoveAllFuzz(uint256 amount) public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
         (, address liquidityToken) = fullRange.poolInfo(id);
 
         if (amount <= LOCKED_LIQUIDITY) {
@@ -753,7 +753,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     }
 
     function testFullRange_BeforeModifyPositionFailsWithWrongMsgSender() public {
-        initializeRouter.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         vm.expectRevert(FullRange.SenderMustBeHook.selector);
         modifyLiquidityRouter.modifyLiquidity(

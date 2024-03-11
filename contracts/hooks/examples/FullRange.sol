@@ -98,9 +98,7 @@ contract FullRange is BaseHook, ILockCallback {
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
-            afterDonate: false,
-            noOp: false,
-            accessLock: false
+            afterDonate: false
         });
     }
 
@@ -251,9 +249,7 @@ contract FullRange is BaseHook, ILockCallback {
         internal
         returns (BalanceDelta delta)
     {
-        delta = abi.decode(
-            poolManager.lock(address(this), abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta)
-        );
+        delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
     }
 
     function _settleDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
@@ -301,14 +297,12 @@ contract FullRange is BaseHook, ILockCallback {
         pool.hasAccruedFees = false;
     }
 
-    function lockAcquired(address sender, bytes calldata rawData)
+    function lockAcquired(bytes calldata rawData)
         external
         override(ILockCallback, BaseHook)
         poolManagerOnly
         returns (bytes memory)
     {
-        // Now that manager can be called by EOAs with a lock target, it's necessary for lockAcquired to check the original sender if it wants to trust the data passed through.
-        if (sender != address(this)) revert SenderMustBeHook();
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         BalanceDelta delta;
 

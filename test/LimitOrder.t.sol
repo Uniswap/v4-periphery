@@ -63,7 +63,7 @@ contract TestLimitOrder is Test, Deployers {
     function testGetTickLowerLastWithDifferentPrice() public {
         PoolKey memory differentKey =
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 61, limitOrder);
-        initializeRouter.initialize(differentKey, SQRT_RATIO_10_1, ZERO_BYTES);
+        manager.initialize(differentKey, SQRT_RATIO_10_1, ZERO_BYTES);
         assertEq(limitOrder.getTickLowerLast(differentKey.toId()), 22997);
     }
 

@@ -41,9 +41,7 @@ contract VolatilityOracle is BaseHook, IDynamicFeeManager {
             beforeSwap: false,
             afterSwap: false,
             beforeDonate: false,
-            afterDonate: false,
-            noOp: false,
-            accessLock: false
+            afterDonate: false
         });
     }
 

@@ -49,12 +49,7 @@ abstract contract BaseHook is IHooks {
         Hooks.validateHookPermissions(_this, getHookPermissions());
     }
 
-    function lockAcquired(address, /*sender*/ bytes calldata data)
-        external
-        virtual
-        poolManagerOnly
-        returns (bytes memory)
-    {
+    function lockAcquired(bytes calldata data) external virtual poolManagerOnly returns (bytes memory) {
         (bool success, bytes memory returnData) = address(this).call(data);
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();

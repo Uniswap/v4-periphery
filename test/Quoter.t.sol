@@ -123,7 +123,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_callLockAcquired_reverts() public {
         vm.expectRevert(IQuoter.InvalidLockAcquiredSender.selector);
         vm.prank(address(manager));
-        quoter.lockAcquired(address(quoter), abi.encodeWithSelector(quoter.lockAcquired.selector, address(this), "0x"));
+        quoter.lockAcquired(abi.encodeWithSelector(quoter.lockAcquired.selector, address(this), "0x"));
     }
 
     function testQuoter_quoteExactInput_0to2_2TicksLoaded() public {
@@ -542,7 +542,7 @@ contract QuoterTest is Test, Deployers {
     }
 
     function setupPool(PoolKey memory poolKey) internal {
-        initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity(
@@ -557,7 +557,7 @@ contract QuoterTest is Test, Deployers {
     }
 
     function setupPoolMultiplePositions(PoolKey memory poolKey) internal {
-        initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity(
@@ -589,7 +589,7 @@ contract QuoterTest is Test, Deployers {
         PoolId poolId = poolKey.toId();
         (uint160 sqrtPriceX96,,) = manager.getSlot0(poolId);
         if (sqrtPriceX96 == 0) {
-            initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+            manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         }
 
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);

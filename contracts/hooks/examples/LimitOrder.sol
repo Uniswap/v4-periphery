@@ -84,9 +84,7 @@ contract LimitOrder is BaseHook {
             beforeSwap: false,
             afterSwap: true,
             beforeDonate: false,
-            afterDonate: false,
-            noOp: false,
-            accessLock: false
+            afterDonate: false
         });
     }
 
@@ -160,7 +158,6 @@ contract LimitOrder is BaseHook {
 
             (uint256 amount0, uint256 amount1) = abi.decode(
                 poolManager.lock(
-                    address(this),
                     abi.encodeCall(this.lockAcquiredFill, (key, lower, -int256(uint256(epochInfo.liquidityTotal))))
                 ),
                 (uint256, uint256)
@@ -224,7 +221,6 @@ contract LimitOrder is BaseHook {
         if (liquidity == 0) revert ZeroLiquidity();
 
         poolManager.lock(
-            address(this),
             abi.encodeCall(this.lockAcquiredPlace, (key, tickLower, zeroForOne, int256(uint256(liquidity)), msg.sender))
         );
 
@@ -306,7 +302,6 @@ contract LimitOrder is BaseHook {
         uint256 amount1Fee;
         (amount0, amount1, amount0Fee, amount1Fee) = abi.decode(
             poolManager.lock(
-                address(this),
                 abi.encodeCall(
                     this.lockAcquiredKill,
                     (key, tickLower, -int256(uint256(liquidity)), to, liquidity == epochInfo.liquidityTotal)
@@ -388,7 +383,6 @@ contract LimitOrder is BaseHook {
         epochInfo.liquidityTotal = liquidityTotal - liquidity;
 
         poolManager.lock(
-            address(this),
             abi.encodeCall(this.lockAcquiredWithdraw, (epochInfo.currency0, epochInfo.currency1, amount0, amount1, to))
         );
 
