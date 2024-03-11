@@ -129,7 +129,7 @@ contract LimitOrder is BaseHook {
     }
 
     function afterSwap(
-        address,
+        address sender,
         PoolKey calldata key,
         IPoolManager.SwapParams calldata params,
         BalanceDelta,
@@ -142,26 +142,24 @@ contract LimitOrder is BaseHook {
         // order fills are the opposite of swap fills, hence the inversion below
         bool zeroForOne = !params.zeroForOne;
         for (; lower <= upper; lower += key.tickSpacing) {
-            _fillEpoch(key, lower, zeroForOne);
+            _fillEpoch(sender, key, lower, zeroForOne);
         }
 
         setTickLowerLast(key.toId(), tickLower);
         return LimitOrder.afterSwap.selector;
     }
 
-    function _fillEpoch(PoolKey calldata key, int24 lower, bool zeroForOne) internal {
+    function _fillEpoch(address sender, PoolKey calldata key, int24 lower, bool zeroForOne) internal {
         Epoch epoch = getEpoch(key, lower, zeroForOne);
         if (!epoch.equals(EPOCH_DEFAULT)) {
             EpochInfo storage epochInfo = epochInfos[epoch];
 
             epochInfo.filled = true;
 
-            (uint256 amount0, uint256 amount1) = abi.decode(
-                poolManager.lock(
-                    abi.encodeCall(this.lockAcquiredFill, (key, lower, -int256(uint256(epochInfo.liquidityTotal))))
-                ),
-                (uint256, uint256)
-            );
+            address locker = poolManager.getLocker();
+            require(locker == sender, "invalid locker");
+            (uint256 amount0, uint256 amount1) =
+                _lockAcquiredFill(key, lower, -int256(uint256(epochInfo.liquidityTotal)));
 
             unchecked {
                 epochInfo.token0Total += amount0;
@@ -191,9 +189,9 @@ contract LimitOrder is BaseHook {
         }
     }
 
-    function lockAcquiredFill(PoolKey calldata key, int24 tickLower, int256 liquidityDelta)
-        external
-        selfOnly
+    function _lockAcquiredFill(PoolKey calldata key, int24 tickLower, int256 liquidityDelta)
+        private
+        poolManagerOnly
         returns (uint128 amount0, uint128 amount1)
     {
         BalanceDelta delta = poolManager.modifyLiquidity(
