@@ -121,7 +121,7 @@ contract QuoterTest is Test, Deployers {
 
     // nested self-call into lockAcquired reverts
     function testQuoter_callLockAcquired_reverts() public {
-        vm.expectRevert(IQuoter.InvalidLockAcquiredSender.selector);
+        vm.expectRevert(IQuoter.LockFailure.selector);
         vm.prank(address(manager));
         quoter.lockAcquired(abi.encodeWithSelector(quoter.lockAcquired.selector, address(this), "0x"));
     }
