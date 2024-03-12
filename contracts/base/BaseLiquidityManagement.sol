@@ -11,14 +11,18 @@ import {SafeCallback} from "./SafeCallback.sol";
 import {ImmutableState} from "./ImmutableState.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
+import {CurrencySettleTake} from "../libraries/CurrencySettleTake.sol";
+
 abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagement {
     using LiquidityPositionIdLibrary for LiquidityPosition;
     using CurrencyLibrary for Currency;
+    using CurrencySettleTake for Currency;
 
     struct CallbackData {
         address sender;
         PoolKey key;
         IPoolManager.ModifyLiquidityParams params;
+        bool claims;
         bytes hookData;
     }
 
@@ -37,7 +41,7 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         if (params.liquidityDelta < 0) require(msg.sender == owner, "Cannot redeem position");
 
         delta = abi.decode(
-            poolManager.lock(address(this), abi.encode(CallbackData(msg.sender, key, params, hookData))), (BalanceDelta)
+            poolManager.lock(address(this), abi.encode(CallbackData(msg.sender, key, params, false, hookData))), (BalanceDelta)
         );
 
         params.liquidityDelta < 0
@@ -60,23 +64,15 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
 
         if (data.params.liquidityDelta <= 0) {
             // removing liquidity/fees so take tokens
-            poolManager.take(data.key.currency0, data.sender, uint128(-delta.amount0()));
-            poolManager.take(data.key.currency1, data.sender, uint128(-delta.amount1()));
+            data.key.currency0.take(poolManager, data.sender, uint128(-delta.amount0()), data.claims);
+            data.key.currency1.take(poolManager, data.sender, uint128(-delta.amount1()), data.claims);
+
         } else {
             // adding liquidity so pay tokens
-            _settle(data.sender, data.key.currency0, uint128(delta.amount0()));
-            _settle(data.sender, data.key.currency1, uint128(delta.amount1()));
+            data.key.currency0.settle(poolManager, data.sender, uint128(delta.amount0()), data.claims);
+            data.key.currency1.settle(poolManager, data.sender, uint128(delta.amount1()), data.claims);
         }
 
         result = abi.encode(delta);
-    }
-
-    function _settle(address payer, Currency currency, uint256 amount) internal {
-        if (currency.isNative()) {
-            poolManager.settle{value: uint128(amount)}(currency);
-        } else {
-            IERC20(Currency.unwrap(currency)).transferFrom(payer, address(poolManager), uint128(amount));
-            poolManager.settle(currency);
-        }
     }
 }
