@@ -176,19 +176,21 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
     }
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
-    function collect(uint256 tokenId, address recipient) external returns (BalanceDelta delta) {
+    function collect(uint256 tokenId, address recipient, bytes calldata hookData)
+        external
+        returns (BalanceDelta delta)
+    {
         Position memory position = positions[tokenId];
-        BaseLiquidityManagement.modifyLiquidity(
+        delta = BaseLiquidityManagement.modifyLiquidity(
             position.position.key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: position.position.tickLower,
                 tickUpper: position.position.tickUpper,
                 liquidityDelta: 0
             }),
-            "",
+            hookData,
             recipient
         );
-        )
     }
 
     function _afterTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize) internal override {

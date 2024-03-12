@@ -41,7 +41,8 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         if (params.liquidityDelta < 0) require(msg.sender == owner, "Cannot redeem position");
 
         delta = abi.decode(
-            poolManager.lock(address(this), abi.encode(CallbackData(msg.sender, key, params, false, hookData))), (BalanceDelta)
+            poolManager.lock(address(this), abi.encode(CallbackData(msg.sender, key, params, false, hookData))),
+            (BalanceDelta)
         );
 
         params.liquidityDelta < 0
@@ -66,7 +67,6 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
             // removing liquidity/fees so take tokens
             data.key.currency0.take(poolManager, data.sender, uint128(-delta.amount0()), data.claims);
             data.key.currency1.take(poolManager, data.sender, uint128(-delta.amount1()), data.claims);
-
         } else {
             // adding liquidity so pay tokens
             data.key.currency0.settle(poolManager, data.sender, uint128(delta.amount0()), data.claims);

@@ -14,6 +14,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -29,6 +30,7 @@ import {
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
 contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
+    using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using LiquidityPositionIdLibrary for LiquidityPosition;
 
@@ -238,14 +240,21 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         (tokenId, tickLower, tickUpper, liquidityDelta,) =
             createFuzzyLiquidity(lpm, address(this), key, tickLower, tickUpper, liquidityDelta, ZERO_BYTES);
         vm.assume(tickLower < -60 && 60 < tickUpper); // require two-sided liquidity
-        
+
+        uint256 swapAmount = 0.01e18;
         // swap to create fees
-        swap(key, false, 0.01e18, ZERO_BYTES);
+        swap(key, false, int256(swapAmount), ZERO_BYTES);
 
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = lpm.collect(tokenId, address(this));
+        BalanceDelta delta = lpm.collect(tokenId, address(this), ZERO_BYTES);
+
+        assertEq(delta.amount0(), 0, "a");
+
+        // express key.fee as wad (i.e. 3000 = 0.003e18)
+        uint256 feeWad = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
+        assertApproxEqAbs(uint256(int256(-delta.amount1())), swapAmount.mulWadDown(feeWad), 1 wei);
     }
 
     function test_increaseLiquidity() public {}

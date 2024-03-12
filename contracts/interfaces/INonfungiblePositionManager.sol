@@ -45,5 +45,7 @@ interface INonfungiblePositionManager is IBaseLiquidityManagement {
     function burn(uint256 tokenId, bytes calldata hookData) external returns (BalanceDelta delta);
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
-    function collect(uint256 tokenId, address recipient) external returns (BalanceDelta delta);
+    function collect(uint256 tokenId, address recipient, bytes calldata hookData)
+        external
+        returns (BalanceDelta delta);
 }
