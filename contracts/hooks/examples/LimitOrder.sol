@@ -142,22 +142,20 @@ contract LimitOrder is BaseHook {
         // order fills are the opposite of swap fills, hence the inversion below
         bool zeroForOne = !params.zeroForOne;
         for (; lower <= upper; lower += key.tickSpacing) {
-            _fillEpoch(sender, key, lower, zeroForOne);
+            _fillEpoch(key, lower, zeroForOne);
         }
 
         setTickLowerLast(key.toId(), tickLower);
         return LimitOrder.afterSwap.selector;
     }
 
-    function _fillEpoch(address sender, PoolKey calldata key, int24 lower, bool zeroForOne) internal {
+    function _fillEpoch(PoolKey calldata key, int24 lower, bool zeroForOne) internal {
         Epoch epoch = getEpoch(key, lower, zeroForOne);
         if (!epoch.equals(EPOCH_DEFAULT)) {
             EpochInfo storage epochInfo = epochInfos[epoch];
 
             epochInfo.filled = true;
 
-            address locker = poolManager.getLocker();
-            require(locker == sender, "invalid locker");
             (uint256 amount0, uint256 amount1) =
                 _lockAcquiredFill(key, lower, -int256(uint256(epochInfo.liquidityTotal)));
 
