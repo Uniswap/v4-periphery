@@ -55,12 +55,12 @@ contract HookEnabledSwapRouter is PoolTestBase {
 
         if (data.params.zeroForOne) {
             _settle(data.key.currency0, data.sender, delta.amount0(), data.testSettings.settleUsingTransfer);
-            if (delta.amount1() < 0) {
+            if (delta.amount1() > 0) {
                 _take(data.key.currency1, data.sender, delta.amount1(), data.testSettings.withdrawTokens);
             }
         } else {
             _settle(data.key.currency1, data.sender, delta.amount1(), data.testSettings.settleUsingTransfer);
-            if (delta.amount0() < 0) {
+            if (delta.amount0() > 0) {
                 _take(data.key.currency0, data.sender, delta.amount0(), data.testSettings.withdrawTokens);
             }
         }
