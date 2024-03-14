@@ -587,7 +587,7 @@ contract QuoterTest is Test, Deployers {
 
     function setupPoolWithZeroTickInitialized(PoolKey memory poolKey) internal {
         PoolId poolId = poolKey.toId();
-        (uint160 sqrtPriceX96,,) = manager.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,,) = manager.getSlot0(poolId);
         if (sqrtPriceX96 == 0) {
             manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         }
