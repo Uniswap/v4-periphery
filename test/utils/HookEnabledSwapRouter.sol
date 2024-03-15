@@ -36,15 +36,14 @@ contract HookEnabledSwapRouter is PoolTestBase {
         bytes memory hookData
     ) external payable returns (BalanceDelta delta) {
         delta = abi.decode(
-            manager.lock(address(this), abi.encode(CallbackData(msg.sender, testSettings, key, params, hookData))),
-            (BalanceDelta)
+            manager.lock(abi.encode(CallbackData(msg.sender, testSettings, key, params, hookData))), (BalanceDelta)
         );
 
         uint256 ethBalance = address(this).balance;
         if (ethBalance > 0) CurrencyLibrary.NATIVE.transfer(msg.sender, ethBalance);
     }
 
-    function lockAcquired(address, /*sender*/ bytes calldata rawData) external returns (bytes memory) {
+    function lockAcquired(bytes calldata rawData) external returns (bytes memory) {
         require(msg.sender == address(manager));
 
         CallbackData memory data = abi.decode(rawData, (CallbackData));
@@ -56,12 +55,12 @@ contract HookEnabledSwapRouter is PoolTestBase {
 
         if (data.params.zeroForOne) {
             _settle(data.key.currency0, data.sender, delta.amount0(), data.testSettings.settleUsingTransfer);
-            if (delta.amount1() < 0) {
+            if (delta.amount1() > 0) {
                 _take(data.key.currency1, data.sender, delta.amount1(), data.testSettings.withdrawTokens);
             }
         } else {
             _settle(data.key.currency1, data.sender, delta.amount1(), data.testSettings.settleUsingTransfer);
-            if (delta.amount0() < 0) {
+            if (delta.amount0() > 0) {
                 _take(data.key.currency0, data.sender, delta.amount0(), data.testSettings.withdrawTokens);
             }
         }

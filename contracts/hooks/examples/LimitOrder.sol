@@ -84,9 +84,7 @@ contract LimitOrder is BaseHook {
             beforeSwap: false,
             afterSwap: true,
             beforeDonate: false,
-            afterDonate: false,
-            noOp: false,
-            accessLock: false
+            afterDonate: false
         });
     }
 
@@ -111,7 +109,7 @@ contract LimitOrder is BaseHook {
     }
 
     function getTick(PoolId poolId) private view returns (int24 tick) {
-        (, tick,) = poolManager.getSlot0(poolId);
+        (, tick,,) = poolManager.getSlot0(poolId);
     }
 
     function getTickLower(int24 tick, int24 tickSpacing) private pure returns (int24) {
@@ -158,13 +156,8 @@ contract LimitOrder is BaseHook {
 
             epochInfo.filled = true;
 
-            (uint256 amount0, uint256 amount1) = abi.decode(
-                poolManager.lock(
-                    address(this),
-                    abi.encodeCall(this.lockAcquiredFill, (key, lower, -int256(uint256(epochInfo.liquidityTotal))))
-                ),
-                (uint256, uint256)
-            );
+            (uint256 amount0, uint256 amount1) =
+                _lockAcquiredFill(key, lower, -int256(uint256(epochInfo.liquidityTotal)));
 
             unchecked {
                 epochInfo.token0Total += amount0;
@@ -194,9 +187,9 @@ contract LimitOrder is BaseHook {
         }
     }
 
-    function lockAcquiredFill(PoolKey calldata key, int24 tickLower, int256 liquidityDelta)
-        external
-        selfOnly
+    function _lockAcquiredFill(PoolKey calldata key, int24 tickLower, int256 liquidityDelta)
+        private
+        poolManagerOnly
         returns (uint128 amount0, uint128 amount1)
     {
         BalanceDelta delta = poolManager.modifyLiquidity(
@@ -209,11 +202,11 @@ contract LimitOrder is BaseHook {
             ZERO_BYTES
         );
 
-        if (delta.amount0() < 0) {
-            poolManager.mint(address(this), key.currency0.toId(), amount0 = uint128(-delta.amount0()));
+        if (delta.amount0() > 0) {
+            poolManager.mint(address(this), key.currency0.toId(), amount0 = uint128(delta.amount0()));
         }
-        if (delta.amount1() < 0) {
-            poolManager.mint(address(this), key.currency1.toId(), amount1 = uint128(-delta.amount1()));
+        if (delta.amount1() > 0) {
+            poolManager.mint(address(this), key.currency1.toId(), amount1 = uint128(delta.amount1()));
         }
     }
 
@@ -224,7 +217,6 @@ contract LimitOrder is BaseHook {
         if (liquidity == 0) revert ZeroLiquidity();
 
         poolManager.lock(
-            address(this),
             abi.encodeCall(this.lockAcquiredPlace, (key, tickLower, zeroForOne, int256(uint256(liquidity)), msg.sender))
         );
 
@@ -270,12 +262,12 @@ contract LimitOrder is BaseHook {
             ZERO_BYTES
         );
 
-        if (delta.amount0() > 0) {
+        if (delta.amount0() < 0) {
             if (delta.amount1() != 0) revert InRange();
             if (!zeroForOne) revert CrossedRange();
             // TODO use safeTransferFrom
             IERC20Minimal(Currency.unwrap(key.currency0)).transferFrom(
-                owner, address(poolManager), uint256(uint128(delta.amount0()))
+                owner, address(poolManager), uint256(uint128(-delta.amount0()))
             );
             poolManager.settle(key.currency0);
         } else {
@@ -283,7 +275,7 @@ contract LimitOrder is BaseHook {
             if (zeroForOne) revert CrossedRange();
             // TODO use safeTransferFrom
             IERC20Minimal(Currency.unwrap(key.currency1)).transferFrom(
-                owner, address(poolManager), uint256(uint128(delta.amount1()))
+                owner, address(poolManager), uint256(uint128(-delta.amount1()))
             );
             poolManager.settle(key.currency1);
         }
@@ -306,7 +298,6 @@ contract LimitOrder is BaseHook {
         uint256 amount1Fee;
         (amount0, amount1, amount0Fee, amount1Fee) = abi.decode(
             poolManager.lock(
-                address(this),
                 abi.encodeCall(
                     this.lockAcquiredKill,
                     (key, tickLower, -int256(uint256(liquidity)), to, liquidity == epochInfo.liquidityTotal)
@@ -343,11 +334,11 @@ contract LimitOrder is BaseHook {
                 ZERO_BYTES
             );
 
-            if (deltaFee.amount0() < 0) {
-                poolManager.mint(address(this), key.currency0.toId(), amount0Fee = uint128(-deltaFee.amount0()));
+            if (deltaFee.amount0() > 0) {
+                poolManager.mint(address(this), key.currency0.toId(), amount0Fee = uint128(deltaFee.amount0()));
             }
-            if (deltaFee.amount1() < 0) {
-                poolManager.mint(address(this), key.currency1.toId(), amount1Fee = uint128(-deltaFee.amount1()));
+            if (deltaFee.amount1() > 0) {
+                poolManager.mint(address(this), key.currency1.toId(), amount1Fee = uint128(deltaFee.amount1()));
             }
         }
 
@@ -361,11 +352,11 @@ contract LimitOrder is BaseHook {
             ZERO_BYTES
         );
 
-        if (delta.amount0() < 0) {
-            poolManager.take(key.currency0, to, amount0 = uint128(-delta.amount0()));
+        if (delta.amount0() > 0) {
+            poolManager.take(key.currency0, to, amount0 = uint128(delta.amount0()));
         }
-        if (delta.amount1() < 0) {
-            poolManager.take(key.currency1, to, amount1 = uint128(-delta.amount1()));
+        if (delta.amount1() > 0) {
+            poolManager.take(key.currency1, to, amount1 = uint128(delta.amount1()));
         }
     }
 
@@ -388,7 +379,6 @@ contract LimitOrder is BaseHook {
         epochInfo.liquidityTotal = liquidityTotal - liquidity;
 
         poolManager.lock(
-            address(this),
             abi.encodeCall(this.lockAcquiredWithdraw, (epochInfo.currency0, epochInfo.currency1, amount0, amount1, to))
         );
 
