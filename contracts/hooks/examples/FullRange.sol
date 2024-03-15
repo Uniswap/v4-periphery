@@ -136,7 +136,7 @@ contract FullRange is BaseHook, ILockCallback {
         if (poolLiquidity == 0 && liquidity <= MINIMUM_LIQUIDITY) {
             revert LiquidityDoesntMeetMinimum();
         }
-        BalanceDelta addedDelta = modifyPosition(
+        BalanceDelta addedDelta = modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,
@@ -180,7 +180,7 @@ contract FullRange is BaseHook, ILockCallback {
 
         UniswapV4ERC20 erc20 = UniswapV4ERC20(poolInfo[poolId].liquidityToken);
 
-        delta = modifyPosition(
+        delta = modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,
@@ -245,7 +245,7 @@ contract FullRange is BaseHook, ILockCallback {
         return IHooks.beforeSwap.selector;
     }
 
-    function modifyPosition(PoolKey memory key, IPoolManager.ModifyLiquidityParams memory params)
+    function modifyLiquidity(PoolKey memory key, IPoolManager.ModifyLiquidityParams memory params)
         internal
         returns (BalanceDelta delta)
     {
