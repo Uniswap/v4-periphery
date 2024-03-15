@@ -340,7 +340,7 @@ contract FullRange is BaseHook, ILockCallback {
             key,
             IPoolManager.SwapParams({
                 zeroForOne: newSqrtPriceX96 < sqrtPriceX96,
-                amountSpecified: -MAX_INT,
+                amountSpecified: -MAX_INT - 1, // equivalent of type(int256).min
                 sqrtPriceLimitX96: newSqrtPriceX96
             }),
             ZERO_BYTES
