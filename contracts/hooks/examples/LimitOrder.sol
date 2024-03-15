@@ -129,7 +129,7 @@ contract LimitOrder is BaseHook {
     }
 
     function afterSwap(
-        address sender,
+        address,
         PoolKey calldata key,
         IPoolManager.SwapParams calldata params,
         BalanceDelta,
