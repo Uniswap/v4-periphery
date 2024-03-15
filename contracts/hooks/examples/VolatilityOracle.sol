@@ -48,14 +48,19 @@ contract VolatilityOracle is BaseHook {
         return VolatilityOracle.beforeInitialize.selector;
     }
 
+    function setFee(PoolKey calldata key) public {
+        uint24 startingFee = 3000;
+        uint32 lapsed = _blockTimestamp() - deployTimestamp;
+        uint24 fee = startingFee + (uint24(lapsed) * 100) / 60; // 100 bps a minute
+        poolManager.updateDynamicSwapFee(key, fee); // initial fee 0.30%
+    }
+
     function afterInitialize(address, PoolKey calldata key, uint160, int24, bytes calldata)
         external
         override
         returns (bytes4)
     {
-        uint24 startingFee = 3000;
-        uint32 lapsed = _blockTimestamp() - deployTimestamp;
-        uint24 fee = startingFee + (uint24(lapsed) * 100) / 60; // 100 bps a minute
-        poolManager.updateDynamicSwapFee(key, fee); // initial fee 0.30%
+        setFee(key);
+        return BaseHook.afterInitialize.selector;
     }
 }
