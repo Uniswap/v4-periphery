@@ -20,6 +20,7 @@ import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol
 import {TWAMM} from "../contracts/hooks/examples/TWAMM.sol";
 import {ITWAMM} from "../contracts/interfaces/ITWAMM.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {HookMiner} from "./utils/HookMiner.sol";
 
 contract TWAMMTest is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -43,9 +44,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 earningsFactorLast
     );
 
-    TWAMM twamm =
-        TWAMM(address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG)));
-    address hookAddress;
+    TWAMM twamm;
     MockERC20 token0;
     MockERC20 token1;
     PoolKey poolKey;
@@ -58,16 +57,12 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         token0 = MockERC20(Currency.unwrap(currency0));
         token1 = MockERC20(Currency.unwrap(currency1));
 
-        TWAMMImplementation impl = new TWAMMImplementation(manager, 10_000, twamm);
-        (, bytes32[] memory writes) = vm.accesses(address(impl));
-        vm.etch(address(twamm), address(impl).code);
-        // for each storage key that was written during the hook implementation, copy the value over
-        unchecked {
-            for (uint256 i = 0; i < writes.length; i++) {
-                bytes32 slot = writes[i];
-                vm.store(address(twamm), slot, vm.load(address(impl), slot));
-            }
-        }
+        // Find a salt that produces a hook address with the desired `flags`
+        uint160 flags = uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG);
+        (, bytes32 salt) = HookMiner.find(address(this), flags, type(TWAMM).creationCode, abi.encode(manager, 10_000));
+
+        // Deploy hook to the precomputed address using the salt
+        twamm = new TWAMM{salt: salt}(manager, 10_000);
 
         (poolKey, poolId) = initPool(currency0, currency1, twamm, 3000, SQRT_RATIO_1_1, ZERO_BYTES);
 
