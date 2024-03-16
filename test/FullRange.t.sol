@@ -64,10 +64,6 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     MockERC20 token1;
     MockERC20 token2;
 
-    Currency currency0;
-    Currency currency1;
-
-    PoolManager manager;
     FullRange fullRange;
 
     PoolId id;
@@ -87,9 +83,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         token1 = tokens[1];
         token2 = tokens[2];
 
-        uint160 flags =
-            uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG | Hooks.BEFORE_SWAP_FLAG);
-        (, bytes32 salt) = HookMiner.find(address(this), flags, 0, type(FullRange).creationCode, abi.encode(manager));
+        uint160 flags = uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG);
+        (, bytes32 salt) = HookMiner.find(address(this), flags, type(FullRange).creationCode, abi.encode(manager));
         fullRange = new FullRange{salt: salt}(manager);
 
         key = createPoolKey(token0, token1);

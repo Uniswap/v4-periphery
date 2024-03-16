@@ -58,10 +58,8 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         token1 = MockERC20(Currency.unwrap(currency1));
 
         // Find a salt that produces a hook address with the desired `flags`
-        uint160 flags =
-            uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG);
-        (, bytes32 salt) =
-            HookMiner.find(address(this), flags, 0, type(TWAMM).creationCode, abi.encode(manager, 10_000));
+        uint160 flags = uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG);
+        (, bytes32 salt) = HookMiner.find(address(this), flags, type(TWAMM).creationCode, abi.encode(manager, 10_000));
 
         // Deploy hook to the precomputed address using the salt
         twamm = new TWAMM{salt: salt}(manager, 10_000);

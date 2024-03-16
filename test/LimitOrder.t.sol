@@ -26,7 +26,6 @@ contract TestLimitOrder is Test, Deployers {
     TestERC20 token0;
     TestERC20 token1;
     LimitOrder limitOrder;
-    PoolKey key;
     PoolId id;
 
     function setUp() public {
@@ -38,7 +37,7 @@ contract TestLimitOrder is Test, Deployers {
         token1 = TestERC20(Currency.unwrap(currency1));
 
         uint160 flags = uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG);
-        (, bytes32 salt) = HookMiner.find(address(this), flags, 0, type(LimitOrder).creationCode, abi.encode(manager));
+        (, bytes32 salt) = HookMiner.find(address(this), flags, type(LimitOrder).creationCode, abi.encode(manager));
         limitOrder = new LimitOrder{salt: salt}(manager);
 
         // key = PoolKey(currency0, currency1, 3000, 60, limitOrder);

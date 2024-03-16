@@ -38,11 +38,10 @@ contract TestGeomeanOracle is Test, Deployers {
         manager = new PoolManager(500000);
 
         uint160 flags = uint160(
-            Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG
-                | Hooks.BEFORE_SWAP_FLAG
+            Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
+                | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
         );
-        (, bytes32 salt) =
-            HookMiner.find(address(this), flags, 0, type(GeomeanOracle).creationCode, abi.encode(manager));
+        (, bytes32 salt) = HookMiner.find(address(this), flags, type(GeomeanOracle).creationCode, abi.encode(manager));
         geomeanOracle = new GeomeanOracle{salt: salt}(manager);
 
         vm.warp(1);
@@ -132,13 +131,8 @@ contract TestGeomeanOracle is Test, Deployers {
 
     function testBeforeModifyPositionObservation() public {
         manager.initialize(key, SQRT_RATIO_2_1, ZERO_BYTES);
-<<<<<<< HEAD
         skip(2); // advance 2 seconds
-        modifyPositionRouter.modifyPosition(
-=======
-        geomeanOracle.setTime(3); // advance 2 seconds
         modifyLiquidityRouter.modifyLiquidity(
->>>>>>> main
             key,
             IPoolManager.ModifyLiquidityParams(
                 TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
@@ -198,7 +192,7 @@ contract TestGeomeanOracle is Test, Deployers {
 
     function testPermanentLiquidity() public {
         manager.initialize(key, SQRT_RATIO_2_1, ZERO_BYTES);
-        geomeanOracle.setTime(3); // advance 2 seconds
+        skip(2); // advance 2 seconds
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
