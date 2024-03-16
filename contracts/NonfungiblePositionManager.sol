@@ -13,10 +13,14 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
+import {PoolStateLibrary} from "./libraries/PoolStateLibrary.sol";
 
 contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePositionManager, ERC721 {
     using PoolIdLibrary for PoolKey;
     using LiquidityPositionIdLibrary for LiquidityPosition;
+    using PoolStateLibrary for IPoolManager;
     /// @dev The ID of the next token that will be minted. Skips 0
 
     uint256 private _nextId = 1;
@@ -191,6 +195,32 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
             hookData,
             recipient
         );
+
+        (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) = poolManager.getFeeGrowthInside(
+            position.position.key.toId(),
+            position.position.tickLower,
+            position.position.tickUpper
+        );
+        
+        // TODO: for now we'll assume user always collects the totality of their fees
+        uint128 tokensOwed0 = uint128(
+            FullMath.mulDiv(
+                feeGrowthInside0X128 - position.feeGrowthInside0LastX128,
+                position.liquidity,
+                FixedPoint128.Q128
+            )
+        );
+        uint128 tokens1Owed = uint128(
+            FullMath.mulDiv(
+                feeGrowthInside1X128 - position.feeGrowthInside1LastX128,
+                position.liquidity,
+                FixedPoint128.Q128
+            )
+        );
+        position.feeGrowthInside0LastX128 = feeGrowthInside0X128;
+        position.feeGrowthInside1LastX128 = feeGrowthInside1X128;
+
+        // TODO: event
     }
 
     function _afterTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize) internal override {
