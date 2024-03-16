@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {Pool} from "@uniswap/v4-core/contracts/libraries/Pool.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {BitMath} from "@uniswap/v4-core/contracts/libraries/BitMath.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {BitMath} from "@uniswap/v4-core/src/libraries/BitMath.sol";
 
 /// @title Helper functions to access pool information
+/// TODO: Expose other getters on core with extsload. Only use when extsload is available and storage layout is frozen.
 library PoolGetters {
     uint256 constant POOL_SLOT = 10;
     uint256 constant TICKS_OFFSET = 4;
@@ -62,7 +63,7 @@ library PoolGetters {
                 // all the 1s at or to the right of the current bitPos
                 uint256 mask = (1 << bitPos) - 1 + (1 << bitPos);
                 // uint256 masked = self[wordPos] & mask;
-                uint256 masked = getTickBitmapAtWord(poolManager, poolId, wordPos) & mask;
+                uint256 masked = poolManager.getPoolBitmapInfo(poolId, wordPos) & mask;
 
                 // if there are no initialized ticks to the right of or at the current tick, return rightmost in the word
                 initialized = masked != 0;
@@ -75,7 +76,7 @@ library PoolGetters {
                 (int16 wordPos, uint8 bitPos) = position(compressed + 1);
                 // all the 1s at or to the left of the bitPos
                 uint256 mask = ~((1 << bitPos) - 1);
-                uint256 masked = getTickBitmapAtWord(poolManager, poolId, wordPos) & mask;
+                uint256 masked = poolManager.getPoolBitmapInfo(poolId, wordPos) & mask;
 
                 // if there are no initialized ticks to the left of the current tick, return leftmost in the word
                 initialized = masked != 0;

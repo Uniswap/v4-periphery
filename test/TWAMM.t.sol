@@ -3,26 +3,26 @@ pragma solidity ^0.8.15;
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
-import {MockERC20} from "@uniswap/v4-core/test/foundry-tests/utils/MockERC20.sol";
-import {IERC20Minimal} from "@uniswap/v4-core/contracts/interfaces/external/IERC20Minimal.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/types/PoolId.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/contracts/test/PoolSwapTest.sol";
-import {PoolDonateTest} from "@uniswap/v4-core/contracts/test/PoolDonateTest.sol";
-import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-import {TokenFixture} from "@uniswap/v4-core/test/foundry-tests/utils/TokenFixture.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
+import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
+import {TWAMMImplementation} from "./shared/implementation/TWAMMImplementation.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
+import {PoolDonateTest} from "@uniswap/v4-core/src/test/PoolDonateTest.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TWAMM} from "../contracts/hooks/examples/TWAMM.sol";
 import {ITWAMM} from "../contracts/interfaces/ITWAMM.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
 
-contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
+contract TWAMMTest is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
 
@@ -45,20 +45,17 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
     );
 
     TWAMM twamm;
-    PoolManager manager;
-    PoolModifyPositionTest modifyPositionRouter;
-    PoolSwapTest swapRouter;
-    PoolDonateTest donateRouter;
     MockERC20 token0;
     MockERC20 token1;
     PoolKey poolKey;
     PoolId poolId;
 
     function setUp() public {
-        initializeTokens();
+        deployFreshManagerAndRouters();
+        (currency0, currency1) = deployMintAndApprove2Currencies();
+
         token0 = MockERC20(Currency.unwrap(currency0));
         token1 = MockERC20(Currency.unwrap(currency1));
-        manager = new PoolManager(500000);
 
         // Find a salt that produces a hook address with the desired `flags`
         uint160 flags =
@@ -69,22 +66,21 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
         // Deploy hook to the precomputed address using the salt
         twamm = new TWAMM{salt: salt}(manager, 10_000);
 
-        modifyPositionRouter = new PoolModifyPositionTest(IPoolManager(address(manager)));
-        swapRouter = new PoolSwapTest(IPoolManager(address(manager)));
+        (poolKey, poolId) = initPool(currency0, currency1, twamm, 3000, SQRT_RATIO_1_1, ZERO_BYTES);
 
-        poolKey = PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 60, twamm);
-        poolId = poolKey.toId();
-        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
-
-        token0.approve(address(modifyPositionRouter), 100 ether);
-        token1.approve(address(modifyPositionRouter), 100 ether);
+        token0.approve(address(modifyLiquidityRouter), 100 ether);
+        token1.approve(address(modifyLiquidityRouter), 100 ether);
         token0.mint(address(this), 100 ether);
         token1.mint(address(this), 100 ether);
-        modifyPositionRouter.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-60, 60, 10 ether), ZERO_BYTES);
-        modifyPositionRouter.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-120, 120, 10 ether), ZERO_BYTES);
-        modifyPositionRouter.modifyPosition(
+        modifyLiquidityRouter.modifyLiquidity(
+            poolKey, IPoolManager.ModifyLiquidityParams(-60, 60, 10 ether), ZERO_BYTES
+        );
+        modifyLiquidityRouter.modifyLiquidity(
+            poolKey, IPoolManager.ModifyLiquidityParams(-120, 120, 10 ether), ZERO_BYTES
+        );
+        modifyLiquidityRouter.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether),
+            IPoolManager.ModifyLiquidityParams(TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether),
             ZERO_BYTES
         );
     }
@@ -93,6 +89,7 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
         (PoolKey memory initKey, PoolId initId) = newPoolKeyWithTWAMM(twamm);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
+
         manager.initialize(initKey, SQRT_RATIO_1_1, ZERO_BYTES);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 10000);
     }
@@ -235,7 +232,7 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
         uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey1.owner);
 
         // takes 10% off the remaining half (so 80% of original sellrate)
-        assertEq(updatedSellRate, originalSellRate * 80 / 100);
+        assertEq(updatedSellRate, (originalSellRate * 80) / 100);
         assertEq(token0Owed, uint256(-amountDelta));
         assertEq(token1Owed, orderAmount / 2);
     }
@@ -260,7 +257,7 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
         uint256 token1Owed = twamm.tokensOwed(poolKey.currency1, orderKey1.owner);
 
         // takes 10% off the remaining half (so 80% of original sellrate)
-        assertEq(updatedSellRate, originalSellRate * 80 / 100);
+        assertEq(updatedSellRate, (originalSellRate * 80) / 100);
         assertEq(token0Owed, orderAmount / 2);
         assertEq(token1Owed, uint256(-amountDelta));
     }
@@ -362,8 +359,8 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
 
         token0.approve(address(twamm), 100e18);
         token1.approve(address(twamm), 100e18);
-        modifyPositionRouter.modifyPosition(
-            poolKey, IPoolManager.ModifyPositionParams(-2400, 2400, 10 ether), ZERO_BYTES
+        modifyLiquidityRouter.modifyLiquidity(
+            poolKey, IPoolManager.ModifyLiquidityParams(-2400, 2400, 10 ether), ZERO_BYTES
         );
 
         vm.warp(10000);
@@ -409,8 +406,8 @@ contract TWAMMTest is Test, Deployers, TokenFixture, GasSnapshot {
     }
 
     function newPoolKeyWithTWAMM(IHooks hooks) public returns (PoolKey memory, PoolId) {
-        MockERC20[] memory tokens = deployTokens(2, 2 ** 255);
-        PoolKey memory key = PoolKey(Currency.wrap(address(tokens[0])), Currency.wrap(address(tokens[1])), 0, 60, hooks);
+        (Currency _token0, Currency _token1) = deployMintAndApprove2Currencies();
+        PoolKey memory key = PoolKey(_token0, _token1, 0, 60, hooks);
         return (key, key.toId());
     }
 
