@@ -8,8 +8,9 @@ import {BaseLiquidityManagement} from "./base/BaseLiquidityManagement.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {LiquidityPosition, LiquidityPositionIdLibrary} from "./types/LiquidityPositionId.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -17,7 +18,11 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
 import {PoolStateLibrary} from "./libraries/PoolStateLibrary.sol";
 
+// TODO: remove
+import {console2} from "forge-std/console2.sol";
+
 contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePositionManager, ERC721 {
+    using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using LiquidityPositionIdLibrary for LiquidityPosition;
     using PoolStateLibrary for IPoolManager;
@@ -180,45 +185,42 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
     }
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
-    function collect(uint256 tokenId, address recipient, bytes calldata hookData)
+    function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
         external
         returns (BalanceDelta delta)
     {
         Position memory position = positions[tokenId];
-        delta = BaseLiquidityManagement.modifyLiquidity(
-            position.position.key,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: position.position.tickLower,
-                tickUpper: position.position.tickUpper,
-                liquidityDelta: 0
-            }),
-            hookData,
-            recipient
-        );
+        BaseLiquidityManagement.collect(position.position, hookData);
 
         (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) = poolManager.getFeeGrowthInside(
-            position.position.key.toId(),
-            position.position.tickLower,
-            position.position.tickUpper
+            position.position.key.toId(), position.position.tickLower, position.position.tickUpper
         );
-        
+
+        console2.log(feeGrowthInside0X128, position.feeGrowthInside0LastX128);
+        console2.log(feeGrowthInside1X128, position.feeGrowthInside1LastX128);
+
         // TODO: for now we'll assume user always collects the totality of their fees
-        uint128 tokensOwed0 = uint128(
+        uint128 token0Owed = uint128(
             FullMath.mulDiv(
-                feeGrowthInside0X128 - position.feeGrowthInside0LastX128,
-                position.liquidity,
-                FixedPoint128.Q128
+                feeGrowthInside0X128 - position.feeGrowthInside0LastX128, position.liquidity, FixedPoint128.Q128
             )
         );
-        uint128 tokens1Owed = uint128(
+        uint128 token1Owed = uint128(
             FullMath.mulDiv(
-                feeGrowthInside1X128 - position.feeGrowthInside1LastX128,
-                position.liquidity,
-                FixedPoint128.Q128
+                feeGrowthInside1X128 - position.feeGrowthInside1LastX128, position.liquidity, FixedPoint128.Q128
             )
         );
+        delta = toBalanceDelta(int128(token0Owed), int128(token1Owed));
+
         position.feeGrowthInside0LastX128 = feeGrowthInside0X128;
         position.feeGrowthInside1LastX128 = feeGrowthInside1X128;
+
+        if (claims) {
+            poolManager.transfer(recipient, position.position.key.currency0.toId(), token0Owed);
+            poolManager.transfer(recipient, position.position.key.currency1.toId(), token1Owed);
+        } else {
+            // TODO: erc20s
+        }
 
         // TODO: event
     }

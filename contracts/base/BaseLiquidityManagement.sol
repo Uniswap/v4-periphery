@@ -58,6 +58,31 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         // }
     }
 
+    function collect(LiquidityPosition memory position, bytes calldata hookData)
+        internal
+        returns (BalanceDelta delta)
+    {
+        delta = abi.decode(
+            poolManager.lock(
+                address(this),
+                abi.encode(
+                    CallbackData(
+                        address(this),
+                        position.key,
+                        IPoolManager.ModifyLiquidityParams({
+                            tickLower: position.tickLower,
+                            tickUpper: position.tickUpper,
+                            liquidityDelta: 0
+                        }),
+                        true,
+                        hookData
+                    )
+                )
+            ),
+            (BalanceDelta)
+        );
+    }
+
     function _lockAcquired(bytes calldata rawData) internal override returns (bytes memory result) {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
 
