@@ -10,7 +10,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {INonfungiblePositionManager} from "../../../contracts/interfaces/INonfungiblePositionManager.sol";
-import {LiquidityPosition} from "../../../contracts/types/LiquidityPositionId.sol";
+import {LiquidityRange} from "../../../contracts/types/LiquidityRange.sol";
 
 contract LiquidityFuzzers is StdUtils {
     Vm internal constant _vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
@@ -69,7 +69,7 @@ contract LiquidityFuzzers is StdUtils {
         (_tickLower, _tickUpper, _liquidityDelta) =
             createFuzzyLiquidityParams(key, tickLower, tickUpper, liquidityDelta);
         (_tokenId, _delta) = lpm.mint(
-            LiquidityPosition({key: key, tickLower: _tickLower, tickUpper: _tickUpper}),
+            LiquidityRange({key: key, tickLower: _tickLower, tickUpper: _tickUpper}),
             _liquidityDelta,
             block.timestamp,
             recipient,

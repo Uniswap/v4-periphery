@@ -21,18 +21,14 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 import {INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
-import {
-    LiquidityPosition,
-    LiquidityPositionId,
-    LiquidityPositionIdLibrary
-} from "../../contracts/types/LiquidityPositionId.sol";
+import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
 contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
-    using LiquidityPositionIdLibrary for LiquidityPosition;
+    using LiquidityRangeIdLibrary for LiquidityRange;
 
     NonfungiblePositionManager lpm;
 
@@ -56,7 +52,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
     function test_mint_withLiquidityDelta(int24 tickLower, int24 tickUpper, uint128 liquidityDelta) public {
         (tickLower, tickUpper, liquidityDelta) = createFuzzyLiquidityParams(key, tickLower, tickUpper, liquidityDelta);
-        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+        LiquidityRange memory position = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
@@ -77,12 +73,12 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         (amount0Desired, amount1Desired) =
             createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
 
-        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+        LiquidityRange memory range = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-            position: position,
+            range: range,
             amount0Desired: amount0Desired,
             amount1Desired: amount1Desired,
             amount0Min: 0,
@@ -107,12 +103,12 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         int24 tickUpper = int24(key.tickSpacing);
         uint256 amount0Desired = 100e18;
         uint256 amount1Desired = 100e18;
-        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+        LiquidityRange memory range = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-            position: position,
+            range: range,
             amount0Desired: amount0Desired,
             amount1Desired: amount1Desired,
             amount0Min: amount0Desired,
@@ -140,9 +136,9 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         (amount0Desired, amount1Desired) =
             createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
 
-        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+        LiquidityRange memory range = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-            position: position,
+            range: range,
             amount0Desired: amount0Desired,
             amount1Desired: amount1Desired,
             amount0Min: 0,
@@ -171,9 +167,9 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 amount0Min = amount0Desired - 1;
         uint256 amount1Min = amount1Desired - 1;
 
-        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+        LiquidityRange memory range = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-            position: position,
+            range: range,
             amount0Desired: amount0Desired,
             amount1Desired: amount1Desired,
             amount0Min: amount0Min,
@@ -210,7 +206,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 tokenId;
         (tokenId, tickLower, tickUpper, liquidityDelta,) =
             createFuzzyLiquidity(lpm, address(this), key, tickLower, tickUpper, liquidityDelta, ZERO_BYTES);
-        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+        LiquidityRange memory position = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
         assertEq(lpm.liquidityOf(address(this), position.toId()), liquidityDelta);
@@ -248,7 +244,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         vm.assume(0 < decreaseLiquidityDelta);
         vm.assume(decreaseLiquidityDelta <= liquidityDelta);
 
-        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+        LiquidityRange memory position = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
@@ -273,12 +269,12 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         (amount0Desired, amount1Desired) =
             createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
 
-        LiquidityPosition memory position = LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper});
+        LiquidityRange memory range = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
         INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-            position: position,
+            range: range,
             amount0Desired: amount0Desired,
             amount1Desired: amount1Desired,
             amount0Min: 0,
@@ -288,14 +284,14 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
             hookData: ZERO_BYTES
         });
         (uint256 tokenId, BalanceDelta delta) = lpm.mint(params);
-        uint256 liquidity = lpm.liquidityOf(address(this), position.toId());
+        uint256 liquidity = lpm.liquidityOf(address(this), range.toId());
 
         // transfer to Alice
         lpm.transferFrom(address(this), alice, tokenId);
 
-        assertEq(lpm.liquidityOf(address(this), position.toId()), 0);
+        assertEq(lpm.liquidityOf(address(this), range.toId()), 0);
         assertEq(lpm.ownerOf(tokenId), alice);
-        assertEq(lpm.liquidityOf(alice, position.toId()), liquidity);
+        assertEq(lpm.liquidityOf(alice, range.toId()), liquidity);
 
         // Alice can burn the token
         vm.prank(alice);

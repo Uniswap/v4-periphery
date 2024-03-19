@@ -6,10 +6,10 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ILockCallback} from "@uniswap/v4-core/src/interfaces/callback/ILockCallback.sol";
-import {LiquidityPosition, LiquidityPositionId} from "../types/LiquidityPositionId.sol";
+import {LiquidityRange, LiquidityRangeId} from "../types/LiquidityRange.sol";
 
 interface IBaseLiquidityManagement is ILockCallback {
-    function liquidityOf(address owner, LiquidityPositionId positionId) external view returns (uint256 liquidity);
+    function liquidityOf(address owner, LiquidityRangeId positionId) external view returns (uint256 liquidity);
 
     // NOTE: handles add/remove/collect
     function modifyLiquidity(

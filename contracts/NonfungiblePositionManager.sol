@@ -9,7 +9,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {LiquidityPosition, LiquidityPositionIdLibrary} from "./types/LiquidityPositionId.sol";
+import {LiquidityRange, LiquidityRangeIdLibrary} from "./types/LiquidityRange.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
@@ -24,7 +24,7 @@ import {console2} from "forge-std/console2.sol";
 contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePositionManager, ERC721 {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
-    using LiquidityPositionIdLibrary for LiquidityPosition;
+    using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolStateLibrary for IPoolManager;
     /// @dev The ID of the next token that will be minted. Skips 0
 
@@ -38,7 +38,7 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
         uint96 nonce;
         // the address that is approved for spending this token
         address operator;
-        LiquidityPosition position;
+        LiquidityRange range;
         // the liquidity of the position
         // NOTE: this value will be less than BaseLiquidityManagement.liquidityOf, if the user
         // owns multiple positions with the same range
@@ -56,17 +56,17 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
     // TODO: deadline check
     function mint(
-        LiquidityPosition calldata position,
+        LiquidityRange calldata range,
         uint256 liquidity,
         uint256 deadline,
         address recipient,
         bytes calldata hookData
     ) public payable returns (uint256 tokenId, BalanceDelta delta) {
         delta = BaseLiquidityManagement.modifyLiquidity(
-            position.key,
+            range.key,
             IPoolManager.ModifyLiquidityParams({
-                tickLower: position.tickLower,
-                tickUpper: position.tickUpper,
+                tickLower: range.tickLower,
+                tickUpper: range.tickUpper,
                 liquidityDelta: int256(liquidity)
             }),
             hookData,
@@ -80,7 +80,7 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
         positions[tokenId] = Position({
             nonce: 0,
             operator: address(0),
-            position: position,
+            range: range,
             liquidity: uint128(liquidity),
             feeGrowthInside0LastX128: 0, // TODO:
             feeGrowthInside1LastX128: 0, // TODO:
@@ -93,13 +93,13 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
 
     // NOTE: more expensive since LiquidityAmounts is used onchain
     function mint(MintParams calldata params) external payable returns (uint256 tokenId, BalanceDelta delta) {
-        (uint160 sqrtPriceX96,,,) = PoolStateLibrary.getSlot0(poolManager, params.position.key.toId());
+        (uint160 sqrtPriceX96,,,) = PoolStateLibrary.getSlot0(poolManager, params.range.key.toId());
         (tokenId, delta) = mint(
-            params.position,
+            params.range,
             LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
-                TickMath.getSqrtRatioAtTick(params.position.tickLower),
-                TickMath.getSqrtRatioAtTick(params.position.tickUpper),
+                TickMath.getSqrtRatioAtTick(params.range.tickLower),
+                TickMath.getSqrtRatioAtTick(params.range.tickUpper),
                 params.amount0Desired,
                 params.amount1Desired
             ),
@@ -119,10 +119,10 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
         require(params.liquidityDelta != 0, "Must decrease liquidity");
         Position storage position = positions[params.tokenId];
         delta = BaseLiquidityManagement.modifyLiquidity(
-            position.position.key,
+            position.range.key,
             IPoolManager.ModifyLiquidityParams({
-                tickLower: position.position.tickLower,
-                tickUpper: position.position.tickUpper,
+                tickLower: position.range.tickLower,
+                tickUpper: position.range.tickUpper,
                 liquidityDelta: -int256(uint256(params.liquidityDelta))
             }),
             hookData,
@@ -190,10 +190,10 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
         returns (BalanceDelta delta)
     {
         Position memory position = positions[tokenId];
-        BaseLiquidityManagement.collect(position.position, hookData);
+        BaseLiquidityManagement.collect(position.range, hookData);
 
         (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) = poolManager.getFeeGrowthInside(
-            position.position.key.toId(), position.position.tickLower, position.position.tickUpper
+            position.range.key.toId(), position.range.tickLower, position.range.tickUpper
         );
 
         console2.log(feeGrowthInside0X128, position.feeGrowthInside0LastX128);
@@ -216,8 +216,8 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
         position.feeGrowthInside1LastX128 = feeGrowthInside1X128;
 
         if (claims) {
-            poolManager.transfer(recipient, position.position.key.currency0.toId(), token0Owed);
-            poolManager.transfer(recipient, position.position.key.currency1.toId(), token1Owed);
+            poolManager.transfer(recipient, position.range.key.currency0.toId(), token0Owed);
+            poolManager.transfer(recipient, position.range.key.currency1.toId(), token1Owed);
         } else {
             // TODO: erc20s
         }
@@ -228,8 +228,8 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
     function _afterTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize) internal override {
         Position storage position = positions[firstTokenId];
         position.operator = address(0x0);
-        liquidityOf[from][position.position.toId()] -= position.liquidity;
-        liquidityOf[to][position.position.toId()] += position.liquidity;
+        liquidityOf[from][position.range.toId()] -= position.liquidity;
+        liquidityOf[to][position.range.toId()] += position.liquidity;
     }
 
     modifier isAuthorizedForToken(uint256 tokenId) {

@@ -3,12 +3,12 @@ pragma solidity ^0.8.24;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {LiquidityPosition} from "../types/LiquidityPositionId.sol";
+import {LiquidityRange} from "../types/LiquidityRange.sol";
 import {IBaseLiquidityManagement} from "./IBaseLiquidityManagement.sol";
 
 interface INonfungiblePositionManager is IBaseLiquidityManagement {
     struct MintParams {
-        LiquidityPosition position;
+        LiquidityRange range;
         uint256 amount0Desired;
         uint256 amount1Desired;
         uint256 amount0Min;
@@ -20,7 +20,7 @@ interface INonfungiblePositionManager is IBaseLiquidityManagement {
 
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
     function mint(
-        LiquidityPosition calldata position,
+        LiquidityRange calldata position,
         uint256 liquidity,
         uint256 deadline,
         address recipient,

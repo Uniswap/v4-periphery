@@ -5,7 +5,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {LiquidityPosition, LiquidityPositionId, LiquidityPositionIdLibrary} from "../types/LiquidityPositionId.sol";
+import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../types/LiquidityRange.sol";
 import {IBaseLiquidityManagement} from "../interfaces/IBaseLiquidityManagement.sol";
 import {SafeCallback} from "./SafeCallback.sol";
 import {ImmutableState} from "./ImmutableState.sol";
@@ -14,7 +14,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {CurrencySettleTake} from "../libraries/CurrencySettleTake.sol";
 
 abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagement {
-    using LiquidityPositionIdLibrary for LiquidityPosition;
+    using LiquidityRangeIdLibrary for LiquidityRange;
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
 
@@ -26,7 +26,7 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         bytes hookData;
     }
 
-    mapping(address owner => mapping(LiquidityPositionId positionId => uint256 liquidity)) public liquidityOf;
+    mapping(address owner => mapping(LiquidityRangeId positionId => uint256 liquidity)) public liquidityOf;
 
     constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}
 
@@ -46,9 +46,9 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         );
 
         params.liquidityDelta < 0
-            ? liquidityOf[owner][LiquidityPosition(key, params.tickLower, params.tickUpper).toId()] -=
+            ? liquidityOf[owner][LiquidityRange(key, params.tickLower, params.tickUpper).toId()] -=
                 uint256(-params.liquidityDelta)
-            : liquidityOf[owner][LiquidityPosition(key, params.tickLower, params.tickUpper).toId()] +=
+            : liquidityOf[owner][LiquidityRange(key, params.tickLower, params.tickUpper).toId()] +=
                 uint256(params.liquidityDelta);
 
         // TODO: handle & test
@@ -58,20 +58,17 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         // }
     }
 
-    function collect(LiquidityPosition memory position, bytes calldata hookData)
-        internal
-        returns (BalanceDelta delta)
-    {
+    function collect(LiquidityRange memory range, bytes calldata hookData) internal returns (BalanceDelta delta) {
         delta = abi.decode(
             poolManager.lock(
                 address(this),
                 abi.encode(
                     CallbackData(
                         address(this),
-                        position.key,
+                        range.key,
                         IPoolManager.ModifyLiquidityParams({
-                            tickLower: position.tickLower,
-                            tickUpper: position.tickUpper,
+                            tickLower: range.tickLower,
+                            tickUpper: range.tickUpper,
                             liquidityDelta: 0
                         }),
                         true,

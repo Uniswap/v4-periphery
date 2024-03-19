@@ -21,18 +21,14 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 import {INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
-import {
-    LiquidityPosition,
-    LiquidityPositionId,
-    LiquidityPositionIdLibrary
-} from "../../contracts/types/LiquidityPositionId.sol";
+import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
 contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
-    using LiquidityPositionIdLibrary for LiquidityPosition;
+    using LiquidityRangeIdLibrary for LiquidityRange;
 
     NonfungiblePositionManager lpm;
 
@@ -88,9 +84,9 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         // express key.fee as wad (i.e. 3000 = 0.003e18)
         uint256 feeWad = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
-        assertApproxEqAbs(uint256(int256(-delta.amount1())), swapAmount.mulWadDown(feeWad), 1 wei);
+        assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(feeWad), 1 wei);
 
-        assertEq(uint256(int256(-delta.amount1())), manager.balanceOf(address(this), currency1.toId()));
+        assertEq(uint256(int256(delta.amount1())), manager.balanceOf(address(this), currency1.toId()));
     }
 
     // two users with the same range; one user cannot collect the other's fees
@@ -112,7 +108,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         vm.prank(alice);
         (tokenIdAlice,) = lpm.mint(
-            LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper}),
+            LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper}),
             liquidityDeltaAlice,
             block.timestamp + 1,
             alice,
@@ -121,7 +117,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         vm.prank(bob);
         (tokenIdBob,) = lpm.mint(
-            LiquidityPosition({key: key, tickLower: tickLower, tickUpper: tickUpper}),
+            LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper}),
             liquidityDeltaBob,
             block.timestamp + 1,
             alice,
