@@ -13,10 +13,15 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {CurrencySettleTake} from "../libraries/CurrencySettleTake.sol";
 
+// TODO: remove
+import {console2} from "forge-std/console2.sol";
+
 abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagement {
     using LiquidityRangeIdLibrary for LiquidityRange;
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
+
+    error LockFailure();
 
     struct CallbackData {
         address sender;
@@ -41,7 +46,9 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         if (params.liquidityDelta < 0) require(msg.sender == owner, "Cannot redeem position");
 
         delta = abi.decode(
-            poolManager.lock(address(this), abi.encode(CallbackData(msg.sender, key, params, false, hookData))),
+            poolManager.lock(
+                address(this), abi.encodeCall(this.handleModifyPosition, (msg.sender, key, params, hookData, false))
+            ),
             (BalanceDelta)
         );
 
@@ -62,8 +69,9 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         delta = abi.decode(
             poolManager.lock(
                 address(this),
-                abi.encode(
-                    CallbackData(
+                abi.encodeCall(
+                    this.handleModifyPosition,
+                    (
                         address(this),
                         range.key,
                         IPoolManager.ModifyLiquidityParams({
@@ -71,8 +79,8 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
                             tickUpper: range.tickUpper,
                             liquidityDelta: 0
                         }),
-                        true,
-                        hookData
+                        hookData,
+                        true
                     )
                 )
             ),
@@ -80,21 +88,45 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         );
     }
 
-    function _lockAcquired(bytes calldata rawData) internal override returns (bytes memory result) {
-        CallbackData memory data = abi.decode(rawData, (CallbackData));
+    function sendToken(address recipient, Currency currency, uint256 amount) internal {
+        poolManager.lock(address(this), abi.encodeCall(this.handleRedeemClaim, (recipient, currency, amount)));
+    }
 
-        BalanceDelta delta = poolManager.modifyLiquidity(data.key, data.params, data.hookData);
+    function _lockAcquired(bytes calldata data) internal override returns (bytes memory) {
+        (bool success, bytes memory returnData) = address(this).call(data);
+        if (success) return returnData;
+        if (returnData.length == 0) revert LockFailure();
+        // if the call failed, bubble up the reason
+        /// @solidity memory-safe-assembly
+        assembly {
+            revert(add(returnData, 32), mload(returnData))
+        }
+    }
 
-        if (data.params.liquidityDelta <= 0) {
+    // TODO: selfOnly modifier
+    function handleModifyPosition(
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata params,
+        bytes calldata hookData,
+        bool claims
+    ) external returns (BalanceDelta delta) {
+        delta = poolManager.modifyLiquidity(key, params, hookData);
+
+        if (params.liquidityDelta <= 0) {
             // removing liquidity/fees so take tokens
-            data.key.currency0.take(poolManager, data.sender, uint128(-delta.amount0()), data.claims);
-            data.key.currency1.take(poolManager, data.sender, uint128(-delta.amount1()), data.claims);
+            key.currency0.take(poolManager, sender, uint128(-delta.amount0()), claims);
+            key.currency1.take(poolManager, sender, uint128(-delta.amount1()), claims);
         } else {
             // adding liquidity so pay tokens
-            data.key.currency0.settle(poolManager, data.sender, uint128(delta.amount0()), data.claims);
-            data.key.currency1.settle(poolManager, data.sender, uint128(delta.amount1()), data.claims);
+            key.currency0.settle(poolManager, sender, uint128(delta.amount0()), claims);
+            key.currency1.settle(poolManager, sender, uint128(delta.amount1()), claims);
         }
+    }
 
-        result = abi.encode(delta);
+    // TODO: selfOnly modifier
+    function handleRedeemClaim(address recipient, Currency currency, uint256 amount) external {
+        poolManager.burn(address(this), currency.toId(), amount);
+        poolManager.take(currency, recipient, amount);
     }
 }

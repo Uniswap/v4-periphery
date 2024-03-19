@@ -89,6 +89,31 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         assertEq(uint256(int256(delta.amount1())), manager.balanceOf(address(this), currency1.toId()));
     }
 
+    function test_collect_erc20(int24 tickLower, int24 tickUpper, uint128 liquidityDelta) public {
+        uint256 tokenId;
+        liquidityDelta = uint128(bound(liquidityDelta, 100e18, 100_000e18)); // require nontrivial amount of liquidity
+        (tokenId, tickLower, tickUpper, liquidityDelta,) =
+            createFuzzyLiquidity(lpm, address(this), key, tickLower, tickUpper, liquidityDelta, ZERO_BYTES);
+        vm.assume(tickLower < -60 && 60 < tickUpper); // require two-sided liquidity
+
+        // swap to create fees
+        uint256 swapAmount = 0.01e18;
+        swap(key, false, int256(swapAmount), ZERO_BYTES);
+
+        // collect fees
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+        BalanceDelta delta = lpm.collect(tokenId, address(this), ZERO_BYTES, false);
+
+        assertEq(delta.amount0(), 0);
+
+        // express key.fee as wad (i.e. 3000 = 0.003e18)
+        uint256 feeWad = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
+        assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(feeWad), 1 wei);
+
+        assertEq(uint256(int256(delta.amount1())), currency1.balanceOfSelf() - balance1Before);
+    }
+
     // two users with the same range; one user cannot collect the other's fees
     function test_collect_sameRange_6909(
         int24 tickLower,
@@ -140,6 +165,73 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         delta = lpm.collect(tokenIdBob, bob, ZERO_BYTES, true);
         assertEq(uint256(uint128(delta.amount0())), manager.balanceOf(bob, currency0.toId()));
         assertEq(uint256(uint128(delta.amount1())), manager.balanceOf(bob, currency1.toId()));
+        assertTrue(delta.amount1() != 0);
+
+        // position manager holds no fees now
+        assertApproxEqAbs(manager.balanceOf(address(lpm), currency0.toId()), 0, 1 wei);
+        assertApproxEqAbs(manager.balanceOf(address(lpm), currency1.toId()), 0, 1 wei);
+    }
+
+    function test_collect_sameRange_erc20(
+        int24 tickLower,
+        int24 tickUpper,
+        uint128 liquidityDeltaAlice,
+        uint128 liquidityDeltaBob
+    ) public {
+        uint256 tokenIdAlice;
+        uint256 tokenIdBob;
+        liquidityDeltaAlice = uint128(bound(liquidityDeltaAlice, 100e18, 100_000e18)); // require nontrivial amount of liquidity
+        liquidityDeltaBob = uint128(bound(liquidityDeltaBob, 100e18, 100_000e18));
+
+        (tickLower, tickUpper, liquidityDeltaAlice) =
+            createFuzzyLiquidityParams(key, tickLower, tickUpper, liquidityDeltaAlice);
+        vm.assume(tickLower < -60 && 60 < tickUpper); // require two-sided liquidity
+        (,, liquidityDeltaBob) = createFuzzyLiquidityParams(key, tickLower, tickUpper, liquidityDeltaBob);
+
+        vm.prank(alice);
+        (tokenIdAlice,) = lpm.mint(
+            LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper}),
+            liquidityDeltaAlice,
+            block.timestamp + 1,
+            alice,
+            ZERO_BYTES
+        );
+
+        vm.prank(bob);
+        (tokenIdBob,) = lpm.mint(
+            LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper}),
+            liquidityDeltaBob,
+            block.timestamp + 1,
+            alice,
+            ZERO_BYTES
+        );
+
+        // swap to create fees
+        uint256 swapAmount = 0.01e18;
+        swap(key, false, int256(swapAmount), ZERO_BYTES);
+
+        // alice collects only her fees
+        uint256 balance0AliceBefore = currency0.balanceOf(alice);
+        uint256 balance1AliceBefore = currency1.balanceOf(alice);
+        vm.prank(alice);
+        BalanceDelta delta = lpm.collect(tokenIdAlice, alice, ZERO_BYTES, false);
+        uint256 balance0AliceAfter = currency0.balanceOf(alice);
+        uint256 balance1AliceAfter = currency1.balanceOf(alice);
+
+        assertEq(balance0AliceBefore, balance0AliceAfter);
+        assertEq(uint256(uint128(delta.amount1())), balance1AliceAfter - balance1AliceBefore);
+        assertTrue(delta.amount1() != 0);
+
+        // bob collects only his fees
+        uint256 balance0BobBefore = currency0.balanceOf(bob);
+        uint256 balance1BobBefore = currency1.balanceOf(bob);
+        vm.prank(bob);
+        delta = lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+        uint256 balance0BobAfter = currency0.balanceOf(bob);
+        uint256 balance1BobAfter = currency1.balanceOf(bob);
+
+        assertEq(balance0BobBefore, balance0BobAfter);
+        assertEq(uint256(uint128(delta.amount1())), balance1BobAfter - balance1BobBefore);
         assertTrue(delta.amount1() != 0);
 
         // position manager holds no fees now

@@ -219,7 +219,8 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
             poolManager.transfer(recipient, position.range.key.currency0.toId(), token0Owed);
             poolManager.transfer(recipient, position.range.key.currency1.toId(), token1Owed);
         } else {
-            // TODO: erc20s
+            sendToken(recipient, position.range.key.currency0, token0Owed);
+            sendToken(recipient, position.range.key.currency1, token1Owed);
         }
 
         // TODO: event
