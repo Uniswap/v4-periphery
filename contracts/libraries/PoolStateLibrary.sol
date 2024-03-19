@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.21;
 
-import {PoolId} from "v4-core/src/types/PoolId.sol";
-import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 library PoolStateLibrary {
     // forge inspect lib/v4-core/src/PoolManager.sol:PoolManager storage --pretty
