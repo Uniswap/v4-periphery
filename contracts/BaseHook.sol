@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -49,7 +49,7 @@ abstract contract BaseHook is IHooks {
         Hooks.validateHookPermissions(_this, getHooksCalls());
     }
 
-    function lockAcquired(address, /*sender*/ bytes calldata data)
+    function unlockCallback(bytes calldata data)
         external
         virtual
         poolManagerOnly
@@ -77,7 +77,7 @@ abstract contract BaseHook is IHooks {
         revert HookNotImplemented();
     }
 
-    function beforeModifyPosition(address, PoolKey calldata, IPoolManager.ModifyPositionParams calldata, bytes calldata)
+    function beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
         external
         virtual
         returns (bytes4)
@@ -85,10 +85,28 @@ abstract contract BaseHook is IHooks {
         revert HookNotImplemented();
     }
 
-    function afterModifyPosition(
+    function beforeRemoveLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
+        external
+        virtual
+        returns (bytes4)
+    {
+        revert HookNotImplemented();
+    }
+
+    function afterAddLiquidity(
         address,
         PoolKey calldata,
-        IPoolManager.ModifyPositionParams calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        BalanceDelta,
+        bytes calldata
+    ) external virtual returns (bytes4) {
+        revert HookNotImplemented();
+    }
+
+    function afterRemoveLiquidity(
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
     ) external virtual returns (bytes4) {

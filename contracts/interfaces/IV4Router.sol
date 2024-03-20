@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import "forge-std/console.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";

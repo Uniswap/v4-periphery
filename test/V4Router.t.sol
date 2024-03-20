@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
@@ -11,7 +11,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/src/test/PoolModifyPositionTest.sol";
+import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {IV4Router} from "../contracts/interfaces/IV4Router.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {V4RouterImplementation} from "./shared/implementation/V4RouterImplementation.sol";
@@ -22,7 +22,7 @@ import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 contract V4RouterTest is Test, Deployers, GasSnapshot {
     using CurrencyLibrary for Currency;
 
-    PoolModifyPositionTest positionManager;
+    PoolModifyLiquidityTest positionManager;
     V4RouterImplementation router;
 
     MockERC20 token0;
@@ -40,7 +40,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         deployFreshManagerAndRouters();
 
         router = new V4RouterImplementation(manager);
-        positionManager = new PoolModifyPositionTest(manager);
+        positionManager = new PoolModifyLiquidityTest(manager);
 
         token0 = new MockERC20("Test0", "0", 18);
         token0.mint(address(this), 2 ** 128);
@@ -358,10 +358,10 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
     }
 
     function setupPool(PoolKey memory poolKey) internal {
-        initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-887220, 887220, 200 ether), "0x");
+        positionManager.modifyLiquidity(poolKey, IPoolManager.ModifyLiquidityParams(-887220, 887220, 200 ether), "0x");
     }
 
     function toCurrency(MockERC20 token) internal pure returns (Currency) {

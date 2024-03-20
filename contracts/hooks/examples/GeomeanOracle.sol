@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -64,14 +64,14 @@ contract GeomeanOracle is BaseHook {
         return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: true,
-            beforeModifyPosition: true,
-            afterModifyPosition: false,
+            beforeAddLiquidity: true,
+            beforeRemoveLiquidity: true,
+            afterAddLiquidity: false,
+            afterRemoveLiquidity: false,
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
-            afterDonate: false,
-            noOp: false,
-            accessLock: false
+            afterDonate: false
         });
     }
 
@@ -103,7 +103,7 @@ contract GeomeanOracle is BaseHook {
     /// @dev Called before any action that potentially modifies pool price or liquidity, such as swap or modify position
     function _updatePool(PoolKey calldata key) private {
         PoolId id = key.toId();
-        (, int24 tick,) = poolManager.getSlot0(id);
+        (, int24 tick,,) = poolManager.getSlot0(id);
 
         uint128 liquidity = poolManager.getLiquidity(id);
 
@@ -112,10 +112,10 @@ contract GeomeanOracle is BaseHook {
         );
     }
 
-    function beforeModifyPosition(
+    function beforeAddLiquidity(
         address,
         PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata params,
+        IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata
     ) external override poolManagerOnly returns (bytes4) {
         if (params.liquidityDelta < 0) revert OraclePoolMustLockLiquidity();
@@ -125,7 +125,23 @@ contract GeomeanOracle is BaseHook {
                 || params.tickUpper != TickMath.maxUsableTick(maxTickSpacing)
         ) revert OraclePositionsMustBeFullRange();
         _updatePool(key);
-        return GeomeanOracle.beforeModifyPosition.selector;
+        return GeomeanOracle.beforeAddLiquidity.selector;
+    }
+
+    function beforeRemoveLiquidity(
+        address,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata params,
+        bytes calldata
+    ) external override poolManagerOnly returns (bytes4) {
+        if (params.liquidityDelta < 0) revert OraclePoolMustLockLiquidity();
+        int24 maxTickSpacing = poolManager.MAX_TICK_SPACING();
+        if (
+            params.tickLower != TickMath.minUsableTick(maxTickSpacing)
+                || params.tickUpper != TickMath.maxUsableTick(maxTickSpacing)
+        ) revert OraclePositionsMustBeFullRange();
+        _updatePool(key);
+        return GeomeanOracle.beforeRemoveLiquidity.selector;
     }
 
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
@@ -148,7 +164,7 @@ contract GeomeanOracle is BaseHook {
 
         ObservationState memory state = states[id];
 
-        (, int24 tick,) = poolManager.getSlot0(id);
+        (, int24 tick,,) = poolManager.getSlot0(id);
 
         uint128 liquidity = poolManager.getLiquidity(id);
 

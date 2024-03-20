@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {ILockCallback} from "@uniswap/v4-core/src/interfaces/callback/ILockCallback.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnLockCallback.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -14,7 +14,7 @@ import {IV4Router} from "./interfaces/IV4Router.sol";
 
 /// @title UniswapV4Router
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
-abstract contract V4Router is IV4Router, ILockCallback {
+abstract contract V4Router is IV4Router, IUnlockCallback {
     using CurrencyLibrary for Currency;
 
     IPoolManager immutable poolManager;
@@ -30,11 +30,11 @@ abstract contract V4Router is IV4Router, ILockCallback {
     }
 
     function _v4Swap(SwapType swapType, bytes memory params) internal {
-        poolManager.lock(address(this), abi.encode(SwapInfo(swapType, msg.sender, params)));
+        poolManager.unlock(abi.encode(SwapInfo(swapType, msg.sender, params)));
     }
 
-    /// @inheritdoc ILockCallback
-    function lockAcquired(address, /*lockCaller*/ bytes calldata encodedSwapInfo)
+    /// @inheritdoc IUnlockCallback
+    function unlockCallback(bytes calldata encodedSwapInfo)
         external
         override
         poolManagerOnly

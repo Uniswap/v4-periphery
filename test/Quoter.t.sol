@@ -12,7 +12,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/src/test/PoolModifyPositionTest.sol";
+import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
@@ -36,7 +36,7 @@ contract QuoterTest is Test, Deployers {
 
     Quoter quoter;
 
-    PoolModifyPositionTest positionManager;
+    PoolModifyLiquidityTest positionManager;
 
     MockERC20 token0;
     MockERC20 token1;
@@ -51,7 +51,7 @@ contract QuoterTest is Test, Deployers {
     function setUp() public {
         deployFreshManagerAndRouters();
         quoter = new Quoter(address(manager));
-        positionManager = new PoolModifyPositionTest(manager);
+        positionManager = new PoolModifyLiquidityTest(manager);
 
         // salts are chosen so that address(token0) < address(token2) && address(1) < address(token2)
         bytes32 salt1 = "ffff";
@@ -115,11 +115,11 @@ contract QuoterTest is Test, Deployers {
         assertEq(initializedTicksLoaded, 2);
     }
 
-    // nested self-call into lockAcquired reverts
+    // nested self-call into unlockCallback reverts
     function testQuoter_callLockAcquired_reverts() public {
         vm.expectRevert(IQuoter.InvalidLockAcquiredSender.selector);
         vm.prank(address(manager));
-        quoter.lockAcquired(address(quoter), abi.encodeWithSelector(quoter.lockAcquired.selector, address(this), "0x"));
+        quoter.unlockCallback(abi.encodeWithSelector(quoter.unlockCallback.selector, address(this), "0x"));
     }
 
     function testQuoter_quoteExactInput_0to2_2TicksLoaded() public {
@@ -538,12 +538,12 @@ contract QuoterTest is Test, Deployers {
     }
 
     function setupPool(PoolKey memory poolKey) internal {
-        initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
                 calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256()
@@ -553,28 +553,28 @@ contract QuoterTest is Test, Deployers {
     }
 
     function setupPoolMultiplePositions(PoolKey memory poolKey) internal {
-        initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
                 calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256()
             ),
             ZERO_BYTES
         );
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 -60, 60, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -60, 60, 100, 100).toInt256()
             ),
             ZERO_BYTES
         );
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 -120, 120, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -120, 120, 100, 100).toInt256()
             ),
             ZERO_BYTES
@@ -583,32 +583,32 @@ contract QuoterTest is Test, Deployers {
 
     function setupPoolWithZeroTickInitialized(PoolKey memory poolKey) internal {
         PoolId poolId = poolKey.toId();
-        (uint160 sqrtPriceX96,,) = manager.getSlot0(poolId);
+        (uint160 sqrtPriceX96,,,) = manager.getSlot0(poolId);
         if (sqrtPriceX96 == 0) {
-            initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+            manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         }
 
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
                 calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256()
             ),
             ZERO_BYTES
         );
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 0, 60, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, 0, 60, 100, 100).toInt256()
             ),
             ZERO_BYTES
         );
-        positionManager.modifyPosition(
+        positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyPositionParams(
+            IPoolManager.ModifyLiquidityParams(
                 -120, 0, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -120, 0, 100, 100).toInt256()
             ),
             ZERO_BYTES

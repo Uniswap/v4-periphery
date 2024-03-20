@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import {BaseHook} from "../../../contracts/BaseHook.sol";
 import {FullRange} from "../../../contracts/hooks/examples/FullRange.sol";
