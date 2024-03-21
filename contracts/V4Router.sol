@@ -34,12 +34,7 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
     }
 
     /// @inheritdoc IUnlockCallback
-    function unlockCallback(bytes calldata encodedSwapInfo)
-        external
-        override
-        poolManagerOnly
-        returns (bytes memory)
-    {
+    function unlockCallback(bytes calldata encodedSwapInfo) external override poolManagerOnly returns (bytes memory) {
         SwapInfo memory swapInfo = abi.decode(encodedSwapInfo, (SwapInfo));
 
         if (swapInfo.swapType == SwapType.ExactInput) {
@@ -61,7 +56,7 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
         _swap(
             params.poolKey,
             params.zeroForOne,
-            int256(int128(params.amountIn)),
+            int256(-int128(params.amountIn)),
             params.sqrtPriceLimitX96,
             msgSender,
             true,
@@ -78,10 +73,10 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
             for (uint256 i = 0; i < pathLength; i++) {
                 (PoolKey memory poolKey, bool zeroForOne) = _getPoolAndSwapDirection(params.path[i], params.currencyIn);
                 amountOut = uint128(
-                    -_swap(
+                    _swap(
                         poolKey,
                         zeroForOne,
-                        int256(int128(params.amountIn)),
+                        int256(-int128(params.amountIn)),
                         0,
                         msgSender,
                         i == 0,
@@ -102,7 +97,7 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
         _swap(
             params.poolKey,
             params.zeroForOne,
-            -int256(int128(params.amountOut)),
+            int256(int128(params.amountOut)),
             params.sqrtPriceLimitX96,
             msgSender,
             true,
@@ -120,10 +115,10 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
                 (PoolKey memory poolKey, bool oneForZero) =
                     _getPoolAndSwapDirection(params.path[i - 1], params.currencyOut);
                 amountIn = uint128(
-                    _swap(
+                    -_swap(
                         poolKey,
                         !oneForZero,
-                        -int256(int128(params.amountOut)),
+                        int256(int128(params.amountOut)),
                         0,
                         msgSender,
                         i == 1,
@@ -162,13 +157,13 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
         );
 
         if (zeroForOne) {
-            reciprocalAmount = amountSpecified > 0 ? delta.amount1() : delta.amount0();
-            if (settle) _payAndSettle(poolKey.currency0, msgSender, delta.amount0());
-            if (take) poolManager.take(poolKey.currency1, msgSender, uint128(-delta.amount1()));
+            reciprocalAmount = amountSpecified < 0 ? delta.amount1() : delta.amount0();
+            if (settle) _payAndSettle(poolKey.currency0, msgSender, -delta.amount0());
+            if (take) poolManager.take(poolKey.currency1, msgSender, uint128(delta.amount1()));
         } else {
-            reciprocalAmount = amountSpecified > 0 ? delta.amount0() : delta.amount1();
-            if (settle) _payAndSettle(poolKey.currency1, msgSender, delta.amount1());
-            if (take) poolManager.take(poolKey.currency0, msgSender, uint128(-delta.amount0()));
+            reciprocalAmount = amountSpecified < 0 ? delta.amount0() : delta.amount1();
+            if (settle) _payAndSettle(poolKey.currency1, msgSender, -delta.amount1());
+            if (take) poolManager.take(poolKey.currency0, msgSender, uint128(delta.amount0()));
         }
     }
 

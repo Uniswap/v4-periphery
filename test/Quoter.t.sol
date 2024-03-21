@@ -53,14 +53,18 @@ contract QuoterTest is Test, Deployers {
         quoter = new Quoter(address(manager));
         positionManager = new PoolModifyLiquidityTest(manager);
 
-        // salts are chosen so that address(token0) < address(token2) && address(1) < address(token2)
-        bytes32 salt1 = "ffff";
-        bytes32 salt2 = "gm";
-        token0 = new MockERC20{salt: salt1}("Test0", "0", 18);
+        // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)
+        token0 = new MockERC20("Test0", "0", 18);
+        vm.etch(address(0x1111), address(token0).code);
+        token0 = MockERC20(address(0x1111));
         token0.mint(address(this), 2 ** 128);
-        token1 = new MockERC20{salt: salt2}("Test1", "1", 18);
+
+        vm.etch(address(0x2222), address(token0).code);
+        token1 = MockERC20(address(0x2222));
         token1.mint(address(this), 2 ** 128);
-        token2 = new MockERC20("Test2", "2", 18);
+
+        vm.etch(address(0x3333), address(token0).code);
+        token2 = MockERC20(address(0x3333));
         token2.mint(address(this), 2 ** 128);
 
         key01 = createPoolKey(token0, token1, address(0));
@@ -115,9 +119,9 @@ contract QuoterTest is Test, Deployers {
         assertEq(initializedTicksLoaded, 2);
     }
 
-    // nested self-call into unlockCallback reverts
+    // nested self-call into lockAcquired reverts
     function testQuoter_callLockAcquired_reverts() public {
-        vm.expectRevert(IQuoter.InvalidLockAcquiredSender.selector);
+        vm.expectRevert(IQuoter.LockFailure.selector);
         vm.prank(address(manager));
         quoter.unlockCallback(abi.encodeWithSelector(quoter.unlockCallback.selector, address(this), "0x"));
     }

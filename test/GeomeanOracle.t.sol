@@ -27,8 +27,8 @@ contract TestGeomeanOracle is Test, Deployers {
     GeomeanOracleImplementation geomeanOracle = GeomeanOracleImplementation(
         address(
             uint160(
-                Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
-                    | Hooks.BEFORE_SWAP_FLAG
+                Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
+                    | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
             )
         )
     );
@@ -115,7 +115,7 @@ contract TestGeomeanOracle is Test, Deployers {
         assertEq(secondsPerLiquidityCumulativeX128s[0], 0);
     }
 
-    function testBeforeModifyLiquidityNoObservations() public {
+    function testBeforeModifyPositionNoObservations() public {
         manager.initialize(key, SQRT_RATIO_2_1, ZERO_BYTES);
         modifyLiquidityRouter.modifyLiquidity(
             key,
@@ -137,7 +137,7 @@ contract TestGeomeanOracle is Test, Deployers {
         assertEq(observation.secondsPerLiquidityCumulativeX128, 0);
     }
 
-    function testBeforeModifyLiquidityObservation() public {
+    function testBeforeModifyPositionObservation() public {
         manager.initialize(key, SQRT_RATIO_2_1, ZERO_BYTES);
         geomeanOracle.setTime(3); // advance 2 seconds
         modifyLiquidityRouter.modifyLiquidity(
@@ -160,7 +160,7 @@ contract TestGeomeanOracle is Test, Deployers {
         assertEq(observation.secondsPerLiquidityCumulativeX128, 680564733841876926926749214863536422912);
     }
 
-    function testBeforeModifyLiquidityObservationAndCardinality() public {
+    function testBeforeModifyPositionObservationAndCardinality() public {
         manager.initialize(key, SQRT_RATIO_2_1, ZERO_BYTES);
         geomeanOracle.setTime(3); // advance 2 seconds
         geomeanOracle.increaseCardinalityNext(key, 2);
@@ -196,5 +196,26 @@ contract TestGeomeanOracle is Test, Deployers {
         assertEq(observation.blockTimestamp, 3);
         assertEq(observation.tickCumulative, 13862);
         assertEq(observation.secondsPerLiquidityCumulativeX128, 680564733841876926926749214863536422912);
+    }
+
+    function testPermanentLiquidity() public {
+        manager.initialize(key, SQRT_RATIO_2_1, ZERO_BYTES);
+        geomeanOracle.setTime(3); // advance 2 seconds
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams(
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
+            ),
+            ZERO_BYTES
+        );
+
+        vm.expectRevert(GeomeanOracle.OraclePoolMustLockLiquidity.selector);
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams(
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), -1000
+            ),
+            ZERO_BYTES
+        );
     }
 }

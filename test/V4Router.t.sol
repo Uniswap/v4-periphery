@@ -76,15 +76,15 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, address(this), uint128(amountIn), 0, 0, bytes(""));
 
-        uint256 prevBalance0 = token0.balanceOf(address(this));
-        uint256 prevBalance1 = token1.balanceOf(address(this));
+        uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         snapStart("RouterExactInputSingle");
         router.swap(IV4Router.SwapType.ExactInputSingle, abi.encode(params));
         snapEnd();
 
-        uint256 newBalance0 = token0.balanceOf(address(this));
-        uint256 newBalance1 = token1.balanceOf(address(this));
+        uint256 newBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 newBalance1 = key0.currency1.balanceOf(address(this));
 
         assertEq(prevBalance0 - newBalance0, amountIn);
         assertEq(newBalance1 - prevBalance1, expectedAmountOut);
@@ -97,13 +97,13 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, false, address(this), uint128(amountIn), 0, 0, bytes(""));
 
-        uint256 prevBalance0 = token0.balanceOf(address(this));
-        uint256 prevBalance1 = token1.balanceOf(address(this));
+        uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         router.swap(IV4Router.SwapType.ExactInputSingle, abi.encode(params));
 
-        uint256 newBalance0 = token0.balanceOf(address(this));
-        uint256 newBalance1 = token1.balanceOf(address(this));
+        uint256 newBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 newBalance1 = key0.currency1.balanceOf(address(this));
 
         assertEq(prevBalance1 - newBalance1, amountIn);
         assertEq(newBalance0 - prevBalance0, expectedAmountOut);
@@ -214,15 +214,15 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         IV4Router.ExactOutputSingleParams memory params =
             IV4Router.ExactOutputSingleParams(key0, true, address(this), uint128(amountOut), 0, 0, bytes(""));
 
-        uint256 prevBalance0 = token0.balanceOf(address(this));
-        uint256 prevBalance1 = token1.balanceOf(address(this));
+        uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         snapStart("RouterExactOutputSingle");
         router.swap(IV4Router.SwapType.ExactOutputSingle, abi.encode(params));
         snapEnd();
 
-        uint256 newBalance0 = token0.balanceOf(address(this));
-        uint256 newBalance1 = token1.balanceOf(address(this));
+        uint256 newBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 newBalance1 = key0.currency1.balanceOf(address(this));
 
         assertEq(prevBalance0 - newBalance0, expectedAmountIn);
         assertEq(newBalance1 - prevBalance1, amountOut);
@@ -235,13 +235,13 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         IV4Router.ExactOutputSingleParams memory params =
             IV4Router.ExactOutputSingleParams(key0, false, address(this), uint128(amountOut), 0, 0, bytes(""));
 
-        uint256 prevBalance0 = token0.balanceOf(address(this));
-        uint256 prevBalance1 = token1.balanceOf(address(this));
+        uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         router.swap(IV4Router.SwapType.ExactOutputSingle, abi.encode(params));
 
-        uint256 newBalance0 = token0.balanceOf(address(this));
-        uint256 newBalance1 = token1.balanceOf(address(this));
+        uint256 newBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 newBalance1 = key0.currency1.balanceOf(address(this));
 
         assertEq(prevBalance1 - newBalance1, expectedAmountIn);
         assertEq(newBalance0 - prevBalance0, amountOut);

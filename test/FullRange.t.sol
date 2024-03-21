@@ -65,7 +65,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     MockERC20 token2;
 
     FullRangeImplementation fullRange = FullRangeImplementation(
-        address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG))
+        address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG))
     );
 
     PoolId id;
@@ -170,7 +170,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
     function testFullRange_addLiquidity_InitialAddFuzz(uint256 amount) public {
         manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
-        if (amount < LOCKED_LIQUIDITY) {
+        if (amount <= LOCKED_LIQUIDITY) {
             vm.expectRevert(FullRange.LiquidityDoesntMeetMinimum.selector);
             fullRange.addLiquidity(
                 FullRange.AddLiquidityParams(
@@ -265,11 +265,11 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
 
         vm.expectEmit(true, true, true, true);
         emit Swap(
-            id, address(router), 1 ether, -906610893880149131, 72045250990510446115798809072, 10 ether, -1901, 3000
+            id, address(router), -1 ether, 906610893880149131, 72045250990510446115798809072, 10 ether, -1901, 3000
         );
 
         IPoolManager.SwapParams memory params =
-            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
         HookEnabledSwapRouter.TestSettings memory settings =
             HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
 
@@ -752,7 +752,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         }
     }
 
-    function testFullRange_BeforeModifyLiquidityFailsWithWrongMsgSender() public {
+    function testFullRange_BeforeModifyPositionFailsWithWrongMsgSender() public {
         manager.initialize(key, SQRT_RATIO_1_1, ZERO_BYTES);
 
         vm.expectRevert(FullRange.SenderMustBeHook.selector);

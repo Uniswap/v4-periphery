@@ -60,12 +60,12 @@ contract TWAMM is BaseHook, ITWAMM {
         expirationInterval = _expirationInterval;
     }
 
-    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: false,
             beforeAddLiquidity: true,
-            beforeRemoveLiquidity: true,
+            beforeRemoveLiquidity: false,
             afterAddLiquidity: false,
             afterRemoveLiquidity: false,
             beforeSwap: true,
@@ -95,16 +95,6 @@ contract TWAMM is BaseHook, ITWAMM {
     ) external override poolManagerOnly returns (bytes4) {
         executeTWAMMOrders(key);
         return BaseHook.beforeAddLiquidity.selector;
-    }
-
-    function beforeRemoveLiquidity(
-        address,
-        PoolKey calldata key,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external override poolManagerOnly returns (bytes4) {
-        executeTWAMMOrders(key);
-        return BaseHook.beforeRemoveLiquidity.selector;
     }
 
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
@@ -310,32 +300,27 @@ contract TWAMM is BaseHook, ITWAMM {
         IERC20Minimal(Currency.unwrap(token)).safeTransfer(to, amountTransferred);
     }
 
-    function unlockCallback(bytes calldata rawData)
-        external
-        override
-        poolManagerOnly
-        returns (bytes memory)
-    {
+    function unlockCallback(bytes calldata rawData) external override poolManagerOnly returns (bytes memory) {
         (PoolKey memory key, IPoolManager.SwapParams memory swapParams) =
             abi.decode(rawData, (PoolKey, IPoolManager.SwapParams));
 
         BalanceDelta delta = poolManager.swap(key, swapParams, ZERO_BYTES);
 
         if (swapParams.zeroForOne) {
-            if (delta.amount0() > 0) {
-                key.currency0.transfer(address(poolManager), uint256(uint128(delta.amount0())));
+            if (delta.amount0() < 0) {
+                key.currency0.transfer(address(poolManager), uint256(uint128(-delta.amount0())));
                 poolManager.settle(key.currency0);
             }
-            if (delta.amount1() < 0) {
-                poolManager.take(key.currency1, address(this), uint256(uint128(-delta.amount1())));
+            if (delta.amount1() > 0) {
+                poolManager.take(key.currency1, address(this), uint256(uint128(delta.amount1())));
             }
         } else {
-            if (delta.amount1() > 0) {
-                key.currency1.transfer(address(poolManager), uint256(uint128(delta.amount1())));
+            if (delta.amount1() < 0) {
+                key.currency1.transfer(address(poolManager), uint256(uint128(-delta.amount1())));
                 poolManager.settle(key.currency1);
             }
-            if (delta.amount0() < 0) {
-                poolManager.take(key.currency0, address(this), uint256(uint128(-delta.amount0())));
+            if (delta.amount0() > 0) {
+                poolManager.take(key.currency0, address(this), uint256(uint128(delta.amount0())));
             }
         }
         return bytes("");

@@ -87,12 +87,12 @@ contract FullRange is BaseHook, IUnlockCallback {
         _;
     }
 
-    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
             afterInitialize: false,
             beforeAddLiquidity: true,
-            beforeRemoveLiquidity: true,
+            beforeRemoveLiquidity: false,
             afterAddLiquidity: false,
             afterRemoveLiquidity: false,
             beforeSwap: true,
@@ -153,7 +153,7 @@ contract FullRange is BaseHook, IUnlockCallback {
 
         UniswapV4ERC20(pool.liquidityToken).mint(params.to, liquidity);
 
-        if (uint128(addedDelta.amount0()) < params.amount0Min || uint128(addedDelta.amount1()) < params.amount1Min) {
+        if (uint128(-addedDelta.amount0()) < params.amount0Min || uint128(-addedDelta.amount1()) < params.amount1Min) {
             revert TooMuchSlippage();
         }
     }
@@ -230,17 +230,6 @@ contract FullRange is BaseHook, IUnlockCallback {
         return FullRange.beforeAddLiquidity.selector;
     }
 
-    function beforeRemoveLiquidity(
-        address sender,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external view override returns (bytes4) {
-        if (sender != address(this)) revert SenderMustBeHook();
-
-        return FullRange.beforeRemoveLiquidity.selector;
-    }
-
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
@@ -260,14 +249,12 @@ contract FullRange is BaseHook, IUnlockCallback {
         internal
         returns (BalanceDelta delta)
     {
-        delta = abi.decode(
-            poolManager.unlock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta)
-        );
+        delta = abi.decode(poolManager.unlock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
     }
 
     function _settleDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
-        _settleDelta(sender, key.currency0, uint128(delta.amount0()));
-        _settleDelta(sender, key.currency1, uint128(delta.amount1()));
+        _settleDelta(sender, key.currency0, uint128(-delta.amount0()));
+        _settleDelta(sender, key.currency1, uint128(-delta.amount1()));
     }
 
     function _settleDelta(address sender, Currency currency, uint128 amount) internal {
@@ -284,8 +271,8 @@ contract FullRange is BaseHook, IUnlockCallback {
     }
 
     function _takeDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
-        poolManager.take(key.currency0, sender, uint256(uint128(-delta.amount0())));
-        poolManager.take(key.currency1, sender, uint256(uint128(-delta.amount1())));
+        poolManager.take(key.currency0, sender, uint256(uint128(delta.amount0())));
+        poolManager.take(key.currency1, sender, uint256(uint128(delta.amount1())));
     }
 
     function _removeLiquidity(PoolKey memory key, IPoolManager.ModifyLiquidityParams memory params)
@@ -316,8 +303,6 @@ contract FullRange is BaseHook, IUnlockCallback {
         poolManagerOnly
         returns (bytes memory)
     {
-        // Now that manager can be called by EOAs with a lock target, it's necessary for lockAcquired to check the original sender if it wants to trust the data passed through.
-        if (msg.sender != address(this)) revert SenderMustBeHook();
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         BalanceDelta delta;
 
@@ -345,7 +330,7 @@ contract FullRange is BaseHook, IUnlockCallback {
 
         uint160 newSqrtPriceX96 = (
             FixedPointMathLib.sqrt(
-                FullMath.mulDiv(uint128(-balanceDelta.amount1()), FixedPoint96.Q96, uint128(-balanceDelta.amount0()))
+                FullMath.mulDiv(uint128(balanceDelta.amount1()), FixedPoint96.Q96, uint128(balanceDelta.amount0()))
             ) * FixedPointMathLib.sqrt(FixedPoint96.Q96)
         ).toUint160();
 
@@ -355,7 +340,7 @@ contract FullRange is BaseHook, IUnlockCallback {
             key,
             IPoolManager.SwapParams({
                 zeroForOne: newSqrtPriceX96 < sqrtPriceX96,
-                amountSpecified: MAX_INT,
+                amountSpecified: -MAX_INT - 1, // equivalent of type(int256).min
                 sqrtPriceLimitX96: newSqrtPriceX96
             }),
             ZERO_BYTES
@@ -365,8 +350,8 @@ contract FullRange is BaseHook, IUnlockCallback {
             newSqrtPriceX96,
             TickMath.getSqrtRatioAtTick(MIN_TICK),
             TickMath.getSqrtRatioAtTick(MAX_TICK),
-            uint256(uint128(-balanceDelta.amount0())),
-            uint256(uint128(-balanceDelta.amount1()))
+            uint256(uint128(balanceDelta.amount0())),
+            uint256(uint128(balanceDelta.amount1()))
         );
 
         BalanceDelta balanceDeltaAfter = poolManager.modifyLiquidity(
@@ -380,8 +365,8 @@ contract FullRange is BaseHook, IUnlockCallback {
         );
 
         // Donate any "dust" from the sqrtRatio change as fees
-        uint128 donateAmount0 = uint128(-balanceDelta.amount0() - balanceDeltaAfter.amount0());
-        uint128 donateAmount1 = uint128(-balanceDelta.amount1() - balanceDeltaAfter.amount1());
+        uint128 donateAmount0 = uint128(balanceDelta.amount0() + balanceDeltaAfter.amount0());
+        uint128 donateAmount1 = uint128(balanceDelta.amount1() + balanceDeltaAfter.amount1());
 
         poolManager.donate(key, donateAmount0, donateAmount1, ZERO_BYTES);
     }

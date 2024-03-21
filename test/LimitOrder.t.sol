@@ -103,7 +103,7 @@ contract TestLimitOrder is Test, Deployers {
         // swapping is free, there's no liquidity in the pool, so we only need to specify 1 wei
         router.swap(
             key,
-            IPoolManager.SwapParams(false, 1 ether, SQRT_RATIO_1_1 + 1),
+            IPoolManager.SwapParams(false, -1 ether, SQRT_RATIO_1_1 + 1),
             HookEnabledSwapRouter.TestSettings(true, true),
             ZERO_BYTES
         );
@@ -129,7 +129,7 @@ contract TestLimitOrder is Test, Deployers {
         // swapping is free, there's no liquidity in the pool, so we only need to specify 1 wei
         router.swap(
             key,
-            IPoolManager.SwapParams(true, 1 ether, SQRT_RATIO_1_1 - 1),
+            IPoolManager.SwapParams(true, -1 ether, SQRT_RATIO_1_1 - 1),
             HookEnabledSwapRouter.TestSettings(true, true),
             ZERO_BYTES
         );
@@ -191,7 +191,7 @@ contract TestLimitOrder is Test, Deployers {
 
         router.swap(
             key,
-            IPoolManager.SwapParams(false, 1e18, TickMath.getSqrtRatioAtTick(60)),
+            IPoolManager.SwapParams(false, -1e18, TickMath.getSqrtRatioAtTick(60)),
             HookEnabledSwapRouter.TestSettings(true, true),
             ZERO_BYTES
         );

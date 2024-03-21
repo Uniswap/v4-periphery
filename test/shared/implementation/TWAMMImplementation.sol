@@ -8,7 +8,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 contract TWAMMImplementation is TWAMM {
     constructor(IPoolManager poolManager, uint256 interval, TWAMM addressToEtch) TWAMM(poolManager, interval) {
-        Hooks.validateHookPermissions(addressToEtch, getHooksCalls());
+        Hooks.validateHookPermissions(addressToEtch, getHookPermissions());
     }
 
     // make this a no-op in testing

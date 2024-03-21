@@ -14,12 +14,6 @@ contract VolatilityOracle is BaseHook {
 
     uint32 deployTimestamp;
 
-    function getFee(address, PoolKey calldata) external view returns (uint24) {
-        uint24 startingFee = 3000;
-        uint32 lapsed = _blockTimestamp() - deployTimestamp;
-        return startingFee + (uint24(lapsed) * 100) / 60; // 100 bps a minute
-    }
-
     /// @dev For mocking
     function _blockTimestamp() internal view virtual returns (uint32) {
         return uint32(block.timestamp);
@@ -29,10 +23,10 @@ contract VolatilityOracle is BaseHook {
         deployTimestamp = _blockTimestamp();
     }
 
-    function getHooksCalls() public pure override returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
-            afterInitialize: false,
+            afterInitialize: true,
             beforeAddLiquidity: false,
             beforeRemoveLiquidity: false,
             afterAddLiquidity: false,
@@ -52,5 +46,21 @@ contract VolatilityOracle is BaseHook {
     {
         if (!key.fee.isDynamicFee()) revert MustUseDynamicFee();
         return VolatilityOracle.beforeInitialize.selector;
+    }
+
+    function setFee(PoolKey calldata key) public {
+        uint24 startingFee = 3000;
+        uint32 lapsed = _blockTimestamp() - deployTimestamp;
+        uint24 fee = startingFee + (uint24(lapsed) * 100) / 60; // 100 bps a minute
+        poolManager.updateDynamicSwapFee(key, fee); // initial fee 0.30%
+    }
+
+    function afterInitialize(address, PoolKey calldata key, uint160, int24, bytes calldata)
+        external
+        override
+        returns (bytes4)
+    {
+        setFee(key);
+        return BaseHook.afterInitialize.selector;
     }
 }

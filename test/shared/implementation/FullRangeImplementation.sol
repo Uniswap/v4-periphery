@@ -8,7 +8,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 contract FullRangeImplementation is FullRange {
     constructor(IPoolManager _poolManager, FullRange addressToEtch) FullRange(_poolManager) {
-        Hooks.validateHookPermissions(addressToEtch, getHooksCalls());
+        Hooks.validateHookPermissions(addressToEtch, getHookPermissions());
     }
 
     // make this a no-op in testing
