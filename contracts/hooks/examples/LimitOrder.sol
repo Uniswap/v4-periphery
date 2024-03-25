@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -334,11 +334,11 @@ contract LimitOrder is BaseHook {
                 ZERO_BYTES
             );
 
-            if (deltaFee.amount0() < 0) {
-                poolManager.mint(address(this), key.currency0.toId(), amount0Fee = uint128(-deltaFee.amount0()));
+            if (deltaFee.amount0() > 0) {
+                poolManager.mint(address(this), key.currency0.toId(), amount0Fee = uint128(deltaFee.amount0()));
             }
-            if (deltaFee.amount1() < 0) {
-                poolManager.mint(address(this), key.currency1.toId(), amount1Fee = uint128(-deltaFee.amount1()));
+            if (deltaFee.amount1() > 0) {
+                poolManager.mint(address(this), key.currency1.toId(), amount1Fee = uint128(deltaFee.amount1()));
             }
         }
 

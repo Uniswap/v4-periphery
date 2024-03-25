@@ -19,12 +19,6 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
 
     IPoolManager immutable poolManager;
 
-    /// @dev Only the pool manager may call this function
-    modifier poolManagerOnly() {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
-        _;
-    }
-
     constructor(IPoolManager _poolManager) {
         poolManager = _poolManager;
     }
@@ -34,7 +28,9 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
     }
 
     /// @inheritdoc IUnlockCallback
-    function unlockCallback(bytes calldata encodedSwapInfo) external override poolManagerOnly returns (bytes memory) {
+    function unlockCallback(bytes calldata encodedSwapInfo) external override returns (bytes memory) {
+        if (msg.sender != address(poolManager)) revert NotPoolManager();
+
         SwapInfo memory swapInfo = abi.decode(encodedSwapInfo, (SwapInfo));
 
         if (swapInfo.swapType == SwapType.ExactInput) {
@@ -158,11 +154,11 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
 
         if (zeroForOne) {
             reciprocalAmount = amountSpecified < 0 ? delta.amount1() : delta.amount0();
-            if (settle) _payAndSettle(poolKey.currency0, msgSender, -delta.amount0());
+            if (settle) _payAndSettle(poolKey.currency0, msgSender, delta.amount0());
             if (take) poolManager.take(poolKey.currency1, msgSender, uint128(delta.amount1()));
         } else {
             reciprocalAmount = amountSpecified < 0 ? delta.amount0() : delta.amount1();
-            if (settle) _payAndSettle(poolKey.currency1, msgSender, -delta.amount1());
+            if (settle) _payAndSettle(poolKey.currency1, msgSender, delta.amount1());
             if (take) poolManager.take(poolKey.currency0, msgSender, uint128(delta.amount0()));
         }
     }
@@ -181,7 +177,7 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
     }
 
     function _payAndSettle(Currency currency, address msgSender, int128 settleAmount) private {
-        _pay(Currency.unwrap(currency), msgSender, address(poolManager), uint256(uint128(settleAmount)));
+        _pay(Currency.unwrap(currency), msgSender, address(poolManager), uint256(uint128(-settleAmount)));
         poolManager.settle(currency);
     }
 
