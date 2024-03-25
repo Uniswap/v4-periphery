@@ -216,7 +216,7 @@ contract LimitOrder is BaseHook {
     {
         if (liquidity == 0) revert ZeroLiquidity();
 
-        poolManager.lock(
+        poolManager.unlock(
             abi.encodeCall(this.lockAcquiredPlace, (key, tickLower, zeroForOne, int256(uint256(liquidity)), msg.sender))
         );
 
@@ -297,7 +297,7 @@ contract LimitOrder is BaseHook {
         uint256 amount0Fee;
         uint256 amount1Fee;
         (amount0, amount1, amount0Fee, amount1Fee) = abi.decode(
-            poolManager.lock(
+            poolManager.unlock(
                 abi.encodeCall(
                     this.lockAcquiredKill,
                     (key, tickLower, -int256(uint256(liquidity)), to, liquidity == epochInfo.liquidityTotal)
@@ -323,7 +323,7 @@ contract LimitOrder is BaseHook {
     ) external selfOnly returns (uint256 amount0, uint256 amount1, uint128 amount0Fee, uint128 amount1Fee) {
         int24 tickUpper = tickLower + key.tickSpacing;
 
-        // because `modifyPosition` includes not just principal value but also fees, we cannot allocate
+        // because `modifyLiquidity` includes not just principal value but also fees, we cannot allocate
         // the proceeds pro-rata. if we were to do so, users who have been in a limit order that's partially filled
         // could be unfairly diluted by a user sychronously placing then killing a limit order to skim off fees.
         // to prevent this, we allocate all fee revenue to remaining limit order placers, unless this is the last order.
@@ -378,7 +378,7 @@ contract LimitOrder is BaseHook {
         epochInfo.token1Total -= amount1;
         epochInfo.liquidityTotal = liquidityTotal - liquidity;
 
-        poolManager.lock(
+        poolManager.unlock(
             abi.encodeCall(this.lockAcquiredWithdraw, (epochInfo.currency0, epochInfo.currency1, amount0, amount1, to))
         );
 

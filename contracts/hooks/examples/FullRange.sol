@@ -11,7 +11,7 @@ import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
-import {ILockCallback} from "@uniswap/v4-core/src/interfaces/callback/ILockCallback.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
@@ -23,7 +23,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 import "../../libraries/LiquidityAmounts.sol";
 
-contract FullRange is BaseHook, ILockCallback {
+contract FullRange is BaseHook, IUnlockCallback {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
@@ -249,7 +249,7 @@ contract FullRange is BaseHook, ILockCallback {
         internal
         returns (BalanceDelta delta)
     {
-        delta = abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
+        delta = abi.decode(poolManager.unlock(abi.encode(CallbackData(msg.sender, key, params))), (BalanceDelta));
     }
 
     function _settleDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
@@ -297,9 +297,9 @@ contract FullRange is BaseHook, ILockCallback {
         pool.hasAccruedFees = false;
     }
 
-    function lockAcquired(bytes calldata rawData)
+    function unlockCallback(bytes calldata rawData)
         external
-        override(ILockCallback, BaseHook)
+        override(IUnlockCallback, BaseHook)
         poolManagerOnly
         returns (bytes memory)
     {
