@@ -114,9 +114,10 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         delta = poolManager.modifyLiquidity(key, params, hookData);
 
         if (params.liquidityDelta <= 0) {
-            // removing liquidity/fees so take tokens
-            key.currency0.take(poolManager, sender, uint128(-delta.amount0()), claims);
-            key.currency1.take(poolManager, sender, uint128(-delta.amount1()), claims);
+            // removing liquidity/fees so mint tokens to the router
+            // the router will be responsible for sending the tokens to the desired recipient
+            key.currency0.take(poolManager, address(this), uint128(-delta.amount0()), true);
+            key.currency1.take(poolManager, address(this), uint128(-delta.amount1()), true);
         } else {
             // adding liquidity so pay tokens
             key.currency0.settle(poolManager, sender, uint128(delta.amount0()), claims);

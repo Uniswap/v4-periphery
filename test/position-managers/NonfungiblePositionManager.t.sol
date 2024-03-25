@@ -214,7 +214,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         // burn liquidity
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
-        BalanceDelta delta = lpm.burn(tokenId, ZERO_BYTES);
+        BalanceDelta delta = lpm.burn(tokenId, address(this), ZERO_BYTES, false);
         assertEq(lpm.liquidityOf(address(this), position.toId()), 0);
 
         // TODO: slightly off by 1 bip (0.0001%)
@@ -254,12 +254,55 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
             liquidityDelta: decreaseLiquidityDelta,
             amount0Min: 0,
             amount1Min: 0,
+            recipient: address(this),
             deadline: block.timestamp + 1
         });
-        BalanceDelta delta = lpm.decreaseLiquidity(params, ZERO_BYTES);
+        BalanceDelta delta = lpm.decreaseLiquidity(params, ZERO_BYTES, false);
         assertEq(lpm.liquidityOf(address(this), position.toId()), liquidityDelta - decreaseLiquidityDelta);
+
         assertEq(currency0.balanceOfSelf() - balance0Before, uint256(int256(-delta.amount0())));
         assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(-delta.amount1())));
+    }
+
+    function test_decreaseLiquidity_collectFees(
+        int24 tickLower,
+        int24 tickUpper,
+        uint128 liquidityDelta,
+        uint128 decreaseLiquidityDelta
+    ) public {
+        uint256 tokenId;
+        liquidityDelta = uint128(bound(liquidityDelta, 100e18, 100_000e18)); // require nontrivial amount of liquidity
+        (tokenId, tickLower, tickUpper, liquidityDelta,) =
+            createFuzzyLiquidity(lpm, address(this), key, tickLower, tickUpper, liquidityDelta, ZERO_BYTES);
+        vm.assume(tickLower < -60 && 60 < tickUpper); // require two-sided liquidity
+        vm.assume(0 < decreaseLiquidityDelta);
+        vm.assume(decreaseLiquidityDelta <= liquidityDelta);
+
+        // swap to create fees
+        uint256 swapAmount = 0.01e18;
+        swap(key, false, int256(swapAmount), ZERO_BYTES);
+
+        LiquidityRange memory position = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
+
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+        INonfungiblePositionManager.DecreaseLiquidityParams memory params = INonfungiblePositionManager
+            .DecreaseLiquidityParams({
+            tokenId: tokenId,
+            liquidityDelta: decreaseLiquidityDelta,
+            amount0Min: 0,
+            amount1Min: 0,
+            recipient: address(this),
+            deadline: block.timestamp + 1
+        });
+        BalanceDelta delta = lpm.decreaseLiquidity(params, ZERO_BYTES, false);
+        assertEq(lpm.liquidityOf(address(this), position.toId()), liquidityDelta - decreaseLiquidityDelta, "GRR");
+
+        // express key.fee as wad (i.e. 3000 = 0.003e18)
+        uint256 feeWad = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
+
+        assertEq(currency0.balanceOfSelf() - balance0Before, uint256(int256(-delta.amount0())), "boo");
+        assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(-delta.amount1())), "guh");
     }
 
     function test_mintTransferBurn(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
@@ -295,7 +338,9 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         // Alice can burn the token
         vm.prank(alice);
-        lpm.burn(tokenId, ZERO_BYTES);
+        lpm.burn(tokenId, address(this), ZERO_BYTES, false);
+
+        // TODO: assert balances
     }
 
     function test_mintTransferCollect() public {}

@@ -14,8 +14,7 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
+import {FeeMath} from "./libraries/FeeMath.sol";
 import {PoolStateLibrary} from "./libraries/PoolStateLibrary.sol";
 
 // TODO: remove
@@ -111,14 +110,22 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
         require(params.amount1Min <= uint256(uint128(delta.amount1())), "INSUFFICIENT_AMOUNT1");
     }
 
-    function decreaseLiquidity(DecreaseLiquidityParams memory params, bytes calldata hookData)
+    function decreaseLiquidity(DecreaseLiquidityParams memory params, bytes calldata hookData, bool claims)
         public
         isAuthorizedForToken(params.tokenId)
         returns (BalanceDelta delta)
     {
         require(params.liquidityDelta != 0, "Must decrease liquidity");
         Position storage position = positions[params.tokenId];
-        delta = BaseLiquidityManagement.modifyLiquidity(
+
+        (uint160 sqrtPriceX96,,,) = PoolStateLibrary.getSlot0(poolManager, position.range.key.toId());
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            sqrtPriceX96,
+            TickMath.getSqrtRatioAtTick(position.range.tickLower),
+            TickMath.getSqrtRatioAtTick(position.range.tickUpper),
+            params.liquidityDelta
+        );
+        BaseLiquidityManagement.modifyLiquidity(
             position.range.key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: position.range.tickLower,
@@ -131,33 +138,27 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
         require(params.amount0Min <= uint256(uint128(-delta.amount0())), "INSUFFICIENT_AMOUNT0");
         require(params.amount1Min <= uint256(uint128(-delta.amount1())), "INSUFFICIENT_AMOUNT1");
 
-        // position.tokensOwed0 +=
-        //     uint128(amount0) +
-        //     uint128(
-        //         FullMath.mulDiv(
-        //             feeGrowthInside0LastX128 - position.feeGrowthInside0LastX128,
-        //             positionLiquidity,
-        //             FixedPoint128.Q128
-        //         )
-        //     );
-        // position.tokensOwed1 +=
-        //     uint128(amount1) +
-        //     uint128(
-        //         FullMath.mulDiv(
-        //             feeGrowthInside1LastX128 - position.feeGrowthInside1LastX128,
-        //             positionLiquidity,
-        //             FixedPoint128.Q128
-        //         )
-        //     );
+        (uint128 token0Owed, uint128 token1Owed) = _updateFeeGrowth(position);
+        // TODO: for now we'll assume user always collects the totality of their fees
+        token0Owed += (position.tokensOwed0 + uint128(amount0));
+        token1Owed += (position.tokensOwed1 + uint128(amount1));
 
-        // position.feeGrowthInside0LastX128 = feeGrowthInside0LastX128;
-        // position.feeGrowthInside1LastX128 = feeGrowthInside1LastX128;
+        // TODO: does this account for 0 token transfers
+        if (claims) {
+            poolManager.transfer(params.recipient, position.range.key.currency0.toId(), token0Owed);
+            poolManager.transfer(params.recipient, position.range.key.currency1.toId(), token1Owed);
+        } else {
+            sendToken(params.recipient, position.range.key.currency0, token0Owed);
+            sendToken(params.recipient, position.range.key.currency1, token1Owed);
+        }
 
-        // update the position
+        position.tokensOwed0 = 0;
+        position.tokensOwed1 = 0;
         position.liquidity -= params.liquidityDelta;
+        delta = toBalanceDelta(-int128(token0Owed), -int128(token1Owed));
     }
 
-    function burn(uint256 tokenId, bytes calldata hookData)
+    function burn(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
         external
         isAuthorizedForToken(tokenId)
         returns (BalanceDelta delta)
@@ -171,9 +172,11 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
                     liquidityDelta: position.liquidity,
                     amount0Min: 0,
                     amount1Min: 0,
+                    recipient: recipient,
                     deadline: block.timestamp
                 }),
-                hookData
+                hookData,
+                claims
             );
         }
 
@@ -189,41 +192,42 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
         external
         returns (BalanceDelta delta)
     {
-        Position memory position = positions[tokenId];
+        Position storage position = positions[tokenId];
         BaseLiquidityManagement.collect(position.range, hookData);
 
+        (uint128 token0Owed, uint128 token1Owed) = _updateFeeGrowth(position);
+        delta = toBalanceDelta(int128(token0Owed), int128(token1Owed));
+
+        // TODO: for now we'll assume user always collects the totality of their fees
+        if (claims) {
+            poolManager.transfer(recipient, position.range.key.currency0.toId(), token0Owed + position.tokensOwed0);
+            poolManager.transfer(recipient, position.range.key.currency1.toId(), token1Owed + position.tokensOwed1);
+        } else {
+            sendToken(recipient, position.range.key.currency0, token0Owed + position.tokensOwed0);
+            sendToken(recipient, position.range.key.currency1, token1Owed + position.tokensOwed1);
+        }
+
+        position.tokensOwed0 = 0;
+        position.tokensOwed1 = 0;
+
+        // TODO: event
+    }
+
+    function _updateFeeGrowth(Position storage position) internal returns (uint128 token0Owed, uint128 token1Owed) {
         (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) = poolManager.getFeeGrowthInside(
             position.range.key.toId(), position.range.tickLower, position.range.tickUpper
         );
 
-        console2.log(feeGrowthInside0X128, position.feeGrowthInside0LastX128);
-        console2.log(feeGrowthInside1X128, position.feeGrowthInside1LastX128);
-
-        // TODO: for now we'll assume user always collects the totality of their fees
-        uint128 token0Owed = uint128(
-            FullMath.mulDiv(
-                feeGrowthInside0X128 - position.feeGrowthInside0LastX128, position.liquidity, FixedPoint128.Q128
-            )
+        (token0Owed, token1Owed) = FeeMath.getFeesOwed(
+            feeGrowthInside0X128,
+            feeGrowthInside1X128,
+            position.feeGrowthInside0LastX128,
+            position.feeGrowthInside1LastX128,
+            position.liquidity
         );
-        uint128 token1Owed = uint128(
-            FullMath.mulDiv(
-                feeGrowthInside1X128 - position.feeGrowthInside1LastX128, position.liquidity, FixedPoint128.Q128
-            )
-        );
-        delta = toBalanceDelta(int128(token0Owed), int128(token1Owed));
 
         position.feeGrowthInside0LastX128 = feeGrowthInside0X128;
         position.feeGrowthInside1LastX128 = feeGrowthInside1X128;
-
-        if (claims) {
-            poolManager.transfer(recipient, position.range.key.currency0.toId(), token0Owed);
-            poolManager.transfer(recipient, position.range.key.currency1.toId(), token1Owed);
-        } else {
-            sendToken(recipient, position.range.key.currency0, token0Owed);
-            sendToken(recipient, position.range.key.currency1, token1Owed);
-        }
-
-        // TODO: event
     }
 
     function _afterTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize) internal override {
