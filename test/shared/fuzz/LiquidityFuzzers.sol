@@ -45,12 +45,10 @@ contract LiquidityFuzzers is StdUtils {
         );
 
         // round down ticks
-        tickLower = (tickLower / key.tickSpacing) * key.tickSpacing;
-        tickUpper = (tickUpper / key.tickSpacing) * key.tickSpacing;
-        _vm.assume(tickLower < tickUpper);
+        _tickLower = (tickLower / key.tickSpacing) * key.tickSpacing;
+        _tickUpper = (tickUpper / key.tickSpacing) * key.tickSpacing;
+        _vm.assume(_tickLower < _tickUpper);
 
-        _tickLower = tickLower;
-        _tickUpper = tickUpper;
         _liquidityDelta = liquidityDelta;
     }
 
@@ -92,5 +90,25 @@ contract LiquidityFuzzers is StdUtils {
         _amount0 = bound(amount0, 0, maxAmount0);
         _amount1 = bound(amount1, 0, maxAmount1);
         _vm.assume(_amount0 != 0 && _amount1 != 0);
+    }
+
+    function createFuzzySameRange(
+        INonfungiblePositionManager lpm,
+        address alice,
+        address bob,
+        LiquidityRange memory range,
+        uint128 liquidityA,
+        uint128 liquidityB,
+        bytes memory hookData
+    ) internal returns (uint256, uint256, int24, int24, uint128, uint128) {
+        (range.tickLower, range.tickUpper, liquidityA) =
+            createFuzzyLiquidityParams(range.key, range.tickLower, range.tickUpper, liquidityA);
+        // (,, liquidityB) = createFuzzyLiquidityParams(range.key, range.tickLower, range.tickUpper, liquidityB);
+        _vm.assume(liquidityB < Pool.tickSpacingToMaxLiquidityPerTick(range.key.tickSpacing));
+
+        (uint256 tokenIdA,) = lpm.mint(range, liquidityA, block.timestamp + 1, alice, hookData);
+
+        (uint256 tokenIdB,) = lpm.mint(range, liquidityB, block.timestamp + 1, bob, hookData);
+        return (tokenIdA, tokenIdB, range.tickLower, range.tickUpper, liquidityA, liquidityB);
     }
 }

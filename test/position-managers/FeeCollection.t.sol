@@ -178,33 +178,20 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         uint128 liquidityDeltaAlice,
         uint128 liquidityDeltaBob
     ) public {
-        uint256 tokenIdAlice;
-        uint256 tokenIdBob;
         liquidityDeltaAlice = uint128(bound(liquidityDeltaAlice, 100e18, 100_000e18)); // require nontrivial amount of liquidity
         liquidityDeltaBob = uint128(bound(liquidityDeltaBob, 100e18, 100_000e18));
-
-        (tickLower, tickUpper, liquidityDeltaAlice) =
-            createFuzzyLiquidityParams(key, tickLower, tickUpper, liquidityDeltaAlice);
-        vm.assume(tickLower < -60 && 60 < tickUpper); // require two-sided liquidity
-        (,, liquidityDeltaBob) = createFuzzyLiquidityParams(key, tickLower, tickUpper, liquidityDeltaBob);
-
-        vm.prank(alice);
-        (tokenIdAlice,) = lpm.mint(
+        uint256 tokenIdAlice;
+        uint256 tokenIdBob;
+        (tokenIdAlice, tokenIdBob, tickLower, tickUpper,,) = createFuzzySameRange(
+            lpm,
+            alice,
+            bob,
             LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper}),
             liquidityDeltaAlice,
-            block.timestamp + 1,
-            alice,
-            ZERO_BYTES
-        );
-
-        vm.prank(bob);
-        (tokenIdBob,) = lpm.mint(
-            LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper}),
             liquidityDeltaBob,
-            block.timestamp + 1,
-            alice,
             ZERO_BYTES
         );
+        vm.assume(tickLower < -key.tickSpacing && key.tickSpacing < tickUpper); // require two-sided liquidity
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
@@ -242,7 +229,56 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
     function test_collect_donate() public {}
     function test_collect_donate_sameRange() public {}
 
-    function test_mintTransferCollect() public {}
-    function test_mintTransferIncrease() public {}
-    function test_mintTransferDecrease() public {}
+    function test_decreaseLiquidity_sameRange(
+        int24 tickLower,
+        int24 tickUpper,
+        uint128 liquidityDeltaAlice,
+        uint128 liquidityDeltaBob
+    ) public {
+        liquidityDeltaAlice = uint128(bound(liquidityDeltaAlice, 100e18, 100_000e18)); // require nontrivial amount of liquidity
+        liquidityDeltaBob = uint128(bound(liquidityDeltaBob, 100e18, 100_000e18));
+        uint256 tokenIdAlice;
+        uint256 tokenIdBob;
+        uint128 liquidityAlice;
+        uint128 liquidityBob;
+        (tokenIdAlice, tokenIdBob, tickLower, tickUpper, liquidityAlice, liquidityBob) = createFuzzySameRange(
+            lpm,
+            alice,
+            bob,
+            LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper}),
+            liquidityDeltaAlice,
+            liquidityDeltaBob,
+            ZERO_BYTES
+        );
+        vm.assume(tickLower < -key.tickSpacing && key.tickSpacing < tickUpper); // require two-sided liquidity
+
+        // swap to create fees
+        uint256 swapAmount = 0.01e18;
+        swap(key, true, int256(swapAmount), ZERO_BYTES);
+
+        // alice removes all of her liquidity
+        uint256 balance0AliceBefore = manager.balanceOf(alice, currency0.toId());
+        uint256 balance1AliceBefore = manager.balanceOf(alice, currency1.toId());
+        console2.log(lpm.ownerOf(tokenIdAlice));
+        console2.log(alice);
+        console2.log(address(this));
+        vm.prank(alice);
+        BalanceDelta aliceDelta = lpm.decreaseLiquidity(
+            INonfungiblePositionManager.DecreaseLiquidityParams({
+                tokenId: tokenIdAlice,
+                liquidityDelta: liquidityAlice,
+                amount0Min: 0,
+                amount1Min: 0,
+                deadline: block.timestamp + 1,
+                recipient: alice
+            }),
+            ZERO_BYTES,
+            true
+        );
+        uint256 balance0AliceAfter = manager.balanceOf(alice, currency0.toId());
+        uint256 balance1AliceAfter = manager.balanceOf(alice, currency1.toId());
+
+        assertEq(uint256(uint128(aliceDelta.amount0())), balance0AliceAfter - balance0AliceBefore);
+        assertEq(uint256(uint128(aliceDelta.amount1())), balance1AliceAfter - balance1AliceBefore);
+    }
 }
