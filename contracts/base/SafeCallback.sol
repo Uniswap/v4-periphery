@@ -14,7 +14,7 @@ abstract contract SafeCallback is ImmutableState, ILockCallback {
     }
 
     /// @dev There is no way to force the onlyByManager modifier but for this callback to be safe, it MUST check that the msg.sender is the pool manager.
-    function lockAcquired(address, bytes calldata data) external onlyByManager returns (bytes memory) {
+    function lockAcquired(bytes calldata data) external onlyByManager returns (bytes memory) {
         return _lockAcquired(data);
     }
 
