@@ -64,8 +64,8 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
         assertEq(lpm.liquidityOf(address(this), position.toId()), liquidityDelta);
-        assertEq(balance0Before - balance0After, uint256(int256(delta.amount0())), "incorrect amount0");
-        assertEq(balance1Before - balance1After, uint256(int256(delta.amount1())), "incorrect amount1");
+        assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())), "incorrect amount0");
+        assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())), "incorrect amount1");
     }
 
     function test_mint(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired) public {
@@ -93,8 +93,8 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
-        assertEq(balance0Before - balance0After, uint256(int256(delta.amount0())));
-        assertEq(balance1Before - balance1After, uint256(int256(delta.amount1())));
+        assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())));
+        assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
     }
 
     // minting with perfect token ratios will use all of the tokens
@@ -123,10 +123,10 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
-        assertEq(uint256(int256(delta.amount0())), amount0Desired);
-        assertEq(uint256(int256(delta.amount1())), amount1Desired);
-        assertEq(balance0Before - balance0After, uint256(int256(delta.amount0())));
-        assertEq(balance1Before - balance1After, uint256(int256(delta.amount1())));
+        assertEq(uint256(int256(-delta.amount0())), amount0Desired);
+        assertEq(uint256(int256(-delta.amount1())), amount1Desired);
+        assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())));
+        assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
     }
 
     function test_mint_recipient(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
@@ -156,8 +156,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         public
     {
         (tickLower, tickUpper) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
-        vm.assume(tickLower < 0);
-        vm.assume(tickUpper > 0);
+        vm.assume(tickLower < 0 && 0 < tickUpper);
 
         (amount0Desired, amount1Desired) =
             createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
@@ -191,7 +190,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         );
 
         // swap to move the price
-        swap(key, true, 1000e18, ZERO_BYTES);
+        swap(key, true, -1000e18, ZERO_BYTES);
 
         // will revert because amount0Min and amount1Min are very strict
         vm.expectRevert();

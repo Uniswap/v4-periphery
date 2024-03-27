@@ -79,7 +79,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
-        swap(key, false, int256(swapAmount), ZERO_BYTES);
+        swap(key, false, -int256(swapAmount), ZERO_BYTES);
 
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
@@ -102,7 +102,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
-        swap(key, false, int256(swapAmount), ZERO_BYTES);
+        swap(key, false, -int256(swapAmount), ZERO_BYTES);
 
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
@@ -152,7 +152,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
-        swap(key, false, int256(swapAmount), ZERO_BYTES);
+        swap(key, false, -int256(swapAmount), ZERO_BYTES);
 
         // alice collects only her fees
         vm.prank(alice);
@@ -203,7 +203,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
-        swap(key, false, int256(swapAmount), ZERO_BYTES);
+        swap(key, false, -int256(swapAmount), ZERO_BYTES);
 
         // alice collects only her fees
         uint256 balance0AliceBefore = currency0.balanceOf(alice);
@@ -264,7 +264,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
-        swap(key, true, int256(swapAmount), ZERO_BYTES);
+        swap(key, true, -int256(swapAmount), ZERO_BYTES);
 
         // alice removes all of her liquidity
         // uint256 balance0AliceBefore = manager.balanceOf(alice, currency0.toId());
@@ -326,8 +326,8 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
-        swap(key, true, int256(swapAmount), ZERO_BYTES);
-        swap(key, false, int256(swapAmount), ZERO_BYTES); // move the price back
+        swap(key, true, -int256(swapAmount), ZERO_BYTES);
+        swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
 
         // alice decreases liquidity
         vm.prank(alice);
@@ -349,13 +349,13 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         // alice claims original principal + her fees
         assertApproxEqAbs(
             manager.balanceOf(alice, currency0.toId()),
-            uint256(int256(lpDeltaAlice.amount0()))
+            uint256(int256(-lpDeltaAlice.amount0()))
                 + swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob),
             tolerance
         );
         assertApproxEqAbs(
             manager.balanceOf(alice, currency1.toId()),
-            uint256(int256(lpDeltaAlice.amount1()))
+            uint256(int256(-lpDeltaAlice.amount1()))
                 + swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob),
             tolerance
         );
@@ -378,13 +378,13 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         // bob claims half of the original principal + his fees
         assertApproxEqAbs(
             manager.balanceOf(bob, currency0.toId()),
-            uint256(int256(lpDeltaBob.amount0()) / 2)
+            uint256(int256(-lpDeltaBob.amount0()) / 2)
                 + swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, liquidityAlice + liquidityBob),
             tolerance
         );
         assertApproxEqAbs(
             manager.balanceOf(bob, currency1.toId()),
-            uint256(int256(lpDeltaBob.amount1()) / 2)
+            uint256(int256(-lpDeltaBob.amount1()) / 2)
                 + swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, liquidityAlice + liquidityBob),
             tolerance
         );
