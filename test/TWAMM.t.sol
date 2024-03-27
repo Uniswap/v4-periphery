@@ -93,7 +93,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
 
-        initializeRouter.initialize(initKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(initKey, SQRT_RATIO_1_1, ZERO_BYTES);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 10000);
     }
 

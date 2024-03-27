@@ -63,7 +63,7 @@ contract TestLimitOrder is Test, Deployers {
     function testGetTickLowerLastWithDifferentPrice() public {
         PoolKey memory differentKey =
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 61, limitOrder);
-        initializeRouter.initialize(differentKey, SQRT_RATIO_10_1, ZERO_BYTES);
+        manager.initialize(differentKey, SQRT_RATIO_10_1, ZERO_BYTES);
         assertEq(limitOrder.getTickLowerLast(differentKey.toId()), 22997);
     }
 
@@ -103,7 +103,7 @@ contract TestLimitOrder is Test, Deployers {
         // swapping is free, there's no liquidity in the pool, so we only need to specify 1 wei
         router.swap(
             key,
-            IPoolManager.SwapParams(false, 1 ether, SQRT_RATIO_1_1 + 1),
+            IPoolManager.SwapParams(false, -1 ether, SQRT_RATIO_1_1 + 1),
             HookEnabledSwapRouter.TestSettings(true, true),
             ZERO_BYTES
         );
@@ -129,7 +129,7 @@ contract TestLimitOrder is Test, Deployers {
         // swapping is free, there's no liquidity in the pool, so we only need to specify 1 wei
         router.swap(
             key,
-            IPoolManager.SwapParams(true, 1 ether, SQRT_RATIO_1_1 - 1),
+            IPoolManager.SwapParams(true, -1 ether, SQRT_RATIO_1_1 - 1),
             HookEnabledSwapRouter.TestSettings(true, true),
             ZERO_BYTES
         );
@@ -191,13 +191,13 @@ contract TestLimitOrder is Test, Deployers {
 
         router.swap(
             key,
-            IPoolManager.SwapParams(false, 1e18, TickMath.getSqrtRatioAtTick(60)),
+            IPoolManager.SwapParams(false, -1e18, TickMath.getSqrtRatioAtTick(60)),
             HookEnabledSwapRouter.TestSettings(true, true),
             ZERO_BYTES
         );
 
         assertEq(limitOrder.getTickLowerLast(id), 60);
-        (, int24 tick,) = manager.getSlot0(id);
+        (, int24 tick,,) = manager.getSlot0(id);
         assertEq(tick, 60);
 
         (bool filled,,, uint256 token0Total, uint256 token1Total,) = limitOrder.epochInfos(Epoch.wrap(1));

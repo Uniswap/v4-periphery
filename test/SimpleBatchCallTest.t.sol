@@ -40,7 +40,7 @@ contract SimpleBatchCallTest is Test, Deployers {
             abi.encode(SimpleBatchCall.SettleConfig({withdrawTokens: true, settleUsingTransfer: true}));
         batchCall.execute(abi.encode(calls), ZERO_BYTES);
 
-        (uint160 sqrtPriceX96,,) = manager.getSlot0(key.toId());
+        (uint160 sqrtPriceX96,,,) = manager.getSlot0(key.toId());
         assertEq(sqrtPriceX96, SQRT_RATIO_1_1);
     }
 
@@ -65,7 +65,7 @@ contract SimpleBatchCallTest is Test, Deployers {
         uint256 balance0After = ERC20(Currency.unwrap(currency0)).balanceOf(address(manager));
         uint256 balance1After = ERC20(Currency.unwrap(currency1)).balanceOf(address(manager));
 
-        (uint160 sqrtPriceX96,,) = manager.getSlot0(key.toId());
+        (uint160 sqrtPriceX96,,,) = manager.getSlot0(key.toId());
 
         assertGt(balance0After, balance0);
         assertGt(balance1After, balance1);

@@ -29,19 +29,19 @@ contract SimpleBatchCall is LockAndBatchCall {
                 Currency currency = currenciesTouched[i];
                 int256 delta = poolManager.currencyDelta(address(this), currenciesTouched[i]);
 
-                if (delta > 0) {
+                if (delta < 0) {
                     if (config.settleUsingTransfer) {
-                        ERC20(Currency.unwrap(currency)).transferFrom(sender, address(poolManager), uint256(delta));
+                        ERC20(Currency.unwrap(currency)).transferFrom(sender, address(poolManager), uint256(-delta));
                         poolManager.settle(currency);
                     } else {
-                        poolManager.transferFrom(address(poolManager), address(this), currency.toId(), uint256(delta));
+                        poolManager.transferFrom(address(poolManager), address(this), currency.toId(), uint256(-delta));
                     }
                 }
-                if (delta < 0) {
+                if (delta > 0) {
                     if (config.withdrawTokens) {
-                        poolManager.mint(address(this), currency.toId(), uint256(-delta));
+                        poolManager.mint(address(this), currency.toId(), uint256(delta));
                     } else {
-                        poolManager.take(currency, address(this), uint256(-delta));
+                        poolManager.take(currency, address(this), uint256(delta));
                     }
                 }
             }
