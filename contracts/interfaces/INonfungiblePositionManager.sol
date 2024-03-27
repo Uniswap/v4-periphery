@@ -7,6 +7,25 @@ import {LiquidityRange} from "../types/LiquidityRange.sol";
 import {IBaseLiquidityManagement} from "./IBaseLiquidityManagement.sol";
 
 interface INonfungiblePositionManager is IBaseLiquidityManagement {
+    // details about the uniswap position
+    struct Position {
+        // the nonce for permits
+        uint96 nonce;
+        // the address that is approved for spending this token
+        address operator;
+        LiquidityRange range;
+        // the liquidity of the position
+        // NOTE: this value will be less than BaseLiquidityManagement.liquidityOf, if the user
+        // owns multiple positions with the same range
+        uint128 liquidity;
+        // the fee growth of the aggregate position as of the last action on the individual position
+        uint256 feeGrowthInside0LastX128;
+        uint256 feeGrowthInside1LastX128;
+        // how many uncollected tokens are owed to the position, as of the last computation
+        uint128 tokensOwed0;
+        uint128 tokensOwed1;
+    }
+
     struct MintParams {
         LiquidityRange range;
         uint256 amount0Desired;

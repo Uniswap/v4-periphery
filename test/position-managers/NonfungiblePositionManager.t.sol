@@ -51,7 +51,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     }
 
     function test_mint_withLiquidityDelta(int24 tickLower, int24 tickUpper, uint128 liquidityDelta) public {
-        (tickLower, tickUpper, liquidityDelta) = createFuzzyLiquidityParams(key, tickLower, tickUpper, liquidityDelta);
+        (tickLower, tickUpper) = createFuzzyLiquidityParams(key, tickLower, tickUpper, liquidityDelta);
         LiquidityRange memory position = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
@@ -69,7 +69,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     }
 
     function test_mint(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired) public {
-        (tickLower, tickUpper,) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
+        (tickLower, tickUpper) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
         (amount0Desired, amount1Desired) =
             createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
 
@@ -132,7 +132,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     function test_mint_recipient(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
         public
     {
-        (tickLower, tickUpper,) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
+        (tickLower, tickUpper) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
         (amount0Desired, amount1Desired) =
             createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
 
@@ -155,7 +155,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     function test_mint_slippageRevert(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
         public
     {
-        (tickLower, tickUpper,) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
+        (tickLower, tickUpper) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
         vm.assume(tickLower < 0);
         vm.assume(tickUpper > 0);
 
@@ -308,7 +308,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     function test_mintTransferBurn(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
         public
     {
-        (tickLower, tickUpper,) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
+        (tickLower, tickUpper) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
         (amount0Desired, amount1Desired) =
             createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
 
