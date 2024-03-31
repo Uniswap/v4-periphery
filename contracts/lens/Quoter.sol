@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {ILockCallback} from "@uniswap/v4-core/src/interfaces/callback/ILockCallback.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -14,7 +14,7 @@ import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 import {PathKey, PathKeyLib} from "../libraries/PathKey.sol";
 
-contract Quoter is IQuoter, ILockCallback {
+contract Quoter is IQuoter, IUnlockCallback {
     using Hooks for IHooks;
     using PoolIdLibrary for PoolKey;
     using PathKeyLib for PathKey;
@@ -62,7 +62,7 @@ contract Quoter is IQuoter, ILockCallback {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        try manager.lock(abi.encodeWithSelector(this._quoteExactInputSingle.selector, params)) {}
+        try manager.unlock(abi.encodeWithSelector(this._quoteExactInputSingle.selector, params)) {}
         catch (bytes memory reason) {
             return _handleRevertSingle(reason);
         }
@@ -77,7 +77,7 @@ contract Quoter is IQuoter, ILockCallback {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try manager.lock(abi.encodeWithSelector(this._quoteExactInput.selector, params)) {}
+        try manager.unlock(abi.encodeWithSelector(this._quoteExactInput.selector, params)) {}
         catch (bytes memory reason) {
             return _handleRevert(reason);
         }
@@ -89,7 +89,7 @@ contract Quoter is IQuoter, ILockCallback {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        try manager.lock(abi.encodeWithSelector(this._quoteExactOutputSingle.selector, params)) {}
+        try manager.unlock(abi.encodeWithSelector(this._quoteExactOutputSingle.selector, params)) {}
         catch (bytes memory reason) {
             if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
             return _handleRevertSingle(reason);
@@ -106,16 +106,16 @@ contract Quoter is IQuoter, ILockCallback {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try manager.lock(abi.encodeWithSelector(this._quoteExactOutput.selector, params)) {}
+        try manager.unlock(abi.encodeWithSelector(this._quoteExactOutput.selector, params)) {}
         catch (bytes memory reason) {
             return _handleRevert(reason);
         }
     }
 
-    /// @inheritdoc ILockCallback
-    function lockAcquired(bytes calldata data) external returns (bytes memory) {
+    /// @inheritdoc IUnlockCallback
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(manager)) {
-            revert InvalidLockAcquiredSender();
+            revert InvalidUnlockCallbackSender();
         }
 
         (bool success, bytes memory returnData) = address(this).call(data);
