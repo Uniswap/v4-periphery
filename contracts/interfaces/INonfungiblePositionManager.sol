@@ -49,6 +49,14 @@ interface INonfungiblePositionManager is IBaseLiquidityManagement {
     // NOTE: more expensive since LiquidityAmounts is used onchain
     function mint(MintParams calldata params) external payable returns (uint256 tokenId, BalanceDelta delta);
 
+    struct IncreaseLiquidityParams {
+        uint256 tokenId;
+        uint128 liquidityDelta;
+        uint256 amount0Min;
+        uint256 amount1Min;
+        uint256 deadline;
+    }
+
     struct DecreaseLiquidityParams {
         uint256 tokenId;
         uint128 liquidityDelta;

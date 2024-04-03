@@ -9,6 +9,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {CurrencySettleTake} from "./libraries/CurrencySettleTake.sol";
 import {LiquidityRange, LiquidityRangeIdLibrary} from "./types/LiquidityRange.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
@@ -22,16 +23,35 @@ import {console2} from "forge-std/console2.sol";
 
 contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePositionManager, ERC721 {
     using CurrencyLibrary for Currency;
+    using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolStateLibrary for IPoolManager;
     /// @dev The ID of the next token that will be minted. Skips 0
 
     uint256 private _nextId = 1;
+    mapping(uint256 tokenId => Position position) public positions;
 
     constructor(IPoolManager _poolManager) BaseLiquidityManagement(_poolManager) ERC721("Uniswap V4 LP", "LPT") {}
 
-    mapping(uint256 tokenId => Position position) public positions;
+    // --- View Functions --- //
+    function feesOwed(uint256 tokenId) external view returns (uint256 token0Owed, uint256 token1Owed) {
+        Position memory position = positions[tokenId];
+
+        (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) = poolManager.getFeeGrowthInside(
+            position.range.key.toId(), position.range.tickLower, position.range.tickUpper
+        );
+
+        (token0Owed, token1Owed) = FeeMath.getFeesOwed(
+            feeGrowthInside0X128,
+            feeGrowthInside1X128,
+            position.feeGrowthInside0LastX128,
+            position.feeGrowthInside1LastX128,
+            position.liquidity
+        );
+        token0Owed += position.tokensOwed0;
+        token1Owed += position.tokensOwed1;
+    }
 
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
     // TODO: deadline check
@@ -89,6 +109,36 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
         );
         require(params.amount0Min <= uint256(uint128(delta.amount0())), "INSUFFICIENT_AMOUNT0");
         require(params.amount1Min <= uint256(uint128(delta.amount1())), "INSUFFICIENT_AMOUNT1");
+    }
+
+    function increaseLiquidity(IncreaseLiquidityParams memory params, bytes calldata hookData, bool claims)
+        public
+        isAuthorizedForToken(params.tokenId)
+        returns (BalanceDelta delta)
+    {
+        require(params.liquidityDelta != 0, "Must increase liquidity");
+        Position storage position = positions[params.tokenId];
+
+        (uint256 token0Owed, uint256 token1Owed) = _updateFeeGrowth(position);
+
+        BaseLiquidityManagement.increaseLiquidity(
+            position.range.key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: position.range.tickLower,
+                tickUpper: position.range.tickUpper,
+                liquidityDelta: int256(uint256(params.liquidityDelta))
+            }),
+            hookData,
+            claims,
+            ownerOf(params.tokenId),
+            token0Owed,
+            token1Owed
+        );
+        // TODO: slippage checks & test
+
+        position.tokensOwed0 = 0;
+        position.tokensOwed1 = 0;
+        position.liquidity += params.liquidityDelta;
     }
 
     function decreaseLiquidity(DecreaseLiquidityParams memory params, bytes calldata hookData, bool claims)

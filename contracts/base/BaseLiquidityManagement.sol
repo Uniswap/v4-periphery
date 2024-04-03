@@ -3,15 +3,18 @@ pragma solidity ^0.8.24;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../types/LiquidityRange.sol";
 import {IBaseLiquidityManagement} from "../interfaces/IBaseLiquidityManagement.sol";
 import {SafeCallback} from "./SafeCallback.sol";
 import {ImmutableState} from "./ImmutableState.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
+import {PoolStateLibrary} from "../libraries/PoolStateLibrary.sol";
 
 import {CurrencySettleTake} from "../libraries/CurrencySettleTake.sol";
+import {FeeMath} from "../libraries/FeeMath.sol";
 
 // TODO: remove
 import {console2} from "forge-std/console2.sol";
@@ -20,6 +23,8 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
     using LiquidityRangeIdLibrary for LiquidityRange;
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
+    using PoolIdLibrary for PoolKey;
+    using PoolStateLibrary for IPoolManager;
 
     error LockFailure();
 
@@ -35,7 +40,7 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
 
     constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}
 
-    // NOTE: handles add/remove/collect
+    // NOTE: handles mint/remove/collect
     function modifyLiquidity(
         PoolKey memory key,
         IPoolManager.ModifyLiquidityParams memory params,
@@ -61,6 +66,28 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         // if (ethBalance > 0) {
         //     CurrencyLibrary.NATIVE.transfer(msg.sender, ethBalance);
         // }
+    }
+
+    function increaseLiquidity(
+        PoolKey memory key,
+        IPoolManager.ModifyLiquidityParams memory params,
+        bytes calldata hookData,
+        bool claims,
+        address owner,
+        uint256 token0Owed,
+        uint256 token1Owed
+    ) internal returns (BalanceDelta delta) {
+        delta = abi.decode(
+            poolManager.lock(
+                abi.encodeCall(
+                    this.handleIncreaseLiquidity, (msg.sender, key, params, hookData, claims, token0Owed, token1Owed)
+                )
+            ),
+            (BalanceDelta)
+        );
+
+        liquidityOf[owner][LiquidityRange(key, params.tickLower, params.tickUpper).toId()] +=
+            uint256(params.liquidityDelta);
     }
 
     function collect(LiquidityRange memory range, bytes calldata hookData) internal returns (BalanceDelta delta) {
@@ -119,6 +146,46 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
             // adding liquidity so pay tokens
             key.currency0.settle(poolManager, sender, uint128(-delta.amount0()), claims);
             key.currency1.settle(poolManager, sender, uint128(-delta.amount1()), claims);
+        }
+    }
+
+    // TODO: selfOnly modifier
+    function handleIncreaseLiquidity(
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata params,
+        bytes calldata hookData,
+        bool claims,
+        uint256 token0Owed,
+        uint256 token1Owed
+    ) external returns (BalanceDelta delta) {
+        BalanceDelta feeDelta = poolManager.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: params.tickLower,
+                tickUpper: params.tickUpper,
+                liquidityDelta: 0
+            }),
+            hookData
+        );
+
+        {
+            BalanceDelta d = poolManager.modifyLiquidity(key, params, hookData);
+            console2.log("d0", int256(d.amount0()));
+            console2.log("d1", int256(d.amount1()));
+        }
+
+        {
+            BalanceDelta excessFees = feeDelta - toBalanceDelta(int128(int256(token0Owed)), int128(int256(token1Owed)));
+            key.currency0.take(poolManager, address(this), uint128(excessFees.amount0()), true);
+            key.currency1.take(poolManager, address(this), uint128(excessFees.amount1()), true);
+
+            int256 amount0Delta = poolManager.currencyDelta(address(this), key.currency0);
+            int256 amount1Delta = poolManager.currencyDelta(address(this), key.currency1);
+            if (amount0Delta < 0) key.currency0.settle(poolManager, sender, uint256(-amount0Delta), claims);
+            if (amount1Delta < 0) key.currency1.settle(poolManager, sender, uint256(-amount1Delta), claims);
+            if (amount0Delta > 0) key.currency0.take(poolManager, address(this), uint256(amount0Delta), true);
+            if (amount1Delta > 0) key.currency1.take(poolManager, address(this), uint256(amount1Delta), true);
         }
     }
 
