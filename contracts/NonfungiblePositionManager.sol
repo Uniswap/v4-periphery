@@ -121,7 +121,7 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
 
         (uint256 token0Owed, uint256 token1Owed) = _updateFeeGrowth(position);
 
-        BaseLiquidityManagement.increaseLiquidity(
+        delta = BaseLiquidityManagement.increaseLiquidity(
             position.range.key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: position.range.tickLower,
@@ -136,8 +136,8 @@ contract NonfungiblePositionManager is BaseLiquidityManagement, INonfungiblePosi
         );
         // TODO: slippage checks & test
 
-        position.tokensOwed0 = 0;
-        position.tokensOwed1 = 0;
+        delta.amount0() > 0 ? position.tokensOwed0 += uint128(delta.amount0()) : position.tokensOwed0 = 0;
+        delta.amount1() > 0 ? position.tokensOwed1 += uint128(delta.amount1()) : position.tokensOwed1 = 0;
         position.liquidity += params.liquidityDelta;
     }
 

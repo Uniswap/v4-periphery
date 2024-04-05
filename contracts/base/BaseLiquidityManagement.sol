@@ -80,7 +80,15 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         delta = abi.decode(
             poolManager.lock(
                 abi.encodeCall(
-                    this.handleIncreaseLiquidity, (msg.sender, key, params, hookData, claims, token0Owed, token1Owed)
+                    this.handleIncreaseLiquidity,
+                    (
+                        msg.sender,
+                        key,
+                        params,
+                        hookData,
+                        claims,
+                        toBalanceDelta(int128(int256(token0Owed)), int128(int256(token1Owed)))
+                    )
                 )
             ),
             (BalanceDelta)
@@ -156,8 +164,7 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata hookData,
         bool claims,
-        uint256 token0Owed,
-        uint256 token1Owed
+        BalanceDelta tokensOwed
     ) external returns (BalanceDelta delta) {
         BalanceDelta feeDelta = poolManager.modifyLiquidity(
             key,
@@ -169,14 +176,10 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
             hookData
         );
 
-        {
-            BalanceDelta d = poolManager.modifyLiquidity(key, params, hookData);
-            console2.log("d0", int256(d.amount0()));
-            console2.log("d1", int256(d.amount1()));
-        }
+        poolManager.modifyLiquidity(key, params, hookData);
 
         {
-            BalanceDelta excessFees = feeDelta - toBalanceDelta(int128(int256(token0Owed)), int128(int256(token1Owed)));
+            BalanceDelta excessFees = feeDelta - tokensOwed;
             key.currency0.take(poolManager, address(this), uint128(excessFees.amount0()), true);
             key.currency1.take(poolManager, address(this), uint128(excessFees.amount1()), true);
 
@@ -186,6 +189,7 @@ abstract contract BaseLiquidityManagement is SafeCallback, IBaseLiquidityManagem
             if (amount1Delta < 0) key.currency1.settle(poolManager, sender, uint256(-amount1Delta), claims);
             if (amount0Delta > 0) key.currency0.take(poolManager, address(this), uint256(amount0Delta), true);
             if (amount1Delta > 0) key.currency1.take(poolManager, address(this), uint256(amount1Delta), true);
+            delta = toBalanceDelta(int128(amount0Delta), int128(amount1Delta));
         }
     }
 
