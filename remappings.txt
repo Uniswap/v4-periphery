@@ -2,3 +2,4 @@
 solmate/=lib/solmate/src/
 forge-std/=lib/forge-std/src/
 @openzeppelin/=lib/openzeppelin-contracts/
+lib/v4-core:src/=lib/v4-core/src/
