@@ -12,6 +12,8 @@ import {BaseHook} from "../../BaseHook.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 type Epoch is uint232;
 
@@ -265,17 +267,21 @@ contract LimitOrder is BaseHook {
         if (delta.amount0() < 0) {
             if (delta.amount1() != 0) revert InRange();
             if (!zeroForOne) revert CrossedRange();
-            // TODO use safeTransferFrom
-            IERC20Minimal(Currency.unwrap(key.currency0)).transferFrom(
-                owner, address(poolManager), uint256(uint128(-delta.amount0()))
+            SafeERC20.safeTransferFrom(
+                IERC20(Currency.unwrap(key.currency0)),
+                owner,
+                address(poolManager),
+                uint256(uint128(-delta.amount0()))
             );
             poolManager.settle(key.currency0);
         } else {
             if (delta.amount0() != 0) revert InRange();
             if (zeroForOne) revert CrossedRange();
-            // TODO use safeTransferFrom
-            IERC20Minimal(Currency.unwrap(key.currency1)).transferFrom(
-                owner, address(poolManager), uint256(uint128(-delta.amount1()))
+            SafeERC20.safeTransferFrom(
+                IERC20(Currency.unwrap(key.currency0)),
+                owner,
+                address(poolManager),
+                uint256(uint128(-delta.amount0()))
             );
             poolManager.settle(key.currency1);
         }
