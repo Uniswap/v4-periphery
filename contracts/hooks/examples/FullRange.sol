@@ -20,6 +20,8 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import "../../libraries/LiquidityAmounts.sol";
 
@@ -264,7 +266,7 @@ contract FullRange is BaseHook, ILockCallback {
             if (sender == address(this)) {
                 currency.transfer(address(poolManager), amount);
             } else {
-                IERC20Minimal(Currency.unwrap(currency)).transferFrom(sender, address(poolManager), amount);
+                SafeERC20.safeTransferFrom(IERC20(Currency.unwrap(currency)), sender, address(poolManager), amount);
             }
             poolManager.settle(currency);
         }
