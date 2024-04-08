@@ -268,20 +268,14 @@ contract LimitOrder is BaseHook {
             if (delta.amount1() != 0) revert InRange();
             if (!zeroForOne) revert CrossedRange();
             SafeERC20.safeTransferFrom(
-                IERC20(Currency.unwrap(key.currency0)),
-                owner,
-                address(poolManager),
-                uint256(uint128(-delta.amount0()))
+                IERC20(Currency.unwrap(key.currency0)), owner, address(poolManager), uint256(uint128(-delta.amount0()))
             );
             poolManager.settle(key.currency0);
         } else {
             if (delta.amount0() != 0) revert InRange();
             if (zeroForOne) revert CrossedRange();
             SafeERC20.safeTransferFrom(
-                IERC20(Currency.unwrap(key.currency0)),
-                owner,
-                address(poolManager),
-                uint256(uint128(-delta.amount0()))
+                IERC20(Currency.unwrap(key.currency0)), owner, address(poolManager), uint256(uint128(-delta.amount0()))
             );
             poolManager.settle(key.currency1);
         }
