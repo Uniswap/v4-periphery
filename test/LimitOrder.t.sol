@@ -104,7 +104,7 @@ contract TestLimitOrder is Test, Deployers {
         router.swap(
             key,
             IPoolManager.SwapParams(false, -1 ether, SQRT_RATIO_1_1 + 1),
-            HookEnabledSwapRouter.TestSettings(true, true),
+            HookEnabledSwapRouter.TestSettings(false, false),
             ZERO_BYTES
         );
         vm.expectRevert(LimitOrder.InRange.selector);
@@ -130,7 +130,7 @@ contract TestLimitOrder is Test, Deployers {
         router.swap(
             key,
             IPoolManager.SwapParams(true, -1 ether, SQRT_RATIO_1_1 - 1),
-            HookEnabledSwapRouter.TestSettings(true, true),
+            HookEnabledSwapRouter.TestSettings(false, false),
             ZERO_BYTES
         );
         vm.expectRevert(LimitOrder.InRange.selector);
@@ -192,7 +192,7 @@ contract TestLimitOrder is Test, Deployers {
         router.swap(
             key,
             IPoolManager.SwapParams(false, -1e18, TickMath.getSqrtRatioAtTick(60)),
-            HookEnabledSwapRouter.TestSettings(true, true),
+            HookEnabledSwapRouter.TestSettings(false, false),
             ZERO_BYTES
         );
 

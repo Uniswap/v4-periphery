@@ -10,6 +10,7 @@ import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Mini
 import {IERC1155Receiver} from "@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol";
 import {BaseHook} from "../../BaseHook.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {CurrencySettleTake} from "@uniswap/v4-core/src/libraries/CurrencySettleTake.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
@@ -31,6 +32,7 @@ contract LimitOrder is BaseHook {
     using EpochLibrary for Epoch;
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
+    using CurrencySettleTake for Currency;
 
     error ZeroLiquidity();
     error InRange();
@@ -192,7 +194,7 @@ contract LimitOrder is BaseHook {
         poolManagerOnly
         returns (uint128 amount0, uint128 amount1)
     {
-        BalanceDelta delta = poolManager.modifyLiquidity(
+        (BalanceDelta _delta, BalanceDelta _feeDelta) = poolManager.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
@@ -201,6 +203,7 @@ contract LimitOrder is BaseHook {
             }),
             ZERO_BYTES
         );
+        BalanceDelta delta = _delta + _feeDelta;
 
         if (delta.amount0() > 0) {
             poolManager.mint(address(this), key.currency0.toId(), amount0 = uint128(delta.amount0()));
@@ -254,7 +257,7 @@ contract LimitOrder is BaseHook {
         int256 liquidityDelta,
         address owner
     ) external selfOnly {
-        BalanceDelta delta = poolManager.modifyLiquidity(
+        (BalanceDelta _delta, BalanceDelta _feeDelta) = poolManager.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
@@ -263,30 +266,20 @@ contract LimitOrder is BaseHook {
             }),
             ZERO_BYTES
         );
+        BalanceDelta delta = _delta + _feeDelta;
 
         if (delta.amount0() < 0) {
             if (delta.amount1() != 0) revert InRange();
             if (!zeroForOne) revert CrossedRange();
-            // TODO use safeTransferFrom
-            IERC20Minimal(Currency.unwrap(key.currency0)).transferFrom(
-                owner, address(poolManager), uint256(uint128(-delta.amount0()))
-            );
-            poolManager.settle(key.currency0);
+            key.currency0.settle(poolManager, owner, uint256(uint128(-delta.amount0())), false);
         } else {
             if (delta.amount0() != 0) revert InRange();
             if (zeroForOne) revert CrossedRange();
-            // TODO use safeTransferFrom
-            IERC20Minimal(Currency.unwrap(key.currency1)).transferFrom(
-                owner, address(poolManager), uint256(uint128(-delta.amount1()))
-            );
-            poolManager.settle(key.currency1);
+            key.currency1.settle(poolManager, owner, uint256(uint128(-delta.amount1())), false);
         }
     }
 
-    function kill(PoolKey calldata key, int24 tickLower, bool zeroForOne, address to)
-        external
-        returns (uint256 amount0, uint256 amount1)
-    {
+    function kill(PoolKey calldata key, int24 tickLower, bool zeroForOne, address to) external {
         Epoch epoch = getEpoch(key, tickLower, zeroForOne);
         EpochInfo storage epochInfo = epochInfos[epoch];
 
@@ -298,14 +291,14 @@ contract LimitOrder is BaseHook {
 
         uint256 amount0Fee;
         uint256 amount1Fee;
-        (amount0, amount1, amount0Fee, amount1Fee) = abi.decode(
+        (amount0Fee, amount1Fee) = abi.decode(
             poolManager.unlock(
                 abi.encodeCall(
                     this.unlockCallbackKill,
                     (key, tickLower, -int256(uint256(liquidity)), to, liquidity == epochInfo.liquidityTotal)
                 )
             ),
-            (uint256, uint256, uint256, uint256)
+            (uint256, uint256)
         );
         epochInfo.liquidityTotal -= liquidity;
         unchecked {
@@ -322,7 +315,7 @@ contract LimitOrder is BaseHook {
         int256 liquidityDelta,
         address to,
         bool removingAllLiquidity
-    ) external selfOnly returns (uint256 amount0, uint256 amount1, uint128 amount0Fee, uint128 amount1Fee) {
+    ) external selfOnly returns (uint128 amount0Fee, uint128 amount1Fee) {
         int24 tickUpper = tickLower + key.tickSpacing;
 
         // because `modifyPosition` includes not just principal value but also fees, we cannot allocate
@@ -330,7 +323,7 @@ contract LimitOrder is BaseHook {
         // could be unfairly diluted by a user sychronously placing then killing a limit order to skim off fees.
         // to prevent this, we allocate all fee revenue to remaining limit order placers, unless this is the last order.
         if (!removingAllLiquidity) {
-            BalanceDelta deltaFee = poolManager.modifyLiquidity(
+            (, BalanceDelta deltaFee) = poolManager.modifyLiquidity(
                 key,
                 IPoolManager.ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0}),
                 ZERO_BYTES
@@ -344,7 +337,7 @@ contract LimitOrder is BaseHook {
             }
         }
 
-        BalanceDelta delta = poolManager.modifyLiquidity(
+        (BalanceDelta _delta, BalanceDelta _feeDelta) = poolManager.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
@@ -353,12 +346,13 @@ contract LimitOrder is BaseHook {
             }),
             ZERO_BYTES
         );
+        BalanceDelta delta = _delta + _feeDelta;
 
         if (delta.amount0() > 0) {
-            poolManager.take(key.currency0, to, amount0 = uint128(delta.amount0()));
+            key.currency0.take(poolManager, to, uint256(uint128(delta.amount0())), false);
         }
         if (delta.amount1() > 0) {
-            poolManager.take(key.currency1, to, amount1 = uint128(delta.amount1()));
+            key.currency1.take(poolManager, to, uint256(uint128(delta.amount1())), false);
         }
     }
 

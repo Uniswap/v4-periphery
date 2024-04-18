@@ -19,10 +19,12 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolGetters} from "../../libraries/PoolGetters.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {CurrencySettleTake} from "@uniswap/v4-core/src/libraries/CurrencySettleTake.sol";
 
 contract TWAMM is BaseHook, ITWAMM {
     using TransferHelper for IERC20Minimal;
     using CurrencyLibrary for Currency;
+    using CurrencySettleTake for Currency;
     using OrderPool for OrderPool.State;
     using PoolIdLibrary for PoolKey;
     using TickMath for int24;
@@ -308,19 +310,17 @@ contract TWAMM is BaseHook, ITWAMM {
 
         if (swapParams.zeroForOne) {
             if (delta.amount0() < 0) {
-                key.currency0.transfer(address(poolManager), uint256(uint128(-delta.amount0())));
-                poolManager.settle(key.currency0);
+                key.currency0.settle(poolManager, uint256(uint128(-delta.amount0())), false);
             }
             if (delta.amount1() > 0) {
-                poolManager.take(key.currency1, address(this), uint256(uint128(delta.amount1())));
+                key.currency1.take(poolManager, address(this), uint256(uint128(delta.amount1())), false);
             }
         } else {
             if (delta.amount1() < 0) {
-                key.currency1.transfer(address(poolManager), uint256(uint128(-delta.amount1())));
-                poolManager.settle(key.currency1);
+                key.currency1.settle(poolManager, uint256(uint128(-delta.amount1())), false);
             }
             if (delta.amount0() > 0) {
-                poolManager.take(key.currency0, address(this), uint256(uint128(delta.amount0())));
+                key.currency0.take(poolManager, address(this), uint256(uint128(delta.amount0())), false);
             }
         }
         return bytes("");

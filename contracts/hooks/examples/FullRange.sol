@@ -8,6 +8,7 @@ import {BaseHook} from "../../BaseHook.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {CurrencySettleTake} from "@uniswap/v4-core/src/libraries/CurrencySettleTake.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
@@ -25,6 +26,7 @@ import "../../libraries/LiquidityAmounts.sol";
 
 contract FullRange is BaseHook, IUnlockCallback {
     using CurrencyLibrary for Currency;
+    using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
     using SafeCast for uint128;
@@ -253,8 +255,10 @@ contract FullRange is BaseHook, IUnlockCallback {
     }
 
     function _settleDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
-        _settleDelta(sender, key.currency0, uint128(-delta.amount0()));
-        _settleDelta(sender, key.currency1, uint128(-delta.amount1()));
+        // _settleDelta(sender, key.currency0, uint128(-delta.amount0()));
+        key.currency0.settle(poolManager, sender, uint256(int256(-delta.amount0())), false);
+        key.currency1.settle(poolManager, sender, uint256(int256(-delta.amount1())), false);
+        // _settleDelta(sender, key.currency1, uint128(-delta.amount1()));
     }
 
     function _settleDelta(address sender, Currency currency, uint128 amount) internal {
@@ -293,7 +297,8 @@ contract FullRange is BaseHook, IUnlockCallback {
         );
 
         params.liquidityDelta = -(liquidityToRemove.toInt256());
-        delta = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
+        (BalanceDelta _delta, BalanceDelta _feeDelta) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
+        delta = _delta + _feeDelta;
         pool.hasAccruedFees = false;
     }
 
@@ -310,7 +315,9 @@ contract FullRange is BaseHook, IUnlockCallback {
             delta = _removeLiquidity(data.key, data.params);
             _takeDeltas(data.sender, data.key, delta);
         } else {
-            delta = poolManager.modifyLiquidity(data.key, data.params, ZERO_BYTES);
+            (BalanceDelta _delta, BalanceDelta _feeDelta) =
+                poolManager.modifyLiquidity(data.key, data.params, ZERO_BYTES);
+            delta = _delta + _feeDelta;
             _settleDeltas(data.sender, data.key, delta);
         }
         return abi.encode(delta);
@@ -318,7 +325,7 @@ contract FullRange is BaseHook, IUnlockCallback {
 
     function _rebalance(PoolKey memory key) public {
         PoolId poolId = key.toId();
-        BalanceDelta balanceDelta = poolManager.modifyLiquidity(
+        (BalanceDelta _delta, BalanceDelta _feeDelta) = poolManager.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,
@@ -327,6 +334,7 @@ contract FullRange is BaseHook, IUnlockCallback {
             }),
             ZERO_BYTES
         );
+        BalanceDelta balanceDelta = _delta + _feeDelta;
 
         uint160 newSqrtPriceX96 = (
             FixedPointMathLib.sqrt(
@@ -354,7 +362,7 @@ contract FullRange is BaseHook, IUnlockCallback {
             uint256(uint128(balanceDelta.amount1()))
         );
 
-        BalanceDelta balanceDeltaAfter = poolManager.modifyLiquidity(
+        (BalanceDelta balanceDeltaAfter,) = poolManager.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,

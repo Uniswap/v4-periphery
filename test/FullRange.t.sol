@@ -271,7 +271,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
         HookEnabledSwapRouter.TestSettings memory settings =
-            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+            HookEnabledSwapRouter.TestSettings({takeClaims: false, settleUsingBurn: false});
 
         snapStart("FullRangeSwap");
         router.swap(key, params, settings, ZERO_BYTES);
@@ -309,7 +309,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1000 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
         HookEnabledSwapRouter.TestSettings memory settings =
-            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+            HookEnabledSwapRouter.TestSettings({takeClaims: false, settleUsingBurn: false});
 
         router.swap(key, params, settings, ZERO_BYTES);
 
@@ -334,7 +334,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         IPoolManager.SwapParams memory params =
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
         HookEnabledSwapRouter.TestSettings memory settings =
-            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+            HookEnabledSwapRouter.TestSettings({takeClaims: false, settleUsingBurn: false});
 
         snapStart("FullRangeFirstSwap");
         router.swap(testKey, params, settings, ZERO_BYTES);
@@ -370,7 +370,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 10000000, sqrtPriceLimitX96: SQRT_RATIO_1_2});
 
         HookEnabledSwapRouter.TestSettings memory testSettings =
-            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+            HookEnabledSwapRouter.TestSettings({takeClaims: false, settleUsingBurn: false});
 
         router.swap(key, params, testSettings, ZERO_BYTES);
         router.swap(key2, params, testSettings, ZERO_BYTES);
@@ -553,7 +553,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_RATIO_1_2});
 
         HookEnabledSwapRouter.TestSettings memory testSettings =
-            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+            HookEnabledSwapRouter.TestSettings({takeClaims: false, settleUsingBurn: false});
 
         router.swap(keyWithLiq, params, testSettings, ZERO_BYTES);
 
@@ -680,7 +680,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 100 ether, sqrtPriceLimitX96: SQRT_RATIO_1_4});
 
         HookEnabledSwapRouter.TestSettings memory testSettings =
-            HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+            HookEnabledSwapRouter.TestSettings({takeClaims: false, settleUsingBurn: false});
 
         router.swap(key, params, testSettings, ZERO_BYTES);
 
@@ -735,7 +735,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             });
 
             HookEnabledSwapRouter.TestSettings memory testSettings =
-                HookEnabledSwapRouter.TestSettings({withdrawTokens: true, settleUsingTransfer: true});
+                HookEnabledSwapRouter.TestSettings({takeClaims: false, settleUsingBurn: false});
 
             router.swap(key, params, testSettings, ZERO_BYTES);
 
