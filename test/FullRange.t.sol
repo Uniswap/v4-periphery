@@ -27,7 +27,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     using CurrencyLibrary for Currency;
 
     event Initialize(
-        PoolId indexed poolId,
+        PoolId poolId,
         Currency indexed currency0,
         Currency indexed currency1,
         uint24 fee,
@@ -39,7 +39,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     );
     event Swap(
         PoolId indexed id,
-        address indexed sender,
+        address sender,
         int128 amount0,
         int128 amount1,
         uint160 sqrtPriceX96,
