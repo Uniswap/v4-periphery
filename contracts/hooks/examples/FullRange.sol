@@ -261,23 +261,8 @@ contract FullRange is BaseHook, IUnlockCallback {
     }
 
     function _settleDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
-        // _settleDelta(sender, key.currency0, uint128(-delta.amount0()));
         key.currency0.settle(poolManager, sender, uint256(int256(-delta.amount0())), false);
         key.currency1.settle(poolManager, sender, uint256(int256(-delta.amount1())), false);
-        // _settleDelta(sender, key.currency1, uint128(-delta.amount1()));
-    }
-
-    function _settleDelta(address sender, Currency currency, uint128 amount) internal {
-        if (currency.isNative()) {
-            poolManager.settle{value: amount}(currency);
-        } else {
-            if (sender == address(this)) {
-                currency.transfer(address(poolManager), amount);
-            } else {
-                IERC20Minimal(Currency.unwrap(currency)).transferFrom(sender, address(poolManager), amount);
-            }
-            poolManager.settle(currency);
-        }
     }
 
     function _takeDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
