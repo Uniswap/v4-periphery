@@ -261,7 +261,7 @@ contract LimitOrder is BaseHook {
         int256 liquidityDelta,
         address owner
     ) external selfOnly {
-        (BalanceDelta _delta, BalanceDelta _feeDelta) = poolManager.modifyLiquidity(
+        (BalanceDelta delta,) = poolManager.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
@@ -271,7 +271,6 @@ contract LimitOrder is BaseHook {
             }),
             ZERO_BYTES
         );
-        BalanceDelta delta = _delta + _feeDelta;
 
         if (delta.amount0() < 0) {
             if (delta.amount1() != 0) revert InRange();
@@ -347,7 +346,7 @@ contract LimitOrder is BaseHook {
             }
         }
 
-        (BalanceDelta _delta, BalanceDelta _feeDelta) = poolManager.modifyLiquidity(
+        (BalanceDelta delta,) = poolManager.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
@@ -357,7 +356,6 @@ contract LimitOrder is BaseHook {
             }),
             ZERO_BYTES
         );
-        BalanceDelta delta = _delta + _feeDelta;
 
         if (delta.amount0() > 0) {
             key.currency0.take(poolManager, to, uint256(uint128(delta.amount0())), false);
