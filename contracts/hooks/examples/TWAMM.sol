@@ -314,22 +314,14 @@ contract TWAMM is BaseHook, ITWAMM {
 
         if (swapParams.zeroForOne) {
             if (delta.amount0() < 0) {
-                // TODO: use settle syntax when it supports transfers
-                // key.currency0.settle(poolManager, uint256(uint128(-delta.amount0())), false);
-                poolManager.sync(key.currency0);
-                key.currency0.transfer(address(poolManager), uint256(uint128(-delta.amount0())));
-                poolManager.settle(key.currency0);
+                key.currency0.settle(poolManager, address(this), uint256(uint128(-delta.amount0())), false);
             }
             if (delta.amount1() > 0) {
                 key.currency1.take(poolManager, address(this), uint256(uint128(delta.amount1())), false);
             }
         } else {
             if (delta.amount1() < 0) {
-                // TODO: use settle syntax when it supports transfers
-                // key.currency1.settle(poolManager, uint256(uint128(-delta.amount1())), false);
-                poolManager.sync(key.currency1);
-                key.currency1.transfer(address(poolManager), uint256(uint128(-delta.amount1())));
-                poolManager.settle(key.currency1);
+                key.currency1.settle(poolManager, address(this), uint256(uint128(-delta.amount1())), false);
             }
             if (delta.amount0() > 0) {
                 key.currency0.take(poolManager, address(this), uint256(uint128(delta.amount0())), false);
