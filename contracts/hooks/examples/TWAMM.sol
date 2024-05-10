@@ -73,7 +73,11 @@ contract TWAMM is BaseHook, ITWAMM {
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: false,
+            beforeSwapReturnDelta: false,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
         });
     }
 
@@ -103,10 +107,10 @@ contract TWAMM is BaseHook, ITWAMM {
         external
         override
         poolManagerOnly
-        returns (bytes4)
+        returns (bytes4, int128)
     {
         executeTWAMMOrders(key);
-        return BaseHook.beforeSwap.selector;
+        return (BaseHook.beforeSwap.selector, 0);
     }
 
     function lastVirtualOrderTimestamp(PoolId key) external view returns (uint256) {

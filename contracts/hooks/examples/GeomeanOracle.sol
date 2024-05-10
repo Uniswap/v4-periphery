@@ -71,7 +71,11 @@ contract GeomeanOracle is BaseHook {
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: false,
+            beforeSwapReturnDelta: false,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
         });
     }
 
@@ -140,10 +144,10 @@ contract GeomeanOracle is BaseHook {
         external
         override
         poolManagerOnly
-        returns (bytes4)
+        returns (bytes4, int128)
     {
         _updatePool(key);
-        return GeomeanOracle.beforeSwap.selector;
+        return (GeomeanOracle.beforeSwap.selector, 0);
     }
 
     /// @notice Observe the given pool for the timestamps

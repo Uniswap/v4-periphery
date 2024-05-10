@@ -120,7 +120,7 @@ contract TestGeomeanOracle is Test, Deployers {
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
-                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000, 0
             ),
             ZERO_BYTES
         );
@@ -143,7 +143,7 @@ contract TestGeomeanOracle is Test, Deployers {
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
-                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000, 0
             ),
             ZERO_BYTES
         );
@@ -172,7 +172,7 @@ contract TestGeomeanOracle is Test, Deployers {
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
-                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000, 0
             ),
             ZERO_BYTES
         );
@@ -204,7 +204,7 @@ contract TestGeomeanOracle is Test, Deployers {
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
-                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000, 0
             ),
             ZERO_BYTES
         );
@@ -213,7 +213,7 @@ contract TestGeomeanOracle is Test, Deployers {
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
-                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), -1000
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), -1000, 0
             ),
             ZERO_BYTES
         );

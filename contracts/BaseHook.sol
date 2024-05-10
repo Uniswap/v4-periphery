@@ -95,7 +95,7 @@ abstract contract BaseHook is IHooks {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external virtual returns (bytes4) {
+    ) external virtual returns (bytes4, BalanceDelta) {
         revert HookNotImplemented();
     }
 
@@ -105,14 +105,14 @@ abstract contract BaseHook is IHooks {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external virtual returns (bytes4) {
+    ) external virtual returns (bytes4, BalanceDelta) {
         revert HookNotImplemented();
     }
 
     function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
         external
         virtual
-        returns (bytes4)
+        returns (bytes4, int128)
     {
         revert HookNotImplemented();
     }
@@ -120,7 +120,7 @@ abstract contract BaseHook is IHooks {
     function afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
         external
         virtual
-        returns (bytes4)
+        returns (bytes4, int128)
     {
         revert HookNotImplemented();
     }

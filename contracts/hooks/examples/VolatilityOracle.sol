@@ -34,7 +34,11 @@ contract VolatilityOracle is BaseHook {
             beforeSwap: false,
             afterSwap: false,
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: false,
+            beforeSwapReturnDelta: false,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
         });
     }
 

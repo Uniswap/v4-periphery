@@ -86,7 +86,11 @@ contract LimitOrder is BaseHook {
             beforeSwap: false,
             afterSwap: true,
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: false,
+            beforeSwapReturnDelta: false,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
         });
     }
 
@@ -136,9 +140,9 @@ contract LimitOrder is BaseHook {
         IPoolManager.SwapParams calldata params,
         BalanceDelta,
         bytes calldata
-    ) external override poolManagerOnly returns (bytes4) {
+    ) external override poolManagerOnly returns (bytes4, int128) {
         (int24 tickLower, int24 lower, int24 upper) = _getCrossedTicks(key.toId(), key.tickSpacing);
-        if (lower > upper) return LimitOrder.afterSwap.selector;
+        if (lower > upper) return (LimitOrder.afterSwap.selector, 0);
 
         // note that a zeroForOne swap means that the pool is actually gaining token0, so limit
         // order fills are the opposite of swap fills, hence the inversion below
@@ -148,7 +152,7 @@ contract LimitOrder is BaseHook {
         }
 
         setTickLowerLast(key.toId(), tickLower);
-        return LimitOrder.afterSwap.selector;
+        return (LimitOrder.afterSwap.selector, 0);
     }
 
     function _fillEpoch(PoolKey calldata key, int24 lower, bool zeroForOne) internal {
@@ -194,16 +198,16 @@ contract LimitOrder is BaseHook {
         poolManagerOnly
         returns (uint128 amount0, uint128 amount1)
     {
-        (BalanceDelta _delta, BalanceDelta _feeDelta) = poolManager.modifyLiquidity(
+        (BalanceDelta delta,) = poolManager.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
                 tickUpper: tickLower + key.tickSpacing,
-                liquidityDelta: liquidityDelta
+                liquidityDelta: liquidityDelta,
+                salt: 0
             }),
             ZERO_BYTES
         );
-        BalanceDelta delta = _delta + _feeDelta;
 
         if (delta.amount0() > 0) {
             poolManager.mint(address(this), key.currency0.toId(), amount0 = uint128(delta.amount0()));
@@ -262,7 +266,8 @@ contract LimitOrder is BaseHook {
             IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
                 tickUpper: tickLower + key.tickSpacing,
-                liquidityDelta: liquidityDelta
+                liquidityDelta: liquidityDelta,
+                salt: 0
             }),
             ZERO_BYTES
         );
@@ -325,7 +330,12 @@ contract LimitOrder is BaseHook {
         if (!removingAllLiquidity) {
             (, BalanceDelta deltaFee) = poolManager.modifyLiquidity(
                 key,
-                IPoolManager.ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0}),
+                IPoolManager.ModifyLiquidityParams({
+                    tickLower: tickLower,
+                    tickUpper: tickUpper,
+                    liquidityDelta: 0,
+                    salt: 0
+                }),
                 ZERO_BYTES
             );
 
@@ -342,7 +352,8 @@ contract LimitOrder is BaseHook {
             IPoolManager.ModifyLiquidityParams({
                 tickLower: tickLower,
                 tickUpper: tickUpper,
-                liquidityDelta: liquidityDelta
+                liquidityDelta: liquidityDelta,
+                salt: 0
             }),
             ZERO_BYTES
         );

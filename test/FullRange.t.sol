@@ -758,7 +758,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         vm.expectRevert(FullRange.SenderMustBeHook.selector);
         modifyLiquidityRouter.modifyLiquidity(
             key,
-            IPoolManager.ModifyLiquidityParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: 100}),
+            IPoolManager.ModifyLiquidityParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: 100, salt: 0}),
             ZERO_BYTES
         );
     }

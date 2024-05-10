@@ -100,7 +100,11 @@ contract FullRange is BaseHook, IUnlockCallback {
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: false,
+            beforeSwapReturnDelta: false,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
         });
     }
 
@@ -143,7 +147,8 @@ contract FullRange is BaseHook, IUnlockCallback {
             IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
-                liquidityDelta: liquidity.toInt256()
+                liquidityDelta: liquidity.toInt256(),
+                salt: 0
             })
         );
 
@@ -187,7 +192,8 @@ contract FullRange is BaseHook, IUnlockCallback {
             IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
-                liquidityDelta: -(params.liquidity.toInt256())
+                liquidityDelta: -(params.liquidity.toInt256()),
+                salt: 0
             })
         );
 
@@ -235,7 +241,7 @@ contract FullRange is BaseHook, IUnlockCallback {
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
-        returns (bytes4)
+        returns (bytes4, int128)
     {
         PoolId poolId = key.toId();
 
@@ -244,7 +250,7 @@ contract FullRange is BaseHook, IUnlockCallback {
             pool.hasAccruedFees = true;
         }
 
-        return IHooks.beforeSwap.selector;
+        return (IHooks.beforeSwap.selector, 0);
     }
 
     function modifyLiquidity(PoolKey memory key, IPoolManager.ModifyLiquidityParams memory params)
@@ -297,8 +303,7 @@ contract FullRange is BaseHook, IUnlockCallback {
         );
 
         params.liquidityDelta = -(liquidityToRemove.toInt256());
-        (BalanceDelta _delta, BalanceDelta _feeDelta) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
-        delta = _delta + _feeDelta;
+        (delta,) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
         pool.hasAccruedFees = false;
     }
 
@@ -315,9 +320,7 @@ contract FullRange is BaseHook, IUnlockCallback {
             delta = _removeLiquidity(data.key, data.params);
             _takeDeltas(data.sender, data.key, delta);
         } else {
-            (BalanceDelta _delta, BalanceDelta _feeDelta) =
-                poolManager.modifyLiquidity(data.key, data.params, ZERO_BYTES);
-            delta = _delta + _feeDelta;
+            (delta,) = poolManager.modifyLiquidity(data.key, data.params, ZERO_BYTES);
             _settleDeltas(data.sender, data.key, delta);
         }
         return abi.encode(delta);
@@ -325,16 +328,16 @@ contract FullRange is BaseHook, IUnlockCallback {
 
     function _rebalance(PoolKey memory key) public {
         PoolId poolId = key.toId();
-        (BalanceDelta _delta, BalanceDelta _feeDelta) = poolManager.modifyLiquidity(
+        (BalanceDelta balanceDelta,) = poolManager.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
-                liquidityDelta: -(poolManager.getLiquidity(poolId).toInt256())
+                liquidityDelta: -(poolManager.getLiquidity(poolId).toInt256()),
+                salt: 0
             }),
             ZERO_BYTES
         );
-        BalanceDelta balanceDelta = _delta + _feeDelta;
 
         uint160 newSqrtPriceX96 = (
             FixedPointMathLib.sqrt(
@@ -367,7 +370,8 @@ contract FullRange is BaseHook, IUnlockCallback {
             IPoolManager.ModifyLiquidityParams({
                 tickLower: MIN_TICK,
                 tickUpper: MAX_TICK,
-                liquidityDelta: liquidity.toInt256()
+                liquidityDelta: liquidity.toInt256(),
+                salt: 0
             }),
             ZERO_BYTES
         );

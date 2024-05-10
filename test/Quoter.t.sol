@@ -550,7 +550,8 @@ contract QuoterTest is Test, Deployers {
             IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
-                calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256()
+                calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
+                0
             ),
             ZERO_BYTES
         );
@@ -565,21 +566,22 @@ contract QuoterTest is Test, Deployers {
             IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
-                calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256()
+                calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
+                0
             ),
             ZERO_BYTES
         );
         positionManager.modifyLiquidity(
             poolKey,
             IPoolManager.ModifyLiquidityParams(
-                -60, 60, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -60, 60, 100, 100).toInt256()
+                -60, 60, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -60, 60, 100, 100).toInt256(), 0
             ),
             ZERO_BYTES
         );
         positionManager.modifyLiquidity(
             poolKey,
             IPoolManager.ModifyLiquidityParams(
-                -120, 120, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -120, 120, 100, 100).toInt256()
+                -120, 120, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -120, 120, 100, 100).toInt256(), 0
             ),
             ZERO_BYTES
         );
@@ -599,21 +601,22 @@ contract QuoterTest is Test, Deployers {
             IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
-                calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256()
+                calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
+                0
             ),
             ZERO_BYTES
         );
         positionManager.modifyLiquidity(
             poolKey,
             IPoolManager.ModifyLiquidityParams(
-                0, 60, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, 0, 60, 100, 100).toInt256()
+                0, 60, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, 0, 60, 100, 100).toInt256(), 0
             ),
             ZERO_BYTES
         );
         positionManager.modifyLiquidity(
             poolKey,
             IPoolManager.ModifyLiquidityParams(
-                -120, 0, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -120, 0, 100, 100).toInt256()
+                -120, 0, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -120, 0, 100, 100).toInt256(), 0
             ),
             ZERO_BYTES
         );
