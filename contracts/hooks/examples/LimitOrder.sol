@@ -217,7 +217,9 @@ contract LimitOrder is BaseHook {
         if (liquidity == 0) revert ZeroLiquidity();
 
         poolManager.unlock(
-            abi.encodeCall(this.unlockCallbackPlace, (key, tickLower, zeroForOne, int256(uint256(liquidity)), msg.sender))
+            abi.encodeCall(
+                this.unlockCallbackPlace, (key, tickLower, zeroForOne, int256(uint256(liquidity)), msg.sender)
+            )
         );
 
         EpochInfo storage epochInfo;
@@ -379,7 +381,9 @@ contract LimitOrder is BaseHook {
         epochInfo.liquidityTotal = liquidityTotal - liquidity;
 
         poolManager.unlock(
-            abi.encodeCall(this.unlockCallbackWithdraw, (epochInfo.currency0, epochInfo.currency1, amount0, amount1, to))
+            abi.encodeCall(
+                this.unlockCallbackWithdraw, (epochInfo.currency0, epochInfo.currency1, amount0, amount1, to)
+            )
         );
 
         emit Withdraw(msg.sender, epoch, liquidity);

@@ -142,7 +142,9 @@ contract TWAMM is BaseHook, ITWAMM {
         );
 
         if (sqrtPriceLimitX96 != 0 && sqrtPriceLimitX96 != sqrtPriceX96) {
-            poolManager.unlock(abi.encode(key, IPoolManager.SwapParams(zeroForOne, type(int256).max, sqrtPriceLimitX96)));
+            poolManager.unlock(
+                abi.encode(key, IPoolManager.SwapParams(zeroForOne, type(int256).max, sqrtPriceLimitX96))
+            );
         }
     }
 
