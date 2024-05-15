@@ -119,11 +119,11 @@ contract QuoterTest is Test, Deployers {
         assertEq(initializedTicksLoaded, 2);
     }
 
-    // nested self-call into lockAcquired reverts
-    function testQuoter_callLockAcquired_reverts() public {
+    // nested self-call into unlockCallback reverts
+    function testQuoter_callUnlockCallback_reverts() public {
         vm.expectRevert(IQuoter.LockFailure.selector);
         vm.prank(address(manager));
-        quoter.lockAcquired(abi.encodeWithSelector(quoter.lockAcquired.selector, address(this), "0x"));
+        quoter.unlockCallback(abi.encodeWithSelector(quoter.unlockCallback.selector, address(this), "0x"));
     }
 
     function testQuoter_quoteExactInput_0to2_2TicksLoaded() public {
