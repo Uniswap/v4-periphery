@@ -69,7 +69,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
             }
         }
 
-        (poolKey, poolId) = initPool(currency0, currency1, twamm, 3000, SQRT_RATIO_1_1, ZERO_BYTES);
+        (poolKey, poolId) = initPool(currency0, currency1, twamm, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
         token0.approve(address(modifyLiquidityRouter), 100 ether);
         token1.approve(address(modifyLiquidityRouter), 100 ether);
@@ -93,7 +93,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
 
-        manager.initialize(initKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(initKey, SQRT_PRICE_1_1, ZERO_BYTES);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 10000);
     }
 

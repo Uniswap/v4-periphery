@@ -19,10 +19,12 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 contract QuoterTest is Test, Deployers {
     using SafeCast for *;
     using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
 
     // Min tick for full range with tick spacing of 60
     int24 internal constant MIN_TICK = -887220;
@@ -542,7 +544,7 @@ contract QuoterTest is Test, Deployers {
     }
 
     function setupPool(PoolKey memory poolKey) internal {
-        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(poolKey, SQRT_PRICE_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity(
@@ -550,7 +552,7 @@ contract QuoterTest is Test, Deployers {
             IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
-                calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
+                calculateLiquidityFromAmounts(SQRT_PRICE_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
                 0
             ),
             ZERO_BYTES
@@ -558,7 +560,7 @@ contract QuoterTest is Test, Deployers {
     }
 
     function setupPoolMultiplePositions(PoolKey memory poolKey) internal {
-        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(poolKey, SQRT_PRICE_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity(
@@ -566,7 +568,7 @@ contract QuoterTest is Test, Deployers {
             IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
-                calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
+                calculateLiquidityFromAmounts(SQRT_PRICE_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
                 0
             ),
             ZERO_BYTES
@@ -574,14 +576,14 @@ contract QuoterTest is Test, Deployers {
         positionManager.modifyLiquidity(
             poolKey,
             IPoolManager.ModifyLiquidityParams(
-                -60, 60, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -60, 60, 100, 100).toInt256(), 0
+                -60, 60, calculateLiquidityFromAmounts(SQRT_PRICE_1_1, -60, 60, 100, 100).toInt256(), 0
             ),
             ZERO_BYTES
         );
         positionManager.modifyLiquidity(
             poolKey,
             IPoolManager.ModifyLiquidityParams(
-                -120, 120, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -120, 120, 100, 100).toInt256(), 0
+                -120, 120, calculateLiquidityFromAmounts(SQRT_PRICE_1_1, -120, 120, 100, 100).toInt256(), 0
             ),
             ZERO_BYTES
         );
@@ -591,7 +593,7 @@ contract QuoterTest is Test, Deployers {
         PoolId poolId = poolKey.toId();
         (uint160 sqrtPriceX96,,,) = manager.getSlot0(poolId);
         if (sqrtPriceX96 == 0) {
-            manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+            manager.initialize(poolKey, SQRT_PRICE_1_1, ZERO_BYTES);
         }
 
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
@@ -601,7 +603,7 @@ contract QuoterTest is Test, Deployers {
             IPoolManager.ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
-                calculateLiquidityFromAmounts(SQRT_RATIO_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
+                calculateLiquidityFromAmounts(SQRT_PRICE_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
                 0
             ),
             ZERO_BYTES
@@ -609,14 +611,14 @@ contract QuoterTest is Test, Deployers {
         positionManager.modifyLiquidity(
             poolKey,
             IPoolManager.ModifyLiquidityParams(
-                0, 60, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, 0, 60, 100, 100).toInt256(), 0
+                0, 60, calculateLiquidityFromAmounts(SQRT_PRICE_1_1, 0, 60, 100, 100).toInt256(), 0
             ),
             ZERO_BYTES
         );
         positionManager.modifyLiquidity(
             poolKey,
             IPoolManager.ModifyLiquidityParams(
-                -120, 0, calculateLiquidityFromAmounts(SQRT_RATIO_1_1, -120, 0, 100, 100).toInt256(), 0
+                -120, 0, calculateLiquidityFromAmounts(SQRT_PRICE_1_1, -120, 0, 100, 100).toInt256(), 0
             ),
             ZERO_BYTES
         );
@@ -629,8 +631,8 @@ contract QuoterTest is Test, Deployers {
         uint256 amount0,
         uint256 amount1
     ) internal pure returns (uint128 liquidity) {
-        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
-        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+        uint160 sqrtRatioAX96 = TickMath.getSqrtPriceAtTick(tickLower);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtPriceAtTick(tickUpper);
         liquidity =
             LiquidityAmounts.getLiquidityForAmounts(sqrtRatioX96, sqrtRatioAX96, sqrtRatioBX96, amount0, amount1);
     }

@@ -21,6 +21,7 @@ import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import "../../libraries/LiquidityAmounts.sol";
 
@@ -30,6 +31,7 @@ contract FullRange is BaseHook, IUnlockCallback {
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
     using SafeCast for uint128;
+    using StateLibrary for IPoolManager;
 
     /// @notice Thrown when trying to interact with a non-initialized pool
     error PoolNotInitialized();
@@ -133,8 +135,8 @@ contract FullRange is BaseHook, IUnlockCallback {
 
         liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtRatioAtTick(MIN_TICK),
-            TickMath.getSqrtRatioAtTick(MAX_TICK),
+            TickMath.getSqrtPriceAtTick(MIN_TICK),
+            TickMath.getSqrtPriceAtTick(MAX_TICK),
             params.amount0Desired,
             params.amount1Desired
         );
@@ -344,8 +346,8 @@ contract FullRange is BaseHook, IUnlockCallback {
 
         uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             newSqrtPriceX96,
-            TickMath.getSqrtRatioAtTick(MIN_TICK),
-            TickMath.getSqrtRatioAtTick(MAX_TICK),
+            TickMath.getSqrtPriceAtTick(MIN_TICK),
+            TickMath.getSqrtPriceAtTick(MAX_TICK),
             uint256(uint128(balanceDelta.amount0())),
             uint256(uint128(balanceDelta.amount1()))
         );

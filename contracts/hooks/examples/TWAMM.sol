@@ -20,6 +20,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolGetters} from "../../libraries/PoolGetters.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {CurrencySettleTake} from "@uniswap/v4-core/src/libraries/CurrencySettleTake.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 contract TWAMM is BaseHook, ITWAMM {
     using TransferHelper for IERC20Minimal;
@@ -32,6 +33,7 @@ contract TWAMM is BaseHook, ITWAMM {
     using SafeCast for uint256;
     using PoolGetters for IPoolManager;
     using TickBitmap for mapping(int16 => uint256);
+    using StateLibrary for IPoolManager;
 
     bytes internal constant ZERO_BYTES = bytes("");
 
@@ -518,8 +520,8 @@ contract TWAMM is BaseHook, ITWAMM {
                 _isCrossingInitializedTick(params.pool, poolManager, poolKey, finalSqrtPriceX96);
 
             if (crossingInitializedTick) {
-                int128 liquidityNetAtTick = poolManager.getPoolTickInfo(poolKey.toId(), tick).liquidityNet;
-                uint160 initializedSqrtPrice = TickMath.getSqrtRatioAtTick(tick);
+                (, int128 liquidityNetAtTick) = poolManager.getTickLiquidity(poolKey.toId(), tick);
+                uint160 initializedSqrtPrice = TickMath.getSqrtPriceAtTick(tick);
 
                 uint256 swapDelta0 = SqrtPriceMath.getAmount0Delta(
                     params.pool.sqrtPriceX96, initializedSqrtPrice, params.pool.liquidity, true
@@ -576,7 +578,7 @@ contract TWAMM is BaseHook, ITWAMM {
         PoolKey memory poolKey,
         TickCrossingParams memory params
     ) private returns (PoolParamsOnExecute memory, uint256) {
-        uint160 initializedSqrtPrice = params.initializedTick.getSqrtRatioAtTick();
+        uint160 initializedSqrtPrice = params.initializedTick.getSqrtPriceAtTick();
 
         uint256 secondsUntilCrossingX96 = TwammMath.calculateTimeBetweenTicks(
             params.pool.liquidity,
@@ -602,7 +604,7 @@ contract TWAMM is BaseHook, ITWAMM {
 
         unchecked {
             // update pool
-            int128 liquidityNet = poolManager.getPoolTickInfo(poolKey.toId(), params.initializedTick).liquidityNet;
+            (, int128 liquidityNet) = poolManager.getTickLiquidity(poolKey.toId(), params.initializedTick);
             if (initializedSqrtPrice < params.pool.sqrtPriceX96) liquidityNet = -liquidityNet;
             params.pool.liquidity = liquidityNet < 0
                 ? params.pool.liquidity - uint128(-liquidityNet)
@@ -620,8 +622,8 @@ contract TWAMM is BaseHook, ITWAMM {
         uint160 nextSqrtPriceX96
     ) internal view returns (bool crossingInitializedTick, int24 nextTickInit) {
         // use current price as a starting point for nextTickInit
-        nextTickInit = pool.sqrtPriceX96.getTickAtSqrtRatio();
-        int24 targetTick = nextSqrtPriceX96.getTickAtSqrtRatio();
+        nextTickInit = pool.sqrtPriceX96.getTickAtSqrtPrice();
+        int24 targetTick = nextSqrtPriceX96.getTickAtSqrtPrice();
         bool searchingLeft = nextSqrtPriceX96 < pool.sqrtPriceX96;
         bool nextTickInitFurtherThanTarget = false; // initialize as false
 
