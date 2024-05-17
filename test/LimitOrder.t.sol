@@ -84,7 +84,8 @@ contract TestLimitOrder is Test, Deployers {
         uint128 liquidity = 1000000;
         limitOrder.place(key, tickLower, zeroForOne, liquidity);
         assertTrue(EpochLibrary.equals(limitOrder.getEpoch(key, tickLower, zeroForOne), Epoch.wrap(1)));
-        assertEq(manager.getLiquidity(id, address(limitOrder), tickLower, tickLower + 60, 0), liquidity);
+
+        assertEq(manager.getPosition(id, address(limitOrder), tickLower, tickLower + 60, 0).liquidity, liquidity);
     }
 
     function testZeroForOneLeftBoundaryOfCurrentRange() public {
@@ -93,7 +94,7 @@ contract TestLimitOrder is Test, Deployers {
         uint128 liquidity = 1000000;
         limitOrder.place(key, tickLower, zeroForOne, liquidity);
         assertTrue(EpochLibrary.equals(limitOrder.getEpoch(key, tickLower, zeroForOne), Epoch.wrap(1)));
-        assertEq(manager.getLiquidity(id, address(limitOrder), tickLower, tickLower + 60, 0), liquidity);
+        assertEq(manager.getPosition(id, address(limitOrder), tickLower, tickLower + 60, 0).liquidity, liquidity);
     }
 
     function testZeroForOneCrossedRangeRevert() public {
@@ -119,7 +120,7 @@ contract TestLimitOrder is Test, Deployers {
         uint128 liquidity = 1000000;
         limitOrder.place(key, tickLower, zeroForOne, liquidity);
         assertTrue(EpochLibrary.equals(limitOrder.getEpoch(key, tickLower, zeroForOne), Epoch.wrap(1)));
-        assertEq(manager.getPosition(id, address(limitOrder), tickLower, tickLower + 60, 0), liquidity);
+        assertEq(manager.getPosition(id, address(limitOrder), tickLower, tickLower + 60, 0).liquidity, liquidity);
     }
 
     function testNotZeroForOneCrossedRangeRevert() public {
@@ -153,7 +154,7 @@ contract TestLimitOrder is Test, Deployers {
         limitOrder.place(key, tickLower, zeroForOne, liquidity);
         vm.stopPrank();
         assertTrue(EpochLibrary.equals(limitOrder.getEpoch(key, tickLower, zeroForOne), Epoch.wrap(1)));
-        assertEq(manager.getLiquidity(id, address(limitOrder), tickLower, tickLower + 60, 0), liquidity * 2);
+        assertEq(manager.getPosition(id, address(limitOrder), tickLower, tickLower + 60, 0).liquidity, liquidity * 2);
 
         (
             bool filled,
@@ -207,7 +208,7 @@ contract TestLimitOrder is Test, Deployers {
         assertTrue(filled);
         assertEq(token0Total, 0);
         assertEq(token1Total, 2996 + 17); // 3013, 2 wei of dust
-        assertEq(manager.getLiquidity(id, address(limitOrder), tickLower, tickLower + 60, 0), 0);
+        assertEq(manager.getPosition(id, address(limitOrder), tickLower, tickLower + 60, 0).liquidity, 0);
 
         vm.expectEmit(true, true, true, true, address(token1));
         emit Transfer(address(manager), new GetSender().sender(), 2996 + 17);

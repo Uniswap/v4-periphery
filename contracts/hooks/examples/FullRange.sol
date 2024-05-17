@@ -22,6 +22,7 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 import "../../libraries/LiquidityAmounts.sol";
 
@@ -243,7 +244,7 @@ contract FullRange is BaseHook, IUnlockCallback {
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
-        returns (bytes4, int128)
+        returns (bytes4, BeforeSwapDelta, uint24)
     {
         PoolId poolId = key.toId();
 
@@ -252,7 +253,7 @@ contract FullRange is BaseHook, IUnlockCallback {
             pool.hasAccruedFees = true;
         }
 
-        return (IHooks.beforeSwap.selector, 0);
+        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     function modifyLiquidity(PoolKey memory key, IPoolManager.ModifyLiquidityParams memory params)

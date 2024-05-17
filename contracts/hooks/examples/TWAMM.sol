@@ -21,6 +21,7 @@ import {PoolGetters} from "../../libraries/PoolGetters.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {CurrencySettleTake} from "@uniswap/v4-core/src/libraries/CurrencySettleTake.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 contract TWAMM is BaseHook, ITWAMM {
     using TransferHelper for IERC20Minimal;
@@ -109,10 +110,10 @@ contract TWAMM is BaseHook, ITWAMM {
         external
         override
         poolManagerOnly
-        returns (bytes4, int128)
+        returns (bytes4, BeforeSwapDelta, uint24)
     {
         executeTWAMMOrders(key);
-        return (BaseHook.beforeSwap.selector, 0);
+        return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     function lastVirtualOrderTimestamp(PoolId key) external view returns (uint256) {

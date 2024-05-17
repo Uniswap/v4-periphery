@@ -9,6 +9,7 @@ import {Oracle} from "../../libraries/Oracle.sol";
 import {BaseHook} from "../../BaseHook.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 /// @notice A hook for a pool that allows a Uniswap pool to act as an oracle. Pools that use this hook must have full range
 ///     tick spacing and liquidity is always permanently locked in these pools. This is the suggested configuration
@@ -146,10 +147,10 @@ contract GeomeanOracle is BaseHook {
         external
         override
         poolManagerOnly
-        returns (bytes4, int128)
+        returns (bytes4, BeforeSwapDelta, uint24)
     {
         _updatePool(key);
-        return (GeomeanOracle.beforeSwap.selector, 0);
+        return (GeomeanOracle.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     /// @notice Observe the given pool for the timestamps
