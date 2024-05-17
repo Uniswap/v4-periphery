@@ -43,16 +43,13 @@ library PoolTicksCounter {
             // If the initializable tick after the swap is initialized, our original tickAfter is a
             // multiple of tick spacing, and we are swapping downwards we know that tickAfter is initialized
             // and we shouldn't count it.
-            // uint256 bmAfter = self.getPoolBitmapInfo(key.toId(), wordPosAfter);
             uint256 bmAfter = self.getTickBitmap(key.toId(), wordPosAfter);
-            //uint256 bmAfter = PoolGetters.getTickBitmapAtWord(self, key.toId(), wordPosAfter);
             cache.tickAfterInitialized =
                 ((bmAfter & (1 << bitPosAfter)) > 0) && ((tickAfter % key.tickSpacing) == 0) && (tickBefore > tickAfter);
 
             // In the case where tickBefore is initialized, we only want to count it if we are swapping upwards.
             // Use the same logic as above to decide whether we should count tickBefore or not.
             uint256 bmBefore = self.getTickBitmap(key.toId(), wordPos);
-            //uint256 bmBefore = PoolGetters.getTickBitmapAtWord(self, key.toId(), wordPos);
             cache.tickBeforeInitialized =
                 ((bmBefore & (1 << bitPos)) > 0) && ((tickBefore % key.tickSpacing) == 0) && (tickBefore < tickAfter);
 
@@ -79,7 +76,6 @@ library PoolTicksCounter {
                 mask = mask & (type(uint256).max >> (255 - cache.bitPosHigher));
             }
 
-            //uint256 bmLower = PoolGetters.getTickBitmapAtWord(self, key.toId(), cache.wordPosLower);
             uint256 bmLower = self.getTickBitmap(key.toId(), cache.wordPosLower);
             uint256 masked = bmLower & mask;
             initializedTicksLoaded += countOneBits(masked);

@@ -13,6 +13,7 @@ library PoolGetters {
     uint256 constant POOL_SLOT = 10;
     uint256 constant TICKS_OFFSET = 4;
     uint256 constant TICK_BITMAP_OFFSET = 5;
+
     using StateLibrary for IPoolManager;
 
     function getNetLiquidityAtTick(IPoolManager poolManager, PoolId poolId, int24 tick)
@@ -65,7 +66,6 @@ library PoolGetters {
                 // all the 1s at or to the right of the current bitPos
                 uint256 mask = (1 << bitPos) - 1 + (1 << bitPos);
                 // uint256 masked = self[wordPos] & mask;
-                // uint256 masked = poolManager.getPoolBitmapInfo(poolId, wordPos) & mask;
                 uint256 tickBitmap = poolManager.getTickBitmap(poolId, wordPos);
                 uint256 masked = tickBitmap & mask;
 
@@ -81,7 +81,6 @@ library PoolGetters {
                 // all the 1s at or to the left of the bitPos
                 uint256 mask = ~((1 << bitPos) - 1);
                 uint256 tickBitmap = poolManager.getTickBitmap(poolId, wordPos);
-                // uint256 masked = poolManager.getPoolBitmapInfo(poolId, wordPos) & mask;
                 uint256 masked = tickBitmap & mask;
 
                 // if there are no initialized ticks to the left of the current tick, return leftmost in the word
