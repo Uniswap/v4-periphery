@@ -69,21 +69,21 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
             }
         }
 
-        (poolKey, poolId) = initPool(currency0, currency1, twamm, 3000, SQRT_RATIO_1_1, ZERO_BYTES);
+        (poolKey, poolId) = initPool(currency0, currency1, twamm, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
         token0.approve(address(modifyLiquidityRouter), 100 ether);
         token1.approve(address(modifyLiquidityRouter), 100 ether);
         token0.mint(address(this), 100 ether);
         token1.mint(address(this), 100 ether);
         modifyLiquidityRouter.modifyLiquidity(
-            poolKey, IPoolManager.ModifyLiquidityParams(-60, 60, 10 ether), ZERO_BYTES
+            poolKey, IPoolManager.ModifyLiquidityParams(-60, 60, 10 ether, 0), ZERO_BYTES
         );
         modifyLiquidityRouter.modifyLiquidity(
-            poolKey, IPoolManager.ModifyLiquidityParams(-120, 120, 10 ether), ZERO_BYTES
+            poolKey, IPoolManager.ModifyLiquidityParams(-120, 120, 10 ether, 0), ZERO_BYTES
         );
         modifyLiquidityRouter.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams(TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether),
+            IPoolManager.ModifyLiquidityParams(TickMath.minUsableTick(60), TickMath.maxUsableTick(60), 10 ether, 0),
             ZERO_BYTES
         );
     }
@@ -93,7 +93,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 0);
         vm.warp(10000);
 
-        manager.initialize(initKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(initKey, SQRT_PRICE_1_1, ZERO_BYTES);
         assertEq(twamm.lastVirtualOrderTimestamp(initId), 10000);
     }
 
@@ -363,7 +363,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         token0.approve(address(twamm), 100e18);
         token1.approve(address(twamm), 100e18);
         modifyLiquidityRouter.modifyLiquidity(
-            poolKey, IPoolManager.ModifyLiquidityParams(-2400, 2400, 10 ether), ZERO_BYTES
+            poolKey, IPoolManager.ModifyLiquidityParams(-2400, 2400, 10 ether, 0), ZERO_BYTES
         );
 
         vm.warp(10000);

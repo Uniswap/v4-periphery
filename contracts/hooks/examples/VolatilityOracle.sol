@@ -3,12 +3,12 @@ pragma solidity ^0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {SwapFeeLibrary} from "@uniswap/v4-core/src/libraries/SwapFeeLibrary.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {BaseHook} from "../../BaseHook.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 contract VolatilityOracle is BaseHook {
-    using SwapFeeLibrary for uint24;
+    using LPFeeLibrary for uint24;
 
     error MustUseDynamicFee();
 
@@ -34,7 +34,11 @@ contract VolatilityOracle is BaseHook {
             beforeSwap: false,
             afterSwap: false,
             beforeDonate: false,
-            afterDonate: false
+            afterDonate: false,
+            beforeSwapReturnDelta: false,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
         });
     }
 
@@ -52,7 +56,7 @@ contract VolatilityOracle is BaseHook {
         uint24 startingFee = 3000;
         uint32 lapsed = _blockTimestamp() - deployTimestamp;
         uint24 fee = startingFee + (uint24(lapsed) * 100) / 60; // 100 bps a minute
-        poolManager.updateDynamicSwapFee(key, fee); // initial fee 0.30%
+        poolManager.updateDynamicLPFee(key, fee); // initial fee 0.30%
     }
 
     function afterInitialize(address, PoolKey calldata key, uint160, int24, bytes calldata)

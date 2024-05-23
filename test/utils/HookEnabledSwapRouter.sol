@@ -8,9 +8,11 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolTestBase} from "@uniswap/v4-core/src/test/PoolTestBase.sol";
 import {Test} from "forge-std/Test.sol";
+import {CurrencySettleTake} from "@uniswap/v4-core/src/libraries/CurrencySettleTake.sol";
 
 contract HookEnabledSwapRouter is PoolTestBase {
     using CurrencyLibrary for Currency;
+    using CurrencySettleTake for Currency;
 
     error NoSwapOccurred();
 
@@ -25,8 +27,8 @@ contract HookEnabledSwapRouter is PoolTestBase {
     }
 
     struct TestSettings {
-        bool withdrawTokens;
-        bool settleUsingTransfer;
+        bool takeClaims;
+        bool settleUsingBurn;
     }
 
     function swap(
@@ -36,14 +38,14 @@ contract HookEnabledSwapRouter is PoolTestBase {
         bytes memory hookData
     ) external payable returns (BalanceDelta delta) {
         delta = abi.decode(
-            manager.lock(abi.encode(CallbackData(msg.sender, testSettings, key, params, hookData))), (BalanceDelta)
+            manager.unlock(abi.encode(CallbackData(msg.sender, testSettings, key, params, hookData))), (BalanceDelta)
         );
 
         uint256 ethBalance = address(this).balance;
         if (ethBalance > 0) CurrencyLibrary.NATIVE.transfer(msg.sender, ethBalance);
     }
 
-    function lockAcquired(bytes calldata rawData) external returns (bytes memory) {
+    function unlockCallback(bytes calldata rawData) external returns (bytes memory) {
         require(msg.sender == address(manager));
 
         CallbackData memory data = abi.decode(rawData, (CallbackData));
@@ -54,14 +56,22 @@ contract HookEnabledSwapRouter is PoolTestBase {
         if (BalanceDelta.unwrap(delta) == 0) revert NoSwapOccurred();
 
         if (data.params.zeroForOne) {
-            _settle(data.key.currency0, data.sender, delta.amount0(), data.testSettings.settleUsingTransfer);
+            data.key.currency0.settle(
+                manager, data.sender, uint256(int256(-delta.amount0())), data.testSettings.settleUsingBurn
+            );
             if (delta.amount1() > 0) {
-                _take(data.key.currency1, data.sender, delta.amount1(), data.testSettings.withdrawTokens);
+                data.key.currency1.take(
+                    manager, data.sender, uint256(int256(delta.amount1())), data.testSettings.takeClaims
+                );
             }
         } else {
-            _settle(data.key.currency1, data.sender, delta.amount1(), data.testSettings.settleUsingTransfer);
+            data.key.currency1.settle(
+                manager, data.sender, uint256(int256(-delta.amount1())), data.testSettings.settleUsingBurn
+            );
             if (delta.amount0() > 0) {
-                _take(data.key.currency0, data.sender, delta.amount0(), data.testSettings.withdrawTokens);
+                data.key.currency0.take(
+                    manager, data.sender, uint256(int256(delta.amount0())), data.testSettings.takeClaims
+                );
             }
         }
 
