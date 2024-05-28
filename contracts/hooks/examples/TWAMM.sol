@@ -19,14 +19,14 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolGetters} from "../../libraries/PoolGetters.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {CurrencySettleTake} from "@uniswap/v4-core/src/libraries/CurrencySettleTake.sol";
+import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 contract TWAMM is BaseHook, ITWAMM {
     using TransferHelper for IERC20Minimal;
     using CurrencyLibrary for Currency;
-    using CurrencySettleTake for Currency;
+    using CurrencySettler for Currency;
     using OrderPool for OrderPool.State;
     using PoolIdLibrary for PoolKey;
     using TickMath for int24;
