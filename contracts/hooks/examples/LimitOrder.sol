@@ -29,6 +29,25 @@ library EpochLibrary {
     }
 }
 
+function hookPermissions() pure returns (Hooks.Permissions memory) {
+    return Hooks.Permissions({
+        beforeInitialize: false,
+        afterInitialize: true,
+        beforeAddLiquidity: false,
+        beforeRemoveLiquidity: false,
+        afterAddLiquidity: false,
+        afterRemoveLiquidity: false,
+        beforeSwap: false,
+        afterSwap: true,
+        beforeDonate: false,
+        afterDonate: false,
+        beforeSwapReturnDelta: false,
+        afterSwapReturnDelta: false,
+        afterAddLiquidityReturnDelta: false,
+        afterRemoveLiquidityReturnDelta: false
+    });
+}
+
 contract LimitOrder is BaseHook {
     using EpochLibrary for Epoch;
     using PoolIdLibrary for PoolKey;
@@ -78,22 +97,7 @@ contract LimitOrder is BaseHook {
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
-        return Hooks.Permissions({
-            beforeInitialize: false,
-            afterInitialize: true,
-            beforeAddLiquidity: false,
-            beforeRemoveLiquidity: false,
-            afterAddLiquidity: false,
-            afterRemoveLiquidity: false,
-            beforeSwap: false,
-            afterSwap: true,
-            beforeDonate: false,
-            afterDonate: false,
-            beforeSwapReturnDelta: false,
-            afterSwapReturnDelta: false,
-            afterAddLiquidityReturnDelta: false,
-            afterRemoveLiquidityReturnDelta: false
-        });
+        return hookPermissions();
     }
 
     function getTickLowerLast(PoolId poolId) public view returns (int24) {

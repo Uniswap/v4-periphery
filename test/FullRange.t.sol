@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {FullRange} from "../contracts/hooks/examples/FullRange.sol";
+import {FullRange, hookPermissions} from "../contracts/hooks/examples/FullRange.sol";
 import {FullRangeImplementation} from "./shared/implementation/FullRangeImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -21,12 +21,14 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {HookHelpers} from "../contracts/libraries/HookHelpers.sol";
 
 contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
+    using HookHelpers for Hooks.Permissions;
 
     event Initialize(
         PoolId poolId,
@@ -66,9 +68,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     MockERC20 token1;
     MockERC20 token2;
 
-    FullRangeImplementation fullRange = FullRangeImplementation(
-        address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG))
-    );
+    FullRangeImplementation fullRange = FullRangeImplementation(address(hookPermissions().flags()));
 
     PoolId id;
 

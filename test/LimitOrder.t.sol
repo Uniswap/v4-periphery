@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {GetSender} from "./shared/GetSender.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {LimitOrder, Epoch, EpochLibrary} from "../contracts/hooks/examples/LimitOrder.sol";
+import {LimitOrder, Epoch, EpochLibrary, hookPermissions} from "../contracts/hooks/examples/LimitOrder.sol";
 import {LimitOrderImplementation} from "./shared/implementation/LimitOrderImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -16,17 +16,19 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {HookHelpers} from "../contracts/libraries/HookHelpers.sol";
 
 contract TestLimitOrder is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
+    using HookHelpers for Hooks.Permissions;
 
     uint160 constant SQRT_RATIO_10_1 = 250541448375047931186413801569;
 
     HookEnabledSwapRouter router;
     TestERC20 token0;
     TestERC20 token1;
-    LimitOrder limitOrder = LimitOrder(address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG)));
+    LimitOrder limitOrder = LimitOrder(address(hookPermissions().flags()));
     PoolId id;
 
     function setUp() public {

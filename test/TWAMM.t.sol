@@ -17,13 +17,15 @@ import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {PoolDonateTest} from "@uniswap/v4-core/src/test/PoolDonateTest.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {TWAMM} from "../contracts/hooks/examples/TWAMM.sol";
+import {TWAMM, hookPermissions} from "../contracts/hooks/examples/TWAMM.sol";
 import {ITWAMM} from "../contracts/interfaces/ITWAMM.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {HookHelpers} from "../contracts/libraries/HookHelpers.sol";
 
 contract TWAMMTest is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
+    using HookHelpers for Hooks.Permissions;
 
     event SubmitOrder(
         PoolId indexed poolId,
@@ -43,8 +45,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 earningsFactorLast
     );
 
-    TWAMM twamm =
-        TWAMM(address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG)));
+    TWAMM twamm = TWAMM(address(hookPermissions().flags()));
     address hookAddress;
     MockERC20 token0;
     MockERC20 token1;

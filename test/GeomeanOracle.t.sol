@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {GetSender} from "./shared/GetSender.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {GeomeanOracle} from "../contracts/hooks/examples/GeomeanOracle.sol";
+import {GeomeanOracle, hookPermissions} from "../contracts/hooks/examples/GeomeanOracle.sol";
 import {GeomeanOracleImplementation} from "./shared/implementation/GeomeanOracleImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -16,22 +16,17 @@ import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiqui
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Oracle} from "../contracts/libraries/Oracle.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {HookHelpers} from "../contracts/libraries/HookHelpers.sol";
 
 contract TestGeomeanOracle is Test, Deployers {
     using PoolIdLibrary for PoolKey;
+    using HookHelpers for Hooks.Permissions;
 
     int24 constant MAX_TICK_SPACING = 32767;
 
     TestERC20 token0;
     TestERC20 token1;
-    GeomeanOracleImplementation geomeanOracle = GeomeanOracleImplementation(
-        address(
-            uint160(
-                Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
-                    | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
-            )
-        )
-    );
+    GeomeanOracleImplementation geomeanOracle = GeomeanOracleImplementation(address(hookPermissions().flags()));
     PoolId id;
 
     function setUp() public {
