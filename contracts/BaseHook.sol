@@ -41,7 +41,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
         Hooks.validateHookPermissions(_this, getHookPermissions());
     }
 
-    function _unlockCallback(bytes calldata data) internal override virtual returns (bytes memory) {
+    function _unlockCallback(bytes calldata data) internal virtual override returns (bytes memory) {
         (bool success, bytes memory returnData) = address(this).call(data);
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();

@@ -298,7 +298,6 @@ contract FullRange is BaseHook {
     function _unlockCallback(bytes calldata rawData)
         internal
         override
-        onlyByManager
         returns (bytes memory)
     {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
