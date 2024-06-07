@@ -15,16 +15,14 @@ import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
-import {PoolStateLibrary} from "../../contracts/libraries/PoolStateLibrary.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-import {INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
-import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
 contract GasTest is Test, Deployers, GasSnapshot {
     using FixedPointMathLib for uint256;
@@ -52,7 +50,7 @@ contract GasTest is Test, Deployers, GasSnapshot {
         Deployers.deployFreshManagerAndRouters();
         Deployers.deployMintAndApprove2Currencies();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_RATIO_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
         lpm = new NonfungiblePositionManager(manager);
@@ -68,23 +66,23 @@ contract GasTest is Test, Deployers, GasSnapshot {
         range = LiquidityRange({key: key, tickLower: -300, tickUpper: 300});
     }
 
-    function test_gas_mint() public {
-        uint256 amount0Desired = 148873216119575134691; // 148 ether tokens, 10_000 liquidity
-        uint256 amount1Desired = 148873216119575134691; // 148 ether tokens, 10_000 liquidity
-        INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-            range: range,
-            amount0Desired: amount0Desired,
-            amount1Desired: amount1Desired,
-            amount0Min: 0,
-            amount1Min: 0,
-            deadline: block.timestamp + 1,
-            recipient: address(this),
-            hookData: ZERO_BYTES
-        });
-        snapStart("mint");
-        lpm.mint(params);
-        snapEnd();
-    }
+    // function test_gas_mint() public {
+    //     uint256 amount0Desired = 148873216119575134691; // 148 ether tokens, 10_000 liquidity
+    //     uint256 amount1Desired = 148873216119575134691; // 148 ether tokens, 10_000 liquidity
+    //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
+    //         range: range,
+    //         amount0Desired: amount0Desired,
+    //         amount1Desired: amount1Desired,
+    //         amount0Min: 0,
+    //         amount1Min: 0,
+    //         deadline: block.timestamp + 1,
+    //         recipient: address(this),
+    //         hookData: ZERO_BYTES
+    //     });
+    //     snapStart("mint");
+    //     lpm.mint(params);
+    //     snapEnd();
+    // }
 
     function test_gas_mintWithLiquidity() public {
         snapStart("mintWithLiquidity");
@@ -95,66 +93,32 @@ contract GasTest is Test, Deployers, GasSnapshot {
     function test_gas_increaseLiquidity_erc20() public {
         (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
 
-        INonfungiblePositionManager.IncreaseLiquidityParams memory params = INonfungiblePositionManager
-            .IncreaseLiquidityParams({
-            tokenId: tokenId,
-            liquidityDelta: 1000 ether,
-            amount0Min: 0,
-            amount1Min: 0,
-            deadline: block.timestamp + 1
-        });
         snapStart("increaseLiquidity_erc20");
-        lpm.increaseLiquidity(params, ZERO_BYTES, false);
+        lpm.increaseLiquidity(tokenId, 1000 ether, ZERO_BYTES, false);
         snapEnd();
     }
 
     function test_gas_increaseLiquidity_erc6909() public {
         (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
 
-        INonfungiblePositionManager.IncreaseLiquidityParams memory params = INonfungiblePositionManager
-            .IncreaseLiquidityParams({
-            tokenId: tokenId,
-            liquidityDelta: 1000 ether,
-            amount0Min: 0,
-            amount1Min: 0,
-            deadline: block.timestamp + 1
-        });
         snapStart("increaseLiquidity_erc6909");
-        lpm.increaseLiquidity(params, ZERO_BYTES, true);
+        lpm.increaseLiquidity(tokenId, 1000 ether, ZERO_BYTES, true);
         snapEnd();
     }
 
     function test_gas_decreaseLiquidity_erc20() public {
         (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
 
-        INonfungiblePositionManager.DecreaseLiquidityParams memory params = INonfungiblePositionManager
-            .DecreaseLiquidityParams({
-            tokenId: tokenId,
-            liquidityDelta: 10_000 ether,
-            amount0Min: 0,
-            amount1Min: 0,
-            recipient: address(this),
-            deadline: block.timestamp + 1
-        });
         snapStart("decreaseLiquidity_erc20");
-        lpm.decreaseLiquidity(params, ZERO_BYTES, false);
+        lpm.decreaseLiquidity(tokenId, 10_000 ether, ZERO_BYTES, false);
         snapEnd();
     }
 
     function test_gas_decreaseLiquidity_erc6909() public {
         (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
 
-        INonfungiblePositionManager.DecreaseLiquidityParams memory params = INonfungiblePositionManager
-            .DecreaseLiquidityParams({
-            tokenId: tokenId,
-            liquidityDelta: 10_000 ether,
-            amount0Min: 0,
-            amount1Min: 0,
-            recipient: address(this),
-            deadline: block.timestamp + 1
-        });
         snapStart("decreaseLiquidity_erc6909");
-        lpm.decreaseLiquidity(params, ZERO_BYTES, true);
+        lpm.decreaseLiquidity(tokenId, 10_000 ether, ZERO_BYTES, true);
         snapEnd();
     }
 

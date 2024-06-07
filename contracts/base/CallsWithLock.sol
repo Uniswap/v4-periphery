@@ -5,6 +5,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ImmutableState} from "./ImmutableState.sol";
 import {ICallsWithLock} from "../interfaces/ICallsWithLock.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 /// @title CallsWithLock
 /// @notice Handles all the calls to the pool manager contract. Assumes the integrating contract has already acquired a lock.
@@ -29,7 +30,8 @@ abstract contract CallsWithLock is ICallsWithLock, ImmutableState {
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata hookData
     ) external onlyBySelf returns (bytes memory) {
-        return abi.encode(poolManager.modifyLiquidity(key, params, hookData));
+        (BalanceDelta delta, BalanceDelta feeDelta) = poolManager.modifyLiquidity(key, params, hookData);
+        return abi.encode(delta, feeDelta);
     }
 
     function swapWithLock(PoolKey memory key, IPoolManager.SwapParams memory params, bytes calldata hookData)

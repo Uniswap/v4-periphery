@@ -19,7 +19,6 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-import {INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
@@ -48,7 +47,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         Deployers.deployFreshManagerAndRouters();
         Deployers.deployMintAndApprove2Currencies();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_RATIO_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
         lpm = new NonfungiblePositionManager(manager);
@@ -70,20 +69,17 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         vm.stopPrank();
     }
 
-    function test_collect_6909(int24 tickLower, int24 tickUpper, uint128 liquidityDelta) public {
+    function test_collect_6909(IPoolManager.ModifyLiquidityParams memory params) public {
+        params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         uint256 tokenId;
-        liquidityDelta = uint128(bound(liquidityDelta, 100e18, 100_000e18)); // require nontrivial amount of liquidity
-        (tokenId, tickLower, tickUpper, liquidityDelta,) =
-            createFuzzyLiquidity(lpm, address(this), key, tickLower, tickUpper, liquidityDelta, ZERO_BYTES);
-        vm.assume(tickLower < -60 && 60 < tickUpper); // require two-sided liquidity
+        (tokenId, params,) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
         swap(key, false, -int256(swapAmount), ZERO_BYTES);
 
         // collect fees
-        uint256 balance0Before = currency0.balanceOfSelf();
-        uint256 balance1Before = currency1.balanceOfSelf();
         BalanceDelta delta = lpm.collect(tokenId, address(this), ZERO_BYTES, true);
 
         assertEq(delta.amount0(), 0);
@@ -93,12 +89,11 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         assertEq(uint256(int256(delta.amount1())), manager.balanceOf(address(this), currency1.toId()));
     }
 
-    function test_collect_erc20(int24 tickLower, int24 tickUpper, uint128 liquidityDelta) public {
+    function test_collect_erc20(IPoolManager.ModifyLiquidityParams memory params) public {
+        params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         uint256 tokenId;
-        liquidityDelta = uint128(bound(liquidityDelta, 100e18, 100_000e18)); // require nontrivial amount of liquidity
-        (tokenId, tickLower, tickUpper, liquidityDelta,) =
-            createFuzzyLiquidity(lpm, address(this), key, tickLower, tickUpper, liquidityDelta, ZERO_BYTES);
-        vm.assume(tickLower < -60 && 60 < tickUpper); // require two-sided liquidity
+        (tokenId, params,) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
@@ -118,37 +113,24 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
     }
 
     // two users with the same range; one user cannot collect the other's fees
-    function test_collect_sameRange_6909(
-        int24 tickLower,
-        int24 tickUpper,
-        uint128 liquidityDeltaAlice,
-        uint128 liquidityDeltaBob
-    ) public {
+    function test_collect_sameRange_6909(IPoolManager.ModifyLiquidityParams memory params, uint256 liquidityDeltaBob)
+        public
+    {
         uint256 tokenIdAlice;
         uint256 tokenIdBob;
-        liquidityDeltaAlice = uint128(bound(liquidityDeltaAlice, 100e18, 100_000e18)); // require nontrivial amount of liquidity
-        liquidityDeltaBob = uint128(bound(liquidityDeltaBob, 100e18, 100_000e18));
+        params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
+        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
 
-        (tickLower, tickUpper) = createFuzzyLiquidityParams(key, tickLower, tickUpper, liquidityDeltaAlice);
-        vm.assume(tickLower < -60 && 60 < tickUpper); // require two-sided liquidity
+        liquidityDeltaBob = bound(liquidityDeltaBob, 100e18, 100_000e18);
 
+        LiquidityRange memory range =
+            LiquidityRange({key: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         vm.prank(alice);
-        (tokenIdAlice,) = lpm.mint(
-            LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper}),
-            liquidityDeltaAlice,
-            block.timestamp + 1,
-            alice,
-            ZERO_BYTES
-        );
+        (tokenIdAlice,) = lpm.mint(range, uint256(params.liquidityDelta), block.timestamp + 1, alice, ZERO_BYTES);
 
         vm.prank(bob);
-        (tokenIdBob,) = lpm.mint(
-            LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper}),
-            liquidityDeltaBob,
-            block.timestamp + 1,
-            alice,
-            ZERO_BYTES
-        );
+        (tokenIdBob,) = lpm.mint(range, liquidityDeltaBob, block.timestamp + 1, bob, ZERO_BYTES);
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
@@ -173,31 +155,28 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         assertApproxEqAbs(manager.balanceOf(address(lpm), currency1.toId()), 0, 1 wei);
     }
 
-    function test_collect_sameRange_erc20(
-        int24 tickLower,
-        int24 tickUpper,
-        uint128 liquidityDeltaAlice,
-        uint128 liquidityDeltaBob
-    ) public {
-        liquidityDeltaAlice = uint128(bound(liquidityDeltaAlice, 100e18, 100_000e18)); // require nontrivial amount of liquidity
-        liquidityDeltaBob = uint128(bound(liquidityDeltaBob, 100e18, 100_000e18));
-
+    function test_collect_sameRange_erc20(IPoolManager.ModifyLiquidityParams memory params, uint256 liquidityDeltaBob)
+        public
+    {
         uint256 tokenIdAlice;
-        vm.startPrank(alice);
-        (tokenIdAlice, tickLower, tickUpper, liquidityDeltaAlice,) =
-            createFuzzyLiquidity(lpm, alice, key, tickLower, tickUpper, liquidityDeltaAlice, ZERO_BYTES);
-        vm.stopPrank();
-
         uint256 tokenIdBob;
-        vm.startPrank(bob);
-        (tokenIdBob,,,,) = createFuzzyLiquidity(lpm, bob, key, tickLower, tickUpper, liquidityDeltaBob, ZERO_BYTES);
-        vm.stopPrank();
+        params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
+        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
 
-        vm.assume(tickLower < -key.tickSpacing && key.tickSpacing < tickUpper); // require two-sided liquidity
+        liquidityDeltaBob = bound(liquidityDeltaBob, 100e18, 100_000e18);
+
+        LiquidityRange memory range =
+            LiquidityRange({key: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        vm.prank(alice);
+        (tokenIdAlice,) = lpm.mint(range, uint256(params.liquidityDelta), block.timestamp + 1, alice, ZERO_BYTES);
+
+        vm.prank(bob);
+        (tokenIdBob,) = lpm.mint(range, liquidityDeltaBob, block.timestamp + 1, bob, ZERO_BYTES);
 
         // confirm the positions are same range
-        (,, LiquidityRange memory rangeAlice,,,,,) = lpm.positions(tokenIdAlice);
-        (,, LiquidityRange memory rangeBob,,,,,) = lpm.positions(tokenIdBob);
+        (, LiquidityRange memory rangeAlice) = lpm.tokenPositions(tokenIdAlice);
+        (, LiquidityRange memory rangeBob) = lpm.tokenPositions(tokenIdBob);
         assertEq(rangeAlice.tickLower, rangeBob.tickLower);
         assertEq(rangeAlice.tickUpper, rangeBob.tickUpper);
 
@@ -238,69 +217,40 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
     function test_collect_donate_sameRange() public {}
 
     function test_decreaseLiquidity_sameRange(
-        int24 tickLower,
-        int24 tickUpper,
-        uint128 liquidityDeltaAlice,
-        uint128 liquidityDeltaBob
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 liquidityDeltaBob
     ) public {
-        liquidityDeltaAlice = uint128(bound(liquidityDeltaAlice, 100e18, 100_000e18)); // require nontrivial amount of liquidity
-        liquidityDeltaBob = uint128(bound(liquidityDeltaBob, 100e18, 100_000e18));
-
         uint256 tokenIdAlice;
-        BalanceDelta lpDeltaAlice;
-        vm.startPrank(alice);
-        (tokenIdAlice, tickLower, tickUpper, liquidityDeltaAlice, lpDeltaAlice) =
-            createFuzzyLiquidity(lpm, alice, key, tickLower, tickUpper, liquidityDeltaAlice, ZERO_BYTES);
-        vm.stopPrank();
-
         uint256 tokenIdBob;
-        BalanceDelta lpDeltaBob;
-        vm.startPrank(bob);
-        (tokenIdBob,,,, lpDeltaBob) =
-            createFuzzyLiquidity(lpm, bob, key, tickLower, tickUpper, liquidityDeltaBob, ZERO_BYTES);
-        vm.stopPrank();
+        params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
+        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
 
-        vm.assume(tickLower < -key.tickSpacing && key.tickSpacing < tickUpper); // require two-sided liquidity
+        liquidityDeltaBob = bound(liquidityDeltaBob, 100e18, 100_000e18);
+
+        LiquidityRange memory range =
+            LiquidityRange({key: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        vm.prank(alice);
+        (tokenIdAlice,) = lpm.mint(range, uint256(params.liquidityDelta), block.timestamp + 1, alice, ZERO_BYTES);
+
+        vm.prank(bob);
+        (tokenIdBob,) = lpm.mint(range, liquidityDeltaBob, block.timestamp + 1, bob, ZERO_BYTES);
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
         swap(key, true, -int256(swapAmount), ZERO_BYTES);
 
         // alice removes all of her liquidity
-        // uint256 balance0AliceBefore = manager.balanceOf(alice, currency0.toId());
-        // uint256 balance1AliceBefore = manager.balanceOf(alice, currency1.toId());
         vm.prank(alice);
-        BalanceDelta aliceDelta = lpm.decreaseLiquidity(
-            INonfungiblePositionManager.DecreaseLiquidityParams({
-                tokenId: tokenIdAlice,
-                liquidityDelta: liquidityDeltaAlice,
-                amount0Min: 0,
-                amount1Min: 0,
-                deadline: block.timestamp + 1,
-                recipient: alice
-            }),
-            ZERO_BYTES,
-            true
-        );
-        assertEq(uint256(uint128(-aliceDelta.amount0())), manager.balanceOf(alice, currency0.toId()));
-        assertEq(uint256(uint128(-aliceDelta.amount1())), manager.balanceOf(alice, currency1.toId()));
+        BalanceDelta aliceDelta = lpm.decreaseLiquidity(tokenIdAlice, uint256(params.liquidityDelta), ZERO_BYTES, true);
+        assertEq(uint256(uint128(aliceDelta.amount0())), manager.balanceOf(alice, currency0.toId()));
+        assertEq(uint256(uint128(aliceDelta.amount1())), manager.balanceOf(alice, currency1.toId()));
 
         // bob removes half of his liquidity
         vm.prank(bob);
-        BalanceDelta bobDelta = lpm.decreaseLiquidity(
-            INonfungiblePositionManager.DecreaseLiquidityParams({
-                tokenId: tokenIdBob,
-                liquidityDelta: liquidityDeltaBob / 2,
-                amount0Min: 0,
-                amount1Min: 0,
-                deadline: block.timestamp + 1,
-                recipient: bob
-            }),
-            ZERO_BYTES,
-            true
-        );
-        assertEq(uint256(uint128(-bobDelta.amount0())), manager.balanceOf(bob, currency0.toId()));
-        assertEq(uint256(uint128(-bobDelta.amount1())), manager.balanceOf(bob, currency1.toId()));
+        BalanceDelta bobDelta = lpm.decreaseLiquidity(tokenIdBob, liquidityDeltaBob / 2, ZERO_BYTES, true);
+        assertEq(uint256(uint128(bobDelta.amount0())), manager.balanceOf(bob, currency0.toId()));
+        assertEq(uint256(uint128(bobDelta.amount1())), manager.balanceOf(bob, currency1.toId()));
 
         // position manager holds no fees now
         assertApproxEqAbs(manager.balanceOf(address(lpm), currency0.toId()), 0, 1 wei);
@@ -331,18 +281,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         // alice decreases liquidity
         vm.prank(alice);
-        BalanceDelta aliceDelta = lpm.decreaseLiquidity(
-            INonfungiblePositionManager.DecreaseLiquidityParams({
-                tokenId: tokenIdAlice,
-                liquidityDelta: uint128(liquidityAlice),
-                amount0Min: 0,
-                amount1Min: 0,
-                deadline: block.timestamp + 1,
-                recipient: alice
-            }),
-            ZERO_BYTES,
-            true
-        );
+        BalanceDelta aliceDelta = lpm.decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES, true);
 
         uint256 tolerance = 0.000000001 ether;
 
@@ -362,18 +301,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         // bob decreases half of his liquidity
         vm.prank(bob);
-        BalanceDelta bobDelta = lpm.decreaseLiquidity(
-            INonfungiblePositionManager.DecreaseLiquidityParams({
-                tokenId: tokenIdBob,
-                liquidityDelta: uint128(liquidityBob / 2),
-                amount0Min: 0,
-                amount1Min: 0,
-                deadline: block.timestamp + 1,
-                recipient: bob
-            }),
-            ZERO_BYTES,
-            true
-        );
+        BalanceDelta bobDelta = lpm.decreaseLiquidity(tokenIdBob, liquidityBob / 2, ZERO_BYTES, true);
 
         // bob claims half of the original principal + his fees
         assertApproxEqAbs(

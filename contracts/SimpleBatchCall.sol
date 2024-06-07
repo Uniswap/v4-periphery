@@ -6,17 +6,21 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "./base/ImmutableState.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
+import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 
 /// @title SimpleBatchCall
 /// @notice Implements a naive settle function to perform any arbitrary batch call under one lock to modifyPosition, donate, intitialize, or swap.
 contract SimpleBatchCall is LockAndBatchCall {
     using CurrencyLibrary for Currency;
+    using TransientStateLibrary for IPoolManager;
+    using CurrencySettler for Currency;
 
     constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}
 
     struct SettleConfig {
-        bool withdrawTokens; // If true, takes the underlying ERC20s.
-        bool settleUsingTransfer; // If true, sends the underlying ERC20s.
+        bool takeClaims;
+        bool settleUsingBurn; // If true, sends the underlying ERC20s.
     }
 
     /// @notice We naively settle all currencies that are touched by the batch call. This data is passed in intially to `execute`.
@@ -30,19 +34,10 @@ contract SimpleBatchCall is LockAndBatchCall {
                 int256 delta = poolManager.currencyDelta(address(this), currenciesTouched[i]);
 
                 if (delta < 0) {
-                    if (config.settleUsingTransfer) {
-                        ERC20(Currency.unwrap(currency)).transferFrom(sender, address(poolManager), uint256(-delta));
-                        poolManager.settle(currency);
-                    } else {
-                        poolManager.transferFrom(address(poolManager), address(this), currency.toId(), uint256(-delta));
-                    }
+                    currency.settle(poolManager, sender, uint256(-delta), config.settleUsingBurn);
                 }
                 if (delta > 0) {
-                    if (config.withdrawTokens) {
-                        poolManager.mint(address(this), currency.toId(), uint256(delta));
-                    } else {
-                        poolManager.take(currency, address(this), uint256(delta));
-                    }
+                    currency.take(poolManager, address(this), uint256(delta), config.takeClaims);
                 }
             }
         }

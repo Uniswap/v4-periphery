@@ -8,6 +8,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {ImmutableState} from "./base/ImmutableState.sol";
+import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 abstract contract BaseHook is IHooks, SafeCallback {
     error NotSelf();
@@ -40,7 +41,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
         Hooks.validateHookPermissions(_this, getHookPermissions());
     }
 
-    function _lockAcquired(bytes calldata data) internal virtual override returns (bytes memory) {
+    function _unlockCallback(bytes calldata data) internal virtual override returns (bytes memory) {
         (bool success, bytes memory returnData) = address(this).call(data);
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();
@@ -86,7 +87,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external virtual returns (bytes4) {
+    ) external virtual returns (bytes4, BalanceDelta) {
         revert HookNotImplemented();
     }
 
@@ -96,14 +97,14 @@ abstract contract BaseHook is IHooks, SafeCallback {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external virtual returns (bytes4) {
+    ) external virtual returns (bytes4, BalanceDelta) {
         revert HookNotImplemented();
     }
 
     function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
         external
         virtual
-        returns (bytes4)
+        returns (bytes4, BeforeSwapDelta, uint24)
     {
         revert HookNotImplemented();
     }
@@ -111,7 +112,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
     function afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
         external
         virtual
-        returns (bytes4)
+        returns (bytes4, int128)
     {
         revert HookNotImplemented();
     }

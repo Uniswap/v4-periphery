@@ -15,18 +15,17 @@ import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
-import {PoolStateLibrary} from "../../contracts/libraries/PoolStateLibrary.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-import {INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
-import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
+import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
-contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
+contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using LiquidityRangeIdLibrary for LiquidityRange;
@@ -52,7 +51,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         Deployers.deployFreshManagerAndRouters();
         Deployers.deployMintAndApprove2Currencies();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_RATIO_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
         lpm = new NonfungiblePositionManager(manager);
@@ -99,30 +98,18 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
         // alice uses her exact fees to increase liquidity
         (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
-        console2.log("token0Owed", token0Owed);
-        console2.log("token1Owed", token1Owed);
 
-        (uint160 sqrtPriceX96,,,) = PoolStateLibrary.getSlot0(manager, range.key.toId());
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.key.toId());
         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtRatioAtTick(range.tickLower),
-            TickMath.getSqrtRatioAtTick(range.tickUpper),
+            TickMath.getSqrtPriceAtTick(range.tickLower),
+            TickMath.getSqrtPriceAtTick(range.tickUpper),
             token0Owed,
             token1Owed
         );
 
         vm.prank(alice);
-        lpm.increaseLiquidity(
-            INonfungiblePositionManager.IncreaseLiquidityParams({
-                tokenId: tokenIdAlice,
-                liquidityDelta: uint128(liquidityDelta),
-                amount0Min: 0,
-                amount1Min: 0,
-                deadline: block.timestamp + 1
-            }),
-            ZERO_BYTES,
-            false
-        );
+        lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
 
         // TODO: assertions, currently increasing liquidity does not perfectly use the fees
     }
@@ -147,30 +134,20 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         swap(key, true, -int256(swapAmount), ZERO_BYTES);
         swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
 
-        // alice will half of her fees to increase liquidity
+        // alice will use half of her fees to increase liquidity
         (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
         {
-            (uint160 sqrtPriceX96,,,) = PoolStateLibrary.getSlot0(manager, range.key.toId());
+            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.key.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
-                TickMath.getSqrtRatioAtTick(range.tickLower),
-                TickMath.getSqrtRatioAtTick(range.tickUpper),
+                TickMath.getSqrtPriceAtTick(range.tickLower),
+                TickMath.getSqrtPriceAtTick(range.tickUpper),
                 token0Owed / 2,
                 token1Owed / 2
             );
 
             vm.prank(alice);
-            lpm.increaseLiquidity(
-                INonfungiblePositionManager.IncreaseLiquidityParams({
-                    tokenId: tokenIdAlice,
-                    liquidityDelta: uint128(liquidityDelta),
-                    amount0Min: 0,
-                    amount1Min: 0,
-                    deadline: block.timestamp + 1
-                }),
-                ZERO_BYTES,
-                false
-            );
+            lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
         }
 
         {
@@ -237,11 +214,11 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         // alice will use all of her fees + additional capital to increase liquidity
         (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
         {
-            (uint160 sqrtPriceX96,,,) = PoolStateLibrary.getSlot0(manager, range.key.toId());
+            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.key.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
-                TickMath.getSqrtRatioAtTick(range.tickLower),
-                TickMath.getSqrtRatioAtTick(range.tickUpper),
+                TickMath.getSqrtPriceAtTick(range.tickLower),
+                TickMath.getSqrtPriceAtTick(range.tickUpper),
                 token0Owed * 2,
                 token1Owed * 2
             );
@@ -249,17 +226,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
             vm.prank(alice);
-            lpm.increaseLiquidity(
-                INonfungiblePositionManager.IncreaseLiquidityParams({
-                    tokenId: tokenIdAlice,
-                    liquidityDelta: uint128(liquidityDelta),
-                    amount0Min: 0,
-                    amount1Min: 0,
-                    deadline: block.timestamp + 1
-                }),
-                ZERO_BYTES,
-                false
-            );
+            lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
             uint256 balance0AfterAlice = currency0.balanceOf(alice);
             uint256 balance1AfterAlice = currency1.balanceOf(alice);
 
