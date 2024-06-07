@@ -1,0 +1,101 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
+
+import {Test} from "forge-std/Test.sol";
+import {GetSender} from "./shared/GetSender.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {TakingFee} from "../contracts/hooks/examples/TakingFee.sol";
+import {TakingFeeImplementation} from "./shared/implementation/TakingFeeImplementation.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {TestERC20} from "@uniswap/v4-core/src/test/TestERC20.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+
+contract TakingFeeTest is Test, Deployers {
+    using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
+
+    uint160 constant SQRT_RATIO_10_1 = 250541448375047931186413801569;
+
+    address constant TREASURY = address(0x1234567890123456789012345678901234567890);
+    uint128 private constant TOTAL_BIPS = 10000;
+
+    HookEnabledSwapRouter router;
+    TestERC20 token0;
+    TestERC20 token1;
+    TakingFee takingFee = TakingFee(address(uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG)));
+    PoolId id;
+
+    function setUp() public {
+        deployFreshManagerAndRouters();
+        (currency0, currency1) = deployMintAndApprove2Currencies();
+
+        router = new HookEnabledSwapRouter(manager);
+        token0 = TestERC20(Currency.unwrap(currency0));
+        token1 = TestERC20(Currency.unwrap(currency1));
+
+        vm.record();
+        TakingFeeImplementation impl = new TakingFeeImplementation(manager, 25, TREASURY, takingFee);
+        (, bytes32[] memory writes) = vm.accesses(address(impl));
+        vm.etch(address(takingFee), address(impl).code);
+        // for each storage key that was written during the hook implementation, copy the value over
+        unchecked {
+            for (uint256 i = 0; i < writes.length; i++) {
+                bytes32 slot = writes[i];
+                vm.store(address(takingFee), slot, vm.load(address(impl), slot));
+            }
+        }
+
+        // key = PoolKey(currency0, currency1, 3000, 60, takingFee);
+        (key, id) = initPoolAndAddLiquidity(currency0, currency1, takingFee, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        token0.approve(address(takingFee), type(uint256).max);
+        token1.approve(address(takingFee), type(uint256).max);
+        token0.approve(address(router), type(uint256).max);
+        token1.approve(address(router), type(uint256).max);
+    }
+
+    function testSwapHooks() public {
+        // rounding for tests
+        uint128 ROUND_FACTOR = 8;
+
+        // positions were created in setup()
+        assertEq(currency0.balanceOf(TREASURY), 0);
+        assertEq(currency1.balanceOf(TREASURY), 0);
+
+        // Perform a test swap //
+        bool zeroForOne = true;
+        int256 amountSpecified = -1e12; // negative number indicates exact input swap
+        BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
+        // ------------------- //
+
+        uint128 output = uint128(swapDelta.amount1());
+        assertFalse(output == 0);
+
+        uint256 expectedFee = output * TOTAL_BIPS/(TOTAL_BIPS - takingFee.swapFeeBips()) - output;
+
+        assertEq(currency0.balanceOf(TREASURY), 0);
+        assertEq(currency1.balanceOf(TREASURY) / ROUND_FACTOR, expectedFee / ROUND_FACTOR);
+    
+        // Perform a test swap //
+        bool zeroForOne2 = true;
+        int256 amountSpecified2 = 1e12; // positive number indicates exact output swap
+        BalanceDelta swapDelta2 = swap(key, zeroForOne2, amountSpecified2, ZERO_BYTES);
+        // ------------------- //
+        
+        uint128 input = uint128(-swapDelta2.amount0());
+        assertFalse(input == 0);
+
+        uint128 expectedFee2 = (input * takingFee.swapFeeBips()) / (TOTAL_BIPS + takingFee.swapFeeBips());
+
+        assertEq(currency0.balanceOf(TREASURY) / ROUND_FACTOR, expectedFee2 / ROUND_FACTOR);
+        assertEq(currency1.balanceOf(TREASURY) / ROUND_FACTOR, expectedFee / ROUND_FACTOR);
+    }
+}
