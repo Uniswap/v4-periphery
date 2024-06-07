@@ -107,6 +107,7 @@ contract TakingFeeTest is Test, Deployers {
     }
 
     function testEdgeCase() public {
+        // first, deplete the pool of token1
         // Swap exact token0 for token1 //
         bool zeroForOne = true;
         int256 amountSpecified = -1e18;
@@ -133,7 +134,10 @@ contract TakingFeeTest is Test, Deployers {
         uint128 expectedFee2 = (input * takingFee.swapFeeBips()) / (TOTAL_BIPS + takingFee.swapFeeBips());
 
         assertEq(manager.balanceOf(address(takingFee), CurrencyLibrary.toId(key.currency0)), 0);
-        assertEq(manager.balanceOf(address(takingFee), CurrencyLibrary.toId(key.currency1)) / R, (expectedFee + expectedFee2) / R);
+        assertEq(
+            manager.balanceOf(address(takingFee), CurrencyLibrary.toId(key.currency1)) / R,
+            (expectedFee + expectedFee2) / R
+        );
 
         // test withdrawing tokens //
         Currency[] memory currencies = new Currency[](2);
