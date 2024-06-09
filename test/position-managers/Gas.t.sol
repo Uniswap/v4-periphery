@@ -23,7 +23,6 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
-
 contract GasTest is Test, Deployers, GasSnapshot {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
