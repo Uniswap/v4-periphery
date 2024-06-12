@@ -5,7 +5,6 @@ import {Vm} from "forge-std/Vm.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
-import {TWAMMImplementation} from "./shared/implementation/TWAMMImplementation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -58,16 +57,7 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         token0 = MockERC20(Currency.unwrap(currency0));
         token1 = MockERC20(Currency.unwrap(currency1));
 
-        TWAMMImplementation impl = new TWAMMImplementation(manager, 10_000, twamm);
-        (, bytes32[] memory writes) = vm.accesses(address(impl));
-        vm.etch(address(twamm), address(impl).code);
-        // for each storage key that was written during the hook implementation, copy the value over
-        unchecked {
-            for (uint256 i = 0; i < writes.length; i++) {
-                bytes32 slot = writes[i];
-                vm.store(address(twamm), slot, vm.load(address(impl), slot));
-            }
-        }
+        deployCodeTo("contracts/hooks/examples/TWAMM.sol:TWAMM", abi.encode(manager, 10_000), address(twamm));
 
         (poolKey, poolId) = initPool(currency0, currency1, twamm, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 

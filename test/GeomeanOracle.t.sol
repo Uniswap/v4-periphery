@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 import {GetSender} from "./shared/GetSender.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {GeomeanOracle} from "../contracts/hooks/examples/GeomeanOracle.sol";
-import {GeomeanOracleImplementation} from "./shared/implementation/GeomeanOracleImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
@@ -24,7 +23,7 @@ contract TestGeomeanOracle is Test, Deployers {
 
     TestERC20 token0;
     TestERC20 token1;
-    GeomeanOracleImplementation geomeanOracle = GeomeanOracleImplementation(
+    GeomeanOracle geomeanOracle = GeomeanOracle(
         address(
             uint160(
                 Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
@@ -41,18 +40,10 @@ contract TestGeomeanOracle is Test, Deployers {
         token0 = TestERC20(Currency.unwrap(currency0));
         token1 = TestERC20(Currency.unwrap(currency1));
 
-        vm.record();
-        GeomeanOracleImplementation impl = new GeomeanOracleImplementation(manager, geomeanOracle);
-        (, bytes32[] memory writes) = vm.accesses(address(impl));
-        vm.etch(address(geomeanOracle), address(impl).code);
-        // for each storage key that was written during the hook implementation, copy the value over
-        unchecked {
-            for (uint256 i = 0; i < writes.length; i++) {
-                bytes32 slot = writes[i];
-                vm.store(address(geomeanOracle), slot, vm.load(address(impl), slot));
-            }
-        }
-        geomeanOracle.setTime(1);
+        deployCodeTo(
+            "contracts/hooks/examples/GeomeanOracle.sol:GeomeanOracle", abi.encode(manager), address(geomeanOracle)
+        );
+
         key = PoolKey(currency0, currency1, 0, MAX_TICK_SPACING, geomeanOracle);
         id = key.toId();
 
@@ -139,7 +130,7 @@ contract TestGeomeanOracle is Test, Deployers {
 
     function testBeforeModifyPositionObservation() public {
         manager.initialize(key, SQRT_PRICE_2_1, ZERO_BYTES);
-        geomeanOracle.setTime(3); // advance 2 seconds
+        skip(2); // advance 2 seconds
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
@@ -162,7 +153,7 @@ contract TestGeomeanOracle is Test, Deployers {
 
     function testBeforeModifyPositionObservationAndCardinality() public {
         manager.initialize(key, SQRT_PRICE_2_1, ZERO_BYTES);
-        geomeanOracle.setTime(3); // advance 2 seconds
+        skip(2); // advance 2 seconds
         geomeanOracle.increaseCardinalityNext(key, 2);
         GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
         assertEq(observationState.index, 0);
@@ -200,7 +191,7 @@ contract TestGeomeanOracle is Test, Deployers {
 
     function testPermanentLiquidity() public {
         manager.initialize(key, SQRT_PRICE_2_1, ZERO_BYTES);
-        geomeanOracle.setTime(3); // advance 2 seconds
+        skip(2); // advance 2 seconds
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
