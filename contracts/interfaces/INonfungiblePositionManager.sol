@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {LiquidityRange} from "../types/LiquidityRange.sol";
 
@@ -17,6 +16,7 @@ interface INonfungiblePositionManager {
 
     // NOTE: more expensive since LiquidityAmounts is used onchain
     // function mint(MintParams calldata params) external payable returns (uint256 tokenId, BalanceDelta delta);
+
     function increaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
         external
         returns (BalanceDelta delta);

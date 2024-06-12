@@ -8,7 +8,6 @@ import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeCallback} from "./SafeCallback.sol";
 import {ImmutableState} from "./ImmutableState.sol";
 import {FeeMath} from "../libraries/FeeMath.sol";
@@ -21,9 +20,6 @@ import {LiquiditySaltLibrary} from "../libraries/LiquiditySaltLibrary.sol";
 
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../types/LiquidityRange.sol";
 
-// TODO: remove
-import {console2} from "forge-std/console2.sol";
-
 abstract contract BaseLiquidityHandler is SafeCallback {
     using LiquidityRangeIdLibrary for LiquidityRange;
     using CurrencyLibrary for Currency;
@@ -31,7 +27,6 @@ abstract contract BaseLiquidityHandler is SafeCallback {
     using CurrencySenderLibrary for Currency;
     using CurrencyDeltas for IPoolManager;
     using StateLibrary for IPoolManager;
-    using TransientStateLibrary for IPoolManager;
     using LiquiditySaltLibrary for IHooks;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
@@ -68,7 +63,6 @@ abstract contract BaseLiquidityHandler is SafeCallback {
         }
     }
 
-    // TODO: selfOnly modifier
     function handleIncreaseLiquidity(
         address sender,
         LiquidityRange calldata range,

@@ -17,9 +17,6 @@ import {CurrencySettleTake} from "../libraries/CurrencySettleTake.sol";
 import {FeeMath} from "../libraries/FeeMath.sol";
 import {BaseLiquidityHandler} from "./BaseLiquidityHandler.sol";
 
-// TODO: remove
-import {console2} from "forge-std/console2.sol";
-
 abstract contract BaseLiquidityManagement is BaseLiquidityHandler {
     using LiquidityRangeIdLibrary for LiquidityRange;
     using CurrencyLibrary for Currency;

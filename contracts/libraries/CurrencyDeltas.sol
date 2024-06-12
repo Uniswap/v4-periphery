@@ -6,10 +6,8 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
-import {console2} from "forge-std/console2.sol";
-
 library CurrencyDeltas {
-    using SafeCast for uint256;
+    using SafeCast for int256;
 
     /// @notice Get the current delta for a caller in the two given currencies
     /// @param caller_ The address of the caller
@@ -35,6 +33,6 @@ library CurrencyDeltas {
         slots[0] = key0;
         slots[1] = key1;
         bytes32[] memory result = manager.exttload(slots);
-        return toBalanceDelta(int128(int256(uint256(result[0]))), int128(int256(uint256(result[1]))));
+        return toBalanceDelta(int256(uint256(result[0])).toInt128(), int256(uint256(result[1])).toInt128());
     }
 }

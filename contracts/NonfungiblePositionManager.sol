@@ -15,11 +15,7 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {FeeMath} from "./libraries/FeeMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-
-// TODO: remove
-import {console2} from "forge-std/console2.sol";
 
 contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721 {
     using CurrencyLibrary for Currency;

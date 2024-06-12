@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-// TODO: move into core? some of the mappings / pool.state seem to hash position id's
 struct LiquidityRange {
     PoolKey key;
     int24 tickLower;
@@ -12,7 +11,7 @@ struct LiquidityRange {
 
 type LiquidityRangeId is bytes32;
 
-/// @notice Library for computing the ID of a pool
+/// @notice Library for computing the ID of a liquidity range
 library LiquidityRangeIdLibrary {
     function toId(LiquidityRange memory position) internal pure returns (LiquidityRangeId) {
         // TODO: gas, is it better to encodePacked?
