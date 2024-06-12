@@ -16,6 +16,7 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721 {
     using CurrencyLibrary for Currency;
@@ -23,6 +24,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     using PoolIdLibrary for PoolKey;
     using LiquidityRangeIdLibrary for LiquidityRange;
     using StateLibrary for IPoolManager;
+    using SafeCast for uint256;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 private _nextId = 1;
@@ -45,7 +47,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         address recipient,
         bytes calldata hookData
     ) public payable returns (uint256 tokenId, BalanceDelta delta) {
-        delta = _increaseLiquidity(range, liquidity, hookData, false, msg.sender);
+        delta = modifyLiquidity(range, liquidity.toInt256(), hookData, false);
 
         // mint receipt token
         _mint(recipient, (tokenId = _nextId++));
@@ -77,7 +79,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         isAuthorizedForToken(tokenId)
         returns (BalanceDelta delta)
     {
-        delta = _increaseLiquidity(tokenPositions[tokenId].range, liquidity, hookData, claims, msg.sender);
+        delta = modifyLiquidity(tokenPositions[tokenId].range, liquidity.toInt256(), hookData, claims);
     }
 
     function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
@@ -85,7 +87,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         isAuthorizedForToken(tokenId)
         returns (BalanceDelta delta)
     {
-        delta = _decreaseLiquidity(tokenPositions[tokenId].range, liquidity, hookData, claims, msg.sender);
+        delta = modifyLiquidity(tokenPositions[tokenId].range, -(liquidity.toInt256()), hookData, claims);
     }
 
     function burn(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
@@ -113,7 +115,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         external
         returns (BalanceDelta delta)
     {
-        delta = _collect(tokenPositions[tokenId].range, hookData, claims, msg.sender);
+        delta = modifyLiquidity(tokenPositions[tokenId].range, 0, hookData, claims);
     }
 
     function feesOwed(uint256 tokenId) external view returns (uint256 token0Owed, uint256 token1Owed) {
