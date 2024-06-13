@@ -43,7 +43,7 @@ contract FeeTakingTest is Test, Deployers {
         token1 = TestERC20(Currency.unwrap(currency1));
 
         vm.record();
-        FeeTakingImplementation impl = new FeeTakingImplementation(manager, 25, feeTaking);
+        FeeTakingImplementation impl = new FeeTakingImplementation(manager, 25, address(this), feeTaking);
         (, bytes32[] memory writes) = vm.accesses(address(impl));
         vm.etch(address(feeTaking), address(impl).code);
         // for each storage key that was written during the hook implementation, copy the value over
@@ -100,12 +100,13 @@ contract FeeTakingTest is Test, Deployers {
         currencies[0] = key.currency0;
         currencies[1] = key.currency1;
         feeTaking.withdraw(TREASURY, currencies);
-        assertEq(manager.balanceOf(address(this), CurrencyLibrary.toId(key.currency0)), 0);
-        assertEq(manager.balanceOf(address(this), CurrencyLibrary.toId(key.currency1)), 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)), 0);
         assertEq(currency0.balanceOf(TREASURY) / R, expectedFee2 / R);
         assertEq(currency1.balanceOf(TREASURY) / R, expectedFee / R);
     }
 
+    // this would error had the hook not used ERC6909
     function testEdgeCase() public {
         // first, deplete the pool of token1
         // Swap exact token0 for token1 //
@@ -113,6 +114,9 @@ contract FeeTakingTest is Test, Deployers {
         int256 amountSpecified = -1e18;
         BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
         // ---------------------------- //
+        // now, pool only has 1 wei of token1
+        uint256 poolToken1 = currency1.balanceOf(address(manager)) - manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1));
+        assertEq(poolToken1, 1);
 
         uint128 output = uint128(swapDelta.amount1());
         assertTrue(output > 0);

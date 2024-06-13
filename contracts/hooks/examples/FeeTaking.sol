@@ -24,7 +24,7 @@ contract FeeTaking is BaseHook, IUnlockCallback, Owned {
         Currency[] currencies;
     }
 
-    constructor(IPoolManager _poolManager, uint128 _swapFeeBips) BaseHook(_poolManager) Owned(msg.sender) {
+    constructor(IPoolManager _poolManager, uint128 _swapFeeBips, address _owner) BaseHook(_poolManager) Owned(_owner) {
         swapFeeBips = _swapFeeBips;
     }
 
