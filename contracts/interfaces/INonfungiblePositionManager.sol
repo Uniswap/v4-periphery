@@ -5,7 +5,21 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {LiquidityRange} from "../types/LiquidityRange.sol";
 
 interface INonfungiblePositionManager {
+    struct TokenPosition {
+        address owner;
+        LiquidityRange range;
+    }
+
+    // TODO: These could be commands/internal calls etc.. for now leaving like this.
+    enum PositionActions {
+        Mint,
+        AddLiquidity,
+        DecreaseLiquidity,
+        Burn,
+        Collect
+    }
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
+
     function mint(
         LiquidityRange calldata position,
         uint256 liquidity,
