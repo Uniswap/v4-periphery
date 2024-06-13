@@ -31,7 +31,7 @@ contract FeeTakingTest is Test, Deployers {
     HookEnabledSwapRouter router;
     TestERC20 token0;
     TestERC20 token1;
-    FeeTaking FeeTaking = FeeTaking(address(uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG)));
+    FeeTaking feeTaking = FeeTaking(address(uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG)));
     PoolId id;
 
     function setUp() public {
@@ -43,22 +43,22 @@ contract FeeTakingTest is Test, Deployers {
         token1 = TestERC20(Currency.unwrap(currency1));
 
         vm.record();
-        FeeTakingImplementation impl = new FeeTakingImplementation(manager, 25, FeeTaking);
+        FeeTakingImplementation impl = new FeeTakingImplementation(manager, 25, feeTaking);
         (, bytes32[] memory writes) = vm.accesses(address(impl));
-        vm.etch(address(FeeTaking), address(impl).code);
+        vm.etch(address(feeTaking), address(impl).code);
         // for each storage key that was written during the hook implementation, copy the value over
         unchecked {
             for (uint256 i = 0; i < writes.length; i++) {
                 bytes32 slot = writes[i];
-                vm.store(address(FeeTaking), slot, vm.load(address(impl), slot));
+                vm.store(address(feeTaking), slot, vm.load(address(impl), slot));
             }
         }
 
-        // key = PoolKey(currency0, currency1, 3000, 60, FeeTaking);
-        (key, id) = initPoolAndAddLiquidity(currency0, currency1, FeeTaking, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        // key = PoolKey(currency0, currency1, 3000, 60, feeTaking);
+        (key, id) = initPoolAndAddLiquidity(currency0, currency1, feeTaking, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        token0.approve(address(FeeTaking), type(uint256).max);
-        token1.approve(address(FeeTaking), type(uint256).max);
+        token0.approve(address(feeTaking), type(uint256).max);
+        token1.approve(address(feeTaking), type(uint256).max);
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
     }
@@ -76,10 +76,10 @@ contract FeeTakingTest is Test, Deployers {
         uint128 output = uint128(swapDelta.amount1());
         assertTrue(output > 0);
 
-        uint256 expectedFee = output * TOTAL_BIPS / (TOTAL_BIPS - FeeTaking.swapFeeBips()) - output;
+        uint256 expectedFee = output * TOTAL_BIPS / (TOTAL_BIPS - feeTaking.swapFeeBips()) - output;
 
-        assertEq(manager.balanceOf(address(FeeTaking), CurrencyLibrary.toId(key.currency0)), 0);
-        assertEq(manager.balanceOf(address(FeeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
 
         // Swap token0 for exact token1 //
         bool zeroForOne2 = true;
@@ -90,16 +90,16 @@ contract FeeTakingTest is Test, Deployers {
         uint128 input = uint128(-swapDelta2.amount0());
         assertTrue(output > 0);
 
-        uint128 expectedFee2 = (input * FeeTaking.swapFeeBips()) / (TOTAL_BIPS + FeeTaking.swapFeeBips());
+        uint128 expectedFee2 = (input * feeTaking.swapFeeBips()) / (TOTAL_BIPS + feeTaking.swapFeeBips());
 
-        assertEq(manager.balanceOf(address(FeeTaking), CurrencyLibrary.toId(key.currency0)) / R, expectedFee2 / R);
-        assertEq(manager.balanceOf(address(FeeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)) / R, expectedFee2 / R);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
 
         // test withdrawing tokens //
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = key.currency0;
         currencies[1] = key.currency1;
-        FeeTaking.withdraw(TREASURY, currencies);
+        feeTaking.withdraw(TREASURY, currencies);
         assertEq(manager.balanceOf(address(this), CurrencyLibrary.toId(key.currency0)), 0);
         assertEq(manager.balanceOf(address(this), CurrencyLibrary.toId(key.currency1)), 0);
         assertEq(currency0.balanceOf(TREASURY) / R, expectedFee2 / R);
@@ -117,10 +117,10 @@ contract FeeTakingTest is Test, Deployers {
         uint128 output = uint128(swapDelta.amount1());
         assertTrue(output > 0);
 
-        uint256 expectedFee = output * TOTAL_BIPS / (TOTAL_BIPS - FeeTaking.swapFeeBips()) - output;
+        uint256 expectedFee = output * TOTAL_BIPS / (TOTAL_BIPS - feeTaking.swapFeeBips()) - output;
 
-        assertEq(manager.balanceOf(address(FeeTaking), CurrencyLibrary.toId(key.currency0)), 0);
-        assertEq(manager.balanceOf(address(FeeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
 
         // Swap token1 for exact token0 //
         bool zeroForOne2 = false;
@@ -131,11 +131,11 @@ contract FeeTakingTest is Test, Deployers {
         uint128 input = uint128(-swapDelta2.amount1());
         assertTrue(output > 0);
 
-        uint128 expectedFee2 = (input * FeeTaking.swapFeeBips()) / (TOTAL_BIPS + FeeTaking.swapFeeBips());
+        uint128 expectedFee2 = (input * feeTaking.swapFeeBips()) / (TOTAL_BIPS + feeTaking.swapFeeBips());
 
-        assertEq(manager.balanceOf(address(FeeTaking), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
         assertEq(
-            manager.balanceOf(address(FeeTaking), CurrencyLibrary.toId(key.currency1)) / R,
+            manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R,
             (expectedFee + expectedFee2) / R
         );
 
@@ -143,7 +143,7 @@ contract FeeTakingTest is Test, Deployers {
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = key.currency0;
         currencies[1] = key.currency1;
-        FeeTaking.withdraw(TREASURY, currencies);
+        feeTaking.withdraw(TREASURY, currencies);
         assertEq(currency0.balanceOf(TREASURY) / R, 0);
         assertEq(currency1.balanceOf(TREASURY) / R, (expectedFee + expectedFee2) / R);
     }
