@@ -12,7 +12,7 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Owned} from "solmate/auth/Owned.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 
-contract TakingFee is BaseHook, IUnlockCallback, Owned {
+contract FeeTaking is BaseHook, IUnlockCallback, Owned {
     using SafeCast for uint256;
 
     uint128 private constant TOTAL_BIPS = 10000;
@@ -55,9 +55,9 @@ contract TakingFee is BaseHook, IUnlockCallback, Owned {
         bytes calldata
     ) external override returns (bytes4, int128) {
         // fee will be in the unspecified token of the swap
-        bool specifiedTokenIs0 = (params.amountSpecified < 0 == params.zeroForOne);
+        bool currency0Specified = (params.amountSpecified < 0 == params.zeroForOne);
         (Currency feeCurrency, int128 swapAmount) =
-            (specifiedTokenIs0) ? (key.currency1, delta.amount1()) : (key.currency0, delta.amount0());
+            (currency0Specified) ? (key.currency1, delta.amount1()) : (key.currency0, delta.amount0());
         // if fee is on output, get the absolute output amount
         if (swapAmount < 0) swapAmount = -swapAmount;
 
