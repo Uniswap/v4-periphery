@@ -76,7 +76,7 @@ contract FeeTakingTest is Test, Deployers {
         uint128 output = uint128(swapDelta.amount1());
         assertTrue(output > 0);
 
-        uint256 expectedFee = output * TOTAL_BIPS / (TOTAL_BIPS - feeTaking.swapFeeBips()) - output;
+        uint256 expectedFee = calculateFeeForExactInput(output, feeTaking.swapFeeBips());
 
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
@@ -90,7 +90,7 @@ contract FeeTakingTest is Test, Deployers {
         uint128 input = uint128(-swapDelta2.amount0());
         assertTrue(output > 0);
 
-        uint128 expectedFee2 = (input * feeTaking.swapFeeBips()) / (TOTAL_BIPS + feeTaking.swapFeeBips());
+        uint256 expectedFee2 = calculateFeeForExactOutput(input, feeTaking.swapFeeBips());
 
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)) / R, expectedFee2 / R);
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
@@ -115,13 +115,14 @@ contract FeeTakingTest is Test, Deployers {
         BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
         // ---------------------------- //
         // now, pool only has 1 wei of token1
-        uint256 poolToken1 = currency1.balanceOf(address(manager)) - manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1));
+        uint256 poolToken1 = currency1.balanceOf(address(manager))
+            - manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1));
         assertEq(poolToken1, 1);
 
         uint128 output = uint128(swapDelta.amount1());
         assertTrue(output > 0);
 
-        uint256 expectedFee = output * TOTAL_BIPS / (TOTAL_BIPS - feeTaking.swapFeeBips()) - output;
+        uint256 expectedFee = calculateFeeForExactInput(output, feeTaking.swapFeeBips());
 
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
@@ -135,7 +136,7 @@ contract FeeTakingTest is Test, Deployers {
         uint128 input = uint128(-swapDelta2.amount1());
         assertTrue(output > 0);
 
-        uint128 expectedFee2 = (input * feeTaking.swapFeeBips()) / (TOTAL_BIPS + feeTaking.swapFeeBips());
+        uint256 expectedFee2 = calculateFeeForExactOutput(input, feeTaking.swapFeeBips());
 
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
         assertEq(
@@ -150,5 +151,117 @@ contract FeeTakingTest is Test, Deployers {
         feeTaking.withdraw(TREASURY, currencies);
         assertEq(currency0.balanceOf(TREASURY) / R, 0);
         assertEq(currency1.balanceOf(TREASURY) / R, (expectedFee + expectedFee2) / R);
+    }
+
+    function testSwapWithDifferentFees() public {
+        testSwapHooks();
+        feeTaking.setSwapFeeBips(50); // Set fee to 0.50%
+
+        // Swap exact token0 for token1 //
+        bool zeroForOne = true;
+        int256 amountSpecified = -1e12;
+        BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
+        // ---------------------------- //
+
+        uint128 output = uint128(swapDelta.amount1());
+        assertTrue(output > 0);
+
+        uint256 expectedFee = calculateFeeForExactInput(output, 50);
+
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
+    }
+
+    function testZeroFeeSwap() public {
+        feeTaking.setSwapFeeBips(0); // Set fee to 0%
+
+        // Swap exact token0 for token1 //
+        bool zeroForOne = true;
+        int256 amountSpecified = -1e12;
+        BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
+        // ---------------------------- //
+
+        uint128 output = uint128(swapDelta.amount1());
+        assertTrue(output > 0);
+
+        // No fee should be taken
+        uint256 expectedFee = calculateFeeForExactInput(output, 0);
+        assertEq(expectedFee, 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)), 0);
+    }
+
+    function testMaxFeeSwap() public {
+        feeTaking.setSwapFeeBips(100); // Set fee to 1%
+
+        // Swap exact token0 for token1 //
+        bool zeroForOne = true;
+        int256 amountSpecified = -1e12;
+        BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
+        // ---------------------------- //
+
+        uint128 output = uint128(swapDelta.amount1());
+        assertTrue(output > 0);
+
+        uint256 expectedFee = calculateFeeForExactInput(output, 100);
+
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
+    }
+
+    function testMultiTokenPoolSwap() public {
+        testSwapHooks();
+        // Deploy additional tokens
+        (Currency currency2, Currency currency3) = deployMintAndApprove2Currencies();
+        TestERC20 token2 = TestERC20(Currency.unwrap(currency2));
+        TestERC20 token3 = TestERC20(Currency.unwrap(currency3));
+
+        // Create new pool with different tokens
+        (PoolKey memory key2, PoolId id2) =
+            initPoolAndAddLiquidity(currency2, currency3, feeTaking, 3000, SQRT_RATIO_10_1, ZERO_BYTES);
+
+        // Approve tokens for the router
+        token2.approve(address(router), type(uint256).max);
+        token3.approve(address(router), type(uint256).max);
+
+        // Swap exact token2 for token3 //
+        bool zeroForOne = true;
+        int256 amountSpecified = -1e12;
+        BalanceDelta swapDelta = swap(key2, zeroForOne, amountSpecified, ZERO_BYTES);
+        // ---------------------------- //
+
+        uint128 output = uint128(swapDelta.amount1());
+        assertTrue(output > 0);
+
+        uint256 expectedFee = calculateFeeForExactInput(output, feeTaking.swapFeeBips());
+
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key2.currency0)), 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key2.currency1)) / R, expectedFee / R);
+
+        // Withdraw accumulated fees
+        Currency[] memory currencies = new Currency[](3);
+        currencies[0] = key.currency0;
+        currencies[1] = key.currency1;
+        currencies[2] = key2.currency1;
+        feeTaking.withdraw(TREASURY, currencies);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)), 0);
+        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key2.currency1)), 0);
+        assertEq(currency0.balanceOf(TREASURY) / R, 0);
+        assertEq(currency1.balanceOf(TREASURY) / R, expectedFee / R);
+        assertEq(currency3.balanceOf(TREASURY) / R, expectedFee / R);
+    }
+
+    function testTooHighFee() public {
+        vm.expectRevert();
+        feeTaking.setSwapFeeBips(101);
+    }
+
+    function calculateFeeForExactInput(uint256 outputAmount, uint128 feeBips) internal pure returns (uint256) {
+        return outputAmount * TOTAL_BIPS / (TOTAL_BIPS - feeBips) - outputAmount;
+    }
+
+    function calculateFeeForExactOutput(uint256 inputAmount, uint128 feeBips) internal pure returns (uint256) {
+        return (inputAmount * feeBips) / (TOTAL_BIPS + feeBips);
     }
 }

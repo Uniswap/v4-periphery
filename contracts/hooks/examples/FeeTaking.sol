@@ -15,6 +15,7 @@ import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockC
 contract FeeTaking is BaseHook, IUnlockCallback, Owned {
     using SafeCast for uint256;
 
+    bytes internal constant ZERO_BYTES = bytes("");
     uint128 private constant TOTAL_BIPS = 10000;
     uint128 private constant MAX_BIPS = 100;
     uint128 public swapFeeBips;
@@ -93,6 +94,6 @@ contract FeeTaking is BaseHook, IUnlockCallback, Owned {
                 i++;
             }
         }
-        return "";
+        return ZERO_BYTES;
     }
 }
