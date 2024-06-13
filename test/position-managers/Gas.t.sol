@@ -80,45 +80,40 @@ contract GasTest is Test, Deployers, GasSnapshot {
     //     });
     //     snapStart("mint");
     //     lpm.mint(params);
-    //     snapEnd();
+    //     snapLastCall();
     // }
 
     function test_gas_mintWithLiquidity() public {
-        snapStart("mintWithLiquidity");
         lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
-        snapEnd();
+        snapLastCall("mintWithLiquidity");
     }
 
     function test_gas_increaseLiquidity_erc20() public {
         (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
 
-        snapStart("increaseLiquidity_erc20");
         lpm.increaseLiquidity(tokenId, 1000 ether, ZERO_BYTES, false);
-        snapEnd();
+        snapLastCall("increaseLiquidity_erc20");
     }
 
     function test_gas_increaseLiquidity_erc6909() public {
         (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
 
-        snapStart("increaseLiquidity_erc6909");
         lpm.increaseLiquidity(tokenId, 1000 ether, ZERO_BYTES, true);
-        snapEnd();
+        snapLastCall("increaseLiquidity_erc6909");
     }
 
     function test_gas_decreaseLiquidity_erc20() public {
         (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
 
-        snapStart("decreaseLiquidity_erc20");
         lpm.decreaseLiquidity(tokenId, 10_000 ether, ZERO_BYTES, false);
-        snapEnd();
+        snapLastCall("decreaseLiquidity_erc20");
     }
 
     function test_gas_decreaseLiquidity_erc6909() public {
         (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
 
-        snapStart("decreaseLiquidity_erc6909");
         lpm.decreaseLiquidity(tokenId, 10_000 ether, ZERO_BYTES, true);
-        snapEnd();
+        snapLastCall("decreaseLiquidity_erc6909");
     }
 
     function test_gas_burn() public {}
