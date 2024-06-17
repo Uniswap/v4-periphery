@@ -51,11 +51,11 @@ contract BaseLiquidityManagement is SafeCallback {
 
     mapping(address owner => mapping(LiquidityRangeId rangeId => Position)) public positions;
 
-    error LockFailure();
+    error UnlockFailure();
 
     constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}
 
-    function modifyLiquidity(LiquidityRange memory range, int256 liquidityDelta, bytes calldata hookData, bool claims)
+    function modifyLiquidity(LiquidityRange memory range, int256 liquidityDelta, bytes memory hookData, bool claims)
         internal
         returns (BalanceDelta delta)
     {
@@ -70,7 +70,7 @@ contract BaseLiquidityManagement is SafeCallback {
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         (bool success, bytes memory returnData) = address(this).call(data);
         if (success) return returnData;
-        if (returnData.length == 0) revert LockFailure();
+        if (returnData.length == 0) revert UnlockFailure();
         // if the call failed, bubble up the reason
         /// @solidity memory-safe-assembly
         assembly {
