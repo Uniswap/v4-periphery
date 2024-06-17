@@ -1,2 +1,2 @@
 @uniswap/v4-core/=lib/v4-core/
-@openzeppelin/=lib/openzeppelin-contracts/
+@openzeppelin/=lib/v4-core/lib/openzeppelin-contracts/
