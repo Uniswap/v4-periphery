@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {ERC721} from "openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
+import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {INonfungiblePositionManager} from "./interfaces/INonfungiblePositionManager.sol";
 import {BaseLiquidityManagement} from "./base/BaseLiquidityManagement.sol";
 
@@ -18,7 +18,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
-contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721 {
+contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;
@@ -36,7 +36,10 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
 
     mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
 
-    constructor(IPoolManager _poolManager) BaseLiquidityManagement(_poolManager) ERC721("Uniswap V4 LP", "LPT") {}
+    constructor(IPoolManager _poolManager)
+        BaseLiquidityManagement(_poolManager)
+        ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V3-POS", "1")
+    {}
 
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
     // TODO: deadline check
@@ -123,8 +126,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         return feesOwed(tokenPosition.owner, tokenPosition.range);
     }
 
-    function _afterTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize) internal override {
-        TokenPosition storage tokenPosition = tokenPositions[firstTokenId];
+    function _beforeTokenTransfer(address from, address to, uint256 tokenId) internal override {
+        TokenPosition storage tokenPosition = tokenPositions[tokenId];
         LiquidityRangeId rangeId = tokenPosition.range.toId();
         Position storage position = positions[from][rangeId];
         position.operator = address(0x0);
@@ -134,7 +137,12 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         delete positions[from][rangeId];
 
         // update token position
-        tokenPositions[firstTokenId] = TokenPosition({owner: to, range: tokenPosition.range});
+        tokenPositions[tokenId] = TokenPosition({owner: to, range: tokenPosition.range});
+    }
+
+    function _getAndIncrementNonce(uint256 tokenId) internal override returns (uint256) {
+        TokenPosition memory tokenPosition = tokenPositions[tokenId];
+        return uint256(positions[tokenPosition.owner][tokenPosition.range.toId()].nonce++);
     }
 
     modifier isAuthorizedForToken(uint256 tokenId) {
