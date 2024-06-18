@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {FeeTaking} from "../contracts/hooks/examples/FeeTaking.sol";
 import {FeeTakingImplementation} from "./shared/implementation/FeeTakingImplementation.sol";
-import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {TestERC20} from "@uniswap/v4-core/src/test/TestERC20.sol";
@@ -43,7 +42,7 @@ contract FeeTakingTest is Test, Deployers {
         token1 = TestERC20(Currency.unwrap(currency1));
 
         vm.record();
-        FeeTakingImplementation impl = new FeeTakingImplementation(manager, 25, address(this), feeTaking);
+        FeeTakingImplementation impl = new FeeTakingImplementation(manager, 25, address(this), TREASURY, feeTaking);
         (, bytes32[] memory writes) = vm.accesses(address(impl));
         vm.etch(address(feeTaking), address(impl).code);
         // for each storage key that was written during the hook implementation, copy the value over
@@ -99,7 +98,7 @@ contract FeeTakingTest is Test, Deployers {
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = key.currency0;
         currencies[1] = key.currency1;
-        feeTaking.withdraw(TREASURY, currencies);
+        feeTaking.withdraw(currencies);
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)), 0);
         assertEq(currency0.balanceOf(TREASURY) / R, expectedFee2 / R);
@@ -148,65 +147,9 @@ contract FeeTakingTest is Test, Deployers {
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = key.currency0;
         currencies[1] = key.currency1;
-        feeTaking.withdraw(TREASURY, currencies);
+        feeTaking.withdraw(currencies);
         assertEq(currency0.balanceOf(TREASURY) / R, 0);
         assertEq(currency1.balanceOf(TREASURY) / R, (expectedFee + expectedFee2) / R);
-    }
-
-    function testSwapWithDifferentFees() public {
-        testSwapHooks();
-        feeTaking.setSwapFeeBips(50); // Set fee to 0.50%
-
-        // Swap exact token0 for token1 //
-        bool zeroForOne = true;
-        int256 amountSpecified = -1e12;
-        BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
-        // ---------------------------- //
-
-        uint128 output = uint128(swapDelta.amount1());
-        assertTrue(output > 0);
-
-        uint256 expectedFee = calculateFeeForExactInput(output, 50);
-
-        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
-        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
-    }
-
-    function testZeroFeeSwap() public {
-        feeTaking.setSwapFeeBips(0); // Set fee to 0%
-
-        // Swap exact token0 for token1 //
-        bool zeroForOne = true;
-        int256 amountSpecified = -1e12;
-        BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
-        // ---------------------------- //
-
-        uint128 output = uint128(swapDelta.amount1());
-        assertTrue(output > 0);
-
-        // No fee should be taken
-        uint256 expectedFee = calculateFeeForExactInput(output, 0);
-        assertEq(expectedFee, 0);
-        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
-        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)), 0);
-    }
-
-    function testMaxFeeSwap() public {
-        feeTaking.setSwapFeeBips(100); // Set fee to 1%
-
-        // Swap exact token0 for token1 //
-        bool zeroForOne = true;
-        int256 amountSpecified = -1e12;
-        BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
-        // ---------------------------- //
-
-        uint128 output = uint128(swapDelta.amount1());
-        assertTrue(output > 0);
-
-        uint256 expectedFee = calculateFeeForExactInput(output, 100);
-
-        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
-        assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
     }
 
     function testMultiTokenPoolSwap() public {
@@ -243,18 +186,13 @@ contract FeeTakingTest is Test, Deployers {
         currencies[0] = key.currency0;
         currencies[1] = key.currency1;
         currencies[2] = key2.currency1;
-        feeTaking.withdraw(TREASURY, currencies);
+        feeTaking.withdraw(currencies);
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)), 0);
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key2.currency1)), 0);
         assertEq(currency0.balanceOf(TREASURY) / R, 0);
         assertEq(currency1.balanceOf(TREASURY) / R, expectedFee / R);
         assertEq(currency3.balanceOf(TREASURY) / R, expectedFee / R);
-    }
-
-    function testTooHighFee() public {
-        vm.expectRevert();
-        feeTaking.setSwapFeeBips(101);
     }
 
     function calculateFeeForExactInput(uint256 outputAmount, uint128 feeBips) internal pure returns (uint256) {

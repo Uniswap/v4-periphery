@@ -7,9 +7,13 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 contract FeeTakingImplementation is FeeTaking {
-    constructor(IPoolManager _poolManager, uint128 _swapFeeBips, address _owner, FeeTaking addressToEtch)
-        FeeTaking(_poolManager, _swapFeeBips, _owner)
-    {
+    constructor(
+        IPoolManager _poolManager,
+        uint128 _swapFeeBips,
+        address _owner,
+        address _treasury,
+        FeeTaking addressToEtch
+    ) FeeTaking(_poolManager, _swapFeeBips, _owner, _treasury) {
         Hooks.validateHookPermissions(addressToEtch, getHookPermissions());
     }
 
