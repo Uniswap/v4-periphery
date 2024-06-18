@@ -3,8 +3,8 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {FeeTakingLite} from "../contracts/hooks/test/FeeTakingLite.sol";
-import {MiddlewareRemove} from "../contracts/hooks/examples/MiddlewareRemove.sol";
+import {FeeTakingLite} from "../contracts/hooks/middleware/test/FeeTakingLite.sol";
+import {MiddlewareRemove} from "../contracts/hooks/middleware/MiddlewareRemove.sol";
 import {MiddlewareRemoveImplementation} from "./shared/implementation/MiddlewareRemoveImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -18,8 +18,8 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {console} from "../../../lib/forge-std/src/console.sol";
-import {HooksRevert} from "../contracts/hooks/test/HooksRevert.sol";
-import {HooksOutOfGas} from "../contracts/hooks/test/HooksOutOfGas.sol";
+import {HooksRevert} from "../contracts/hooks/middleware/test/HooksRevert.sol";
+import {HooksOutOfGas} from "../contracts/hooks/middleware/test/HooksOutOfGas.sol";
 
 contract MiddlewareRemoveTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;

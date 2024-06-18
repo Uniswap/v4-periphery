@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {BaseHook} from "../../BaseHook.sol";
+import {BaseHook} from "../../../BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -11,11 +11,9 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Owned} from "solmate/auth/Owned.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
-import {console} from "../../../lib/forge-std/src/console.sol";
+import {console} from "../../../../lib/forge-std/src/console.sol";
 
-contract HooksRevert {
-    error HookNotImplemented();
-
+contract HooksOutOfGas {
     IPoolManager public immutable poolManager;
 
     constructor(IPoolManager _poolManager) {
@@ -42,7 +40,7 @@ contract HooksRevert {
     }
 
     function beforeInitialize(address, PoolKey calldata, uint160, bytes calldata) external virtual returns (bytes4) {
-        revert HookNotImplemented();
+        consumeAllGas();
     }
 
     function afterInitialize(address, PoolKey calldata, uint160, int24, bytes calldata)
@@ -50,7 +48,7 @@ contract HooksRevert {
         virtual
         returns (bytes4)
     {
-        revert HookNotImplemented();
+        consumeAllGas();
     }
 
     function beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
@@ -58,7 +56,7 @@ contract HooksRevert {
         virtual
         returns (bytes4)
     {
-        revert HookNotImplemented();
+        consumeAllGas();
     }
 
     function beforeRemoveLiquidity(
@@ -67,7 +65,7 @@ contract HooksRevert {
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
     ) external returns (bytes4) {
-        revert HookNotImplemented();
+        consumeAllGas();
     }
 
     function afterAddLiquidity(
@@ -77,18 +75,17 @@ contract HooksRevert {
         BalanceDelta,
         bytes calldata
     ) external virtual returns (bytes4, BalanceDelta) {
-        revert HookNotImplemented();
+        consumeAllGas();
     }
 
     function afterRemoveLiquidity(
-        address sender,
+        address,
         PoolKey calldata,
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
     ) external returns (bytes4, BalanceDelta) {
-        require(sender == address(0), "nobody can remove");
-        return (BaseHook.beforeRemoveLiquidity.selector, toBalanceDelta(0, 0));
+        consumeAllGas();
     }
 
     function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
@@ -96,7 +93,7 @@ contract HooksRevert {
         virtual
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        revert HookNotImplemented();
+        consumeAllGas();
     }
 
     function afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
@@ -104,7 +101,7 @@ contract HooksRevert {
         virtual
         returns (bytes4, int128)
     {
-        revert HookNotImplemented();
+        consumeAllGas();
     }
 
     function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
@@ -112,7 +109,7 @@ contract HooksRevert {
         virtual
         returns (bytes4)
     {
-        revert HookNotImplemented();
+        consumeAllGas();
     }
 
     function afterDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
@@ -120,6 +117,13 @@ contract HooksRevert {
         virtual
         returns (bytes4)
     {
-        revert HookNotImplemented();
+        consumeAllGas();
+    }
+
+    function consumeAllGas() internal view {
+        while (true) {
+            //console.log(gasleft());
+            // This loop will run indefinitely and consume all available gas.
+        }
     }
 }
