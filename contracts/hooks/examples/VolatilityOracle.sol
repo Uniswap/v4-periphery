@@ -19,7 +19,7 @@ contract VolatilityOracle is BaseHook {
         return uint32(block.timestamp);
     }
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {
+    constructor(IPoolManager _manager) BaseHook(_manager) {
         deployTimestamp = _blockTimestamp();
     }
 
@@ -56,7 +56,7 @@ contract VolatilityOracle is BaseHook {
         uint24 startingFee = 3000;
         uint32 lapsed = _blockTimestamp() - deployTimestamp;
         uint24 fee = startingFee + (uint24(lapsed) * 100) / 60; // 100 bps a minute
-        poolManager.updateDynamicLPFee(key, fee); // initial fee 0.30%
+        manager.updateDynamicLPFee(key, fee); // initial fee 0.30%
     }
 
     function afterInitialize(address, PoolKey calldata key, uint160, int24, bytes calldata)
