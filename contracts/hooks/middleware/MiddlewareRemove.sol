@@ -36,7 +36,7 @@ contract MiddlewareRemove is BaseMiddleware {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external returns (bytes4) {
+    ) external returns (bytes4, BalanceDelta) {
         console.log("afterRemoveLiquidity middleware");
         (bool success, bytes memory returnData) = implementation.delegatecall{gas: gasLimit}(msg.data);
         console.log(success);
