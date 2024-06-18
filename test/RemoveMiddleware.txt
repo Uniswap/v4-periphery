@@ -5,8 +5,8 @@ import {Test} from "forge-std/Test.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {FeeTakingLite} from "../contracts/hooks/test/FeeTakingLite.sol";
 import {HooksRevert} from "../contracts/hooks/test/HooksRevert.sol";
-import {RemoveMiddleware} from "../contracts/hooks/examples/RemoveMiddleware.sol";
-import {RemoveMiddlewareImplementation} from "./shared/implementation/RemoveMiddlewareImplementation.sol";
+import {MiddlewareRemove} from "../contracts/hooks/examples/MiddlewareRemove.sol";
+import {MiddlewareRemoveImplementation} from "./shared/implementation/MiddlewareRemoveImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
@@ -20,7 +20,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {console} from "../../../lib/forge-std/src/console.sol";
 
-contract RemoveMiddlewareTest is Test, Deployers {
+contract MiddlewareRemoveTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -32,8 +32,8 @@ contract RemoveMiddlewareTest is Test, Deployers {
     HookEnabledSwapRouter router;
     TestERC20 token0;
     TestERC20 token1;
-    RemoveMiddleware removeMiddleware =
-        RemoveMiddleware(payable(address(uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG))));
+    MiddlewareRemove middlewareRemove =
+        MiddlewareRemove(payable(address(uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG))));
     PoolId id;
 
     function setUp() public {
@@ -48,32 +48,32 @@ contract RemoveMiddlewareTest is Test, Deployers {
         HooksRevert hooksRevert = new HooksRevert(manager);
 
         vm.record();
-        RemoveMiddlewareImplementation impl =
-            new RemoveMiddlewareImplementation(manager, address(feeTakingLite), removeMiddleware);
+        MiddlewareRemoveImplementation impl =
+            new MiddlewareRemoveImplementation(manager, address(feeTakingLite), middlewareRemove);
         (, bytes32[] memory writes) = vm.accesses(address(impl));
-        vm.etch(address(removeMiddleware), address(impl).code);
+        vm.etch(address(middlewareRemove), address(impl).code);
         // for each storage key that was written during the hook implementation, copy the value over
         unchecked {
             for (uint256 i = 0; i < writes.length; i++) {
                 bytes32 slot = writes[i];
-                vm.store(address(removeMiddleware), slot, vm.load(address(impl), slot));
+                vm.store(address(middlewareRemove), slot, vm.load(address(impl), slot));
             }
         }
 
-        // key = PoolKey(currency0, currency1, 3000, 60, removeMiddleware);
+        // key = PoolKey(currency0, currency1, 3000, 60, middlewareRemove);
         (key, id) = initPoolAndAddLiquidity(
-            currency0, currency1, IHooks(address(removeMiddleware)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
+            currency0, currency1, IHooks(address(middlewareRemove)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
         );
 
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
     }
 
-    function testRemoveMiddleware() public {
-        console.log("testRemoveMiddleware");
-        console.log("testRemoveMiddleware");
-        console.log("testRemoveMiddleware");
-        removeLiquidity(currency0, currency1, IHooks(address(removeMiddleware)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+    function testMiddlewareRemove() public {
+        console.log("testMiddlewareRemove");
+        console.log("testMiddlewareRemove");
+        console.log("testMiddlewareRemove");
+        removeLiquidity(currency0, currency1, IHooks(address(middlewareRemove)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
     }
 
     // test normal behavior, copied from FeeTaking.t.sol
@@ -89,8 +89,8 @@ contract RemoveMiddlewareTest is Test, Deployers {
 
         uint256 expectedFee = calculateFeeForExactInput(output, 25);
 
-        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency0)), 0);
-        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency1)), expectedFee);
+        assertEq(manager.balanceOf(address(middlewareRemove), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(middlewareRemove), CurrencyLibrary.toId(key.currency1)), expectedFee);
 
         // Swap token0 for exact token1 //
         bool zeroForOne2 = true;
@@ -103,17 +103,17 @@ contract RemoveMiddlewareTest is Test, Deployers {
 
         uint256 expectedFee2 = calculateFeeForExactOutput(input, 25);
 
-        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency0)), expectedFee2);
-        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency1)), expectedFee);
+        assertEq(manager.balanceOf(address(middlewareRemove), CurrencyLibrary.toId(key.currency0)), expectedFee2);
+        assertEq(manager.balanceOf(address(middlewareRemove), CurrencyLibrary.toId(key.currency1)), expectedFee);
 
         // test withdrawing tokens //
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = key.currency0;
         currencies[1] = key.currency1;
-        FeeTakingLite impl = FeeTakingLite(address(removeMiddleware));
+        FeeTakingLite impl = FeeTakingLite(address(middlewareRemove));
         impl.withdraw(TREASURY, currencies);
-        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency0)), 0);
-        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency1)), 0);
+        assertEq(manager.balanceOf(address(middlewareRemove), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(middlewareRemove), CurrencyLibrary.toId(key.currency1)), 0);
         assertEq(currency0.balanceOf(TREASURY), expectedFee2);
         assertEq(currency1.balanceOf(TREASURY), expectedFee);
     }

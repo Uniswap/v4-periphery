@@ -12,7 +12,7 @@ import {BaseMiddleware} from "./BaseMiddleware.sol";
 import {BaseHook} from "../../BaseHook.sol";
 import {console} from "../../../lib/forge-std/src/console.sol";
 
-contract RemoveMiddleware is BaseMiddleware {
+contract MiddlewareRemove is BaseMiddleware {
     bytes internal constant ZERO_BYTES = bytes("");
     uint256 public constant gasLimit = 100000;
 

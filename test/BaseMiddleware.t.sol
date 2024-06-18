@@ -69,6 +69,7 @@ contract BaseMiddlewareTest is Test, Deployers {
         token1.approve(address(router), type(uint256).max);
     }
 
+    // test normal behavior, copied from FeeTaking.t.sol
     function testNormal() public {
         // Swap exact token0 for token1 //
         bool zeroForOne = true;
@@ -84,29 +85,30 @@ contract BaseMiddlewareTest is Test, Deployers {
         assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency0)), 0);
         assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency1)), expectedFee);
 
-        // // Swap token0 for exact token1 //
-        // bool zeroForOne2 = true;
-        // int256 amountSpecified2 = 1e12; // positive number indicates exact output swap
-        // BalanceDelta swapDelta2 = swap(key, zeroForOne2, amountSpecified2, ZERO_BYTES);
-        // // ---------------------------- //
+        // Swap token0 for exact token1 //
+        bool zeroForOne2 = true;
+        int256 amountSpecified2 = 1e12; // positive number indicates exact output swap
+        BalanceDelta swapDelta2 = swap(key, zeroForOne2, amountSpecified2, ZERO_BYTES);
+        // ---------------------------- //
 
-        // uint128 input = uint128(-swapDelta2.amount0());
-        // assertTrue(output > 0);
+        uint128 input = uint128(-swapDelta2.amount0());
+        assertTrue(output > 0);
 
-        // uint256 expectedFee2 = calculateFeeForExactOutput(input, 25);
+        uint256 expectedFee2 = calculateFeeForExactOutput(input, 25);
 
-        // assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency0)), expectedFee2);
-        // assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency1)), expectedFee);
+        assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency0)), expectedFee2);
+        assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency1)), expectedFee);
 
-        // // test withdrawing tokens //
-        // Currency[] memory currencies = new Currency[](2);
-        // currencies[0] = key.currency0;
-        // currencies[1] = key.currency1;
-        // feeTakingLite.withdraw(TREASURY, currencies);
-        // assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency0)), 0);
-        // assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency1)), 0);
-        // assertEq(currency0.balanceOf(TREASURY), expectedFee2);
-        // assertEq(currency1.balanceOf(TREASURY), expectedFee);
+        // test withdrawing tokens //
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = key.currency0;
+        currencies[1] = key.currency1;
+        FeeTakingLite impl = FeeTakingLite(address(baseMiddleware));
+        impl.withdraw(TREASURY, currencies);
+        assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency1)), 0);
+        assertEq(currency0.balanceOf(TREASURY), expectedFee2);
+        assertEq(currency1.balanceOf(TREASURY), expectedFee);
     }
 
     function calculateFeeForExactInput(uint256 outputAmount, uint128 feeBips) internal pure returns (uint256) {

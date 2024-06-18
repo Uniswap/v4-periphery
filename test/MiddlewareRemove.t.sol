@@ -4,8 +4,8 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {FeeTakingLite} from "../contracts/hooks/test/FeeTakingLite.sol";
-import {RemoveMiddleware} from "../contracts/hooks/examples/RemoveMiddleware.sol";
-import {RemoveMiddlewareImplementation} from "./shared/implementation/RemoveMiddlewareImplementation.sol";
+import {MiddlewareRemove} from "../contracts/hooks/examples/MiddlewareRemove.sol";
+import {MiddlewareRemoveImplementation} from "./shared/implementation/MiddlewareRemoveImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
@@ -21,7 +21,7 @@ import {console} from "../../../lib/forge-std/src/console.sol";
 import {HooksRevert} from "../contracts/hooks/test/HooksRevert.sol";
 import {HooksOutOfGas} from "../contracts/hooks/test/HooksOutOfGas.sol";
 
-contract RemoveMiddlewareTest is Test, Deployers {
+contract MiddlewareRemoveTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -67,23 +67,23 @@ contract RemoveMiddlewareTest is Test, Deployers {
 
     // creates a middleware on an implementation
     function testOn(address implementation, uint160 hooks) internal {
-        RemoveMiddleware removeMiddleware = RemoveMiddleware(payable(address(nonce << 20 | hooks)));
+        MiddlewareRemove middlewareRemove = MiddlewareRemove(payable(address(nonce << 20 | hooks)));
         nonce++;
         vm.record();
-        RemoveMiddlewareImplementation impl =
-            new RemoveMiddlewareImplementation(manager, implementation, removeMiddleware);
+        MiddlewareRemoveImplementation impl =
+            new MiddlewareRemoveImplementation(manager, implementation, middlewareRemove);
         (, bytes32[] memory writes) = vm.accesses(address(impl));
-        vm.etch(address(removeMiddleware), address(impl).code);
+        vm.etch(address(middlewareRemove), address(impl).code);
         unchecked {
             for (uint256 i = 0; i < writes.length; i++) {
                 bytes32 slot = writes[i];
-                vm.store(address(removeMiddleware), slot, vm.load(address(impl), slot));
+                vm.store(address(middlewareRemove), slot, vm.load(address(impl), slot));
             }
         }
         (key, id) = initPoolAndAddLiquidity(
-            currency0, currency1, IHooks(address(removeMiddleware)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
+            currency0, currency1, IHooks(address(middlewareRemove)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
         );
 
-        removeLiquidity(currency0, currency1, IHooks(address(removeMiddleware)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        removeLiquidity(currency0, currency1, IHooks(address(middlewareRemove)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
     }
 }
