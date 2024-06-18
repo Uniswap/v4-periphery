@@ -16,7 +16,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
     error LockFailure();
     error HookNotImplemented();
 
-    constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {
+    constructor(IPoolManager _manager) ImmutableState(_manager) {
         validateHookAddress(this);
     }
 

@@ -9,11 +9,11 @@ abstract contract SafeCallback is ImmutableState, IUnlockCallback {
     error NotManager();
 
     modifier onlyByManager() {
-        if (msg.sender != address(poolManager)) revert NotManager();
+        if (msg.sender != address(manager)) revert NotManager();
         _;
     }
 
-    /// @dev There is no way to force the onlyByManager modifier but for this callback to be safe, it MUST check that the msg.sender is the pool manager.
+    /// @dev We force the onlyByManager modifier by exposing a virtual function after the onlyByManager check.
     function unlockCallback(bytes calldata data) external onlyByManager returns (bytes memory) {
         return _unlockCallback(data);
     }

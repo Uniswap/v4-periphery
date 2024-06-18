@@ -61,7 +61,7 @@ contract GeomeanOracle is BaseHook {
         return uint32(block.timestamp);
     }
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+    constructor(IPoolManager _manager) BaseHook(_manager) {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
@@ -92,7 +92,7 @@ contract GeomeanOracle is BaseHook {
         // This is to limit the fragmentation of pools using this oracle hook. In other words,
         // there may only be one pool per pair of tokens that use this hook. The tick spacing is set to the maximum
         // because we only allow max range liquidity in this pool.
-        if (key.fee != 0 || key.tickSpacing != poolManager.MAX_TICK_SPACING()) revert OnlyOneOraclePoolAllowed();
+        if (key.fee != 0 || key.tickSpacing != manager.MAX_TICK_SPACING()) revert OnlyOneOraclePoolAllowed();
         return GeomeanOracle.beforeInitialize.selector;
     }
 
@@ -110,9 +110,9 @@ contract GeomeanOracle is BaseHook {
     /// @dev Called before any action that potentially modifies pool price or liquidity, such as swap or modify position
     function _updatePool(PoolKey calldata key) private {
         PoolId id = key.toId();
-        (, int24 tick,,) = poolManager.getSlot0(id);
+        (, int24 tick,,) = manager.getSlot0(id);
 
-        uint128 liquidity = poolManager.getLiquidity(id);
+        uint128 liquidity = manager.getLiquidity(id);
 
         (states[id].index, states[id].cardinality) = observations[id].write(
             states[id].index, _blockTimestamp(), tick, liquidity, states[id].cardinality, states[id].cardinalityNext
@@ -125,7 +125,7 @@ contract GeomeanOracle is BaseHook {
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata
     ) external override onlyByManager returns (bytes4) {
-        int24 maxTickSpacing = poolManager.MAX_TICK_SPACING();
+        int24 maxTickSpacing = manager.MAX_TICK_SPACING();
         if (
             params.tickLower != TickMath.minUsableTick(maxTickSpacing)
                 || params.tickUpper != TickMath.maxUsableTick(maxTickSpacing)
@@ -163,9 +163,9 @@ contract GeomeanOracle is BaseHook {
 
         ObservationState memory state = states[id];
 
-        (, int24 tick,,) = poolManager.getSlot0(id);
+        (, int24 tick,,) = manager.getSlot0(id);
 
-        uint128 liquidity = poolManager.getLiquidity(id);
+        uint128 liquidity = manager.getLiquidity(id);
 
         return observations[id].observe(_blockTimestamp(), secondsAgos, tick, state.index, liquidity, state.cardinality);
     }

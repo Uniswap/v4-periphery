@@ -4,9 +4,9 @@ pragma solidity ^0.8.19;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 contract ImmutableState {
-    IPoolManager public immutable poolManager;
+    IPoolManager public immutable manager;
 
-    constructor(IPoolManager _poolManager) {
-        poolManager = _poolManager;
+    constructor(IPoolManager _manager) {
+        manager = _manager;
     }
 }
