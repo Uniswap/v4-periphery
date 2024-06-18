@@ -57,7 +57,7 @@ contract LimitOrder is BaseHook {
 
     bytes internal constant ZERO_BYTES = bytes("");
 
-    Epoch private constant EPOCH_NOT_INITIALIZED = Epoch.wrap(0);
+    Epoch private constant EPOCH_EMPTY = Epoch.wrap(0);
 
     mapping(PoolId => int24) public tickLowerLasts;
     Epoch public epochNext = Epoch.wrap(1);
@@ -159,7 +159,7 @@ contract LimitOrder is BaseHook {
 
     function _fillEpoch(PoolKey calldata key, int24 lower, bool zeroForOne) internal {
         Epoch epoch = getEpoch(key, lower, zeroForOne);
-        if (!epoch.equals(EPOCH_NOT_INITIALIZED)) {
+        if (!epoch.equals(EPOCH_EMPTY)) {
             EpochInfo storage epochInfo = epochInfos[epoch];
 
             epochInfo.filled = true;
@@ -172,7 +172,7 @@ contract LimitOrder is BaseHook {
                 epochInfo.token1Total += amount1;
             }
 
-            setEpoch(key, lower, zeroForOne, EPOCH_NOT_INITIALIZED);
+            setEpoch(key, lower, zeroForOne, EPOCH_EMPTY);
 
             emit Fill(epoch, key, lower, zeroForOne);
         }
@@ -233,7 +233,7 @@ contract LimitOrder is BaseHook {
 
         EpochInfo storage epochInfo;
         Epoch epoch = getEpoch(key, tickLower, zeroForOne);
-        if (epoch.equals(EPOCH_NOT_INITIALIZED)) {
+        if (epoch.equals(EPOCH_EMPTY)) {
             unchecked {
                 setEpoch(key, tickLower, zeroForOne, epoch = epochNext);
                 // since epoch was just assigned the current value of epochNext,
