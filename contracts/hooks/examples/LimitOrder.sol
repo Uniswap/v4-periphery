@@ -129,7 +129,7 @@ contract LimitOrder is BaseHook {
     function afterInitialize(address, PoolKey calldata key, uint160, int24 tick, bytes calldata)
         external
         override
-        poolManagerOnly
+        onlyByManager
         returns (bytes4)
     {
         setTickLowerLast(key.toId(), getTickLower(tick, key.tickSpacing));
@@ -142,7 +142,7 @@ contract LimitOrder is BaseHook {
         IPoolManager.SwapParams calldata params,
         BalanceDelta,
         bytes calldata
-    ) external override poolManagerOnly returns (bytes4, int128) {
+    ) external override onlyByManager returns (bytes4, int128) {
         (int24 tickLower, int24 lower, int24 upper) = _getCrossedTicks(key.toId(), key.tickSpacing);
         if (lower > upper) return (LimitOrder.afterSwap.selector, 0);
 
@@ -197,7 +197,7 @@ contract LimitOrder is BaseHook {
 
     function _unlockCallbackFill(PoolKey calldata key, int24 tickLower, int256 liquidityDelta)
         private
-        poolManagerOnly
+        onlyByManager
         returns (uint128 amount0, uint128 amount1)
     {
         (BalanceDelta delta,) = poolManager.modifyLiquidity(

@@ -26,7 +26,7 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/type
 
 import "../../libraries/LiquidityAmounts.sol";
 
-contract FullRange is BaseHook, IUnlockCallback {
+contract FullRange is BaseHook {
     using CurrencyLibrary for Currency;
     using CurrencySettler for Currency;
     using PoolIdLibrary for PoolKey;
@@ -295,12 +295,7 @@ contract FullRange is BaseHook, IUnlockCallback {
         pool.hasAccruedFees = false;
     }
 
-    function unlockCallback(bytes calldata rawData)
-        external
-        override(IUnlockCallback, BaseHook)
-        poolManagerOnly
-        returns (bytes memory)
-    {
+    function _unlockCallback(bytes calldata rawData) internal override returns (bytes memory) {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         BalanceDelta delta;
 
