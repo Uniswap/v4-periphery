@@ -46,16 +46,18 @@ abstract contract FeeTaker is BaseHook {
         BalanceDelta delta,
         bytes calldata hookData
     ) external override onlyByManager returns (bytes4, int128) {
+        //(Currency currencyUnspecified, amountUnspecified) = key.getUnspecified(params);
+
         // fee will be in the unspecified token of the swap
         bool currency0Specified = (params.amountSpecified < 0 == params.zeroForOne);
-        (Currency feeCurrency, int128 amountUnspecified) =
+        (Currency currencyUnspecified, int128 amountUnspecified) =
             (currency0Specified) ? (key.currency1, delta.amount1()) : (key.currency0, delta.amount0());
         // if exactOutput swap, get the absolute output amount
         if (amountUnspecified < 0) amountUnspecified = -amountUnspecified;
 
         uint256 feeAmount = _feeAmount(amountUnspecified);
         // mint ERC6909 instead of take to avoid edge case where PM doesn't have enough balance
-        manager.mint(address(this), CurrencyLibrary.toId(feeCurrency), feeAmount);
+        manager.mint(address(this), CurrencyLibrary.toId(currencyUnspecified), feeAmount);
 
         (bytes4 selector, int128 amount) = _afterSwap(sender, key, params, delta, hookData);
         return (selector, feeAmount.toInt128() + amount);
