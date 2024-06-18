@@ -57,7 +57,6 @@ contract FeeTakingLite is IUnlockCallback {
         BalanceDelta delta,
         bytes calldata
     ) external returns (bytes4, int128) {
-        console.log("afterSwap");
         // fee will be in the unspecified token of the swap
         bool currency0Specified = (params.amountSpecified < 0 == params.zeroForOne);
         (Currency feeCurrency, int128 swapAmount) =
@@ -66,7 +65,6 @@ contract FeeTakingLite is IUnlockCallback {
         if (swapAmount < 0) swapAmount = -swapAmount;
 
         uint256 feeAmount = (uint128(swapAmount) * swapFeeBips) / TOTAL_BIPS;
-        console.log(swapFeeBips);
         // mint ERC6909 instead of take to avoid edge case where PM doesn't have enough balance
         poolManager.mint(address(this), CurrencyLibrary.toId(feeCurrency), feeAmount);
 

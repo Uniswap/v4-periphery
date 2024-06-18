@@ -1,0 +1,65 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.24;
+
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
+import {console} from "../../../lib/forge-std/src/console.sol";
+
+contract Middleware is IHooks{
+    IPoolManager public immutable poolManager;
+    Hooks.Permissions private permissions;
+    IHooks public immutable implementation;
+
+    constructor(IPoolManager _poolManager, address _implementation, uint160 _flags) {
+        poolManager = _poolManager;
+        permissions = IHooks(_implementation).getHookPermissions();
+        implementation = IHooks(_implementation);
+        _flags = _flags;
+    }
+
+    function getHookPermissions() public view returns (Hooks.Permissions memory) {
+        return permissions;
+    }
+    
+    modifier nonReentrantBefore() private {
+        if (_status == ENTERED) {
+            revert ActionBetweenHook();
+        }
+        _status = ENTERED;
+        _;
+    }
+    
+    modifier nonReentrantAfter() private {
+		    _;
+		    _status = NOT_ENTERED;
+    }
+    
+    function beforeSwap(address sender, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata hookData)
+		    nonReentrantBefore
+        external
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
+		    try implementation.beforeSwap(sender, key, params, hookData) returns (
+            bytes4 selector,
+            BeforeSwapDelta memory beforeSwapDelta,
+            uint24 lpFeeOverride
+        ) {
+            
+            return (selector, beforeSwapDelta, lpFeeOverride);
+        } catch {
+            return (defaultSelector, defaultBeforeSwapDelta, defaultLpFeeOverride);
+        }
+    }
+    
+    function afterSwap(...) nonReentrantAfter { try catch... }
+		function beforeAddLiquidity(...) nonReentrantBefore { try catch... }
+		function afterAddLiquidity(...)  nonReentrantAfter  { try catch... }
+		function beforeRemoveLiquidity(...) nonReentrantBefore { try catch... }
+		function afterRemoveLiquidity(...)  nonReentrantAfter  { try catch... }
+		// who cares about donate lol
+}

@@ -4,8 +4,9 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {FeeTakingLite} from "../contracts/hooks/test/FeeTakingLite.sol";
-import {BaseMiddleware} from "../contracts/hooks/examples/BaseMiddleware.sol";
-import {BaseMiddlewareImplementation} from "./shared/implementation/BaseMiddlewareImplementation.sol";
+import {HooksRevert} from "../contracts/hooks/test/HooksRevert.sol";
+import {RemoveMiddleware} from "../contracts/hooks/examples/RemoveMiddleware.sol";
+import {RemoveMiddlewareImplementation} from "./shared/implementation/RemoveMiddlewareImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
@@ -19,7 +20,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {console} from "../../../lib/forge-std/src/console.sol";
 
-contract BaseMiddlewareTest is Test, Deployers {
+contract RemoveMiddlewareTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -31,8 +32,8 @@ contract BaseMiddlewareTest is Test, Deployers {
     HookEnabledSwapRouter router;
     TestERC20 token0;
     TestERC20 token1;
-    BaseMiddleware baseMiddleware =
-        BaseMiddleware(payable(address(uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG))));
+    RemoveMiddleware removeMiddleware =
+        RemoveMiddleware(payable(address(uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG))));
     PoolId id;
 
     function setUp() public {
@@ -44,31 +45,38 @@ contract BaseMiddlewareTest is Test, Deployers {
         token1 = TestERC20(Currency.unwrap(currency1));
 
         FeeTakingLite feeTakingLite = new FeeTakingLite(manager);
+        HooksRevert hooksRevert = new HooksRevert(manager);
 
         vm.record();
-        BaseMiddlewareImplementation impl =
-            new BaseMiddlewareImplementation(manager, address(feeTakingLite), baseMiddleware);
+        RemoveMiddlewareImplementation impl =
+            new RemoveMiddlewareImplementation(manager, address(feeTakingLite), removeMiddleware);
         (, bytes32[] memory writes) = vm.accesses(address(impl));
-        vm.etch(address(baseMiddleware), address(impl).code);
+        vm.etch(address(removeMiddleware), address(impl).code);
         // for each storage key that was written during the hook implementation, copy the value over
         unchecked {
             for (uint256 i = 0; i < writes.length; i++) {
                 bytes32 slot = writes[i];
-                vm.store(address(baseMiddleware), slot, vm.load(address(impl), slot));
+                vm.store(address(removeMiddleware), slot, vm.load(address(impl), slot));
             }
         }
 
-        // key = PoolKey(currency0, currency1, 3000, 60, baseMiddleware);
+        // key = PoolKey(currency0, currency1, 3000, 60, removeMiddleware);
         (key, id) = initPoolAndAddLiquidity(
-            currency0, currency1, IHooks(address(baseMiddleware)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
+            currency0, currency1, IHooks(address(removeMiddleware)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
         );
 
-        token0.approve(address(baseMiddleware), type(uint256).max);
-        token1.approve(address(baseMiddleware), type(uint256).max);
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
     }
 
+    function testRemoveMiddleware() public {
+        console.log("testRemoveMiddleware");
+        console.log("testRemoveMiddleware");
+        console.log("testRemoveMiddleware");
+        removeLiquidity(currency0, currency1, IHooks(address(removeMiddleware)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+    }
+
+    // test normal behavior, copied from FeeTaking.t.sol
     function testNormal() public {
         // Swap exact token0 for token1 //
         bool zeroForOne = true;
@@ -81,32 +89,33 @@ contract BaseMiddlewareTest is Test, Deployers {
 
         uint256 expectedFee = calculateFeeForExactInput(output, 25);
 
-        assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency0)), 0);
-        assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency1)), expectedFee);
+        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency1)), expectedFee);
 
-        // // Swap token0 for exact token1 //
-        // bool zeroForOne2 = true;
-        // int256 amountSpecified2 = 1e12; // positive number indicates exact output swap
-        // BalanceDelta swapDelta2 = swap(key, zeroForOne2, amountSpecified2, ZERO_BYTES);
-        // // ---------------------------- //
+        // Swap token0 for exact token1 //
+        bool zeroForOne2 = true;
+        int256 amountSpecified2 = 1e12; // positive number indicates exact output swap
+        BalanceDelta swapDelta2 = swap(key, zeroForOne2, amountSpecified2, ZERO_BYTES);
+        // ---------------------------- //
 
-        // uint128 input = uint128(-swapDelta2.amount0());
-        // assertTrue(output > 0);
+        uint128 input = uint128(-swapDelta2.amount0());
+        assertTrue(output > 0);
 
-        // uint256 expectedFee2 = calculateFeeForExactOutput(input, 25);
+        uint256 expectedFee2 = calculateFeeForExactOutput(input, 25);
 
-        // assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency0)), expectedFee2);
-        // assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency1)), expectedFee);
+        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency0)), expectedFee2);
+        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency1)), expectedFee);
 
-        // // test withdrawing tokens //
-        // Currency[] memory currencies = new Currency[](2);
-        // currencies[0] = key.currency0;
-        // currencies[1] = key.currency1;
-        // feeTakingLite.withdraw(TREASURY, currencies);
-        // assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency0)), 0);
-        // assertEq(manager.balanceOf(address(baseMiddleware), CurrencyLibrary.toId(key.currency1)), 0);
-        // assertEq(currency0.balanceOf(TREASURY), expectedFee2);
-        // assertEq(currency1.balanceOf(TREASURY), expectedFee);
+        // test withdrawing tokens //
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = key.currency0;
+        currencies[1] = key.currency1;
+        FeeTakingLite impl = FeeTakingLite(address(removeMiddleware));
+        impl.withdraw(TREASURY, currencies);
+        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(removeMiddleware), CurrencyLibrary.toId(key.currency1)), 0);
+        assertEq(currency0.balanceOf(TREASURY), expectedFee2);
+        assertEq(currency1.balanceOf(TREASURY), expectedFee);
     }
 
     function calculateFeeForExactInput(uint256 outputAmount, uint128 feeBips) internal pure returns (uint256) {
@@ -115,5 +124,13 @@ contract BaseMiddlewareTest is Test, Deployers {
 
     function calculateFeeForExactOutput(uint256 inputAmount, uint128 feeBips) internal pure returns (uint256) {
         return (inputAmount * feeBips) / (TOTAL_BIPS + feeBips);
+    }
+
+    function testVarious() public {
+
+    }
+
+    function testOn(address impl) public {
+        
     }
 }
