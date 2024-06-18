@@ -10,7 +10,6 @@ contract FeeTaking is FeeTaker, Owned {
     using SafeCast for uint256;
 
     uint128 private constant TOTAL_BIPS = 10000;
-    uint128 private constant MAX_BIPS = 100;
     uint128 public immutable swapFeeBips;
     address public treasury;
 
