@@ -22,7 +22,7 @@ abstract contract CallsWithLock is ICallsWithLock, ImmutableState {
         onlyBySelf
         returns (bytes memory)
     {
-        return abi.encode(poolManager.initialize(key, sqrtPriceX96, hookData));
+        return abi.encode(manager.initialize(key, sqrtPriceX96, hookData));
     }
 
     function modifyPositionWithLock(
@@ -30,7 +30,7 @@ abstract contract CallsWithLock is ICallsWithLock, ImmutableState {
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata hookData
     ) external onlyBySelf returns (bytes memory) {
-        (BalanceDelta delta, BalanceDelta feeDelta) = poolManager.modifyLiquidity(key, params, hookData);
+        (BalanceDelta delta, BalanceDelta feeDelta) = manager.modifyLiquidity(key, params, hookData);
         return abi.encode(delta, feeDelta);
     }
 
@@ -39,7 +39,7 @@ abstract contract CallsWithLock is ICallsWithLock, ImmutableState {
         onlyBySelf
         returns (bytes memory)
     {
-        return abi.encode(poolManager.swap(key, params, hookData));
+        return abi.encode(manager.swap(key, params, hookData));
     }
 
     function donateWithLock(PoolKey memory key, uint256 amount0, uint256 amount1, bytes calldata hookData)
@@ -47,6 +47,6 @@ abstract contract CallsWithLock is ICallsWithLock, ImmutableState {
         onlyBySelf
         returns (bytes memory)
     {
-        return abi.encode(poolManager.donate(key, amount0, amount1, hookData));
+        return abi.encode(manager.donate(key, amount0, amount1, hookData));
     }
 }

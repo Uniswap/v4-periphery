@@ -59,14 +59,14 @@ contract BaseLiquidityManagement is SafeCallback {
 
     error UnlockFailure();
 
-    constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}
+    constructor(IPoolManager _manager) ImmutableState(_manager) {}
 
     function zeroOut(BalanceDelta delta, Currency currency0, Currency currency1, address owner, bool claims) public {
-        if (delta.amount0() < 0) currency0.settle(poolManager, owner, uint256(int256(-delta.amount0())), claims);
-        else if (delta.amount0() > 0) currency0.send(poolManager, owner, uint128(delta.amount0()), claims);
+        if (delta.amount0() < 0) currency0.settle(manager, owner, uint256(int256(-delta.amount0())), claims);
+        else if (delta.amount0() > 0) currency0.send(manager, owner, uint128(delta.amount0()), claims);
 
-        if (delta.amount1() < 0) currency1.settle(poolManager, owner, uint256(int256(-delta.amount1())), claims);
-        else if (delta.amount1() > 0) currency1.send(poolManager, owner, uint128(delta.amount1()), claims);
+        if (delta.amount1() < 0) currency1.settle(manager, owner, uint256(int256(-delta.amount1())), claims);
+        else if (delta.amount1() > 0) currency1.send(manager, owner, uint128(delta.amount1()), claims);
     }
 
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
@@ -94,7 +94,7 @@ contract BaseLiquidityManagement is SafeCallback {
         internal
         returns (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued)
     {
-        (liquidityDelta, totalFeesAccrued) = poolManager.modifyLiquidity(
+        (liquidityDelta, totalFeesAccrued) = manager.modifyLiquidity(
             range.key,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: range.tickLower,
@@ -122,8 +122,8 @@ contract BaseLiquidityManagement is SafeCallback {
         // Account for fees that were potentially collected to other users on the same range.
         BalanceDelta callerFeesAccrued = _updateFeeGrowth(range, position);
         BalanceDelta feesToCollect = totalFeesAccrued - callerFeesAccrued;
-        range.key.currency0.take(poolManager, address(this), uint128(feesToCollect.amount0()), true);
-        range.key.currency1.take(poolManager, address(this), uint128(feesToCollect.amount1()), true);
+        range.key.currency0.take(manager, address(this), uint128(feesToCollect.amount0()), true);
+        range.key.currency1.take(manager, address(this), uint128(feesToCollect.amount1()), true);
 
         // the delta applied from the above actions is liquidityDelta - feesToCollect, note that the actual total delta for the caller may be different because actions can be chained
         BalanceDelta callerDelta = liquidityDelta - feesToCollect;
@@ -137,7 +137,7 @@ contract BaseLiquidityManagement is SafeCallback {
         // if callerDelta > 0, some but not all existing fees were used to increase liquidity. Any remainder is added to the position's owed tokens
         if (callerDelta.amount0() > 0) {
             position.tokensOwed0 += uint128(callerDelta.amount0());
-            range.key.currency0.take(poolManager, address(this), uint128(callerDelta.amount0()), true);
+            range.key.currency0.take(manager, address(this), uint128(callerDelta.amount0()), true);
             callerDelta = toBalanceDelta(0, callerDelta.amount1());
         } else {
             position.tokensOwed0 = 0;
@@ -145,7 +145,7 @@ contract BaseLiquidityManagement is SafeCallback {
 
         if (callerDelta.amount1() > 0) {
             position.tokensOwed1 += uint128(callerDelta.amount1());
-            range.key.currency1.take(poolManager, address(this), uint128(callerDelta.amount1()), true);
+            range.key.currency1.take(manager, address(this), uint128(callerDelta.amount1()), true);
             callerDelta = toBalanceDelta(callerDelta.amount0(), 0);
         } else {
             position.tokensOwed1 = 0;
@@ -173,7 +173,7 @@ contract BaseLiquidityManagement is SafeCallback {
         bool claims
     ) internal returns (BalanceDelta) {
         return abi.decode(
-            poolManager.unlock(abi.encode(LiquidityOperation.INCREASE, owner, range, liquidityToAdd, hookData, claims)),
+            manager.unlock(abi.encode(LiquidityOperation.INCREASE, owner, range, liquidityToAdd, hookData, claims)),
             (BalanceDelta)
         );
     }
@@ -192,10 +192,10 @@ contract BaseLiquidityManagement is SafeCallback {
         // do NOT take tokens directly to the owner because this contract might be holding fees
         // that need to be paid out (position.tokensOwed)
         if (liquidityDelta.amount0() > 0) {
-            range.key.currency0.take(poolManager, address(this), uint128(liquidityDelta.amount0()), true);
+            range.key.currency0.take(manager, address(this), uint128(liquidityDelta.amount0()), true);
         }
         if (liquidityDelta.amount1() > 0) {
-            range.key.currency1.take(poolManager, address(this), uint128(liquidityDelta.amount1()), true);
+            range.key.currency1.take(manager, address(this), uint128(liquidityDelta.amount1()), true);
         }
 
         // when decreasing liquidity, the user collects: 1) principal liquidity, 2) new fees, 3) old fees (position.tokensOwed)
@@ -235,7 +235,7 @@ contract BaseLiquidityManagement is SafeCallback {
         bool claims
     ) internal returns (BalanceDelta) {
         return abi.decode(
-            poolManager.unlock(
+            manager.unlock(
                 abi.encode(LiquidityOperation.DECREASE, owner, range, liquidityToRemove, hookData, claims)
             ),
             (BalanceDelta)
@@ -253,10 +253,10 @@ contract BaseLiquidityManagement is SafeCallback {
 
         // take all fees first then distribute
         if (totalFeesAccrued.amount0() > 0) {
-            key.currency0.take(poolManager, address(this), uint128(totalFeesAccrued.amount0()), true);
+            key.currency0.take(manager, address(this), uint128(totalFeesAccrued.amount0()), true);
         }
         if (totalFeesAccrued.amount1() > 0) {
-            key.currency1.take(poolManager, address(this), uint128(totalFeesAccrued.amount1()), true);
+            key.currency1.take(manager, address(this), uint128(totalFeesAccrued.amount1()), true);
         }
 
         // collecting fees: new fees and old fees
@@ -283,7 +283,7 @@ contract BaseLiquidityManagement is SafeCallback {
         returns (BalanceDelta)
     {
         return abi.decode(
-            poolManager.unlock(abi.encode(LiquidityOperation.COLLECT, owner, range, 0, hookData, claims)),
+            manager.unlock(abi.encode(LiquidityOperation.COLLECT, owner, range, 0, hookData, claims)),
             (BalanceDelta)
         );
     }
@@ -293,7 +293,7 @@ contract BaseLiquidityManagement is SafeCallback {
         returns (BalanceDelta feesOwed)
     {
         (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
-            poolManager.getFeeGrowthInside(range.key.toId(), range.tickLower, range.tickUpper);
+            manager.getFeeGrowthInside(range.key.toId(), range.tickLower, range.tickUpper);
 
         (uint128 token0Owed, uint128 token1Owed) = FeeMath.getFeesOwed(
             feeGrowthInside0X128,
@@ -317,7 +317,7 @@ contract BaseLiquidityManagement is SafeCallback {
         Position memory position = positions[owner][range.toId()];
 
         (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
-            poolManager.getFeeGrowthInside(range.key.toId(), range.tickLower, range.tickUpper);
+            manager.getFeeGrowthInside(range.key.toId(), range.tickLower, range.tickUpper);
 
         (token0Owed, token1Owed) = FeeMath.getFeesOwed(
             feeGrowthInside0X128,

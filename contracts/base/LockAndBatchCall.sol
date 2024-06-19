@@ -14,7 +14,7 @@ abstract contract LockAndBatchCall is CallsWithLock, SafeCallback {
 
     /// @param executeData The function selectors and calldata for any of the function selectors in ICallsWithLock encoded as an array of bytes.
     function execute(bytes memory executeData, bytes memory settleData) external {
-        (bytes memory lockReturnData) = poolManager.unlock(abi.encode(executeData, abi.encode(msg.sender, settleData)));
+        (bytes memory lockReturnData) = manager.unlock(abi.encode(executeData, abi.encode(msg.sender, settleData)));
         (bytes memory executeReturnData, bytes memory settleReturnData) = abi.decode(lockReturnData, (bytes, bytes));
         _handleAfterExecute(executeReturnData, settleReturnData);
     }

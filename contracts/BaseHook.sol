@@ -9,6 +9,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {ImmutableState} from "./base/ImmutableState.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {SafeCallback} from "./base/SafeCallback.sol";
+import {ImmutableState} from "./base/ImmutableState.sol";
 
 abstract contract BaseHook is IHooks, SafeCallback {
     error NotSelf();
@@ -16,7 +18,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
     error LockFailure();
     error HookNotImplemented();
 
-    constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {
+    constructor(IPoolManager _manager) ImmutableState(_manager) {
         validateHookAddress(this);
     }
 

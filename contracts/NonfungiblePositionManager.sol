@@ -36,8 +36,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
 
     mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
 
-    constructor(IPoolManager _poolManager)
-        BaseLiquidityManagement(_poolManager)
+    constructor(IPoolManager _manager)
+        BaseLiquidityManagement(_manager)
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V3-POS", "1")
     {}
 
@@ -60,7 +60,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
 
     // NOTE: more expensive since LiquidityAmounts is used onchain
     // function mint(MintParams calldata params) external payable returns (uint256 tokenId, BalanceDelta delta) {
-    //     (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(params.range.key.toId());
+    //     (uint160 sqrtPriceX96,,,) = manager.getSlot0(params.range.key.toId());
     //     (tokenId, delta) = mint(
     //         params.range,
     //         LiquidityAmounts.getLiquidityForAmounts(

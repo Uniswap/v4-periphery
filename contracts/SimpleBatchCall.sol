@@ -16,7 +16,7 @@ contract SimpleBatchCall is LockAndBatchCall {
     using TransientStateLibrary for IPoolManager;
     using CurrencySettler for Currency;
 
-    constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}
+    constructor(IPoolManager _manager) ImmutableState(_manager) {}
 
     struct SettleConfig {
         bool takeClaims;
@@ -31,13 +31,13 @@ contract SimpleBatchCall is LockAndBatchCall {
 
             for (uint256 i = 0; i < currenciesTouched.length; i++) {
                 Currency currency = currenciesTouched[i];
-                int256 delta = poolManager.currencyDelta(address(this), currenciesTouched[i]);
+                int256 delta = manager.currencyDelta(address(this), currenciesTouched[i]);
 
                 if (delta < 0) {
-                    currency.settle(poolManager, sender, uint256(-delta), config.settleUsingBurn);
+                    currency.settle(manager, sender, uint256(-delta), config.settleUsingBurn);
                 }
                 if (delta > 0) {
-                    currency.take(poolManager, address(this), uint256(delta), config.takeClaims);
+                    currency.take(manager, address(this), uint256(delta), config.takeClaims);
                 }
             }
         }
