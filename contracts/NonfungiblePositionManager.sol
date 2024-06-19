@@ -51,7 +51,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         bytes calldata hookData
     ) public payable returns (uint256 tokenId, BalanceDelta delta) {
         // delta = modifyLiquidity(range, liquidity.toInt256(), hookData, false);
-        delta = _increaseLiquidityWithLock(msg.sender, range, liquidity, hookData, false);
+        delta = _lockAndIncreaseLiquidity(msg.sender, range, liquidity, hookData, false);
 
         // mint receipt token
         _mint(recipient, (tokenId = _nextId++));
@@ -84,7 +84,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        delta = _increaseLiquidityWithLock(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
+        delta = _lockAndIncreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
     }
 
     function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
@@ -93,7 +93,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        delta = _decreaseLiquidityWithLock(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
+        delta = _lockAndDecreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
     }
 
     function burn(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
@@ -122,7 +122,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        delta = _collectWithLock(tokenPos.owner, tokenPos.range, hookData, claims);
+        delta = _lockAndCollect(tokenPos.owner, tokenPos.range, hookData, claims);
     }
 
     function feesOwed(uint256 tokenId) external view returns (uint256 token0Owed, uint256 token1Owed) {

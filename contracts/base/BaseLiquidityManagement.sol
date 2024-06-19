@@ -165,7 +165,7 @@ contract BaseLiquidityManagement is SafeCallback {
         zeroOut(delta, range.key.currency0, range.key.currency1, owner, claims);
     }
 
-    function _increaseLiquidityWithLock(
+    function _lockAndIncreaseLiquidity(
         address owner,
         LiquidityRange memory range,
         uint256 liquidityToAdd,
@@ -227,7 +227,7 @@ contract BaseLiquidityManagement is SafeCallback {
         zeroOut(delta, range.key.currency0, range.key.currency1, owner, claims);
     }
 
-    function _decreaseLiquidityWithLock(
+    function _lockAndDecreaseLiquidity(
         address owner,
         LiquidityRange memory range,
         uint256 liquidityToRemove,
@@ -278,7 +278,7 @@ contract BaseLiquidityManagement is SafeCallback {
         zeroOut(delta, range.key.currency0, range.key.currency1, owner, claims);
     }
 
-    function _collectWithLock(address owner, LiquidityRange memory range, bytes memory hookData, bool claims)
+    function _lockAndCollect(address owner, LiquidityRange memory range, bytes memory hookData, bool claims)
         internal
         returns (BalanceDelta)
     {
