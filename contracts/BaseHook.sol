@@ -6,8 +6,6 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {SafeCallback} from "./base/SafeCallback.sol";
-import {ImmutableState} from "./base/ImmutableState.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {ImmutableState} from "./base/ImmutableState.sol";
