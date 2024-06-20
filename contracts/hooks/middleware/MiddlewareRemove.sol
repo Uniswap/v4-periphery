@@ -11,6 +11,7 @@ import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
 import {BaseMiddleware} from "./BaseMiddleware.sol";
 import {BaseHook} from "../../BaseHook.sol";
 import {console} from "../../../lib/forge-std/src/console.sol";
+import {BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 contract MiddlewareRemove is BaseMiddleware {
     bytes internal constant ZERO_BYTES = bytes("");
@@ -40,6 +41,7 @@ contract MiddlewareRemove is BaseMiddleware {
         console.log("afterRemoveLiquidity middleware");
         (bool success, bytes memory returnData) = implementation.delegatecall{gas: gasLimit}(msg.data);
         console.log(success);
-        return BaseHook.afterRemoveLiquidity.selector;
+        // hook cannot return delta
+        return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 }
