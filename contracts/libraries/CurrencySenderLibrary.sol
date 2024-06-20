@@ -23,7 +23,7 @@ library CurrencySenderLibrary {
         if (useClaims) {
             manager.transfer(recipient, currency.toId(), amount);
         } else {
-            currency.settle(manager, address(this), amount, true);
+            // currency.settle(manager, address(this), amount, true);
             currency.take(manager, recipient, amount, false);
         }
     }

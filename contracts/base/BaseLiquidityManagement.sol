@@ -24,6 +24,8 @@ import {LiquiditySaltLibrary} from "../libraries/LiquiditySaltLibrary.sol";
 import {IBaseLiquidityManagement} from "../interfaces/IBaseLiquidityManagement.sol";
 import {PositionLibrary} from "../libraries/Position.sol";
 
+import "forge-std/console2.sol";
+
 contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
     using LiquidityRangeIdLibrary for LiquidityRange;
     using CurrencyLibrary for Currency;
@@ -41,12 +43,28 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
 
     constructor(IPoolManager _manager) ImmutableState(_manager) {}
 
-    function zeroOut(BalanceDelta delta, Currency currency0, Currency currency1, address owner, bool claims) public {
-        if (delta.amount0() < 0) currency0.settle(manager, owner, uint256(int256(-delta.amount0())), claims);
-        else if (delta.amount0() > 0) currency0.send(manager, owner, uint128(delta.amount0()), claims);
+    function _zeroOut(int128 delta0, int128 delta1, Currency currency0, Currency currency1, address owner, bool claims)
+        internal
+    {
+        if (delta0 < 0) currency0.settle(manager, owner, uint256(int256(-delta0)), claims);
+        else if (delta0 > 0) currency0.send(manager, owner, uint128(delta0), claims);
 
-        if (delta.amount1() < 0) currency1.settle(manager, owner, uint256(int256(-delta.amount1())), claims);
-        else if (delta.amount1() > 0) currency1.send(manager, owner, uint128(delta.amount1()), claims);
+        if (delta1 < 0) currency1.settle(manager, owner, uint256(int256(-delta1)), claims);
+        else if (delta1 > 0) currency1.send(manager, owner, uint128(delta1), claims);
+    }
+
+    // When chaining many actions, zeroOut with the full delta attributed to this address.
+    // This is safe because any amounts the caller should not pay or take have already been accounted for.
+    function _zeroOut(Currency currency0, Currency currency1, address owner, bool claims) internal {
+        int128 delta0 = int128(manager.currencyDelta(address(this), currency0));
+        int128 delta1 = int128(manager.currencyDelta(address(this), currency1));
+
+        _zeroOut(delta0, delta1, currency0, currency1, owner, claims);
+    }
+
+    function zeroOut(BalanceDelta delta, Currency currency0, Currency currency1, address owner, bool claims) public {
+        // TODO onlyByLocker?? onlyIfApproved??? onlyIfOwner == msg.sender??
+        _zeroOut(delta.amount0(), delta.amount1(), currency0, currency1, owner, claims);
     }
 
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
@@ -125,7 +143,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         uint128 tokensOwed1 = callerDelta1 > 0 ? uint128(callerDelta1) : 0;
 
         position.updateTokensOwed(tokensOwed0, tokensOwed1);
-        position.add(liquidityToAdd);
+        position.addLiquidity(liquidityToAdd);
         position.updateFeeGrowthInside(feeGrowthInside0X128, feeGrowthInside1X128);
 
         return toBalanceDelta(callerDelta0, callerDelta1);
@@ -137,7 +155,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         BalanceDelta totalFeesAccrued,
         BalanceDelta callerFeesAccrued,
         PoolKey memory poolKey
-    ) internal returns (int128 callerDelta0, int128 callerDelta1) {
+    ) private returns (int128 callerDelta0, int128 callerDelta1) {
         // Only account new caller deltas if there is a difference in between the range's total earned fees and the callers earned fees.
         (int128 liquidityDelta0, int128 liquidityDelta1) = (liquidityDelta.amount0(), liquidityDelta.amount1());
         if (totalFeesAccrued == callerFeesAccrued) {
@@ -162,7 +180,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         int128 totalFeesAccrued,
         int128 callerFeesAccrued,
         Currency currency
-    ) internal returns (int128 callerDelta) {
+    ) private returns (int128 callerDelta) {
         int128 feesAccruedOutsideCaller;
         unchecked {
             feesAccruedOutsideCaller = totalFeesAccrued - callerFeesAccrued;
@@ -180,7 +198,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         bool claims
     ) internal returns (BalanceDelta delta) {
         delta = _increaseLiquidity(owner, range, liquidityToAdd, hookData);
-        zeroOut(delta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
+        _zeroOut(range.poolKey.currency0, range.poolKey.currency1, owner, claims);
     }
 
     function _lockAndIncreaseLiquidity(

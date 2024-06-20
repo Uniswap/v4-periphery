@@ -15,7 +15,7 @@ library PositionLibrary {
         position.tokensOwed1 = tokensOwed1;
     }
 
-    function add(IBaseLiquidityManagement.Position storage position, uint256 liquidity) internal {
+    function addLiquidity(IBaseLiquidityManagement.Position storage position, uint256 liquidity) internal {
         unchecked {
             position.liquidity += liquidity;
         }
