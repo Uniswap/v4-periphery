@@ -6,9 +6,12 @@ import {LiquidityRange} from "../types/LiquidityRange.sol";
 
 interface INonfungiblePositionManager {
     struct TokenPosition {
-        address owner;
-        LiquidityRange range;
+        address owner; // 160
+        LiquidityRange range; // 576
     }
+
+    // using 736 - 3 SLOTS
+    // total 768 - 32 bits free space
 
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
     function mint(

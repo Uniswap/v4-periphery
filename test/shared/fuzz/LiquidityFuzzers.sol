@@ -21,7 +21,7 @@ contract LiquidityFuzzers is Fuzzers {
         params = Fuzzers.createFuzzyLiquidityParams(key, params, sqrtPriceX96);
 
         (uint256 tokenId, BalanceDelta delta) = lpm.mint(
-            LiquidityRange({key: key, tickLower: params.tickLower, tickUpper: params.tickUpper}),
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper}),
             uint256(params.liquidityDelta),
             block.timestamp,
             recipient,

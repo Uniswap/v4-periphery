@@ -52,7 +52,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     function test_mint_withLiquidityDelta(IPoolManager.ModifyLiquidityParams memory params) public {
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
         LiquidityRange memory range =
-            LiquidityRange({key: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
@@ -74,7 +74,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     //     (amount0Desired, amount1Desired) =
     //         createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
 
-    //     LiquidityRange memory range = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
+    //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
 
     //     uint256 balance0Before = currency0.balanceOfSelf();
     //     uint256 balance1Before = currency1.balanceOfSelf();
@@ -104,7 +104,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     //     int24 tickUpper = int24(key.tickSpacing);
     //     uint256 amount0Desired = 100e18;
     //     uint256 amount1Desired = 100e18;
-    //     LiquidityRange memory range = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
+    //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
 
     //     uint256 balance0Before = currency0.balanceOfSelf();
     //     uint256 balance1Before = currency1.balanceOfSelf();
@@ -137,7 +137,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     //     (amount0Desired, amount1Desired) =
     //         createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
 
-    //     LiquidityRange memory range = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
+    //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
     //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
     //         range: range,
     //         amount0Desired: amount0Desired,
@@ -167,7 +167,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     //     uint256 amount0Min = amount0Desired - 1;
     //     uint256 amount1Min = amount1Desired - 1;
 
-    //     LiquidityRange memory range = LiquidityRange({key: key, tickLower: tickLower, tickUpper: tickUpper});
+    //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
     //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
     //         range: range,
     //         amount0Desired: amount0Desired,
@@ -207,7 +207,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 tokenId;
         (tokenId, params,) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         LiquidityRange memory range =
-            LiquidityRange({key: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
@@ -243,7 +243,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         vm.assume(int256(decreaseLiquidityDelta) <= params.liquidityDelta);
 
         LiquidityRange memory range =
-            LiquidityRange({key: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
@@ -267,7 +267,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     //     vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
     //     vm.assume(int256(decreaseLiquidityDelta) <= params.liquidityDelta);
 
-    //     LiquidityRange memory range = LiquidityRange({key: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+    //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
     //     // swap to create fees
     //     uint256 swapAmount = 0.01e18;

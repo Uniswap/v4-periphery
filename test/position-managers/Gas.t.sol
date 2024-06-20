@@ -62,7 +62,7 @@ contract GasTest is Test, Deployers, GasSnapshot {
         manager.setOperator(address(lpm), true);
 
         // define a reusable range
-        range = LiquidityRange({key: key, tickLower: -300, tickUpper: 300});
+        range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
     // function test_gas_mint() public {

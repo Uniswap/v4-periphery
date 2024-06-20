@@ -4,10 +4,15 @@ pragma solidity ^0.8.24;
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 struct LiquidityRange {
-    PoolKey key;
+    PoolKey poolKey; // 528
     int24 tickLower;
     int24 tickUpper;
 }
+
+// can we force integrators to instead pass in the liquidity range? and we only store a hash?
+
+// 2 256 = 512
+// 576
 
 type LiquidityRangeId is bytes32;
 

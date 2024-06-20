@@ -73,7 +73,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         vm.stopPrank();
 
         // define a reusable range
-        range = LiquidityRange({key: key, tickLower: -300, tickUpper: 300});
+        range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
     function test_increaseLiquidity_withExactFees() public {
@@ -99,7 +99,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         // alice uses her exact fees to increase liquidity
         (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
 
-        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.key.toId());
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(range.tickLower),
@@ -137,7 +137,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         // alice will use half of her fees to increase liquidity
         (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
         {
-            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.key.toId());
+            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
                 TickMath.getSqrtPriceAtTick(range.tickLower),
@@ -214,7 +214,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         // alice will use all of her fees + additional capital to increase liquidity
         (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
         {
-            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.key.toId());
+            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
                 TickMath.getSqrtPriceAtTick(range.tickLower),

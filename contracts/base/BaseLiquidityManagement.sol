@@ -22,6 +22,7 @@ import {CurrencyDeltas} from "../libraries/CurrencyDeltas.sol";
 import {FeeMath} from "../libraries/FeeMath.sol";
 import {LiquiditySaltLibrary} from "../libraries/LiquiditySaltLibrary.sol";
 import {IBaseLiquidityManagement} from "../interfaces/IBaseLiquidityManagement.sol";
+import {PositionLibrary} from "../libraries/Position.sol";
 
 contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
     using LiquidityRangeIdLibrary for LiquidityRange;
@@ -34,6 +35,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
     using LiquiditySaltLibrary for IHooks;
+    using PositionLibrary for IBaseLiquidityManagement.Position;
 
     mapping(address owner => mapping(LiquidityRangeId rangeId => Position)) public positions;
 
@@ -73,17 +75,18 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         returns (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued)
     {
         (liquidityDelta, totalFeesAccrued) = manager.modifyLiquidity(
-            range.key,
+            range.poolKey,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: range.tickLower,
                 tickUpper: range.tickUpper,
                 liquidityDelta: liquidityChange,
-                salt: range.key.hooks.getLiquiditySalt(owner)
+                salt: range.poolKey.hooks.getLiquiditySalt(owner)
             }),
             hookData
         );
     }
 
+    /// @dev The open delta on the position manager is "safe" for auto-settle after this call. ie. any amounts that the caller does not owe or is not allowed to take is accounted for.
     function _increaseLiquidity(
         address owner,
         LiquidityRange memory range,
@@ -96,39 +99,77 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
 
         Position storage position = positions[owner][range.toId()];
 
-        // Account for fees that were potentially collected to other users on the same range.
-        BalanceDelta callerFeesAccrued = _updateFeeGrowth(range, position);
-        BalanceDelta feesToCollect = totalFeesAccrued - callerFeesAccrued;
-        range.key.currency0.take(manager, address(this), uint128(feesToCollect.amount0()), true);
-        range.key.currency1.take(manager, address(this), uint128(feesToCollect.amount1()), true);
+        // Calculate the portion of the liquidityDelta that is attributable to the caller.
+        // We must account for fees that might be owed to other users on the same range.
+        (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
+            manager.getFeeGrowthInside(range.poolKey.toId(), range.tickLower, range.tickUpper);
 
-        // the delta applied from the above actions is liquidityDelta - feesToCollect, note that the actual total delta for the caller may be different because actions can be chained
-        BalanceDelta callerDelta = liquidityDelta - feesToCollect;
+        BalanceDelta callerFeesAccrued = FeeMath.getFeesOwed(
+            feeGrowthInside0X128,
+            feeGrowthInside1X128,
+            position.feeGrowthInside0LastX128,
+            position.feeGrowthInside1LastX128,
+            position.liquidity
+        );
 
-        // update liquidity after feeGrowth is updated
-        position.liquidity += liquidityToAdd;
+        // Calculate the accurate callerDelta.
+        // If the totalFeesAccrued equals the callerFeesAccrued then the callerDelta is just the liquidityDelta.
+        // If the totalFeesAccrued after the add liquidity action is greater than only the caller's earned fees, we must account for the difference.
+        (int128 callerDelta0, int128 callerDelta1) =
+            _accountNewCallerDeltas(liquidityDelta, totalFeesAccrued, callerFeesAccrued, range.poolKey);
 
-        // Update the tokensOwed0 and tokensOwed1 values for the caller.
-        // if callerDelta < 0, existing fees were re-invested AND net new tokens are required for the liquidity increase
-        // if callerDelta == 0, existing fees were reinvested (autocompounded)
-        // if callerDelta > 0, some but not all existing fees were used to increase liquidity. Any remainder is added to the position's owed tokens
-        if (callerDelta.amount0() > 0) {
-            position.tokensOwed0 += uint128(callerDelta.amount0());
-            range.key.currency0.take(manager, address(this), uint128(callerDelta.amount0()), true);
-            callerDelta = toBalanceDelta(0, callerDelta.amount1());
-        } else {
-            position.tokensOwed0 = 0;
+        // Update position storage (tokensOwed from fees, liquidity added, and new feeGrowthInside).
+        // if callerDelta <= 0, then tokensOwed0 and tokensOwed1 should be zero'd out as all fees were re-invested into a new position.
+        // if callerDelta > 0, then even after re-investing old fees, the caller still has some fees to collect that were not added into the position so they are accounted.
+        uint128 tokensOwed0 = callerDelta0 > 0 ? uint128(callerDelta0) : 0;
+        uint128 tokensOwed1 = callerDelta1 > 0 ? uint128(callerDelta1) : 0;
+
+        position.updateTokensOwed(tokensOwed0, tokensOwed1);
+        position.add(liquidityToAdd);
+        position.updateFeeGrowthInside(feeGrowthInside0X128, feeGrowthInside1X128);
+
+        return toBalanceDelta(callerDelta0, callerDelta1);
+    }
+
+    // Returns the new sanitized delta for the caller.
+    function _accountNewCallerDeltas(
+        BalanceDelta liquidityDelta,
+        BalanceDelta totalFeesAccrued,
+        BalanceDelta callerFeesAccrued,
+        PoolKey memory poolKey
+    ) internal returns (int128 callerDelta0, int128 callerDelta1) {
+        // Only account new caller deltas if there is a difference in between the range's total earned fees and the callers earned fees.
+        (int128 liquidityDelta0, int128 liquidityDelta1) = (liquidityDelta.amount0(), liquidityDelta.amount1());
+        if (totalFeesAccrued == callerFeesAccrued) {
+            return (liquidityDelta0, liquidityDelta1);
         }
 
-        if (callerDelta.amount1() > 0) {
-            position.tokensOwed1 += uint128(callerDelta.amount1());
-            range.key.currency1.take(manager, address(this), uint128(callerDelta.amount1()), true);
-            callerDelta = toBalanceDelta(callerDelta.amount0(), 0);
-        } else {
-            position.tokensOwed1 = 0;
-        }
+        (int128 totalFeesAccrued0, int128 totalFeesAccrued1) = (totalFeesAccrued.amount0(), totalFeesAccrued.amount1());
+        (int128 callerFeesAccrued0, int128 callerFeesAccrued1) =
+            (callerFeesAccrued.amount0(), callerFeesAccrued.amount1());
 
-        return callerDelta;
+        callerDelta0 = totalFeesAccrued0 > callerFeesAccrued0
+            ? _accountNewCallerDelta(liquidityDelta.amount0(), totalFeesAccrued0, callerFeesAccrued0, poolKey.currency0)
+            : liquidityDelta0;
+
+        callerDelta1 = totalFeesAccrued1 > callerFeesAccrued1
+            ? _accountNewCallerDelta(liquidityDelta.amount1(), totalFeesAccrued1, callerFeesAccrued1, poolKey.currency1)
+            : liquidityDelta1;
+    }
+
+    function _accountNewCallerDelta(
+        int128 liquidityDelta,
+        int128 totalFeesAccrued,
+        int128 callerFeesAccrued,
+        Currency currency
+    ) internal returns (int128 callerDelta) {
+        int128 feesAccruedOutsideCaller;
+        unchecked {
+            feesAccruedOutsideCaller = totalFeesAccrued - callerFeesAccrued;
+            callerDelta = liquidityDelta - feesAccruedOutsideCaller;
+        }
+        // We must take the fees accrued to other users on the same range, so the accounting in pool manager is up to date before we take/settle all open deltas.
+        currency.take(manager, address(this), uint128(feesAccruedOutsideCaller), true);
     }
 
     function _increaseLiquidityAndZeroOut(
@@ -139,7 +180,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         bool claims
     ) internal returns (BalanceDelta delta) {
         delta = _increaseLiquidity(owner, range, liquidityToAdd, hookData);
-        zeroOut(delta, range.key.currency0, range.key.currency1, owner, claims);
+        zeroOut(delta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
     }
 
     function _lockAndIncreaseLiquidity(
@@ -168,10 +209,10 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         // do NOT take tokens directly to the owner because this contract might be holding fees
         // that need to be paid out (position.tokensOwed)
         if (liquidityDelta.amount0() > 0) {
-            range.key.currency0.take(manager, address(this), uint128(liquidityDelta.amount0()), true);
+            range.poolKey.currency0.take(manager, address(this), uint128(liquidityDelta.amount0()), true);
         }
         if (liquidityDelta.amount1() > 0) {
-            range.key.currency1.take(manager, address(this), uint128(liquidityDelta.amount1()), true);
+            range.poolKey.currency1.take(manager, address(this), uint128(liquidityDelta.amount1()), true);
         }
 
         // when decreasing liquidity, the user collects: 1) principal liquidity, 2) new fees, 3) old fees (position.tokensOwed)
@@ -200,7 +241,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         bool claims
     ) internal returns (BalanceDelta delta) {
         delta = _decreaseLiquidity(owner, range, liquidityToRemove, hookData);
-        zeroOut(delta, range.key.currency0, range.key.currency1, owner, claims);
+        zeroOut(delta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
     }
 
     function _lockAndDecreaseLiquidity(
@@ -222,7 +263,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
     {
         (, BalanceDelta totalFeesAccrued) = _modifyLiquidity(owner, range, 0, hookData);
 
-        PoolKey memory key = range.key;
+        PoolKey memory key = range.poolKey;
         Position storage position = positions[owner][range.toId()];
 
         // take all fees first then distribute
@@ -249,7 +290,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         returns (BalanceDelta delta)
     {
         delta = _collect(owner, range, hookData);
-        zeroOut(delta, range.key.currency0, range.key.currency1, owner, claims);
+        zeroOut(delta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
     }
 
     function _lockAndCollect(address owner, LiquidityRange memory range, bytes memory hookData, bool claims)
@@ -261,21 +302,22 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         );
     }
 
+    // TODO: I deprecated this bc I liked to see the accounting in line in the top level function... and I like to do all the position updates at once.
+    //  can keep but should at at least use the position library in here.
     function _updateFeeGrowth(LiquidityRange memory range, Position storage position)
         internal
         returns (BalanceDelta _feesOwed)
     {
         (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
-            manager.getFeeGrowthInside(range.key.toId(), range.tickLower, range.tickUpper);
+            manager.getFeeGrowthInside(range.poolKey.toId(), range.tickLower, range.tickUpper);
 
-        (uint128 token0Owed, uint128 token1Owed) = FeeMath.getFeesOwed(
+        _feesOwed = FeeMath.getFeesOwed(
             feeGrowthInside0X128,
             feeGrowthInside1X128,
             position.feeGrowthInside0LastX128,
             position.feeGrowthInside1LastX128,
             position.liquidity
         );
-        _feesOwed = toBalanceDelta(uint256(token0Owed).toInt128(), uint256(token1Owed).toInt128());
 
         position.feeGrowthInside0LastX128 = feeGrowthInside0X128;
         position.feeGrowthInside1LastX128 = feeGrowthInside1X128;
@@ -290,15 +332,10 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         Position memory position = positions[owner][range.toId()];
 
         (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
-            manager.getFeeGrowthInside(range.key.toId(), range.tickLower, range.tickUpper);
+            manager.getFeeGrowthInside(range.poolKey.toId(), range.tickLower, range.tickUpper);
 
-        (token0Owed, token1Owed) = FeeMath.getFeesOwed(
-            feeGrowthInside0X128,
-            feeGrowthInside1X128,
-            position.feeGrowthInside0LastX128,
-            position.feeGrowthInside1LastX128,
-            position.liquidity
-        );
+        (token0Owed) = FeeMath.getFeeOwed(feeGrowthInside0X128, position.feeGrowthInside0LastX128, position.liquidity);
+        (token1Owed) = FeeMath.getFeeOwed(feeGrowthInside1X128, position.feeGrowthInside1LastX128, position.liquidity);
         token0Owed += position.tokensOwed0;
         token1Owed += position.tokensOwed1;
     }
