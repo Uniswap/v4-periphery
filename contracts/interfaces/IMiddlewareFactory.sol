@@ -11,6 +11,7 @@ interface IMiddlewareFactory {
 
     /// @notice Creates a middleware for the given implementation
     /// @param implementation The implementation address
+    /// @param salt The salt to use to deploy the middleware
     /// @return middleware The address of the newly created middleware
-    function createMiddleware(address implementation) external returns (address middleware);
+    function createMiddleware(address implementation, bytes32 salt) external returns (address middleware);
 }

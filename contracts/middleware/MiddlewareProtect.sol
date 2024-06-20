@@ -6,8 +6,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BaseMiddleware} from "./BaseMiddleware.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {console} from "../../../lib/forge-std/src/console.sol";
-import {BaseHook} from "./../../BaseHook.sol";
+import {console} from "../../lib/forge-std/src/console.sol";
+import {BaseHook} from "./../BaseHook.sol";
 
 contract MiddlewareProtect is BaseMiddleware {
     bool private swapBlocked;

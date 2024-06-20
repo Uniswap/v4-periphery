@@ -3,8 +3,8 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {FeeTakingLite} from "../contracts/hooks/middleware/test/FeeTakingLite.sol";
-import {BaseMiddleware} from "../contracts/hooks/middleware/BaseMiddleware.sol";
+import {FeeTakingLite} from "../contracts/middleware/test/FeeTakingLite.sol";
+import {BaseMiddleware} from "../contracts/middleware/BaseMiddleware.sol";
 import {BaseMiddlewareImplementation} from "./shared/implementation/BaseMiddlewareImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";

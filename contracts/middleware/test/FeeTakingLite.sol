@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {BaseHook} from "../../../BaseHook.sol";
+import {BaseHook} from "../../BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -11,7 +11,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Owned} from "solmate/auth/Owned.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
-import {console} from "../../../../lib/forge-std/src/console.sol";
+import {console} from "../../../lib/forge-std/src/console.sol";
 
 contract FeeTakingLite is IUnlockCallback {
     using SafeCast for uint256;

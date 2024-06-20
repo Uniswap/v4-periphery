@@ -8,7 +8,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
-import {console} from "../../../lib/forge-std/src/console.sol";
+import {console} from "../../lib/forge-std/src/console.sol";
 
 contract BaseMiddleware is Proxy {
     /// @notice The address of the pool manager
