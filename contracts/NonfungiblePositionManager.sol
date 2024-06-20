@@ -29,11 +29,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 private _nextId = 1;
 
-    struct TokenPosition {
-        address owner;
-        LiquidityRange range;
-    }
-
+    // maps the ERC721 tokenId to the keys that uniquely identify a liquidity position (owner, range)
     mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
 
     constructor(IPoolManager _manager)
@@ -106,7 +102,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         LiquidityRangeId rangeId = tokenPosition.range.toId();
         Position storage position = positions[msg.sender][rangeId];
         if (0 < position.liquidity) {
-            decreaseLiquidity(tokenId, position.liquidity, hookData, claims);
+            delta = decreaseLiquidity(tokenId, position.liquidity, hookData, claims);
         }
         require(position.tokensOwed0 == 0 && position.tokensOwed1 == 0, "NOT_EMPTY");
         delete positions[msg.sender][rangeId];

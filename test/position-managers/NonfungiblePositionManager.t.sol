@@ -221,8 +221,8 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         assertEq(liquidity, 0);
 
         // TODO: slightly off by 1 bip (0.0001%)
-        assertApproxEqRel(currency0.balanceOfSelf(), balance0BeforeBurn + uint256(int256(-delta.amount0())), 0.0001e18);
-        assertApproxEqRel(currency1.balanceOfSelf(), balance1BeforeBurn + uint256(int256(-delta.amount1())), 0.0001e18);
+        assertApproxEqRel(currency0.balanceOfSelf(), balance0BeforeBurn + uint256(int256(delta.amount0())), 0.0001e18);
+        assertApproxEqRel(currency1.balanceOfSelf(), balance1BeforeBurn + uint256(int256(delta.amount1())), 0.0001e18);
 
         // OZ 721 will revert if the token does not exist
         vm.expectRevert();

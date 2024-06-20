@@ -21,8 +21,9 @@ import {CurrencyDeltas} from "../libraries/CurrencyDeltas.sol";
 
 import {FeeMath} from "../libraries/FeeMath.sol";
 import {LiquiditySaltLibrary} from "../libraries/LiquiditySaltLibrary.sol";
+import {IBaseLiquidityManagement} from "../interfaces/IBaseLiquidityManagement.sol";
 
-contract BaseLiquidityManagement is SafeCallback {
+contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
     using LiquidityRangeIdLibrary for LiquidityRange;
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
@@ -34,30 +35,7 @@ contract BaseLiquidityManagement is SafeCallback {
     using SafeCast for uint256;
     using LiquiditySaltLibrary for IHooks;
 
-    // details about the liquidity position
-    struct Position {
-        // the nonce for permits
-        uint96 nonce;
-        // the address that is approved for spending this token
-        address operator;
-        uint256 liquidity;
-        // the fee growth of the aggregate position as of the last action on the individual position
-        uint256 feeGrowthInside0LastX128;
-        uint256 feeGrowthInside1LastX128;
-        // how many uncollected tokens are owed to the position, as of the last computation
-        uint128 tokensOwed0;
-        uint128 tokensOwed1;
-    }
-
-    enum LiquidityOperation {
-        INCREASE,
-        DECREASE,
-        COLLECT
-    }
-
     mapping(address owner => mapping(LiquidityRangeId rangeId => Position)) public positions;
-
-    error UnlockFailure();
 
     constructor(IPoolManager _manager) ImmutableState(_manager) {}
 
@@ -86,7 +64,7 @@ contract BaseLiquidityManagement is SafeCallback {
         } else if (op == LiquidityOperation.COLLECT) {
             return abi.encode(_collectAndZeroOut(owner, range, 0, hookData, claims));
         } else {
-            revert UnlockFailure();
+            return new bytes(0);
         }
     }
 
@@ -110,8 +88,7 @@ contract BaseLiquidityManagement is SafeCallback {
         address owner,
         LiquidityRange memory range,
         uint256 liquidityToAdd,
-        bytes memory hookData,
-        bool claims
+        bytes memory hookData
     ) internal returns (BalanceDelta) {
         // Note that the liquidityDelta includes totalFeesAccrued. The totalFeesAccrued is returned separately for accounting purposes.
         (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) =
@@ -161,7 +138,7 @@ contract BaseLiquidityManagement is SafeCallback {
         bytes memory hookData,
         bool claims
     ) internal returns (BalanceDelta delta) {
-        delta = _increaseLiquidity(owner, range, liquidityToAdd, hookData, claims);
+        delta = _increaseLiquidity(owner, range, liquidityToAdd, hookData);
         zeroOut(delta, range.key.currency0, range.key.currency1, owner, claims);
     }
 
@@ -182,8 +159,7 @@ contract BaseLiquidityManagement is SafeCallback {
         address owner,
         LiquidityRange memory range,
         uint256 liquidityToRemove,
-        bytes memory hookData,
-        bool claims
+        bytes memory hookData
     ) internal returns (BalanceDelta delta) {
         (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) =
             _modifyLiquidity(owner, range, -(liquidityToRemove.toInt256()), hookData);
@@ -223,7 +199,7 @@ contract BaseLiquidityManagement is SafeCallback {
         bytes memory hookData,
         bool claims
     ) internal returns (BalanceDelta delta) {
-        delta = _decreaseLiquidity(owner, range, liquidityToRemove, hookData, claims);
+        delta = _decreaseLiquidity(owner, range, liquidityToRemove, hookData);
         zeroOut(delta, range.key.currency0, range.key.currency1, owner, claims);
     }
 
@@ -235,14 +211,12 @@ contract BaseLiquidityManagement is SafeCallback {
         bool claims
     ) internal returns (BalanceDelta) {
         return abi.decode(
-            manager.unlock(
-                abi.encode(LiquidityOperation.DECREASE, owner, range, liquidityToRemove, hookData, claims)
-            ),
+            manager.unlock(abi.encode(LiquidityOperation.DECREASE, owner, range, liquidityToRemove, hookData, claims)),
             (BalanceDelta)
         );
     }
 
-    function _collect(address owner, LiquidityRange memory range, bytes memory hookData, bool claims)
+    function _collect(address owner, LiquidityRange memory range, bytes memory hookData)
         internal
         returns (BalanceDelta)
     {
@@ -274,7 +248,7 @@ contract BaseLiquidityManagement is SafeCallback {
         internal
         returns (BalanceDelta delta)
     {
-        delta = _collect(owner, range, hookData, claims);
+        delta = _collect(owner, range, hookData);
         zeroOut(delta, range.key.currency0, range.key.currency1, owner, claims);
     }
 
@@ -283,14 +257,13 @@ contract BaseLiquidityManagement is SafeCallback {
         returns (BalanceDelta)
     {
         return abi.decode(
-            manager.unlock(abi.encode(LiquidityOperation.COLLECT, owner, range, 0, hookData, claims)),
-            (BalanceDelta)
+            manager.unlock(abi.encode(LiquidityOperation.COLLECT, owner, range, 0, hookData, claims)), (BalanceDelta)
         );
     }
 
     function _updateFeeGrowth(LiquidityRange memory range, Position storage position)
         internal
-        returns (BalanceDelta feesOwed)
+        returns (BalanceDelta _feesOwed)
     {
         (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
             manager.getFeeGrowthInside(range.key.toId(), range.tickLower, range.tickUpper);
@@ -302,7 +275,7 @@ contract BaseLiquidityManagement is SafeCallback {
             position.feeGrowthInside1LastX128,
             position.liquidity
         );
-        feesOwed = toBalanceDelta(uint256(token0Owed).toInt128(), uint256(token1Owed).toInt128());
+        _feesOwed = toBalanceDelta(uint256(token0Owed).toInt128(), uint256(token1Owed).toInt128());
 
         position.feeGrowthInside0LastX128 = feeGrowthInside0X128;
         position.feeGrowthInside1LastX128 = feeGrowthInside1X128;
