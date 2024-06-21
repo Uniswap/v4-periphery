@@ -20,6 +20,7 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {HookTestAddress} from "./utils/HookTestAddress.sol";
 
 contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -66,7 +67,9 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     MockERC20 token2;
 
     FullRange fullRange = FullRange(
-        address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG))
+        HookTestAddress.getHookAddress(
+            uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG)
+        )
     );
 
     PoolId id;

@@ -15,6 +15,7 @@ import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiqui
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Oracle} from "../contracts/libraries/Oracle.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {HookTestAddress} from "./utils/HookTestAddress.sol";
 
 contract TestGeomeanOracle is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -24,7 +25,7 @@ contract TestGeomeanOracle is Test, Deployers {
     TestERC20 token0;
     TestERC20 token1;
     GeomeanOracle geomeanOracle = GeomeanOracle(
-        address(
+        HookTestAddress.getHookAddress(
             uint160(
                 Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
                     | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG

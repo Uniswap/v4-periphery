@@ -19,6 +19,7 @@ import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol
 import {TWAMM} from "../contracts/hooks/examples/TWAMM.sol";
 import {ITWAMM} from "../contracts/interfaces/ITWAMM.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {HookTestAddress} from "./utils/HookTestAddress.sol";
 
 contract TWAMMTest is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -42,8 +43,11 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 earningsFactorLast
     );
 
-    TWAMM twamm =
-        TWAMM(address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG)));
+    TWAMM twamm = TWAMM(
+        HookTestAddress.getHookAddress(
+            uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG)
+        )
+    );
     address hookAddress;
     MockERC20 token0;
     MockERC20 token1;

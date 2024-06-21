@@ -15,6 +15,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {HookTestAddress} from "./utils/HookTestAddress.sol";
 
 contract TestLimitOrder is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -25,7 +26,8 @@ contract TestLimitOrder is Test, Deployers {
     HookEnabledSwapRouter router;
     TestERC20 token0;
     TestERC20 token1;
-    LimitOrder limitOrder = LimitOrder(address(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG)));
+    LimitOrder limitOrder =
+        LimitOrder(HookTestAddress.getHookAddress(uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG)));
     PoolId id;
 
     function setUp() public {
