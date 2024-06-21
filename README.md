@@ -12,6 +12,9 @@ If you’re interested in contributing please see the [contribution guidelines](
 contracts/
 ----hooks/
     ----examples/
+        | FeeTaker.sol
+        | FeeTaking.sol
+        | FullRange.sol
         | GeomeanOracle.sol
         | LimitOrder.sol
         | TWAMM.sol
