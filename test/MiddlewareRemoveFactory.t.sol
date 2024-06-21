@@ -53,7 +53,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         factory = new MiddlewareRemoveFactory(manager);
     }
 
-    function testVariousE() public {
+    function testVariousFactory() public {
         FeeTakingLite feeTakingLite = new FeeTakingLite(manager);
         uint160 flags =
             uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG);
@@ -94,5 +94,6 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         );
 
         removeLiquidity(currency0, currency1, IHooks(address(middlewareRemove)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        assertEq(factory.getImplementation(hookAddress), implementation);
     }
 }

@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
 import {BaseMiddleware} from "./BaseMiddleware.sol";
 import {BaseHook} from "../BaseHook.sol";
@@ -15,7 +12,7 @@ import {BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 contract MiddlewareRemove is BaseMiddleware {
     bytes internal constant ZERO_BYTES = bytes("");
-    uint256 public constant gasLimit = 100000;
+    uint256 public constant gasLimit = 1000000;
 
     constructor(IPoolManager _poolManager, address _impl) BaseMiddleware(_poolManager, _impl) {}
 
