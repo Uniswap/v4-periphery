@@ -75,7 +75,7 @@ abstract contract FeeTaker is BaseHook {
             manager.burn(address(this), CurrencyLibrary.toId(currencies[i]), amount);
             manager.take(currencies[i], _recipient(), amount);
             unchecked {
-                i++;
+                ++i;
             }
         }
         return ZERO_BYTES;
