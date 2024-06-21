@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
+import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {FeeTaking} from "../contracts/hooks/examples/FeeTaking.sol";
 import {FeeTakingImplementation} from "./shared/implementation/FeeTakingImplementation.sol";
@@ -15,7 +16,7 @@ import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
-contract FeeTakingTest is Test, Deployers {
+contract FeeTakingTest is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -66,11 +67,12 @@ contract FeeTakingTest is Test, Deployers {
         assertEq(currency0.balanceOf(TREASURY), 0);
         assertEq(currency1.balanceOf(TREASURY), 0);
 
+        snapStart("FeeTakingFirstSwap");
         // Swap exact token0 for token1 //
         bool zeroForOne = true;
         int256 amountSpecified = -1e12;
         BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
-        // ---------------------------- //
+        snapEnd();
 
         uint128 output = uint128(swapDelta.amount1());
         assertTrue(output > 0);
@@ -80,11 +82,12 @@ contract FeeTakingTest is Test, Deployers {
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R);
 
+        snapStart("FeeTakingSecondSwap");
         // Swap token0 for exact token1 //
         bool zeroForOne2 = true;
         int256 amountSpecified2 = 1e12; // positive number indicates exact output swap
         BalanceDelta swapDelta2 = swap(key, zeroForOne2, amountSpecified2, ZERO_BYTES);
-        // ---------------------------- //
+        snapEnd();
 
         uint128 input = uint128(-swapDelta2.amount0());
         assertTrue(output > 0);
@@ -98,7 +101,9 @@ contract FeeTakingTest is Test, Deployers {
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = key.currency0;
         currencies[1] = key.currency1;
+        snapStart("FeeTakingWithdrawTwoTokens");
         feeTaking.withdraw(currencies);
+        snapEnd();
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency0)), 0);
         assertEq(manager.balanceOf(address(feeTaking), CurrencyLibrary.toId(key.currency1)), 0);
         assertEq(currency0.balanceOf(TREASURY) / R, expectedFee2 / R);
