@@ -27,15 +27,6 @@ interface IBaseLiquidityManagement {
         COLLECT
     }
 
-    /// @notice Zero-out outstanding deltas for the PoolManager
-    /// @dev To be called for batched operations where delta-zeroing happens once at the end of a sequence of operations
-    /// @param delta The amounts to zero out. Negatives are paid by the sender, positives are collected by the sender
-    /// @param currency0 The currency of the token0
-    /// @param currency1 The currency of the token1
-    /// @param user The user zero'ing the deltas. I.e. negative delta (debit) is paid by the user, positive delta (credit) is collected to the user
-    /// @param claims Whether deltas are zeroed with ERC-6909 claim tokens
-    function zeroOut(BalanceDelta delta, Currency currency0, Currency currency1, address user, bool claims) external;
-
     /// @notice Fees owed for a given liquidity position. Includes materialized fees and uncollected fees.
     /// @param owner The owner of the liquidity position
     /// @param range The range of the liquidity position
