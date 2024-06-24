@@ -52,6 +52,8 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
     ) internal {
         int128 callerDelta0 = callerDeltas.amount0();
         int128 callerDelta1 = callerDeltas.amount1();
+        // On liquidity increase, the deltas should never be > 0.
+        //  We always 0 out a caller positive delta because it is instead accounted for in position.tokensOwed.
 
         if (callerDelta0 < 0) currency0.settle(manager, owner, uint256(int256(-callerDelta0)), claims);
         else if (callerDelta0 > 0) currency0.send(manager, owner, uint128(callerDelta0), claims);
@@ -97,7 +99,8 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         );
     }
 
-    /// @dev The open delta on the position manager is "safe" for auto-settle after this call. ie. any amounts that the caller does not owe or is not allowed to take is accounted for.
+    /// @dev The delta returned from this call must be settled by the caller.
+    /// Zeroing out the full balance of open deltas accounted to this address is unsafe until the callerDeltas are handled.
     function _increaseLiquidity(
         address owner,
         LiquidityRange memory range,
@@ -130,19 +133,13 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
             ? _calculateCallerDeltas(liquidityDelta, totalFeesAccrued, callerFeesAccrued)
             : (liquidityDelta.amount0(), liquidityDelta.amount1());
 
-        // Update position storage, sanitizing the tokensOwed values based on the actual funds owed to the caller.
+        // Update position storage, sanitizing the tokensOwed and callerDelta values first.
         // if callerDelta > 0, then even after re-investing old fees, the caller still has some amount to collect that were not added into the position so they are accounted.
         // if callerDelta <= 0, then tokensOwed0 and tokensOwed1 should be zero'd out as all fees were re-invested into a new position.
         uint128 tokensOwed0 = 0;
         uint128 tokensOwed1 = 0;
-        if (callerDelta0 > 0) {
-            tokensOwed0 = uint128(callerDelta0);
-            callerDelta0 = 0;
-        }
-        if (callerDelta1 > 0) {
-            tokensOwed1 = uint128(callerDelta1);
-            callerDelta1 = 0;
-        }
+        (tokensOwed0, callerDelta0) = callerDelta0 > 0 ? (uint128(callerDelta0), int128(0)) : (uint128(0), callerDelta0);
+        (tokensOwed1, callerDelta1) = callerDelta1 > 0 ? (uint128(callerDelta1), int128(0)) : (uint128(0), callerDelta1);
 
         position.updateTokensOwed(tokensOwed0, tokensOwed1);
         position.addLiquidity(liquidityToAdd);
@@ -197,8 +194,9 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
     // When chaining many actions, this should be called at the very end to close out any open deltas owed to or by this contract for other users on the same range.
     // This is safe because any amounts the caller should not pay or take have already been accounted for in closeCallerDeltas.
     function _closeAllDeltas(Currency currency0, Currency currency1) internal {
-        int128 delta0 = int128(manager.currencyDelta(address(this), currency0));
-        int128 delta1 = int128(manager.currencyDelta(address(this), currency1));
+        (BalanceDelta delta) = manager.currencyDeltas(address(this), currency0, currency1);
+        int128 delta0 = delta.amount0();
+        int128 delta1 = delta.amount1();
 
         // Mint a receipt for the tokens owed to this address.
         if (delta0 > 0) currency0.take(manager, address(this), uint128(delta0), true);
