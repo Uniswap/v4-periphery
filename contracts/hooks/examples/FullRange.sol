@@ -206,6 +206,7 @@ contract FullRange is BaseHook {
     function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata)
         external
         override
+        onlyByManager
         returns (bytes4)
     {
         if (key.tickSpacing != 60) revert TickSpacingNotDefault();
