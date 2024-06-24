@@ -21,6 +21,7 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {console} from "forge-std/console.sol";
 
 contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -763,6 +764,56 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             IPoolManager.ModifyLiquidityParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: 100, salt: 0}),
             ZERO_BYTES
         );
+    }
+
+    function testFullRange_LostFunds() public {
+        PoolKey memory testKey = key;
+        manager.initialize(testKey, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        console.log(key.currency0.balanceOf(address(manager)), key.currency1.balanceOf(address(manager)));
+
+        uint128 liquidity = fullRange.addLiquidity(
+            FullRange.AddLiquidityParams(
+                key.currency0, key.currency1, 3000, 10 ether, 10 ether, 9 ether, 9 ether, address(this), MAX_DEADLINE
+            )
+        );
+        console.log(liquidity);
+
+        console.log(key.currency0.balanceOf(address(manager)), key.currency1.balanceOf(address(manager)));
+
+        IPoolManager.SwapParams memory params =
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: SQRT_PRICE_1_2});
+        HookEnabledSwapRouter.TestSettings memory settings =
+            HookEnabledSwapRouter.TestSettings({takeClaims: false, settleUsingBurn: false});
+        IPoolManager.SwapParams memory params2 =
+            IPoolManager.SwapParams({zeroForOne: false, amountSpecified: -1 ether, sqrtPriceLimitX96: SQRT_PRICE_2_1});
+
+        console.log(key.currency0.balanceOf(address(manager)), key.currency1.balanceOf(address(manager)));
+        for (uint256 i; i < 100; ++i) {
+            router.swap(testKey, params, settings, ZERO_BYTES);
+            router.swap(testKey, params2, settings, ZERO_BYTES);
+        }
+        console.log("done farming swap fees");
+        console.log(key.currency0.balanceOf(address(manager)), key.currency1.balanceOf(address(manager)));
+
+        liquidity = fullRange.addLiquidity(
+            FullRange.AddLiquidityParams(
+                key.currency0, key.currency1, 3000, 0.7 ether, 0.7 ether, 0, 0, address(this), MAX_DEADLINE
+            )
+        );
+        console.log(liquidity);
+        {
+            FullRange.RemoveLiquidityParams memory removeLiquidityParams =
+                FullRange.RemoveLiquidityParams(key.currency0, key.currency1, 3000, 1, MAX_DEADLINE);
+            fullRange.removeLiquidity(removeLiquidityParams);
+        }
+
+        console.log(key.currency0.balanceOf(address(manager)), key.currency1.balanceOf(address(manager)));
+
+        FullRange.RemoveLiquidityParams memory removeLiquidityParams =
+            FullRange.RemoveLiquidityParams(key.currency0, key.currency1, 3000, 9999999999999998000, MAX_DEADLINE);
+        fullRange.removeLiquidity(removeLiquidityParams);
+        console.log(key.currency0.balanceOf(address(manager)), key.currency1.balanceOf(address(manager)));
     }
 
     function createPoolKey(MockERC20 tokenA, MockERC20 tokenB) internal view returns (PoolKey memory) {
