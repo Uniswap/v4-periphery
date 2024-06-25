@@ -412,7 +412,6 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice will use ALL of her fees to increase liquidity
         {
-            console2.log(newToken0Owed, newToken1Owed);
             (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
@@ -427,8 +426,8 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         }
 
         // alice did not spend any tokens, approximately
-        assertApproxEqAbs(balance0AliceBefore, currency0.balanceOf(alice), 0.00001 ether);
-        assertApproxEqAbs(balance1AliceBefore, currency1.balanceOf(alice), 0.00001 ether);
+        assertEq(balance0AliceBefore, currency0.balanceOf(alice), "alice spent token0");
+        assertEq(balance1AliceBefore, currency1.balanceOf(alice), "alice spent token1");
 
         (token0Owed, token1Owed) = lpm.feesOwed(tokenIdAlice);
         assertEq(token0Owed, 0);
