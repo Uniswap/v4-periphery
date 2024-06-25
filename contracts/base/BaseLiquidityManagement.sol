@@ -126,12 +126,44 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
             position.liquidity
         );
 
+        console2.log(callerFeesAccrued.amount0());
+        console2.log(callerFeesAccrued.amount1());
+        console2.log("totalFees");
+        console2.log(totalFeesAccrued.amount0());
+        console2.log(totalFeesAccrued.amount1());
+
         // Calculate the accurate tokens owed to the caller.
         // If the totalFeesAccrued equals the callerFeesAccrued then the total owed to the caller is just the liquidityDelta.
         // If the totalFeesAccrued is greater than the callerFeesAccrued, we must account for the difference.
         (int128 callerDelta0, int128 callerDelta1) = totalFeesAccrued != callerFeesAccrued
             ? _calculateCallerDeltas(liquidityDelta, totalFeesAccrued, callerFeesAccrued)
             : (liquidityDelta.amount0(), liquidityDelta.amount1());
+
+        // An edge case:
+        // assume alice and bob are on the same range
+        // and 20 token fee revenue is posted (i.e. swap revenue or donate)
+
+        // bob calls collects()
+        //   liquidityDelta:    20
+        //   totalFeesAccrued:  20
+        //   callerFeesAccrued:  5
+        //   (5 tokens sent to bob, and posm caches the 15 tokens for alice)
+
+        // assume another 20 token fee revenue is posted (a net new 5 tokens for bob and 15 new tokens for alice)
+        // alice now has 30 tokens of fee revenue, half of custodied by posm and the other half unclaimed in the PM
+
+        // when alice increases her liquidity, using exactly 30 tokens (autocompound):
+        //   liquidityDelta:   -10
+        //   totalFeesAccrued:  20 (new fees: 5 for bob, 15 for alice)
+        //   callerFeesAccrued: 30 (alice's fees, per feeGrowthInside)
+
+        // naively resolving deltas:
+        // posm:  take 5 tokens (bob's fees), liquidityDelta is now: -15
+        // posm:  pay PM the 15 tokens (alice's cached fees)
+        // alice: pay nothing, as its a pure and exact autocompound
+
+        // to solve:
+        // we need a way to discern cached fees and use them against liquidityDelta
 
         // Update position storage, sanitizing the tokensOwed and callerDelta values first.
         // if callerDelta > 0, then even after re-investing old fees, the caller still has some amount to collect that were not added into the position so they are accounted.
