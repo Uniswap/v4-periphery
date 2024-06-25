@@ -108,10 +108,67 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
             token1Owed
         );
 
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+
         vm.prank(alice);
         lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
 
-        // TODO: assertions, currently increasing liquidity does not perfectly use the fees
+        // alice did not spend any tokens
+        assertEq(balance0BeforeAlice, currency0.balanceOf(alice));
+        assertEq(balance1BeforeAlice, currency1.balanceOf(alice));
+
+        // alice spent all of the fees, approximately
+        (token0Owed, token1Owed) = lpm.feesOwed(tokenIdAlice);
+        assertApproxEqAbs(token0Owed, 0, 20 wei);
+        assertApproxEqAbs(token1Owed, 0, 20 wei);
+    }
+
+    // uses donate to simulate fee revenue
+    function test_increaseLiquidity_withExactFees_donate() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her exact fees to increase liquidity (compounding)
+
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+
+        // alice provides liquidity
+        vm.prank(alice);
+        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+
+        // bob provides liquidity
+        vm.prank(bob);
+        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+
+        // donate to create fees
+        donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        // alice uses her exact fees to increase liquidity
+        (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
+
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(range.tickLower),
+            TickMath.getSqrtPriceAtTick(range.tickUpper),
+            token0Owed,
+            token1Owed
+        );
+
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+
+        vm.prank(alice);
+        lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+
+        // alice did not spend any tokens
+        assertEq(balance0BeforeAlice, currency0.balanceOf(alice));
+        assertEq(balance1BeforeAlice, currency1.balanceOf(alice));
+
+        // alice spent all of the fees
+        (token0Owed, token1Owed) = lpm.feesOwed(tokenIdAlice);
+        assertEq(token0Owed, 0);
+        assertEq(token1Owed, 0);
     }
 
     function test_increaseLiquidity_withExcessFees() public {
@@ -253,5 +310,128 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
                 1 wei
             );
         }
+    }
+
+    function test_increaseLiquidity_withExactFees_withExactCachedFees() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her fees to increase liquidity. Both unclaimed fees and cached fees are used to exactly increase the liquidity
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+        uint256 totalLiquidity = liquidityAlice + liquidityBob;
+
+        // alice provides liquidity
+        vm.prank(alice);
+        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+
+        // bob provides liquidity
+        vm.prank(bob);
+        (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+
+        // swap to create fees
+        uint256 swapAmount = 0.001e18;
+        swap(key, true, -int256(swapAmount), ZERO_BYTES);
+        swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
+
+        (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
+
+        // bob collects fees so some of alice's fees are now cached
+        vm.prank(bob);
+        lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+
+        // swap to create more fees
+        swap(key, true, -int256(swapAmount), ZERO_BYTES);
+        swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
+
+        (uint256 newToken0Owed, uint256 newToken1Owed) = lpm.feesOwed(tokenIdAlice);
+        // alice's fees should be doubled
+        assertApproxEqAbs(newToken0Owed, token0Owed * 2, 2 wei);
+        assertApproxEqAbs(newToken1Owed, token1Owed * 2, 2 wei);
+
+        uint256 balance0AliceBefore = currency0.balanceOf(alice);
+        uint256 balance1AliceBefore = currency1.balanceOf(alice);
+
+        // alice will use ALL of her fees to increase liquidity
+        {
+            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+            uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(range.tickLower),
+                TickMath.getSqrtPriceAtTick(range.tickUpper),
+                newToken0Owed,
+                newToken1Owed
+            );
+
+            vm.prank(alice);
+            lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        }
+
+        // alice did not spend any tokens, approximately
+        assertApproxEqAbs(balance0AliceBefore, currency0.balanceOf(alice), 0.00001 ether);
+        assertApproxEqAbs(balance1AliceBefore, currency1.balanceOf(alice), 0.00001 ether);
+
+        (token0Owed, token1Owed) = lpm.feesOwed(tokenIdAlice);
+        assertEq(token0Owed, 0);
+        assertEq(token1Owed, 0);
+    }
+
+    // uses donate to simulate fee revenue
+    function test_increaseLiquidity_withExactFees_withExactCachedFees_donate() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her fees to increase liquidity. Both unclaimed fees and cached fees are used to exactly increase the liquidity
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+        uint256 totalLiquidity = liquidityAlice + liquidityBob;
+
+        // alice provides liquidity
+        vm.prank(alice);
+        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+
+        // bob provides liquidity
+        vm.prank(bob);
+        (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+
+        // donate to create fees
+        donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
+
+        // bob collects fees so some of alice's fees are now cached
+        vm.prank(bob);
+        lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+
+        // donate to create more fees
+        donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        (uint256 newToken0Owed, uint256 newToken1Owed) = lpm.feesOwed(tokenIdAlice);
+        // alice's fees should be doubled
+        assertApproxEqAbs(newToken0Owed, token0Owed * 2, 1 wei);
+        assertApproxEqAbs(newToken1Owed, token1Owed * 2, 1 wei);
+
+        uint256 balance0AliceBefore = currency0.balanceOf(alice);
+        uint256 balance1AliceBefore = currency1.balanceOf(alice);
+
+        // alice will use ALL of her fees to increase liquidity
+        {
+            console2.log(newToken0Owed, newToken1Owed);
+            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+            uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(range.tickLower),
+                TickMath.getSqrtPriceAtTick(range.tickUpper),
+                newToken0Owed,
+                newToken1Owed
+            );
+
+            vm.prank(alice);
+            lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        }
+
+        // alice did not spend any tokens, approximately
+        assertApproxEqAbs(balance0AliceBefore, currency0.balanceOf(alice), 0.00001 ether);
+        assertApproxEqAbs(balance1AliceBefore, currency1.balanceOf(alice), 0.00001 ether);
+
+        (token0Owed, token1Owed) = lpm.feesOwed(tokenIdAlice);
+        assertEq(token0Owed, 0);
+        assertEq(token1Owed, 0);
     }
 }
