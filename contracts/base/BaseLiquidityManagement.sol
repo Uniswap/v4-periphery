@@ -106,7 +106,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         LiquidityRange memory range,
         uint256 liquidityToAdd,
         bytes memory hookData
-    ) internal returns (BalanceDelta) {
+    ) internal returns (BalanceDelta, BalanceDelta) {
         // Note that the liquidityDelta includes totalFeesAccrued. The totalFeesAccrued is returned separately for accounting purposes.
         (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) =
             _modifyLiquidity(owner, range, liquidityToAdd.toInt256(), hookData);
@@ -135,52 +135,31 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         // Calculate the accurate tokens owed to the caller.
         // If the totalFeesAccrued equals the callerFeesAccrued then the total owed to the caller is just the liquidityDelta.
         // If the totalFeesAccrued is greater than the callerFeesAccrued, we must account for the difference.
+        // TODO: If totalFeesAccrued == callerFeesAccrued, I think we can just apply the entire delta onto the caller, even if this implicitly collects on behalf of another user in the same range.
         (int128 callerDelta0, int128 callerDelta1) = totalFeesAccrued != callerFeesAccrued
             ? _calculateCallerDeltas(liquidityDelta, totalFeesAccrued, callerFeesAccrued)
             : (liquidityDelta.amount0(), liquidityDelta.amount1());
 
-        // An edge case:
-        // assume alice and bob are on the same range
-        // and 20 token fee revenue is posted (i.e. swap revenue or donate)
-
-        // bob calls collects()
-        //   liquidityDelta:    20
-        //   totalFeesAccrued:  20
-        //   callerFeesAccrued:  5
-        //   (5 tokens sent to bob, and posm caches the 15 tokens for alice)
-
-        // assume another 20 token fee revenue is posted (a net new 5 tokens for bob and 15 new tokens for alice)
-        // alice now has 30 tokens of fee revenue, half of custodied by posm and the other half unclaimed in the PM
-
-        // when alice increases her liquidity, using exactly 30 tokens (autocompound):
-        //   liquidityDelta:   -10
-        //   totalFeesAccrued:  20 (new fees: 5 for bob, 15 for alice)
-        //   callerFeesAccrued: 30 (alice's fees, per feeGrowthInside)
-
-        // naively resolving deltas:
-        // posm:  take 5 tokens (bob's fees), liquidityDelta is now: -15
-        // posm:  pay PM the 15 tokens (alice's cached fees)
-        // alice: pay nothing, as its a pure and exact autocompound
-
-        // to solve:
-        // we need a way to discern cached fees and use them against liquidityDelta
-
-        // Update position storage, sanitizing the tokensOwed and callerDelta values first.
-        // if callerDelta > 0, then even after re-investing old fees, the caller still has some amount to collect that were not added into the position so they are accounted.
-        // if callerDelta <= 0, then tokensOwed0 and tokensOwed1 should be zero'd out as all fees were re-invested into a new position.
+        // Update position storage, flushing the callerDelta value to tokensOwed first if necessary.
+        // If callerDelta > 0, then even after investing callerFeesAccrued, the caller still has some amount to collect that were not added into the position so they are accounted to tokensOwed and removed from the final callerDelta returned.
         uint128 tokensOwed0 = 0;
         uint128 tokensOwed1 = 0;
         (tokensOwed0, callerDelta0) = callerDelta0 > 0 ? (uint128(callerDelta0), int128(0)) : (uint128(0), callerDelta0);
         (tokensOwed1, callerDelta1) = callerDelta1 > 0 ? (uint128(callerDelta1), int128(0)) : (uint128(0), callerDelta1);
 
-        position.updateTokensOwed(tokensOwed0, tokensOwed1);
+        position.addTokensOwed(tokensOwed0, tokensOwed1);
         position.addLiquidity(liquidityToAdd);
         position.updateFeeGrowthInside(feeGrowthInside0X128, feeGrowthInside1X128);
 
-        return toBalanceDelta(callerDelta0, callerDelta1);
+        // The delta owed or credited by this contract.
+        // TODO @sauce check that if callerDelta == 0 (zerod out from above), then this line just credits the posm to takes on behalf of the caller
+        int128 thisDelta0 = liquidityDelta.amount0() - callerDelta0;
+        int128 thisDelta1 = liquidityDelta.amount1() - callerDelta1;
+
+        return (toBalanceDelta(callerDelta0, callerDelta1), toBalanceDelta(thisDelta0, thisDelta1));
     }
 
-    // Returns the new sanitized delta for the caller.
+    // Returns the delta paid/credited by/to the caller.
     function _calculateCallerDeltas(
         BalanceDelta liquidityDelta,
         BalanceDelta totalFeesAccrued,
@@ -191,13 +170,8 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         (int128 callerFeesAccrued0, int128 callerFeesAccrued1) =
             (callerFeesAccrued.amount0(), callerFeesAccrued.amount1());
 
-        callerDelta0 = totalFeesAccrued0 > callerFeesAccrued0
-            ? _calculateCallerDelta(liquidityDelta.amount0(), totalFeesAccrued0, callerFeesAccrued0)
-            : liquidityDelta0;
-
-        callerDelta1 = totalFeesAccrued1 > callerFeesAccrued1
-            ? _calculateCallerDelta(liquidityDelta.amount1(), totalFeesAccrued1, callerFeesAccrued1)
-            : liquidityDelta1;
+        callerDelta0 = _calculateCallerDelta(liquidityDelta0, totalFeesAccrued0, callerFeesAccrued0);
+        callerDelta1 = _calculateCallerDelta(liquidityDelta1, totalFeesAccrued1, callerFeesAccrued1);
     }
 
     function _calculateCallerDelta(int128 liquidityDelta, int128 totalFeesAccrued, int128 callerFeesAccrued)
@@ -206,8 +180,11 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         returns (int128 callerDelta)
     {
         unchecked {
-            int128 feesAccruedOutsideCaller = totalFeesAccrued - callerFeesAccrued;
-            callerDelta = liquidityDelta - feesAccruedOutsideCaller;
+            // The principle delta owed/debited to the caller before any LP fees are deducted.
+            int128 principleDelta = liquidityDelta - totalFeesAccrued;
+            // The new caller delta is this principle delta plus the callerFeesAccrued which consists of
+            // the custodied fees by posm and unclaimed fees from the modifyLiq call.
+            callerDelta = principleDelta + callerFeesAccrued;
         }
     }
 
@@ -218,13 +195,28 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         bytes memory hookData,
         bool claims
     ) internal returns (BalanceDelta callerDelta) {
-        callerDelta = _increaseLiquidity(owner, range, liquidityToAdd, hookData);
+        BalanceDelta thisDelta;
+        // TODO move callerDelta and thisDelta to transient storage?
+        (callerDelta, thisDelta) = _increaseLiquidity(owner, range, liquidityToAdd, hookData);
         _closeCallerDeltas(callerDelta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
-        _closeAllDeltas(range.poolKey.currency0, range.poolKey.currency1);
+        _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
     }
 
     // When chaining many actions, this should be called at the very end to close out any open deltas owed to or by this contract for other users on the same range.
     // This is safe because any amounts the caller should not pay or take have already been accounted for in closeCallerDeltas.
+    function _closeThisDeltas(BalanceDelta delta, Currency currency0, Currency currency1) internal {
+        int128 delta0 = delta.amount0();
+        int128 delta1 = delta.amount1();
+
+        // Mint a receipt for the tokens owed to this address.
+        if (delta0 > 0) currency0.take(manager, address(this), uint128(delta0), true);
+        if (delta1 > 0) currency1.take(manager, address(this), uint128(delta1), true);
+        // Burn the receipt for tokens owed to this address.
+        if (delta0 < 0) currency0.settle(manager, address(this), uint256(int256(-delta0)), true);
+        if (delta1 < 0) currency1.settle(manager, address(this), uint256(int256(-delta1)), true);
+    }
+
+    //TODO @sara deprecate when moving to _closeThisDeltas for decreaes and collect
     function _closeAllDeltas(Currency currency0, Currency currency1) internal {
         (BalanceDelta delta) = manager.currencyDeltas(address(this), currency0, currency1);
         int128 delta0 = delta.amount0();

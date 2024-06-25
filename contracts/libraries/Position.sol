@@ -6,13 +6,11 @@ import {IBaseLiquidityManagement} from "../interfaces/IBaseLiquidityManagement.s
 // Updates Position storage
 library PositionLibrary {
     // TODO ensure this is one sstore.
-    function updateTokensOwed(
-        IBaseLiquidityManagement.Position storage position,
-        uint128 tokensOwed0,
-        uint128 tokensOwed1
-    ) internal {
-        position.tokensOwed0 = tokensOwed0;
-        position.tokensOwed1 = tokensOwed1;
+    function addTokensOwed(IBaseLiquidityManagement.Position storage position, uint128 tokensOwed0, uint128 tokensOwed1)
+        internal
+    {
+        position.tokensOwed0 += tokensOwed0;
+        position.tokensOwed1 += tokensOwed1;
     }
 
     function addLiquidity(IBaseLiquidityManagement.Position storage position, uint256 liquidity) internal {
