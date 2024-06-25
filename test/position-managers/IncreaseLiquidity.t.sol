@@ -391,7 +391,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
 
         // donate to create fees
-        donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
+        donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
 
         (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
 
@@ -400,7 +400,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
 
         // donate to create more fees
-        donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
+        donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
 
         (uint256 newToken0Owed, uint256 newToken1Owed) = lpm.feesOwed(tokenIdAlice);
         // alice's fees should be doubled
@@ -425,12 +425,21 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
             lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
         }
 
-        // alice did not spend any tokens, approximately
+        // alice did not spend any tokens
         assertEq(balance0AliceBefore, currency0.balanceOf(alice), "alice spent token0");
         assertEq(balance1AliceBefore, currency1.balanceOf(alice), "alice spent token1");
+        
+        // passes: but WRONG!!!
+        // assertEq(balance0AliceBefore - currency0.balanceOf(alice), 10e18);
+        // assertEq(balance1AliceBefore - currency1.balanceOf(alice), 10e18);
 
         (token0Owed, token1Owed) = lpm.feesOwed(tokenIdAlice);
         assertEq(token0Owed, 0);
         assertEq(token1Owed, 0);
+
+        // bob still collects 5
+        (token0Owed, token1Owed) = lpm.feesOwed(tokenIdBob);
+        assertApproxEqAbs(token0Owed, 5e18, 1 wei);
+        assertApproxEqAbs(token1Owed, 5e18, 1 wei);
     }
 }

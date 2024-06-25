@@ -126,6 +126,12 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
             position.liquidity
         );
 
+        console2.log(callerFeesAccrued.amount0());
+        console2.log(callerFeesAccrued.amount1());
+        console2.log("totalFees");
+        console2.log(totalFeesAccrued.amount0());
+        console2.log(totalFeesAccrued.amount1());
+
         // Calculate the accurate tokens owed to the caller.
         // If the totalFeesAccrued equals the callerFeesAccrued then the total owed to the caller is just the liquidityDelta.
         // If the totalFeesAccrued is greater than the callerFeesAccrued, we must account for the difference.
