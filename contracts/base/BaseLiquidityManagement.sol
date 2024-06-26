@@ -132,28 +132,37 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         // outstanding deltas the caller is responsible for, after their fees are credited to the principal delta
         BalanceDelta callerDelta = principalDelta + callerFeesAccrued;
 
+        // outstanding deltas this contract is responsible for, intuitively the contract is responsible for taking fees external to the caller's accrued fees
+        BalanceDelta thisDelta = totalFeesAccrued - callerFeesAccrued;
+
         // Update position storage, flushing the callerDelta value to tokensOwed first if necessary.
         // If callerDelta > 0, then even after investing callerFeesAccrued, the caller still has some amount to collect that were not added into the position so they are accounted to tokensOwed and removed from the final callerDelta returned.
         BalanceDelta tokensOwed;
         if (callerDelta.amount0() > 0) {
+            // credit the excess tokens to the position's tokensOwed
             tokensOwed = toBalanceDelta(callerDelta.amount0(), 0);
+
+            // this contract is responsible for custodying the excess tokens
+            thisDelta = thisDelta + toBalanceDelta(callerDelta.amount0(), 0);
+
+            // the caller is not expected to collect the excess tokens
             callerDelta = toBalanceDelta(0, callerDelta.amount1());
         }
 
         if (callerDelta.amount1() > 0) {
+            // credit the excess tokens to the position's tokensOwed
             tokensOwed = toBalanceDelta(tokensOwed.amount0(), callerDelta.amount1());
+
+            // this contract is responsible for custodying the excess tokens
+            thisDelta = thisDelta + toBalanceDelta(0, callerDelta.amount1());
+
+            // the caller is not expected to collect the excess tokens
             callerDelta = toBalanceDelta(callerDelta.amount0(), 0);
         }
 
         position.addTokensOwed(tokensOwed);
         position.addLiquidity(liquidityToAdd);
         position.updateFeeGrowthInside(feeGrowthInside0X128, feeGrowthInside1X128);
-
-        // The delta owed or credited by this contract.
-        // TODO @sauce check that if callerDelta == 0 (zerod out from above), then this line just credits the posm to takes on behalf of the caller
-        // outstanding deltas this contract is responsible for
-        // TODO: why can't we do `thisDelta = totalFeesAccrued - callerFeesAccrued`?
-        BalanceDelta thisDelta = liquidityDelta - callerDelta;
 
         return (callerDelta, thisDelta);
     }
