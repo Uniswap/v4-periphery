@@ -214,7 +214,7 @@ contract GasTest is Test, Deployers, GasSnapshot {
 
         // alice will use half of her fees to increase liquidity
         (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
-        
+
         (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,

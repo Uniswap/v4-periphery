@@ -23,6 +23,7 @@ import {FeeMath} from "../libraries/FeeMath.sol";
 import {LiquiditySaltLibrary} from "../libraries/LiquiditySaltLibrary.sol";
 import {IBaseLiquidityManagement} from "../interfaces/IBaseLiquidityManagement.sol";
 import {PositionLibrary} from "../libraries/Position.sol";
+import {BalanceDeltaExtensionLibrary} from "../libraries/BalanceDeltaExtensionLibrary.sol";
 
 import "forge-std/console2.sol";
 
@@ -38,6 +39,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
     using SafeCast for uint256;
     using LiquiditySaltLibrary for IHooks;
     using PositionLibrary for IBaseLiquidityManagement.Position;
+    using BalanceDeltaExtensionLibrary for BalanceDelta;
 
     mapping(address owner => mapping(LiquidityRangeId rangeId => Position)) public positions;
 
@@ -208,17 +210,15 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         BalanceDelta thisDelta
     ) private returns (BalanceDelta, BalanceDelta, BalanceDelta) {
         // credit the excess tokens to the position's tokensOwed
-        tokensOwed = useAmount0
-            ? toBalanceDelta(callerDelta.amount0(), tokensOwed.amount1())
-            : toBalanceDelta(tokensOwed.amount0(), callerDelta.amount1());
+        tokensOwed =
+            useAmount0 ? tokensOwed.setAmount0(callerDelta.amount0()) : tokensOwed.setAmount1(callerDelta.amount1());
 
         // this contract is responsible for custodying the excess tokens
-        thisDelta = useAmount0
-            ? thisDelta + toBalanceDelta(callerDelta.amount0(), 0)
-            : thisDelta + toBalanceDelta(0, callerDelta.amount1());
+        thisDelta =
+            useAmount0 ? thisDelta.addAmount0(callerDelta.amount0()) : thisDelta.addAmount1(callerDelta.amount1());
 
         // the caller is not expected to collect the excess tokens
-        callerDelta = useAmount0 ? toBalanceDelta(0, callerDelta.amount1()) : toBalanceDelta(callerDelta.amount0(), 0);
+        callerDelta = useAmount0 ? callerDelta.setAmount0(0) : callerDelta.setAmount1(0);
 
         return (tokensOwed, callerDelta, thisDelta);
     }
