@@ -56,13 +56,27 @@ contract GasTest is Test, Deployers, GasSnapshot {
         IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
         IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
 
+        // Give tokens to Alice and Bob, with approvals
+        IERC20(Currency.unwrap(currency0)).transfer(alice, STARTING_USER_BALANCE);
+        IERC20(Currency.unwrap(currency1)).transfer(alice, STARTING_USER_BALANCE);
+        IERC20(Currency.unwrap(currency0)).transfer(bob, STARTING_USER_BALANCE);
+        IERC20(Currency.unwrap(currency1)).transfer(bob, STARTING_USER_BALANCE);
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        vm.stopPrank();
+        vm.startPrank(bob);
+        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        vm.stopPrank();
+
         // mint some ERC6909 tokens
         claimsRouter.deposit(currency0, address(this), 100_000_000 ether);
         claimsRouter.deposit(currency1, address(this), 100_000_000 ether);
         manager.setOperator(address(lpm), true);
 
         // define a reusable range
-        range = LiquidityRange({key: key, tickLower: -300, tickUpper: 300});
+        range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
     // function test_gas_mint() public {
@@ -100,6 +114,119 @@ contract GasTest is Test, Deployers, GasSnapshot {
 
         lpm.increaseLiquidity(tokenId, 1000 ether, ZERO_BYTES, true);
         snapLastCall("increaseLiquidity_erc6909");
+    }
+
+    function test_gas_autocompound_exactUnclaimedFees() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her exact fees to increase liquidity (compounding)
+
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+
+        // alice provides liquidity
+        vm.prank(alice);
+        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+
+        // bob provides liquidity
+        vm.prank(bob);
+        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+
+        // donate to create fees
+        donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        // alice uses her exact fees to increase liquidity
+        (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
+
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(range.tickLower),
+            TickMath.getSqrtPriceAtTick(range.tickUpper),
+            token0Owed,
+            token1Owed
+        );
+
+        vm.prank(alice);
+        lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        snapLastCall("autocompound_exactUnclaimedFees");
+    }
+
+    function test_gas_autocompound_exactUnclaimedFees_exactCustodiedFees() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her fees to increase liquidity. Both unclaimed fees and cached fees are used to exactly increase the liquidity
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+
+        // alice provides liquidity
+        vm.prank(alice);
+        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+
+        // bob provides liquidity
+        vm.prank(bob);
+        (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+
+        // donate to create fees
+        donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
+
+        // bob collects fees so some of alice's fees are now cached
+        vm.prank(bob);
+        lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+
+        // donate to create more fees
+        donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
+
+        (uint256 newToken0Owed, uint256 newToken1Owed) = lpm.feesOwed(tokenIdAlice);
+
+        // alice will use ALL of her fees to increase liquidity
+        {
+            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+            uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(range.tickLower),
+                TickMath.getSqrtPriceAtTick(range.tickUpper),
+                newToken0Owed,
+                newToken1Owed
+            );
+
+            vm.prank(alice);
+            lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            snapLastCall("autocompound_exactUnclaimedFees_exactCustodiedFees");
+        }
+    }
+
+    // autocompounding but the excess fees are credited to tokensOwed
+    function test_gas_autocompound_excessFeesCredit() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her fees to increase liquidity. Excess fees are accounted to alice
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+
+        // alice provides liquidity
+        vm.prank(alice);
+        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+
+        // bob provides liquidity
+        vm.prank(bob);
+        (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+
+        // donate to create fees
+        donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
+
+        // alice will use half of her fees to increase liquidity
+        (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
+
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(range.tickLower),
+            TickMath.getSqrtPriceAtTick(range.tickUpper),
+            token0Owed / 2,
+            token1Owed / 2
+        );
+
+        vm.prank(alice);
+        lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        snapLastCall("autocompound_excessFeesCredit");
     }
 
     function test_gas_decreaseLiquidity_erc20() public {

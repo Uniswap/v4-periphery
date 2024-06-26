@@ -125,7 +125,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         liquidityDeltaBob = bound(liquidityDeltaBob, 100e18, 100_000e18);
 
         LiquidityRange memory range =
-            LiquidityRange({key: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         vm.prank(alice);
         (tokenIdAlice,) = lpm.mint(range, uint256(params.liquidityDelta), block.timestamp + 1, alice, ZERO_BYTES);
 
@@ -167,7 +167,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         liquidityDeltaBob = bound(liquidityDeltaBob, 100e18, 100_000e18);
 
         LiquidityRange memory range =
-            LiquidityRange({key: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         vm.prank(alice);
         (tokenIdAlice,) = lpm.mint(range, uint256(params.liquidityDelta), block.timestamp + 1, alice, ZERO_BYTES);
 
@@ -229,7 +229,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         liquidityDeltaBob = bound(liquidityDeltaBob, 100e18, 100_000e18);
 
         LiquidityRange memory range =
-            LiquidityRange({key: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         vm.prank(alice);
         (tokenIdAlice,) = lpm.mint(range, uint256(params.liquidityDelta), block.timestamp + 1, alice, ZERO_BYTES);
 
@@ -261,7 +261,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
     ///     when alice decreases liquidity, she should only collect her fees
     function test_decreaseLiquidity_sameRange_exact() public {
         // alice and bob create liquidity on the same range [-120, 120]
-        LiquidityRange memory range = LiquidityRange({key: key, tickLower: -120, tickUpper: 120});
+        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -120, tickUpper: 120});
 
         // alice provisions 3x the amount of liquidity as bob
         uint256 liquidityAlice = 3000e18;

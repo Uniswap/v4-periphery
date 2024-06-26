@@ -23,8 +23,8 @@ library CurrencySenderLibrary {
         if (useClaims) {
             manager.transfer(recipient, currency.toId(), amount);
         } else {
-            currency.settle(manager, address(this), amount, true);
-            currency.take(manager, recipient, amount, false);
+            // currency.settle(manager, address(this), amount, true); // sends in tokens into PM from this address
+            currency.take(manager, recipient, amount, false); // takes out tokens from PM to recipient
         }
     }
 }

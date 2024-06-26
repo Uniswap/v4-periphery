@@ -34,7 +34,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
 
     constructor(IPoolManager _manager)
         BaseLiquidityManagement(_manager)
-        ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V3-POS", "1")
+        ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
@@ -56,7 +56,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
 
     // NOTE: more expensive since LiquidityAmounts is used onchain
     // function mint(MintParams calldata params) external payable returns (uint256 tokenId, BalanceDelta delta) {
-    //     (uint160 sqrtPriceX96,,,) = manager.getSlot0(params.range.key.toId());
+    //     (uint160 sqrtPriceX96,,,) = manager.getSlot0(params.range.poolKey.toId());
     //     (tokenId, delta) = mint(
     //         params.range,
     //         LiquidityAmounts.getLiquidityForAmounts(
