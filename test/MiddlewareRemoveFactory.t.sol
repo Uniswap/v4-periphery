@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {FeeTakingLite} from "../contracts/middleware/test/FeeTakingLite.sol";
+import {FeeTakingLite} from "./middleware/FeeTakingLite.sol";
 import {MiddlewareRemove} from "../contracts/middleware/MiddlewareRemove.sol";
 import {MiddlewareRemoveImplementation} from "./shared/implementation/MiddlewareRemoveImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
@@ -18,8 +18,8 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {console} from "../../../lib/forge-std/src/console.sol";
-import {HooksRevert} from "../contracts/middleware/test/HooksRevert.sol";
-import {HooksOutOfGas} from "../contracts/middleware/test/HooksOutOfGas.sol";
+import {HooksRevert} from "./middleware/HooksRevert.sol";
+import {HooksOutOfGas} from "./middleware/HooksOutOfGas.sol";
 import {MiddlewareRemoveFactory} from "./../contracts/middleware/MiddlewareRemoveFactory.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
 
@@ -64,6 +64,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
             abi.encode(address(manager), address(feeTakingLite))
         );
         testOn(address(feeTakingLite), salt);
+
         HooksRevert hooksRevert = new HooksRevert(manager);
         flags = uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
         (hookAddress, salt) = HookMiner.find(
@@ -73,6 +74,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
             abi.encode(address(manager), address(hooksRevert))
         );
         testOn(address(hooksRevert), salt);
+
         HooksOutOfGas hooksOutOfGas = new HooksOutOfGas(manager);
         flags = uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
         (hookAddress, salt) = HookMiner.find(

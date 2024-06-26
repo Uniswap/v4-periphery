@@ -25,7 +25,7 @@ contract BaseMiddleware is Proxy {
         return implementation;
     }
 
-    receive() external payable {
-        // ??
-    }
+    // yo how do i remove this warning
+    // receive() external payable {
+    // }
 }
