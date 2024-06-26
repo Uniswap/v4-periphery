@@ -128,9 +128,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         vm.expectEmit(true, true, true, true);
         emit Initialize(id, testKey.currency0, testKey.currency1, testKey.fee, testKey.tickSpacing, testKey.hooks);
 
-        snapStart("FullRangeInitialize");
         manager.initialize(testKey, SQRT_PRICE_1_1, ZERO_BYTES);
-        snapEnd();
+        snapLastCall("FullRangeInitialize");
 
         (, address liquidityToken) = fullRange.poolInfo(id);
 
@@ -154,9 +153,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             key.currency0, key.currency1, 3000, 10 ether, 10 ether, 9 ether, 9 ether, address(this), MAX_DEADLINE
         );
 
-        snapStart("FullRangeAddInitialLiquidity");
         fullRange.addLiquidity(addLiquidityParams);
-        snapEnd();
+        snapLastCall("FullRangeAddInitialLiquidity");
 
         (bool hasAccruedFees, address liquidityToken) = fullRange.poolInfo(id);
         uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
@@ -220,9 +218,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
             MAX_DEADLINE
         );
 
-        snapStart("FullRangeAddLiquidity");
         fullRange.addLiquidity(addLiquidityParams);
-        snapEnd();
+        snapLastCall("FullRangeAddLiquidity");
 
         (bool hasAccruedFees,) = fullRange.poolInfo(idWithLiq);
         uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
@@ -275,9 +272,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         HookEnabledSwapRouter.TestSettings memory settings =
             HookEnabledSwapRouter.TestSettings({takeClaims: false, settleUsingBurn: false});
 
-        snapStart("FullRangeSwap");
         router.swap(key, params, settings, ZERO_BYTES);
-        snapEnd();
+        snapLastCall("FullRangeSwap");
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
 
@@ -338,16 +334,14 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         HookEnabledSwapRouter.TestSettings memory settings =
             HookEnabledSwapRouter.TestSettings({takeClaims: false, settleUsingBurn: false});
 
-        snapStart("FullRangeFirstSwap");
         router.swap(testKey, params, settings, ZERO_BYTES);
-        snapEnd();
+        snapLastCall("FullRangeFirstSwap");
 
         (bool hasAccruedFees,) = fullRange.poolInfo(id);
         assertEq(hasAccruedFees, true);
 
-        snapStart("FullRangeSecondSwap");
         router.swap(testKey, params, settings, ZERO_BYTES);
-        snapEnd();
+        snapLastCall("FullRangeSecondSwap");
 
         (hasAccruedFees,) = fullRange.poolInfo(id);
         assertEq(hasAccruedFees, true);
@@ -395,9 +389,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         FullRange.RemoveLiquidityParams memory removeLiquidityParams =
             FullRange.RemoveLiquidityParams(keyWithLiq.currency0, keyWithLiq.currency1, 3000, 1 ether, MAX_DEADLINE);
 
-        snapStart("FullRangeRemoveLiquidity");
         fullRange.removeLiquidity(removeLiquidityParams);
-        snapEnd();
+        snapLastCall("FullRangeRemoveLiquidity");
 
         (bool hasAccruedFees,) = fullRange.poolInfo(idWithLiq);
         uint256 liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
@@ -564,9 +557,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         FullRange.RemoveLiquidityParams memory removeLiquidityParams =
             FullRange.RemoveLiquidityParams(keyWithLiq.currency0, keyWithLiq.currency1, 3000, 5 ether, MAX_DEADLINE);
 
-        snapStart("FullRangeRemoveLiquidityAndRebalance");
         fullRange.removeLiquidity(removeLiquidityParams);
-        snapEnd();
+        snapLastCall("FullRangeRemoveLiquidityAndRebalance");
 
         (bool hasAccruedFees,) = fullRange.poolInfo(idWithLiq);
         assertEq(hasAccruedFees, false);

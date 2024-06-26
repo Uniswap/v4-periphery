@@ -17,9 +17,8 @@ contract TestOracle is Test, GasSnapshot {
     }
 
     function testInitialize() public {
-        snapStart("OracleInitialize");
         oracle.initialize(OracleImplementation.InitializeParams({time: 1, tick: 1, liquidity: 1}));
-        snapEnd();
+        snapLastCall("OracleInitialize");
 
         assertEq(oracle.index(), 0);
         assertEq(oracle.cardinality(), 1);
