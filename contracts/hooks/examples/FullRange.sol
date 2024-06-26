@@ -145,6 +145,7 @@ contract FullRange is BaseHook {
         if (poolLiquidity == 0 && liquidity <= MINIMUM_LIQUIDITY) {
             revert LiquidityDoesntMeetMinimum();
         }
+
         BalanceDelta addedDelta = modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({
@@ -157,11 +158,13 @@ contract FullRange is BaseHook {
 
         if (poolLiquidity == 0) {
             // permanently lock the first MINIMUM_LIQUIDITY tokens
-            liquidity -= MINIMUM_LIQUIDITY;
             UniswapV4ERC20(pool.liquidityToken).mint(address(0), MINIMUM_LIQUIDITY);
+            UniswapV4ERC20(pool.liquidityToken).mint(params.to, liquidity - MINIMUM_LIQUIDITY);
+        } else {
+            uint256 liquidityMinted = uint256(liquidity) * UniswapV4ERC20(pool.liquidityToken).totalSupply()
+                / uint256(manager.getLiquidity(poolId) - liquidity);
+            UniswapV4ERC20(pool.liquidityToken).mint(params.to, liquidityMinted);
         }
-
-        UniswapV4ERC20(pool.liquidityToken).mint(params.to, liquidity);
 
         if (uint128(-addedDelta.amount0()) < params.amount0Min || uint128(-addedDelta.amount1()) < params.amount1Min) {
             revert TooMuchSlippage();
@@ -281,10 +284,6 @@ contract FullRange is BaseHook {
         PoolId poolId = key.toId();
         PoolInfo storage pool = poolInfo[poolId];
 
-        if (pool.hasAccruedFees) {
-            _rebalance(key);
-        }
-
         uint256 liquidityToRemove = FullMath.mulDiv(
             uint256(-params.liquidityDelta),
             manager.getLiquidity(poolId),
@@ -293,12 +292,18 @@ contract FullRange is BaseHook {
 
         params.liquidityDelta = -(liquidityToRemove.toInt256());
         (delta,) = manager.modifyLiquidity(key, params, ZERO_BYTES);
-        pool.hasAccruedFees = false;
     }
 
     function _unlockCallback(bytes calldata rawData) internal override returns (bytes memory) {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         BalanceDelta delta;
+
+        PoolId poolId = data.key.toId();
+        PoolInfo storage pool = poolInfo[data.key.toId()];
+        if (pool.hasAccruedFees) {
+            pool.hasAccruedFees = false;
+            rebalance(data.key);
+        }
 
         if (data.params.liquidityDelta < 0) {
             delta = _removeLiquidity(data.key, data.params);
@@ -310,7 +315,7 @@ contract FullRange is BaseHook {
         return abi.encode(delta);
     }
 
-    function _rebalance(PoolKey memory key) public {
+    function rebalance(PoolKey memory key) public {
         PoolId poolId = key.toId();
         (BalanceDelta balanceDelta,) = manager.modifyLiquidity(
             key,

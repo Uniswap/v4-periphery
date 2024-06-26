@@ -295,9 +295,8 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         (hasAccruedFees,) = fullRange.poolInfo(id);
         liquidityTokenBal = UniswapV4ERC20(liquidityToken).balanceOf(address(this));
 
-        assertEq(manager.getLiquidity(id), liquidityTokenBal + LOCKED_LIQUIDITY);
-        assertEq(liquidityTokenBal, 14546694553059925434 - LOCKED_LIQUIDITY);
-        assertEq(hasAccruedFees, true);
+        assertTrue(manager.getLiquidity(id) > liquidityTokenBal + LOCKED_LIQUIDITY);
+        assertEq(hasAccruedFees, false);
     }
 
     function testFullRange_addLiquidity_FailsIfTooMuchSlippage() public {
