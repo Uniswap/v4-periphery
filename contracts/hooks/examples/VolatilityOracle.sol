@@ -12,7 +12,7 @@ contract VolatilityOracle is BaseHook {
 
     error MustUseDynamicFee();
 
-    uint32 deployTimestamp;
+    uint32 immutable deployTimestamp;
 
     /// @dev For mocking
     function _blockTimestamp() internal view virtual returns (uint32) {
