@@ -156,7 +156,6 @@ contract GasTest is Test, Deployers, GasSnapshot {
         // Alice uses her fees to increase liquidity. Both unclaimed fees and cached fees are used to exactly increase the liquidity
         uint256 liquidityAlice = 3_000e18;
         uint256 liquidityBob = 1_000e18;
-        uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
         vm.prank(alice);
@@ -193,6 +192,41 @@ contract GasTest is Test, Deployers, GasSnapshot {
             lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
             snapLastCall("autocompound_exactUnclaimedFees_exactCustodiedFees");
         }
+    }
+
+    // autocompounding but the excess fees are credited to tokensOwed
+    function test_gas_autocompound_excessFeesCredit() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her fees to increase liquidity. Excess fees are accounted to alice
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+
+        // alice provides liquidity
+        vm.prank(alice);
+        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+
+        // bob provides liquidity
+        vm.prank(bob);
+        (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+
+        // donate to create fees
+        donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
+
+        // alice will use half of her fees to increase liquidity
+        (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
+        
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(range.tickLower),
+            TickMath.getSqrtPriceAtTick(range.tickUpper),
+            token0Owed / 2,
+            token1Owed / 2
+        );
+
+        vm.prank(alice);
+        lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        snapLastCall("autocompound_excessFeesCredit");
     }
 
     function test_gas_decreaseLiquidity_erc20() public {
