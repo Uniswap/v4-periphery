@@ -126,66 +126,36 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
             position.liquidity
         );
 
-        console2.log(callerFeesAccrued.amount0());
-        console2.log(callerFeesAccrued.amount1());
-        console2.log("totalFees");
-        console2.log(totalFeesAccrued.amount0());
-        console2.log(totalFeesAccrued.amount1());
+        // the delta for increase liquidity assuming that totalFeesAccrued was not applied
+        BalanceDelta principalDelta = liquidityDelta - totalFeesAccrued;
 
-        // Calculate the accurate tokens owed to the caller.
-        // If the totalFeesAccrued equals the callerFeesAccrued then the total owed to the caller is just the liquidityDelta.
-        // If the totalFeesAccrued is greater than the callerFeesAccrued, we must account for the difference.
-        // TODO: If totalFeesAccrued == callerFeesAccrued, I think we can just apply the entire delta onto the caller, even if this implicitly collects on behalf of another user in the same range.
-        (int128 callerDelta0, int128 callerDelta1) = totalFeesAccrued != callerFeesAccrued
-            ? _calculateCallerDeltas(liquidityDelta, totalFeesAccrued, callerFeesAccrued)
-            : (liquidityDelta.amount0(), liquidityDelta.amount1());
+        // outstanding deltas the caller is responsible for, after their fees are credited to the principal delta
+        BalanceDelta callerDelta = principalDelta + callerFeesAccrued;
 
         // Update position storage, flushing the callerDelta value to tokensOwed first if necessary.
         // If callerDelta > 0, then even after investing callerFeesAccrued, the caller still has some amount to collect that were not added into the position so they are accounted to tokensOwed and removed from the final callerDelta returned.
-        uint128 tokensOwed0 = 0;
-        uint128 tokensOwed1 = 0;
-        (tokensOwed0, callerDelta0) = callerDelta0 > 0 ? (uint128(callerDelta0), int128(0)) : (uint128(0), callerDelta0);
-        (tokensOwed1, callerDelta1) = callerDelta1 > 0 ? (uint128(callerDelta1), int128(0)) : (uint128(0), callerDelta1);
+        BalanceDelta tokensOwed;
+        if (callerDelta.amount0() > 0) {
+            tokensOwed = toBalanceDelta(callerDelta.amount0(), 0);
+            callerDelta = toBalanceDelta(0, callerDelta.amount1());
+        }
 
-        position.addTokensOwed(tokensOwed0, tokensOwed1);
+        if (callerDelta.amount1() > 0) {
+            tokensOwed = toBalanceDelta(tokensOwed.amount0(), callerDelta.amount1());
+            callerDelta = toBalanceDelta(callerDelta.amount0(), 0);
+        }
+
+        position.addTokensOwed(tokensOwed);
         position.addLiquidity(liquidityToAdd);
         position.updateFeeGrowthInside(feeGrowthInside0X128, feeGrowthInside1X128);
 
         // The delta owed or credited by this contract.
         // TODO @sauce check that if callerDelta == 0 (zerod out from above), then this line just credits the posm to takes on behalf of the caller
-        int128 thisDelta0 = liquidityDelta.amount0() - callerDelta0;
-        int128 thisDelta1 = liquidityDelta.amount1() - callerDelta1;
+        // outstanding deltas this contract is responsible for
+        // TODO: why can't we do `thisDelta = totalFeesAccrued - callerFeesAccrued`?
+        BalanceDelta thisDelta = liquidityDelta - callerDelta;
 
-        return (toBalanceDelta(callerDelta0, callerDelta1), toBalanceDelta(thisDelta0, thisDelta1));
-    }
-
-    // Returns the delta paid/credited by/to the caller.
-    function _calculateCallerDeltas(
-        BalanceDelta liquidityDelta,
-        BalanceDelta totalFeesAccrued,
-        BalanceDelta callerFeesAccrued
-    ) private pure returns (int128 callerDelta0, int128 callerDelta1) {
-        (int128 liquidityDelta0, int128 liquidityDelta1) = (liquidityDelta.amount0(), liquidityDelta.amount1());
-        (int128 totalFeesAccrued0, int128 totalFeesAccrued1) = (totalFeesAccrued.amount0(), totalFeesAccrued.amount1());
-        (int128 callerFeesAccrued0, int128 callerFeesAccrued1) =
-            (callerFeesAccrued.amount0(), callerFeesAccrued.amount1());
-
-        callerDelta0 = _calculateCallerDelta(liquidityDelta0, totalFeesAccrued0, callerFeesAccrued0);
-        callerDelta1 = _calculateCallerDelta(liquidityDelta1, totalFeesAccrued1, callerFeesAccrued1);
-    }
-
-    function _calculateCallerDelta(int128 liquidityDelta, int128 totalFeesAccrued, int128 callerFeesAccrued)
-        private
-        pure
-        returns (int128 callerDelta)
-    {
-        unchecked {
-            // The principle delta owed/debited to the caller before any LP fees are deducted.
-            int128 principleDelta = liquidityDelta - totalFeesAccrued;
-            // The new caller delta is this principle delta plus the callerFeesAccrued which consists of
-            // the custodied fees by posm and unclaimed fees from the modifyLiq call.
-            callerDelta = principleDelta + callerFeesAccrued;
-        }
+        return (callerDelta, thisDelta);
     }
 
     function _increaseLiquidityAndZeroOut(
