@@ -192,7 +192,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     }
 
     modifier isAuthorizedForToken(uint256 tokenId) {
-        require(_isApprovedOrOwner(msg.sender, tokenId), "Not approved");
+        require(msg.sender == address(this) || _isApprovedOrOwner(msg.sender, tokenId), "Not approved");
         _;
     }
 }
