@@ -3,45 +3,43 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {GetSender} from "./shared/GetSender.sol";
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {GeomeanOracle} from "../contracts/hooks/examples/GeomeanOracle.sol";
 import {GeomeanOracleImplementation} from "./shared/implementation/GeomeanOracleImplementation.sol";
-import {PoolManager} from "@uniswap/v4-core/contracts/PoolManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {Deployers} from "@uniswap/v4-core/test/foundry-tests/utils/Deployers.sol";
-import {TestERC20} from "@uniswap/v4-core/contracts/test/TestERC20.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/contracts/libraries/CurrencyLibrary.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/contracts/libraries/PoolId.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/contracts/test/PoolModifyPositionTest.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {TestERC20} from "@uniswap/v4-core/src/test/TestERC20.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Oracle} from "../contracts/libraries/Oracle.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 contract TestGeomeanOracle is Test, Deployers {
-    using PoolIdLibrary for IPoolManager.PoolKey;
+    using PoolIdLibrary for PoolKey;
 
     int24 constant MAX_TICK_SPACING = 32767;
-    uint160 constant SQRT_RATIO_2_1 = 112045541949572279837463876454;
 
     TestERC20 token0;
     TestERC20 token1;
-    PoolManager manager;
     GeomeanOracleImplementation geomeanOracle = GeomeanOracleImplementation(
         address(
             uint160(
-                Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_MODIFY_POSITION_FLAG
-                    | Hooks.BEFORE_SWAP_FLAG
+                Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
+                    | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
             )
         )
     );
-    IPoolManager.PoolKey key;
     PoolId id;
 
-    PoolModifyPositionTest modifyPositionRouter;
-
     function setUp() public {
-        token0 = new TestERC20(2**128);
-        token1 = new TestERC20(2**128);
-        manager = new PoolManager(500000);
+        deployFreshManagerAndRouters();
+        (currency0, currency1) = deployMintAndApprove2Currencies();
+
+        token0 = TestERC20(Currency.unwrap(currency0));
+        token1 = TestERC20(Currency.unwrap(currency1));
 
         vm.record();
         GeomeanOracleImplementation impl = new GeomeanOracleImplementation(manager, geomeanOracle);
@@ -55,43 +53,41 @@ contract TestGeomeanOracle is Test, Deployers {
             }
         }
         geomeanOracle.setTime(1);
-        key = IPoolManager.PoolKey(
-            Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, MAX_TICK_SPACING, geomeanOracle
-        );
+        key = PoolKey(currency0, currency1, 0, MAX_TICK_SPACING, geomeanOracle);
         id = key.toId();
 
-        modifyPositionRouter = new PoolModifyPositionTest(manager);
+        modifyLiquidityRouter = new PoolModifyLiquidityTest(manager);
 
         token0.approve(address(geomeanOracle), type(uint256).max);
         token1.approve(address(geomeanOracle), type(uint256).max);
-        token0.approve(address(modifyPositionRouter), type(uint256).max);
-        token1.approve(address(modifyPositionRouter), type(uint256).max);
+        token0.approve(address(modifyLiquidityRouter), type(uint256).max);
+        token1.approve(address(modifyLiquidityRouter), type(uint256).max);
     }
 
     function testBeforeInitializeAllowsPoolCreation() public {
-        manager.initialize(key, SQRT_RATIO_1_1);
+        manager.initialize(key, SQRT_PRICE_1_1, ZERO_BYTES);
     }
 
     function testBeforeInitializeRevertsIfFee() public {
         vm.expectRevert(GeomeanOracle.OnlyOneOraclePoolAllowed.selector);
         manager.initialize(
-            IPoolManager.PoolKey(
-                Currency.wrap(address(token0)), Currency.wrap(address(token1)), 1, MAX_TICK_SPACING, geomeanOracle
-            ),
-            SQRT_RATIO_1_1
+            PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 1, MAX_TICK_SPACING, geomeanOracle),
+            SQRT_PRICE_1_1,
+            ZERO_BYTES
         );
     }
 
     function testBeforeInitializeRevertsIfNotMaxTickSpacing() public {
         vm.expectRevert(GeomeanOracle.OnlyOneOraclePoolAllowed.selector);
         manager.initialize(
-            IPoolManager.PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, 60, geomeanOracle),
-            SQRT_RATIO_1_1
+            PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, 60, geomeanOracle),
+            SQRT_PRICE_1_1,
+            ZERO_BYTES
         );
     }
 
     function testAfterInitializeState() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
+        manager.initialize(key, SQRT_PRICE_2_1, ZERO_BYTES);
         GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
         assertEq(observationState.index, 0);
         assertEq(observationState.cardinality, 1);
@@ -99,7 +95,7 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testAfterInitializeObservation() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
+        manager.initialize(key, SQRT_PRICE_2_1, ZERO_BYTES);
         Oracle.Observation memory observation = geomeanOracle.getObservation(key, 0);
         assertTrue(observation.initialized);
         assertEq(observation.blockTimestamp, 1);
@@ -108,7 +104,7 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testAfterInitializeObserve0() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
+        manager.initialize(key, SQRT_PRICE_2_1, ZERO_BYTES);
         uint32[] memory secondsAgo = new uint32[](1);
         secondsAgo[0] = 0;
         (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s) =
@@ -120,12 +116,13 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testBeforeModifyPositionNoObservations() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
-        modifyPositionRouter.modifyPosition(
+        manager.initialize(key, SQRT_PRICE_2_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(
             key,
-            IPoolManager.ModifyPositionParams(
-                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
-            )
+            IPoolManager.ModifyLiquidityParams(
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000, 0
+            ),
+            ZERO_BYTES
         );
 
         GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
@@ -141,13 +138,14 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testBeforeModifyPositionObservation() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
+        manager.initialize(key, SQRT_PRICE_2_1, ZERO_BYTES);
         geomeanOracle.setTime(3); // advance 2 seconds
-        modifyPositionRouter.modifyPosition(
+        modifyLiquidityRouter.modifyLiquidity(
             key,
-            IPoolManager.ModifyPositionParams(
-                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
-            )
+            IPoolManager.ModifyLiquidityParams(
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000, 0
+            ),
+            ZERO_BYTES
         );
 
         GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
@@ -163,7 +161,7 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testBeforeModifyPositionObservationAndCardinality() public {
-        manager.initialize(key, SQRT_RATIO_2_1);
+        manager.initialize(key, SQRT_PRICE_2_1, ZERO_BYTES);
         geomeanOracle.setTime(3); // advance 2 seconds
         geomeanOracle.increaseCardinalityNext(key, 2);
         GeomeanOracle.ObservationState memory observationState = geomeanOracle.getState(key);
@@ -171,11 +169,12 @@ contract TestGeomeanOracle is Test, Deployers {
         assertEq(observationState.cardinality, 1);
         assertEq(observationState.cardinalityNext, 2);
 
-        modifyPositionRouter.modifyPosition(
+        modifyLiquidityRouter.modifyLiquidity(
             key,
-            IPoolManager.ModifyPositionParams(
-                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000
-            )
+            IPoolManager.ModifyLiquidityParams(
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000, 0
+            ),
+            ZERO_BYTES
         );
 
         // cardinality is updated
@@ -197,5 +196,26 @@ contract TestGeomeanOracle is Test, Deployers {
         assertEq(observation.blockTimestamp, 3);
         assertEq(observation.tickCumulative, 13862);
         assertEq(observation.secondsPerLiquidityCumulativeX128, 680564733841876926926749214863536422912);
+    }
+
+    function testPermanentLiquidity() public {
+        manager.initialize(key, SQRT_PRICE_2_1, ZERO_BYTES);
+        geomeanOracle.setTime(3); // advance 2 seconds
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams(
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), 1000, 0
+            ),
+            ZERO_BYTES
+        );
+
+        vm.expectRevert(GeomeanOracle.OraclePoolMustLockLiquidity.selector);
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams(
+                TickMath.minUsableTick(MAX_TICK_SPACING), TickMath.maxUsableTick(MAX_TICK_SPACING), -1000, 0
+            ),
+            ZERO_BYTES
+        );
     }
 }

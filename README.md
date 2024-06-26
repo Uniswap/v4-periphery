@@ -42,13 +42,13 @@ import {BaseHook} from 'v4-periphery/contracts/BaseHook.sol';
 
 contract CoolHook is BaseHook {
     // Override the hook callbacks you want on your hook
-    function beforeModifyPosition(
+    function beforeAddLiquidity(
         address,
         IPoolManager.PoolKey calldata key,
-        IPoolManager.ModifyPositionParams calldata params
+        IPoolManager.ModifyLiquidityParams calldata params
     ) external override poolManagerOnly returns (bytes4) {
         // hook logic
-        return BaseHook.beforeModifyPosition.selector;
+        return BaseHook.beforeAddLiquidity.selector;
     }
 }
 
