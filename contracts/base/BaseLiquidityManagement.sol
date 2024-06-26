@@ -225,7 +225,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         return (tokensOwed, callerDelta, thisDelta);
     }
 
-    function _lockAndIncreaseLiquidity(
+    function _unlockAndIncreaseLiquidity(
         address owner,
         LiquidityRange memory range,
         uint256 liquidityToAdd,
@@ -289,7 +289,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         _closeAllDeltas(range.poolKey.currency0, range.poolKey.currency1);
     }
 
-    function _lockAndDecreaseLiquidity(
+    function _unlockAndDecreaseLiquidity(
         address owner,
         LiquidityRange memory range,
         uint256 liquidityToRemove,
@@ -341,7 +341,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         _closeAllDeltas(range.poolKey.currency0, range.poolKey.currency1);
     }
 
-    function _lockAndCollect(address owner, LiquidityRange memory range, bytes memory hookData, bool claims)
+    function _unlockAndCollect(address owner, LiquidityRange memory range, bytes memory hookData, bool claims)
         internal
         returns (BalanceDelta)
     {

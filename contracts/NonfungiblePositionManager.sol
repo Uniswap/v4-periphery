@@ -16,6 +16,7 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
@@ -24,6 +25,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     using PoolIdLibrary for PoolKey;
     using LiquidityRangeIdLibrary for LiquidityRange;
     using StateLibrary for IPoolManager;
+    using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
 
     /// @dev The ID of the next token that will be minted. Skips 0
@@ -66,8 +68,17 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         address recipient,
         bytes calldata hookData
     ) public payable returns (uint256 tokenId, BalanceDelta delta) {
-        // delta = modifyLiquidity(range, liquidity.toInt256(), hookData, false);
-        delta = _lockAndIncreaseLiquidity(msg.sender, range, liquidity, hookData, false);
+        // TODO: optimization, read/write manager.isUnlocked to avoid repeated external calls for batched execution
+        if (manager.isUnlocked()) {
+            BalanceDelta thisDelta;
+            (delta, thisDelta) = _increaseLiquidity(recipient, range, liquidity, hookData);
+
+            // TODO: should be triggered by zeroOut in _execute...
+            _closeCallerDeltas(delta, range.poolKey.currency0, range.poolKey.currency1, recipient, false);
+            _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
+        } else {
+            delta = _unlockAndIncreaseLiquidity(msg.sender, range, liquidity, hookData, false);
+        }
 
         // mint receipt token
         _mint(recipient, (tokenId = _nextId++));
@@ -100,7 +111,19 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        delta = _lockAndIncreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
+
+        if (manager.isUnlocked()) {
+            BalanceDelta thisDelta;
+            (delta, thisDelta) = _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
+
+            // TODO: should be triggered by zeroOut in _execute...
+            _closeCallerDeltas(
+                delta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1, tokenPos.owner, claims
+            );
+            _closeThisDeltas(thisDelta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
+        } else {
+            delta = _unlockAndIncreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
+        }
     }
 
     function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
@@ -109,7 +132,9 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        delta = _lockAndDecreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
+
+        // TODO: @sauce update once _decreaseLiquidity returns callerDelta/thisDelta
+        delta = _unlockAndDecreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
     }
 
     function burn(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
@@ -138,7 +163,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        delta = _lockAndCollect(tokenPos.owner, tokenPos.range, hookData, claims);
+        // TODO: @sauce update once _collect returns callerDelta/thisDel
+        delta = _unlockAndCollect(tokenPos.owner, tokenPos.range, hookData, claims);
     }
 
     function feesOwed(uint256 tokenId) external view returns (uint256 token0Owed, uint256 token1Owed) {
