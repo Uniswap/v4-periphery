@@ -106,7 +106,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         LiquidityRange memory range,
         uint256 liquidityToAdd,
         bytes memory hookData
-    ) internal returns (BalanceDelta, BalanceDelta) {
+    ) internal returns (BalanceDelta callerDelta, BalanceDelta thisDelta) {
         // Note that the liquidityDelta includes totalFeesAccrued. The totalFeesAccrued is returned separately for accounting purposes.
         (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) =
             _modifyLiquidity(owner, range, liquidityToAdd.toInt256(), hookData);
@@ -126,45 +126,37 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
             position.liquidity
         );
 
-        // the delta for increase liquidity assuming that totalFeesAccrued was not applied
-        BalanceDelta principalDelta = liquidityDelta - totalFeesAccrued;
+        if (totalFeesAccrued == callerFeesAccrued) {
+            // when totalFeesAccrued == callerFeesAccrued, the caller is not sharing the range
+            // therefore, the caller is responsible for the entire liquidityDelta
+            callerDelta = liquidityDelta;
+        } else {
+            // the delta for increasing liquidity assuming that totalFeesAccrued was not applied
+            BalanceDelta principalDelta = liquidityDelta - totalFeesAccrued;
 
-        // outstanding deltas the caller is responsible for, after their fees are credited to the principal delta
-        BalanceDelta callerDelta = principalDelta + callerFeesAccrued;
+            // outstanding deltas the caller is responsible for, after their fees are credited to the principal delta
+            callerDelta = principalDelta + callerFeesAccrued;
 
-        // outstanding deltas this contract is responsible for, intuitively the contract is responsible for taking fees external to the caller's accrued fees
-        BalanceDelta thisDelta = totalFeesAccrued - callerFeesAccrued;
+            // outstanding deltas this contract is responsible for, intuitively the contract is responsible for taking fees external to the caller's accrued fees
+            thisDelta = totalFeesAccrued - callerFeesAccrued;
+        }
 
         // Update position storage, flushing the callerDelta value to tokensOwed first if necessary.
         // If callerDelta > 0, then even after investing callerFeesAccrued, the caller still has some amount to collect that were not added into the position so they are accounted to tokensOwed and removed from the final callerDelta returned.
         BalanceDelta tokensOwed;
         if (callerDelta.amount0() > 0) {
-            // credit the excess tokens to the position's tokensOwed
-            tokensOwed = toBalanceDelta(callerDelta.amount0(), 0);
-
-            // this contract is responsible for custodying the excess tokens
-            thisDelta = thisDelta + toBalanceDelta(callerDelta.amount0(), 0);
-
-            // the caller is not expected to collect the excess tokens
-            callerDelta = toBalanceDelta(0, callerDelta.amount1());
+            (tokensOwed, callerDelta, thisDelta) =
+                _moveCallerDeltaToTokensOwed(true, tokensOwed, callerDelta, thisDelta);
         }
 
         if (callerDelta.amount1() > 0) {
-            // credit the excess tokens to the position's tokensOwed
-            tokensOwed = toBalanceDelta(tokensOwed.amount0(), callerDelta.amount1());
-
-            // this contract is responsible for custodying the excess tokens
-            thisDelta = thisDelta + toBalanceDelta(0, callerDelta.amount1());
-
-            // the caller is not expected to collect the excess tokens
-            callerDelta = toBalanceDelta(callerDelta.amount0(), 0);
+            (tokensOwed, callerDelta, thisDelta) =
+                _moveCallerDeltaToTokensOwed(false, tokensOwed, callerDelta, thisDelta);
         }
 
         position.addTokensOwed(tokensOwed);
         position.addLiquidity(liquidityToAdd);
         position.updateFeeGrowthInside(feeGrowthInside0X128, feeGrowthInside1X128);
-
-        return (callerDelta, thisDelta);
     }
 
     function _increaseLiquidityAndZeroOut(
@@ -207,6 +199,28 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         // Burn the receipt for tokens owed to this address.
         if (delta0 < 0) currency0.settle(manager, address(this), uint256(int256(-delta0)), true);
         if (delta1 < 0) currency1.settle(manager, address(this), uint256(int256(-delta1)), true);
+    }
+
+    function _moveCallerDeltaToTokensOwed(
+        bool useAmount0,
+        BalanceDelta tokensOwed,
+        BalanceDelta callerDelta,
+        BalanceDelta thisDelta
+    ) private returns (BalanceDelta, BalanceDelta, BalanceDelta) {
+        // credit the excess tokens to the position's tokensOwed
+        tokensOwed = useAmount0
+            ? toBalanceDelta(callerDelta.amount0(), tokensOwed.amount1())
+            : toBalanceDelta(tokensOwed.amount0(), callerDelta.amount1());
+
+        // this contract is responsible for custodying the excess tokens
+        thisDelta = useAmount0
+            ? thisDelta + toBalanceDelta(callerDelta.amount0(), 0)
+            : thisDelta + toBalanceDelta(0, callerDelta.amount1());
+
+        // the caller is not expected to collect the excess tokens
+        callerDelta = useAmount0 ? toBalanceDelta(0, callerDelta.amount1()) : toBalanceDelta(callerDelta.amount0(), 0);
+
+        return (tokensOwed, callerDelta, thisDelta);
     }
 
     function _lockAndIncreaseLiquidity(
