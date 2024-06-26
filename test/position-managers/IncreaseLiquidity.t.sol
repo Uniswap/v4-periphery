@@ -365,13 +365,14 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
             lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
         }
 
-        // alice did not spend any tokens, approximately
-        assertApproxEqAbs(balance0AliceBefore, currency0.balanceOf(alice), 0.00001 ether);
-        assertApproxEqAbs(balance1AliceBefore, currency1.balanceOf(alice), 0.00001 ether);
+        // alice did not spend any tokens
+        assertEq(balance0AliceBefore, currency0.balanceOf(alice));
+        assertEq(balance1AliceBefore, currency1.balanceOf(alice));
 
+        // sum dust was credited to alice's tokensOwed
         (token0Owed, token1Owed) = lpm.feesOwed(tokenIdAlice);
-        assertEq(token0Owed, 0);
-        assertEq(token1Owed, 0);
+        assertApproxEqAbs(token0Owed, 0, 80 wei);
+        assertApproxEqAbs(token1Owed, 0, 80 wei);
     }
 
     // uses donate to simulate fee revenue
@@ -428,10 +429,6 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         // alice did not spend any tokens
         assertEq(balance0AliceBefore, currency0.balanceOf(alice), "alice spent token0");
         assertEq(balance1AliceBefore, currency1.balanceOf(alice), "alice spent token1");
-        
-        // passes: but WRONG!!!
-        // assertEq(balance0AliceBefore - currency0.balanceOf(alice), 10e18);
-        // assertEq(balance1AliceBefore - currency1.balanceOf(alice), 10e18);
 
         (token0Owed, token1Owed) = lpm.feesOwed(tokenIdAlice);
         assertEq(token0Owed, 0);
@@ -441,5 +438,10 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         (token0Owed, token1Owed) = lpm.feesOwed(tokenIdBob);
         assertApproxEqAbs(token0Owed, 5e18, 1 wei);
         assertApproxEqAbs(token1Owed, 5e18, 1 wei);
+
+        vm.prank(bob);
+        BalanceDelta result = lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+        assertApproxEqAbs(result.amount0(), 5e18, 1 wei);
+        assertApproxEqAbs(result.amount1(), 5e18, 1 wei);
     }
 }
