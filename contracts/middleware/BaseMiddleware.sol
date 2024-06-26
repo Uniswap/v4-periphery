@@ -26,6 +26,7 @@ contract BaseMiddleware is Proxy {
     }
 
     // yo how do i remove this warning
-    // receive() external payable {
-    // }
+    receive() external payable {
+        _delegate(_implementation());
+    }
 }

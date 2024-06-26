@@ -11,9 +11,6 @@ contract BaseMiddlewareImplementation is BaseMiddleware {
     constructor(IPoolManager _poolManager, address _implementation, BaseMiddleware addressToEtch)
         BaseMiddleware(_poolManager, _implementation)
     {
-        //Hooks.validateHookPermissions(addressToEtch, getHookPermissions());
+        Hooks.validateHookPermissions(IHooks(address(addressToEtch)), BaseHook(_implementation).getHookPermissions());
     }
-
-    // make this a no-op in testing
-    //function validateHookAddress(BaseHook _this) internal pure override {}
 }
