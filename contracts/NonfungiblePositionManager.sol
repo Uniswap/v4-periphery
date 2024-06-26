@@ -37,6 +37,26 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
+    function unlockAndExecute(bytes[] calldata data) external {
+        // TODO: bubble up the return
+        manager.unlock(abi.encode(LiquidityOperation.EXECUTE, abi.encode(data)));
+    }
+
+    /// @param data bytes[] - array of abi.encodeWithSelector(<selector>, <arguments>)
+    function _execute(bytes[] memory data) internal override returns (bytes memory) {
+        bool success;
+        for (uint256 i; i < data.length; i++) {
+            // TODO: bubble up the return
+            (success,) = address(this).call(data[i]);
+            if (!success) revert("EXECUTE_FAILED");
+        }
+
+        // zeroOut();
+
+        // TODO: return something
+        return new bytes(0);
+    }
+
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
     // TODO: deadline check
     function mint(

@@ -24,7 +24,8 @@ interface IBaseLiquidityManagement {
     enum LiquidityOperation {
         INCREASE,
         DECREASE,
-        COLLECT
+        COLLECT,
+        EXECUTE
     }
 
     /// @notice Fees owed for a given liquidity position. Includes materialized fees and uncollected fees.

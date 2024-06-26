@@ -27,7 +27,7 @@ import {BalanceDeltaExtensionLibrary} from "../libraries/BalanceDeltaExtensionLi
 
 import "forge-std/console2.sol";
 
-contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
+abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
     using LiquidityRangeIdLibrary for LiquidityRange;
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
@@ -64,24 +64,26 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         else if (callerDelta1 > 0) currency1.send(manager, owner, uint128(callerDelta1), claims);
     }
 
-    function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        (
-            LiquidityOperation op,
-            address owner,
-            LiquidityRange memory range,
-            uint256 liquidityChange,
-            bytes memory hookData,
-            bool claims
-        ) = abi.decode(data, (LiquidityOperation, address, LiquidityRange, uint256, bytes, bool));
+    function _execute(bytes[] memory data) internal virtual returns (bytes memory);
 
-        if (op == LiquidityOperation.INCREASE) {
-            return abi.encode(_increaseLiquidityAndZeroOut(owner, range, liquidityChange, hookData, claims));
-        } else if (op == LiquidityOperation.DECREASE) {
-            return abi.encode(_decreaseLiquidityAndZeroOut(owner, range, liquidityChange, hookData, claims));
-        } else if (op == LiquidityOperation.COLLECT) {
-            return abi.encode(_collectAndZeroOut(owner, range, 0, hookData, claims));
+    function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
+        (LiquidityOperation op, bytes memory args) = abi.decode(data, (LiquidityOperation, bytes));
+        if (op == LiquidityOperation.EXECUTE) {
+            (bytes[] memory payload) = abi.decode(args, (bytes[]));
+            return _execute(payload);
         } else {
-            return new bytes(0);
+            (address owner, LiquidityRange memory range, uint256 liquidityChange, bytes memory hookData, bool claims) =
+                abi.decode(args, (address, LiquidityRange, uint256, bytes, bool));
+
+            if (op == LiquidityOperation.INCREASE) {
+                return abi.encode(_increaseLiquidityAndZeroOut(owner, range, liquidityChange, hookData, claims));
+            } else if (op == LiquidityOperation.DECREASE) {
+                return abi.encode(_decreaseLiquidityAndZeroOut(owner, range, liquidityChange, hookData, claims));
+            } else if (op == LiquidityOperation.COLLECT) {
+                return abi.encode(_collectAndZeroOut(owner, range, 0, hookData, claims));
+            } else {
+                return new bytes(0);
+            }
         }
     }
 
@@ -231,7 +233,9 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         bool claims
     ) internal returns (BalanceDelta) {
         return abi.decode(
-            manager.unlock(abi.encode(LiquidityOperation.INCREASE, owner, range, liquidityToAdd, hookData, claims)),
+            manager.unlock(
+                abi.encode(LiquidityOperation.INCREASE, abi.encode(owner, range, liquidityToAdd, hookData, claims))
+            ),
             (BalanceDelta)
         );
     }
@@ -293,7 +297,9 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         bool claims
     ) internal returns (BalanceDelta) {
         return abi.decode(
-            manager.unlock(abi.encode(LiquidityOperation.DECREASE, owner, range, liquidityToRemove, hookData, claims)),
+            manager.unlock(
+                abi.encode(LiquidityOperation.DECREASE, abi.encode(owner, range, liquidityToRemove, hookData, claims))
+            ),
             (BalanceDelta)
         );
     }
@@ -340,7 +346,8 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         returns (BalanceDelta)
     {
         return abi.decode(
-            manager.unlock(abi.encode(LiquidityOperation.COLLECT, owner, range, 0, hookData, claims)), (BalanceDelta)
+            manager.unlock(abi.encode(LiquidityOperation.COLLECT, abi.encode(owner, range, 0, hookData, claims))),
+            (BalanceDelta)
         );
     }
 
