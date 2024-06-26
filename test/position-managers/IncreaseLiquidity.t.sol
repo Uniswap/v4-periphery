@@ -369,7 +369,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         assertEq(balance0AliceBefore, currency0.balanceOf(alice));
         assertEq(balance1AliceBefore, currency1.balanceOf(alice));
 
-        // sum dust was credited to alice's tokensOwed
+        // some dust was credited to alice's tokensOwed
         (token0Owed, token1Owed) = lpm.feesOwed(tokenIdAlice);
         assertApproxEqAbs(token0Owed, 0, 80 wei);
         assertApproxEqAbs(token1Owed, 0, 80 wei);
