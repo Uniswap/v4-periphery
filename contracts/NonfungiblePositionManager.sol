@@ -77,12 +77,12 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             _closeCallerDeltas(delta, range.poolKey.currency0, range.poolKey.currency1, recipient, false);
             _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
         } else {
-            delta = _unlockAndIncreaseLiquidity(msg.sender, range, liquidity, hookData, false);
+            delta = _unlockAndIncreaseLiquidity(recipient, range, liquidity, hookData, false);
         }
 
         // mint receipt token
         _mint(recipient, (tokenId = _nextId++));
-        tokenPositions[tokenId] = TokenPosition({owner: msg.sender, range: range});
+        tokenPositions[tokenId] = TokenPosition({owner: recipient, range: range});
     }
 
     // NOTE: more expensive since LiquidityAmounts is used onchain
