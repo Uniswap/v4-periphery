@@ -170,20 +170,6 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         if (delta1 < 0) currency1.settle(manager, address(this), uint256(int256(-delta1)), true);
     }
 
-    //TODO @sara deprecate when moving to _closeThisDeltas for decreaes and collect
-    function _closeAllDeltas(Currency currency0, Currency currency1) internal {
-        (BalanceDelta delta) = manager.currencyDeltas(address(this), currency0, currency1);
-        int128 delta0 = delta.amount0();
-        int128 delta1 = delta.amount1();
-
-        // Mint a receipt for the tokens owed to this address.
-        if (delta0 > 0) currency0.take(manager, address(this), uint128(delta0), true);
-        if (delta1 > 0) currency1.take(manager, address(this), uint128(delta1), true);
-        // Burn the receipt for tokens owed to this address.
-        if (delta0 < 0) currency0.settle(manager, address(this), uint256(int256(-delta0)), true);
-        if (delta1 < 0) currency1.settle(manager, address(this), uint256(int256(-delta1)), true);
-    }
-
     function _moveCallerDeltaToTokensOwed(
         bool useAmount0,
         BalanceDelta tokensOwed,
