@@ -267,39 +267,40 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
 
     function _collect(address owner, LiquidityRange memory range, bytes memory hookData)
         internal
-        returns (BalanceDelta)
+        returns (BalanceDelta callerDelta, BalanceDelta thisDelta)
     {
-        (, BalanceDelta totalFeesAccrued) = _modifyLiquidity(owner, range, 0, hookData);
+        // Do not add or decrease liquidity, just trigger fee updates.
+        (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) = _modifyLiquidity(owner, range, 0, hookData);
 
-        PoolKey memory key = range.poolKey;
         Position storage position = positions[owner][range.toId()];
 
-        // take all fees first then distribute
-        if (totalFeesAccrued.amount0() > 0) {
-            key.currency0.take(manager, address(this), uint128(totalFeesAccrued.amount0()), true);
-        }
-        if (totalFeesAccrued.amount1() > 0) {
-            key.currency1.take(manager, address(this), uint128(totalFeesAccrued.amount1()), true);
-        }
+        // Also updates the position's the feeGrowthInsideLast variables in storage.
+        (BalanceDelta callerFeesAccrued) = _updateFeeGrowth(range, position);
 
-        // collecting fees: new fees and old fees
-        BalanceDelta callerFeesAccrued = _updateFeeGrowth(range, position);
-        callerFeesAccrued = callerFeesAccrued
-            + toBalanceDelta(uint256(position.tokensOwed0).toInt128(), uint256(position.tokensOwed1).toInt128());
+        // Account for fees accrued to other users on the same range.
+        // TODO: Opt when liquidityDelta == 0
+        (callerDelta, thisDelta) = liquidityDelta.split(callerFeesAccrued, totalFeesAccrued);
 
-        position.tokensOwed0 = 0;
-        position.tokensOwed1 = 0;
+        // Allow the caller to collect the tokens owed.
+        // Tokens owed that the caller collects is paid for by this contract.
+        // ie. Transfer the tokensOwed amounts to the caller from the position manager through the pool manager.
+        // TODO case where this contract does not have enough credits to pay the caller?
+        BalanceDelta tokensOwed =
+            toBalanceDelta(uint256(position.tokensOwed0).toInt128(), uint256(position.tokensOwed1).toInt128());
+        callerDelta = callerDelta + tokensOwed;
+        thisDelta = thisDelta - tokensOwed;
 
-        return callerFeesAccrued;
+        position.clearTokensOwed();
     }
 
     function _collectAndZeroOut(address owner, LiquidityRange memory range, uint256, bytes memory hookData, bool claims)
         internal
-        returns (BalanceDelta delta)
+        returns (BalanceDelta callerDelta)
     {
-        delta = _collect(owner, range, hookData);
-        _closeCallerDeltas(delta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
-        _closeAllDeltas(range.poolKey.currency0, range.poolKey.currency1);
+        BalanceDelta thisDelta;
+        (callerDelta, thisDelta) = _collect(owner, range, hookData);
+        _closeCallerDeltas(callerDelta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
+        _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
     }
 
     function _lockAndCollect(address owner, LiquidityRange memory range, bytes memory hookData, bool claims)
