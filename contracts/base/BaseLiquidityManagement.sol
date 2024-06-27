@@ -64,29 +64,6 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         else if (callerDelta1 > 0) currency1.send(manager, owner, uint128(callerDelta1), claims);
     }
 
-    function _execute(bytes[] memory data) internal virtual returns (bytes memory);
-
-    function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        (LiquidityOperation op, bytes memory args) = abi.decode(data, (LiquidityOperation, bytes));
-        if (op == LiquidityOperation.EXECUTE) {
-            (bytes[] memory payload) = abi.decode(args, (bytes[]));
-            return _execute(payload);
-        } else {
-            (address owner, LiquidityRange memory range, uint256 liquidityChange, bytes memory hookData, bool claims) =
-                abi.decode(args, (address, LiquidityRange, uint256, bytes, bool));
-
-            if (op == LiquidityOperation.INCREASE) {
-                return abi.encode(_increaseLiquidityAndZeroOut(owner, range, liquidityChange, hookData, claims));
-            } else if (op == LiquidityOperation.DECREASE) {
-                return abi.encode(_decreaseLiquidityAndZeroOut(owner, range, liquidityChange, hookData, claims));
-            } else if (op == LiquidityOperation.COLLECT) {
-                return abi.encode(_collectAndZeroOut(owner, range, 0, hookData, claims));
-            } else {
-                return new bytes(0);
-            }
-        }
-    }
-
     function _modifyLiquidity(address owner, LiquidityRange memory range, int256 liquidityChange, bytes memory hookData)
         internal
         returns (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued)
@@ -163,20 +140,6 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         position.updateFeeGrowthInside(feeGrowthInside0X128, feeGrowthInside1X128);
     }
 
-    function _increaseLiquidityAndZeroOut(
-        address owner,
-        LiquidityRange memory range,
-        uint256 liquidityToAdd,
-        bytes memory hookData,
-        bool claims
-    ) internal returns (BalanceDelta callerDelta) {
-        BalanceDelta thisDelta;
-        // TODO move callerDelta and thisDelta to transient storage?
-        (callerDelta, thisDelta) = _increaseLiquidity(owner, range, liquidityToAdd, hookData);
-        _closeCallerDeltas(callerDelta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
-        _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
-    }
-
     // When chaining many actions, this should be called at the very end to close out any open deltas owed to or by this contract for other users on the same range.
     // This is safe because any amounts the caller should not pay or take have already been accounted for in closeCallerDeltas.
     function _closeThisDeltas(BalanceDelta delta, Currency currency0, Currency currency1) internal {
@@ -225,21 +188,6 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         return (tokensOwed, callerDelta, thisDelta);
     }
 
-    function _unlockAndIncreaseLiquidity(
-        address owner,
-        LiquidityRange memory range,
-        uint256 liquidityToAdd,
-        bytes memory hookData,
-        bool claims
-    ) internal returns (BalanceDelta) {
-        return abi.decode(
-            manager.unlock(
-                abi.encode(LiquidityOperation.INCREASE, abi.encode(owner, range, liquidityToAdd, hookData, claims))
-            ),
-            (BalanceDelta)
-        );
-    }
-
     function _decreaseLiquidity(
         address owner,
         LiquidityRange memory range,
@@ -277,33 +225,6 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         return callerFeesAccrued;
     }
 
-    function _decreaseLiquidityAndZeroOut(
-        address owner,
-        LiquidityRange memory range,
-        uint256 liquidityToRemove,
-        bytes memory hookData,
-        bool claims
-    ) internal returns (BalanceDelta delta) {
-        delta = _decreaseLiquidity(owner, range, liquidityToRemove, hookData);
-        _closeCallerDeltas(delta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
-        _closeAllDeltas(range.poolKey.currency0, range.poolKey.currency1);
-    }
-
-    function _unlockAndDecreaseLiquidity(
-        address owner,
-        LiquidityRange memory range,
-        uint256 liquidityToRemove,
-        bytes memory hookData,
-        bool claims
-    ) internal returns (BalanceDelta) {
-        return abi.decode(
-            manager.unlock(
-                abi.encode(LiquidityOperation.DECREASE, abi.encode(owner, range, liquidityToRemove, hookData, claims))
-            ),
-            (BalanceDelta)
-        );
-    }
-
     function _collect(address owner, LiquidityRange memory range, bytes memory hookData)
         internal
         returns (BalanceDelta)
@@ -330,25 +251,6 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         position.tokensOwed1 = 0;
 
         return callerFeesAccrued;
-    }
-
-    function _collectAndZeroOut(address owner, LiquidityRange memory range, uint256, bytes memory hookData, bool claims)
-        internal
-        returns (BalanceDelta delta)
-    {
-        delta = _collect(owner, range, hookData);
-        _closeCallerDeltas(delta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
-        _closeAllDeltas(range.poolKey.currency0, range.poolKey.currency1);
-    }
-
-    function _unlockAndCollect(address owner, LiquidityRange memory range, bytes memory hookData, bool claims)
-        internal
-        returns (BalanceDelta)
-    {
-        return abi.decode(
-            manager.unlock(abi.encode(LiquidityOperation.COLLECT, abi.encode(owner, range, 0, hookData, claims))),
-            (BalanceDelta)
-        );
     }
 
     // TODO: I deprecated this bc I liked to see the accounting in line in the top level function... and I like to do all the position updates at once.

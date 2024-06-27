@@ -39,24 +39,23 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
-    function unlockAndExecute(bytes[] calldata data) external {
-        // TODO: bubble up the return
-        manager.unlock(abi.encode(LiquidityOperation.EXECUTE, abi.encode(data)));
+    function unlockAndExecute(bytes[] memory data) public returns (BalanceDelta delta) {
+        delta = abi.decode(manager.unlock(abi.encode(data)), (BalanceDelta));
     }
 
-    /// @param data bytes[] - array of abi.encodeWithSelector(<selector>, <arguments>)
-    function _execute(bytes[] memory data) internal override returns (bytes memory) {
+    function _unlockCallback(bytes calldata payload) internal override returns (bytes memory) {
+        bytes[] memory data = abi.decode(payload, (bytes[]));
+
         bool success;
+        bytes memory returnData;
         for (uint256 i; i < data.length; i++) {
             // TODO: bubble up the return
-            (success,) = address(this).call(data[i]);
+            (success, returnData) = address(this).call(data[i]);
             if (!success) revert("EXECUTE_FAILED");
         }
-
         // zeroOut();
 
-        // TODO: return something
-        return new bytes(0);
+        return returnData;
     }
 
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
@@ -77,7 +76,9 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             _closeCallerDeltas(delta, range.poolKey.currency0, range.poolKey.currency1, recipient, false);
             _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
         } else {
-            delta = _unlockAndIncreaseLiquidity(recipient, range, liquidity, hookData, false);
+            bytes[] memory data = new bytes[](1);
+            data[0] = abi.encodeWithSelector(this.mint.selector, range, liquidity, deadline, recipient, hookData);
+            delta = unlockAndExecute(data);
         }
 
         // mint receipt token
@@ -122,7 +123,9 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             );
             _closeThisDeltas(thisDelta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
         } else {
-            delta = _unlockAndIncreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
+            bytes[] memory data = new bytes[](1);
+            data[0] = abi.encodeWithSelector(this.increaseLiquidity.selector, tokenId, liquidity, hookData, claims);
+            delta = unlockAndExecute(data);
         }
     }
 
@@ -133,8 +136,17 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
-        // TODO: @sauce update once _decreaseLiquidity returns callerDelta/thisDelta
-        delta = _unlockAndDecreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
+        if (manager.isUnlocked()) {
+            delta = _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
+            _closeCallerDeltas(
+                delta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1, tokenPos.owner, claims
+            );
+            _closeAllDeltas(tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
+        } else {
+            bytes[] memory data = new bytes[](1);
+            data[0] = abi.encodeWithSelector(this.decreaseLiquidity.selector, tokenId, liquidity, hookData, claims);
+            delta = unlockAndExecute(data);
+        }
     }
 
     function burn(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
@@ -163,8 +175,17 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        // TODO: @sauce update once _collect returns callerDelta/thisDel
-        delta = _unlockAndCollect(tokenPos.owner, tokenPos.range, hookData, claims);
+        if (manager.isUnlocked()) {
+            delta = _collect(tokenPos.owner, tokenPos.range, hookData);
+            _closeCallerDeltas(
+                delta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1, tokenPos.owner, claims
+            );
+            _closeAllDeltas(tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
+        } else {
+            bytes[] memory data = new bytes[](1);
+            data[0] = abi.encodeWithSelector(this.collect.selector, tokenId, recipient, hookData, claims);
+            delta = unlockAndExecute(data);
+        }
     }
 
     function feesOwed(uint256 tokenId) external view returns (uint256 token0Owed, uint256 token1Owed) {
