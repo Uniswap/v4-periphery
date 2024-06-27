@@ -77,7 +77,9 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         if (op == LiquidityOperation.INCREASE) {
             return abi.encode(_increaseLiquidityAndZeroOut(owner, range, liquidityChange, hookData, claims));
         } else if (op == LiquidityOperation.DECREASE) {
-            return abi.encode(_decreaseLiquidityAndZeroOut(owner, range, liquidityChange, hookData, claims));
+            (BalanceDelta callerDelta, BalanceDelta thisDelta) =
+                _decreaseLiquidityAndZeroOut(owner, range, liquidityChange, hookData, claims);
+            return abi.encode(callerDelta, thisDelta);
         } else if (op == LiquidityOperation.COLLECT) {
             return abi.encode(_collectAndZeroOut(owner, range, 0, hookData, claims));
         } else {
@@ -215,8 +217,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         );
     }
 
-    /// @dev Note that we do not update tokensOwed since all fees collected from this modify call are automatically sent to the caller.
-    /// Any outstanding amounts owed to the caller from tokensOwed0/tokensOwed1 must be collected explicitly.
+    /// Any outstanding amounts owed to the caller from the underlying modify call must be collected explicitly with `collect`.
     function _decreaseLiquidity(
         address owner,
         LiquidityRange memory range,
@@ -235,6 +236,20 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         // Account for fees accrued to other users on the same range.
         (callerDelta, thisDelta) = liquidityDelta.split(callerFeesAccrued, totalFeesAccrued);
 
+        BalanceDelta tokensOwed;
+
+        // Flush the callerDelta, incrementing the tokensOwed to the user and the amount claimable to this contract.
+        if (callerDelta.amount0() > 0) {
+            (tokensOwed, callerDelta, thisDelta) =
+                _moveCallerDeltaToTokensOwed(true, tokensOwed, callerDelta, thisDelta);
+        }
+
+        if (callerDelta.amount1() > 0) {
+            (tokensOwed, callerDelta, thisDelta) =
+                _moveCallerDeltaToTokensOwed(false, tokensOwed, callerDelta, thisDelta);
+        }
+
+        position.addTokensOwed(tokensOwed);
         position.subtractLiquidity(liquidityToRemove);
     }
 
@@ -244,9 +259,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         uint256 liquidityToRemove,
         bytes memory hookData,
         bool claims
-    ) internal returns (BalanceDelta callerDelta) {
-        // Todo move to transient storage, and potentially bubble up both deltas
-        BalanceDelta thisDelta;
+    ) internal returns (BalanceDelta callerDelta, BalanceDelta thisDelta) {
         (callerDelta, thisDelta) = _decreaseLiquidity(owner, range, liquidityToRemove, hookData);
         _closeCallerDeltas(callerDelta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
         _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
@@ -258,10 +271,10 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         uint256 liquidityToRemove,
         bytes memory hookData,
         bool claims
-    ) internal returns (BalanceDelta) {
+    ) internal returns (BalanceDelta, BalanceDelta) {
         return abi.decode(
             manager.unlock(abi.encode(LiquidityOperation.DECREASE, owner, range, liquidityToRemove, hookData, claims)),
-            (BalanceDelta)
+            (BalanceDelta, BalanceDelta)
         );
     }
 
@@ -270,6 +283,7 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         returns (BalanceDelta callerDelta, BalanceDelta thisDelta)
     {
         // Do not add or decrease liquidity, just trigger fee updates.
+        // TODO: Fails when position is empty
         (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) = _modifyLiquidity(owner, range, 0, hookData);
 
         Position storage position = positions[owner][range.toId()];

@@ -86,10 +86,10 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
         public
         isAuthorizedForToken(tokenId)
-        returns (BalanceDelta delta)
+        returns (BalanceDelta delta, BalanceDelta thisDelta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        delta = _lockAndDecreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
+        (delta, thisDelta) = _lockAndDecreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
     }
 
     function burn(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
@@ -102,7 +102,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         LiquidityRangeId rangeId = tokenPosition.range.toId();
         Position storage position = positions[msg.sender][rangeId];
         if (0 < position.liquidity) {
-            delta = decreaseLiquidity(tokenId, position.liquidity, hookData, claims);
+            (delta,) = decreaseLiquidity(tokenId, position.liquidity, hookData, claims);
+            (delta) = collect(tokenId, recipient, hookData, claims);
         }
         require(position.tokensOwed0 == 0 && position.tokensOwed1 == 0, "NOT_EMPTY");
         delete positions[msg.sender][rangeId];
@@ -114,7 +115,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
     function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
-        external
+        public
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
