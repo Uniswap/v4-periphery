@@ -358,10 +358,12 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
     }
 
     function setupPool(PoolKey memory poolKey) internal {
-        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(poolKey, SQRT_PRICE_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyLiquidity(poolKey, IPoolManager.ModifyLiquidityParams(-887220, 887220, 200 ether), "0x");
+        positionManager.modifyLiquidity(
+            poolKey, IPoolManager.ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x"
+        );
     }
 
     function toCurrency(MockERC20 token) internal pure returns (Currency) {

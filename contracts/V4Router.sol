@@ -146,7 +146,7 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
                 zeroForOne,
                 amountSpecified,
                 sqrtPriceLimitX96 == 0
-                    ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+                    ? (zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1)
                     : sqrtPriceLimitX96
             ),
             hookData
@@ -177,6 +177,7 @@ abstract contract V4Router is IV4Router, IUnlockCallback {
     }
 
     function _payAndSettle(Currency currency, address msgSender, int128 settleAmount) private {
+        poolManager.sync(currency);
         _pay(Currency.unwrap(currency), msgSender, address(poolManager), uint256(uint128(-settleAmount)));
         poolManager.settle(currency);
     }

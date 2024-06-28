@@ -15,9 +15,11 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 contract TestLimitOrder is Test, Deployers {
     using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
 
     uint160 constant SQRT_RATIO_10_1 = 250541448375047931186413801569;
 
@@ -48,7 +50,7 @@ contract TestLimitOrder is Test, Deployers {
         }
 
         // key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
-        (key, id) = initPoolAndAddLiquidity(currency0, currency1, limitOrder, 3000, SQRT_RATIO_1_1, ZERO_BYTES);
+        (key, id) = initPoolAndAddLiquidity(currency0, currency1, limitOrder, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
         token0.approve(address(limitOrder), type(uint256).max);
         token1.approve(address(limitOrder), type(uint256).max);
@@ -82,7 +84,8 @@ contract TestLimitOrder is Test, Deployers {
         uint128 liquidity = 1000000;
         limitOrder.place(key, tickLower, zeroForOne, liquidity);
         assertTrue(EpochLibrary.equals(limitOrder.getEpoch(key, tickLower, zeroForOne), Epoch.wrap(1)));
-        assertEq(manager.getLiquidity(id, address(limitOrder), tickLower, tickLower + 60), liquidity);
+
+        assertEq(manager.getPosition(id, address(limitOrder), tickLower, tickLower + 60, 0).liquidity, liquidity);
     }
 
     function testZeroForOneLeftBoundaryOfCurrentRange() public {
@@ -91,7 +94,7 @@ contract TestLimitOrder is Test, Deployers {
         uint128 liquidity = 1000000;
         limitOrder.place(key, tickLower, zeroForOne, liquidity);
         assertTrue(EpochLibrary.equals(limitOrder.getEpoch(key, tickLower, zeroForOne), Epoch.wrap(1)));
-        assertEq(manager.getLiquidity(id, address(limitOrder), tickLower, tickLower + 60), liquidity);
+        assertEq(manager.getPosition(id, address(limitOrder), tickLower, tickLower + 60, 0).liquidity, liquidity);
     }
 
     function testZeroForOneCrossedRangeRevert() public {
@@ -103,8 +106,8 @@ contract TestLimitOrder is Test, Deployers {
         // swapping is free, there's no liquidity in the pool, so we only need to specify 1 wei
         router.swap(
             key,
-            IPoolManager.SwapParams(false, -1 ether, SQRT_RATIO_1_1 + 1),
-            HookEnabledSwapRouter.TestSettings(true, true),
+            IPoolManager.SwapParams(false, -1 ether, SQRT_PRICE_1_1 + 1),
+            HookEnabledSwapRouter.TestSettings(false, false),
             ZERO_BYTES
         );
         vm.expectRevert(LimitOrder.InRange.selector);
@@ -117,7 +120,7 @@ contract TestLimitOrder is Test, Deployers {
         uint128 liquidity = 1000000;
         limitOrder.place(key, tickLower, zeroForOne, liquidity);
         assertTrue(EpochLibrary.equals(limitOrder.getEpoch(key, tickLower, zeroForOne), Epoch.wrap(1)));
-        assertEq(manager.getLiquidity(id, address(limitOrder), tickLower, tickLower + 60), liquidity);
+        assertEq(manager.getPosition(id, address(limitOrder), tickLower, tickLower + 60, 0).liquidity, liquidity);
     }
 
     function testNotZeroForOneCrossedRangeRevert() public {
@@ -129,8 +132,8 @@ contract TestLimitOrder is Test, Deployers {
         // swapping is free, there's no liquidity in the pool, so we only need to specify 1 wei
         router.swap(
             key,
-            IPoolManager.SwapParams(true, -1 ether, SQRT_RATIO_1_1 - 1),
-            HookEnabledSwapRouter.TestSettings(true, true),
+            IPoolManager.SwapParams(true, -1 ether, SQRT_PRICE_1_1 - 1),
+            HookEnabledSwapRouter.TestSettings(false, false),
             ZERO_BYTES
         );
         vm.expectRevert(LimitOrder.InRange.selector);
@@ -151,7 +154,7 @@ contract TestLimitOrder is Test, Deployers {
         limitOrder.place(key, tickLower, zeroForOne, liquidity);
         vm.stopPrank();
         assertTrue(EpochLibrary.equals(limitOrder.getEpoch(key, tickLower, zeroForOne), Epoch.wrap(1)));
-        assertEq(manager.getLiquidity(id, address(limitOrder), tickLower, tickLower + 60), liquidity * 2);
+        assertEq(manager.getPosition(id, address(limitOrder), tickLower, tickLower + 60, 0).liquidity, liquidity * 2);
 
         (
             bool filled,
@@ -191,8 +194,8 @@ contract TestLimitOrder is Test, Deployers {
 
         router.swap(
             key,
-            IPoolManager.SwapParams(false, -1e18, TickMath.getSqrtRatioAtTick(60)),
-            HookEnabledSwapRouter.TestSettings(true, true),
+            IPoolManager.SwapParams(false, -1e18, TickMath.getSqrtPriceAtTick(60)),
+            HookEnabledSwapRouter.TestSettings(false, false),
             ZERO_BYTES
         );
 
@@ -205,7 +208,7 @@ contract TestLimitOrder is Test, Deployers {
         assertTrue(filled);
         assertEq(token0Total, 0);
         assertEq(token1Total, 2996 + 17); // 3013, 2 wei of dust
-        assertEq(manager.getLiquidity(id, address(limitOrder), tickLower, tickLower + 60), 0);
+        assertEq(manager.getPosition(id, address(limitOrder), tickLower, tickLower + 60, 0).liquidity, 0);
 
         vm.expectEmit(true, true, true, true, address(token1));
         emit Transfer(address(manager), new GetSender().sender(), 2996 + 17);
