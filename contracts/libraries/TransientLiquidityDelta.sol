@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+
+import {CurrencySettleTake} from "../libraries/CurrencySettleTake.sol";
 
 /// @title a library to store callers' currency deltas in transient storage
 /// @dev this library implements the equivalent of a mapping, as transient storage can only be accessed in assembly
 library TransientLiquidityDelta {
+    using CurrencySettleTake for Currency;
+
     /// @notice calculates which storage slot a delta should be stored in for a given caller and currency
     function _computeSlot(address caller_, Currency currency) internal pure returns (bytes32 hashSlot) {
         assembly {
@@ -42,6 +47,27 @@ library TransientLiquidityDelta {
             let oldValue := tload(hashSlot)
             let newValue := sub(oldValue, delta)
             tstore(hashSlot, newValue)
+        }
+    }
+
+    function close(Currency currency, IPoolManager manager, address holder) internal {
+        // getDelta(currency, holder);
+        bytes32 hashSlot = _computeSlot(caller, currency);
+        int128 delta;
+        assembly {
+            delta := tload(hashSlot)
+        }
+
+        // close the delta by paying or taking
+        if (delta < 0) {
+            currency.settle(manager, holder, uint256(-delta), false);
+        } else {
+            currency.take(manager, holder, uint256(delta), false);
+        }
+
+        // setDelta(0);
+        assembly {
+            tstore(hashSlot, 0)
         }
     }
 

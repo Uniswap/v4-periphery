@@ -201,9 +201,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         position.subtractLiquidity(liquidityToRemove);
     }
 
-    function _collect(address owner, LiquidityRange memory range, bytes memory hookData)
-        internal
-    {
+    function _collect(address owner, LiquidityRange memory range, bytes memory hookData) internal {
         BalanceDelta callerDelta;
         BalanceDelta thisDelta;
         Position storage position = positions[owner][range.toId()];

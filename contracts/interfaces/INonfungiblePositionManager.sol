@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {LiquidityRange} from "../types/LiquidityRange.sol";
 
 interface INonfungiblePositionManager {
@@ -68,7 +69,7 @@ interface INonfungiblePositionManager {
     /// @notice Execute a batch of external calls by unlocking the PoolManager
     /// @param data an array of abi.encodeWithSelector(<selector>, <args>) for each call
     /// @return delta The final delta changes of the caller
-    function unlockAndExecute(bytes[] memory data) external returns (bytes memory);
+    function unlockAndExecute(bytes[] memory data, Currency[] memory currencies) external returns (bytes memory);
 
     /// @notice Returns the fees owed for a position. Includes unclaimed fees + custodied fees + claimable fees
     /// @param tokenId The ID of the position
