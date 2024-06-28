@@ -1,47 +1,46 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {Hooks} from "@uniswap/v4-core/contracts/libraries/Hooks.sol";
-import {IPoolManager} from "@uniswap/v4-core/contracts/interfaces/IPoolManager.sol";
-import {BalanceDelta} from "@uniswap/v4-core/contracts/types/BalanceDelta.sol";
-import {PoolKey} from "@uniswap/v4-core/contracts/types/PoolKey.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/contracts/types/Currency.sol";
-import {TickMath} from "@uniswap/v4-core/contracts/libraries/TickMath.sol";
-import {IHooks} from "@uniswap/v4-core/contracts/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {PathKey} from "./libraries/PathKey.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 
-/// @title UniswapV4Routing
+/// @title UniswapV4Router
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
 abstract contract V4Router is IV4Router {
     using CurrencyLibrary for Currency;
 
     IPoolManager immutable poolManager;
 
-    /// @dev Only the pool manager may call this function
-    modifier poolManagerOnly() {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
-        _;
-    }
-
     constructor(IPoolManager _poolManager) {
         poolManager = _poolManager;
     }
 
     function _v4Swap(SwapType swapType, bytes memory params) internal {
-        poolManager.lock(abi.encode(SwapInfo(swapType, msg.sender, params)));
+        poolManager.unlock(abi.encode(SwapInfo(swapType, msg.sender, params)));
     }
 
-    function lockAcquired(bytes calldata encodedSwapInfo) external poolManagerOnly returns (bytes memory) {
+    /// @inheritdoc IUnlockCallback
+    function unlockCallback(bytes calldata encodedSwapInfo) external override returns (bytes memory) {
+        if (msg.sender != address(poolManager)) revert NotPoolManager();
+
         SwapInfo memory swapInfo = abi.decode(encodedSwapInfo, (SwapInfo));
 
         if (swapInfo.swapType == SwapType.ExactInput) {
-            _swapExactInput(abi.decode(swapInfo.params, (ExactInputParams)), swapInfo.msgSender);
+            _swapExactInput(abi.decode(swapInfo.params, (IV4Router.ExactInputParams)), swapInfo.msgSender);
         } else if (swapInfo.swapType == SwapType.ExactInputSingle) {
-            _swapExactInputSingle(abi.decode(swapInfo.params, (ExactInputSingleParams)), swapInfo.msgSender);
+            _swapExactInputSingle(abi.decode(swapInfo.params, (IV4Router.ExactInputSingleParams)), swapInfo.msgSender);
         } else if (swapInfo.swapType == SwapType.ExactOutput) {
-            _swapExactOutput(abi.decode(swapInfo.params, (ExactOutputParams)), swapInfo.msgSender);
+            _swapExactOutput(abi.decode(swapInfo.params, (IV4Router.ExactOutputParams)), swapInfo.msgSender);
         } else if (swapInfo.swapType == SwapType.ExactOutputSingle) {
-            _swapExactOutputSingle(abi.decode(swapInfo.params, (ExactOutputSingleParams)), swapInfo.msgSender);
+            _swapExactOutputSingle(abi.decode(swapInfo.params, (IV4Router.ExactOutputSingleParams)), swapInfo.msgSender);
         } else {
             revert InvalidSwapType();
         }
@@ -49,11 +48,11 @@ abstract contract V4Router is IV4Router {
         return bytes("");
     }
 
-    function _swapExactInputSingle(ExactInputSingleParams memory params, address msgSender) private {
-        _swapExactPrivate(
+    function _swapExactInputSingle(IV4Router.ExactInputSingleParams memory params, address msgSender) private {
+        _swap(
             params.poolKey,
             params.zeroForOne,
-            int256(int128(params.amountIn)),
+            int256(-int128(params.amountIn)),
             params.sqrtPriceLimitX96,
             msgSender,
             true,
@@ -62,7 +61,7 @@ abstract contract V4Router is IV4Router {
         );
     }
 
-    function _swapExactInput(ExactInputParams memory params, address msgSender) private {
+    function _swapExactInput(IV4Router.ExactInputParams memory params, address msgSender) private {
         unchecked {
             uint256 pathLength = params.path.length;
             uint128 amountOut;
@@ -70,10 +69,10 @@ abstract contract V4Router is IV4Router {
             for (uint256 i = 0; i < pathLength; i++) {
                 (PoolKey memory poolKey, bool zeroForOne) = _getPoolAndSwapDirection(params.path[i], params.currencyIn);
                 amountOut = uint128(
-                    -_swapExactPrivate(
+                    _swap(
                         poolKey,
                         zeroForOne,
-                        int256(int128(params.amountIn)),
+                        int256(-int128(params.amountIn)),
                         0,
                         msgSender,
                         i == 0,
@@ -90,11 +89,11 @@ abstract contract V4Router is IV4Router {
         }
     }
 
-    function _swapExactOutputSingle(ExactOutputSingleParams memory params, address msgSender) private {
-        _swapExactPrivate(
+    function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams memory params, address msgSender) private {
+        _swap(
             params.poolKey,
             params.zeroForOne,
-            -int256(int128(params.amountOut)),
+            int256(int128(params.amountOut)),
             params.sqrtPriceLimitX96,
             msgSender,
             true,
@@ -103,7 +102,7 @@ abstract contract V4Router is IV4Router {
         );
     }
 
-    function _swapExactOutput(ExactOutputParams memory params, address msgSender) private {
+    function _swapExactOutput(IV4Router.ExactOutputParams memory params, address msgSender) private {
         unchecked {
             uint256 pathLength = params.path.length;
             uint128 amountIn;
@@ -112,10 +111,10 @@ abstract contract V4Router is IV4Router {
                 (PoolKey memory poolKey, bool oneForZero) =
                     _getPoolAndSwapDirection(params.path[i - 1], params.currencyOut);
                 amountIn = uint128(
-                    _swapExactPrivate(
+                    -_swap(
                         poolKey,
                         !oneForZero,
-                        -int256(int128(params.amountOut)),
+                        int256(int128(params.amountOut)),
                         0,
                         msgSender,
                         i == 1,
@@ -131,7 +130,7 @@ abstract contract V4Router is IV4Router {
         }
     }
 
-    function _swapExactPrivate(
+    function _swap(
         PoolKey memory poolKey,
         bool zeroForOne,
         int256 amountSpecified,
@@ -147,20 +146,20 @@ abstract contract V4Router is IV4Router {
                 zeroForOne,
                 amountSpecified,
                 sqrtPriceLimitX96 == 0
-                    ? (zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1)
+                    ? (zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1)
                     : sqrtPriceLimitX96
             ),
             hookData
         );
 
         if (zeroForOne) {
-            reciprocalAmount = amountSpecified > 0 ? delta.amount1() : delta.amount0();
+            reciprocalAmount = amountSpecified < 0 ? delta.amount1() : delta.amount0();
             if (settle) _payAndSettle(poolKey.currency0, msgSender, delta.amount0());
-            if (take) poolManager.take(poolKey.currency1, msgSender, uint128(-delta.amount1()));
+            if (take) poolManager.take(poolKey.currency1, msgSender, uint128(delta.amount1()));
         } else {
-            reciprocalAmount = amountSpecified > 0 ? delta.amount0() : delta.amount1();
+            reciprocalAmount = amountSpecified < 0 ? delta.amount0() : delta.amount1();
             if (settle) _payAndSettle(poolKey.currency1, msgSender, delta.amount1());
-            if (take) poolManager.take(poolKey.currency0, msgSender, uint128(-delta.amount0()));
+            if (take) poolManager.take(poolKey.currency0, msgSender, uint128(delta.amount0()));
         }
     }
 
@@ -178,7 +177,8 @@ abstract contract V4Router is IV4Router {
     }
 
     function _payAndSettle(Currency currency, address msgSender, int128 settleAmount) private {
-        _pay(Currency.unwrap(currency), msgSender, address(poolManager), uint256(uint128(settleAmount)));
+        poolManager.sync(currency);
+        _pay(Currency.unwrap(currency), msgSender, address(poolManager), uint256(uint128(-settleAmount)));
         poolManager.settle(currency);
     }
 

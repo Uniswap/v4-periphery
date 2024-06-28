@@ -324,7 +324,7 @@ contract LimitOrder is BaseHook {
     ) external selfOnly returns (uint128 amount0Fee, uint128 amount1Fee) {
         int24 tickUpper = tickLower + key.tickSpacing;
 
-        // because `modifyPosition` includes not just principal value but also fees, we cannot allocate
+        // because `modifyLiquidity` includes not just principal value but also fees, we cannot allocate
         // the proceeds pro-rata. if we were to do so, users who have been in a limit order that's partially filled
         // could be unfairly diluted by a user sychronously placing then killing a limit order to skim off fees.
         // to prevent this, we allocate all fee revenue to remaining limit order placers, unless this is the last order.
