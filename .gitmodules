@@ -9,7 +9,7 @@
 	url = https://github.com/marktoda/forge-gas-snapshot
 [submodule "lib/v4-core"]
 	path = lib/v4-core
-	url = git@github.com:Uniswap/v4-core.git
+	url = https://github.com/Uniswap/v4-core
 [submodule "lib/solmate"]
 	path = lib/solmate
 	url = https://github.com/transmissions11/solmate

@@ -11,7 +11,7 @@ import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolModifyPositionTest} from "@uniswap/v4-core/src/test/PoolModifyPositionTest.sol";
+import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {IV4Router} from "../contracts/interfaces/IV4Router.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {V4RouterImplementation} from "./shared/implementation/V4RouterImplementation.sol";
@@ -22,7 +22,7 @@ import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 contract V4RouterTest is Test, Deployers, GasSnapshot {
     using CurrencyLibrary for Currency;
 
-    PoolModifyPositionTest positionManager;
+    PoolModifyLiquidityTest positionManager;
     V4RouterImplementation router;
 
     MockERC20 token0;
@@ -40,7 +40,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         deployFreshManagerAndRouters();
 
         router = new V4RouterImplementation(manager);
-        positionManager = new PoolModifyPositionTest(manager);
+        positionManager = new PoolModifyLiquidityTest(manager);
 
         token0 = new MockERC20("Test0", "0", 18);
         token0.mint(address(this), 2 ** 128);
@@ -76,15 +76,15 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, address(this), uint128(amountIn), 0, 0, bytes(""));
 
-        uint256 prevBalance0 = token0.balanceOf(address(this));
-        uint256 prevBalance1 = token1.balanceOf(address(this));
+        uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         snapStart("RouterExactInputSingle");
         router.swap(IV4Router.SwapType.ExactInputSingle, abi.encode(params));
         snapEnd();
 
-        uint256 newBalance0 = token0.balanceOf(address(this));
-        uint256 newBalance1 = token1.balanceOf(address(this));
+        uint256 newBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 newBalance1 = key0.currency1.balanceOf(address(this));
 
         assertEq(prevBalance0 - newBalance0, amountIn);
         assertEq(newBalance1 - prevBalance1, expectedAmountOut);
@@ -97,13 +97,13 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, false, address(this), uint128(amountIn), 0, 0, bytes(""));
 
-        uint256 prevBalance0 = token0.balanceOf(address(this));
-        uint256 prevBalance1 = token1.balanceOf(address(this));
+        uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         router.swap(IV4Router.SwapType.ExactInputSingle, abi.encode(params));
 
-        uint256 newBalance0 = token0.balanceOf(address(this));
-        uint256 newBalance1 = token1.balanceOf(address(this));
+        uint256 newBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 newBalance1 = key0.currency1.balanceOf(address(this));
 
         assertEq(prevBalance1 - newBalance1, amountIn);
         assertEq(newBalance0 - prevBalance0, expectedAmountOut);
@@ -214,15 +214,15 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         IV4Router.ExactOutputSingleParams memory params =
             IV4Router.ExactOutputSingleParams(key0, true, address(this), uint128(amountOut), 0, 0, bytes(""));
 
-        uint256 prevBalance0 = token0.balanceOf(address(this));
-        uint256 prevBalance1 = token1.balanceOf(address(this));
+        uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         snapStart("RouterExactOutputSingle");
         router.swap(IV4Router.SwapType.ExactOutputSingle, abi.encode(params));
         snapEnd();
 
-        uint256 newBalance0 = token0.balanceOf(address(this));
-        uint256 newBalance1 = token1.balanceOf(address(this));
+        uint256 newBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 newBalance1 = key0.currency1.balanceOf(address(this));
 
         assertEq(prevBalance0 - newBalance0, expectedAmountIn);
         assertEq(newBalance1 - prevBalance1, amountOut);
@@ -235,13 +235,13 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         IV4Router.ExactOutputSingleParams memory params =
             IV4Router.ExactOutputSingleParams(key0, false, address(this), uint128(amountOut), 0, 0, bytes(""));
 
-        uint256 prevBalance0 = token0.balanceOf(address(this));
-        uint256 prevBalance1 = token1.balanceOf(address(this));
+        uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         router.swap(IV4Router.SwapType.ExactOutputSingle, abi.encode(params));
 
-        uint256 newBalance0 = token0.balanceOf(address(this));
-        uint256 newBalance1 = token1.balanceOf(address(this));
+        uint256 newBalance0 = key0.currency0.balanceOf(address(this));
+        uint256 newBalance1 = key0.currency1.balanceOf(address(this));
 
         assertEq(prevBalance1 - newBalance1, expectedAmountIn);
         assertEq(newBalance0 - prevBalance0, amountOut);
@@ -358,10 +358,10 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
     }
 
     function setupPool(PoolKey memory poolKey) internal {
-        initializeRouter.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
+        manager.initialize(poolKey, SQRT_RATIO_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyPosition(poolKey, IPoolManager.ModifyPositionParams(-887220, 887220, 200 ether), "0x");
+        positionManager.modifyLiquidity(poolKey, IPoolManager.ModifyLiquidityParams(-887220, 887220, 200 ether), "0x");
     }
 
     function toCurrency(MockERC20 token) internal pure returns (Currency) {
