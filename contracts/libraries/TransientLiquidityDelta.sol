@@ -7,7 +7,6 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 /// @title a library to store callers' currency deltas in transient storage
 /// @dev this library implements the equivalent of a mapping, as transient storage can only be accessed in assembly
 library TransientLiquidityDelta {
-
     /// @notice calculates which storage slot a delta should be stored in for a given caller and currency
     function _computeSlot(address caller_, Currency currency) internal pure returns (bytes32 hashSlot) {
         assembly {
@@ -15,6 +14,11 @@ library TransientLiquidityDelta {
             mstore(32, currency)
             hashSlot := keccak256(0, 64)
         }
+    }
+
+    function close(address holder, Currency currency0, Currency currency1) internal {
+        setDelta(currency0, holder, 0);
+        setDelta(currency1, holder, 0);
     }
 
     /// @notice Flush a BalanceDelta into transient storage for a given holder
@@ -41,7 +45,11 @@ library TransientLiquidityDelta {
         }
     }
 
-    function getBalanceDelta(address holder, Currency currency0, Currency currency1) internal view returns (BalanceDelta delta) {
+    function getBalanceDelta(address holder, Currency currency0, Currency currency1)
+        internal
+        view
+        returns (BalanceDelta delta)
+    {
         delta = toBalanceDelta(getDelta(currency0, holder), getDelta(currency1, holder));
     }
 

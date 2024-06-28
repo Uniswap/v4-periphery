@@ -119,8 +119,11 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
         if (manager.isUnlocked()) {
-            BalanceDelta thisDelta;
-            (delta, thisDelta) = _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
+            _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
+
+            delta = tokenPos.owner.getBalanceDelta(tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
+            BalanceDelta thisDelta =
+                address(this).getBalanceDelta(tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
 
             // TODO: should be triggered by zeroOut in _execute...
             _closeCallerDeltas(
@@ -143,7 +146,12 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
         if (manager.isUnlocked()) {
-            (delta, thisDelta) = _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
+            _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
+
+            // TODO: move to zeroOut() in unlockAndExecute()
+            delta = tokenPos.owner.getBalanceDelta(tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
+            thisDelta =
+                address(this).getBalanceDelta(tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
             _closeCallerDeltas(
                 delta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1, tokenPos.owner, claims
             );
@@ -187,8 +195,12 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
         if (manager.isUnlocked()) {
-            BalanceDelta thisDelta;
-            (delta, thisDelta) = _collect(tokenPos.owner, tokenPos.range, hookData);
+            _collect(tokenPos.owner, tokenPos.range, hookData);
+
+            // TODO: move to zeroOut() in unlockAndExecute()
+            delta = tokenPos.owner.getBalanceDelta(tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
+            BalanceDelta thisDelta =
+                address(this).getBalanceDelta(tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
             _closeCallerDeltas(
                 delta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1, tokenPos.owner, claims
             );

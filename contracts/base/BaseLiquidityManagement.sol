@@ -43,6 +43,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
     using LiquidityDeltaAccounting for BalanceDelta;
     using TransientLiquidityDelta for BalanceDelta;
     using TransientLiquidityDelta for Currency;
+    using TransientLiquidityDelta for address;
 
     mapping(address owner => mapping(LiquidityRangeId rangeId => Position)) public positions;
 
@@ -65,6 +66,8 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
         if (callerDelta1 < 0) currency1.settle(manager, owner, uint256(int256(-callerDelta1)), claims);
         else if (callerDelta1 > 0) currency1.take(manager, owner, uint128(callerDelta1), claims);
+
+        owner.close(currency0, currency1);
     }
 
     function _modifyLiquidity(address owner, LiquidityRange memory range, int256 liquidityChange, bytes memory hookData)
@@ -104,8 +107,6 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         // Calculate the portion of the liquidityDelta that is attributable to the caller.
         // We must account for fees that might be owed to other users on the same range.
         (callerDelta, thisDelta) = liquidityDelta.split(callerFeesAccrued, totalFeesAccrued);
-        callerDelta.flush(owner, range.poolKey.currency0, range.poolKey.currency1);
-        thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         // Update position storage, flushing the callerDelta value to tokensOwed first if necessary.
         // If callerDelta > 0, then even after investing callerFeesAccrued, the caller still has some amount to collect that were not added into the position so they are accounted to tokensOwed and removed from the final callerDelta returned.
@@ -119,6 +120,8 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
             (tokensOwed, callerDelta, thisDelta) =
                 _moveCallerDeltaToTokensOwed(false, tokensOwed, callerDelta, thisDelta);
         }
+        callerDelta.flush(owner, range.poolKey.currency0, range.poolKey.currency1);
+        thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         position.addTokensOwed(tokensOwed);
         position.addLiquidity(liquidityToAdd);
@@ -136,6 +139,8 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         // Burn the receipt for tokens owed to this address.
         if (delta0 < 0) currency0.settle(manager, address(this), uint256(int256(-delta0)), true);
         if (delta1 < 0) currency1.settle(manager, address(this), uint256(int256(-delta1)), true);
+
+        address(this).close(currency0, currency1);
     }
 
     function _moveCallerDeltaToTokensOwed(
@@ -157,7 +162,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
         return (tokensOwed, callerDelta, thisDelta);
     }
-    
+
     /// Any outstanding amounts owed to the caller from the underlying modify call must be collected explicitly with `collect`.
     function _decreaseLiquidity(
         address owner,
@@ -189,6 +194,8 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
             (tokensOwed, callerDelta, thisDelta) =
                 _moveCallerDeltaToTokensOwed(false, tokensOwed, callerDelta, thisDelta);
         }
+        callerDelta.flush(owner, range.poolKey.currency0, range.poolKey.currency1);
+        thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         position.addTokensOwed(tokensOwed);
         position.subtractLiquidity(liquidityToRemove);
@@ -221,6 +228,9 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
             toBalanceDelta(uint256(position.tokensOwed0).toInt128(), uint256(position.tokensOwed1).toInt128());
         callerDelta = callerDelta + tokensOwed;
         thisDelta = thisDelta - tokensOwed;
+
+        callerDelta.flush(owner, range.poolKey.currency0, range.poolKey.currency1);
+        thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         position.clearTokensOwed();
     }
