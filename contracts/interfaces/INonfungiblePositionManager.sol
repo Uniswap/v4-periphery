@@ -37,10 +37,11 @@ interface INonfungiblePositionManager {
     /// @param liquidity The amount of liquidity to remove
     /// @param hookData Arbitrary data passed to the hook
     /// @param claims Whether the removed liquidity is sent as ERC-6909 claim tokens
-    /// @return delta Corresponding balance changes as a result of decreasing liquidity
+    /// @return delta Corresponding balance changes as a result of decreasing liquidity applied to user
+    /// @return thisDelta Corresponding balance changes as a result of decreasing liquidity applied to lpm
     function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
         external
-        returns (BalanceDelta delta);
+        returns (BalanceDelta delta, BalanceDelta thisDelta);
 
     /// @notice Burn a position and delete the tokenId
     /// @dev It removes liquidity and collects fees if the position is not empty
