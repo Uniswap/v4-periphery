@@ -6,15 +6,29 @@ import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 
 // Updates Position storage
 library PositionLibrary {
+    error InsufficientLiquidity();
+
     // TODO ensure this is one sstore.
     function addTokensOwed(IBaseLiquidityManagement.Position storage position, BalanceDelta tokensOwed) internal {
         position.tokensOwed0 += uint128(tokensOwed.amount0());
         position.tokensOwed1 += uint128(tokensOwed.amount1());
     }
 
+    function clearTokensOwed(IBaseLiquidityManagement.Position storage position) internal {
+        position.tokensOwed0 = 0;
+        position.tokensOwed1 = 0;
+    }
+
     function addLiquidity(IBaseLiquidityManagement.Position storage position, uint256 liquidity) internal {
         unchecked {
             position.liquidity += liquidity;
+        }
+    }
+
+    function subtractLiquidity(IBaseLiquidityManagement.Position storage position, uint256 liquidity) internal {
+        if (position.liquidity < liquidity) revert InsufficientLiquidity();
+        unchecked {
+            position.liquidity -= liquidity;
         }
     }
 
