@@ -268,18 +268,20 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         internal
         returns (BalanceDelta callerDelta, BalanceDelta thisDelta)
     {
-        // Do not add or decrease liquidity, just trigger fee updates.
-        // TODO: Fails when position is empty
-        (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) = _modifyLiquidity(owner, range, 0, hookData);
-
         Position storage position = positions[owner][range.toId()];
 
-        // Also updates the position's the feeGrowthInsideLast variables in storage.
-        (BalanceDelta callerFeesAccrued) = _updateFeeGrowth(range, position);
+        // Only call modify if there is still liquidty in this position.
+        if (position.liquidity != 0) {
+            // Do not add or decrease liquidity, just trigger fee updates.
+            (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) = _modifyLiquidity(owner, range, 0, hookData);
 
-        // Account for fees accrued to other users on the same range.
-        // TODO: Opt when liquidityDelta == 0
-        (callerDelta, thisDelta) = liquidityDelta.split(callerFeesAccrued, totalFeesAccrued);
+            // Also updates the position's the feeGrowthInsideLast variables in storage.
+            (BalanceDelta callerFeesAccrued) = _updateFeeGrowth(range, position);
+
+            // Account for fees accrued to other users on the same range.
+            // TODO: Opt when liquidityDelta == 0
+            (callerDelta, thisDelta) = liquidityDelta.split(callerFeesAccrued, totalFeesAccrued);
+        }
 
         // Allow the caller to collect the tokens owed.
         // Tokens owed that the caller collects is paid for by this contract.

@@ -218,6 +218,8 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
 
     /// @dev Alice and bob create liquidity on the same range
     ///     when alice decreases liquidity, she should only collect her fees
+    /// TODO Add back fuzz test on liquidityDeltaBob
+    /// TODO Assert state changes for lpm balance, position state, and return values
     function test_decreaseLiquidity_sameRange_exact() public {
         // alice and bob create liquidity on the same range [-120, 120]
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -120, tickUpper: 120});

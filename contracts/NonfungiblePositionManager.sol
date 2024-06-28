@@ -97,14 +97,17 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         isAuthorizedForToken(tokenId)
         returns (BalanceDelta delta)
     {
+        // TODO: Burn currently decreases and collects. However its done under different locks.
+        // Replace once we have the execute multicall.
         // remove liquidity
         TokenPosition storage tokenPosition = tokenPositions[tokenId];
         LiquidityRangeId rangeId = tokenPosition.range.toId();
         Position storage position = positions[msg.sender][rangeId];
-        if (0 < position.liquidity) {
+        if (position.liquidity > 0) {
             (delta,) = decreaseLiquidity(tokenId, position.liquidity, hookData, claims);
-            (delta) = collect(tokenId, recipient, hookData, claims);
         }
+
+        collect(tokenId, recipient, hookData, claims);
         require(position.tokensOwed0 == 0 && position.tokensOwed1 == 0, "NOT_EMPTY");
         delete positions[msg.sender][rangeId];
         delete tokenPositions[tokenId];
