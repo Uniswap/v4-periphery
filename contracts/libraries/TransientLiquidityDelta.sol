@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 /// @title a library to store callers' currency deltas in transient storage
 /// @dev this library implements the equivalent of a mapping, as transient storage can only be accessed in assembly
 library TransientLiquidityDelta {
+
     /// @notice calculates which storage slot a delta should be stored in for a given caller and currency
     function _computeSlot(address caller_, Currency currency) internal pure returns (bytes32 hashSlot) {
         assembly {
@@ -18,8 +19,8 @@ library TransientLiquidityDelta {
 
     /// @notice Flush a BalanceDelta into transient storage for a given holder
     function flush(BalanceDelta delta, address holder, Currency currency0, Currency currency1) internal {
-        setDelta(currency0, holder, delta.amount0());
-        setDelta(currency1, holder, delta.amount1());
+        addDelta(currency0, holder, delta.amount0());
+        addDelta(currency1, holder, delta.amount1());
     }
 
     function addDelta(Currency currency, address caller, int128 delta) internal {
@@ -31,7 +32,7 @@ library TransientLiquidityDelta {
         }
     }
 
-    function subDelta(Currency currency, address caller, int128 delta) internal {
+    function subtractDelta(Currency currency, address caller, int128 delta) internal {
         bytes32 hashSlot = _computeSlot(caller, currency);
         assembly {
             let oldValue := tload(hashSlot)
@@ -40,8 +41,13 @@ library TransientLiquidityDelta {
         }
     }
 
+    function getBalanceDelta(address holder, Currency currency0, Currency currency1) internal view returns (BalanceDelta delta) {
+        delta = toBalanceDelta(getDelta(currency0, holder), getDelta(currency1, holder));
+    }
+
+    /// Copied from v4-core/src/libraries/CurrencyDelta.sol:
     /// @notice sets a new currency delta for a given caller and currency
-    function setDelta(Currency currency, address caller, int256 delta) internal {
+    function setDelta(Currency currency, address caller, int128 delta) internal {
         bytes32 hashSlot = _computeSlot(caller, currency);
 
         assembly {
@@ -50,7 +56,8 @@ library TransientLiquidityDelta {
     }
 
     /// @notice gets a new currency delta for a given caller and currency
-    function getDelta(Currency currency, address caller) internal view returns (int256 delta) {
+    // TODO: is returning 128 bits safe?
+    function getDelta(Currency currency, address caller) internal view returns (int128 delta) {
         bytes32 hashSlot = _computeSlot(caller, currency);
 
         assembly {

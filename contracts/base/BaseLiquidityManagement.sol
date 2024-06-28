@@ -24,6 +24,7 @@ import {IBaseLiquidityManagement} from "../interfaces/IBaseLiquidityManagement.s
 import {PositionLibrary} from "../libraries/Position.sol";
 import {BalanceDeltaExtensionLibrary} from "../libraries/BalanceDeltaExtensionLibrary.sol";
 import {LiquidityDeltaAccounting} from "../libraries/LiquidityDeltaAccounting.sol";
+import {TransientLiquidityDelta} from "../libraries/TransientLiquidityDelta.sol";
 
 import "forge-std/console2.sol";
 
@@ -40,6 +41,8 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
     using PositionLibrary for IBaseLiquidityManagement.Position;
     using BalanceDeltaExtensionLibrary for BalanceDelta;
     using LiquidityDeltaAccounting for BalanceDelta;
+    using TransientLiquidityDelta for BalanceDelta;
+    using TransientLiquidityDelta for Currency;
 
     mapping(address owner => mapping(LiquidityRangeId rangeId => Position)) public positions;
 
@@ -101,6 +104,8 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         // Calculate the portion of the liquidityDelta that is attributable to the caller.
         // We must account for fees that might be owed to other users on the same range.
         (callerDelta, thisDelta) = liquidityDelta.split(callerFeesAccrued, totalFeesAccrued);
+        callerDelta.flush(owner, range.poolKey.currency0, range.poolKey.currency1);
+        thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         // Update position storage, flushing the callerDelta value to tokensOwed first if necessary.
         // If callerDelta > 0, then even after investing callerFeesAccrued, the caller still has some amount to collect that were not added into the position so they are accounted to tokensOwed and removed from the final callerDelta returned.

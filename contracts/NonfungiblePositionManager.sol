@@ -18,6 +18,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {TransientLiquidityDelta} from "./libraries/TransientLiquidityDelta.sol";
 
 contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
     using CurrencyLibrary for Currency;
@@ -27,6 +28,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
+    using TransientLiquidityDelta for address;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 private _nextId = 1;
@@ -69,10 +71,12 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     ) public payable returns (uint256 tokenId, BalanceDelta delta) {
         // TODO: optimization, read/write manager.isUnlocked to avoid repeated external calls for batched execution
         if (manager.isUnlocked()) {
-            BalanceDelta thisDelta;
-            (delta, thisDelta) = _increaseLiquidity(recipient, range, liquidity, hookData);
+            _increaseLiquidity(recipient, range, liquidity, hookData);
 
             // TODO: should be triggered by zeroOut in _execute...
+            delta = recipient.getBalanceDelta(range.poolKey.currency0, range.poolKey.currency1);
+            BalanceDelta thisDelta = address(this).getBalanceDelta(range.poolKey.currency0, range.poolKey.currency1);
+
             _closeCallerDeltas(delta, range.poolKey.currency0, range.poolKey.currency1, recipient, false);
             _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
 
