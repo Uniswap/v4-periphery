@@ -36,7 +36,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         int24 tickSpacing,
         IHooks hooks
     );
-    event ModifyPosition(
+    event ModifyLiquidity(
         PoolId indexed poolId, address indexed sender, int24 tickLower, int24 tickUpper, int256 liquidityDelta
     );
     event Swap(
