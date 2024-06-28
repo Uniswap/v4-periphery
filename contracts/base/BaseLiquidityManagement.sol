@@ -93,7 +93,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         LiquidityRange memory range,
         uint256 liquidityToAdd,
         bytes memory hookData
-    ) internal returns (BalanceDelta callerDelta, BalanceDelta thisDelta) {
+    ) internal {
         // Note that the liquidityDelta includes totalFeesAccrued. The totalFeesAccrued is returned separately for accounting purposes.
         (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) =
             _modifyLiquidity(owner, range, liquidityToAdd.toInt256(), hookData);
@@ -106,7 +106,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
         // Calculate the portion of the liquidityDelta that is attributable to the caller.
         // We must account for fees that might be owed to other users on the same range.
-        (callerDelta, thisDelta) = liquidityDelta.split(callerFeesAccrued, totalFeesAccrued);
+        (BalanceDelta callerDelta, BalanceDelta thisDelta) = liquidityDelta.split(callerFeesAccrued, totalFeesAccrued);
 
         // Update position storage, flushing the callerDelta value to tokensOwed first if necessary.
         // If callerDelta > 0, then even after investing callerFeesAccrued, the caller still has some amount to collect that were not added into the position so they are accounted to tokensOwed and removed from the final callerDelta returned.
@@ -169,7 +169,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         LiquidityRange memory range,
         uint256 liquidityToRemove,
         bytes memory hookData
-    ) internal returns (BalanceDelta callerDelta, BalanceDelta thisDelta) {
+    ) internal {
         (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) =
             _modifyLiquidity(owner, range, -(liquidityToRemove.toInt256()), hookData);
 
@@ -180,7 +180,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         (BalanceDelta callerFeesAccrued) = _updateFeeGrowth(range, position);
 
         // Account for fees accrued to other users on the same range.
-        (callerDelta, thisDelta) = liquidityDelta.split(callerFeesAccrued, totalFeesAccrued);
+        (BalanceDelta callerDelta, BalanceDelta thisDelta) = liquidityDelta.split(callerFeesAccrued, totalFeesAccrued);
 
         BalanceDelta tokensOwed;
 
@@ -203,8 +203,9 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
     function _collect(address owner, LiquidityRange memory range, bytes memory hookData)
         internal
-        returns (BalanceDelta callerDelta, BalanceDelta thisDelta)
     {
+        BalanceDelta callerDelta;
+        BalanceDelta thisDelta;
         Position storage position = positions[owner][range.toId()];
 
         // Only call modify if there is still liquidty in this position.
