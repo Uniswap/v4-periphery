@@ -14,7 +14,7 @@ import {IV4Router} from "./interfaces/IV4Router.sol";
 
 /// @title UniswapV4Router
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
-abstract contract V4Router is IV4Router, IUnlockCallback {
+abstract contract V4Router is IV4Router {
     using CurrencyLibrary for Currency;
 
     IPoolManager immutable poolManager;
