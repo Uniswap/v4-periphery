@@ -39,8 +39,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
-    function unlockAndExecute(bytes[] memory data) public returns (BalanceDelta delta) {
-        delta = abi.decode(manager.unlock(abi.encode(data)), (BalanceDelta));
+    function unlockAndExecute(bytes[] memory data) public returns (bytes memory) {
+        return manager.unlock(abi.encode(data));
     }
 
     function _unlockCallback(bytes calldata payload) internal override returns (bytes memory) {
@@ -75,15 +75,16 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             // TODO: should be triggered by zeroOut in _execute...
             _closeCallerDeltas(delta, range.poolKey.currency0, range.poolKey.currency1, recipient, false);
             _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
+
+            // mint receipt token
+            _mint(recipient, (tokenId = _nextId++));
+            tokenPositions[tokenId] = TokenPosition({owner: recipient, range: range});
         } else {
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.mint.selector, range, liquidity, deadline, recipient, hookData);
-            delta = unlockAndExecute(data);
+            bytes memory result = unlockAndExecute(data);
+            (tokenId, delta) = abi.decode(result, (uint256, BalanceDelta));
         }
-
-        // mint receipt token
-        _mint(recipient, (tokenId = _nextId++));
-        tokenPositions[tokenId] = TokenPosition({owner: recipient, range: range});
     }
 
     // NOTE: more expensive since LiquidityAmounts is used onchain
@@ -125,7 +126,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         } else {
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.increaseLiquidity.selector, tokenId, liquidity, hookData, claims);
-            delta = unlockAndExecute(data);
+            bytes memory result = unlockAndExecute(data);
+            delta = abi.decode(result, (BalanceDelta));
         }
     }
 
@@ -145,7 +147,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         } else {
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.decreaseLiquidity.selector, tokenId, liquidity, hookData, claims);
-            delta = unlockAndExecute(data);
+            bytes memory result = unlockAndExecute(data);
+            (delta, thisDelta) = abi.decode(result, (BalanceDelta, BalanceDelta));
         }
     }
 
@@ -189,7 +192,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         } else {
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.collect.selector, tokenId, recipient, hookData, claims);
-            delta = unlockAndExecute(data);
+            bytes memory result = unlockAndExecute(data);
+            delta = abi.decode(result, (BalanceDelta));
         }
     }
 
