@@ -63,4 +63,15 @@ interface INonfungiblePositionManager {
     function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
         external
         returns (BalanceDelta delta);
+
+    /// @notice Execute a batch of external calls by unlocking the PoolManager
+    /// @param data an array of abi.encodeWithSelector(<selector>, <args>) for each call
+    /// @return delta The final delta changes of the caller
+    function unlockAndExecute(bytes[] memory data) external returns (BalanceDelta delta);
+
+    /// @notice Returns the fees owed for a position. Includes unclaimed fees + custodied fees + claimable fees
+    /// @param tokenId The ID of the position
+    /// @return token0Owed The amount of token0 owed
+    /// @return token1Owed The amount of token1 owed
+    function feesOwed(uint256 tokenId) external view returns (uint256 token0Owed, uint256 token1Owed);
 }
