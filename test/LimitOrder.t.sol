@@ -21,7 +21,7 @@ contract TestLimitOrder is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
-    uint160 constant SQRT_RATIO_10_1 = 250541448375047931186413801569;
+    uint160 constant SQRT_PRICE_10_1 = 250541448375047931186413801569;
 
     HookEnabledSwapRouter router;
     TestERC20 token0;
@@ -65,7 +65,7 @@ contract TestLimitOrder is Test, Deployers {
     function testGetTickLowerLastWithDifferentPrice() public {
         PoolKey memory differentKey =
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 3000, 61, limitOrder);
-        manager.initialize(differentKey, SQRT_RATIO_10_1, ZERO_BYTES);
+        manager.initialize(differentKey, SQRT_PRICE_10_1, ZERO_BYTES);
         assertEq(limitOrder.getTickLowerLast(differentKey.toId()), 22997);
     }
 

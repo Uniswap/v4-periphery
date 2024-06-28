@@ -54,8 +54,8 @@ contract Quoter is IQuoter, IUnlockCallback {
         _;
     }
 
-    constructor(address _poolManager) {
-        manager = IPoolManager(_poolManager);
+    constructor(address _manager) {
+        manager = IPoolManager(_manager);
     }
 
     /// @inheritdoc IQuoter
