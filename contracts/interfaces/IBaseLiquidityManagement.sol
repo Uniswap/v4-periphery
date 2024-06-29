@@ -21,11 +21,7 @@ interface IBaseLiquidityManagement {
         uint128 tokensOwed1;
     }
 
-    enum LiquidityOperation {
-        INCREASE,
-        DECREASE,
-        COLLECT
-    }
+    error LockFailure();
 
     /// @notice Fees owed for a given liquidity position. Includes materialized fees and uncollected fees.
     /// @param owner The owner of the liquidity position

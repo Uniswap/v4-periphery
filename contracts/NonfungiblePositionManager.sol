@@ -16,6 +16,7 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
@@ -24,10 +25,11 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     using PoolIdLibrary for PoolKey;
     using LiquidityRangeIdLibrary for LiquidityRange;
     using StateLibrary for IPoolManager;
+    using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
 
     /// @dev The ID of the next token that will be minted. Skips 0
-    uint256 private _nextId = 1;
+    uint256 public nextTokenId = 1;
 
     // maps the ERC721 tokenId to the keys that uniquely identify a liquidity position (owner, range)
     mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
@@ -37,6 +39,25 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
+    function unlockAndExecute(bytes[] memory data) public returns (bytes memory) {
+        return manager.unlock(abi.encode(data));
+    }
+
+    function _unlockCallback(bytes calldata payload) internal override returns (bytes memory) {
+        bytes[] memory data = abi.decode(payload, (bytes[]));
+
+        bool success;
+        bytes memory returnData;
+        for (uint256 i; i < data.length; i++) {
+            // TODO: bubble up the return
+            (success, returnData) = address(this).call(data[i]);
+            if (!success) revert("EXECUTE_FAILED");
+        }
+        // zeroOut();
+
+        return returnData;
+    }
+
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
     // TODO: deadline check
     function mint(
@@ -45,13 +66,26 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         uint256 deadline,
         address recipient,
         bytes calldata hookData
-    ) public payable returns (uint256 tokenId, BalanceDelta delta) {
-        // delta = modifyLiquidity(range, liquidity.toInt256(), hookData, false);
-        delta = _lockAndIncreaseLiquidity(msg.sender, range, liquidity, hookData, false);
+    ) public payable returns (BalanceDelta delta) {
+        // TODO: optimization, read/write manager.isUnlocked to avoid repeated external calls for batched execution
+        if (manager.isUnlocked()) {
+            BalanceDelta thisDelta;
+            (delta, thisDelta) = _increaseLiquidity(recipient, range, liquidity, hookData);
 
-        // mint receipt token
-        _mint(recipient, (tokenId = _nextId++));
-        tokenPositions[tokenId] = TokenPosition({owner: msg.sender, range: range});
+            // TODO: should be triggered by zeroOut in _execute...
+            _closeCallerDeltas(delta, range.poolKey.currency0, range.poolKey.currency1, recipient, false);
+            _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
+
+            // mint receipt token
+            uint256 tokenId;
+            _mint(recipient, (tokenId = nextTokenId++));
+            tokenPositions[tokenId] = TokenPosition({owner: recipient, range: range});
+        } else {
+            bytes[] memory data = new bytes[](1);
+            data[0] = abi.encodeWithSelector(this.mint.selector, range, liquidity, deadline, recipient, hookData);
+            bytes memory result = unlockAndExecute(data);
+            delta = abi.decode(result, (BalanceDelta));
+        }
     }
 
     // NOTE: more expensive since LiquidityAmounts is used onchain
@@ -80,16 +114,44 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        delta = _lockAndIncreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
+
+        if (manager.isUnlocked()) {
+            BalanceDelta thisDelta;
+            (delta, thisDelta) = _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
+
+            // TODO: should be triggered by zeroOut in _execute...
+            _closeCallerDeltas(
+                delta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1, tokenPos.owner, claims
+            );
+            _closeThisDeltas(thisDelta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
+        } else {
+            bytes[] memory data = new bytes[](1);
+            data[0] = abi.encodeWithSelector(this.increaseLiquidity.selector, tokenId, liquidity, hookData, claims);
+            bytes memory result = unlockAndExecute(data);
+            delta = abi.decode(result, (BalanceDelta));
+        }
     }
 
     function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
         public
         isAuthorizedForToken(tokenId)
-        returns (BalanceDelta delta, BalanceDelta thisDelta)
+        returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        (delta, thisDelta) = _lockAndDecreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, claims);
+
+        if (manager.isUnlocked()) {
+            BalanceDelta thisDelta;
+            (delta, thisDelta) = _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
+            _closeCallerDeltas(
+                delta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1, tokenPos.owner, claims
+            );
+            _closeThisDeltas(thisDelta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
+        } else {
+            bytes[] memory data = new bytes[](1);
+            data[0] = abi.encodeWithSelector(this.decreaseLiquidity.selector, tokenId, liquidity, hookData, claims);
+            bytes memory result = unlockAndExecute(data);
+            delta = abi.decode(result, (BalanceDelta));
+        }
     }
 
     function burn(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
@@ -104,7 +166,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         LiquidityRangeId rangeId = tokenPosition.range.toId();
         Position storage position = positions[msg.sender][rangeId];
         if (position.liquidity > 0) {
-            (delta,) = decreaseLiquidity(tokenId, position.liquidity, hookData, claims);
+            delta = decreaseLiquidity(tokenId, position.liquidity, hookData, claims);
         }
 
         collect(tokenId, recipient, hookData, claims);
@@ -122,7 +184,19 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        delta = _lockAndCollect(tokenPos.owner, tokenPos.range, hookData, claims);
+        if (manager.isUnlocked()) {
+            BalanceDelta thisDelta;
+            (delta, thisDelta) = _collect(tokenPos.owner, tokenPos.range, hookData);
+            _closeCallerDeltas(
+                delta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1, tokenPos.owner, claims
+            );
+            _closeThisDeltas(thisDelta, tokenPos.range.poolKey.currency0, tokenPos.range.poolKey.currency1);
+        } else {
+            bytes[] memory data = new bytes[](1);
+            data[0] = abi.encodeWithSelector(this.collect.selector, tokenId, recipient, hookData, claims);
+            bytes memory result = unlockAndExecute(data);
+            delta = abi.decode(result, (BalanceDelta));
+        }
     }
 
     function feesOwed(uint256 tokenId) external view returns (uint256 token0Owed, uint256 token1Owed) {
@@ -150,7 +224,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     }
 
     modifier isAuthorizedForToken(uint256 tokenId) {
-        require(_isApprovedOrOwner(msg.sender, tokenId), "Not approved");
+        require(msg.sender == address(this) || _isApprovedOrOwner(msg.sender, tokenId), "Not approved");
         _;
     }
 }

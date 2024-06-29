@@ -56,12 +56,11 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        (uint256 tokenId, BalanceDelta delta) =
+        BalanceDelta delta =
             lpm.mint(range, uint256(params.liquidityDelta), block.timestamp + 1, address(this), ZERO_BYTES);
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
 
-        assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, uint256(params.liquidityDelta));
@@ -247,8 +246,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        (BalanceDelta delta, BalanceDelta thisDelta) =
-            lpm.decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
+        BalanceDelta delta = lpm.decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
 
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);

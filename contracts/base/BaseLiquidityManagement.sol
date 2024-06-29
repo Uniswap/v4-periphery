@@ -27,7 +27,7 @@ import {LiquidityDeltaAccounting} from "../libraries/LiquidityDeltaAccounting.so
 
 import "forge-std/console2.sol";
 
-contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
+abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
     using LiquidityRangeIdLibrary for LiquidityRange;
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
@@ -62,29 +62,6 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
 
         if (callerDelta1 < 0) currency1.settle(manager, owner, uint256(int256(-callerDelta1)), claims);
         else if (callerDelta1 > 0) currency1.take(manager, owner, uint128(callerDelta1), claims);
-    }
-
-    function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        (
-            LiquidityOperation op,
-            address owner,
-            LiquidityRange memory range,
-            uint256 liquidityChange,
-            bytes memory hookData,
-            bool claims
-        ) = abi.decode(data, (LiquidityOperation, address, LiquidityRange, uint256, bytes, bool));
-
-        if (op == LiquidityOperation.INCREASE) {
-            return abi.encode(_increaseLiquidityAndZeroOut(owner, range, liquidityChange, hookData, claims));
-        } else if (op == LiquidityOperation.DECREASE) {
-            (BalanceDelta callerDelta, BalanceDelta thisDelta) =
-                _decreaseLiquidityAndZeroOut(owner, range, liquidityChange, hookData, claims);
-            return abi.encode(callerDelta, thisDelta);
-        } else if (op == LiquidityOperation.COLLECT) {
-            return abi.encode(_collectAndZeroOut(owner, range, 0, hookData, claims));
-        } else {
-            return new bytes(0);
-        }
     }
 
     function _modifyLiquidity(address owner, LiquidityRange memory range, int256 liquidityChange, bytes memory hookData)
@@ -142,20 +119,6 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         position.addLiquidity(liquidityToAdd);
     }
 
-    function _increaseLiquidityAndZeroOut(
-        address owner,
-        LiquidityRange memory range,
-        uint256 liquidityToAdd,
-        bytes memory hookData,
-        bool claims
-    ) internal returns (BalanceDelta callerDelta) {
-        BalanceDelta thisDelta;
-        // TODO move callerDelta and thisDelta to transient storage?
-        (callerDelta, thisDelta) = _increaseLiquidity(owner, range, liquidityToAdd, hookData);
-        _closeCallerDeltas(callerDelta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
-        _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
-    }
-
     // When chaining many actions, this should be called at the very end to close out any open deltas owed to or by this contract for other users on the same range.
     // This is safe because any amounts the caller should not pay or take have already been accounted for in closeCallerDeltas.
     function _closeThisDeltas(BalanceDelta delta, Currency currency0, Currency currency1) internal {
@@ -188,19 +151,6 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         callerDelta = useAmount0 ? callerDelta.setAmount0(0) : callerDelta.setAmount1(0);
 
         return (tokensOwed, callerDelta, thisDelta);
-    }
-
-    function _lockAndIncreaseLiquidity(
-        address owner,
-        LiquidityRange memory range,
-        uint256 liquidityToAdd,
-        bytes memory hookData,
-        bool claims
-    ) internal returns (BalanceDelta) {
-        return abi.decode(
-            manager.unlock(abi.encode(LiquidityOperation.INCREASE, owner, range, liquidityToAdd, hookData, claims)),
-            (BalanceDelta)
-        );
     }
 
     /// Any outstanding amounts owed to the caller from the underlying modify call must be collected explicitly with `collect`.
@@ -239,31 +189,6 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         position.subtractLiquidity(liquidityToRemove);
     }
 
-    function _decreaseLiquidityAndZeroOut(
-        address owner,
-        LiquidityRange memory range,
-        uint256 liquidityToRemove,
-        bytes memory hookData,
-        bool claims
-    ) internal returns (BalanceDelta callerDelta, BalanceDelta thisDelta) {
-        (callerDelta, thisDelta) = _decreaseLiquidity(owner, range, liquidityToRemove, hookData);
-        _closeCallerDeltas(callerDelta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
-        _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
-    }
-
-    function _lockAndDecreaseLiquidity(
-        address owner,
-        LiquidityRange memory range,
-        uint256 liquidityToRemove,
-        bytes memory hookData,
-        bool claims
-    ) internal returns (BalanceDelta, BalanceDelta) {
-        return abi.decode(
-            manager.unlock(abi.encode(LiquidityOperation.DECREASE, owner, range, liquidityToRemove, hookData, claims)),
-            (BalanceDelta, BalanceDelta)
-        );
-    }
-
     function _collect(address owner, LiquidityRange memory range, bytes memory hookData)
         internal
         returns (BalanceDelta callerDelta, BalanceDelta thisDelta)
@@ -293,25 +218,6 @@ contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallback {
         thisDelta = thisDelta - tokensOwed;
 
         position.clearTokensOwed();
-    }
-
-    function _collectAndZeroOut(address owner, LiquidityRange memory range, uint256, bytes memory hookData, bool claims)
-        internal
-        returns (BalanceDelta callerDelta)
-    {
-        BalanceDelta thisDelta;
-        (callerDelta, thisDelta) = _collect(owner, range, hookData);
-        _closeCallerDeltas(callerDelta, range.poolKey.currency0, range.poolKey.currency1, owner, claims);
-        _closeThisDeltas(thisDelta, range.poolKey.currency0, range.poolKey.currency1);
-    }
-
-    function _lockAndCollect(address owner, LiquidityRange memory range, bytes memory hookData, bool claims)
-        internal
-        returns (BalanceDelta)
-    {
-        return abi.decode(
-            manager.unlock(abi.encode(LiquidityOperation.COLLECT, owner, range, 0, hookData, claims)), (BalanceDelta)
-        );
     }
 
     function _updateFeeGrowth(LiquidityRange memory range, Position storage position)
