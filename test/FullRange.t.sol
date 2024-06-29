@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {FullRange} from "../contracts/hooks/examples/FullRange.sol";
-import {FullRangeImplementation} from "./shared/implementation/FullRangeImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
@@ -21,6 +20,7 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {HookTestAddress} from "./utils/HookTestAddress.sol";
 
 contract TestFullRange is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -66,8 +66,10 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     MockERC20 token1;
     MockERC20 token2;
 
-    FullRangeImplementation fullRange = FullRangeImplementation(
-        address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG))
+    FullRange fullRange = FullRange(
+        HookTestAddress.getHookAddress(
+            uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG)
+        )
     );
 
     PoolId id;
@@ -87,8 +89,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
         token1 = tokens[1];
         token2 = tokens[2];
 
-        FullRangeImplementation impl = new FullRangeImplementation(manager, fullRange);
-        vm.etch(address(fullRange), address(impl).code);
+        deployCodeTo("contracts/hooks/examples/FullRange.sol:FullRange", abi.encode(manager), address(fullRange));
 
         key = createPoolKey(token0, token1);
         id = key.toId();
