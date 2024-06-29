@@ -85,7 +85,8 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
@@ -134,7 +135,8 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
@@ -180,11 +182,13 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -257,11 +261,13 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -321,11 +327,13 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -385,11 +393,13 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // donate to create fees
         donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);

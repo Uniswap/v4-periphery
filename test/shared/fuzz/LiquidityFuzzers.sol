@@ -20,13 +20,14 @@ contract LiquidityFuzzers is Fuzzers {
     ) internal returns (uint256, IPoolManager.ModifyLiquidityParams memory, BalanceDelta) {
         params = Fuzzers.createFuzzyLiquidityParams(key, params, sqrtPriceX96);
 
-        (uint256 tokenId, BalanceDelta delta) = lpm.mint(
+        BalanceDelta delta = lpm.mint(
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper}),
             uint256(params.liquidityDelta),
             block.timestamp,
             recipient,
             hookData
         );
+        uint256 tokenId = lpm.nextTokenId() - 1;
         return (tokenId, params, delta);
     }
 }
