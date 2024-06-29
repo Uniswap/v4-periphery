@@ -152,7 +152,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
         return (tokensOwed, callerDelta, thisDelta);
     }
-    
+
     /// Any outstanding amounts owed to the caller from the underlying modify call must be collected explicitly with `collect`.
     function _decreaseLiquidity(
         address owner,

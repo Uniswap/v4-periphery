@@ -103,14 +103,16 @@ contract GasTest is Test, Deployers, GasSnapshot {
     }
 
     function test_gas_increaseLiquidity_erc20() public {
-        (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
 
         lpm.increaseLiquidity(tokenId, 1000 ether, ZERO_BYTES, false);
         snapLastCall("increaseLiquidity_erc20");
     }
 
     function test_gas_increaseLiquidity_erc6909() public {
-        (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
 
         lpm.increaseLiquidity(tokenId, 1000 ether, ZERO_BYTES, true);
         snapLastCall("increaseLiquidity_erc6909");
@@ -125,7 +127,8 @@ contract GasTest is Test, Deployers, GasSnapshot {
 
         // alice provides liquidity
         vm.prank(alice);
-        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
@@ -159,11 +162,13 @@ contract GasTest is Test, Deployers, GasSnapshot {
 
         // alice provides liquidity
         vm.prank(alice);
-        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // donate to create fees
         donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
@@ -203,11 +208,13 @@ contract GasTest is Test, Deployers, GasSnapshot {
 
         // alice provides liquidity
         vm.prank(alice);
-        (uint256 tokenIdAlice,) = lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        (uint256 tokenIdBob,) = lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // donate to create fees
         donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
@@ -230,14 +237,16 @@ contract GasTest is Test, Deployers, GasSnapshot {
     }
 
     function test_gas_decreaseLiquidity_erc20() public {
-        (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
 
         lpm.decreaseLiquidity(tokenId, 10_000 ether, ZERO_BYTES, false);
         snapLastCall("decreaseLiquidity_erc20");
     }
 
     function test_gas_decreaseLiquidity_erc6909() public {
-        (uint256 tokenId,) = lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
 
         lpm.decreaseLiquidity(tokenId, 10_000 ether, ZERO_BYTES, true);
         snapLastCall("decreaseLiquidity_erc6909");
