@@ -79,7 +79,8 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
     function test_execute_increaseLiquidity_once(uint256 initialLiquidity, uint256 liquidityToAdd) public {
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
-        (uint256 tokenId,) = lpm.mint(range, initialLiquidity, 0, address(this), ZERO_BYTES);
+        lpm.mint(range, initialLiquidity, 0, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
 
         bytes[] memory data = new bytes[](1);
         data[0] = abi.encodeWithSelector(
@@ -100,7 +101,8 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         initialiLiquidity = bound(initialiLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
         liquidityToAdd2 = bound(liquidityToAdd2, 1e18, 1000e18);
-        (uint256 tokenId,) = lpm.mint(range, initialiLiquidity, 0, address(this), ZERO_BYTES);
+        lpm.mint(range, initialiLiquidity, 0, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
 
         bytes[] memory data = new bytes[](2);
         data[0] = abi.encodeWithSelector(

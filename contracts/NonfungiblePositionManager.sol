@@ -31,7 +31,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     using TransientLiquidityDelta for Currency;
 
     /// @dev The ID of the next token that will be minted. Skips 0
-    uint256 private _nextId = 1;
+    uint256 public nextTokenId = 1;
 
     // maps the ERC721 tokenId to the keys that uniquely identify a liquidity position (owner, range)
     mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
@@ -71,19 +71,20 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         uint256 deadline,
         address recipient,
         bytes calldata hookData
-    ) public payable returns (uint256 tokenId, BalanceDelta delta) {
+    ) public payable returns (BalanceDelta delta) {
         // TODO: optimization, read/write manager.isUnlocked to avoid repeated external calls for batched execution
         if (manager.isUnlocked()) {
             _increaseLiquidity(recipient, range, liquidity, hookData);
 
             // mint receipt token
-            _mint(recipient, (tokenId = _nextId++));
+            uint256 tokenId;
+            _mint(recipient, (tokenId = nextTokenId++));
             tokenPositions[tokenId] = TokenPosition({owner: recipient, range: range});
         } else {
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.mint.selector, range, liquidity, deadline, recipient, hookData);
             bytes memory result = unlockAndExecute(data);
-            (tokenId, delta) = abi.decode(result, (uint256, BalanceDelta));
+            delta = abi.decode(result, (BalanceDelta));
         }
     }
 
@@ -127,7 +128,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
         public
         isAuthorizedForToken(tokenId)
-        returns (BalanceDelta delta, BalanceDelta thisDelta)
+        returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
@@ -137,7 +138,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.decreaseLiquidity.selector, tokenId, liquidity, hookData, claims);
             bytes memory result = unlockAndExecute(data);
-            (delta, thisDelta) = abi.decode(result, (BalanceDelta, BalanceDelta));
+            delta = abi.decode(result, (BalanceDelta));
         }
     }
 
@@ -153,7 +154,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         LiquidityRangeId rangeId = tokenPosition.range.toId();
         Position storage position = positions[msg.sender][rangeId];
         if (position.liquidity > 0) {
-            (delta,) = decreaseLiquidity(tokenId, position.liquidity, hookData, claims);
+            delta = decreaseLiquidity(tokenId, position.liquidity, hookData, claims);
         }
 
         collect(tokenId, recipient, hookData, claims);

@@ -18,7 +18,7 @@ interface INonfungiblePositionManager {
         uint256 deadline,
         address recipient,
         bytes calldata hookData
-    ) external payable returns (uint256 tokenId, BalanceDelta delta);
+    ) external payable returns (BalanceDelta delta);
 
     // NOTE: more expensive since LiquidityAmounts is used onchain
     // function mint(MintParams calldata params) external payable returns (uint256 tokenId, BalanceDelta delta);
@@ -38,11 +38,10 @@ interface INonfungiblePositionManager {
     /// @param liquidity The amount of liquidity to remove
     /// @param hookData Arbitrary data passed to the hook
     /// @param claims Whether the removed liquidity is sent as ERC-6909 claim tokens
-    /// @return delta Corresponding balance changes as a result of decreasing liquidity applied to user
-    /// @return thisDelta Corresponding balance changes as a result of decreasing liquidity applied to lpm
+    /// @return delta Corresponding balance changes as a result of decreasing liquidity applied to user (number of tokens credited to tokensOwed)
     function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
         external
-        returns (BalanceDelta delta, BalanceDelta thisDelta);
+        returns (BalanceDelta delta);
 
     /// @notice Burn a position and delete the tokenId
     /// @dev It removes liquidity and collects fees if the position is not empty
@@ -76,4 +75,6 @@ interface INonfungiblePositionManager {
     /// @return token0Owed The amount of token0 owed
     /// @return token1Owed The amount of token1 owed
     function feesOwed(uint256 tokenId) external view returns (uint256 token0Owed, uint256 token1Owed);
+
+    function nextTokenId() external view returns (uint256);
 }
