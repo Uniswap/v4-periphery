@@ -87,7 +87,10 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
             INonfungiblePositionManager.increaseLiquidity.selector, tokenId, liquidityToAdd, ZERO_BYTES, false
         );
 
-        lpm.unlockAndExecute(data);
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+        lpm.unlockAndExecute(data, currencies);
 
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
@@ -112,7 +115,10 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
             INonfungiblePositionManager.increaseLiquidity.selector, tokenId, liquidityToAdd2, ZERO_BYTES, false
         );
 
-        lpm.unlockAndExecute(data);
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+        lpm.unlockAndExecute(data, currencies);
 
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, initialiLiquidity + liquidityToAdd + liquidityToAdd2);
@@ -137,7 +143,10 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
             INonfungiblePositionManager.increaseLiquidity.selector, tokenId, liquidityToAdd, ZERO_BYTES, false
         );
 
-        lpm.unlockAndExecute(data);
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+        lpm.unlockAndExecute(data, currencies);
 
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, intialLiquidity + liquidityToAdd);

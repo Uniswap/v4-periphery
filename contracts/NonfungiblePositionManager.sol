@@ -36,6 +36,9 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     // maps the ERC721 tokenId to the keys that uniquely identify a liquidity position (owner, range)
     mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
 
+    // TODO: TSTORE this jawn
+    address internal msgSender;
+
     constructor(IPoolManager _manager)
         BaseLiquidityManagement(_manager)
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
@@ -58,9 +61,14 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
 
         // close the deltas
         for (uint256 i; i < currencies.length; i++) {
-            currencies[i].close(manager, msg.sender);
+            currencies[i].close(manager, msgSender);
             currencies[i].close(manager, address(this));
         }
+
+        // TODO: @sara handle the return
+        // vanilla: return int128[2]
+        // batch: return int128[data.length]
+        return returnData;
     }
 
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
@@ -81,9 +89,14 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             _mint(recipient, (tokenId = nextTokenId++));
             tokenPositions[tokenId] = TokenPosition({owner: recipient, range: range});
         } else {
+            msgSender = msg.sender;
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.mint.selector, range, liquidity, deadline, recipient, hookData);
-            bytes memory result = unlockAndExecute(data);
+
+            Currency[] memory currencies = new Currency[](2);
+            currencies[0] = range.poolKey.currency0;
+            currencies[1] = range.poolKey.currency1;
+            bytes memory result = unlockAndExecute(data, currencies);
             delta = abi.decode(result, (BalanceDelta));
         }
     }
@@ -118,9 +131,14 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         if (manager.isUnlocked()) {
             _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
         } else {
+            msgSender = msg.sender;
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.increaseLiquidity.selector, tokenId, liquidity, hookData, claims);
-            bytes memory result = unlockAndExecute(data);
+
+            Currency[] memory currencies = new Currency[](2);
+            currencies[0] = tokenPos.range.poolKey.currency0;
+            currencies[1] = tokenPos.range.poolKey.currency1;
+            bytes memory result = unlockAndExecute(data, currencies);
             delta = abi.decode(result, (BalanceDelta));
         }
     }
@@ -135,9 +153,14 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         if (manager.isUnlocked()) {
             _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
         } else {
+            msgSender = msg.sender;
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.decreaseLiquidity.selector, tokenId, liquidity, hookData, claims);
-            bytes memory result = unlockAndExecute(data);
+            
+            Currency[] memory currencies = new Currency[](2);
+            currencies[0] = tokenPos.range.poolKey.currency0;
+            currencies[1] = tokenPos.range.poolKey.currency1;
+            bytes memory result = unlockAndExecute(data, currencies);
             delta = abi.decode(result, (BalanceDelta));
         }
     }
@@ -175,9 +198,14 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         if (manager.isUnlocked()) {
             _collect(recipient, tokenPos.range, hookData);
         } else {
+            msgSender = msg.sender;
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.collect.selector, tokenId, recipient, hookData, claims);
-            bytes memory result = unlockAndExecute(data);
+
+            Currency[] memory currencies = new Currency[](2);
+            currencies[0] = tokenPos.range.poolKey.currency0;
+            currencies[1] = tokenPos.range.poolKey.currency1;
+            bytes memory result = unlockAndExecute(data, currencies);
             delta = abi.decode(result, (BalanceDelta));
         }
     }
