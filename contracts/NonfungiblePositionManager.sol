@@ -65,6 +65,9 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             currencies[i].close(manager, address(this));
         }
 
+        // Should just be returning the netted amount that was settled on behalf of the caller (msgSender)
+        // And any recipient deltas settled earlier.
+
         // TODO: @sara handle the return
         // vanilla: return int128[2]
         // batch: return int128[data.length]
@@ -77,21 +80,21 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         LiquidityRange calldata range,
         uint256 liquidity,
         uint256 deadline,
-        address recipient,
+        address owner,
         bytes calldata hookData
     ) public payable returns (BalanceDelta delta) {
         // TODO: optimization, read/write manager.isUnlocked to avoid repeated external calls for batched execution
         if (manager.isUnlocked()) {
-            _increaseLiquidity(recipient, range, liquidity, hookData);
+            _increaseLiquidity(owner, range, liquidity, hookData);
 
             // mint receipt token
             uint256 tokenId;
-            _mint(recipient, (tokenId = nextTokenId++));
-            tokenPositions[tokenId] = TokenPosition({owner: recipient, range: range});
+            _mint(owner, (tokenId = nextTokenId++));
+            tokenPositions[tokenId] = TokenPosition({owner: owner, range: range});
         } else {
             msgSender = msg.sender;
             bytes[] memory data = new bytes[](1);
-            data[0] = abi.encodeWithSelector(this.mint.selector, range, liquidity, deadline, recipient, hookData);
+            data[0] = abi.encodeWithSelector(this.mint.selector, range, liquidity, deadline, owner, hookData);
 
             Currency[] memory currencies = new Currency[](2);
             currencies[0] = range.poolKey.currency0;
@@ -156,7 +159,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             msgSender = msg.sender;
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.decreaseLiquidity.selector, tokenId, liquidity, hookData, claims);
-            
+
             Currency[] memory currencies = new Currency[](2);
             currencies[0] = tokenPos.range.poolKey.currency0;
             currencies[1] = tokenPos.range.poolKey.currency1;
@@ -165,27 +168,15 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         }
     }
 
-    function burn(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
-        external
-        isAuthorizedForToken(tokenId)
-        returns (BalanceDelta delta)
-    {
-        // TODO: Burn currently decreases and collects. However its done under different locks.
-        // Replace once we have the execute multicall.
-        // remove liquidity
-        TokenPosition storage tokenPosition = tokenPositions[tokenId];
-        LiquidityRangeId rangeId = tokenPosition.range.toId();
-        Position storage position = positions[msg.sender][rangeId];
-        if (position.liquidity > 0) {
-            delta = decreaseLiquidity(tokenId, position.liquidity, hookData, claims);
-        }
-
-        collect(tokenId, recipient, hookData, claims);
-        require(position.tokensOwed0 == 0 && position.tokensOwed1 == 0, "NOT_EMPTY");
-        delete positions[msg.sender][rangeId];
+    // TODO return type?
+    function burn(uint256 tokenId) public isAuthorizedForToken(tokenId) returns (BalanceDelta delta) {
+        // TODO: Burn currently requires a decrease and collect call before the token can be deleted. Possible to combine.
+        // We do not need to enforce the pool manager to be unlocked bc this function is purely clearing storage for the minted tokenId.
+        TokenPosition memory tokenPos = tokenPositions[tokenId];
+        // Checks that the full position's liquidity has been removed and all tokens have been collected from tokensOwed.
+        _validateBurn(tokenPos.owner, tokenPos.range);
         delete tokenPositions[tokenId];
-
-        // burn the token
+        // Burn the token.
         _burn(tokenId);
     }
 

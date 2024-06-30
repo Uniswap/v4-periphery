@@ -43,16 +43,12 @@ interface INonfungiblePositionManager {
         external
         returns (BalanceDelta delta);
 
+    // TODO Can decide if we want burn to auto encode a decrease/collect.
     /// @notice Burn a position and delete the tokenId
-    /// @dev It removes liquidity and collects fees if the position is not empty
+    /// @dev It enforces that there is no open liquidity or tokens to be collected
     /// @param tokenId The ID of the position
-    /// @param recipient The address to send the collected tokens to
-    /// @param hookData Arbitrary data passed to the hook
-    /// @param claims Whether the removed liquidity is sent as ERC-6909 claim tokens
     /// @return delta Corresponding balance changes as a result of burning the position
-    function burn(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
-        external
-        returns (BalanceDelta delta);
+    function burn(uint256 tokenId) external returns (BalanceDelta delta);
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
     /// @notice Collect fees for a position
