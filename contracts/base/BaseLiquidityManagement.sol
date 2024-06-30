@@ -49,6 +49,8 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
     constructor(IPoolManager _manager) ImmutableState(_manager) {}
 
+    function _msgSenderInternal() internal virtual returns (address);
+
     function _closeCallerDeltas(
         BalanceDelta callerDeltas,
         Currency currency0,
@@ -120,7 +122,9 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
             (tokensOwed, callerDelta, thisDelta) =
                 _moveCallerDeltaToTokensOwed(false, tokensOwed, callerDelta, thisDelta);
         }
-        callerDelta.flush(owner, range.poolKey.currency0, range.poolKey.currency1);
+
+        // Accrue all deltas to the caller.
+        callerDelta.flush(_msgSenderInternal(), range.poolKey.currency0, range.poolKey.currency1);
         thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         position.addTokensOwed(tokensOwed);

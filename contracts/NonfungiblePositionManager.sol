@@ -20,6 +20,8 @@ import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientSta
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {TransientLiquidityDelta} from "./libraries/TransientLiquidityDelta.sol";
 
+import "forge-std/console2.sol";
+
 contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
@@ -39,12 +41,18 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     // TODO: TSTORE this jawn
     address internal msgSender;
 
+    // TODO: Context is inherited through ERC721 and will be not useful to use _msgSender() which will be address(this) with our current mutlicall.
+    function _msgSenderInternal() internal override returns (address) {
+        return msgSender;
+    }
+
     constructor(IPoolManager _manager)
         BaseLiquidityManagement(_manager)
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
     function unlockAndExecute(bytes[] memory data, Currency[] memory currencies) public returns (bytes memory) {
+        msgSender = msg.sender;
         return manager.unlock(abi.encode(data, currencies));
     }
 
@@ -134,7 +142,6 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         if (manager.isUnlocked()) {
             _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
         } else {
-            msgSender = msg.sender;
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.increaseLiquidity.selector, tokenId, liquidity, hookData, claims);
 
@@ -156,7 +163,6 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         if (manager.isUnlocked()) {
             _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
         } else {
-            msgSender = msg.sender;
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.decreaseLiquidity.selector, tokenId, liquidity, hookData, claims);
 
@@ -189,7 +195,6 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         if (manager.isUnlocked()) {
             _collect(recipient, tokenPos.range, hookData);
         } else {
-            msgSender = msg.sender;
             bytes[] memory data = new bytes[](1);
             data[0] = abi.encodeWithSelector(this.collect.selector, tokenId, recipient, hookData, claims);
 
