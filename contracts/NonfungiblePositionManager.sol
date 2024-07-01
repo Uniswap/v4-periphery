@@ -30,6 +30,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
+    using SafeCast for int256;
     using TransientLiquidityDelta for Currency;
 
     /// @dev The ID of the next token that will be minted. Skips 0
@@ -51,9 +52,9 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
-    function unlockAndExecute(bytes[] memory data, Currency[] memory currencies) public returns (bytes memory) {
+    function unlockAndExecute(bytes[] memory data, Currency[] memory currencies) public returns (int128[] memory) {
         msgSender = msg.sender;
-        return manager.unlock(abi.encode(data, currencies));
+        return abi.decode(manager.unlock(abi.encode(data, currencies)), (int128[]));
     }
 
     function _unlockCallback(bytes calldata payload) internal override returns (bytes memory) {
@@ -62,24 +63,20 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         bool success;
         bytes memory returnData;
         for (uint256 i; i < data.length; i++) {
-            // TODO: bubble up the return
+            // Bubble up revert reason.
             (success, returnData) = address(this).call(data[i]);
-            if (!success) revert("EXECUTE_FAILED");
+            if (!success) revert BatchCallFailed(returnData);
         }
 
-        // close the deltas
+        // TODO: @sauce - should we couple with the currency address?
+        int128[] memory finalDeltas = new int128[](currencies.length);
         for (uint256 i; i < currencies.length; i++) {
-            currencies[i].close(manager, msgSender);
+            finalDeltas[0] = currencies[i].close(manager, msgSender).toInt128();
+            // No need to return the currencies closed by this address.
             currencies[i].close(manager, address(this));
         }
 
-        // Should just be returning the netted amount that was settled on behalf of the caller (msgSender)
-        // And any recipient deltas settled earlier.
-
-        // TODO: @sara handle the return
-        // vanilla: return int128[2]
-        // batch: return int128[data.length]
-        return returnData;
+        return abi.encode(finalDeltas);
     }
 
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
@@ -90,7 +87,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         uint256 deadline,
         address owner,
         bytes calldata hookData
-    ) public payable returns (BalanceDelta delta) {
+    ) public payable returns (BalanceDelta finalDeltas) {
         // TODO: optimization, read/write manager.isUnlocked to avoid repeated external calls for batched execution
         if (manager.isUnlocked()) {
             _increaseLiquidity(owner, range, liquidity, hookData);
@@ -107,8 +104,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             Currency[] memory currencies = new Currency[](2);
             currencies[0] = range.poolKey.currency0;
             currencies[1] = range.poolKey.currency1;
-            bytes memory result = unlockAndExecute(data, currencies);
-            delta = abi.decode(result, (BalanceDelta));
+            int128[] memory _finalDeltas = unlockAndExecute(data, currencies);
+            finalDeltas = toBalanceDelta(_finalDeltas[0], _finalDeltas[1]);
         }
     }
 
@@ -148,8 +145,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             Currency[] memory currencies = new Currency[](2);
             currencies[0] = tokenPos.range.poolKey.currency0;
             currencies[1] = tokenPos.range.poolKey.currency1;
-            bytes memory result = unlockAndExecute(data, currencies);
-            delta = abi.decode(result, (BalanceDelta));
+            int128[] memory _finalDeltas = unlockAndExecute(data, currencies);
+            delta = toBalanceDelta(_finalDeltas[0], _finalDeltas[1]);
         }
     }
 
@@ -169,8 +166,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             Currency[] memory currencies = new Currency[](2);
             currencies[0] = tokenPos.range.poolKey.currency0;
             currencies[1] = tokenPos.range.poolKey.currency1;
-            bytes memory result = unlockAndExecute(data, currencies);
-            delta = abi.decode(result, (BalanceDelta));
+            int128[] memory _finalDeltas = unlockAndExecute(data, currencies);
+            delta = toBalanceDelta(_finalDeltas[0], _finalDeltas[1]);
         }
     }
 
@@ -201,8 +198,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
             Currency[] memory currencies = new Currency[](2);
             currencies[0] = tokenPos.range.poolKey.currency0;
             currencies[1] = tokenPos.range.poolKey.currency1;
-            bytes memory result = unlockAndExecute(data, currencies);
-            delta = abi.decode(result, (BalanceDelta));
+            int128[] memory _finalDeltas = unlockAndExecute(data, currencies);
+            delta = toBalanceDelta(_finalDeltas[0], _finalDeltas[1]);
         }
     }
 

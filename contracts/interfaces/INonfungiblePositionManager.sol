@@ -6,6 +6,8 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {LiquidityRange} from "../types/LiquidityRange.sol";
 
 interface INonfungiblePositionManager {
+    error BatchCallFailed(bytes reason);
+
     struct TokenPosition {
         address owner;
         LiquidityRange range;
@@ -63,8 +65,9 @@ interface INonfungiblePositionManager {
 
     /// @notice Execute a batch of external calls by unlocking the PoolManager
     /// @param data an array of abi.encodeWithSelector(<selector>, <args>) for each call
-    /// @return delta The final delta changes of the caller
-    function unlockAndExecute(bytes[] memory data, Currency[] memory currencies) external returns (bytes memory);
+    /// @return int128[] An array of all final currency deltas applied to/from the caller.
+    /// TODO: How to surface any deltas given to a specified recipient. Could bubble up.
+    function unlockAndExecute(bytes[] memory data, Currency[] memory currencies) external returns (int128[] memory);
 
     /// @notice Returns the fees owed for a position. Includes unclaimed fees + custodied fees + claimable fees
     /// @param tokenId The ID of the position

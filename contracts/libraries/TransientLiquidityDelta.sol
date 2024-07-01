@@ -54,7 +54,7 @@ library TransientLiquidityDelta {
         }
     }
 
-    function close(Currency currency, IPoolManager manager, address holder) internal {
+    function close(Currency currency, IPoolManager manager, address holder) internal returns (int256 delta) {
         // getDelta(currency, holder);
         bytes32 hashSlot = _computeSlot(holder, currency);
         int256 delta;
