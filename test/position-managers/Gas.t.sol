@@ -197,8 +197,14 @@ contract GasTest is Test, Deployers, GasSnapshot {
         donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
 
         // bob collects fees so some of alice's fees are now cached
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(lpm.collect.selector, tokenIdBob, bob, ZERO_BYTES, false);
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
         vm.prank(bob);
-        lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+        lpm.unlockAndExecute(calls, currencies);
 
         // donate to create more fees
         donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
@@ -216,10 +222,10 @@ contract GasTest is Test, Deployers, GasSnapshot {
                 newToken1Owed
             );
 
-            bytes[] memory calls = new bytes[](1);
+            calls = new bytes[](1);
             calls[0] =
                 abi.encodeWithSelector(lpm.increaseLiquidity.selector, tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
-            Currency[] memory currencies = new Currency[](2);
+            currencies = new Currency[](2);
             currencies[0] = currency0;
             currencies[1] = currency1;
 
