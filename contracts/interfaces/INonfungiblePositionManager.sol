@@ -13,7 +13,8 @@ interface INonfungiblePositionManager {
 
     error MustBeUnlockedByThisContract();
 
-    // NOTE: more gas efficient as LiquidityAmounts is used offchain
+    error DeadlinePassed();
+
     function mint(
         LiquidityRange calldata position,
         uint256 liquidity,
@@ -22,29 +23,37 @@ interface INonfungiblePositionManager {
         bytes calldata hookData
     ) external payable;
 
-    // NOTE: more expensive since LiquidityAmounts is used onchain
-    // function mint(MintParams calldata params) external payable returns (uint256 tokenId, BalanceDelta delta);
-
     /// @notice Increase liquidity for an existing position
     /// @param tokenId The ID of the position
     /// @param liquidity The amount of liquidity to add
     /// @param hookData Arbitrary data passed to the hook
     /// @param claims Whether the liquidity increase uses ERC-6909 claim tokens
-    function increaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims) external;
+    function increaseLiquidity(
+        uint256 tokenId,
+        uint256 liquidity,
+        uint256 deadline,
+        bytes calldata hookData,
+        bool claims
+    ) external;
 
     /// @notice Decrease liquidity for an existing position
     /// @param tokenId The ID of the position
     /// @param liquidity The amount of liquidity to remove
     /// @param hookData Arbitrary data passed to the hook
     /// @param claims Whether the removed liquidity is sent as ERC-6909 claim tokens
-    function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims) external;
+    function decreaseLiquidity(
+        uint256 tokenId,
+        uint256 liquidity,
+        uint256 deadline,
+        bytes calldata hookData,
+        bool claims
+    ) external;
 
     // TODO Can decide if we want burn to auto encode a decrease/collect.
     /// @notice Burn a position and delete the tokenId
     /// @dev It enforces that there is no open liquidity or tokens to be collected
     /// @param tokenId The ID of the position
-    /// @return delta Corresponding balance changes as a result of burning the position
-    function burn(uint256 tokenId) external returns (BalanceDelta delta);
+    function burn(uint256 tokenId) external;
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
     /// @notice Collect fees for a position

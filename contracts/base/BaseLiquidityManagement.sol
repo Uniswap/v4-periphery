@@ -49,8 +49,6 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
     constructor(IPoolManager _manager) ImmutableState(_manager) {}
 
-    function _msgSenderInternal() internal virtual returns (address);
-
     function _closeCallerDeltas(
         BalanceDelta callerDeltas,
         Currency currency0,
@@ -92,6 +90,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
     /// Zeroing out the full balance of open deltas accounted to this address is unsafe until the callerDeltas are handled.
     function _increaseLiquidity(
         address owner,
+        address msgSender,
         LiquidityRange memory range,
         uint256 liquidityToAdd,
         bytes memory hookData
@@ -124,7 +123,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         }
 
         // Accrue all deltas to the caller.
-        callerDelta.flush(_msgSenderInternal(), range.poolKey.currency0, range.poolKey.currency1);
+        callerDelta.flush(msgSender, range.poolKey.currency0, range.poolKey.currency1);
         thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         position.addTokensOwed(tokensOwed);
@@ -206,7 +205,13 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
     }
 
     // The recipient may not be the original owner.
-    function _collect(address recipient, address owner, LiquidityRange memory range, bytes memory hookData) internal {
+    function _collect(
+        address recipient,
+        address owner,
+        address msgSender,
+        LiquidityRange memory range,
+        bytes memory hookData
+    ) internal {
         BalanceDelta callerDelta;
         BalanceDelta thisDelta;
         Position storage position = positions[owner][range.toId()];
@@ -233,7 +238,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         callerDelta = callerDelta + tokensOwed;
         thisDelta = thisDelta - tokensOwed;
 
-        if (recipient == _msgSenderInternal()) {
+        if (recipient == msgSender) {
             callerDelta.flush(recipient, range.poolKey.currency0, range.poolKey.currency1);
         } else {
             callerDelta.closeDelta(manager, recipient, range.poolKey.currency0, range.poolKey.currency1);
