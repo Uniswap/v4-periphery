@@ -6,6 +6,9 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {LiquidityRange, LiquidityRangeId} from "../types/LiquidityRange.sol";
 
 interface IBaseLiquidityManagement {
+    error PositionMustBeEmpty();
+    error TokensMustBeCollected();
+
     // details about the liquidity position
     struct Position {
         // the nonce for permits

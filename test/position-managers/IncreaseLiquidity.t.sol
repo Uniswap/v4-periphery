@@ -10,7 +10,7 @@ import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -25,22 +25,19 @@ import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../c
 
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
-contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
+import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
+
+contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
-
-    NonfungiblePositionManager lpm;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
     address bob = makeAddr("BOB");
 
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
-
-    // unused value for the fuzz helper functions
-    uint128 constant DEAD_VALUE = 6969.6969 ether;
 
     // expresses the fee as a wad (i.e. 3000 = 0.003e18 = 0.30%)
     uint256 FEE_WAD;
@@ -85,12 +82,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -112,8 +109,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
-        vm.prank(alice);
-        lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        vm.startPrank(alice);
+        _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        vm.stopPrank();
 
         // alice did not spend any tokens
         assertEq(balance0BeforeAlice, currency0.balanceOf(alice));
@@ -135,12 +133,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
 
         // donate to create fees
         donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
@@ -160,8 +158,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
-        vm.prank(alice);
-        lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        vm.startPrank(alice);
+        _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        vm.stopPrank();
 
         // alice did not spend any tokens
         assertEq(balance0BeforeAlice, currency0.balanceOf(alice));
@@ -182,12 +181,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
@@ -207,16 +206,18 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
                 token1Owed / 2
             );
 
-            vm.prank(alice);
-            lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            vm.startPrank(alice);
+            _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            vm.stopPrank();
         }
 
         {
             // bob collects his fees
             uint256 balance0BeforeBob = currency0.balanceOf(bob);
             uint256 balance1BeforeBob = currency1.balanceOf(bob);
-            vm.prank(bob);
-            lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+            vm.startPrank(bob);
+            _collect(tokenIdBob, bob, ZERO_BYTES, false);
+            vm.stopPrank();
             uint256 balance0AfterBob = currency0.balanceOf(bob);
             uint256 balance1AfterBob = currency1.balanceOf(bob);
             assertApproxEqAbs(
@@ -235,8 +236,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
             // alice collects her fees, which should be about half of the fees
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
-            vm.prank(alice);
-            lpm.collect(tokenIdAlice, alice, ZERO_BYTES, false);
+            vm.startPrank(alice);
+            _collect(tokenIdAlice, alice, ZERO_BYTES, false);
+            vm.stopPrank();
             uint256 balance0AfterAlice = currency0.balanceOf(alice);
             uint256 balance1AfterAlice = currency1.balanceOf(alice);
             assertApproxEqAbs(
@@ -261,12 +263,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
@@ -288,8 +290,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
-            vm.prank(alice);
-            lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            vm.startPrank(alice);
+            _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            vm.stopPrank();
             uint256 balance0AfterAlice = currency0.balanceOf(alice);
             uint256 balance1AfterAlice = currency1.balanceOf(alice);
 
@@ -301,8 +304,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
             // bob collects his fees
             uint256 balance0BeforeBob = currency0.balanceOf(bob);
             uint256 balance1BeforeBob = currency1.balanceOf(bob);
-            vm.prank(bob);
-            lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+            vm.startPrank(bob);
+            _collect(tokenIdBob, bob, ZERO_BYTES, false);
+            vm.stopPrank();
             uint256 balance0AfterBob = currency0.balanceOf(bob);
             uint256 balance1AfterBob = currency1.balanceOf(bob);
             assertApproxEqAbs(
@@ -327,12 +331,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
@@ -343,8 +347,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
 
         // bob collects fees so some of alice's fees are now cached
-        vm.prank(bob);
-        lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+        vm.startPrank(bob);
+        _collect(tokenIdBob, bob, ZERO_BYTES, false);
+        vm.stopPrank();
 
         // swap to create more fees
         swap(key, true, -int256(swapAmount), ZERO_BYTES);
@@ -369,8 +374,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
                 newToken1Owed
             );
 
-            vm.prank(alice);
-            lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            vm.startPrank(alice);
+            _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            vm.stopPrank();
         }
 
         // alice did not spend any tokens
@@ -393,12 +399,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // donate to create fees
@@ -407,8 +413,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
 
         // bob collects fees so some of alice's fees are now cached
-        vm.prank(bob);
-        lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+        vm.startPrank(bob);
+        _collect(tokenIdBob, bob, ZERO_BYTES, false);
+        vm.stopPrank();
 
         // donate to create more fees
         donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
@@ -432,8 +439,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
                 newToken1Owed
             );
 
-            vm.prank(alice);
-            lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            vm.startPrank(alice);
+            _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            vm.stopPrank();
         }
 
         // alice did not spend any tokens
@@ -449,8 +457,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers {
         assertApproxEqAbs(token0Owed, 5e18, 1 wei);
         assertApproxEqAbs(token1Owed, 5e18, 1 wei);
 
-        vm.prank(bob);
-        BalanceDelta result = lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+        vm.startPrank(bob);
+        BalanceDelta result = _collect(tokenIdBob, bob, ZERO_BYTES, false);
+        vm.stopPrank();
         assertApproxEqAbs(result.amount0(), 5e18, 1 wei);
         assertApproxEqAbs(result.amount1(), 5e18, 1 wei);
     }
