@@ -110,9 +110,8 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         vm.warp(10000);
         token0.approve(address(twamm), 100 ether);
-        snapStart("TWAMMSubmitOrder");
         twamm.submitOrder(poolKey, orderKey, 1 ether);
-        snapEnd();
+        snapLastCall("TWAMMSubmitOrder");
 
         ITWAMM.Order memory submittedOrder = twamm.getOrder(poolKey, orderKey);
         (uint256 sellRateCurrent0For1, uint256 earningsFactorCurrent0For1) = twamm.getOrderPool(poolKey, true);

@@ -17,9 +17,8 @@ contract TestOracle is Test, GasSnapshot {
     }
 
     function testInitialize() public {
-        snapStart("OracleInitialize");
         oracle.initialize(OracleImplementation.InitializeParams({time: 1, tick: 1, liquidity: 1}));
-        snapEnd();
+        snapLastCall("OracleInitialize");
 
         assertEq(oracle.index(), 0);
         assertEq(oracle.cardinality(), 1);
@@ -90,29 +89,25 @@ contract TestOracle is Test, GasSnapshot {
     }
 
     function testGas1Slot() public {
-        snapStart("OracleGrow1Slot");
         initializedOracle.grow(2);
-        snapEnd();
+        snapLastCall("OracleGrow1Slot");
     }
 
     function testGas10Slots() public {
-        snapStart("OracleGrow10Slots");
         initializedOracle.grow(11);
-        snapEnd();
+        snapLastCall("OracleGrow10Slots");
     }
 
     function testGas1SlotCardinalityGreater() public {
         initializedOracle.grow(2);
-        snapStart("OracleGrow1SlotCardinalityGreater");
         initializedOracle.grow(3);
-        snapEnd();
+        snapLastCall("OracleGrow1SlotCardinalityGreater");
     }
 
     function testGas10SlotCardinalityGreater() public {
         initializedOracle.grow(2);
-        snapStart("OracleGrow10SlotsCardinalityGreater");
         initializedOracle.grow(12);
-        snapEnd();
+        snapLastCall("OracleGrow10SlotsCardinalityGreater");
     }
 
     function testWrite() public {
