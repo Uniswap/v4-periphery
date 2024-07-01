@@ -23,13 +23,13 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
-contract GasTest is Test, Deployers, GasSnapshot {
+import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
+
+contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
-
-    NonfungiblePositionManager lpm;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -310,19 +310,4 @@ contract GasTest is Test, Deployers, GasSnapshot {
     function test_gas_burn() public {}
     function test_gas_burnEmpty() public {}
     function test_gas_collect() public {}
-
-    function _mint(
-        LiquidityRange memory _range,
-        uint256 liquidity,
-        uint256 deadline,
-        address recipient,
-        bytes memory hookData
-    ) internal {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(lpm.mint.selector, _range, liquidity, deadline, recipient, hookData);
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-        lpm.unlockAndExecute(calls, currencies);
-    }
 }

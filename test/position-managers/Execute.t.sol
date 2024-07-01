@@ -27,14 +27,14 @@ import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../c
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
-contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
+import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
+
+contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
-
-    NonfungiblePositionManager lpm;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -177,19 +177,4 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
     function test_execute_crossShard() public {}
     // cross-feed: collect and increase on different keys
     function test_execute_crossFeed() public {}
-
-    function _mint(
-        LiquidityRange memory _range,
-        uint256 liquidity,
-        uint256 deadline,
-        address recipient,
-        bytes memory hookData
-    ) internal {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(lpm.mint.selector, _range, liquidity, deadline, recipient, hookData);
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-        lpm.unlockAndExecute(calls, currencies);
-    }
 }

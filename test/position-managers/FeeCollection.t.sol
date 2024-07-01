@@ -24,21 +24,18 @@ import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../c
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
-contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
+import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
+
+contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using LiquidityRangeIdLibrary for LiquidityRange;
-
-    NonfungiblePositionManager lpm;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
     address bob = makeAddr("BOB");
 
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
-
-    // unused value for the fuzz helper functions
-    uint128 constant DEAD_VALUE = 6969.6969 ether;
 
     // expresses the fee as a wad (i.e. 3000 = 0.003e18)
     uint256 FEE_WAD;
@@ -189,8 +186,9 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         // alice collects only her fees
         uint256 balance0AliceBefore = currency0.balanceOf(alice);
         uint256 balance1AliceBefore = currency1.balanceOf(alice);
-        vm.prank(alice);
+        vm.startPrank(alice);
         BalanceDelta delta = _collect(tokenIdAlice, alice, ZERO_BYTES, false);
+        vm.stopPrank();
         uint256 balance0AliceAfter = currency0.balanceOf(alice);
         uint256 balance1AliceAfter = currency1.balanceOf(alice);
 
@@ -201,8 +199,9 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
         // bob collects only his fees
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
-        vm.prank(bob);
+        vm.startPrank(bob);
         delta = _collect(tokenIdBob, bob, ZERO_BYTES, false);
+        vm.stopPrank();
         uint256 balance0BobAfter = currency0.balanceOf(bob);
         uint256 balance1BobAfter = currency1.balanceOf(bob);
 
@@ -275,59 +274,5 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
             uint256(int256(-lpDeltaBob.amount1()) / 2),
             tolerance
         );
-    }
-
-    function _mint(
-        LiquidityRange memory _range,
-        uint256 liquidity,
-        uint256 deadline,
-        address recipient,
-        bytes memory hookData
-    ) internal returns (BalanceDelta) {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(lpm.mint.selector, _range, liquidity, deadline, recipient, hookData);
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-        int128[] memory result = lpm.unlockAndExecute(calls, currencies);
-        return toBalanceDelta(result[0], result[1]);
-    }
-
-    function _increaseLiquidity(uint256 tokenId, uint256 liquidityToAdd, bytes memory hookData, bool claims) internal {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(lpm.increaseLiquidity.selector, tokenId, liquidityToAdd, hookData, claims);
-
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-        lpm.unlockAndExecute(calls, currencies);
-    }
-
-    function _decreaseLiquidity(uint256 tokenId, uint256 liquidityToRemove, bytes memory hookData, bool claims)
-        internal
-        returns (BalanceDelta)
-    {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(lpm.decreaseLiquidity.selector, tokenId, liquidityToRemove, hookData, claims);
-
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-        int128[] memory result = lpm.unlockAndExecute(calls, currencies);
-        return toBalanceDelta(result[0], result[1]);
-    }
-
-    function _collect(uint256 tokenId, address recipient, bytes memory hookData, bool claims)
-        internal
-        returns (BalanceDelta)
-    {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(lpm.collect.selector, tokenId, recipient, hookData, claims);
-
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-        int128[] memory result = lpm.unlockAndExecute(calls, currencies);
-        return toBalanceDelta(result[0], result[1]);
     }
 }
