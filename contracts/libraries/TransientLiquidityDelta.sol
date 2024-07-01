@@ -54,19 +54,18 @@ library TransientLiquidityDelta {
         }
     }
 
-    function close(Currency currency, IPoolManager manager, address holder) internal {
+    function close(Currency currency, IPoolManager manager, address holder) internal returns (int128 delta) {
         // getDelta(currency, holder);
         bytes32 hashSlot = _computeSlot(holder, currency);
-        int256 delta;
         assembly {
             delta := tload(hashSlot)
         }
 
         // TODO support claims field
         if (delta < 0) {
-            currency.settle(manager, holder, uint256(-delta), false);
+            currency.settle(manager, holder, uint256(-int256(delta)), false);
         } else {
-            currency.take(manager, holder, uint256(delta), false);
+            currency.take(manager, holder, uint256(int256(delta)), false);
         }
 
         // setDelta(0);

@@ -51,35 +51,33 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
-    function unlockAndExecute(bytes[] memory data, Currency[] memory currencies) public returns (bytes memory) {
+    function unlockAndExecute(bytes[] memory data, Currency[] memory currencies) public returns (int128[] memory) {
         msgSender = msg.sender;
-        return manager.unlock(abi.encode(data, currencies));
+        return abi.decode(manager.unlock(abi.encode(data, currencies)), (int128[]));
     }
 
     function _unlockCallback(bytes calldata payload) internal override returns (bytes memory) {
         (bytes[] memory data, Currency[] memory currencies) = abi.decode(payload, (bytes[], Currency[]));
 
         bool success;
-        bytes memory returnData;
+
         for (uint256 i; i < data.length; i++) {
             // TODO: bubble up the return
-            (success, returnData) = address(this).call(data[i]);
+            (success,) = address(this).call(data[i]);
             if (!success) revert("EXECUTE_FAILED");
         }
 
         // close the deltas
+        int128[] memory returnData = new int128[](currencies.length);
         for (uint256 i; i < currencies.length; i++) {
-            currencies[i].close(manager, msgSender);
+            returnData[i] = currencies[i].close(manager, msgSender);
             currencies[i].close(manager, address(this));
         }
 
         // Should just be returning the netted amount that was settled on behalf of the caller (msgSender)
-        // And any recipient deltas settled earlier.
-
-        // TODO: @sara handle the return
-        // vanilla: return int128[2]
-        // batch: return int128[data.length]
-        return returnData;
+        // TODO: any recipient deltas settled earlier.
+        // @comment sauce: i dont think we can return recipient deltas since we cant parse the payload
+        return abi.encode(returnData);
     }
 
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
@@ -90,26 +88,14 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         uint256 deadline,
         address owner,
         bytes calldata hookData
-    ) public payable returns (BalanceDelta delta) {
-        // TODO: optimization, read/write manager.isUnlocked to avoid repeated external calls for batched execution
-        if (manager.isUnlocked()) {
-            _increaseLiquidity(owner, range, liquidity, hookData);
+    ) external payable {
+        // TODO: security -- what happens if PoolManager is already unlocked by UR???
+        _increaseLiquidity(owner, range, liquidity, hookData);
 
-            // mint receipt token
-            uint256 tokenId;
-            _mint(owner, (tokenId = nextTokenId++));
-            tokenPositions[tokenId] = TokenPosition({owner: owner, range: range});
-        } else {
-            msgSender = msg.sender;
-            bytes[] memory data = new bytes[](1);
-            data[0] = abi.encodeWithSelector(this.mint.selector, range, liquidity, deadline, owner, hookData);
-
-            Currency[] memory currencies = new Currency[](2);
-            currencies[0] = range.poolKey.currency0;
-            currencies[1] = range.poolKey.currency1;
-            bytes memory result = unlockAndExecute(data, currencies);
-            delta = abi.decode(result, (BalanceDelta));
-        }
+        // mint receipt token
+        uint256 tokenId;
+        _mint(owner, (tokenId = nextTokenId++));
+        tokenPositions[tokenId] = TokenPosition({owner: owner, range: range});
     }
 
     // NOTE: more expensive since LiquidityAmounts is used onchain
@@ -135,43 +121,21 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     function increaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
         external
         isAuthorizedForToken(tokenId)
-        returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
-        if (manager.isUnlocked()) {
-            _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
-        } else {
-            bytes[] memory data = new bytes[](1);
-            data[0] = abi.encodeWithSelector(this.increaseLiquidity.selector, tokenId, liquidity, hookData, claims);
-
-            Currency[] memory currencies = new Currency[](2);
-            currencies[0] = tokenPos.range.poolKey.currency0;
-            currencies[1] = tokenPos.range.poolKey.currency1;
-            bytes memory result = unlockAndExecute(data, currencies);
-            delta = abi.decode(result, (BalanceDelta));
-        }
+        // TODO: security -- what happens if PoolManager is already unlocked by UR???
+        _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
     }
 
     function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
-        public
+        external
         isAuthorizedForToken(tokenId)
-        returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
-        if (manager.isUnlocked()) {
-            _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
-        } else {
-            bytes[] memory data = new bytes[](1);
-            data[0] = abi.encodeWithSelector(this.decreaseLiquidity.selector, tokenId, liquidity, hookData, claims);
-
-            Currency[] memory currencies = new Currency[](2);
-            currencies[0] = tokenPos.range.poolKey.currency0;
-            currencies[1] = tokenPos.range.poolKey.currency1;
-            bytes memory result = unlockAndExecute(data, currencies);
-            delta = abi.decode(result, (BalanceDelta));
-        }
+        // TODO: security -- what happens if PoolManager is already unlocked by UR???
+        _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
     }
 
     // TODO return type?
@@ -187,22 +151,14 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     }
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
-    function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
-        public
-        returns (BalanceDelta delta)
-    {
+    function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims) external {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-        if (manager.isUnlocked()) {
-            _collect(recipient, tokenPos.range, hookData);
-        } else {
-            bytes[] memory data = new bytes[](1);
-            data[0] = abi.encodeWithSelector(this.collect.selector, tokenId, recipient, hookData, claims);
 
-            Currency[] memory currencies = new Currency[](2);
-            currencies[0] = tokenPos.range.poolKey.currency0;
-            currencies[1] = tokenPos.range.poolKey.currency1;
-            bytes memory result = unlockAndExecute(data, currencies);
-            delta = abi.decode(result, (BalanceDelta));
+        // TODO: security -- what happens if PoolManager is already unlocked by UR???
+        _collect(recipient, tokenPos.range, hookData);
+        if (recipient != _msgSenderInternal()) {
+            tokenPos.range.poolKey.currency0.close(manager, recipient);
+            tokenPos.range.poolKey.currency1.close(manager, recipient);
         }
     }
 
