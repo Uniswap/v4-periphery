@@ -38,8 +38,9 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     // maps the ERC721 tokenId to the keys that uniquely identify a liquidity position (owner, range)
     mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
 
-    // TODO: TSTORE this jawn
+    // TODO: TSTORE these jawns
     address internal msgSender;
+    bool internal unlockedByThis;
 
     // TODO: Context is inherited through ERC721 and will be not useful to use _msgSender() which will be address(this) with our current mutlicall.
     function _msgSenderInternal() internal override returns (address) {
@@ -53,6 +54,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
 
     function unlockAndExecute(bytes[] memory data, Currency[] memory currencies) public returns (int128[] memory) {
         msgSender = msg.sender;
+        unlockedByThis = true;
         return abi.decode(manager.unlock(abi.encode(data, currencies)), (int128[]));
     }
 
@@ -88,8 +90,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         uint256 deadline,
         address owner,
         bytes calldata hookData
-    ) external payable {
-        // TODO: security -- what happens if PoolManager is already unlocked by UR???
+    ) external payable onlyIfUnlocked {
         _increaseLiquidity(owner, range, liquidity, hookData);
 
         // mint receipt token
@@ -121,20 +122,20 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     function increaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
         external
         isAuthorizedForToken(tokenId)
+        onlyIfUnlocked
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
-        // TODO: security -- what happens if PoolManager is already unlocked by UR???
         _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
     }
 
     function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
         external
         isAuthorizedForToken(tokenId)
+        onlyIfUnlocked
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
-        // TODO: security -- what happens if PoolManager is already unlocked by UR???
         _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
     }
 
@@ -151,15 +152,13 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     }
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
-    function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims) external {
+    function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
+        external
+        onlyIfUnlocked
+    {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
-        // TODO: security -- what happens if PoolManager is already unlocked by UR???
-        _collect(recipient, tokenPos.range, hookData);
-        if (recipient != _msgSenderInternal()) {
-            tokenPos.range.poolKey.currency0.close(manager, recipient);
-            tokenPos.range.poolKey.currency1.close(manager, recipient);
-        }
+        _collect(recipient, tokenPos.owner, tokenPos.range, hookData);
     }
 
     function feesOwed(uint256 tokenId) external view returns (uint256 token0Owed, uint256 token1Owed) {
@@ -188,6 +187,11 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
 
     modifier isAuthorizedForToken(uint256 tokenId) {
         require(msg.sender == address(this) || _isApprovedOrOwner(msg.sender, tokenId), "Not approved");
+        _;
+    }
+
+    modifier onlyIfUnlocked() {
+        if (!unlockedByThis) revert MustBeUnlockedByThisContract();
         _;
     }
 }

@@ -11,6 +11,8 @@ interface INonfungiblePositionManager {
         LiquidityRange range;
     }
 
+    error MustBeUnlockedByThisContract();
+
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
     function mint(
         LiquidityRange calldata position,

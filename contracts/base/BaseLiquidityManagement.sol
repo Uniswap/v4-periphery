@@ -206,7 +206,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
     }
 
     // The recipient may not be the original owner.
-    function _collect(address owner, LiquidityRange memory range, bytes memory hookData) internal {
+    function _collect(address recipient, address owner, LiquidityRange memory range, bytes memory hookData) internal {
         BalanceDelta callerDelta;
         BalanceDelta thisDelta;
         Position storage position = positions[owner][range.toId()];
@@ -233,7 +233,11 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         callerDelta = callerDelta + tokensOwed;
         thisDelta = thisDelta - tokensOwed;
 
-        callerDelta.flush(owner, range.poolKey.currency0, range.poolKey.currency1);
+        if (recipient == _msgSenderInternal()) {
+            callerDelta.flush(recipient, range.poolKey.currency0, range.poolKey.currency1);
+        } else {
+            callerDelta.closeDelta(manager, recipient, range.poolKey.currency0, range.poolKey.currency1);
+        }
         thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         position.clearTokensOwed();

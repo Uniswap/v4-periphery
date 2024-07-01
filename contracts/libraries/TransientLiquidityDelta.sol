@@ -74,6 +74,17 @@ library TransientLiquidityDelta {
         }
     }
 
+    function closeDelta(
+        BalanceDelta delta,
+        IPoolManager manager,
+        address holder,
+        Currency currency0,
+        Currency currency1
+    ) internal {
+        close(currency0, manager, holder);
+        close(currency1, manager, holder);
+    }
+
     function getBalanceDelta(address holder, Currency currency0, Currency currency1)
         internal
         view
