@@ -51,27 +51,6 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
     function _msgSenderInternal() internal virtual returns (address);
 
-    function _closeCallerDeltas(
-        BalanceDelta callerDeltas,
-        Currency currency0,
-        Currency currency1,
-        address owner,
-        bool claims
-    ) internal {
-        int128 callerDelta0 = callerDeltas.amount0();
-        int128 callerDelta1 = callerDeltas.amount1();
-        // On liquidity increase, the deltas should never be > 0.
-        //  We always 0 out a caller positive delta because it is instead accounted for in position.tokensOwed.
-
-        if (callerDelta0 < 0) currency0.settle(manager, owner, uint256(int256(-callerDelta0)), claims);
-        else if (callerDelta0 > 0) currency0.take(manager, owner, uint128(callerDelta0), claims);
-
-        if (callerDelta1 < 0) currency1.settle(manager, owner, uint256(int256(-callerDelta1)), claims);
-        else if (callerDelta1 > 0) currency1.take(manager, owner, uint128(callerDelta1), claims);
-
-        owner.close(currency0, currency1);
-    }
-
     function _modifyLiquidity(address owner, LiquidityRange memory range, int256 liquidityChange, bytes memory hookData)
         internal
         returns (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued)
@@ -129,22 +108,6 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
         position.addTokensOwed(tokensOwed);
         position.addLiquidity(liquidityToAdd);
-    }
-
-    // When chaining many actions, this should be called at the very end to close out any open deltas owed to or by this contract for other users on the same range.
-    // This is safe because any amounts the caller should not pay or take have already been accounted for in closeCallerDeltas.
-    function _closeThisDeltas(BalanceDelta delta, Currency currency0, Currency currency1) internal {
-        int128 delta0 = delta.amount0();
-        int128 delta1 = delta.amount1();
-
-        // Mint a receipt for the tokens owed to this address.
-        if (delta0 > 0) currency0.take(manager, address(this), uint128(delta0), true);
-        if (delta1 > 0) currency1.take(manager, address(this), uint128(delta1), true);
-        // Burn the receipt for tokens owed to this address.
-        if (delta0 < 0) currency0.settle(manager, address(this), uint256(int256(-delta0)), true);
-        if (delta1 < 0) currency1.settle(manager, address(this), uint256(int256(-delta1)), true);
-
-        address(this).close(currency0, currency1);
     }
 
     function _moveCallerDeltaToTokensOwed(
@@ -236,7 +199,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         if (recipient == _msgSenderInternal()) {
             callerDelta.flush(recipient, range.poolKey.currency0, range.poolKey.currency1);
         } else {
-            callerDelta.closeDelta(manager, recipient, range.poolKey.currency0, range.poolKey.currency1);
+            callerDelta.closeDelta(manager, recipient, range.poolKey.currency0, range.poolKey.currency1, false); // TODO: allow recipient to receive claims, and add test!
         }
         thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 

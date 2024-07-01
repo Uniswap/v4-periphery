@@ -72,8 +72,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         // close the deltas
         int128[] memory returnData = new int128[](currencies.length);
         for (uint256 i; i < currencies.length; i++) {
-            returnData[i] = currencies[i].close(manager, msgSender);
-            currencies[i].close(manager, address(this));
+            returnData[i] = currencies[i].close(manager, msgSender, false); // TODO: support claims
+            currencies[i].close(manager, address(this), true); // position manager always takes 6909
         }
 
         // Should just be returning the netted amount that was settled on behalf of the caller (msgSender)
