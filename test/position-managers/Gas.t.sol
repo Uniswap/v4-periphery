@@ -23,22 +23,19 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
-contract GasTest is Test, Deployers, GasSnapshot {
+import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
+
+contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
-
-    NonfungiblePositionManager lpm;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
     address bob = makeAddr("BOB");
 
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
-
-    // unused value for the fuzz helper functions
-    uint128 constant DEAD_VALUE = 6969.6969 ether;
 
     // expresses the fee as a wad (i.e. 3000 = 0.003e18 = 0.30%)
     uint256 FEE_WAD;
@@ -98,23 +95,42 @@ contract GasTest is Test, Deployers, GasSnapshot {
     // }
 
     function test_gas_mintWithLiquidity() public {
-        lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(
+            lpm.mint.selector, range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES
+        );
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+        lpm.unlockAndExecute(calls, currencies);
         snapLastCall("mintWithLiquidity");
     }
 
     function test_gas_increaseLiquidity_erc20() public {
-        lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        lpm.increaseLiquidity(tokenId, 1000 ether, ZERO_BYTES, false);
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(lpm.increaseLiquidity.selector, tokenId, 10_000 ether, ZERO_BYTES, false);
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
+        lpm.unlockAndExecute(calls, currencies);
         snapLastCall("increaseLiquidity_erc20");
     }
 
     function test_gas_increaseLiquidity_erc6909() public {
-        lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        lpm.increaseLiquidity(tokenId, 1000 ether, ZERO_BYTES, true);
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(lpm.increaseLiquidity.selector, tokenId, 10_000 ether, ZERO_BYTES, true);
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
+        lpm.unlockAndExecute(calls, currencies);
         snapLastCall("increaseLiquidity_erc6909");
     }
 
@@ -127,12 +143,12 @@ contract GasTest is Test, Deployers, GasSnapshot {
 
         // alice provides liquidity
         vm.prank(alice);
-        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
 
         // donate to create fees
         donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
@@ -149,8 +165,15 @@ contract GasTest is Test, Deployers, GasSnapshot {
             token1Owed
         );
 
+        bytes[] memory calls = new bytes[](1);
+        calls[0] =
+            abi.encodeWithSelector(lpm.increaseLiquidity.selector, tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
         vm.prank(alice);
-        lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        lpm.unlockAndExecute(calls, currencies);
         snapLastCall("autocompound_exactUnclaimedFees");
     }
 
@@ -162,20 +185,26 @@ contract GasTest is Test, Deployers, GasSnapshot {
 
         // alice provides liquidity
         vm.prank(alice);
-        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // donate to create fees
         donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
 
         // bob collects fees so some of alice's fees are now cached
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(lpm.collect.selector, tokenIdBob, bob, ZERO_BYTES, false);
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
         vm.prank(bob);
-        lpm.collect(tokenIdBob, bob, ZERO_BYTES, false);
+        lpm.unlockAndExecute(calls, currencies);
 
         // donate to create more fees
         donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
@@ -193,8 +222,15 @@ contract GasTest is Test, Deployers, GasSnapshot {
                 newToken1Owed
             );
 
+            calls = new bytes[](1);
+            calls[0] =
+                abi.encodeWithSelector(lpm.increaseLiquidity.selector, tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            currencies = new Currency[](2);
+            currencies[0] = currency0;
+            currencies[1] = currency1;
+
             vm.prank(alice);
-            lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            lpm.unlockAndExecute(calls, currencies);
             snapLastCall("autocompound_exactUnclaimedFees_exactCustodiedFees");
         }
     }
@@ -208,12 +244,12 @@ contract GasTest is Test, Deployers, GasSnapshot {
 
         // alice provides liquidity
         vm.prank(alice);
-        lpm.mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        lpm.mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // donate to create fees
@@ -231,24 +267,43 @@ contract GasTest is Test, Deployers, GasSnapshot {
             token1Owed / 2
         );
 
+        bytes[] memory calls = new bytes[](1);
+        calls[0] =
+            abi.encodeWithSelector(lpm.increaseLiquidity.selector, tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
         vm.prank(alice);
-        lpm.increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        lpm.unlockAndExecute(calls, currencies);
         snapLastCall("autocompound_excessFeesCredit");
     }
 
     function test_gas_decreaseLiquidity_erc20() public {
-        lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        lpm.decreaseLiquidity(tokenId, 10_000 ether, ZERO_BYTES, false);
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(lpm.decreaseLiquidity.selector, tokenId, 10_000 ether, ZERO_BYTES, false);
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
+        lpm.unlockAndExecute(calls, currencies);
         snapLastCall("decreaseLiquidity_erc20");
     }
 
     function test_gas_decreaseLiquidity_erc6909() public {
-        lpm.mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        lpm.decreaseLiquidity(tokenId, 10_000 ether, ZERO_BYTES, true);
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(lpm.decreaseLiquidity.selector, tokenId, 10_000 ether, ZERO_BYTES, true);
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
+        lpm.unlockAndExecute(calls, currencies);
         snapLastCall("decreaseLiquidity_erc6909");
     }
 

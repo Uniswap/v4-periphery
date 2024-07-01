@@ -25,11 +25,6 @@ library TransientLiquidityDelta {
         }
     }
 
-    function close(address holder, Currency currency0, Currency currency1) internal {
-        setDelta(currency0, holder, 0);
-        setDelta(currency1, holder, 0);
-    }
-
     /// @notice Flush a BalanceDelta into transient storage for a given holder
     function flush(BalanceDelta delta, address holder, Currency currency0, Currency currency1) internal {
         addDelta(currency0, holder, delta.amount0());
@@ -54,25 +49,38 @@ library TransientLiquidityDelta {
         }
     }
 
-    function close(Currency currency, IPoolManager manager, address holder) internal {
+    function close(Currency currency, IPoolManager manager, address holder, bool claims)
+        internal
+        returns (int128 delta)
+    {
         // getDelta(currency, holder);
         bytes32 hashSlot = _computeSlot(holder, currency);
-        int256 delta;
         assembly {
             delta := tload(hashSlot)
         }
 
-        // TODO support claims field
         if (delta < 0) {
-            currency.settle(manager, holder, uint256(-delta), false);
+            currency.settle(manager, holder, uint256(-int256(delta)), claims);
         } else {
-            currency.take(manager, holder, uint256(delta), false);
+            currency.take(manager, holder, uint256(int256(delta)), claims);
         }
 
         // setDelta(0);
         assembly {
             tstore(hashSlot, 0)
         }
+    }
+
+    function closeDelta(
+        BalanceDelta delta,
+        IPoolManager manager,
+        address holder,
+        Currency currency0,
+        Currency currency1,
+        bool claims
+    ) internal {
+        close(currency0, manager, holder, claims);
+        close(currency1, manager, holder, claims);
     }
 
     function getBalanceDelta(address holder, Currency currency0, Currency currency1)

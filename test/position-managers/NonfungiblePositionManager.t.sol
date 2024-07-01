@@ -10,7 +10,7 @@ import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -24,18 +24,15 @@ import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../c
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
-contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, LiquidityFuzzers {
+import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
+
+contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using LiquidityRangeIdLibrary for LiquidityRange;
 
-    NonfungiblePositionManager lpm;
-
     PoolId poolId;
     address alice = makeAddr("ALICE");
-
-    // unused value for the fuzz helper functions
-    uint128 constant DEAD_VALUE = 6969.6969 ether;
 
     function setUp() public {
         Deployers.deployFreshManagerAndRouters();
@@ -56,8 +53,17 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta =
-            lpm.mint(range, uint256(params.liquidityDelta), block.timestamp + 1, address(this), ZERO_BYTES);
+
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(
+            lpm.mint.selector, range, uint256(params.liquidityDelta), block.timestamp + 1, address(this), ZERO_BYTES
+        );
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+        int128[] memory result = lpm.unlockAndExecute(calls, currencies);
+        BalanceDelta delta = toBalanceDelta(result[0], result[1]);
+
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
 
@@ -216,8 +222,8 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
         // TODO, encode this under one call
-        lpm.decreaseLiquidity(tokenId, liquidity, ZERO_BYTES, false);
-        lpm.collect(tokenId, address(this), ZERO_BYTES, false);
+        _decreaseLiquidity(tokenId, liquidity, ZERO_BYTES, false);
+        _collect(tokenId, address(this), ZERO_BYTES, false);
         BalanceDelta delta = lpm.burn(tokenId);
         (,, liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, 0);
@@ -249,7 +255,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = lpm.decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
+        BalanceDelta delta = _decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
 
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
