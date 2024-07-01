@@ -49,6 +49,8 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
     constructor(IPoolManager _manager) ImmutableState(_manager) {}
 
+    function _msgSenderInternal() internal virtual returns (address);
+
     function _closeCallerDeltas(
         BalanceDelta callerDeltas,
         Currency currency0,
@@ -120,7 +122,9 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
             (tokensOwed, callerDelta, thisDelta) =
                 _moveCallerDeltaToTokensOwed(false, tokensOwed, callerDelta, thisDelta);
         }
-        callerDelta.flush(owner, range.poolKey.currency0, range.poolKey.currency1);
+
+        // Accrue all deltas to the caller.
+        callerDelta.flush(_msgSenderInternal(), range.poolKey.currency0, range.poolKey.currency1);
         thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         position.addTokensOwed(tokensOwed);
@@ -201,6 +205,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         position.subtractLiquidity(liquidityToRemove);
     }
 
+    // The recipient may not be the original owner.
     function _collect(address owner, LiquidityRange memory range, bytes memory hookData) internal {
         BalanceDelta callerDelta;
         BalanceDelta thisDelta;
@@ -232,6 +237,14 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         position.clearTokensOwed();
+    }
+
+    function _validateBurn(address owner, LiquidityRange memory range) internal {
+        LiquidityRangeId rangeId = range.toId();
+        Position storage position = positions[owner][rangeId];
+        if (position.liquidity > 0) revert PositionMustBeEmpty();
+        if (position.tokensOwed0 != 0 && position.tokensOwed1 != 0) revert TokensMustBeCollected();
+        delete positions[owner][rangeId];
     }
 
     function _updateFeeGrowth(LiquidityRange memory range, Position storage position)

@@ -215,7 +215,10 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         // burn liquidity
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
-        BalanceDelta delta = lpm.burn(tokenId, address(this), ZERO_BYTES, false);
+        // TODO, encode this under one call
+        lpm.decreaseLiquidity(tokenId, liquidity, ZERO_BYTES, false);
+        lpm.collect(tokenId, address(this), ZERO_BYTES, false);
+        BalanceDelta delta = lpm.burn(tokenId);
         (,, liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, 0);
 

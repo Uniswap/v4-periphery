@@ -6,11 +6,15 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {CurrencySettleTake} from "../libraries/CurrencySettleTake.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
+
+import "forge-std/console2.sol";
 
 /// @title a library to store callers' currency deltas in transient storage
 /// @dev this library implements the equivalent of a mapping, as transient storage can only be accessed in assembly
 library TransientLiquidityDelta {
     using CurrencySettleTake for Currency;
+    using TransientStateLibrary for IPoolManager;
 
     /// @notice calculates which storage slot a delta should be stored in for a given caller and currency
     function _computeSlot(address caller_, Currency currency) internal pure returns (bytes32 hashSlot) {
@@ -58,7 +62,7 @@ library TransientLiquidityDelta {
             delta := tload(hashSlot)
         }
 
-        // close the delta by paying or taking
+        // TODO support claims field
         if (delta < 0) {
             currency.settle(manager, holder, uint256(-delta), false);
         } else {
