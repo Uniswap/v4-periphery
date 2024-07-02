@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {BaseHook} from "./../../contracts/BaseHook.sol";
+import {BaseHook} from "../../BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -16,6 +16,10 @@ abstract contract FeeTaker is BaseHook {
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
+    /**
+     * @notice This hook takes a fee from the unspecified token after a swap.
+     * @dev This can be overridden if more permissions are needed.
+     */
     function getHookPermissions() public pure virtual override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
@@ -24,12 +28,12 @@ abstract contract FeeTaker is BaseHook {
             afterAddLiquidity: false,
             beforeRemoveLiquidity: false,
             afterRemoveLiquidity: false,
-            beforeSwap: true,
+            beforeSwap: false,
             afterSwap: true,
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: false,
-            afterSwapReturnDelta: false,
+            afterSwapReturnDelta: true,
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
@@ -57,5 +61,44 @@ abstract contract FeeTaker is BaseHook {
 
         (bytes4 selector, int128 amount) = _afterSwap(sender, key, params, delta, hookData);
         return (selector, feeAmount.toInt128() + amount);
+    }
+
+    function withdraw(Currency[] calldata currencies) external {
+        manager.unlock(abi.encode(currencies));
+    }
+
+    function _unlockCallback(bytes calldata rawData) internal override returns (bytes memory) {
+        Currency[] memory currencies = abi.decode(rawData, (Currency[]));
+        uint256 length = currencies.length;
+        for (uint256 i = 0; i < length;) {
+            uint256 amount = manager.balanceOf(address(this), CurrencyLibrary.toId(currencies[i]));
+            manager.burn(address(this), CurrencyLibrary.toId(currencies[i]), amount);
+            manager.take(currencies[i], _recipient(), amount);
+            unchecked {
+                ++i;
+            }
+        }
+        return ZERO_BYTES;
+    }
+
+    /**
+     * @dev This is a virtual function that should be overridden so it returns the fee charged for a given amount.
+     */
+    function _feeAmount(int128 amountUnspecified) internal view virtual returns (uint256);
+
+    /**
+     * @dev This is a virtual function that should be overridden so it returns the address to receive the fee.
+     */
+    function _recipient() internal view virtual returns (address);
+
+    /**
+     * @dev This can be overridden to add logic after a swap.
+     */
+    function _afterSwap(address, PoolKey memory, IPoolManager.SwapParams memory, BalanceDelta, bytes calldata)
+        internal
+        virtual
+        returns (bytes4, int128)
+    {
+        return (BaseHook.afterSwap.selector, 0);
     }
 }

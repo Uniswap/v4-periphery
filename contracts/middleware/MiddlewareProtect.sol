@@ -11,7 +11,7 @@ import {BaseHook} from "./../BaseHook.sol";
 import {ReentrancyState} from "./../libraries/ReentrancyState.sol";
 
 contract MiddlewareProtect is BaseMiddleware {
-    uint256 public constant gasLimit = 100000;
+    uint256 public constant gasLimit = 1000000;
 
     error ActionBetweenHook();
 

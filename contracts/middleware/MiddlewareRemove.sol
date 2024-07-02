@@ -12,7 +12,7 @@ import {BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 contract MiddlewareRemove is BaseMiddleware {
     bytes internal constant ZERO_BYTES = bytes("");
-    uint256 public constant gasLimit = 1000000;
+    uint256 public constant gasLimit = 10000000;
 
     constructor(IPoolManager _poolManager, address _impl) BaseMiddleware(_poolManager, _impl) {}
 
