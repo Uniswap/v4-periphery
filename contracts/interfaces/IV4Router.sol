@@ -21,14 +21,18 @@ interface IV4Router is IUnlockCallback {
 
     struct SwapInfo {
         SwapType swapType;
-        address msgSender;
+        PaymentAddresses paymentAddresses;
         bytes params;
+    }
+
+    struct PaymentAddresses {
+        address payer;
+        address recipient;
     }
 
     struct ExactInputSingleParams {
         PoolKey poolKey;
         bool zeroForOne;
-        address recipient;
         uint128 amountIn;
         uint128 amountOutMinimum;
         uint160 sqrtPriceLimitX96;
@@ -38,7 +42,6 @@ interface IV4Router is IUnlockCallback {
     struct ExactInputParams {
         Currency currencyIn;
         PathKey[] path;
-        address recipient;
         uint128 amountIn;
         uint128 amountOutMinimum;
     }
@@ -46,7 +49,6 @@ interface IV4Router is IUnlockCallback {
     struct ExactOutputSingleParams {
         PoolKey poolKey;
         bool zeroForOne;
-        address recipient;
         uint128 amountOut;
         uint128 amountInMaximum;
         uint160 sqrtPriceLimitX96;
@@ -56,7 +58,6 @@ interface IV4Router is IUnlockCallback {
     struct ExactOutputParams {
         Currency currencyOut;
         PathKey[] path;
-        address recipient;
         uint128 amountOut;
         uint128 amountInMaximum;
     }
