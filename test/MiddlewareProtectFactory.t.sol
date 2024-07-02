@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {FeeTakingLite} from "./middleware/FeeTakingLite.sol";
-import {MiddlewareRemove} from "../contracts/middleware/MiddlewareRemove.sol";
+import {MiddlewareProtect} from "../contracts/middleware/MiddlewareProtect.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
@@ -19,8 +19,10 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {console} from "../../../lib/forge-std/src/console.sol";
 import {HooksRevert} from "./middleware/HooksRevert.sol";
 import {HooksOutOfGas} from "./middleware/HooksOutOfGas.sol";
+import {MiddlewareProtectFactory} from "./../contracts/middleware/MiddlewareProtectFactory.sol";
+import {HookMiner} from "./utils/HookMiner.sol";
 
-contract MiddlewareRemoveTest is Test, Deployers {
+contract MiddlewareProtectFactoryTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -34,7 +36,7 @@ contract MiddlewareRemoveTest is Test, Deployers {
     TestERC20 token1;
     PoolId id;
 
-    uint160 nonce = 0;
+    MiddlewareProtectFactory factory;
 
     function setUp() public {
         deployFreshManagerAndRouters();
@@ -46,42 +48,54 @@ contract MiddlewareRemoveTest is Test, Deployers {
 
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
+
+        factory = new MiddlewareProtectFactory(manager);
     }
 
-    function testVarious() public {
+    function testVariousProtectFactory() public {
         FeeTakingLite feeTakingLite = new FeeTakingLite(manager);
-        testOn(
-            address(feeTakingLite),
-            uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG)
+        uint160 flags =
+            uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG);
+        (address hookAddress, bytes32 salt) = HookMiner.find(
+            address(factory),
+            flags,
+            type(MiddlewareProtect).creationCode,
+            abi.encode(address(manager), address(feeTakingLite))
         );
+        testOn(address(feeTakingLite), salt);
+
         HooksRevert hooksRevert = new HooksRevert(manager);
-        testOn(address(hooksRevert), uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG));
-        testOn(address(hooksRevert), uint160(Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
-        testOn(address(hooksRevert), uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
+        flags = uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
+        (hookAddress, salt) = HookMiner.find(
+            address(factory),
+            flags,
+            type(MiddlewareProtect).creationCode,
+            abi.encode(address(manager), address(hooksRevert))
+        );
+        testOn(address(hooksRevert), salt);
+
         HooksOutOfGas hooksOutOfGas = new HooksOutOfGas(manager);
-        testOn(address(hooksOutOfGas), uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG));
-        testOn(address(hooksOutOfGas), uint160(Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
-        testOn(address(hooksOutOfGas), uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
+        flags = uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
+        (hookAddress, salt) = HookMiner.find(
+            address(factory),
+            flags,
+            type(MiddlewareProtect).creationCode,
+            abi.encode(address(manager), address(hooksOutOfGas))
+        );
+        testOn(address(hooksOutOfGas), salt);
     }
 
     // creates a middleware on an implementation
-    function testOn(address implementation, uint160 flags) internal {
-        MiddlewareRemove middlewareRemove = MiddlewareRemove(payable(address(nonce << 20 | flags)));
-        nonce++;
-        vm.record();
-        MiddlewareRemove impl = new MiddlewareRemove(manager, implementation);
-        (, bytes32[] memory writes) = vm.accesses(address(impl));
-        vm.etch(address(middlewareRemove), address(impl).code);
-        unchecked {
-            for (uint256 i = 0; i < writes.length; i++) {
-                bytes32 slot = writes[i];
-                vm.store(address(middlewareRemove), slot, vm.load(address(impl), slot));
-            }
-        }
+    function testOn(address implementation, bytes32 salt) internal {
+        address hookAddress = factory.createMiddleware(implementation, salt);
+        MiddlewareProtect middlewareProtect = MiddlewareProtect(payable(hookAddress));
+
         (key, id) = initPoolAndAddLiquidity(
-            currency0, currency1, IHooks(address(middlewareRemove)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
+            currency0, currency1, IHooks(address(middlewareProtect)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
         );
 
-        removeLiquidity(currency0, currency1, IHooks(address(middlewareRemove)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        removeLiquidity(currency0, currency1, IHooks(address(middlewareProtect)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        assertEq(factory.getImplementation(hookAddress), implementation);
     }
 }

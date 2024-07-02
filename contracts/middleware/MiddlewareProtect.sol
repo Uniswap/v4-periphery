@@ -81,6 +81,7 @@ contract MiddlewareProtect is BaseMiddleware {
         address,
         PoolKey calldata,
         IPoolManager.ModifyLiquidityParams calldata,
+        BalanceDelta,
         bytes calldata
     ) external returns (bytes4, BalanceDelta) {
         console.log("afterRemoveLiquidity middleware");

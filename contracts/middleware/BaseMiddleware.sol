@@ -8,7 +8,6 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
-import {console} from "../../lib/forge-std/src/console.sol";
 
 contract BaseMiddleware is Proxy {
     /// @notice The address of the pool manager
@@ -21,11 +20,10 @@ contract BaseMiddleware is Proxy {
     }
 
     function _implementation() internal view override returns (address) {
-        console.logAddress(implementation);
         return implementation;
     }
 
-    // yo how do i remove this warning
+    // yo i wanna delete this function but how do i remove this warning
     receive() external payable {
         _delegate(_implementation());
     }

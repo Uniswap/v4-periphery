@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {FeeTakingLite} from "./middleware/FeeTakingLite.sol";
 import {MiddlewareRemove} from "../contracts/middleware/MiddlewareRemove.sol";
-import {MiddlewareRemoveImplementation} from "./shared/implementation/MiddlewareRemoveImplementation.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
