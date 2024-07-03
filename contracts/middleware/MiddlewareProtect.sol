@@ -5,30 +5,35 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BaseMiddleware} from "./BaseMiddleware.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {console} from "../../lib/forge-std/src/console.sol";
 import {BaseHook} from "./../BaseHook.sol";
 import {ReentrancyState} from "./../libraries/ReentrancyState.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 contract MiddlewareProtect is BaseMiddleware {
+    using StateLibrary for IPoolManager;
+    using Hooks for IHooks;
+
     uint256 public constant gasLimit = 1000000;
 
-    error ActionBetweenHook();
+    /// @notice Thrown if the address will lead to forbidden flags being set
+    /// @param hooks The address of the hooks contract
+    error HookPermissionForbidden(address hooks);
+    error ForbiddenReturn();
 
-    constructor(IPoolManager _poolManager, address _impl) BaseMiddleware(_poolManager, _impl) {}
-
-    modifier swapNotLocked() {
-        if (ReentrancyState.swapLocked()) {
-            revert ActionBetweenHook();
+    constructor(IPoolManager _poolManager, address _impl) BaseMiddleware(_poolManager, _impl) {
+        // deny any hooks that return deltas
+        if (
+            this.hasPermission(Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG)
+                || this.hasPermission(Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG)
+                || this.hasPermission(Hooks.AFTER_ADD_LIQUIDITY_RETURNS_DELTA_FLAG)
+                || this.hasPermission(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG)
+        ) {
+            HookPermissionForbidden.selector.revertWith(address(this));
         }
-        _;
-    }
-
-    modifier removeNotLocked() {
-        if (ReentrancyState.removeLocked()) {
-            revert ActionBetweenHook();
-        }
-        _;
     }
 
     // block swaps and removes
@@ -42,7 +47,12 @@ contract MiddlewareProtect is BaseMiddleware {
         (bool success, bytes memory returnData) = implementation.delegatecall{gas: gasLimit}(msg.data);
         require(success);
         ReentrancyState.unlock();
-        return abi.decode(returnData, (bytes4, BeforeSwapDelta, uint24));
+        (bytes4 selector, BeforeSwapDelta beforeSwapDelta, uint24 lpFeeOverride) =
+            abi.decode(returnData, (bytes4, BeforeSwapDelta, uint24));
+        if (lpFeeOverride != 0) {
+            revert ForbiddenReturn();
+        }
+        return (selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     // afterSwap - no protections
