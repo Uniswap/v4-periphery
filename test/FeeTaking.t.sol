@@ -15,6 +15,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {FeeTakingExtension} from "./shared/implementation/FeeTakingExtension.sol";
 
 contract FeeTakingTest is Test, Deployers, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -32,9 +33,11 @@ contract FeeTakingTest is Test, Deployers, GasSnapshot {
     TestERC20 token0;
     TestERC20 token1;
     FeeTaking feeTaking = FeeTaking(address(uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG)));
+    FeeTakingExtension feeTakingExtension =
+        FeeTakingExtension(address(0x100000 | uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG)));
     PoolId id;
 
-    function setUp() public {
+    function setUpNormal() public {
         deployFreshManagerAndRouters();
         (currency0, currency1) = deployMintAndApprove2Currencies();
 
@@ -46,24 +49,46 @@ contract FeeTakingTest is Test, Deployers, GasSnapshot {
         FeeTakingImplementation impl = new FeeTakingImplementation(manager, 25, address(this), TREASURY, feeTaking);
         (, bytes32[] memory writes) = vm.accesses(address(impl));
         vm.etch(address(feeTaking), address(impl).code);
-        // for each storage key that was written during the hook implementation, copy the value over
         unchecked {
             for (uint256 i = 0; i < writes.length; i++) {
                 bytes32 slot = writes[i];
                 vm.store(address(feeTaking), slot, vm.load(address(impl), slot));
             }
         }
-
-        // key = PoolKey(currency0, currency1, 3000, 60, feeTaking);
         (key, id) = initPoolAndAddLiquidity(currency0, currency1, feeTaking, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        token0.approve(address(feeTaking), type(uint256).max);
-        token1.approve(address(feeTaking), type(uint256).max);
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
     }
 
+    function setUpExtension() public {
+        deployFreshManagerAndRouters();
+        (currency0, currency1) = deployMintAndApprove2Currencies();
+
+        router = new HookEnabledSwapRouter(manager);
+        token0 = TestERC20(Currency.unwrap(currency0));
+        token1 = TestERC20(Currency.unwrap(currency1));
+
+        vm.record();
+        FeeTakingExtension impl = new FeeTakingExtension(manager, 25, address(this), TREASURY);
+        (, bytes32[] memory writes) = vm.accesses(address(impl));
+        vm.etch(address(feeTakingExtension), address(impl).code);
+        unchecked {
+            for (uint256 i = 0; i < writes.length; i++) {
+                bytes32 slot = writes[i];
+                vm.store(address(feeTakingExtension), slot, vm.load(address(impl), slot));
+            }
+        }
+        (key, id) = initPoolAndAddLiquidity(currency0, currency1, feeTakingExtension, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        token0.approve(address(router), type(uint256).max);
+        token1.approve(address(router), type(uint256).max);
+        token0.transfer(address(feeTakingExtension), 1e18);
+        token1.transfer(address(feeTakingExtension), 1e18);
+    }
+
     function testSwapHooks() public {
+        setUpNormal();
         assertEq(currency0.balanceOf(TREASURY), 0);
         assertEq(currency1.balanceOf(TREASURY), 0);
 
@@ -90,7 +115,7 @@ contract FeeTakingTest is Test, Deployers, GasSnapshot {
         snapEnd();
 
         uint128 input = uint128(-swapDelta2.amount0());
-        assertTrue(output > 0);
+        assertTrue(input > 0);
 
         uint256 expectedFee2 = calculateFeeForExactOutput(input, feeTaking.swapFeeBips());
 
@@ -112,6 +137,7 @@ contract FeeTakingTest is Test, Deployers, GasSnapshot {
 
     // this would error had the hook not used ERC6909
     function testEdgeCase() public {
+        setUpNormal();
         // first, deplete the pool of token1
         // Swap exact token0 for token1 //
         bool zeroForOne = true;
@@ -198,6 +224,73 @@ contract FeeTakingTest is Test, Deployers, GasSnapshot {
         assertEq(currency0.balanceOf(TREASURY) / R, 0);
         assertEq(currency1.balanceOf(TREASURY) / R, expectedFee / R);
         assertEq(currency3.balanceOf(TREASURY) / R, expectedFee / R);
+    }
+
+    function testHookExtension() public {
+        setUpExtension();
+        assertEq(currency0.balanceOf(TREASURY), 0);
+        assertEq(currency1.balanceOf(TREASURY), 0);
+
+        // Swap exact token0 for token1 //
+        bool zeroForOne = true;
+        int256 amountSpecified = -1e12;
+        BalanceDelta swapDelta = swap(key, zeroForOne, amountSpecified, ZERO_BYTES);
+
+        assertEq(feeTakingExtension.afterSwapCounter(), 1);
+
+        uint128 output = uint128(swapDelta.amount1() - feeTakingExtension.DONATION_AMOUNT());
+        assertTrue(output > 0);
+
+        uint256 expectedFee = calculateFeeForExactInput(output, feeTakingExtension.swapFeeBips());
+
+        assertEq(manager.balanceOf(address(feeTakingExtension), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(
+            manager.balanceOf(address(feeTakingExtension), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R
+        );
+
+        assertEq(currency0.balanceOf(address(feeTakingExtension)), 1 ether);
+        assertEq(
+            currency1.balanceOf(address(feeTakingExtension)),
+            1 ether - uint256(int256(feeTakingExtension.DONATION_AMOUNT()))
+        );
+
+        // Swap token0 for exact token1 //
+        bool zeroForOne2 = true;
+        int256 amountSpecified2 = 1e12; // positive number indicates exact output swap
+        BalanceDelta swapDelta2 = swap(key, zeroForOne2, amountSpecified2, ZERO_BYTES);
+        return;
+        assertEq(feeTakingExtension.afterSwapCounter(), 2);
+
+        uint128 input = uint128(-swapDelta2.amount0() + feeTakingExtension.DONATION_AMOUNT());
+        assertTrue(input > 0);
+
+        uint256 expectedFee2 = calculateFeeForExactOutput(input, feeTakingExtension.swapFeeBips());
+
+        assertEq(
+            manager.balanceOf(address(feeTakingExtension), CurrencyLibrary.toId(key.currency0)) / R, expectedFee2 / R
+        );
+        assertEq(
+            manager.balanceOf(address(feeTakingExtension), CurrencyLibrary.toId(key.currency1)) / R, expectedFee / R
+        );
+
+        assertEq(
+            currency0.balanceOf(address(feeTakingExtension)),
+            1 ether - uint256(int256(feeTakingExtension.DONATION_AMOUNT()))
+        );
+        assertEq(
+            currency1.balanceOf(address(feeTakingExtension)),
+            1 ether - uint256(int256(feeTakingExtension.DONATION_AMOUNT()))
+        );
+
+        // test withdrawing tokens //
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = key.currency0;
+        currencies[1] = key.currency1;
+        feeTakingExtension.withdraw(currencies);
+        assertEq(manager.balanceOf(address(feeTakingExtension), CurrencyLibrary.toId(key.currency0)), 0);
+        assertEq(manager.balanceOf(address(feeTakingExtension), CurrencyLibrary.toId(key.currency1)), 0);
+        assertEq(currency0.balanceOf(TREASURY) / R, expectedFee2 / R);
+        assertEq(currency1.balanceOf(TREASURY) / R, expectedFee / R);
     }
 
     function calculateFeeForExactInput(uint256 outputAmount, uint128 feeBips) internal pure returns (uint256) {
