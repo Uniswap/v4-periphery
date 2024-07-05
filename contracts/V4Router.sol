@@ -61,7 +61,7 @@ abstract contract V4Router is IV4Router {
         _swap(
             params.poolKey,
             params.zeroForOne,
-            int256(-int128(params.amountIn)),
+            -int256(uint256(params.amountIn)),
             params.sqrtPriceLimitX96,
             paymentAddresses,
             true,
@@ -83,7 +83,7 @@ abstract contract V4Router is IV4Router {
                     _swap(
                         poolKey,
                         zeroForOne,
-                        int256(-int128(params.amountIn)),
+                        -int256(uint256(params.amountIn)),
                         0,
                         paymentAddresses,
                         i == 0,
@@ -107,7 +107,7 @@ abstract contract V4Router is IV4Router {
         _swap(
             params.poolKey,
             params.zeroForOne,
-            int256(int128(params.amountOut)),
+            int256(uint256(params.amountOut)),
             params.sqrtPriceLimitX96,
             paymentAddresses,
             true,
@@ -130,7 +130,7 @@ abstract contract V4Router is IV4Router {
                     -_swap(
                         poolKey,
                         !oneForZero,
-                        int256(int128(params.amountOut)),
+                        int256(uint256(params.amountOut)),
                         0,
                         paymentAddresses,
                         i == 1,
@@ -170,11 +170,11 @@ abstract contract V4Router is IV4Router {
 
         if (zeroForOne) {
             reciprocalAmount = amountSpecified < 0 ? delta.amount1() : delta.amount0();
-            if (settle) _payAndSettle(poolKey.currency0, paymentAddresses.payer, delta.amount0());
+            if (settle) _payAndSettle(poolKey.currency0, paymentAddresses.payer, uint128(-delta.amount0()));
             if (take) poolManager.take(poolKey.currency1, paymentAddresses.recipient, uint128(delta.amount1()));
         } else {
             reciprocalAmount = amountSpecified < 0 ? delta.amount0() : delta.amount1();
-            if (settle) _payAndSettle(poolKey.currency1, paymentAddresses.payer, delta.amount1());
+            if (settle) _payAndSettle(poolKey.currency1, paymentAddresses.payer, uint128(-delta.amount1()));
             if (take) poolManager.take(poolKey.currency0, paymentAddresses.recipient, uint128(delta.amount0()));
         }
     }
@@ -192,9 +192,9 @@ abstract contract V4Router is IV4Router {
         poolKey = PoolKey(currency0, currency1, params.fee, params.tickSpacing, params.hooks);
     }
 
-    function _payAndSettle(Currency currency, address payer, int128 settleAmount) private {
+    function _payAndSettle(Currency currency, address payer, uint256 settleAmount) private {
         poolManager.sync(currency);
-        _pay(Currency.unwrap(currency), payer, uint256(uint128(-settleAmount)));
+        _pay(Currency.unwrap(currency), payer, settleAmount);
         poolManager.settle(currency);
     }
 
