@@ -7,17 +7,22 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {SafeCallback} from "./base/SafeCallback.sol";
-import {ImmutableState} from "./base/ImmutableState.sol";
+import {SafeCallback} from "./../base/SafeCallback.sol";
+import {ImmutableState} from "./../base/ImmutableState.sol";
 
-abstract contract BaseHook is IHooks, SafeCallback {
+abstract contract BaseImplementation is IHooks, SafeCallback {
     error NotSelf();
     error InvalidPool();
     error LockFailure();
     error HookNotImplemented();
+    error NotMiddleware();
+    error NotMiddlewareFactory();
 
-    constructor(IPoolManager _manager) ImmutableState(_manager) {
-        validateHookAddress(this);
+    address public immutable middlewareFactory;
+    address public middleware;
+
+    constructor(IPoolManager _manager, address _middlewareFactory) ImmutableState(_manager) {
+        middlewareFactory = _middlewareFactory;
     }
 
     /// @dev Only this address may call this function
@@ -32,14 +37,17 @@ abstract contract BaseHook is IHooks, SafeCallback {
         _;
     }
 
-    function getHookPermissions() public pure virtual returns (Hooks.Permissions memory);
-
-    // this function is virtual so that we can override it during testing,
-    // which allows us to deploy an implementation to any address
-    // and then etch the bytecode into the correct address
-    function validateHookAddress(BaseHook _this) internal pure virtual {
-        Hooks.validateHookPermissions(_this, getHookPermissions());
+    modifier onlyByMiddleware() {
+        if (msg.sender != middleware) revert NotMiddleware();
+        _;
     }
+
+    function initializeMiddleware(address _middleware) external {
+        if (msg.sender != middlewareFactory) revert NotMiddlewareFactory();
+        middleware = _middleware;
+    }
+
+    function getHookPermissions() public pure virtual returns (Hooks.Permissions memory);
 
     function _unlockCallback(bytes calldata data) internal virtual override returns (bytes memory) {
         (bool success, bytes memory returnData) = address(this).call(data);
@@ -72,6 +80,15 @@ abstract contract BaseHook is IHooks, SafeCallback {
         revert HookNotImplemented();
     }
 
+    function beforeRemoveLiquidity(
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        bytes calldata
+    ) external virtual returns (bytes4) {
+        revert HookNotImplemented();
+    }
+
     function afterAddLiquidity(
         address,
         PoolKey calldata,
@@ -79,15 +96,6 @@ abstract contract BaseHook is IHooks, SafeCallback {
         BalanceDelta,
         bytes calldata
     ) external virtual returns (bytes4, BalanceDelta) {
-        revert HookNotImplemented();
-    }
-
-    function beforeRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external virtual returns (bytes4) {
         revert HookNotImplemented();
     }
 
