@@ -32,8 +32,10 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     using PoolIdLibrary for PoolKey;
 
     PoolId poolId;
-    address alice = makeAddr("ALICE");
-    address bob = makeAddr("BOB");
+    address alice;
+    uint256 alicePK;
+    address bob;
+    uint256 bobPK;
 
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
@@ -43,6 +45,9 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     LiquidityRange range;
 
     function setUp() public {
+        (alice, alicePK) = makeAddrAndKey("ALICE");
+        (bob, bobPK) = makeAddrAndKey("BOB");
+
         Deployers.deployFreshManagerAndRouters();
         Deployers.deployMintAndApprove2Currencies();
 
@@ -310,4 +315,74 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     function test_gas_burn() public {}
     function test_gas_burnEmpty() public {}
     function test_gas_collect() public {}
+
+    function test_gas_permit() public {
+        // alice permits for the first time
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice gives operator permission to bob
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, lpm.nonce(alice), block.timestamp + 1);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+
+        vm.prank(alice);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, v, r, s);
+        snapLastCall("permit");
+    }
+
+    function test_gas_permit_secondPosition() public {
+        // alice permits for her two tokens, benchmark the 2nd permit
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice gives operator permission to bob
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, lpm.nonce(alice), block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+
+        vm.prank(alice);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, v, r, s);
+
+        // alice creates another position
+        vm.prank(alice);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice gives operator permission to bob
+        digest = lpm.getDigest(bob, tokenIdAlice, lpm.nonce(alice), block.timestamp + 1);
+        (v, r, s) = vm.sign(alicePK, digest);
+
+        vm.prank(alice);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, v, r, s);
+        snapLastCall("permit_secondPosition");
+    }
+
+    function test_gas_permit_twice() public {
+        // alice permits the same token, twice
+        address charlie = makeAddr("CHARLIE");
+
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice gives operator permission to bob
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, lpm.nonce(alice), block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+
+        vm.prank(alice);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, v, r, s);
+
+        // alice gives operator permission to charlie
+        digest = lpm.getDigest(charlie, tokenIdAlice, lpm.nonce(alice), block.timestamp + 1);
+        (v, r, s) = vm.sign(alicePK, digest);
+
+        vm.prank(alice);
+        lpm.permit(charlie, tokenIdAlice, block.timestamp + 1, v, r, s);
+        snapLastCall("permit_twice");
+    }
 }
