@@ -9,6 +9,7 @@ interface INonfungiblePositionManager {
     struct TokenPosition {
         address owner;
         LiquidityRange range;
+        address operator;
     }
 
     error MustBeUnlockedByThisContract();

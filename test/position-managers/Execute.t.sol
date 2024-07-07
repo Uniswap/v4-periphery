@@ -92,7 +92,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         currencies[1] = currency1;
         lpm.unlockAndExecute(data, currencies);
 
-        (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
+        (uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
 
@@ -120,7 +120,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         currencies[1] = currency1;
         lpm.unlockAndExecute(data, currencies);
 
-        (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
+        (uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, initialiLiquidity + liquidityToAdd + liquidityToAdd2);
     }
 
@@ -148,7 +148,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         currencies[1] = currency1;
         lpm.unlockAndExecute(data, currencies);
 
-        (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
+        (uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, intialLiquidity + liquidityToAdd);
     }
 
