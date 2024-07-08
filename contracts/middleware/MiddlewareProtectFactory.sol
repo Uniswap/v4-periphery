@@ -5,6 +5,7 @@ import {IMiddlewareFactory} from "../interfaces/IMiddlewareFactory.sol";
 import {MiddlewareProtect} from "./MiddlewareProtect.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IBaseHook} from "../interfaces/IBaseHook.sol";
+import {IBaseImplementation} from "../interfaces/IBaseImplementation.sol";
 
 contract MiddlewareProtectFactory is IMiddlewareFactory {
     mapping(address => address) private _implementations;
@@ -21,6 +22,7 @@ contract MiddlewareProtectFactory is IMiddlewareFactory {
 
     function createMiddleware(address implementation, bytes32 salt) external override returns (address middleware) {
         middleware = address(new MiddlewareProtect{salt: salt}(poolManager, IBaseHook(implementation)));
+        IBaseImplementation(implementation).initializeMiddleware(middleware);
         _implementations[middleware] = implementation;
         emit MiddlewareCreated(implementation, middleware);
     }

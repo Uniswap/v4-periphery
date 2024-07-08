@@ -11,8 +11,9 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {console} from "forge-std/console.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {BaseImplementation} from "./../../contracts/middleware/BaseImplementation.sol";
 
-contract HooksFrontrun is BaseHook {
+contract HooksFrontrun is BaseImplementation {
     using SafeCast for uint256;
 
     bytes internal constant ZERO_BYTES = bytes("");
@@ -22,7 +23,7 @@ contract HooksFrontrun is BaseHook {
     BalanceDelta swapDelta;
     IPoolManager.SwapParams swapParams;
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+    constructor(IPoolManager _manager, address _middlewareFactory) BaseImplementation(_manager, _middlewareFactory) {}
 
     function getHookPermissions() public pure virtual override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
@@ -46,7 +47,7 @@ contract HooksFrontrun is BaseHook {
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
         external
         override
-        onlyByManager
+        onlyByMiddleware
         returns (bytes4, BeforeSwapDelta, uint24)
     {
         swapParams = params;

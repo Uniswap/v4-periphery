@@ -4,7 +4,6 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {HooksFrontrun} from "./middleware/HooksFrontrun.sol";
-import {HooksFrontrunImplementation} from "./shared/implementation/HooksFrontrunImplementation.sol";
 import {MiddlewareProtect} from "../contracts/middleware/MiddlewareProtect.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -48,9 +47,11 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
         token0 = TestERC20(Currency.unwrap(currency0));
         token1 = TestERC20(Currency.unwrap(currency1));
 
+        factory = new MiddlewareProtectFactory(manager);
+
         hooksFrontrun = HooksFrontrun(address(uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG)));
         vm.record();
-        HooksFrontrunImplementation impl = new HooksFrontrunImplementation(manager, hooksFrontrun);
+        HooksFrontrun impl = new HooksFrontrun(manager, address(factory));
         (, bytes32[] memory writes) = vm.accesses(address(impl));
         vm.etch(address(hooksFrontrun), address(impl).code);
         unchecked {
@@ -62,8 +63,6 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
 
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
-
-        factory = new MiddlewareProtectFactory(manager);
     }
 
     function testFrontrun() public {
