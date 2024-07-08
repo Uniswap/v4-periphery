@@ -8,7 +8,6 @@ import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/Bala
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {console} from "../../lib/forge-std/src/console.sol";
 import {BaseHook} from "./../BaseHook.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IBaseHook} from "./../interfaces/IBaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {ReentrancyState} from "./../libraries/ReentrancyState.sol";
@@ -17,7 +16,6 @@ import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 contract MiddlewareProtect is BaseMiddleware {
     using CustomRevert for bytes4;
-    using StateLibrary for IPoolManager;
     using LPFeeLibrary for uint24;
 
     /// @notice Thrown if the address will lead to forbidden flags being set
@@ -74,11 +72,11 @@ contract MiddlewareProtect is BaseMiddleware {
         IPoolManager.SwapParams calldata params,
         bytes calldata hookData
     ) external override swapNotLocked returns (bytes4, BeforeSwapDelta, uint24) {
-        ReentrancyState.lockSwapRemove();
-        console.log("beforeSwap middleware");
         if (msg.sender == address(implementation)) {
             return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
+        ReentrancyState.lockSwapRemove();
+        console.log("beforeSwap middleware");
         (bytes4 selector, BeforeSwapDelta delta, uint24 fee) = implementation.beforeSwap(sender, key, params, hookData);
         ReentrancyState.unlock();
         return (selector, delta, fee);
@@ -93,6 +91,9 @@ contract MiddlewareProtect is BaseMiddleware {
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata hookData
     ) external override returns (bytes4) {
+        if (msg.sender == address(implementation)) {
+            return BaseHook.beforeAddLiquidity.selector;
+        }
         ReentrancyState.lockSwap();
         console.log("beforeAddLiquidity middleware");
         bytes4 selector = implementation.beforeAddLiquidity(sender, key, params, hookData);
@@ -109,6 +110,9 @@ contract MiddlewareProtect is BaseMiddleware {
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
     ) external override removeNotLocked returns (bytes4) {
+        if (msg.sender == address(implementation)) {
+            return BaseHook.beforeRemoveLiquidity.selector;
+        }
         ReentrancyState.lockSwap();
         console.log("beforeRemoveLiquidity middleware");
         address(implementation).call{gas: gasLimit}(msg.data);
@@ -124,6 +128,9 @@ contract MiddlewareProtect is BaseMiddleware {
         BalanceDelta,
         bytes calldata
     ) external override returns (bytes4, BalanceDelta) {
+        if (msg.sender == address(implementation)) {
+            return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
+        }
         console.log("afterRemoveLiquidity middleware");
         address(implementation).call{gas: gasLimit}(msg.data);
         return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);

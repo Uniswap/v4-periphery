@@ -5,29 +5,21 @@ import {BaseHook} from "./../../contracts/BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {BaseImplementation} from "./../../contracts/middleware/BaseImplementation.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {Owned} from "solmate/auth/Owned.sol";
-import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
-import {console} from "../../../lib/forge-std/src/console.sol";
 
-contract HooksRevert {
-    error HookNotImplemented();
+contract HooksRevert is BaseImplementation {
+    error AlwaysReverts();
 
-    IPoolManager public immutable poolManager;
+    constructor(IPoolManager _manager, address _middlewareFactory) BaseImplementation(_manager, _middlewareFactory) {}
 
-    constructor(IPoolManager _poolManager) {
-        poolManager = _poolManager;
-    }
-
-    function getHookPermissions() public pure returns (Hooks.Permissions memory) {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: true,
-            afterInitialize: true,
-            beforeAddLiquidity: true,
-            afterAddLiquidity: true,
+            beforeInitialize: false,
+            afterInitialize: false,
+            beforeAddLiquidity: false,
+            afterAddLiquidity: false,
             beforeRemoveLiquidity: true,
             afterRemoveLiquidity: true,
             beforeSwap: true,
@@ -41,43 +33,14 @@ contract HooksRevert {
         });
     }
 
-    function beforeInitialize(address, PoolKey calldata, uint160, bytes calldata) external virtual returns (bytes4) {
-        revert HookNotImplemented();
-    }
-
-    function afterInitialize(address, PoolKey calldata, uint160, int24, bytes calldata)
-        external
-        virtual
-        returns (bytes4)
-    {
-        revert HookNotImplemented();
-    }
-
-    function beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
-        external
-        virtual
-        returns (bytes4)
-    {
-        revert HookNotImplemented();
-    }
-
-    function beforeRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external returns (bytes4) {
-        revert HookNotImplemented();
-    }
-
     function afterAddLiquidity(
         address,
         PoolKey calldata,
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external virtual returns (bytes4, BalanceDelta) {
-        revert HookNotImplemented();
+    ) external pure override returns (bytes4, BalanceDelta) {
+        revert AlwaysReverts();
     }
 
     function afterRemoveLiquidity(
@@ -86,40 +49,44 @@ contract HooksRevert {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external returns (bytes4, BalanceDelta) {
+    ) external pure override returns (bytes4, BalanceDelta) {
         require(sender == address(0), "nobody can remove");
         return (BaseHook.beforeRemoveLiquidity.selector, toBalanceDelta(0, 0));
     }
 
     function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
         external
-        virtual
+        pure
+        override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        revert HookNotImplemented();
+        revert AlwaysReverts();
     }
 
     function afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
         external
-        virtual
+        pure
+        override
         returns (bytes4, int128)
     {
-        revert HookNotImplemented();
+        revert AlwaysReverts();
     }
 
     function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
         external
-        virtual
+        pure
+        override
         returns (bytes4)
     {
-        revert HookNotImplemented();
+        revert AlwaysReverts();
     }
 
     function afterDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
         external
-        virtual
+        pure
+        override
         returns (bytes4)
     {
-        revert HookNotImplemented();
+        revert AlwaysReverts();
     }
 }

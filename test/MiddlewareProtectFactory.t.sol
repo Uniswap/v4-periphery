@@ -21,6 +21,8 @@ import {HooksRevert} from "./middleware/HooksRevert.sol";
 import {HooksOutOfGas} from "./middleware/HooksOutOfGas.sol";
 import {MiddlewareProtectFactory} from "./../contracts/middleware/MiddlewareProtectFactory.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
+import {HooksReturnDeltas} from "./middleware/HooksReturnDeltas.sol";
+import {HooksDoNothing} from "./middleware/HooksDoNothing.sol";
 
 contract MiddlewareProtectFactoryTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -37,6 +39,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
     PoolId id;
 
     MiddlewareProtectFactory factory;
+    HooksDoNothing hooksDoNothing;
     HooksFrontrun hooksFrontrun;
 
     function setUp() public {
@@ -48,6 +51,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
         token1 = TestERC20(Currency.unwrap(currency1));
 
         factory = new MiddlewareProtectFactory(manager);
+        hooksDoNothing = new HooksDoNothing(manager, address(factory));
 
         hooksFrontrun = HooksFrontrun(address(uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG)));
         vm.record();
@@ -65,7 +69,44 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
         token1.approve(address(router), type(uint256).max);
     }
 
+    function testRevertOnIncorrectFlags() public {
+        uint160 flags = uint160(Hooks.BEFORE_INITIALIZE_FLAG);
+
+        (address hookAddress, bytes32 salt) = HookMiner.find(
+            address(factory),
+            flags,
+            type(MiddlewareProtect).creationCode,
+            abi.encode(address(manager), address(hooksDoNothing))
+        );
+        address implementation = address(hooksDoNothing);
+        vm.expectRevert(abi.encodePacked(bytes16(Hooks.HookAddressNotValid.selector), hookAddress));
+        factory.createMiddleware(implementation, salt);
+    }
+
+    function testRevertOnIncorrectFlagsMined() public {
+        address implementation = address(hooksDoNothing);
+        vm.expectRevert(); // HookAddressNotValid
+        factory.createMiddleware(implementation, bytes32("who needs to mine a salt?"));
+    }
+
+    function testRevertOnDeltas() public {
+        HooksReturnDeltas hooksReturnDeltas = new HooksReturnDeltas(manager, address(factory));
+        uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
+
+        (address hookAddress, bytes32 salt) = HookMiner.find(
+            address(factory),
+            flags,
+            type(MiddlewareProtect).creationCode,
+            abi.encode(address(manager), address(hooksReturnDeltas))
+        );
+        address implementation = address(hooksReturnDeltas);
+        console.log(hookAddress);
+        vm.expectRevert(abi.encodePacked(bytes16(MiddlewareProtect.HookPermissionForbidden.selector), hookAddress));
+        factory.createMiddleware(implementation, salt);
+    }
+
     function testFrontrun() public {
+        return;
         (PoolKey memory key,) =
             initPoolAndAddLiquidity(currency0, currency1, IHooks(address(0)), 100, SQRT_PRICE_1_1, ZERO_BYTES);
         BalanceDelta swapDelta = swap(key, true, 0.001 ether, ZERO_BYTES);

@@ -10,7 +10,7 @@ import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/Bala
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
-abstract contract BaseMiddleware is IHooks {
+contract BaseMiddleware is IHooks {
     error NotManager();
 
     IPoolManager public immutable manager;

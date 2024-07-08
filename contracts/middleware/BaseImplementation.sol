@@ -17,7 +17,6 @@ abstract contract BaseImplementation is IHooks, SafeCallback {
     error HookNotImplemented();
     error NotMiddleware();
     error NotMiddlewareFactory();
-    error AlreadyInitialized();
 
     address public immutable middlewareFactory;
     address public middleware;
@@ -45,7 +44,6 @@ abstract contract BaseImplementation is IHooks, SafeCallback {
 
     function initializeMiddleware(address _middleware) external {
         if (msg.sender != middlewareFactory) revert NotMiddlewareFactory();
-        if (middleware != address(0)) revert AlreadyInitialized();
         middleware = _middleware;
     }
 
