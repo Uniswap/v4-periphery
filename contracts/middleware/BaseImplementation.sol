@@ -9,7 +9,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {SafeCallback} from "./../base/SafeCallback.sol";
 import {ImmutableState} from "./../base/ImmutableState.sol";
-import {console} from "forge-std/console.sol";
 
 abstract contract BaseImplementation is IHooks, SafeCallback {
     error NotSelf();
@@ -18,6 +17,7 @@ abstract contract BaseImplementation is IHooks, SafeCallback {
     error HookNotImplemented();
     error NotMiddleware();
     error NotMiddlewareFactory();
+    error AlreadyInitialized();
 
     address public immutable middlewareFactory;
     address public middleware;
@@ -45,7 +45,7 @@ abstract contract BaseImplementation is IHooks, SafeCallback {
 
     function initializeMiddleware(address _middleware) external {
         if (msg.sender != middlewareFactory) revert NotMiddlewareFactory();
-        console.log("initializeMiddleware");
+        if (middleware != address(0)) revert AlreadyInitialized();
         middleware = _middleware;
     }
 

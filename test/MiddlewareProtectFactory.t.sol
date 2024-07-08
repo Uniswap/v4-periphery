@@ -81,7 +81,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
         assertTrue(manager.balanceOf(address(hooksFrontrun), CurrencyLibrary.toId(key.currency0)) > 0);
     }
 
-    function testVariousProtectFactory() public {
+    function testRevertOnFrontrun() public {
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
 
         (address hookAddress, bytes32 salt) = HookMiner.find(
@@ -90,19 +90,16 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
             type(MiddlewareProtect).creationCode,
             abi.encode(address(manager), address(hooksFrontrun))
         );
-        testOn(address(hooksFrontrun), salt);
-    }
-
-    // creates a middleware on an implementation
-    function testOn(address implementation, bytes32 salt) internal {
-        address hookAddress = factory.createMiddleware(implementation, salt);
+        address implementation = address(hooksFrontrun);
+        address hookAddressCreated = factory.createMiddleware(implementation, salt);
+        assertEq(hookAddressCreated, hookAddress);
         MiddlewareProtect middlewareProtect = MiddlewareProtect(payable(hookAddress));
 
         (key,) = initPoolAndAddLiquidity(
             currency0, currency1, IHooks(address(middlewareProtect)), 100, SQRT_PRICE_1_1, ZERO_BYTES
         );
+        vm.expectRevert(MiddlewareProtect.ActionBetweenHook.selector);
         swap(key, true, 0.001 ether, ZERO_BYTES);
-        //vm.expectRevert();
     }
 
     function abs(int256 x) internal pure returns (uint256) {
