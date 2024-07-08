@@ -9,58 +9,93 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/type
 import {console} from "../../lib/forge-std/src/console.sol";
 import {BaseHook} from "./../BaseHook.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IBaseHook} from "./../interfaces/IBaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {ReentrancyState} from "./../libraries/ReentrancyState.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 contract MiddlewareProtect is BaseMiddleware {
+    using CustomRevert for bytes4;
     using StateLibrary for IPoolManager;
-    using Hooks for IHooks;
+    using LPFeeLibrary for uint24;
 
     /// @notice Thrown if the address will lead to forbidden flags being set
     /// @param hooks The address of the hooks contract
     error HookPermissionForbidden(address hooks);
     error ForbiddenReturn();
+    error InvalidFee();
+    error ActionBetweenHook();
 
     uint256 public constant gasLimit = 1000000;
 
-    constructor(IPoolManager _poolManager, IHooks _implementation) BaseMiddleware(_poolManager, _implementation) {
+    constructor(IPoolManager _poolManager, IBaseHook _implementation) BaseMiddleware(_poolManager, _implementation) {
+        Hooks.Permissions memory permissions = _implementation.getHookPermissions();
         // deny any hooks that return deltas
         if (
-            _implementation.hasPermission(Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG)
-                || _implementation.hasPermission(Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG)
-                || _implementation.hasPermission(Hooks.AFTER_ADD_LIQUIDITY_RETURNS_DELTA_FLAG)
-                || _implementation.hasPermission(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG)
+            permissions.beforeSwapReturnDelta || permissions.afterSwapReturnDelta
+                || permissions.afterAddLiquidityReturnDelta || permissions.afterRemoveLiquidityReturnDelta
         ) {
             HookPermissionForbidden.selector.revertWith(address(this));
         }
     }
 
-    // block swaps and removes
-    function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
+    modifier swapNotLocked() {
+        if (ReentrancyState.swapLocked()) {
+            revert ActionBetweenHook();
+        }
+        _;
+    }
+
+    modifier removeNotLocked() {
+        if (ReentrancyState.removeLocked()) {
+            revert ActionBetweenHook();
+        }
+        _;
+    }
+
+    function beforeInitialize(address sender, PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData)
         external
-        swapNotLocked
-        returns (bytes4, BeforeSwapDelta, uint24)
+        override
+        onlyByManager
+        returns (bytes4)
     {
+        if (key.fee.isDynamicFee()) revert InvalidFee();
+        if (msg.sender == address(implementation)) {
+            return BaseHook.beforeInitialize.selector;
+        }
+        return implementation.beforeInitialize(sender, key, sqrtPriceX96, hookData);
+    }
+
+    // block swaps and removes
+    function beforeSwap(
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.SwapParams calldata params,
+        bytes calldata hookData
+    ) external override swapNotLocked returns (bytes4, BeforeSwapDelta, uint24) {
         ReentrancyState.lockSwapRemove();
         console.log("beforeSwap middleware");
-        (bytes4 selector, BeforeSwapDelta beforeSwapDelta, uint24 lpFeeOverride) =
-            implementation.beforeSwap(sender, key, params, hookData);
-        if (lpFeeOverride != 0) {
-            revert ForbiddenReturn();
+        if (msg.sender == address(implementation)) {
+            return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
-        return (selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        (bytes4 selector, BeforeSwapDelta delta, uint24 fee) = implementation.beforeSwap(sender, key, params, hookData);
+        ReentrancyState.unlock();
+        return (selector, delta, fee);
     }
 
     // afterSwap - no protections
 
     // block swaps
-    function beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
-        external
-        returns (bytes4)
-    {
+    function beforeAddLiquidity(
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata params,
+        bytes calldata hookData
+    ) external override returns (bytes4) {
         ReentrancyState.lockSwap();
         console.log("beforeAddLiquidity middleware");
-        selector = implementation.beforeSwap(sender, key, params, hookData);
+        bytes4 selector = implementation.beforeAddLiquidity(sender, key, params, hookData);
         ReentrancyState.unlock();
         return selector;
     }
@@ -73,10 +108,10 @@ contract MiddlewareProtect is BaseMiddleware {
         PoolKey calldata,
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
-    ) external removeNotLocked returns (bytes4) {
+    ) external override removeNotLocked returns (bytes4) {
         ReentrancyState.lockSwap();
         console.log("beforeRemoveLiquidity middleware");
-        implementation.call{gas: gasLimit}(msg.data);
+        address(implementation).call{gas: gasLimit}(msg.data);
         ReentrancyState.unlock();
         return BaseHook.beforeRemoveLiquidity.selector;
     }
@@ -88,9 +123,9 @@ contract MiddlewareProtect is BaseMiddleware {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external returns (bytes4, BalanceDelta) {
+    ) external override returns (bytes4, BalanceDelta) {
         console.log("afterRemoveLiquidity middleware");
-        implementation.delegatecall{gas: gasLimit}(msg.data);
+        address(implementation).call{gas: gasLimit}(msg.data);
         return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 }

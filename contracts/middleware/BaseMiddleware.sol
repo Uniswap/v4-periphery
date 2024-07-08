@@ -6,9 +6,9 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IBaseHook} from "./../interfaces/IBaseHook.sol";
 import {BaseHook} from "./../BaseHook.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 abstract contract BaseMiddleware is IHooks {
     error NotManager();
@@ -69,7 +69,7 @@ abstract contract BaseMiddleware is IHooks {
         bytes calldata hookData
     ) external virtual onlyByManager returns (bytes4, BalanceDelta) {
         if (msg.sender == address(implementation)) {
-            return (BaseHook.afterAddLiquidity.selector, BalanceDelta.ZERO_DELTA);
+            return (BaseHook.afterAddLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
         }
         return implementation.afterAddLiquidity(sender, key, params, delta, hookData);
     }
@@ -92,7 +92,7 @@ abstract contract BaseMiddleware is IHooks {
         bytes calldata hookData
     ) external virtual onlyByManager returns (bytes4, BalanceDelta) {
         if (msg.sender == address(implementation)) {
-            return (BaseHook.afterRemoveLiquidity.selector, BalanceDelta.ZERO_DELTA);
+            return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
         }
         return implementation.afterRemoveLiquidity(sender, key, params, delta, hookData);
     }
@@ -103,7 +103,9 @@ abstract contract BaseMiddleware is IHooks {
         IPoolManager.SwapParams calldata params,
         bytes calldata hookData
     ) external virtual onlyByManager returns (bytes4, BeforeSwapDelta, uint24) {
-        if (msg.sender == address(implementation)) return (BaseHook.beforeSwap.selector, BeforeSwapDelta.ZERO_DELTA, 0);
+        if (msg.sender == address(implementation)) {
+            return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        }
         return implementation.beforeSwap(sender, key, params, hookData);
     }
 
