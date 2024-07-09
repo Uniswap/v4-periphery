@@ -243,6 +243,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
 
         // alice decreases liquidity
         vm.prank(alice);
+        lpm.approve(address(this), tokenIdAlice);
         _decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES, true);
 
         uint256 tolerance = 0.000000001 ether;
@@ -260,6 +261,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
 
         // bob decreases half of his liquidity
         vm.prank(bob);
+        lpm.approve(address(this), tokenIdBob);
         _decreaseLiquidity(tokenIdBob, liquidityBob / 2, ZERO_BYTES, true);
 
         // lpm collects half of bobs principal

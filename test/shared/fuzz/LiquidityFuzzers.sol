@@ -33,7 +33,7 @@ contract LiquidityFuzzers is Fuzzers {
         currencies[0] = key.currency0;
         currencies[1] = key.currency1;
 
-        int128[] memory result = lpm.unlockAndExecute(calls, currencies);
+        int128[] memory result = lpm.modifyLiquidities(calls, currencies);
         BalanceDelta delta = toBalanceDelta(result[0], result[1]);
 
         uint256 tokenId = lpm.nextTokenId() - 1;

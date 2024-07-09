@@ -8,6 +8,7 @@ import "forge-std/console2.sol";
 library LiquidityDeltaAccounting {
     function split(BalanceDelta liquidityDelta, BalanceDelta callerFeesAccrued, BalanceDelta totalFeesAccrued)
         internal
+        pure
         returns (BalanceDelta callerDelta, BalanceDelta thisDelta)
     {
         if (totalFeesAccrued == callerFeesAccrued) {

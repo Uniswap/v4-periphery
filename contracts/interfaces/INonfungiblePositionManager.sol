@@ -12,6 +12,7 @@ interface INonfungiblePositionManager {
     }
 
     error MustBeUnlockedByThisContract();
+    error DeadlinePassed();
 
     // NOTE: more gas efficient as LiquidityAmounts is used offchain
     function mint(
@@ -43,8 +44,7 @@ interface INonfungiblePositionManager {
     /// @notice Burn a position and delete the tokenId
     /// @dev It enforces that there is no open liquidity or tokens to be collected
     /// @param tokenId The ID of the position
-    /// @return delta Corresponding balance changes as a result of burning the position
-    function burn(uint256 tokenId) external returns (BalanceDelta delta);
+    function burn(uint256 tokenId) external;
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
     /// @notice Collect fees for a position
@@ -57,7 +57,7 @@ interface INonfungiblePositionManager {
     /// @notice Execute a batch of external calls by unlocking the PoolManager
     /// @param data an array of abi.encodeWithSelector(<selector>, <args>) for each call
     /// @return delta The final delta changes of the caller
-    function unlockAndExecute(bytes[] memory data, Currency[] memory currencies) external returns (int128[] memory);
+    function modifyLiquidities(bytes[] memory data, Currency[] memory currencies) external returns (int128[] memory);
 
     /// @notice Returns the fees owed for a position. Includes unclaimed fees + custodied fees + claimable fees
     /// @param tokenId The ID of the position
