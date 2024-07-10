@@ -47,6 +47,11 @@ abstract contract BaseImplementation is IHooks, SafeCallback {
         middleware = _middleware;
     }
 
+    function updateDynamicFee(PoolKey calldata key, uint24 fee) external {
+        if (msg.sender != middlewareFactory) revert NotMiddlewareFactory();
+        manager.updateDynamicLPFee(key, fee);
+    }
+
     function getHookPermissions() public pure virtual returns (Hooks.Permissions memory);
 
     function _unlockCallback(bytes calldata data) internal virtual override returns (bytes memory) {

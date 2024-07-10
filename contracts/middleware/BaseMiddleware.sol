@@ -11,6 +11,9 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 
 contract BaseMiddleware is IHooks {
+    using Hooks for BaseMiddleware;
+    using BeforeSwapDeltaLibrary for BeforeSwapDelta;
+
     error NotManager();
 
     IPoolManager public immutable manager;
@@ -102,11 +105,15 @@ contract BaseMiddleware is IHooks {
         PoolKey calldata key,
         IPoolManager.SwapParams calldata params,
         bytes calldata hookData
-    ) external virtual onlyByManager returns (bytes4, BeforeSwapDelta, uint24) {
+    ) external virtual onlyByManager returns (bytes4 selector, BeforeSwapDelta beforeSwapDelta, uint24 lpFeeOverride) {
         if (msg.sender == address(implementation)) {
             return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
         }
-        return implementation.beforeSwap(sender, key, params, hookData);
+        (selector, beforeSwapDelta, lpFeeOverride) = implementation.beforeSwap(sender, key, params, hookData);
+        if (this.hasPermission(Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG)) {
+            manager.take(key.currency0, sender, uint256(uint128(beforeSwapDelta.getSpecifiedDelta())));
+            manager.take(key.currency1, sender, uint256(uint128(beforeSwapDelta.getUnspecifiedDelta())));
+        }
     }
 
     function afterSwap(

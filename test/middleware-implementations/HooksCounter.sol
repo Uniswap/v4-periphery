@@ -8,8 +8,27 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {BaseImplementation} from "./../../contracts/middleware/BaseImplementation.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 contract HooksCounter is BaseImplementation {
+    using PoolIdLibrary for PoolKey;
+
+    mapping(PoolId => uint256) public beforeInitializeCount;
+    mapping(PoolId => uint256) public afterInitializeCount;
+
+    mapping(PoolId => uint256) public beforeSwapCount;
+    mapping(PoolId => uint256) public afterSwapCount;
+
+    mapping(PoolId => uint256) public beforeAddLiquidityCount;
+    mapping(PoolId => uint256) public afterAddLiquidityCount;
+    mapping(PoolId => uint256) public beforeRemoveLiquidityCount;
+    mapping(PoolId => uint256) public afterRemoveLiquidityCount;
+
+    mapping(PoolId => uint256) public beforeDonateCount;
+    mapping(PoolId => uint256) public afterDonateCount;
+
+    bytes public lastHookData;
+
     constructor(IPoolManager _manager, address _middlewareFactory) BaseImplementation(_manager, _middlewareFactory) {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -31,95 +50,116 @@ contract HooksCounter is BaseImplementation {
         });
     }
 
-    function beforeInitialize(address, PoolKey calldata, uint160, bytes calldata)
+    function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata hookData)
         external
-        pure
         override
+        onlyByMiddleware
         returns (bytes4)
     {
+        beforeInitializeCount[key.toId()]++;
+        lastHookData = hookData;
         return BaseHook.beforeInitialize.selector;
     }
 
-    function afterInitialize(address, PoolKey calldata, uint160, int24, bytes calldata)
+    function afterInitialize(address, PoolKey calldata key, uint160, int24, bytes calldata hookData)
         external
-        pure
         override
+        onlyByMiddleware
         returns (bytes4)
     {
+        afterInitializeCount[key.toId()]++;
+        lastHookData = hookData;
         return BaseHook.afterInitialize.selector;
     }
 
-    function beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
-        external
-        pure
-        override
-        returns (bytes4)
-    {
-        return BaseHook.beforeAddLiquidity.selector;
-    }
-
-    function beforeRemoveLiquidity(
+    function beforeAddLiquidity(
         address,
-        PoolKey calldata,
+        PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external pure override returns (bytes4) {
-        return BaseHook.beforeRemoveLiquidity.selector;
+        bytes calldata hookData
+    ) external override onlyByMiddleware returns (bytes4) {
+        beforeAddLiquidityCount[key.toId()]++;
+        lastHookData = hookData;
+        return BaseHook.beforeAddLiquidity.selector;
     }
 
     function afterAddLiquidity(
         address,
-        PoolKey calldata,
+        PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
-        bytes calldata
-    ) external pure override returns (bytes4, BalanceDelta) {
+        bytes calldata hookData
+    ) external override onlyByMiddleware returns (bytes4, BalanceDelta) {
+        afterAddLiquidityCount[key.toId()]++;
+        lastHookData = hookData;
         return (BaseHook.afterAddLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
+    }
+
+    function beforeRemoveLiquidity(
+        address,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata,
+        bytes calldata hookData
+    ) external override onlyByMiddleware returns (bytes4) {
+        beforeRemoveLiquidityCount[key.toId()]++;
+        lastHookData = hookData;
+        return BaseHook.beforeRemoveLiquidity.selector;
     }
 
     function afterRemoveLiquidity(
         address,
-        PoolKey calldata,
+        PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
-        bytes calldata
-    ) external pure override returns (bytes4, BalanceDelta) {
+        bytes calldata hookData
+    ) external override onlyByMiddleware returns (bytes4, BalanceDelta) {
+        afterRemoveLiquidityCount[key.toId()]++;
+        lastHookData = hookData;
         return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
-    function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
+    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata hookData)
         external
-        pure
         override
+        onlyByMiddleware
         returns (bytes4, BeforeSwapDelta, uint24)
     {
+        beforeSwapCount[key.toId()]++;
+        lastHookData = hookData;
         return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
-    function afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
-        external
-        pure
-        override
-        returns (bytes4, int128)
-    {
+    function afterSwap(
+        address,
+        PoolKey calldata key,
+        IPoolManager.SwapParams calldata,
+        BalanceDelta,
+        bytes calldata hookData
+    ) external override onlyByMiddleware returns (bytes4, int128) {
+        afterSwapCount[key.toId()]++;
+        lastHookData = hookData;
         return (BaseHook.afterSwap.selector, 0);
     }
 
-    function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
+    function beforeDonate(address, PoolKey calldata key, uint256, uint256, bytes calldata hookData)
         external
-        pure
         override
+        onlyByMiddleware
         returns (bytes4)
     {
+        beforeDonateCount[key.toId()]++;
+        lastHookData = hookData;
         return BaseHook.beforeDonate.selector;
     }
 
-    function afterDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
+    function afterDonate(address, PoolKey calldata key, uint256, uint256, bytes calldata hookData)
         external
-        pure
         override
+        onlyByMiddleware
         returns (bytes4)
     {
+        afterDonateCount[key.toId()]++;
+        lastHookData = hookData;
         return BaseHook.afterDonate.selector;
     }
 }
