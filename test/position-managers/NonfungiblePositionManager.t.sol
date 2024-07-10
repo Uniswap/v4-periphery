@@ -14,22 +14,29 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
+import {INonfungiblePositionManager, Actions} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
+import {Planner} from "../utils/Planner.sol";
+
+import "forge-std/console2.sol";
 
 contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using LiquidityRangeIdLibrary for LiquidityRange;
+    using Planner for Planner.Plan;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -48,92 +55,75 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
     function test_mint_withLiquidityDelta(IPoolManager.ModifyLiquidityParams memory params) public {
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+        // liquidity is a uint
+        uint256 liquidityToAdd =
+            params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(
+            Actions.MINT, abi.encode(range, liquidityToAdd, uint256(block.timestamp + 1), address(this), ZERO_BYTES)
+        );
+
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
 
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(
-            lpm.mint.selector, range, uint256(params.liquidityDelta), block.timestamp + 1, address(this), ZERO_BYTES
-        );
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-        int128[] memory result = lpm.modifyLiquidities(calls, currencies);
-        BalanceDelta delta = toBalanceDelta(result[0], result[1]);
+        bytes[] memory result = lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
 
-        uint256 balance0After = currency0.balanceOfSelf();
-        uint256 balance1After = currency1.balanceOfSelf();
+        (BalanceDelta delta, uint256 tokenId) = abi.decode(result[0], (BalanceDelta, uint256));
 
         assertEq(lpm.ownerOf(1), address(this));
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, uint256(params.liquidityDelta));
-        assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())), "incorrect amount0");
-        assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())), "incorrect amount1");
+        assertEq(balance0Before - currency0.balanceOfSelf(), uint256(int256(-delta.amount0())), "incorrect amount0");
+        assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())), "incorrect amount1");
     }
 
-    // function test_mint(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired) public {
-    //     (tickLower, tickUpper) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
-    //     (amount0Desired, amount1Desired) =
-    //         createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
+    function test_mint_exactTokenRatios() public {
+        int24 tickLower = -int24(key.tickSpacing);
+        int24 tickUpper = int24(key.tickSpacing);
+        uint256 amount0Desired = 100e18;
+        uint256 amount1Desired = 100e18;
+        uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            amount0Desired,
+            amount1Desired
+        );
 
-    //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
+        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
 
-    //     uint256 balance0Before = currency0.balanceOfSelf();
-    //     uint256 balance1Before = currency1.balanceOfSelf();
-    //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-    //         range: range,
-    //         amount0Desired: amount0Desired,
-    //         amount1Desired: amount1Desired,
-    //         amount0Min: 0,
-    //         amount1Min: 0,
-    //         deadline: block.timestamp + 1,
-    //         recipient: address(this),
-    //         hookData: ZERO_BYTES
-    //     });
-    //     (uint256 tokenId, BalanceDelta delta) = lpm.mint(params);
-    //     uint256 balance0After = currency0.balanceOfSelf();
-    //     uint256 balance1After = currency1.balanceOfSelf();
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
 
-    //     assertEq(tokenId, 1);
-    //     assertEq(lpm.ownerOf(1), address(this));
-    //     assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())));
-    //     assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
-    // }
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
 
-    // // minting with perfect token ratios will use all of the tokens
-    // function test_mint_perfect() public {
-    //     int24 tickLower = -int24(key.tickSpacing);
-    //     int24 tickUpper = int24(key.tickSpacing);
-    //     uint256 amount0Desired = 100e18;
-    //     uint256 amount1Desired = 100e18;
-    //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(
+            Actions.MINT, abi.encode(range, liquidityToAdd, uint256(block.timestamp + 1), address(this), ZERO_BYTES)
+        );
 
-    //     uint256 balance0Before = currency0.balanceOfSelf();
-    //     uint256 balance1Before = currency1.balanceOfSelf();
-    //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-    //         range: range,
-    //         amount0Desired: amount0Desired,
-    //         amount1Desired: amount1Desired,
-    //         amount0Min: amount0Desired,
-    //         amount1Min: amount1Desired,
-    //         deadline: block.timestamp + 1,
-    //         recipient: address(this),
-    //         hookData: ZERO_BYTES
-    //     });
-    //     (uint256 tokenId, BalanceDelta delta) = lpm.mint(params);
-    //     uint256 balance0After = currency0.balanceOfSelf();
-    //     uint256 balance1After = currency1.balanceOfSelf();
+        bytes[] memory result = lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        (BalanceDelta delta, uint256 tokenId) = abi.decode(result[0], (BalanceDelta, uint256));
 
-    //     assertEq(tokenId, 1);
-    //     assertEq(lpm.ownerOf(1), address(this));
-    //     assertEq(uint256(int256(-delta.amount0())), amount0Desired);
-    //     assertEq(uint256(int256(-delta.amount1())), amount1Desired);
-    //     assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())));
-    //     assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
-    // }
+        uint256 balance0After = currency0.balanceOfSelf();
+        uint256 balance1After = currency1.balanceOfSelf();
+
+        assertEq(tokenId, 1);
+        assertEq(lpm.ownerOf(1), address(this));
+        assertEq(uint256(int256(-delta.amount0())), amount0Desired);
+        assertEq(uint256(int256(-delta.amount1())), amount1Desired);
+        assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())));
+        assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
+    }
 
     // function test_mint_recipient(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
     //     public
@@ -210,7 +200,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         // create liquidity we can burn
         uint256 tokenId;
-        (tokenId, params,) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        (tokenId, params) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         assertEq(tokenId, 1);
@@ -224,7 +214,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         // TODO, encode this under one call
         BalanceDelta deltaDecrease = _decreaseLiquidity(tokenId, liquidity, ZERO_BYTES, false);
         BalanceDelta deltaCollect = _collect(tokenId, address(this), ZERO_BYTES, false);
-        lpm.burn(tokenId);
+        _burn(tokenId);
         (,, liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, 0);
 
@@ -249,11 +239,11 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
     }
 
-    function test_decreaseLiquidity(IPoolManager.ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta)
+    function test_decreaseLiquidity1(IPoolManager.ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta)
         public
     {
         uint256 tokenId;
-        (tokenId, params,) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        (tokenId, params) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.assume(0 < decreaseLiquidityDelta);
         vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
         vm.assume(int256(decreaseLiquidityDelta) <= params.liquidityDelta);
@@ -268,8 +258,9 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
-        assertEq(currency0.balanceOfSelf() - balance0Before, uint256(int256(delta.amount0())));
-        assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(delta.amount1())));
+        // On decrease, balance doesn't change (currenct functionality).
+        assertEq(currency0.balanceOfSelf() - balance0Before, 0);
+        assertEq(currency1.balanceOfSelf() - balance1Before, 0);
     }
 
     // function test_decreaseLiquidity_collectFees(
@@ -277,7 +268,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     //     uint256 decreaseLiquidityDelta
     // ) public {
     //     uint256 tokenId;
-    //     (tokenId, params,) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+    //     (tokenId, params) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
     //     vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
     //     vm.assume(0 < decreaseLiquidityDelta);
     //     vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
