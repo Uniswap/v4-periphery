@@ -92,16 +92,15 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
         vm.prank(bob);
-        _increaseLiquidity(tokenIdAlice, newLiquidity, ZERO_BYTES, false);
+        _increaseLiquidity(range, tokenIdAlice, newLiquidity, ZERO_BYTES, false);
 
         // alice's position has new liquidity
         (uint256 liquidity,,,,) = lpm.positions(alice, range.toId());
         assertEq(liquidity, liquidityAlice + newLiquidity);
 
         // bob used his tokens to increase liquidity
-        // TODO: enable after we fix msg.sender
-        // assertGt(balance0BobBefore, currency0.balanceOf(bob));
-        // assertGt(balance1BobBefore, currency1.balanceOf(bob));
+        assertGt(balance0BobBefore, currency0.balanceOf(bob));
+        assertGt(balance1BobBefore, currency1.balanceOf(bob));
     }
 
     function test_permit_decreaseLiquidity() public {
@@ -116,7 +115,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
         vm.prank(bob);
-        _decreaseLiquidity(tokenIdAlice, liquidityToRemove, ZERO_BYTES, false);
+        _decreaseLiquidity(range, tokenIdAlice, liquidityToRemove, ZERO_BYTES, false);
 
         // alice's position decreased liquidity
         (uint256 liquidity,,,,) = lpm.positions(alice, range.toId());

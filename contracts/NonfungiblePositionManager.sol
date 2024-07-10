@@ -20,6 +20,8 @@ import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientSta
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {TransientLiquidityDelta} from "./libraries/TransientLiquidityDelta.sol";
 
+import "forge-std/console2.sol";
+
 contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
@@ -62,11 +64,17 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         (bytes[] memory data, Currency[] memory currencies) = abi.decode(payload, (bytes[], Currency[]));
 
         bool success;
-
+        bytes memory callReturn;
         for (uint256 i; i < data.length; i++) {
             // TODO: Move to internal call and bubble up all call return data.
-            (success,) = address(this).call(data[i]);
-            if (!success) revert("EXECUTE_FAILED");
+            (success, callReturn) = address(this).call(data[i]);
+            if (!success) {
+                // if the call failed, bubble up the reason
+                /// @solidity memory-safe-assembly
+                assembly {
+                    revert(add(callReturn, 32), mload(callReturn))
+                }
+            }
         }
 
         // close the final deltas
@@ -123,7 +131,10 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     }
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
-    function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims) external {
+    function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
+        external
+        isAuthorizedForToken(tokenId)
+    {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
         _collect(recipient, tokenPos.owner, tokenPos.range, hookData);
