@@ -19,6 +19,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {IERC721Permit} from "../../contracts/interfaces/IERC721Permit.sol";
 
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
@@ -85,7 +86,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
-        _permit(alice, alicePK, tokenIdAlice, bob);
+        _permit(alice, alicePK, tokenIdAlice, bob, 1);
 
         // bob can increase liquidity on alice's token
         uint256 newLiquidity = 2e18;
@@ -110,7 +111,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
-        _permit(alice, alicePK, tokenIdAlice, bob);
+        _permit(alice, alicePK, tokenIdAlice, bob, 1);
 
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
@@ -134,7 +135,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         donateRouter.donate(key, currency0Revenue, currency1Revenue, ZERO_BYTES);
 
         // alice gives bob operator permissions
-        _permit(alice, alicePK, tokenIdAlice, bob);
+        _permit(alice, alicePK, tokenIdAlice, bob, 1);
 
         // TODO: enable once we fix recipient collection
 
@@ -158,13 +159,13 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob cannot permit himself on alice's token
-        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, lpm.nonce(bob), block.timestamp + 1);
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, 0, block.timestamp + 1);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPK, digest);
 
         vm.startPrank(bob);
         vm.expectRevert("Unauthorized");
-        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, v, r, s);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, 0, v, r, s);
         vm.stopPrank();
     }
 
@@ -217,6 +218,54 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         vm.startPrank(bob);
         vm.expectRevert("Not approved");
         _collect(range, tokenIdAlice, recipient, ZERO_BYTES, false);
+        vm.stopPrank();
+    }
+
+    function test_permit_nonceAlreadyUsed() public {
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice gives bob operator permissions
+        uint256 nonce = 1;
+        _permit(alice, alicePK, tokenIdAlice, bob, nonce);
+
+        // alice cannot reuse the nonce
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+
+        vm.startPrank(alice);
+        vm.expectRevert(IERC721Permit.NonceAlreadyUsed.selector);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
+        vm.stopPrank();
+    }
+
+    function test_permit_nonceAlreadyUsed_twoPositions() public {
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        vm.prank(alice);
+        range.tickLower = -600;
+        range.tickUpper = 600;
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice2 = lpm.nextTokenId() - 1;
+
+        // alice gives bob operator permissions for first token
+        uint256 nonce = 1;
+        _permit(alice, alicePK, tokenIdAlice, bob, nonce);
+
+        // alice cannot reuse the nonce for the second token
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice2, nonce, block.timestamp + 1);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+
+        vm.startPrank(alice);
+        vm.expectRevert(IERC721Permit.NonceAlreadyUsed.selector);
+        lpm.permit(bob, tokenIdAlice2, block.timestamp + 1, nonce, v, r, s);
         vm.stopPrank();
     }
 }

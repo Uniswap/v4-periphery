@@ -108,12 +108,12 @@ contract LiquidityOperations {
     }
 
     // TODO: organize somewhere else, or rename this file to NFTLiquidityHelpers?
-    function _permit(address signer, uint256 privateKey, uint256 tokenId, address operator) internal {
-        bytes32 digest = lpm.getDigest(operator, tokenId, lpm.nonce(signer), block.timestamp + 1);
+    function _permit(address signer, uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {
+        bytes32 digest = lpm.getDigest(operator, tokenId, 1, block.timestamp + 1);
 
         (uint8 v, bytes32 r, bytes32 s) = _vm1.sign(privateKey, digest);
 
         _vm1.prank(signer);
-        lpm.permit(operator, tokenId, block.timestamp + 1, v, r, s);
+        lpm.permit(operator, tokenId, block.timestamp + 1, nonce, v, r, s);
     }
 }

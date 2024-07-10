@@ -324,12 +324,13 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives operator permission to bob
-        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, lpm.nonce(alice), block.timestamp + 1);
+        uint256 nonce = 1;
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
 
         vm.prank(alice);
-        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, v, r, s);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
         snapLastCall("permit");
     }
 
@@ -341,11 +342,12 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives operator permission to bob
-        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, lpm.nonce(alice), block.timestamp + 1);
+        uint256 nonce = 1;
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
 
         vm.prank(alice);
-        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, v, r, s);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
 
         // alice creates another position
         vm.prank(alice);
@@ -353,11 +355,12 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives operator permission to bob
-        digest = lpm.getDigest(bob, tokenIdAlice, lpm.nonce(alice), block.timestamp + 1);
+        nonce = 2;
+        digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
         (v, r, s) = vm.sign(alicePK, digest);
 
         vm.prank(alice);
-        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, v, r, s);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
         snapLastCall("permit_secondPosition");
     }
 
@@ -371,18 +374,20 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives operator permission to bob
-        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, lpm.nonce(alice), block.timestamp + 1);
+        uint256 nonce = 1;
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
 
         vm.prank(alice);
-        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, v, r, s);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
 
         // alice gives operator permission to charlie
-        digest = lpm.getDigest(charlie, tokenIdAlice, lpm.nonce(alice), block.timestamp + 1);
+        nonce = 2;
+        digest = lpm.getDigest(charlie, tokenIdAlice, nonce, block.timestamp + 1);
         (v, r, s) = vm.sign(alicePK, digest);
 
         vm.prank(alice);
-        lpm.permit(charlie, tokenIdAlice, block.timestamp + 1, v, r, s);
+        lpm.permit(charlie, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
         snapLastCall("permit_twice");
     }
 }
