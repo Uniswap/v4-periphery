@@ -107,7 +107,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = currency0;
         currencies[1] = currency1;
-        lpm.unlockAndExecute(calls, currencies);
+        lpm.modifyLiquidities(calls, currencies);
         snapLastCall("mintWithLiquidity");
     }
 
@@ -121,7 +121,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         currencies[0] = currency0;
         currencies[1] = currency1;
 
-        lpm.unlockAndExecute(calls, currencies);
+        lpm.modifyLiquidities(calls, currencies);
         snapLastCall("increaseLiquidity_erc20");
     }
 
@@ -135,7 +135,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         currencies[0] = currency0;
         currencies[1] = currency1;
 
-        lpm.unlockAndExecute(calls, currencies);
+        lpm.modifyLiquidities(calls, currencies);
         snapLastCall("increaseLiquidity_erc6909");
     }
 
@@ -178,7 +178,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         currencies[1] = currency1;
 
         vm.prank(alice);
-        lpm.unlockAndExecute(calls, currencies);
+        lpm.modifyLiquidities(calls, currencies);
         snapLastCall("autocompound_exactUnclaimedFees");
     }
 
@@ -209,7 +209,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         currencies[1] = currency1;
 
         vm.prank(bob);
-        lpm.unlockAndExecute(calls, currencies);
+        lpm.modifyLiquidities(calls, currencies);
 
         // donate to create more fees
         donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
@@ -235,7 +235,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
             currencies[1] = currency1;
 
             vm.prank(alice);
-            lpm.unlockAndExecute(calls, currencies);
+            lpm.modifyLiquidities(calls, currencies);
             snapLastCall("autocompound_exactUnclaimedFees_exactCustodiedFees");
         }
     }
@@ -280,7 +280,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         currencies[1] = currency1;
 
         vm.prank(alice);
-        lpm.unlockAndExecute(calls, currencies);
+        lpm.modifyLiquidities(calls, currencies);
         snapLastCall("autocompound_excessFeesCredit");
     }
 
@@ -294,7 +294,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         currencies[0] = currency0;
         currencies[1] = currency1;
 
-        lpm.unlockAndExecute(calls, currencies);
+        lpm.modifyLiquidities(calls, currencies);
         snapLastCall("decreaseLiquidity_erc20");
     }
 
@@ -308,7 +308,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         currencies[0] = currency0;
         currencies[1] = currency1;
 
-        lpm.unlockAndExecute(calls, currencies);
+        lpm.modifyLiquidities(calls, currencies);
         snapLastCall("decreaseLiquidity_erc6909");
     }
 

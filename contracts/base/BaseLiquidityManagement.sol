@@ -115,7 +115,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         BalanceDelta tokensOwed,
         BalanceDelta callerDelta,
         BalanceDelta thisDelta
-    ) private returns (BalanceDelta, BalanceDelta, BalanceDelta) {
+    ) private pure returns (BalanceDelta, BalanceDelta, BalanceDelta) {
         // credit the excess tokens to the position's tokensOwed
         tokensOwed =
             useAmount0 ? tokensOwed.setAmount0(callerDelta.amount0()) : tokensOwed.setAmount1(callerDelta.amount1());
@@ -199,7 +199,9 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         if (recipient == _msgSenderInternal()) {
             callerDelta.flush(recipient, range.poolKey.currency0, range.poolKey.currency1);
         } else {
-            callerDelta.closeDelta(manager, recipient, range.poolKey.currency0, range.poolKey.currency1, false); // TODO: allow recipient to receive claims, and add test!
+            TransientLiquidityDelta.closeDelta(
+                manager, recipient, range.poolKey.currency0, range.poolKey.currency1, false
+            ); // TODO: allow recipient to receive claims, and add test!
         }
         thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 

@@ -20,8 +20,6 @@ import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientSta
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {TransientLiquidityDelta} from "./libraries/TransientLiquidityDelta.sol";
 
-import "forge-std/console2.sol";
-
 contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
@@ -38,12 +36,10 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     // maps the ERC721 tokenId to the keys that uniquely identify a liquidity position (owner, range)
     mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
 
-    // TODO: TSTORE these jawns
+    // TODO: We won't need this once we move to internal calls.
     address internal msgSender;
-    bool internal unlockedByThis;
 
-    // TODO: Context is inherited through ERC721 and will be not useful to use _msgSender() which will be address(this) with our current mutlicall.
-    function _msgSenderInternal() internal override returns (address) {
+    function _msgSenderInternal() internal view override returns (address) {
         return msgSender;
     }
 
@@ -52,10 +48,14 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
-    function unlockAndExecute(bytes[] memory data, Currency[] memory currencies) public returns (int128[] memory) {
+    function modifyLiquidities(bytes[] memory data, Currency[] memory currencies)
+        public
+        returns (int128[] memory returnData)
+    {
+        // TODO: This will be removed when we use internal calls. Otherwise we need to prevent calls to other code paths and prevent reentrancy or add a queue.
         msgSender = msg.sender;
-        unlockedByThis = true;
-        return abi.decode(manager.unlock(abi.encode(data, currencies)), (int128[]));
+        returnData = abi.decode(manager.unlock(abi.encode(data, currencies)), (int128[]));
+        msgSender = address(0);
     }
 
     function _unlockCallback(bytes calldata payload) internal override returns (bytes memory) {
@@ -64,33 +64,28 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         bool success;
 
         for (uint256 i; i < data.length; i++) {
-            // TODO: bubble up the return
+            // TODO: Move to internal call and bubble up all call return data.
             (success,) = address(this).call(data[i]);
             if (!success) revert("EXECUTE_FAILED");
         }
 
-        // close the deltas
+        // close the final deltas
         int128[] memory returnData = new int128[](currencies.length);
         for (uint256 i; i < currencies.length; i++) {
-            returnData[i] = currencies[i].close(manager, msgSender, false); // TODO: support claims
+            returnData[i] = currencies[i].close(manager, _msgSenderInternal(), false); // TODO: support claims
             currencies[i].close(manager, address(this), true); // position manager always takes 6909
         }
 
-        // Should just be returning the netted amount that was settled on behalf of the caller (msgSender)
-        // TODO: any recipient deltas settled earlier.
-        // @comment sauce: i dont think we can return recipient deltas since we cant parse the payload
         return abi.encode(returnData);
     }
 
-    // NOTE: more gas efficient as LiquidityAmounts is used offchain
-    // TODO: deadline check
     function mint(
         LiquidityRange calldata range,
         uint256 liquidity,
         uint256 deadline,
         address owner,
         bytes calldata hookData
-    ) external payable onlyIfUnlocked {
+    ) external payable checkDeadline(deadline) {
         _increaseLiquidity(owner, range, liquidity, hookData);
 
         // mint receipt token
@@ -99,30 +94,9 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         tokenPositions[tokenId] = TokenPosition({owner: owner, range: range, operator: address(0x0)});
     }
 
-    // NOTE: more expensive since LiquidityAmounts is used onchain
-    // function mint(MintParams calldata params) external payable returns (uint256 tokenId, BalanceDelta delta) {
-    //     (uint160 sqrtPriceX96,,,) = manager.getSlot0(params.range.poolKey.toId());
-    //     (tokenId, delta) = mint(
-    //         params.range,
-    //         LiquidityAmounts.getLiquidityForAmounts(
-    //             sqrtPriceX96,
-    //             TickMath.getSqrtPriceAtTick(params.range.tickLower),
-    //             TickMath.getSqrtPriceAtTick(params.range.tickUpper),
-    //             params.amount0Desired,
-    //             params.amount1Desired
-    //         ),
-    //         params.deadline,
-    //         params.recipient,
-    //         params.hookData
-    //     );
-    //     require(params.amount0Min <= uint256(uint128(delta.amount0())), "INSUFFICIENT_AMOUNT0");
-    //     require(params.amount1Min <= uint256(uint128(delta.amount1())), "INSUFFICIENT_AMOUNT1");
-    // }
-
     function increaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
         external
         isAuthorizedForToken(tokenId)
-        onlyIfUnlocked
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
@@ -132,16 +106,13 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
         external
         isAuthorizedForToken(tokenId)
-        onlyIfUnlocked
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
         _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
     }
 
-    // TODO return type?
-    function burn(uint256 tokenId) public isAuthorizedForToken(tokenId) returns (BalanceDelta delta) {
-        // TODO: Burn currently requires a decrease and collect call before the token can be deleted. Possible to combine.
+    function burn(uint256 tokenId) public isAuthorizedForToken(tokenId) {
         // We do not need to enforce the pool manager to be unlocked bc this function is purely clearing storage for the minted tokenId.
         TokenPosition memory tokenPos = tokenPositions[tokenId];
         // Checks that the full position's liquidity has been removed and all tokens have been collected from tokensOwed.
@@ -152,10 +123,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     }
 
     // TODO: in v3, we can partially collect fees, but what was the usecase here?
-    function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
-        external
-        onlyIfUnlocked
-    {
+    function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims) external {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
         _collect(recipient, tokenPos.owner, tokenPos.range, hookData);
@@ -166,6 +134,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         return feesOwed(tokenPosition.owner, tokenPosition.range);
     }
 
+    // TODO: Bug - Positions are overrideable unless we can allow two of the same users to have distinct positions.
     function _beforeTokenTransfer(address from, address to, uint256 tokenId) internal override {
         TokenPosition storage tokenPosition = tokenPositions[tokenId];
         LiquidityRangeId rangeId = tokenPosition.range.toId();
@@ -191,12 +160,12 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     }
 
     modifier isAuthorizedForToken(uint256 tokenId) {
-        require(msg.sender == address(this) || _isApprovedOrOwner(msg.sender, tokenId), "Not approved");
+        require(_isApprovedOrOwner(_msgSenderInternal(), tokenId), "Not approved");
         _;
     }
 
-    modifier onlyIfUnlocked() {
-        if (!unlockedByThis) revert MustBeUnlockedByThisContract();
+    modifier checkDeadline(uint256 deadline) {
+        if (block.timestamp > deadline) revert DeadlinePassed();
         _;
     }
 }

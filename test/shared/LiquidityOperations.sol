@@ -24,7 +24,7 @@ contract LiquidityOperations {
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = _range.poolKey.currency0;
         currencies[1] = _range.poolKey.currency1;
-        int128[] memory result = lpm.unlockAndExecute(calls, currencies);
+        int128[] memory result = lpm.modifyLiquidities(calls, currencies);
         return toBalanceDelta(result[0], result[1]);
     }
 
@@ -49,7 +49,7 @@ contract LiquidityOperations {
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = _range.poolKey.currency0;
         currencies[1] = _range.poolKey.currency1;
-        lpm.unlockAndExecute(calls, currencies);
+        lpm.modifyLiquidities(calls, currencies);
     }
 
     function _decreaseLiquidity(uint256 tokenId, uint256 liquidityToRemove, bytes memory hookData, bool claims)
@@ -76,7 +76,7 @@ contract LiquidityOperations {
         currencies[0] = _range.poolKey.currency0;
         currencies[1] = _range.poolKey.currency1;
 
-        int128[] memory result = lpm.unlockAndExecute(calls, currencies);
+        int128[] memory result = lpm.modifyLiquidities(calls, currencies);
         return toBalanceDelta(result[0], result[1]);
     }
 
@@ -103,7 +103,7 @@ contract LiquidityOperations {
         currencies[0] = _range.poolKey.currency0;
         currencies[1] = _range.poolKey.currency1;
 
-        int128[] memory result = lpm.unlockAndExecute(calls, currencies);
+        int128[] memory result = lpm.modifyLiquidities(calls, currencies);
         return toBalanceDelta(result[0], result[1]);
     }
 

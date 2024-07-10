@@ -61,7 +61,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = currency0;
         currencies[1] = currency1;
-        int128[] memory result = lpm.unlockAndExecute(calls, currencies);
+        int128[] memory result = lpm.modifyLiquidities(calls, currencies);
         BalanceDelta delta = toBalanceDelta(result[0], result[1]);
 
         uint256 balance0After = currency0.balanceOfSelf();
@@ -222,15 +222,23 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
         // TODO, encode this under one call
-        _decreaseLiquidity(tokenId, liquidity, ZERO_BYTES, false);
-        _collect(tokenId, address(this), ZERO_BYTES, false);
-        BalanceDelta delta = lpm.burn(tokenId);
+        BalanceDelta deltaDecrease = _decreaseLiquidity(tokenId, liquidity, ZERO_BYTES, false);
+        BalanceDelta deltaCollect = _collect(tokenId, address(this), ZERO_BYTES, false);
+        lpm.burn(tokenId);
         (liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, 0);
 
         // TODO: slightly off by 1 bip (0.0001%)
-        assertApproxEqRel(currency0.balanceOfSelf(), balance0BeforeBurn + uint256(int256(delta.amount0())), 0.0001e18);
-        assertApproxEqRel(currency1.balanceOfSelf(), balance1BeforeBurn + uint256(int256(delta.amount1())), 0.0001e18);
+        assertApproxEqRel(
+            currency0.balanceOfSelf(),
+            balance0BeforeBurn + uint256(uint128(deltaDecrease.amount0())) + uint256(uint128(deltaCollect.amount0())),
+            0.0001e18
+        );
+        assertApproxEqRel(
+            currency1.balanceOfSelf(),
+            balance1BeforeBurn + uint256(uint128(deltaDecrease.amount1())) + uint256(uint128(deltaCollect.amount1())),
+            0.0001e18
+        );
 
         // OZ 721 will revert if the token does not exist
         vm.expectRevert();

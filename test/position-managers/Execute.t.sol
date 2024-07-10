@@ -79,7 +79,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
     function test_execute_increaseLiquidity_once(uint256 initialLiquidity, uint256 liquidityToAdd) public {
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
-        _mint(range, initialLiquidity, 0, address(this), ZERO_BYTES);
+        _mint(range, initialLiquidity, block.timestamp, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         bytes[] memory data = new bytes[](1);
@@ -90,7 +90,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = currency0;
         currencies[1] = currency1;
-        lpm.unlockAndExecute(data, currencies);
+        lpm.modifyLiquidities(data, currencies);
 
         (uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
@@ -104,7 +104,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         initialiLiquidity = bound(initialiLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
         liquidityToAdd2 = bound(liquidityToAdd2, 1e18, 1000e18);
-        _mint(range, initialiLiquidity, 0, address(this), ZERO_BYTES);
+        _mint(range, initialiLiquidity, block.timestamp, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         bytes[] memory data = new bytes[](2);
@@ -118,7 +118,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = currency0;
         currencies[1] = currency1;
-        lpm.unlockAndExecute(data, currencies);
+        lpm.modifyLiquidities(data, currencies);
 
         (uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, initialiLiquidity + liquidityToAdd + liquidityToAdd2);
@@ -146,7 +146,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = currency0;
         currencies[1] = currency1;
-        lpm.unlockAndExecute(data, currencies);
+        lpm.modifyLiquidities(data, currencies);
 
         (uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, intialLiquidity + liquidityToAdd);
