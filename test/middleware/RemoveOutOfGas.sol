@@ -7,6 +7,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BaseHook} from "./../../contracts/BaseHook.sol";
+import {console} from "./../../lib/forge-gas-snapshot/lib/forge-std/src/console.sol";
 
 contract RemoveOutOfGas is BaseHook {
     uint256 counter;

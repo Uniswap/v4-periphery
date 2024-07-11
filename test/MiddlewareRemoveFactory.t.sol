@@ -143,7 +143,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         (address hookAddress, bytes32 salt) = HookMiner.find(
             address(factory), flags, type(MiddlewareRemove).creationCode, abi.encode(address(manager), address(counter))
         );
-        vm.expectRevert(MiddlewareRemove.HookPermissionForbidden.selector);
+        vm.expectRevert(abi.encodePacked(bytes16(MiddlewareRemove.HookPermissionForbidden.selector), hookAddress));
         factory.createMiddleware(address(counter), salt);
     }
 

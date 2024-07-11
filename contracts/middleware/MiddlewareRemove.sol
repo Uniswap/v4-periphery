@@ -13,6 +13,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {NonZeroDeltaCount} from "@uniswap/v4-core/src/libraries/NonZeroDeltaCount.sol";
 import {IExttload} from "@uniswap/v4-core/src/interfaces/IExttload.sol";
+import {console} from "./../../lib/forge-gas-snapshot/lib/forge-std/src/console.sol";
 
 contract MiddlewareRemove is BaseMiddleware {
     using CustomRevert for bytes4;
@@ -28,7 +29,7 @@ contract MiddlewareRemove is BaseMiddleware {
     }
 
     bytes internal constant ZERO_BYTES = bytes("");
-    uint256 public constant gasLimit = 10000000;
+    uint256 public constant GAS_LIMIT = 10_000_000;
 
     constructor(IPoolManager _manager, address _impl) BaseMiddleware(_manager, _impl) {
         if (IHooks(address(this)).hasPermission(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG)) {
@@ -42,7 +43,7 @@ contract MiddlewareRemove is BaseMiddleware {
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
     ) external returns (bytes4) {
-        implementation.delegatecall{gas: gasLimit}(msg.data);
+        implementation.delegatecall{gas: GAS_LIMIT}(msg.data);
         return BaseHook.beforeRemoveLiquidity.selector;
     }
 
@@ -53,14 +54,18 @@ contract MiddlewareRemove is BaseMiddleware {
         BalanceDelta delta,
         bytes calldata hookData
     ) external returns (bytes4, BalanceDelta) {
-        address(this).delegatecall(abi.encodeWithSelector(this._callAndEnsureZeroDeltas.selector, msg.data));
+        (bool success,) = address(this).delegatecall{gas: GAS_LIMIT}(
+            abi.encodeWithSelector(this._callAndEnsureZeroDeltas.selector, msg.data)
+        );
+        console.log("secondary", success);
         return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
     function _callAndEnsureZeroDeltas(bytes calldata data) external {
         bytes32 slot = bytes32(NonZeroDeltaCount.NONZERO_DELTA_COUNT_SLOT);
         uint256 countBefore = uint256(IExttload(address(manager)).exttload(slot));
-        address(implementation).delegatecall(msg.data);
+        (bool success,) = address(implementation).delegatecall(data);
+        console.log("main", success);
         uint256 countAfter = uint256(IExttload(address(manager)).exttload(slot));
         if (countAfter > countBefore) {
             // purpousely revert to cause the whole hook to reset
