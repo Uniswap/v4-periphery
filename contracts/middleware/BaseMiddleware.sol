@@ -11,11 +11,11 @@ import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
 
 contract BaseMiddleware is Proxy {
     /// @notice The address of the pool manager
-    IPoolManager public immutable poolManager;
+    IPoolManager public immutable manager;
     address public immutable implementation;
 
-    constructor(IPoolManager _poolManager, address _impl) {
-        poolManager = _poolManager;
+    constructor(IPoolManager _manager, address _impl) {
+        manager = _manager;
         implementation = _impl;
     }
 

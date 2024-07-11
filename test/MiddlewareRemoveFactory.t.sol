@@ -61,24 +61,28 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
 
     function testFeeOnRemove() public {
         uint160 flags = uint160(Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
-        FeeOnRemove feeOnRemove = FeeOnRemove(address(uint160(Hooks.AFTER_REMOVE_LIQUIDITY_FLAG)));
+        FeeOnRemove feeOnRemove = FeeOnRemove(address(flags));
         FeeOnRemove impl = new FeeOnRemove(manager);
         vm.etch(address(feeOnRemove), address(impl).code);
-        (address hookAddress, bytes32 salt) = HookMiner.find(
+        (, bytes32 salt) = HookMiner.find(
             address(factory),
             flags,
             type(MiddlewareRemove).creationCode,
             abi.encode(address(manager), address(feeOnRemove))
         );
-        factory.createMiddleware(address(feeOnRemove), salt);
+        middleware = factory.createMiddleware(address(feeOnRemove), salt);
 
         initPoolAndAddLiquidity(currency0, currency1, IHooks(feeOnRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
+        removeLiquidity(currency0, currency1, IHooks(feeOnRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        IHooks noHooks = IHooks(address(0));
+        initPoolAndAddLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         uint256 initialBalance0 = token0.balanceOf(address(this));
         uint256 initialBalance1 = token1.balanceOf(address(this));
-        removeLiquidity(currency0, currency1, IHooks(feeOnRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
-        uint256 outWithFees0 = token0.balanceOf(address(this)) - initialBalance0;
-        uint256 outWithFees1 = token1.balanceOf(address(this)) - initialBalance1;
-        console.log(outWithFees0, outWithFees1);
+        removeLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        uint256 outNormal0 = token0.balanceOf(address(this)) - initialBalance0;
+        uint256 outNormal1 = token1.balanceOf(address(this)) - initialBalance1;
 
         initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         initialBalance0 = token0.balanceOf(address(this));
@@ -86,7 +90,10 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         removeLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         uint256 out0 = token0.balanceOf(address(this)) - initialBalance0;
         uint256 out1 = token1.balanceOf(address(this)) - initialBalance1;
-        console.log(out0, out1);
+
+        // no fees taken
+        assertEq(outNormal0, out0);
+        assertEq(outNormal1, out1);
     }
 
     function testVariousFactory() public {
@@ -131,6 +138,15 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         assertEq(factory.getImplementation(hookAddress), implementation);
     }
 
+    function testRevertOnDeltaFlags() public {
+        uint160 flags = uint160(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG);
+        (address hookAddress, bytes32 salt) = HookMiner.find(
+            address(factory), flags, type(MiddlewareRemove).creationCode, abi.encode(address(manager), address(counter))
+        );
+        vm.expectRevert(MiddlewareRemove.HookPermissionForbidden.selector);
+        factory.createMiddleware(address(counter), salt);
+    }
+
     // from BaseMiddlewareFactory.t.sol
     function testRevertOnSameDeployment() public {
         uint160 flags = uint160(
@@ -138,7 +154,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
                 | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG
         );
-        (address hookAddress, bytes32 salt) = HookMiner.find(
+        (, bytes32 salt) = HookMiner.find(
             address(factory), flags, type(MiddlewareRemove).creationCode, abi.encode(address(manager), address(counter))
         );
         factory.createMiddleware(address(counter), salt);

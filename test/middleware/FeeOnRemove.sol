@@ -38,14 +38,12 @@ contract FeeOnRemove is BaseHook {
     }
 
     function afterRemoveLiquidity(
-        address, /* sender **/
+        address,
         PoolKey calldata key,
-        IPoolManager.ModifyLiquidityParams calldata, /* params **/
+        IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta delta,
-        bytes calldata /* hookData **/
+        bytes calldata
     ) external override onlyByManager returns (bytes4, BalanceDelta) {
-        assert(delta.amount0() >= 0 && delta.amount1() >= 0);
-
         uint128 feeAmount0 = uint128(delta.amount0()) * LIQUIDITY_FEE / TOTAL_BIPS;
         uint128 feeAmount1 = uint128(delta.amount1()) * LIQUIDITY_FEE / TOTAL_BIPS;
 

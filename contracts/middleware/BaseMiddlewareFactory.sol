@@ -11,10 +11,10 @@ import {IBaseHook} from "../interfaces/IBaseHook.sol";
 contract BaseMiddlewareFactory is IMiddlewareFactory {
     mapping(address => address) private _implementations;
 
-    IPoolManager public immutable poolManager;
+    IPoolManager public immutable manager;
 
-    constructor(IPoolManager _poolManager) {
-        poolManager = _poolManager;
+    constructor(IPoolManager _manager) {
+        manager = _manager;
     }
 
     function getImplementation(address middleware) external view override returns (address implementation) {
@@ -29,6 +29,6 @@ contract BaseMiddlewareFactory is IMiddlewareFactory {
     }
 
     function _deployMiddleware(address implementation, bytes32 salt) internal virtual returns (address middleware) {
-        return address(new BaseMiddleware{salt: salt}(poolManager, implementation));
+        return address(new BaseMiddleware{salt: salt}(manager, implementation));
     }
 }
