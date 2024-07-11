@@ -18,8 +18,9 @@ library Planner {
         bytes[] memory params = new bytes[](plan.params.length + 1);
 
         for (uint256 i; i < actions.length - 1; i++) {
-            actions[i] = actions[i];
-            params[i] = params[i];
+            // Copy from plan.
+            actions[i] = plan.actions[i];
+            params[i] = plan.params[i];
         }
 
         actions[actions.length - 1] = action;

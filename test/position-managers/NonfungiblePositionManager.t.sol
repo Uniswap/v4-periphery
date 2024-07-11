@@ -30,8 +30,6 @@ import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
 
-import "forge-std/console2.sol";
-
 contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
