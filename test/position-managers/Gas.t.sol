@@ -79,25 +79,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
-    // function test_gas_mint() public {
-    //     uint256 amount0Desired = 148873216119575134691; // 148 ether tokens, 10_000 liquidity
-    //     uint256 amount1Desired = 148873216119575134691; // 148 ether tokens, 10_000 liquidity
-    //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-    //         range: range,
-    //         amount0Desired: amount0Desired,
-    //         amount1Desired: amount1Desired,
-    //         amount0Min: 0,
-    //         amount1Min: 0,
-    //         deadline: block.timestamp + 1,
-    //         recipient: address(this),
-    //         hookData: ZERO_BYTES
-    //     });
-    //     snapStart("mint");
-    //     lpm.mint(params);
-    //     snapLastCall();
-    // }
-
-    function test_gas_mintWithLiquidity() public {
+    function test_gas_mint() public {
         Planner.Plan memory plan = Planner.init().add(
             Actions.MINT, abi.encode(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES)
         );
@@ -105,7 +87,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         currencies[0] = currency0;
         currencies[1] = currency1;
         lpm.modifyLiquidities(abi.encode(plan.actions, plan.params, currencies, currencies));
-        snapLastCall("mintWithLiquidity");
+        snapLastCall("mint");
     }
 
     function test_gas_increaseLiquidity_erc20() public {
