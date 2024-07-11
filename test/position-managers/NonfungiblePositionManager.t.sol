@@ -123,28 +123,29 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
     }
 
-    // function test_mint_recipient(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
-    //     public
-    // {
-    //     (tickLower, tickUpper) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
-    //     (amount0Desired, amount1Desired) =
-    //         createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
+    function test_mint_recipient(IPoolManager.ModifyLiquidityParams memory seedParams) public {
+        IPoolManager.ModifyLiquidityParams memory params = createFuzzyLiquidityParams(key, seedParams, SQRT_PRICE_1_1);
+        uint256 liquidityToAdd =
+            params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
 
-    //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
-    //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
-    //         range: range,
-    //         amount0Desired: amount0Desired,
-    //         amount1Desired: amount1Desired,
-    //         amount0Min: 0,
-    //         amount1Min: 0,
-    //         deadline: block.timestamp + 1,
-    //         recipient: alice,
-    //         hookData: ZERO_BYTES
-    //     });
-    //     (uint256 tokenId,) = lpm.mint(params);
-    //     assertEq(tokenId, 1);
-    //     assertEq(lpm.ownerOf(tokenId), alice);
-    // }
+        LiquidityRange memory range =
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(
+            Actions.MINT, abi.encode(range, liquidityToAdd, uint256(block.timestamp + 1), alice, ZERO_BYTES)
+        );
+
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
+        bytes[] memory results = lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+
+        (BalanceDelta delta, uint256 tokenId) = abi.decode(results[0], (BalanceDelta, uint256));
+        assertEq(tokenId, 1);
+        assertEq(lpm.ownerOf(tokenId), alice);
+    }
 
     // function test_mint_slippageRevert(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
     //     public

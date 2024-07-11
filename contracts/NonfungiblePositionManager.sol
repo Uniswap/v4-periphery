@@ -20,6 +20,8 @@ import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientSta
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {TransientLiquidityDelta} from "./libraries/TransientLiquidityDelta.sol";
 
+import "forge-std/console2.sol";
+
 contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
