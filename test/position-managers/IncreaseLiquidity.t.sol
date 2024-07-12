@@ -27,6 +27,8 @@ import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 
+import "forge-std/console2.sol";
+
 contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
@@ -327,7 +329,6 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         // Alice uses her fees to increase liquidity. Both unclaimed fees and cached fees are used to exactly increase the liquidity
         uint256 liquidityAlice = 3_000e18;
         uint256 liquidityBob = 1_000e18;
-        uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
         vm.prank(alice);
@@ -347,10 +348,10 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
 
         // bob collects fees so some of alice's fees are now cached
+
         vm.startPrank(bob);
         _collect(tokenIdBob, bob, ZERO_BYTES, false);
         vm.stopPrank();
-
         // swap to create more fees
         swap(key, true, -int256(swapAmount), ZERO_BYTES);
         swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
@@ -395,7 +396,6 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         // Alice uses her fees to increase liquidity. Both unclaimed fees and cached fees are used to exactly increase the liquidity
         uint256 liquidityAlice = 3_000e18;
         uint256 liquidityBob = 1_000e18;
-        uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
         vm.prank(alice);

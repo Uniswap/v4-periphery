@@ -21,13 +21,16 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-import {INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
+import {INonfungiblePositionManager, Actions} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
+import {Planner} from "../utils/Planner.sol";
+
+import "forge-std/console2.sol";
 
 contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
@@ -35,6 +38,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
+    using Planner for Planner.Plan;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -82,15 +86,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         _mint(range, initialLiquidity, block.timestamp, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        bytes[] memory data = new bytes[](1);
-        data[0] = abi.encodeWithSelector(
-            INonfungiblePositionManager.increaseLiquidity.selector, tokenId, liquidityToAdd, ZERO_BYTES, false
-        );
-
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-        lpm.modifyLiquidities(data, currencies);
+        _increaseLiquidity(tokenId, liquidityToAdd, ZERO_BYTES, false);
 
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
@@ -107,49 +103,45 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         _mint(range, initialiLiquidity, block.timestamp, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        bytes[] memory data = new bytes[](2);
-        data[0] = abi.encodeWithSelector(
-            INonfungiblePositionManager.increaseLiquidity.selector, tokenId, liquidityToAdd, ZERO_BYTES, false
-        );
-        data[1] = abi.encodeWithSelector(
-            INonfungiblePositionManager.increaseLiquidity.selector, tokenId, liquidityToAdd2, ZERO_BYTES, false
-        );
+        Planner.Plan memory planner = Planner.init();
+
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, ZERO_BYTES, false));
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd2, ZERO_BYTES, false));
+
+        console2.log("action");
+        console2.log(uint8(planner.actions[0]));
+        console2.log(uint8(planner.actions[1]));
 
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = currency0;
         currencies[1] = currency1;
-        lpm.modifyLiquidities(data, currencies);
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
 
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, initialiLiquidity + liquidityToAdd + liquidityToAdd2);
     }
 
     // this case doesnt make sense in real world usage, so it doesnt have a cool name. but its a good test case
-    function test_execute_mintAndIncrease(uint256 intialLiquidity, uint256 liquidityToAdd) public {
-        intialLiquidity = bound(intialLiquidity, 1e18, 1000e18);
+    function test_execute_mintAndIncrease(uint256 initialLiquidity, uint256 liquidityToAdd) public {
+        initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
 
         uint256 tokenId = 1; // assume that the .mint() produces tokenId=1, to be used in increaseLiquidity
-        bytes[] memory data = new bytes[](2);
-        data[0] = abi.encodeWithSelector(
-            INonfungiblePositionManager.mint.selector,
-            range,
-            intialLiquidity,
-            block.timestamp + 1,
-            address(this),
-            ZERO_BYTES
+
+        Planner.Plan memory planner = Planner.init();
+
+        planner = planner.add(
+            Actions.MINT, abi.encode(range, initialLiquidity, block.timestamp + 1, address(this), ZERO_BYTES)
         );
-        data[1] = abi.encodeWithSelector(
-            INonfungiblePositionManager.increaseLiquidity.selector, tokenId, liquidityToAdd, ZERO_BYTES, false
-        );
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, ZERO_BYTES, false));
 
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = currency0;
         currencies[1] = currency1;
-        lpm.modifyLiquidities(data, currencies);
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
 
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
-        assertEq(liquidity, intialLiquidity + liquidityToAdd);
+        assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
 
     // rebalance: burn and mint
