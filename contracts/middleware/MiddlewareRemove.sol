@@ -14,12 +14,17 @@ import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {NonZeroDeltaCount} from "@uniswap/v4-core/src/libraries/NonZeroDeltaCount.sol";
 import {IExttload} from "@uniswap/v4-core/src/interfaces/IExttload.sol";
 import {console} from "./../../lib/forge-gas-snapshot/lib/forge-std/src/console.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 contract MiddlewareRemove is BaseMiddleware {
     using CustomRevert for bytes4;
     using Hooks for IHooks;
+    using StateLibrary for IPoolManager;
+    using PoolIdLibrary for PoolKey;
 
     error HookPermissionForbidden(address hooks);
+    error HookModifiedPrice();
     error HookModifiedDeltas();
 
     struct afterRemoveLiquidityParams {
@@ -43,8 +48,26 @@ contract MiddlewareRemove is BaseMiddleware {
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
     ) external returns (bytes4) {
-        implementation.delegatecall{gas: GAS_LIMIT}(msg.data);
+        (bool success,) = address(this).delegatecall{gas: GAS_LIMIT}(
+            abi.encodeWithSelector(this._callAndEnsurePrice.selector, msg.data)
+        );
         return BaseHook.beforeRemoveLiquidity.selector;
+    }
+
+    function _callAndEnsurePrice(bytes calldata data) external {
+        (,, PoolKey memory key,,) =
+            abi.decode(data, (bytes4, address, PoolKey, IPoolManager.ModifyLiquidityParams, bytes));
+        (uint160 priceBefore,,,) = manager.getSlot0(key.toId());
+        (bool success,) = address(implementation).delegatecall(data);
+        if (!success) {
+            revert();
+        }
+        console.log("main", success);
+        (uint160 priceAfter,,,) = manager.getSlot0(key.toId());
+        if (priceAfter != priceBefore) {
+            // purpousely revert to cause the whole hook to reset
+            revert HookModifiedPrice();
+        }
     }
 
     function afterRemoveLiquidity(
@@ -65,9 +88,12 @@ contract MiddlewareRemove is BaseMiddleware {
         bytes32 slot = bytes32(NonZeroDeltaCount.NONZERO_DELTA_COUNT_SLOT);
         uint256 countBefore = uint256(IExttload(address(manager)).exttload(slot));
         (bool success,) = address(implementation).delegatecall(data);
+        if (!success) {
+            revert();
+        }
         console.log("main", success);
         uint256 countAfter = uint256(IExttload(address(manager)).exttload(slot));
-        if (countAfter > countBefore) {
+        if (countAfter != countBefore) {
             // purpousely revert to cause the whole hook to reset
             revert HookModifiedDeltas();
         }

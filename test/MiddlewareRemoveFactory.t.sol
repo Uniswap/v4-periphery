@@ -22,6 +22,7 @@ import {MiddlewareRemoveFactory} from "./../contracts/middleware/MiddlewareRemov
 import {HookMiner} from "./utils/HookMiner.sol";
 import {SafeCallback} from "./../contracts/base/SafeCallback.sol";
 import {FeeOnRemove} from "./middleware/FeeOnRemove.sol";
+import {FrontrunRemove} from "./middleware/FrontrunRemove.sol";
 
 contract MiddlewareRemoveFactoryTest is Test, Deployers {
     HookEnabledSwapRouter router;
@@ -57,6 +58,52 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         );
         middleware = factory.createMiddleware(address(counter), salt);
         assertEq(hookAddress, middleware);
+    }
+
+    function testFrontrunRemove() public {
+        uint160 flags = uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG);
+        FrontrunRemove frontrunRemove = FrontrunRemove(address(flags));
+        FrontrunRemove impl = new FrontrunRemove(manager);
+        vm.etch(address(frontrunRemove), address(impl).code);
+        (, bytes32 salt) = HookMiner.find(
+            address(factory),
+            flags,
+            type(MiddlewareRemove).creationCode,
+            abi.encode(address(manager), address(frontrunRemove))
+        );
+        middleware = factory.createMiddleware(address(frontrunRemove), salt);
+        currency0.transfer(address(frontrunRemove), 1 ether);
+        currency1.transfer(address(frontrunRemove), 1 ether);
+
+        initPoolAndAddLiquidity(currency0, currency1, IHooks(frontrunRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        uint256 initialBalance0 = token0.balanceOf(address(this));
+        uint256 initialBalance1 = token1.balanceOf(address(this));
+        removeLiquidity(currency0, currency1, IHooks(frontrunRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        uint256 outFrontrun0 = token0.balanceOf(address(this)) - initialBalance0;
+        uint256 outFrontrun1 = token1.balanceOf(address(this)) - initialBalance1;
+
+        IHooks noHooks = IHooks(address(0));
+        initPoolAndAddLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        initialBalance0 = token0.balanceOf(address(this));
+        initialBalance1 = token1.balanceOf(address(this));
+        removeLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        uint256 outNormal0 = token0.balanceOf(address(this)) - initialBalance0;
+        uint256 outNormal1 = token1.balanceOf(address(this)) - initialBalance1;
+
+        // was frontrun
+        assertTrue(outFrontrun0 > outNormal0);
+        assertTrue(outFrontrun1 < outNormal1);
+
+        initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        initialBalance0 = token0.balanceOf(address(this));
+        initialBalance1 = token1.balanceOf(address(this));
+        removeLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        uint256 out0 = token0.balanceOf(address(this)) - initialBalance0;
+        uint256 out1 = token1.balanceOf(address(this)) - initialBalance1;
+
+        // no frontrun
+        assertEq(outNormal0, out0);
+        assertEq(outNormal1, out1);
     }
 
     function testFeeOnRemove() public {
