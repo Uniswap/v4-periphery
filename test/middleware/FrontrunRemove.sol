@@ -9,7 +9,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BaseHook} from "./../../contracts/BaseHook.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {console} from "./../../lib/forge-gas-snapshot/lib/forge-std/src/console.sol";
 
 contract FrontrunRemove is BaseHook {
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}

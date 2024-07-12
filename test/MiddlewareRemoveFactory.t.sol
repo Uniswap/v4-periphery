@@ -74,6 +74,8 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         middleware = factory.createMiddleware(address(frontrunRemove), salt);
         currency0.transfer(address(frontrunRemove), 1 ether);
         currency1.transfer(address(frontrunRemove), 1 ether);
+        currency0.transfer(address(middleware), 1 ether);
+        currency1.transfer(address(middleware), 1 ether);
 
         initPoolAndAddLiquidity(currency0, currency1, IHooks(frontrunRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         uint256 initialBalance0 = token0.balanceOf(address(this));

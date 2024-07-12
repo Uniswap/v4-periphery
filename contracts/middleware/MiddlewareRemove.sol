@@ -13,7 +13,6 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {NonZeroDeltaCount} from "@uniswap/v4-core/src/libraries/NonZeroDeltaCount.sol";
 import {IExttload} from "@uniswap/v4-core/src/interfaces/IExttload.sol";
-import {console} from "./../../lib/forge-gas-snapshot/lib/forge-std/src/console.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
@@ -43,26 +42,30 @@ contract MiddlewareRemove is BaseMiddleware {
     }
 
     function beforeRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata params,
+        bytes calldata hookData
     ) external returns (bytes4) {
         (bool success,) = address(this).delegatecall{gas: GAS_LIMIT}(
-            abi.encodeWithSelector(this._callAndEnsurePrice.selector, msg.data)
+            abi.encodeWithSelector(this._callAndEnsurePrice.selector, sender, key, params, hookData)
         );
         return BaseHook.beforeRemoveLiquidity.selector;
     }
 
-    function _callAndEnsurePrice(bytes calldata data) external {
-        (,, PoolKey memory key,,) =
-            abi.decode(data, (bytes4, address, PoolKey, IPoolManager.ModifyLiquidityParams, bytes));
+    function _callAndEnsurePrice(
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata params,
+        bytes calldata hookData
+    ) external {
         (uint160 priceBefore,,,) = manager.getSlot0(key.toId());
-        (bool success,) = address(implementation).delegatecall(data);
+        (bool success,) = address(implementation).delegatecall(
+            abi.encodeWithSelector(this.beforeRemoveLiquidity.selector, sender, key, params, hookData)
+        );
         if (!success) {
             revert();
         }
-        console.log("main", success);
         (uint160 priceAfter,,,) = manager.getSlot0(key.toId());
         if (priceAfter != priceBefore) {
             // purpousely revert to cause the whole hook to reset
@@ -77,10 +80,9 @@ contract MiddlewareRemove is BaseMiddleware {
         BalanceDelta delta,
         bytes calldata hookData
     ) external returns (bytes4, BalanceDelta) {
-        (bool success,) = address(this).delegatecall{gas: GAS_LIMIT}(
+        address(this).delegatecall{gas: GAS_LIMIT}(
             abi.encodeWithSelector(this._callAndEnsureZeroDeltas.selector, msg.data)
         );
-        console.log("secondary", success);
         return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
@@ -91,7 +93,6 @@ contract MiddlewareRemove is BaseMiddleware {
         if (!success) {
             revert();
         }
-        console.log("main", success);
         uint256 countAfter = uint256(IExttload(address(manager)).exttload(slot));
         if (countAfter != countBefore) {
             // purpousely revert to cause the whole hook to reset
