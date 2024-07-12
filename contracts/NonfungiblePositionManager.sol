@@ -71,8 +71,9 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         internal
         returns (bytes[] memory returnData)
     {
-        returnData = new bytes[](actions.length);
+        if (actions.length != params.length) revert MismatchedLengths();
 
+        returnData = new bytes[](actions.length);
         for (uint256 i; i < actions.length; i++) {
             if (actions[i] == Actions.INCREASE) {
                 (uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims) =

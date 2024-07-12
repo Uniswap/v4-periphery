@@ -78,6 +78,6 @@ contract LiquidityOperations {
         Currency[] memory currencies = new Currency[](0);
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.BURN, abi.encode(tokenId));
-        bytes[] memory result = lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
     }
 }

@@ -329,7 +329,6 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         // Alice uses her fees to increase liquidity. Both unclaimed fees and cached fees are used to exactly increase the liquidity
         uint256 liquidityAlice = 3_000e18;
         uint256 liquidityBob = 1_000e18;
-        uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
         vm.prank(alice);
@@ -397,7 +396,6 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         // Alice uses her fees to increase liquidity. Both unclaimed fees and cached fees are used to exactly increase the liquidity
         uint256 liquidityAlice = 3_000e18;
         uint256 liquidityBob = 1_000e18;
-        uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
         vm.prank(alice);

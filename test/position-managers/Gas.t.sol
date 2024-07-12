@@ -237,7 +237,6 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         // bob provides liquidity
         vm.prank(bob);
         _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
-        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // donate to create fees
         donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);

@@ -9,11 +9,11 @@ library Planner {
         bytes[] params;
     }
 
-    function init() public returns (Plan memory plan) {
+    function init() public pure returns (Plan memory plan) {
         return Plan({actions: new Actions[](0), params: new bytes[](0)});
     }
 
-    function add(Plan memory plan, Actions action, bytes memory param) public returns (Plan memory) {
+    function add(Plan memory plan, Actions action, bytes memory param) public pure returns (Plan memory) {
         Actions[] memory actions = new Actions[](plan.actions.length + 1);
         bytes[] memory params = new bytes[](plan.params.length + 1);
 
@@ -27,9 +27,5 @@ library Planner {
         params[params.length - 1] = param;
 
         return Plan({actions: actions, params: params});
-    }
-
-    function zip(Plan memory plan) public returns (bytes memory) {
-        return abi.encode(plan.actions, plan.params);
     }
 }

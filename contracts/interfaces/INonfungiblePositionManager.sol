@@ -15,6 +15,8 @@ enum Actions {
 }
 
 interface INonfungiblePositionManager {
+    error MismatchedLengths();
+
     struct TokenPosition {
         address owner;
         LiquidityRange range;

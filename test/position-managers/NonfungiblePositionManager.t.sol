@@ -51,6 +51,21 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
     }
 
+    function test_modifyLiquidities_reverts_mismatchedLengths() public {
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(Actions.MINT, abi.encode("test"));
+        planner = planner.add(Actions.BURN, abi.encode("test"));
+
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
+        bytes[] memory badParams = new bytes[](1);
+
+        vm.expectRevert(INonfungiblePositionManager.MismatchedLengths.selector);
+        lpm.modifyLiquidities(abi.encode(planner.actions, badParams, currencies));
+    }
+
     function test_mint_withLiquidityDelta(IPoolManager.ModifyLiquidityParams memory params) public {
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
         // liquidity is a uint
@@ -75,7 +90,8 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         (BalanceDelta delta, uint256 tokenId) = abi.decode(result[0], (BalanceDelta, uint256));
 
-        assertEq(lpm.ownerOf(1), address(this));
+        assertEq(tokenId, 1);
+        assertEq(lpm.ownerOf(tokenId), address(this));
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, uint256(params.liquidityDelta));
         assertEq(balance0Before - currency0.balanceOfSelf(), uint256(int256(-delta.amount0())), "incorrect amount0");
@@ -142,7 +158,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         bytes[] memory results = lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
 
-        (BalanceDelta delta, uint256 tokenId) = abi.decode(results[0], (BalanceDelta, uint256));
+        (, uint256 tokenId) = abi.decode(results[0], (BalanceDelta, uint256));
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), alice);
     }
@@ -252,7 +268,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = _decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
+        _decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
 
         (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
