@@ -30,8 +30,6 @@ import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
 
-import "forge-std/console2.sol";
-
 contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
@@ -39,6 +37,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
     using Planner for Planner.Plan;
+    using StateLibrary for IPoolManager;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -88,7 +87,10 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
 
         _increaseLiquidity(tokenId, liquidityToAdd, ZERO_BYTES, false);
 
-        (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
 
@@ -108,16 +110,13 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, ZERO_BYTES, false));
         planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd2, ZERO_BYTES, false));
 
-        console2.log("action");
-        console2.log(uint8(planner.actions[0]));
-        console2.log(uint8(planner.actions[1]));
+        planner = planner.finalize(range);
+        lpm.modifyLiquidities(planner.zip());
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
 
-        (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
         assertEq(liquidity, initialiLiquidity + liquidityToAdd + liquidityToAdd2);
     }
 
@@ -135,12 +134,13 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         );
         planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, ZERO_BYTES, false));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        planner = planner.finalize(range);
+        lpm.modifyLiquidities(planner.zip());
 
-        (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
 
