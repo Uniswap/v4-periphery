@@ -26,12 +26,6 @@ contract MiddlewareRemove is BaseMiddleware {
     error HookModifiedPrice();
     error HookModifiedDeltas();
 
-    struct afterRemoveLiquidityParams {
-        address sender;
-        PoolKey key;
-        IPoolManager.ModifyLiquidityParams params;
-    }
-
     bytes internal constant ZERO_BYTES = bytes("");
     uint256 public constant GAS_LIMIT = 10_000_000;
 
