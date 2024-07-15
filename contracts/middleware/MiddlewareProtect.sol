@@ -16,12 +16,19 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {MiddlewareRemove} from "./MiddlewareRemove.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {console} from "./../../lib/forge-gas-snapshot/lib/forge-std/src/console.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 contract MiddlewareProtect is MiddlewareRemove {
     using CustomRevert for bytes4;
     using Hooks for IHooks;
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
+    using BeforeSwapDeltaLibrary for BeforeSwapDelta;
+    using LPFeeLibrary for uint24;
+
+    error ForbiddenDynamicFee();
+    error HookModifiedOutput();
 
     constructor(IPoolManager _manager, address _impl) MiddlewareRemove(_manager, _impl) {
         IHooks middleware = IHooks(address(this));
@@ -29,18 +36,54 @@ contract MiddlewareProtect is MiddlewareRemove {
             middleware.hasPermission(Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG)
                 || middleware.hasPermission(Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG)
                 || middleware.hasPermission(Hooks.AFTER_ADD_LIQUIDITY_RETURNS_DELTA_FLAG)
-                || middleware.hasPermission(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG)
         ) {
             HookPermissionForbidden.selector.revertWith(address(this));
         }
     }
 
-    // function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
-    //     external
-    //     returns (bytes4, BeforeSwapDelta, uint24)
-    // {
-    //     return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-    // }
+    function beforeInitialize(address sender, PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData)
+        external
+        returns (bytes4)
+    {
+        if (key.fee.isDynamicFee()) revert ForbiddenDynamicFee();
+        (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
+        return implementation.beforeInitialize(sender, key, sqrtPriceX96, hookData);
+    }
+
+    function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
+        external
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
+        (bool success, bytes memory returnData) = address(this).delegatecall{gas: GAS_LIMIT}(
+            abi.encodeWithSelector(this._callAndEnsureOutput.selector, msg.data)
+        );
+        if (!success) {
+            assembly {
+                revert(add(32, returnData), mload(returnData))
+            }
+        }
+        return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+    }
+
+    function _callAndEnsureOutput(bytes calldata data) external {
+        (, PoolKey memory key, IPoolManager.SwapParams memory params,) =
+            abi.decode(data[4:], (address, PoolKey, IPoolManager.SwapParams, bytes));
+
+        // todo: get quote
+        uint160 outputBefore = 0;
+        (bool success, bytes memory returnData) = address(implementation).delegatecall(data);
+        if (!success) {
+            revert FailedImplementationCall();
+        }
+        (, BeforeSwapDelta delta,) = abi.decode(returnData, (bytes4, BeforeSwapDelta, uint24));
+        console.logInt(delta.getUnspecifiedDelta());
+        console.logInt(delta.getSpecifiedDelta());
+        uint160 outputAfter = 0;
+        if (outputAfter < outputBefore) {
+            // purpousely revert to cause the whole hook to reset
+            revert HookModifiedOutput();
+        }
+    }
 
     function beforeAddLiquidity(
         address sender,
@@ -48,9 +91,14 @@ contract MiddlewareProtect is MiddlewareRemove {
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata hookData
     ) external returns (bytes4) {
-        address(this).delegatecall{gas: GAS_LIMIT}(
-            abi.encodeWithSelector(this._callAndEnsurePrice.selector, sender, key, params, hookData)
+        (bool success, bytes memory returnData) = address(this).delegatecall{gas: GAS_LIMIT}(
+            abi.encodeWithSelector(this._callAndEnsurePrice.selector, msg.data)
         );
+        if (!success) {
+            assembly {
+                revert(add(32, returnData), mload(returnData))
+            }
+        }
         return BaseHook.beforeAddLiquidity.selector;
     }
 }

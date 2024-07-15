@@ -22,6 +22,7 @@ import {HookMiner} from "./utils/HookMiner.sol";
 import {HooksReturnDeltas} from "./middleware/HooksReturnDeltas.sol";
 import {Counter} from "./middleware/Counter.sol";
 import {SafeCallback} from "./../contracts/base/SafeCallback.sol";
+import {FrontrunAdd} from "./middleware/FrontrunAdd.sol";
 
 contract MiddlewareProtectFactoryTest is Test, Deployers {
     HookEnabledSwapRouter router;
@@ -101,7 +102,6 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
     }
 
     function testRevertOnFrontrun() public {
-        return;
         uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
 
         (address hookAddress, bytes32 salt) = HookMiner.find(
@@ -118,8 +118,74 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
         (key,) = initPoolAndAddLiquidity(
             currency0, currency1, IHooks(address(middlewareProtect)), 100, SQRT_PRICE_1_1, ZERO_BYTES
         );
-        //vm.expectRevert(MiddlewareProtect.ActionBetweenHook.selector);
+        vm.expectRevert(MiddlewareProtect.HookModifiedOutput.selector);
         swap(key, true, 0.001 ether, ZERO_BYTES);
+    }
+
+    function testRevertOnFailedImplementationCall() public {
+        HooksRevert hooksRevert = new HooksRevert(manager);
+        uint160 flags = uint160(
+            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+                | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG
+        );
+        (address hookAddress, bytes32 salt) = HookMiner.find(
+            address(factory),
+            flags,
+            type(MiddlewareRemove).creationCode,
+            abi.encode(address(manager), address(hooksRevert))
+        );
+
+        HooksOutOfGas hooksOutOfGas = new HooksOutOfGas(manager);
+        (hookAddress, salt) = HookMiner.find(
+            address(factory),
+            flags,
+            type(MiddlewareRemove).creationCode,
+            abi.encode(address(manager), address(hooksOutOfGas))
+        );
+    }
+
+    function testFrontrunAdd() public {
+        uint160 flags = uint160(Hooks.BEFORE_ADD_LIQUIDITY_FLAG);
+        FrontrunAdd frontrunAdd = FrontrunAdd(address(flags));
+        FrontrunAdd impl = new FrontrunAdd(manager);
+        vm.etch(address(frontrunAdd), address(impl).code);
+        (, bytes32 salt) = HookMiner.find(
+            address(factory),
+            flags,
+            type(MiddlewareProtect).creationCode,
+            abi.encode(address(manager), address(frontrunAdd))
+        );
+        middleware = factory.createMiddleware(address(frontrunAdd), salt);
+        currency0.transfer(address(frontrunAdd), 1 ether);
+        currency1.transfer(address(frontrunAdd), 1 ether);
+        currency0.transfer(address(middleware), 1 ether);
+        currency1.transfer(address(middleware), 1 ether);
+
+        (PoolKey memory key,) =
+            initPoolAndAddLiquidity(currency0, currency1, IHooks(frontrunAdd), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        uint256 initialBalance0 = token0.balanceOf(address(this));
+        uint256 initialBalance1 = token1.balanceOf(address(this));
+        modifyLiquidityRouter.modifyLiquidity(key, LIQUIDITY_PARAMS, ZERO_BYTES);
+        uint256 inFrontrun0 = initialBalance0 - token0.balanceOf(address(this));
+        uint256 inFrontrun1 = initialBalance1 - token1.balanceOf(address(this));
+
+        IHooks noHooks = IHooks(address(0));
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        initialBalance0 = token0.balanceOf(address(this));
+        initialBalance1 = token1.balanceOf(address(this));
+        modifyLiquidityRouter.modifyLiquidity(key, LIQUIDITY_PARAMS, ZERO_BYTES);
+        uint256 inNormal0 = initialBalance0 - token0.balanceOf(address(this));
+        uint256 inNormal1 = initialBalance1 - token1.balanceOf(address(this));
+
+        // was frontrun
+        assertTrue(inFrontrun0 > inNormal0);
+        assertTrue(inFrontrun1 < inNormal1);
+
+        initialBalance0 = token0.balanceOf(address(this));
+        initialBalance1 = token1.balanceOf(address(this));
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        vm.expectRevert(MiddlewareRemove.HookModifiedPrice.selector);
+        modifyLiquidityRouter.modifyLiquidity(key, LIQUIDITY_PARAMS, ZERO_BYTES);
     }
 
     function abs(int256 x) internal pure returns (uint256) {

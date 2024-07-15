@@ -25,6 +25,7 @@ contract MiddlewareRemove is BaseMiddleware {
     error HookPermissionForbidden(address hooks);
     error HookModifiedPrice();
     error HookModifiedDeltas();
+    error FailedImplementationCall();
 
     bytes internal constant ZERO_BYTES = bytes("");
     uint256 public constant GAS_LIMIT = 10_000_000;
@@ -41,24 +42,17 @@ contract MiddlewareRemove is BaseMiddleware {
         IPoolManager.ModifyLiquidityParams calldata params,
         bytes calldata hookData
     ) external returns (bytes4) {
-        (bool success,) = address(this).delegatecall{gas: GAS_LIMIT}(
-            abi.encodeWithSelector(this._callAndEnsurePrice.selector, sender, key, params, hookData)
-        );
+        address(this).delegatecall{gas: GAS_LIMIT}(abi.encodeWithSelector(this._callAndEnsurePrice.selector, msg.data));
         return BaseHook.beforeRemoveLiquidity.selector;
     }
 
-    function _callAndEnsurePrice(
-        address sender,
-        PoolKey calldata key,
-        IPoolManager.ModifyLiquidityParams calldata params,
-        bytes calldata hookData
-    ) external {
+    function _callAndEnsurePrice(bytes calldata data) external {
+        (, PoolKey memory key,,) = abi.decode(data[4:], (address, PoolKey, IPoolManager.ModifyLiquidityParams, bytes));
+
         (uint160 priceBefore,,,) = manager.getSlot0(key.toId());
-        (bool success,) = address(implementation).delegatecall(
-            abi.encodeWithSelector(this.beforeRemoveLiquidity.selector, sender, key, params, hookData)
-        );
+        (bool success,) = address(implementation).delegatecall(data);
         if (!success) {
-            revert();
+            revert FailedImplementationCall();
         }
         (uint160 priceAfter,,,) = manager.getSlot0(key.toId());
         if (priceAfter != priceBefore) {
@@ -85,7 +79,7 @@ contract MiddlewareRemove is BaseMiddleware {
         uint256 countBefore = uint256(IExttload(address(manager)).exttload(slot));
         (bool success,) = address(implementation).delegatecall(data);
         if (!success) {
-            revert();
+            revert FailedImplementationCall();
         }
         uint256 countAfter = uint256(IExttload(address(manager)).exttload(slot));
         if (countAfter != countBefore) {
