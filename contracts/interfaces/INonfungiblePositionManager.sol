@@ -27,7 +27,7 @@ interface INonfungiblePositionManager {
     error DeadlinePassed();
     error UnsupportedAction();
 
-    function tokenPositions(uint256 tokenId) external view returns (address, LiquidityRange memory);
+    function tokenPositions(uint256 tokenId) external view returns (address, LiquidityRange memory, address);
 
     /// @notice Batches many liquidity modification calls to pool manager
     /// @param payload is an encoding of actions, params, and currencies

@@ -33,6 +33,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
     using CurrencyLibrary for Currency;
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
 
     PoolId poolId;
     address alice;
@@ -92,11 +93,14 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         uint256 newLiquidity = 2e18;
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
-        vm.prank(bob);
-        _increaseLiquidity(range, tokenIdAlice, newLiquidity, ZERO_BYTES, false);
+        vm.startPrank(bob);
+        _increaseLiquidity(tokenIdAlice, newLiquidity, ZERO_BYTES);
+        vm.stopPrank();
 
         // alice's position has new liquidity
-        (uint256 liquidity,,,,) = lpm.positions(alice, range.toId());
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenIdAlice)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
         assertEq(liquidity, liquidityAlice + newLiquidity);
 
         // bob used his tokens to increase liquidity
@@ -115,11 +119,15 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
 
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
-        vm.prank(bob);
-        _decreaseLiquidity(range, tokenIdAlice, liquidityToRemove, ZERO_BYTES, false);
+        vm.startPrank(bob);
+        _decreaseLiquidity(tokenIdAlice, liquidityToRemove, ZERO_BYTES);
+        vm.stopPrank();
 
         // alice's position decreased liquidity
-        (uint256 liquidity,,,,) = lpm.positions(alice, range.toId());
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenIdAlice)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
 
@@ -137,16 +145,18 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         // alice gives bob operator permissions
         _permit(alice, alicePK, tokenIdAlice, bob, 1);
 
-        // TODO: enable once we fix recipient collection
+        // TODO: test collection to recipient with a permissioned operator
 
-        // bob collects fees to a recipient
-        // address recipient = address(0x00444400);
-        // vm.startPrank(bob);
-        // _collect(tokenIdAlice, recipient, ZERO_BYTES, false);
-        // vm.stopPrank();
+        // bob collects fees to himself
+        address recipient = bob;
+        uint256 balance0BobBefore = currency0.balanceOf(bob);
+        uint256 balance1BobBefore = currency1.balanceOf(bob);
+        vm.startPrank(bob);
+        _collect(tokenIdAlice, recipient, ZERO_BYTES);
+        vm.stopPrank();
 
-        // assertEq(currency0.balanceOf(recipient), currency0Revenue);
-        // assertEq(currency1.balanceOf(recipient), currency1Revenue);
+        assertApproxEqAbs(currency0.balanceOf(recipient), balance0BobBefore + currency0Revenue, 1 wei);
+        assertApproxEqAbs(currency1.balanceOf(recipient), balance1BobBefore + currency1Revenue, 1 wei);
     }
 
     // --- Fail Scenarios --- //
@@ -178,11 +188,10 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
 
         // bob cannot increase liquidity on alice's token
         uint256 newLiquidity = 2e18;
-        uint256 balance0BobBefore = currency0.balanceOf(bob);
-        uint256 balance1BobBefore = currency1.balanceOf(bob);
+        bytes memory increase = LiquidityOperations.getIncreaseEncoded(tokenIdAlice, newLiquidity, ZERO_BYTES);
         vm.startPrank(bob);
         vm.expectRevert("Not approved");
-        _increaseLiquidity(range, tokenIdAlice, newLiquidity, ZERO_BYTES, false);
+        lpm.modifyLiquidities(increase);
         vm.stopPrank();
     }
 
@@ -195,9 +204,10 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
 
         // bob cannot decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
+        bytes memory decrease = LiquidityOperations.getDecreaseEncoded(tokenIdAlice, 0.4444e18, ZERO_BYTES);
         vm.startPrank(bob);
         vm.expectRevert("Not approved");
-        _decreaseLiquidity(range, tokenIdAlice, liquidityToRemove, ZERO_BYTES, false);
+        lpm.modifyLiquidities(decrease);
         vm.stopPrank();
     }
 
@@ -215,9 +225,10 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
 
         // bob cannot collect fees to a recipient
         address recipient = address(0x00444400);
+        bytes memory collect = LiquidityOperations.getCollectEncoded(tokenIdAlice, recipient, ZERO_BYTES);
         vm.startPrank(bob);
         vm.expectRevert("Not approved");
-        _collect(range, tokenIdAlice, recipient, ZERO_BYTES, false);
+        lpm.modifyLiquidities(collect);
         vm.stopPrank();
     }
 
