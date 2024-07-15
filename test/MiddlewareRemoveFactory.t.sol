@@ -77,18 +77,18 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         currency0.transfer(address(middleware), 1 ether);
         currency1.transfer(address(middleware), 1 ether);
 
-        initPoolAndAddLiquidity(currency0, currency1, IHooks(frontrunRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(frontrunRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         uint256 initialBalance0 = token0.balanceOf(address(this));
         uint256 initialBalance1 = token1.balanceOf(address(this));
-        removeLiquidity(currency0, currency1, IHooks(frontrunRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         uint256 outFrontrun0 = token0.balanceOf(address(this)) - initialBalance0;
         uint256 outFrontrun1 = token1.balanceOf(address(this)) - initialBalance1;
 
         IHooks noHooks = IHooks(address(0));
-        initPoolAndAddLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         initialBalance0 = token0.balanceOf(address(this));
         initialBalance1 = token1.balanceOf(address(this));
-        removeLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         uint256 outNormal0 = token0.balanceOf(address(this)) - initialBalance0;
         uint256 outNormal1 = token1.balanceOf(address(this)) - initialBalance1;
 
@@ -96,10 +96,10 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         assertTrue(outFrontrun0 > outNormal0);
         assertTrue(outFrontrun1 < outNormal1);
 
-        initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         initialBalance0 = token0.balanceOf(address(this));
         initialBalance1 = token1.balanceOf(address(this));
-        removeLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         uint256 out0 = token0.balanceOf(address(this)) - initialBalance0;
         uint256 out1 = token1.balanceOf(address(this)) - initialBalance1;
 
@@ -121,22 +121,22 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         );
         middleware = factory.createMiddleware(address(feeOnRemove), salt);
 
-        initPoolAndAddLiquidity(currency0, currency1, IHooks(feeOnRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(feeOnRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
-        removeLiquidity(currency0, currency1, IHooks(feeOnRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
 
         IHooks noHooks = IHooks(address(0));
-        initPoolAndAddLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         uint256 initialBalance0 = token0.balanceOf(address(this));
         uint256 initialBalance1 = token1.balanceOf(address(this));
-        removeLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         uint256 outNormal0 = token0.balanceOf(address(this)) - initialBalance0;
         uint256 outNormal1 = token1.balanceOf(address(this)) - initialBalance1;
 
-        initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         initialBalance0 = token0.balanceOf(address(this));
         initialBalance1 = token1.balanceOf(address(this));
-        removeLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         uint256 out0 = token0.balanceOf(address(this)) - initialBalance0;
         uint256 out1 = token1.balanceOf(address(this)) - initialBalance1;
 
@@ -183,10 +183,10 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
     function testOn(address implementation, bytes32 salt) internal {
         address hookAddress = factory.createMiddleware(implementation, salt);
 
-        initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
         // does not revert
-        removeLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         assertEq(factory.getImplementation(hookAddress), implementation);
     }
 
@@ -211,7 +211,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         );
         factory.createMiddleware(address(counter), salt);
         // second deployment should revert
-        vm.expectRevert(bytes(""));
+        vm.expectRevert(ZERO_BYTES);
         factory.createMiddleware(address(counter), salt);
     }
 
@@ -269,7 +269,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         assertEq(counter.beforeSwapCount(id), 0);
         assertEq(counter.afterSwapCount(id), 0);
 
-        removeLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         assertEq(counterProxy.beforeRemoveLiquidityCount(id), 1);
         assertEq(counterProxy.afterRemoveLiquidityCount(id), 1);
     }

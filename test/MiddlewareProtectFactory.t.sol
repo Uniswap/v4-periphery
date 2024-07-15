@@ -23,6 +23,9 @@ import {HooksReturnDeltas} from "./middleware/HooksReturnDeltas.sol";
 import {Counter} from "./middleware/Counter.sol";
 import {SafeCallback} from "./../contracts/base/SafeCallback.sol";
 import {FrontrunAdd} from "./middleware/FrontrunAdd.sol";
+import {IQuoter} from "./../contracts/interfaces/IQuoter.sol";
+import {Quoter} from "./../contracts/lens/Quoter.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 contract MiddlewareProtectFactoryTest is Test, Deployers {
     HookEnabledSwapRouter router;
@@ -33,10 +36,13 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
     Counter counter;
     address middleware;
     HooksFrontrun hooksFrontrun;
+    IQuoter quoter;
 
     function setUp() public {
         deployFreshManagerAndRouters();
         (currency0, currency1) = deployMintAndApprove2Currencies();
+
+        quoter = new Quoter(address(manager));
 
         router = new HookEnabledSwapRouter(manager);
         token0 = TestERC20(Currency.unwrap(currency0));
@@ -188,6 +194,22 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
         modifyLiquidityRouter.modifyLiquidity(key, LIQUIDITY_PARAMS, ZERO_BYTES);
     }
 
+    function testRevertOnDynamicFee() public {
+        vm.expectRevert(MiddlewareProtect.ForbiddenDynamicFee.selector);
+        initPool(
+            currency0, currency1, IHooks(middleware), LPFeeLibrary.DYNAMIC_FEE_FLAG, SQRT_PRICE_1_1, ZERO_BYTES
+        );
+    }
+
+    function testVariousSwaps() public {
+        (PoolKey memory key, PoolId id) =
+            initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        swap(key, true, 1 ether, ZERO_BYTES);
+        swap(key, false, 1 ether, ZERO_BYTES);
+        swap(key, true, -1 ether, ZERO_BYTES);
+        swap(key, false, -1 ether, ZERO_BYTES);
+    }
+
     function abs(int256 x) internal pure returns (uint256) {
         return x >= 0 ? uint256(x) : uint256(-x);
     }
@@ -207,7 +229,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
         );
         factory.createMiddleware(address(counter), salt);
         // second deployment should revert
-        vm.expectRevert(bytes(""));
+        vm.expectRevert(ZERO_BYTES);
         factory.createMiddleware(address(counter), salt);
     }
 

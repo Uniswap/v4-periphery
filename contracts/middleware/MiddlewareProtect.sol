@@ -18,6 +18,7 @@ import {MiddlewareRemove} from "./MiddlewareRemove.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {console} from "./../../lib/forge-gas-snapshot/lib/forge-std/src/console.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 contract MiddlewareProtect is MiddlewareRemove {
     using CustomRevert for bytes4;
@@ -26,9 +27,16 @@ contract MiddlewareProtect is MiddlewareRemove {
     using PoolIdLibrary for PoolKey;
     using BeforeSwapDeltaLibrary for BeforeSwapDelta;
     using LPFeeLibrary for uint24;
+    using BalanceDeltaLibrary for BalanceDelta;
 
     error ForbiddenDynamicFee();
     error HookModifiedOutput();
+
+    // todo: use tstore
+    BalanceDelta private quote;
+
+    uint160 public constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
+    uint160 public constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
 
     constructor(IPoolManager _manager, address _impl) MiddlewareRemove(_manager, _impl) {
         IHooks middleware = IHooks(address(this));
@@ -47,42 +55,55 @@ contract MiddlewareProtect is MiddlewareRemove {
     {
         if (key.fee.isDynamicFee()) revert ForbiddenDynamicFee();
         (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
-        return implementation.beforeInitialize(sender, key, sqrtPriceX96, hookData);
-    }
-
-    function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
-        external
-        returns (bytes4, BeforeSwapDelta, uint24)
-    {
-        (bool success, bytes memory returnData) = address(this).delegatecall{gas: GAS_LIMIT}(
-            abi.encodeWithSelector(this._callAndEnsureOutput.selector, msg.data)
-        );
         if (!success) {
             assembly {
                 revert(add(32, returnData), mload(returnData))
             }
         }
-        return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        return abi.decode(returnData, (bytes4));
     }
 
-    function _callAndEnsureOutput(bytes calldata data) external {
-        (, PoolKey memory key, IPoolManager.SwapParams memory params,) =
-            abi.decode(data[4:], (address, PoolKey, IPoolManager.SwapParams, bytes));
-
-        // todo: get quote
+    function beforeSwap(address sender, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
+        external
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
+        try this._quoteSwapDelta(key, params) {}
+        catch (bytes memory reason) {
+            quote = abi.decode(reason, (BalanceDelta));
+        }
         uint160 outputBefore = 0;
-        (bool success, bytes memory returnData) = address(implementation).delegatecall(data);
+        (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
         if (!success) {
-            revert FailedImplementationCall();
+            assembly {
+                revert(add(32, returnData), mload(returnData))
+            }
         }
-        (, BeforeSwapDelta delta,) = abi.decode(returnData, (bytes4, BeforeSwapDelta, uint24));
-        console.logInt(delta.getUnspecifiedDelta());
-        console.logInt(delta.getSpecifiedDelta());
-        uint160 outputAfter = 0;
-        if (outputAfter < outputBefore) {
-            // purpousely revert to cause the whole hook to reset
-            revert HookModifiedOutput();
+        return abi.decode(returnData, (bytes4, BeforeSwapDelta, uint24));
+    }
+
+    function _quoteSwapDelta(PoolKey memory key, IPoolManager.SwapParams memory params)
+        external
+        returns (bytes memory)
+    {
+        BalanceDelta swapDelta = manager.swap(key, params, ZERO_BYTES);
+        bytes memory result = abi.encode(swapDelta);
+        assembly {
+            revert(add(0x20, result), mload(result))
         }
+    }
+
+    function afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta delta, bytes calldata)
+        external
+        returns (bytes4, int128)
+    {
+        if (delta != quote) revert HookModifiedOutput();
+        (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
+        if (!success) {
+            assembly {
+                revert(add(32, returnData), mload(returnData))
+            }
+        }
+        return abi.decode(returnData, (bytes4, int128));
     }
 
     function beforeAddLiquidity(
