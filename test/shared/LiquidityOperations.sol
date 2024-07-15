@@ -5,12 +5,15 @@ import {Vm} from "forge-std/Vm.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
-import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
+import {NonfungiblePositionManager, Actions} from "../../contracts/NonfungiblePositionManager.sol";
 import {LiquidityRange} from "../../contracts/types/LiquidityRange.sol";
+import {Planner} from "../utils/Planner.sol";
 
 contract LiquidityOperations {
     Vm internal constant _vm1 = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
     NonfungiblePositionManager lpm;
+
+    using Planner for Planner.Plan;
 
     function _mint(
         LiquidityRange memory _range,
@@ -19,19 +22,17 @@ contract LiquidityOperations {
         address recipient,
         bytes memory hookData
     ) internal returns (BalanceDelta) {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(lpm.mint.selector, _range, liquidity, deadline, recipient, hookData);
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(Actions.MINT, abi.encode(_range, liquidity, deadline, recipient, hookData));
+
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = _range.poolKey.currency0;
         currencies[1] = _range.poolKey.currency1;
-        int128[] memory result = lpm.modifyLiquidities(calls, currencies);
-        return toBalanceDelta(result[0], result[1]);
+        bytes[] memory result = lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        return abi.decode(result[0], (BalanceDelta));
     }
 
     function _increaseLiquidity(uint256 tokenId, uint256 liquidityToAdd, bytes memory hookData, bool claims) internal {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(lpm.increaseLiquidity.selector, tokenId, liquidityToAdd, hookData, claims);
-
         (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
         return _increaseLiquidity(_range, tokenId, liquidityToAdd, hookData, claims);
     }
@@ -43,13 +44,13 @@ contract LiquidityOperations {
         bytes memory hookData,
         bool claims
     ) internal {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(lpm.increaseLiquidity.selector, tokenId, liquidityToAdd, hookData, claims);
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, hookData, claims));
 
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = _range.poolKey.currency0;
         currencies[1] = _range.poolKey.currency1;
-        lpm.modifyLiquidities(calls, currencies);
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
     }
 
     function _decreaseLiquidity(uint256 tokenId, uint256 liquidityToRemove, bytes memory hookData, bool claims)
@@ -69,15 +70,17 @@ contract LiquidityOperations {
         bytes memory hookData,
         bool claims
     ) internal returns (BalanceDelta) {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(lpm.decreaseLiquidity.selector, tokenId, liquidityToRemove, hookData, claims);
+        // cannot use Planner as it interferes with cheatcodes (prank / expectRevert)
+        Actions[] memory actions = new Actions[](1);
+        actions[0] = Actions.DECREASE;
+        bytes[] memory params = new bytes[](1);
+        params[0] = abi.encode(tokenId, liquidityToRemove, hookData, claims);
 
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = _range.poolKey.currency0;
         currencies[1] = _range.poolKey.currency1;
-
-        int128[] memory result = lpm.modifyLiquidities(calls, currencies);
-        return toBalanceDelta(result[0], result[1]);
+        bytes[] memory result = lpm.modifyLiquidities(abi.encode(actions, params, currencies));
+        return abi.decode(result[0], (BalanceDelta));
     }
 
     function _collect(uint256 tokenId, address recipient, bytes memory hookData, bool claims)
@@ -96,15 +99,21 @@ contract LiquidityOperations {
         bytes memory hookData,
         bool claims
     ) internal returns (BalanceDelta) {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(lpm.collect.selector, tokenId, recipient, hookData, claims);
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(Actions.COLLECT, abi.encode(tokenId, recipient, hookData, claims));
 
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = _range.poolKey.currency0;
         currencies[1] = _range.poolKey.currency1;
+        bytes[] memory result = lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        return abi.decode(result[0], (BalanceDelta));
+    }
 
-        int128[] memory result = lpm.modifyLiquidities(calls, currencies);
-        return toBalanceDelta(result[0], result[1]);
+    function _burn(uint256 tokenId) internal {
+        Currency[] memory currencies = new Currency[](0);
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(Actions.BURN, abi.encode(tokenId));
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
     }
 
     // TODO: organize somewhere else, or rename this file to NFTLiquidityHelpers?

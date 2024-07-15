@@ -7,10 +7,13 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
-import {INonfungiblePositionManager} from "../../../contracts/interfaces/INonfungiblePositionManager.sol";
+import {INonfungiblePositionManager, Actions} from "../../../contracts/interfaces/INonfungiblePositionManager.sol";
 import {LiquidityRange} from "../../../contracts/types/LiquidityRange.sol";
+import {Planner} from "../../utils/Planner.sol";
 
 contract LiquidityFuzzers is Fuzzers {
+    using Planner for Planner.Plan;
+
     function createFuzzyLiquidity(
         INonfungiblePositionManager lpm,
         address recipient,
@@ -18,25 +21,22 @@ contract LiquidityFuzzers is Fuzzers {
         IPoolManager.ModifyLiquidityParams memory params,
         uint160 sqrtPriceX96,
         bytes memory hookData
-    ) internal returns (uint256, IPoolManager.ModifyLiquidityParams memory, BalanceDelta) {
+    ) internal returns (uint256, IPoolManager.ModifyLiquidityParams memory) {
         params = Fuzzers.createFuzzyLiquidityParams(key, params, sqrtPriceX96);
-
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(
-            lpm.mint.selector, range, uint256(params.liquidityDelta), block.timestamp, recipient, hookData
+        Planner.Plan memory plan = Planner.init().add(
+            Actions.MINT, abi.encode(range, uint256(params.liquidityDelta), block.timestamp, recipient, hookData)
         );
 
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = key.currency0;
         currencies[1] = key.currency1;
 
-        int128[] memory result = lpm.modifyLiquidities(calls, currencies);
-        BalanceDelta delta = toBalanceDelta(result[0], result[1]);
+        lpm.modifyLiquidities(abi.encode(plan.actions, plan.params, currencies));
 
         uint256 tokenId = lpm.nextTokenId() - 1;
-        return (tokenId, params, delta);
+        return (tokenId, params);
     }
 }

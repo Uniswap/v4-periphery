@@ -70,7 +70,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
     // function test_collect_6909(IPoolManager.ModifyLiquidityParams memory params) public {
     //     params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
     //     uint256 tokenId;
-    //     (tokenId, params,) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+    //     (tokenId, params) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
     //     vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
 
     //     // swap to create fees
@@ -90,7 +90,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
     function test_collect_erc20(IPoolManager.ModifyLiquidityParams memory params) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         uint256 tokenId;
-        (tokenId, params,) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        (tokenId, params) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
 
         // swap to create fees
@@ -102,11 +102,9 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 balance1Before = currency1.balanceOfSelf();
         BalanceDelta delta = _collect(tokenId, address(this), ZERO_BYTES, false);
 
-        assertEq(delta.amount0(), 0);
-
         // express key.fee as wad (i.e. 3000 = 0.003e18)
         assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(FEE_WAD), 1 wei);
-
+        assertEq(uint256(int256(delta.amount0())), currency0.balanceOfSelf() - balance0Before);
         assertEq(uint256(int256(delta.amount1())), currency1.balanceOfSelf() - balance1Before);
     }
 

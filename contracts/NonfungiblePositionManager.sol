@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
-import {INonfungiblePositionManager} from "./interfaces/INonfungiblePositionManager.sol";
+import {INonfungiblePositionManager, Actions} from "./interfaces/INonfungiblePositionManager.sol";
 import {BaseLiquidityManagement} from "./base/BaseLiquidityManagement.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -38,89 +38,105 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     // maps the ERC721 tokenId to the keys that uniquely identify a liquidity position (owner, range)
     mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
 
-    // TODO: We won't need this once we move to internal calls.
-    address internal msgSender;
-
-    function _msgSenderInternal() internal view override returns (address) {
-        return msgSender;
-    }
-
     constructor(IPoolManager _manager)
         BaseLiquidityManagement(_manager)
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
-    function modifyLiquidities(bytes[] memory data, Currency[] memory currencies)
-        public
-        returns (int128[] memory returnData)
-    {
-        // TODO: This will be removed when we use internal calls. Otherwise we need to prevent calls to other code paths and prevent reentrancy or add a queue.
-        msgSender = msg.sender;
-        returnData = abi.decode(manager.unlock(abi.encode(data, currencies)), (int128[]));
-        msgSender = address(0);
+    /// @param unlockData is an encoding of actions, params, and currencies
+    /// @return returnData is the endocing of each actions return information
+    function modifyLiquidities(bytes calldata unlockData) public returns (bytes[] memory) {
+        // TODO: Edit the encoding/decoding.
+        return abi.decode(manager.unlock(abi.encode(unlockData, msg.sender)), (bytes[]));
     }
 
     function _unlockCallback(bytes calldata payload) internal override returns (bytes memory) {
-        (bytes[] memory data, Currency[] memory currencies) = abi.decode(payload, (bytes[], Currency[]));
+        // TODO: Fix double encode/decode
+        (bytes memory unlockData, address sender) = abi.decode(payload, (bytes, address));
 
-        bool success;
-        bytes memory callReturn;
-        for (uint256 i; i < data.length; i++) {
-            // TODO: Move to internal call and bubble up all call return data.
-            (success, callReturn) = address(this).call(data[i]);
-            if (!success) {
-                // if the call failed, bubble up the reason
-                /// @solidity memory-safe-assembly
-                assembly {
-                    revert(add(callReturn, 32), mload(callReturn))
-                }
-            }
-        }
+        (Actions[] memory actions, bytes[] memory params, Currency[] memory currencies) =
+            abi.decode(unlockData, (Actions[], bytes[], Currency[]));
 
-        // close the final deltas
-        int128[] memory returnData = new int128[](currencies.length);
+        bytes[] memory returnData = _dispatch(actions, params, sender);
+
         for (uint256 i; i < currencies.length; i++) {
-            returnData[i] = currencies[i].close(manager, _msgSenderInternal(), false); // TODO: support claims
+            currencies[i].close(manager, sender, false); // TODO: support claims
             currencies[i].close(manager, address(this), true); // position manager always takes 6909
         }
 
         return abi.encode(returnData);
     }
 
+    function _dispatch(Actions[] memory actions, bytes[] memory params, address sender)
+        internal
+        returns (bytes[] memory returnData)
+    {
+        if (actions.length != params.length) revert MismatchedLengths();
+
+        returnData = new bytes[](actions.length);
+        for (uint256 i; i < actions.length; i++) {
+            if (actions[i] == Actions.INCREASE) {
+                (uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims) =
+                    abi.decode(params[i], (uint256, uint256, bytes, bool));
+                returnData[i] = abi.encode(increaseLiquidity(tokenId, liquidity, hookData, claims, sender));
+            } else if (actions[i] == Actions.DECREASE) {
+                (uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims) =
+                    abi.decode(params[i], (uint256, uint256, bytes, bool));
+                returnData[i] = abi.encode(decreaseLiquidity(tokenId, liquidity, hookData, claims, sender));
+            } else if (actions[i] == Actions.MINT) {
+                (LiquidityRange memory range, uint256 liquidity, uint256 deadline, address owner, bytes memory hookData)
+                = abi.decode(params[i], (LiquidityRange, uint256, uint256, address, bytes));
+                (BalanceDelta delta, uint256 tokenId) = mint(range, liquidity, deadline, owner, hookData, sender);
+                returnData[i] = abi.encode(delta, tokenId);
+            } else if (actions[i] == Actions.BURN) {
+                (uint256 tokenId) = abi.decode(params[i], (uint256));
+                burn(tokenId, sender);
+            } else if (actions[i] == Actions.COLLECT) {
+                (uint256 tokenId, address recipient, bytes memory hookData, bool claims) =
+                    abi.decode(params[i], (uint256, address, bytes, bool));
+                returnData[i] = abi.encode(collect(tokenId, recipient, hookData, claims, sender));
+            } else {
+                revert UnsupportedAction();
+            }
+        }
+    }
+
     function mint(
-        LiquidityRange calldata range,
+        LiquidityRange memory range,
         uint256 liquidity,
         uint256 deadline,
         address owner,
-        bytes calldata hookData
-    ) external payable checkDeadline(deadline) {
-        _increaseLiquidity(owner, range, liquidity, hookData);
+        bytes memory hookData,
+        address sender
+    ) internal checkDeadline(deadline) returns (BalanceDelta delta, uint256 tokenId) {
+        delta = _increaseLiquidity(owner, range, liquidity, hookData, sender);
 
         // mint receipt token
-        uint256 tokenId;
         _mint(owner, (tokenId = nextTokenId++));
         tokenPositions[tokenId] = TokenPosition({owner: owner, range: range, operator: address(0x0)});
     }
 
-    function increaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
-        external
-        isAuthorizedForToken(tokenId)
+    function increaseLiquidity(uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims, address sender)
+        internal
+        isAuthorizedForToken(tokenId, sender)
+        returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
-        _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
+        delta = _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, sender);
     }
 
-    function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes calldata hookData, bool claims)
-        external
-        isAuthorizedForToken(tokenId)
+    function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims, address sender)
+        internal
+        isAuthorizedForToken(tokenId, sender)
+        returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
-        _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
+        delta = _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
     }
 
-    function burn(uint256 tokenId) public isAuthorizedForToken(tokenId) {
+    function burn(uint256 tokenId, address sender) internal isAuthorizedForToken(tokenId, sender) {
         // We do not need to enforce the pool manager to be unlocked bc this function is purely clearing storage for the minted tokenId.
         TokenPosition memory tokenPos = tokenPositions[tokenId];
         // Checks that the full position's liquidity has been removed and all tokens have been collected from tokensOwed.
@@ -130,14 +146,14 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         _burn(tokenId);
     }
 
-    // TODO: in v3, we can partially collect fees, but what was the usecase here?
-    function collect(uint256 tokenId, address recipient, bytes calldata hookData, bool claims)
-        external
-        isAuthorizedForToken(tokenId)
+    function collect(uint256 tokenId, address recipient, bytes memory hookData, bool claims, address sender)
+        internal
+        isAuthorizedForToken(tokenId, sender)
+        returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
 
-        _collect(recipient, tokenPos.owner, tokenPos.range, hookData);
+        delta = _collect(recipient, tokenPos.owner, tokenPos.range, hookData, sender);
     }
 
     function feesOwed(uint256 tokenId) external view returns (uint256 token0Owed, uint256 token1Owed) {
@@ -170,8 +186,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         return tokenPositions[tokenId].operator;
     }
 
-    modifier isAuthorizedForToken(uint256 tokenId) {
-        require(_isApprovedOrOwner(_msgSenderInternal(), tokenId), "Not approved");
+    modifier isAuthorizedForToken(uint256 tokenId, address sender) {
+        require(_isApprovedOrOwner(sender, tokenId), "Not approved");
         _;
     }
 

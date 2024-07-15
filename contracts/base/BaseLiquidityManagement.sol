@@ -49,8 +49,6 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
     constructor(IPoolManager _manager) ImmutableState(_manager) {}
 
-    function _msgSenderInternal() internal virtual returns (address);
-
     function _modifyLiquidity(address owner, LiquidityRange memory range, int256 liquidityChange, bytes memory hookData)
         internal
         returns (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued)
@@ -73,8 +71,9 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         address owner,
         LiquidityRange memory range,
         uint256 liquidityToAdd,
-        bytes memory hookData
-    ) internal {
+        bytes memory hookData,
+        address sender
+    ) internal returns (BalanceDelta) {
         // Note that the liquidityDelta includes totalFeesAccrued. The totalFeesAccrued is returned separately for accounting purposes.
         (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) =
             _modifyLiquidity(owner, range, liquidityToAdd.toInt256(), hookData);
@@ -103,11 +102,12 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         }
 
         // Accrue all deltas to the caller.
-        callerDelta.flush(_msgSenderInternal(), range.poolKey.currency0, range.poolKey.currency1);
+        callerDelta.flush(sender, range.poolKey.currency0, range.poolKey.currency1);
         thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         position.addTokensOwed(tokensOwed);
         position.addLiquidity(liquidityToAdd);
+        return liquidityDelta;
     }
 
     function _moveCallerDeltaToTokensOwed(
@@ -136,7 +136,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         LiquidityRange memory range,
         uint256 liquidityToRemove,
         bytes memory hookData
-    ) internal {
+    ) internal returns (BalanceDelta) {
         (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued) =
             _modifyLiquidity(owner, range, -(liquidityToRemove.toInt256()), hookData);
 
@@ -166,10 +166,17 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
 
         position.addTokensOwed(tokensOwed);
         position.subtractLiquidity(liquidityToRemove);
+        return liquidityDelta;
     }
 
     // The recipient may not be the original owner.
-    function _collect(address recipient, address owner, LiquidityRange memory range, bytes memory hookData) internal {
+    function _collect(
+        address recipient,
+        address owner,
+        LiquidityRange memory range,
+        bytes memory hookData,
+        address sender
+    ) internal returns (BalanceDelta) {
         BalanceDelta callerDelta;
         BalanceDelta thisDelta;
         Position storage position = positions[owner][range.toId()];
@@ -196,7 +203,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         callerDelta = callerDelta + tokensOwed;
         thisDelta = thisDelta - tokensOwed;
 
-        if (recipient == _msgSenderInternal()) {
+        if (recipient == sender) {
             callerDelta.flush(recipient, range.poolKey.currency0, range.poolKey.currency1);
         } else {
             TransientLiquidityDelta.closeDelta(
@@ -206,6 +213,7 @@ abstract contract BaseLiquidityManagement is IBaseLiquidityManagement, SafeCallb
         thisDelta.flush(address(this), range.poolKey.currency0, range.poolKey.currency1);
 
         position.clearTokensOwed();
+        return callerDelta;
     }
 
     function _validateBurn(address owner, LiquidityRange memory range) internal {
