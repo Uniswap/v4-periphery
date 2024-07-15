@@ -11,8 +11,8 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
-import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
+import {IPosm} from "../../contracts/interfaces/IPosm.sol";
+import {Posm} from "../../contracts/Posm.sol";
 import {LiquidityRange} from "../../contracts/types/LiquidityRange.sol";
 
 library FeeMath {
@@ -22,7 +22,7 @@ library FeeMath {
     using PoolIdLibrary for PoolKey;
 
     /// @notice Calculates the fees accrued to a position. Used for testing purposes.
-    function getFeesOwed(INonfungiblePositionManager posm, IPoolManager manager, uint256 tokenId)
+    function getFeesOwed(IPosm posm, IPoolManager manager, uint256 tokenId)
         internal
         view
         returns (BalanceDelta feesOwed)

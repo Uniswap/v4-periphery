@@ -7,7 +7,7 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
-import {INonfungiblePositionManager, Actions} from "../../../contracts/interfaces/INonfungiblePositionManager.sol";
+import {IPosm, Actions} from "../../../contracts/interfaces/IPosm.sol";
 import {LiquidityRange} from "../../../contracts/types/LiquidityRange.sol";
 import {Planner} from "../../utils/Planner.sol";
 
@@ -15,7 +15,7 @@ contract LiquidityFuzzers is Fuzzers {
     using Planner for Planner.Plan;
 
     function createFuzzyLiquidity(
-        INonfungiblePositionManager lpm,
+        IPosm lpm,
         address recipient,
         PoolKey memory key,
         IPoolManager.ModifyLiquidityParams memory params,

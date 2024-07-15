@@ -4,12 +4,13 @@ pragma solidity ^0.8.24;
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
-import {NonfungiblePositionManager, Actions} from "../../contracts/NonfungiblePositionManager.sol";
+import {Posm} from "../../contracts/Posm.sol";
+import {Actions} from "../../contracts/interfaces/IPosm.sol";
 import {LiquidityRange} from "../../contracts/types/LiquidityRange.sol";
 import {Planner} from "../utils/Planner.sol";
 
 contract LiquidityOperations {
-    NonfungiblePositionManager lpm;
+    Posm lpm;
 
     using Planner for Planner.Plan;
 

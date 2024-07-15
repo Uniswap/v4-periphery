@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
-import {INonfungiblePositionManager, Actions} from "./interfaces/INonfungiblePositionManager.sol";
+import {IPosm, Actions} from "./interfaces/IPosm.sol";
 import {BaseLiquidityManagement} from "./base/BaseLiquidityManagement.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -19,7 +19,8 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
-contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
+/// @notice Posm is a POSition Manager for v4 positions.
+contract Posm is IPosm, BaseLiquidityManagement, ERC721Permit {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;

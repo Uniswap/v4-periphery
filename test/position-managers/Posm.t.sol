@@ -22,8 +22,8 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-import {INonfungiblePositionManager, Actions} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
-import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
+import {IPosm, Actions} from "../../contracts/interfaces/IPosm.sol";
+import {Posm} from "../../contracts/Posm.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
@@ -31,7 +31,7 @@ import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
 
-contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
+contract PosmTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using LiquidityRangeIdLibrary for LiquidityRange;
@@ -48,7 +48,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        lpm = new NonfungiblePositionManager(manager);
+        lpm = new Posm(manager);
 
         IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
         IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
@@ -65,7 +65,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         bytes[] memory badParams = new bytes[](1);
 
-        vm.expectRevert(INonfungiblePositionManager.MismatchedLengths.selector);
+        vm.expectRevert(IPosm.MismatchedLengths.selector);
         lpm.modifyLiquidities(abi.encode(planner.actions, badParams, currencies));
     }
 
@@ -157,7 +157,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     //     uint256 amount1Min = amount1Desired - 1;
 
     //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
-    //     INonfungiblePositionManager.MintParams memory params = INonfungiblePositionManager.MintParams({
+    //     IPosm.MintParams memory params = IPosm.MintParams({
     //         range: range,
     //         amount0Desired: amount0Desired,
     //         amount1Desired: amount1Desired,

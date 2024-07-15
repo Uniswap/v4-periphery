@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
-import {INonfungiblePositionManager, Actions} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
+import {IPosm, Actions} from "../../contracts/interfaces/IPosm.sol";
 import {LiquidityRange} from "../../contracts/types/LiquidityRange.sol";
 
 library Planner {

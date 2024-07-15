@@ -14,7 +14,7 @@ enum Actions {
 
 }
 
-interface INonfungiblePositionManager {
+interface IPosm {
     error MismatchedLengths();
 
     struct TokenPosition {
