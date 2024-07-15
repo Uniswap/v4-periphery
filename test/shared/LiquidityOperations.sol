@@ -68,7 +68,6 @@ contract LiquidityOperations {
     }
 
     function _burn(uint256 tokenId) internal {
-        Currency[] memory currencies = new Currency[](0);
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.BURN, abi.encode(tokenId));
         // No close needed on burn.

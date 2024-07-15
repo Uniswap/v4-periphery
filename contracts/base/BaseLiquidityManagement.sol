@@ -18,7 +18,6 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {CurrencySettleTake} from "../libraries/CurrencySettleTake.sol";
 import {CurrencyDeltas} from "../libraries/CurrencyDeltas.sol";
 
-import {FeeMath} from "../libraries/FeeMath.sol";
 import {LiquiditySaltLibrary} from "../libraries/LiquiditySaltLibrary.sol";
 import {IBaseLiquidityManagement} from "../interfaces/IBaseLiquidityManagement.sol";
 import {PositionLibrary} from "../libraries/Position.sol";

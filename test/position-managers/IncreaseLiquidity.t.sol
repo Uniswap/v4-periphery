@@ -16,17 +16,17 @@ import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
-import {Actions} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
-import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
-
+import {Actions, INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
+import {FeeMath} from "../shared/FeeMath.sol";
 
 contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
@@ -34,6 +34,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
     using Planner for Planner.Plan;
+    using FeeMath for INonfungiblePositionManager;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -98,16 +99,17 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice uses her exact fees to increase liquidity
         // Slight error in this calculation vs. actual fees.. TODO: Fix this.
-        uint256 tokenOwedAlice =
-            swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob);
+        BalanceDelta feesOwedAlice = INonfungiblePositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
+        // Note: You can alternatively calculate Alice's fees owed from the swap amount, fee on the pool, and total liquidity in that range.
+        // swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob);
 
         (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(range.tickLower),
             TickMath.getSqrtPriceAtTick(range.tickUpper),
-            tokenOwedAlice,
-            tokenOwedAlice
+            uint256(int256(feesOwedAlice.amount0())),
+            uint256(int256(feesOwedAlice.amount1()))
         );
 
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
@@ -284,16 +286,16 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
 
         // alice will use all of her fees + additional capital to increase liquidity
-        uint256 tokenOwedAlice =
-            swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob);
+        BalanceDelta feesOwed = INonfungiblePositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
+
         {
             (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
                 TickMath.getSqrtPriceAtTick(range.tickLower),
                 TickMath.getSqrtPriceAtTick(range.tickUpper),
-                tokenOwedAlice * 2,
-                tokenOwedAlice * 2
+                uint256(int256(feesOwed.amount0())) * 2,
+                uint256(int256(feesOwed.amount1())) * 2
             );
 
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
@@ -304,8 +306,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
             uint256 balance0AfterAlice = currency0.balanceOf(alice);
             uint256 balance1AfterAlice = currency1.balanceOf(alice);
 
-            assertApproxEqAbs(balance0BeforeAlice - balance0AfterAlice, tokenOwedAlice, 37 wei);
-            assertApproxEqAbs(balance1BeforeAlice - balance1AfterAlice, tokenOwedAlice, 1 wei);
+            // Alice owed feesOwed amount in 0 and 1 because she places feesOwed * 2 back into the pool.
+            assertApproxEqAbs(balance0BeforeAlice - balance0AfterAlice, uint256(int256(feesOwed.amount0())), 37 wei);
+            assertApproxEqAbs(balance1BeforeAlice - balance1AfterAlice, uint256(int256(feesOwed.amount1())), 1 wei);
         }
 
         {

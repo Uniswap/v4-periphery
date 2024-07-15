@@ -38,7 +38,7 @@ library Planner {
         return plan;
     }
 
-    function zip(Plan memory plan) internal returns (bytes memory) {
+    function zip(Plan memory plan) internal pure returns (bytes memory) {
         return abi.encode(plan.actions, plan.params);
     }
 }

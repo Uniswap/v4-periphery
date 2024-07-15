@@ -249,7 +249,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         // alice decreases liquidity
         vm.startPrank(alice);
         lpm.approve(address(this), tokenIdAlice);
-        BalanceDelta deltaCollect = _decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES, true);
+        _decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES, true);
         vm.stopPrank();
 
         uint256 tolerance = 0.000000001 ether;
