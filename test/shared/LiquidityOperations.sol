@@ -32,7 +32,10 @@ contract LiquidityOperations {
         return abi.decode(result[0], (BalanceDelta));
     }
 
-    function _increaseLiquidity(uint256 tokenId, uint256 liquidityToAdd, bytes memory hookData, bool claims) internal {
+    function _increaseLiquidity(uint256 tokenId, uint256 liquidityToAdd, bytes memory hookData, bool claims)
+        internal
+        returns (BalanceDelta)
+    {
         (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
         return _increaseLiquidity(_range, tokenId, liquidityToAdd, hookData, claims);
     }
@@ -43,14 +46,18 @@ contract LiquidityOperations {
         uint256 liquidityToAdd,
         bytes memory hookData,
         bool claims
-    ) internal {
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, hookData, claims));
+    ) internal returns (BalanceDelta) {
+        // cannot use Planner because it interferes with cheatcodes
+        Actions[] memory actions = new Actions[](1);
+        actions[0] = Actions.INCREASE;
+        bytes[] memory params = new bytes[](1);
+        params[0] = abi.encode(tokenId, liquidityToAdd, hookData, claims);
 
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = _range.poolKey.currency0;
         currencies[1] = _range.poolKey.currency1;
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        bytes[] memory result = lpm.modifyLiquidities(abi.encode(actions, params, currencies));
+        if (result.length > 0) return abi.decode(result[0], (BalanceDelta));
     }
 
     function _decreaseLiquidity(uint256 tokenId, uint256 liquidityToRemove, bytes memory hookData, bool claims)
@@ -80,7 +87,7 @@ contract LiquidityOperations {
         currencies[0] = _range.poolKey.currency0;
         currencies[1] = _range.poolKey.currency1;
         bytes[] memory result = lpm.modifyLiquidities(abi.encode(actions, params, currencies));
-        return abi.decode(result[0], (BalanceDelta));
+        if (result.length > 0) return abi.decode(result[0], (BalanceDelta));
     }
 
     function _collect(uint256 tokenId, address recipient, bytes memory hookData, bool claims)
@@ -99,14 +106,17 @@ contract LiquidityOperations {
         bytes memory hookData,
         bool claims
     ) internal returns (BalanceDelta) {
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.COLLECT, abi.encode(tokenId, recipient, hookData, claims));
+        // cannot use Planner because it interferes with cheatcodes
+        Actions[] memory actions = new Actions[](1);
+        actions[0] = Actions.COLLECT;
+        bytes[] memory params = new bytes[](1);
+        params[0] = abi.encode(tokenId, recipient, hookData, claims);
 
         Currency[] memory currencies = new Currency[](2);
         currencies[0] = _range.poolKey.currency0;
         currencies[1] = _range.poolKey.currency1;
-        bytes[] memory result = lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
-        return abi.decode(result[0], (BalanceDelta));
+        bytes[] memory result = lpm.modifyLiquidities(abi.encode(actions, params, currencies));
+        if (result.length > 0) return abi.decode(result[0], (BalanceDelta));
     }
 
     function _burn(uint256 tokenId) internal {
