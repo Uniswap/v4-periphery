@@ -16,8 +16,8 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {console} from "../../../lib/forge-std/src/console.sol";
-import {RemoveReverts} from "./middleware/RemoveReverts.sol";
-import {RemoveOutOfGas} from "./middleware/RemoveOutOfGas.sol";
+import {HooksRevert} from "./middleware/HooksRevert.sol";
+import {HooksOutOfGas} from "./middleware/HooksOutOfGas.sol";
 import {MiddlewareRemoveFactory} from "./../contracts/middleware/MiddlewareRemoveFactory.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
 import {SafeCallback} from "./../contracts/base/SafeCallback.sol";
@@ -156,24 +156,27 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         );
         testOn(address(counter), salt);
 
-        RemoveReverts removeReverts = new RemoveReverts(manager);
-        flags = uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
+        HooksRevert hooksRevert = new HooksRevert(manager);
+        flags = uint160(
+            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+                | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG
+        );
         (hookAddress, salt) = HookMiner.find(
             address(factory),
             flags,
             type(MiddlewareRemove).creationCode,
-            abi.encode(address(manager), address(removeReverts))
+            abi.encode(address(manager), address(hooksRevert))
         );
-        testOn(address(removeReverts), salt);
+        testOn(address(hooksRevert), salt);
 
-        RemoveOutOfGas removeOutOfGas = new RemoveOutOfGas(manager);
+        HooksOutOfGas hooksOutOfGas = new HooksOutOfGas(manager);
         (hookAddress, salt) = HookMiner.find(
             address(factory),
             flags,
             type(MiddlewareRemove).creationCode,
-            abi.encode(address(manager), address(removeOutOfGas))
+            abi.encode(address(manager), address(hooksOutOfGas))
         );
-        testOn(address(removeOutOfGas), salt);
+        testOn(address(hooksOutOfGas), salt);
     }
 
     // creates a middleware on an implementation
@@ -265,5 +268,9 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         assertEq(counter.lastHookData(), bytes(""));
         assertEq(counter.beforeSwapCount(id), 0);
         assertEq(counter.afterSwapCount(id), 0);
+
+        removeLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        assertEq(counterProxy.beforeRemoveLiquidityCount(id), 1);
+        assertEq(counterProxy.afterRemoveLiquidityCount(id), 1);
     }
 }
