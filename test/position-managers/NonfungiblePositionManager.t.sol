@@ -210,7 +210,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
         // TODO, encode this under one call
-        BalanceDelta deltaDecrease = _decreaseLiquidity(tokenId, liquidity, ZERO_BYTES, false);
+        BalanceDelta deltaDecrease = _decreaseLiquidity(tokenId, liquidity, ZERO_BYTES);
         _burn(tokenId);
 
         (liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
@@ -246,7 +246,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-        _decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
+        _decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES);
 
         bytes32 positionId =
             keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));

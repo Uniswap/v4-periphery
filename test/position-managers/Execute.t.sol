@@ -85,7 +85,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         _mint(range, initialLiquidity, block.timestamp, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        _increaseLiquidity(tokenId, liquidityToAdd, ZERO_BYTES, false);
+        _increaseLiquidity(tokenId, liquidityToAdd, ZERO_BYTES);
 
         bytes32 positionId =
             keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
@@ -107,8 +107,8 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
 
         Planner.Plan memory planner = Planner.init();
 
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, ZERO_BYTES, false));
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd2, ZERO_BYTES, false));
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, ZERO_BYTES));
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd2, ZERO_BYTES));
 
         planner = planner.finalize(range);
         lpm.modifyLiquidities(planner.zip());
@@ -132,7 +132,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         planner = planner.add(
             Actions.MINT, abi.encode(range, initialLiquidity, block.timestamp + 1, address(this), ZERO_BYTES)
         );
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, ZERO_BYTES, false));
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, ZERO_BYTES));
 
         planner = planner.finalize(range);
         lpm.modifyLiquidities(planner.zip());

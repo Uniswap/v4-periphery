@@ -66,17 +66,17 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         returnData = new bytes[](actions.length);
         for (uint256 i; i < actions.length; i++) {
             if (actions[i] == Actions.INCREASE) {
-                (uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims) =
-                    abi.decode(params[i], (uint256, uint256, bytes, bool));
-                returnData[i] = abi.encode(increaseLiquidity(tokenId, liquidity, hookData, claims, sender));
+                (uint256 tokenId, uint256 liquidity, bytes memory hookData) =
+                    abi.decode(params[i], (uint256, uint256, bytes));
+                returnData[i] = abi.encode(increaseLiquidity(tokenId, liquidity, hookData, sender));
             } else if (actions[i] == Actions.DECREASE) {
-                (uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims) =
-                    abi.decode(params[i], (uint256, uint256, bytes, bool));
-                returnData[i] = abi.encode(decreaseLiquidity(tokenId, liquidity, hookData, claims, sender));
+                (uint256 tokenId, uint256 liquidity, bytes memory hookData) =
+                    abi.decode(params[i], (uint256, uint256, bytes));
+                returnData[i] = abi.encode(decreaseLiquidity(tokenId, liquidity, hookData, sender));
             } else if (actions[i] == Actions.MINT) {
                 (LiquidityRange memory range, uint256 liquidity, uint256 deadline, address owner, bytes memory hookData)
                 = abi.decode(params[i], (LiquidityRange, uint256, uint256, address, bytes));
-                returnData[i] = abi.encode(mint(range, liquidity, deadline, owner, hookData, sender));
+                returnData[i] = abi.encode(mint(range, liquidity, deadline, owner, hookData));
             } else if (actions[i] == Actions.CLOSE_CURRENCY) {
                 (Currency currency) = abi.decode(params[i], (Currency));
                 returnData[i] = abi.encode(close(currency, sender));
@@ -94,8 +94,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         uint256 liquidity,
         uint256 deadline,
         address owner,
-        bytes memory hookData,
-        address sender
+        bytes memory hookData
     ) internal checkDeadline(deadline) returns (BalanceDelta delta) {
         // mint receipt token
         uint256 tokenId;
@@ -110,7 +109,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     }
 
     // Note: Calling increase with 0 will accrue any underlying fees.
-    function increaseLiquidity(uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims, address sender)
+    function increaseLiquidity(uint256 tokenId, uint256 liquidity, bytes memory hookData, address sender)
         internal
         isAuthorizedForToken(tokenId, sender)
         returns (BalanceDelta delta)
@@ -121,7 +120,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     }
 
     // Note: Calling decrease with 0 will accrue any underlying fees.
-    function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims, address sender)
+    function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes memory hookData, address sender)
         internal
         isAuthorizedForToken(tokenId, sender)
         returns (BalanceDelta delta)

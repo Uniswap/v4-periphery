@@ -93,7 +93,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES, false));
+            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
 
         planner = planner.finalize(range);
 
@@ -106,7 +106,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES, true));
+            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
 
         planner = planner.finalize(range);
 
@@ -147,7 +147,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         );
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES, false));
+            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
 
         planner = planner.finalize(range);
 
@@ -179,7 +179,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
 
         // bob collects fees so some of alice's fees are now cached
 
-        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenIdBob, 0, ZERO_BYTES, false));
+        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenIdBob, 0, ZERO_BYTES));
 
         planner = planner.finalize(range);
 
@@ -202,7 +202,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
                 tokensOwedAlice
             );
 
-            planner = Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES, false));
+            planner = Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
 
             planner = planner.finalize(range);
 
@@ -245,7 +245,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         );
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES, false));
+            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
 
         planner = planner.finalize(range);
 
@@ -259,7 +259,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES, false));
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
 
         planner = planner.finalize(range);
 
@@ -272,7 +272,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES, true));
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
 
         planner = planner.finalize(range);
 

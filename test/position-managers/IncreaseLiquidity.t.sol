@@ -117,7 +117,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES, false));
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
         planner = planner.finalize(range);
         vm.startPrank(alice);
         lpm.modifyLiquidities(planner.zip());
@@ -169,7 +169,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
         vm.startPrank(alice);
-        _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+        _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
         vm.stopPrank();
 
         // It is not exact because of the error in the fee calculation and error in the
@@ -301,7 +301,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
             vm.startPrank(alice);
-            _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+            _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
             vm.stopPrank();
             uint256 balance0AfterAlice = currency0.balanceOf(alice);
             uint256 balance1AfterAlice = currency1.balanceOf(alice);
@@ -316,7 +316,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
             uint256 balance0BeforeBob = currency0.balanceOf(bob);
             uint256 balance1BeforeBob = currency1.balanceOf(bob);
             vm.startPrank(bob);
-            _collect(tokenIdBob, bob, ZERO_BYTES, false);
+            _collect(tokenIdBob, bob, ZERO_BYTES);
             vm.stopPrank();
             uint256 balance0AfterBob = currency0.balanceOf(bob);
             uint256 balance1AfterBob = currency1.balanceOf(bob);

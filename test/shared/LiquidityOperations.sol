@@ -28,9 +28,9 @@ contract LiquidityOperations {
         return abi.decode(result[0], (BalanceDelta));
     }
 
-    function _increaseLiquidity(uint256 tokenId, uint256 liquidityToAdd, bytes memory hookData, bool claims) internal {
+    function _increaseLiquidity(uint256 tokenId, uint256 liquidityToAdd, bytes memory hookData) internal {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, hookData, claims));
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, hookData));
 
         (, LiquidityRange memory _range) = lpm.tokenPositions(tokenId);
 
@@ -38,12 +38,12 @@ contract LiquidityOperations {
         lpm.modifyLiquidities(abi.encode(planner.actions, planner.params));
     }
 
-    function _decreaseLiquidity(uint256 tokenId, uint256 liquidityToRemove, bytes memory hookData, bool claims)
+    function _decreaseLiquidity(uint256 tokenId, uint256 liquidityToRemove, bytes memory hookData)
         internal
         returns (BalanceDelta)
     {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, liquidityToRemove, hookData, claims));
+        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, liquidityToRemove, hookData));
 
         (, LiquidityRange memory _range) = lpm.tokenPositions(tokenId);
 
@@ -52,12 +52,9 @@ contract LiquidityOperations {
         return abi.decode(result[0], (BalanceDelta));
     }
 
-    function _collect(uint256 tokenId, address recipient, bytes memory hookData, bool claims)
-        internal
-        returns (BalanceDelta)
-    {
+    function _collect(uint256 tokenId, address recipient, bytes memory hookData) internal returns (BalanceDelta) {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, 0, hookData, claims));
+        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, 0, hookData));
 
         (, LiquidityRange memory _range) = lpm.tokenPositions(tokenId);
 
