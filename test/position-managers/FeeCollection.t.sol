@@ -26,6 +26,8 @@ import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+
 contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
@@ -100,7 +102,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = _collect(tokenId, address(this), ZERO_BYTES, false);
+        BalanceDelta delta = _collect(tokenId, address(this), ZERO_BYTES);
 
         // express key.fee as wad (i.e. 3000 = 0.003e18)
         assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(FEE_WAD), 1 wei);
@@ -185,7 +187,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 balance0AliceBefore = currency0.balanceOf(alice);
         uint256 balance1AliceBefore = currency1.balanceOf(alice);
         vm.startPrank(alice);
-        BalanceDelta delta = _collect(tokenIdAlice, alice, ZERO_BYTES, false);
+        BalanceDelta delta = _collect(tokenIdAlice, alice, ZERO_BYTES);
         vm.stopPrank();
         uint256 balance0AliceAfter = currency0.balanceOf(alice);
         uint256 balance1AliceAfter = currency1.balanceOf(alice);
@@ -198,7 +200,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
         vm.startPrank(bob);
-        delta = _collect(tokenIdBob, bob, ZERO_BYTES, false);
+        delta = _collect(tokenIdBob, bob, ZERO_BYTES);
         vm.stopPrank();
         uint256 balance0BobAfter = currency0.balanceOf(bob);
         uint256 balance1BobAfter = currency1.balanceOf(bob);
@@ -215,10 +217,8 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
     function test_collect_donate() public {}
     function test_collect_donate_sameRange() public {}
 
-    /// @dev Alice and bob create liquidity on the same range
-    ///     when alice decreases liquidity, she should only collect her fees
-    /// TODO Add back fuzz test on liquidityDeltaBob
-    /// TODO Assert state changes for lpm balance, position state, and return values
+    /// @dev Alice and Bob create liquidity on the same range, and decrease their liquidity
+    // Even though their positions are the same range, they are unique positions in pool manager.
     function test_decreaseLiquidity_sameRange_exact() public {
         // alice and bob create liquidity on the same range [-120, 120]
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -120, tickUpper: 120});
@@ -226,52 +226,63 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         // alice provisions 3x the amount of liquidity as bob
         uint256 liquidityAlice = 3000e18;
         uint256 liquidityBob = 1000e18;
+
         vm.prank(alice);
         BalanceDelta lpDeltaAlice = _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        uint256 aliceBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(alice));
+        uint256 aliceBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(alice));
 
         vm.prank(bob);
         BalanceDelta lpDeltaBob = _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
+        uint256 bobBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(bob));
+        uint256 bobBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(bob));
+
         // swap to create fees
         uint256 swapAmount = 0.001e18;
-        swap(key, true, -int256(swapAmount), ZERO_BYTES);
-        swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
+        swap(key, true, -int256(swapAmount), ZERO_BYTES); // zeroForOne is true, so zero is the input
+        swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back, // zeroForOne is false, so one is the input
 
         // alice decreases liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
         lpm.approve(address(this), tokenIdAlice);
-        _decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES, true);
+        _decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES);
+        vm.stopPrank();
 
         uint256 tolerance = 0.000000001 ether;
 
-        uint256 lpmBalance0 = manager.balanceOf(address(lpm), currency0.toId());
-        uint256 lpmBalance1 = manager.balanceOf(address(lpm), currency1.toId());
-
-        // lpm collects alice's principal + all fees accrued on the range
+        // alice has accrued her principle liquidity + any fees in token0
         assertApproxEqAbs(
-            lpmBalance0, uint256(int256(-lpDeltaAlice.amount0())) + swapAmount.mulWadDown(FEE_WAD), tolerance
+            IERC20(Currency.unwrap(currency0)).balanceOf(address(alice)) - aliceBalance0Before,
+            uint256(int256(-lpDeltaAlice.amount0())) + swapAmount.mulWadDown(FEE_WAD) * 3 / 4,
+            tolerance
         );
+        // alice has accrued her principle liquidity + any fees in token1
         assertApproxEqAbs(
-            lpmBalance1, uint256(int256(-lpDeltaAlice.amount1())) + swapAmount.mulWadDown(FEE_WAD), tolerance
+            IERC20(Currency.unwrap(currency1)).balanceOf(address(alice)) - aliceBalance1Before,
+            uint256(int256(-lpDeltaAlice.amount1())) + swapAmount.mulWadDown(FEE_WAD) * 3 / 4,
+            tolerance
         );
 
         // bob decreases half of his liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
         lpm.approve(address(this), tokenIdBob);
-        _decreaseLiquidity(tokenIdBob, liquidityBob / 2, ZERO_BYTES, true);
+        _decreaseLiquidity(tokenIdBob, liquidityBob / 2, ZERO_BYTES);
+        vm.stopPrank();
 
-        // lpm collects half of bobs principal
-        // the fee amount has already been collected with alice's calls
+        // bob has accrued half his principle liquidity + any fees in token0
         assertApproxEqAbs(
-            manager.balanceOf(address(lpm), currency0.toId()) - lpmBalance0,
-            uint256(int256(-lpDeltaBob.amount0()) / 2),
+            IERC20(Currency.unwrap(currency0)).balanceOf(address(bob)) - bobBalance0Before,
+            uint256(int256(-lpDeltaBob.amount0()) / 2) + swapAmount.mulWadDown(FEE_WAD) * 1 / 4,
             tolerance
         );
+        // bob has accrued half his principle liquidity + any fees in token0
         assertApproxEqAbs(
-            manager.balanceOf(address(lpm), currency1.toId()) - lpmBalance1,
-            uint256(int256(-lpDeltaBob.amount1()) / 2),
+            IERC20(Currency.unwrap(currency1)).balanceOf(address(bob)) - bobBalance1Before,
+            uint256(int256(-lpDeltaBob.amount1()) / 2) + swapAmount.mulWadDown(FEE_WAD) * 1 / 4,
             tolerance
         );
     }
