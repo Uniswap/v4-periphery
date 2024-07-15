@@ -25,6 +25,7 @@ contract MiddlewareRemove is BaseMiddleware {
     error HookPermissionForbidden(address hooks);
     error HookModifiedPrice();
     error HookModifiedDeltas();
+    error FailedImplementationCall();
 
     bytes internal constant ZERO_BYTES = bytes("");
     uint256 public constant GAS_LIMIT = 10_000_000;
@@ -51,7 +52,7 @@ contract MiddlewareRemove is BaseMiddleware {
         (uint160 priceBefore,,,) = manager.getSlot0(key.toId());
         (bool success,) = address(implementation).delegatecall(data);
         if (!success) {
-            revert();
+            revert FailedImplementationCall();
         }
         (uint160 priceAfter,,,) = manager.getSlot0(key.toId());
         if (priceAfter != priceBefore) {
@@ -78,7 +79,7 @@ contract MiddlewareRemove is BaseMiddleware {
         uint256 countBefore = uint256(IExttload(address(manager)).exttload(slot));
         (bool success,) = address(implementation).delegatecall(data);
         if (!success) {
-            revert();
+            revert FailedImplementationCall();
         }
         uint256 countAfter = uint256(IExttload(address(manager)).exttload(slot));
         if (countAfter != countBefore) {
