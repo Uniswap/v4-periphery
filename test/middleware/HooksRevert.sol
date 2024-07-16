@@ -14,7 +14,7 @@ contract HooksRevert is BaseHook {
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    // middleware implementations do not need to be mined
+    // for testing
     function validateHookAddress(BaseHook _this) internal pure override {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -38,6 +38,7 @@ contract HooksRevert is BaseHook {
 
     function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
         external
+        pure
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
@@ -46,6 +47,7 @@ contract HooksRevert is BaseHook {
 
     function afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
         external
+        pure
         override
         returns (bytes4, int128)
     {

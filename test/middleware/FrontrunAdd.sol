@@ -22,7 +22,7 @@ contract FrontrunAdd is BaseHook {
 
     mapping(PoolId => bool) hasLiquidity;
 
-    // middleware implementations do not need to be mined
+    // for testing
     function validateHookAddress(BaseHook _this) internal pure override {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {

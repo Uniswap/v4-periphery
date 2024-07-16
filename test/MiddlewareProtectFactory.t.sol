@@ -23,11 +23,11 @@ import {HooksReturnDeltas} from "./middleware/HooksReturnDeltas.sol";
 import {Counter} from "./middleware/Counter.sol";
 import {SafeCallback} from "./../contracts/base/SafeCallback.sol";
 import {FrontrunAdd} from "./middleware/FrontrunAdd.sol";
-import {IQuoter} from "./../contracts/interfaces/IQuoter.sol";
-import {Quoter} from "./../contracts/lens/Quoter.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
+import {BaseMiddleware} from "./../contracts/middleware/BaseMiddleware.sol";
 
-contract MiddlewareProtectFactoryTest is Test, Deployers {
+contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
     HookEnabledSwapRouter router;
     TestERC20 token0;
     TestERC20 token1;
@@ -36,43 +36,40 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
     Counter counter;
     address middleware;
     HooksFrontrun hooksFrontrun;
-    IQuoter quoter;
+
+    uint160 COUNTER_FLAGS = uint160(
+        Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
+            | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+            | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG
+    );
 
     function setUp() public {
         deployFreshManagerAndRouters();
         (currency0, currency1) = deployMintAndApprove2Currencies();
-
-        quoter = new Quoter(address(manager));
 
         router = new HookEnabledSwapRouter(manager);
         token0 = TestERC20(Currency.unwrap(currency0));
         token1 = TestERC20(Currency.unwrap(currency1));
 
         factory = new MiddlewareProtectFactory(manager);
-        counter = new Counter(manager);
+        counter = Counter(address(COUNTER_FLAGS));
+        vm.etch(address(counter), address(new Counter(manager)).code);
 
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
 
-        uint160 flags = uint160(
-            Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
-                | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
-                | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG
-        );
-
         (address hookAddress, bytes32 salt) = HookMiner.find(
             address(factory),
-            flags,
+            COUNTER_FLAGS,
             type(MiddlewareProtect).creationCode,
             abi.encode(address(manager), address(counter))
         );
         middleware = factory.createMiddleware(address(counter), salt);
         assertEq(hookAddress, middleware);
 
-        flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
+        uint160 flags = uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
         hooksFrontrun = HooksFrontrun(address(uint160(flags)));
-        HooksFrontrun impl = new HooksFrontrun(manager);
-        vm.etch(address(hooksFrontrun), address(impl).code);
+        vm.etch(address(hooksFrontrun), address(new HooksFrontrun(manager)).code);
     }
 
     function testRevertOnDeltas() public {
@@ -129,11 +126,12 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
     }
 
     function testRevertOnFailedImplementationCall() public {
-        HooksRevert hooksRevert = new HooksRevert(manager);
         uint160 flags = uint160(
             Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG
         );
+        HooksRevert hooksRevert = HooksRevert(address(flags));
+        vm.etch(address(hooksRevert), address(new HooksRevert(manager)).code);
         (address hookAddress, bytes32 salt) = HookMiner.find(
             address(factory),
             flags,
@@ -145,7 +143,8 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
         vm.expectRevert(HooksRevert.AlwaysRevert.selector);
         swap(key, true, 1, ZERO_BYTES);
 
-        HooksOutOfGas hooksOutOfGas = new HooksOutOfGas(manager);
+        HooksOutOfGas hooksOutOfGas = HooksOutOfGas(address(flags));
+        vm.etch(address(hooksOutOfGas), address(new HooksOutOfGas(manager)).code);
         (hookAddress, salt) = HookMiner.find(
             address(factory),
             flags,
@@ -161,8 +160,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
     function testFrontrunAdd() public {
         uint160 flags = uint160(Hooks.BEFORE_ADD_LIQUIDITY_FLAG);
         FrontrunAdd frontrunAdd = FrontrunAdd(address(flags));
-        FrontrunAdd impl = new FrontrunAdd(manager);
-        vm.etch(address(frontrunAdd), address(impl).code);
+        vm.etch(address(frontrunAdd), address(new FrontrunAdd(manager)).code);
         (, bytes32 salt) = HookMiner.find(
             address(factory),
             flags,
@@ -216,6 +214,23 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
         swap(key, false, -1 ether, ZERO_BYTES);
     }
 
+    function gasTestSwaps() public {
+        (PoolKey memory key, PoolId id) =
+            initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        snapStart("Middleware-ProtectedSwap");
+
+        swap(key, true, 1, ZERO_BYTES);
+        snapEnd();
+        (key, id) = initPoolAndAddLiquidity(currency0, currency1, IHooks(counter), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        snapStart("Middleware-UnprotectedSwap");
+        swap(key, true, 1, ZERO_BYTES);
+        snapEnd();
+        (key, id) = initPoolAndAddLiquidity(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        snapStart("Middleware-NormalSwap");
+        swap(key, true, 1, ZERO_BYTES);
+        snapEnd();
+    }
+
     function abs(int256 x) internal pure returns (uint256) {
         return x >= 0 ? uint256(x) : uint256(-x);
     }
@@ -240,24 +255,26 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
     }
 
     function testRevertOnIncorrectFlags() public {
-        Counter counter2 = new Counter(manager);
-        uint160 flags = uint160(Hooks.BEFORE_INITIALIZE_FLAG);
+        Counter counter2 = Counter(address(COUNTER_FLAGS));
+        vm.etch(address(counter), address(new Counter(manager)).code);
+        uint160 incorrectFlags = uint160(Hooks.BEFORE_INITIALIZE_FLAG);
 
         (address hookAddress, bytes32 salt) = HookMiner.find(
             address(factory),
-            flags,
+            incorrectFlags,
             type(MiddlewareProtect).creationCode,
             abi.encode(address(manager), address(counter2))
         );
         address implementation = address(counter2);
-        vm.expectRevert(abi.encodePacked(bytes16(Hooks.HookAddressNotValid.selector), hookAddress));
+        vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
         factory.createMiddleware(implementation, salt);
     }
 
     function testRevertOnIncorrectFlagsMined() public {
-        Counter counter2 = new Counter(manager);
+        Counter counter2 = Counter(address(COUNTER_FLAGS));
+        vm.etch(address(counter), address(new Counter(manager)).code);
         address implementation = address(counter2);
-        vm.expectRevert(); // HookAddressNotValid
+        vm.expectRevert();
         factory.createMiddleware(implementation, bytes32("who needs to mine a salt?"));
     }
 
@@ -292,5 +309,9 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
         assertEq(counter.lastHookData(), bytes(""));
         assertEq(counter.beforeSwapCount(id), 0);
         assertEq(counter.afterSwapCount(id), 0);
+
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
+        assertEq(counterProxy.beforeRemoveLiquidityCount(id), 1);
+        assertEq(counterProxy.afterRemoveLiquidityCount(id), 1);
     }
 }

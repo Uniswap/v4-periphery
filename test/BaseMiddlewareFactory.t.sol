@@ -27,6 +27,12 @@ contract BaseMiddlewareFactoryTest is Test, Deployers {
     Counter counter;
     address middleware;
 
+    uint160 COUNTER_FLAGS = uint160(
+        Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
+            | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+            | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG
+    );
+
     function setUp() public {
         deployFreshManagerAndRouters();
         (currency0, currency1) = deployMintAndApprove2Currencies();
@@ -36,55 +42,56 @@ contract BaseMiddlewareFactoryTest is Test, Deployers {
         token1 = TestERC20(Currency.unwrap(currency1));
 
         factory = new BaseMiddlewareFactory(manager);
-        counter = new Counter(manager);
+        counter = Counter(address(COUNTER_FLAGS));
+        vm.etch(address(counter), address(new Counter(manager)).code);
 
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
 
-        uint160 flags = uint160(
-            Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
-                | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
-                | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG
-        );
-
         (address hookAddress, bytes32 salt) = HookMiner.find(
-            address(factory), flags, type(BaseMiddleware).creationCode, abi.encode(address(manager), address(counter))
+            address(factory),
+            COUNTER_FLAGS,
+            type(BaseMiddleware).creationCode,
+            abi.encode(address(manager), address(counter))
         );
         middleware = factory.createMiddleware(address(counter), salt);
         assertEq(hookAddress, middleware);
     }
 
     function testRevertOnSameDeployment() public {
-        uint160 flags = uint160(
-            Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
-                | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
-                | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG
-        );
         (address hookAddress, bytes32 salt) = HookMiner.find(
-            address(factory), flags, type(BaseMiddleware).creationCode, abi.encode(address(manager), address(counter))
+            address(factory),
+            COUNTER_FLAGS,
+            type(BaseMiddleware).creationCode,
+            abi.encode(address(manager), address(counter))
         );
         factory.createMiddleware(address(counter), salt);
         // second deployment should revert
-        vm.expectRevert(bytes(""));
+        vm.expectRevert(ZERO_BYTES);
         factory.createMiddleware(address(counter), salt);
     }
 
     function testRevertOnIncorrectFlags() public {
-        Counter counter2 = new Counter(manager);
-        uint160 flags = uint160(Hooks.BEFORE_INITIALIZE_FLAG);
+        Counter counter2 = Counter(address(COUNTER_FLAGS));
+        vm.etch(address(counter), address(new Counter(manager)).code);
+        uint160 incorrectFlags = uint160(Hooks.BEFORE_INITIALIZE_FLAG);
 
         (address hookAddress, bytes32 salt) = HookMiner.find(
-            address(factory), flags, type(BaseMiddleware).creationCode, abi.encode(address(manager), address(counter2))
+            address(factory),
+            incorrectFlags,
+            type(BaseMiddleware).creationCode,
+            abi.encode(address(manager), address(counter2))
         );
         address implementation = address(counter2);
-        vm.expectRevert(abi.encodePacked(bytes16(Hooks.HookAddressNotValid.selector), hookAddress));
+        vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
         factory.createMiddleware(implementation, salt);
     }
 
     function testRevertOnIncorrectFlagsMined() public {
-        Counter counter2 = new Counter(manager);
+        Counter counter2 = Counter(address(COUNTER_FLAGS));
+        vm.etch(address(counter), address(new Counter(manager)).code);
         address implementation = address(counter2);
-        vm.expectRevert(); // HookAddressNotValid
+        vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
         factory.createMiddleware(implementation, bytes32("who needs to mine a salt?"));
     }
 
@@ -116,7 +123,7 @@ contract BaseMiddlewareFactoryTest is Test, Deployers {
         assertEq(counterProxy.afterSwapCount(id), 1);
 
         // counter does not store data itself
-        assertEq(counter.lastHookData(), bytes(""));
+        assertEq(counter.lastHookData(), ZERO_BYTES);
         assertEq(counter.beforeSwapCount(id), 0);
         assertEq(counter.afterSwapCount(id), 0);
     }

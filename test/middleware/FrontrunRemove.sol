@@ -17,7 +17,7 @@ contract FrontrunRemove is BaseHook {
     uint160 public constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
     int256 public constant SWAP_AMOUNT = 1000;
 
-    // middleware implementations do not need to be mined
+    // for testing
     function validateHookAddress(BaseHook _this) internal pure override {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {

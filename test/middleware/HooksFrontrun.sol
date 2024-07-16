@@ -23,7 +23,7 @@ contract HooksFrontrun is BaseHook {
 
     constructor(IPoolManager _manager) BaseHook(_manager) {}
 
-    // middleware implementations do not need to be mined
+    // for testing
     function validateHookAddress(BaseHook _this) internal pure override {}
 
     function getHookPermissions() public pure virtual override returns (Hooks.Permissions memory) {

@@ -14,7 +14,10 @@ contract BaseMiddleware is Proxy {
     IPoolManager public immutable manager;
     address public immutable implementation;
 
+    error FlagsMismatch();
+
     constructor(IPoolManager _manager, address _impl) {
+        _ensureValidFlags(_impl);
         manager = _manager;
         implementation = _impl;
     }
@@ -26,5 +29,11 @@ contract BaseMiddleware is Proxy {
     // yo i wanna delete this function but how do i remove this warning
     receive() external payable {
         _delegate(_implementation());
+    }
+
+    function _ensureValidFlags(address _impl) internal view virtual {
+        if (uint160(address(this)) & Hooks.ALL_HOOK_MASK != uint160(_impl) & Hooks.ALL_HOOK_MASK) {
+            revert FlagsMismatch();
+        }
     }
 }
