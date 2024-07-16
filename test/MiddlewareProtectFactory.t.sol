@@ -196,9 +196,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
 
     function testRevertOnDynamicFee() public {
         vm.expectRevert(MiddlewareProtect.ForbiddenDynamicFee.selector);
-        initPool(
-            currency0, currency1, IHooks(middleware), LPFeeLibrary.DYNAMIC_FEE_FLAG, SQRT_PRICE_1_1, ZERO_BYTES
-        );
+        initPool(currency0, currency1, IHooks(middleware), LPFeeLibrary.DYNAMIC_FEE_FLAG, SQRT_PRICE_1_1, ZERO_BYTES);
     }
 
     function testVariousSwaps() public {
