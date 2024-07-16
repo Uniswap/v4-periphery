@@ -25,7 +25,6 @@ contract BaseMiddlewareFactoryTest is Test, Deployers {
 
     BaseMiddlewareFactory factory;
     Counter counter;
-
     address middleware;
 
     function setUp() public {
