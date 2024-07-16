@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {INonfungiblePositionManager, Actions} from "./interfaces/INonfungiblePositionManager.sol";
 import {BaseLiquidityManagement} from "./base/BaseLiquidityManagement.sol";
+import {Multicall} from "./base/Multicall.sol";
+import {PoolInitializer} from "./base/PoolInitializer.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -22,7 +24,13 @@ import {TransientLiquidityDelta} from "./libraries/TransientLiquidityDelta.sol";
 
 import "forge-std/console2.sol";
 
-contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
+contract NonfungiblePositionManager is
+    INonfungiblePositionManager,
+    BaseLiquidityManagement,
+    ERC721Permit,
+    PoolInitializer,
+    Multicall
+{
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;
