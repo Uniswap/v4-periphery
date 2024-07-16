@@ -137,17 +137,25 @@ contract MiddlewareProtectFactoryTest is Test, Deployers {
         (address hookAddress, bytes32 salt) = HookMiner.find(
             address(factory),
             flags,
-            type(MiddlewareRemove).creationCode,
+            type(MiddlewareProtect).creationCode,
             abi.encode(address(manager), address(hooksRevert))
         );
+        middleware = factory.createMiddleware(address(hooksRevert), salt);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        vm.expectRevert(HooksRevert.AlwaysRevert.selector);
+        swap(key, true, 1, ZERO_BYTES);
 
         HooksOutOfGas hooksOutOfGas = new HooksOutOfGas(manager);
         (hookAddress, salt) = HookMiner.find(
             address(factory),
             flags,
-            type(MiddlewareRemove).creationCode,
+            type(MiddlewareProtect).creationCode,
             abi.encode(address(manager), address(hooksOutOfGas))
         );
+        middleware = factory.createMiddleware(address(hooksOutOfGas), salt);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        vm.expectRevert(Hooks.FailedHookCall.selector);
+        swap(key, true, 1, ZERO_BYTES);
     }
 
     function testFrontrunAdd() public {

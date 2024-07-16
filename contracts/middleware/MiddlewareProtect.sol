@@ -56,9 +56,7 @@ contract MiddlewareProtect is MiddlewareRemove {
         if (key.fee.isDynamicFee()) revert ForbiddenDynamicFee();
         (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
         if (!success) {
-            assembly {
-                revert(add(32, returnData), mload(returnData))
-            }
+            _handleRevert(returnData);
         }
         return abi.decode(returnData, (bytes4));
     }
@@ -74,9 +72,7 @@ contract MiddlewareProtect is MiddlewareRemove {
         uint160 outputBefore = 0;
         (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
         if (!success) {
-            assembly {
-                revert(add(32, returnData), mload(returnData))
-            }
+            _handleRevert(returnData);
         }
         return abi.decode(returnData, (bytes4, BeforeSwapDelta, uint24));
     }
@@ -99,9 +95,7 @@ contract MiddlewareProtect is MiddlewareRemove {
         if (delta != quote) revert HookModifiedOutput();
         (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
         if (!success) {
-            assembly {
-                revert(add(32, returnData), mload(returnData))
-            }
+            _handleRevert(returnData);
         }
         return abi.decode(returnData, (bytes4, int128));
     }
@@ -116,10 +110,14 @@ contract MiddlewareProtect is MiddlewareRemove {
             abi.encodeWithSelector(this._callAndEnsurePrice.selector, msg.data)
         );
         if (!success) {
-            assembly {
-                revert(add(32, returnData), mload(returnData))
-            }
+            _handleRevert(returnData);
         }
         return BaseHook.beforeAddLiquidity.selector;
+    }
+
+    function _handleRevert(bytes memory returnData) internal pure {
+        assembly {
+            revert(add(32, returnData), mload(returnData))
+        }
     }
 }
