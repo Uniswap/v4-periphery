@@ -33,7 +33,7 @@ contract LiquidityFuzzers is Fuzzers {
         planner = planner.finalize(range);
         lpm.modifyLiquidities(planner.zip());
 
-        uint256 tokenId = lpm.nextTokenId() - 1;
+        uint256 tokenId = lpm.lastTokenId();
         return (tokenId, params);
     }
 }

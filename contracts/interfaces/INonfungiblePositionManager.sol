@@ -39,5 +39,5 @@ interface INonfungiblePositionManager {
     //// @param tokenId The ID of the position
     //// function burn(uint256 tokenId) external;
 
-    function nextTokenId() external view returns (uint256);
+    function lastTokenId() external view returns (uint256);
 }

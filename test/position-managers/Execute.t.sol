@@ -83,7 +83,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
         _mint(range, initialLiquidity, block.timestamp, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
+        uint256 tokenId = lpm.lastTokenId();
 
         _increaseLiquidity(tokenId, liquidityToAdd, ZERO_BYTES);
 
@@ -103,7 +103,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
         liquidityToAdd2 = bound(liquidityToAdd2, 1e18, 1000e18);
         _mint(range, initialiLiquidity, block.timestamp, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
+        uint256 tokenId = lpm.lastTokenId();
 
         Planner.Plan memory planner = Planner.init();
 
