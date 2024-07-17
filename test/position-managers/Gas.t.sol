@@ -90,6 +90,54 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         snapLastCall("mint");
     }
 
+    function test_gas_mint_differentRanges() public {
+        // Explicitly mint to a new range on the same pool.
+        LiquidityRange memory bob_mint = LiquidityRange({poolKey: key, tickLower: 0, tickUpper: 60});
+        vm.startPrank(bob);
+        _mint(bob_mint, 10_000 ether, block.timestamp + 1, address(bob), ZERO_BYTES);
+        vm.stopPrank();
+        // Mint to a diff range, diff user.
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT, abi.encode(range, 10_000 ether, block.timestamp + 1, address(alice), ZERO_BYTES)
+        );
+        planner = planner.finalize(range);
+        vm.prank(alice);
+        lpm.modifyLiquidities(planner.zip());
+        snapLastCall("mint_differentRanges");
+    }
+
+    function test_gas_mint_sameTickLower() public {
+        // Explicitly mint to range whos tickLower is the same.
+        LiquidityRange memory bob_mint = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: -60});
+        vm.startPrank(bob);
+        _mint(bob_mint, 10_000 ether, block.timestamp + 1, address(bob), ZERO_BYTES);
+        vm.stopPrank();
+        // Mint to a diff range, diff user.
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT, abi.encode(range, 10_000 ether, block.timestamp + 1, address(alice), ZERO_BYTES)
+        );
+        planner = planner.finalize(range);
+        vm.prank(alice);
+        lpm.modifyLiquidities(planner.zip());
+        snapLastCall("mint_same_tickLower");
+    }
+
+    function test_gas_mint_sameTickUpper() public {
+        // Explicitly mint to range whos tickLower is the same.
+        LiquidityRange memory bob_mint = LiquidityRange({poolKey: key, tickLower: 60, tickUpper: 300});
+        vm.startPrank(bob);
+        _mint(bob_mint, 10_000 ether, block.timestamp + 1, address(bob), ZERO_BYTES);
+        vm.stopPrank();
+        // Mint to a diff range, diff user.
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT, abi.encode(range, 10_000 ether, block.timestamp + 1, address(alice), ZERO_BYTES)
+        );
+        planner = planner.finalize(range);
+        vm.prank(alice);
+        lpm.modifyLiquidities(planner.zip());
+        snapLastCall("mint_same_tickUpper");
+    }
+
     function test_gas_increaseLiquidity_erc20() public {
         _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
