@@ -305,7 +305,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
 
         Planner.Plan memory planner = Planner.init().add(
-            Actions.MINT, abi.encode(range, 10_001 ether, block.timestamp + 1, address(this), ZERO_BYTES)
+            Actions.MINT, abi.encode(range, 10_001 ether, block.timestamp + 1, address(alice), ZERO_BYTES)
         );
         planner = planner.finalize(range);
         vm.prank(alice);
