@@ -6,6 +6,7 @@ optimizer_runs = 1000000
 ffi = true
 fs_permissions = [{ access = "read-write", path = ".forge-snapshots/"}]
 evm_version = "cancun"
+gas_limit = "3000000000"
 
 [profile.ci]
 fuzz_runs = 100000
