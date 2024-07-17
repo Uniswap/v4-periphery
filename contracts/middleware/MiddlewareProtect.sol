@@ -32,7 +32,7 @@ contract MiddlewareProtect is MiddlewareRemove {
 
     error HookModifiedOutput();
     error ForbiddenDynamicFee();
-    error MustEnableAfterSwapFlag();
+    error MustHaveAfterSwapFlagOnMiddleware();
 
     // todo: use tstore
     BalanceDelta private quote;
@@ -122,6 +122,21 @@ contract MiddlewareProtect is MiddlewareRemove {
 
     function _ensureValidFlags(address _impl) internal view virtual override {
         IHooks This = IHooks(address(this));
+        if (This.hasPermission(Hooks.BEFORE_SWAP_FLAG)) {
+            if (
+                uint160(address(this)) & Hooks.ALL_HOOK_MASK
+                    != uint160(_impl) & Hooks.ALL_HOOK_MASK | Hooks.AFTER_SWAP_FLAG
+            ) {
+                if (IHooks(_impl).hasPermission(Hooks.AFTER_SWAP_FLAG)) {
+                    revert FlagsMismatch();
+                } else {
+                    // both flags match, but dev must enable AFTER_SWAP_FLAG
+                    revert MustHaveAfterSwapFlagOnMiddleware();
+                }
+            }
+        } else if (uint160(address(this)) & Hooks.ALL_HOOK_MASK != uint160(_impl) & Hooks.ALL_HOOK_MASK) {
+            revert FlagsMismatch();
+        }
         if (
             This.hasPermission(Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG)
                 || This.hasPermission(Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG)
@@ -129,21 +144,6 @@ contract MiddlewareProtect is MiddlewareRemove {
                 || This.hasPermission(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG)
         ) {
             HookPermissionForbidden.selector.revertWith(address(this));
-        }
-        if (This.hasPermission(Hooks.BEFORE_SWAP_FLAG)) {
-            if (
-                uint160(address(this)) & Hooks.ALL_HOOK_MASK
-                    != uint160(_impl) & Hooks.ALL_HOOK_MASK | Hooks.AFTER_SWAP_FLAG
-            ) {
-                if (This.hasPermission(Hooks.AFTER_SWAP_FLAG)) {
-                    revert FlagsMismatch();
-                } else {
-                    // both flags match, but dev must enable AFTER_SWAP_FLAG
-                    revert MustEnableAfterSwapFlag();
-                }
-            }
-        } else if (uint160(address(this)) & Hooks.ALL_HOOK_MASK != uint160(_impl) & Hooks.ALL_HOOK_MASK) {
-            revert FlagsMismatch();
         }
     }
 }

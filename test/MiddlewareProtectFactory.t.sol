@@ -73,8 +73,9 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
     }
 
     function testRevertOnDeltas() public {
-        HooksReturnDeltas hooksReturnDeltas = new HooksReturnDeltas(manager);
         uint160 flags = uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG);
+        HooksReturnDeltas hooksReturnDeltas = HooksReturnDeltas(address(flags));
+        vm.etch(address(hooksReturnDeltas), address(new HooksReturnDeltas(manager)).code);
 
         (address hookAddress, bytes32 salt) = HookMiner.find(
             address(factory),
@@ -233,6 +234,59 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
 
     function abs(int256 x) internal pure returns (uint256) {
         return x >= 0 ? uint256(x) : uint256(-x);
+    }
+
+    function testFlagCompatibilities() public {
+        uint160 BEFORE = Hooks.BEFORE_SWAP_FLAG;
+        uint160 AFTER = Hooks.AFTER_SWAP_FLAG;
+
+        // No flags
+        uint160 thisFlags = 0;
+        uint160 implFlags = 0;
+        testFlagCompatibilities(thisFlags, implFlags);
+
+        // Both flags
+        thisFlags = BEFORE | AFTER;
+        implFlags = BEFORE | AFTER;
+        testFlagCompatibilities(thisFlags, implFlags);
+
+        // only AFTER_SWAP
+        thisFlags = AFTER;
+        implFlags = AFTER;
+        testFlagCompatibilities(thisFlags, implFlags);
+
+        // thisFlags missing AFTER_SWAP
+        // REVERTS
+        thisFlags = BEFORE;
+        implFlags = BEFORE;
+        vm.expectRevert(MiddlewareProtect.MustHaveAfterSwapFlagOnMiddleware.selector);
+        testFlagCompatibilities(thisFlags, implFlags);
+
+        // mismatch
+        // REVERTS
+        thisFlags = AFTER;
+        implFlags = BEFORE;
+        vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
+        testFlagCompatibilities(thisFlags, implFlags);
+
+        // mismatch
+        // REVERTS
+        thisFlags = BEFORE;
+        implFlags = BEFORE | AFTER;
+        vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
+        testFlagCompatibilities(thisFlags, implFlags);
+
+        // mismatch but correct
+        thisFlags = BEFORE | AFTER;
+        implFlags = BEFORE;
+        testFlagCompatibilities(thisFlags, implFlags);
+    }
+
+    function testFlagCompatibilities(uint160 thisFlags, uint160 implFlags) internal {
+        (, bytes32 salt) = HookMiner.find(
+            address(factory), thisFlags, type(MiddlewareProtect).creationCode, abi.encode(address(manager), implFlags)
+        );
+        factory.createMiddleware(address(implFlags), salt);
     }
 
     // from BaseMiddlewareFactory.t.sol

@@ -26,11 +26,6 @@ contract BaseMiddleware is Proxy {
         return implementation;
     }
 
-    // yo i wanna delete this function but how do i remove this warning
-    receive() external payable {
-        _delegate(_implementation());
-    }
-
     function _ensureValidFlags(address _impl) internal view virtual {
         if (uint160(address(this)) & Hooks.ALL_HOOK_MASK != uint160(_impl) & Hooks.ALL_HOOK_MASK) {
             revert FlagsMismatch();
