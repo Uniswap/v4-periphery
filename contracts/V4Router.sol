@@ -26,41 +26,40 @@ abstract contract V4Router is IV4Router {
     }
 
     function _v4Swap(SwapType swapType, bytes memory params) internal {
-        poolManager.unlock(abi.encode(SwapInfo(swapType, msg.sender, params)));
+        poolManager.unlock(abi.encode(swapType, msg.sender, params));
     }
 
     /// @inheritdoc IUnlockCallback
     function unlockCallback(bytes calldata encodedSwapInfo) external override returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert NotPoolManager();
 
-        SwapInfo memory swapInfo = abi.decode(encodedSwapInfo, (SwapInfo));
+        (SwapType swapType, address msgSender, bytes memory params) =
+            abi.decode(encodedSwapInfo, (SwapType, address, bytes));
 
         Currency inputCurrency;
         Currency outputCurrency;
 
-        if (swapInfo.swapType == SwapType.ExactInput) {
-            IV4Router.ExactInputParams memory params = abi.decode(swapInfo.params, (IV4Router.ExactInputParams));
+        if (swapType == SwapType.ExactInput) {
+            IV4Router.ExactInputParams memory params = abi.decode(params, (IV4Router.ExactInputParams));
             inputCurrency = params.currencyIn;
             outputCurrency = params.path[params.path.length - 1].intermediateCurrency;
 
             _swapExactInput(params);
-        } else if (swapInfo.swapType == SwapType.ExactInputSingle) {
-            IV4Router.ExactInputSingleParams memory params =
-                abi.decode(swapInfo.params, (IV4Router.ExactInputSingleParams));
+        } else if (swapType == SwapType.ExactInputSingle) {
+            IV4Router.ExactInputSingleParams memory params = abi.decode(params, (IV4Router.ExactInputSingleParams));
             (inputCurrency, outputCurrency) = params.zeroForOne
                 ? (params.poolKey.currency0, params.poolKey.currency1)
                 : (params.poolKey.currency1, params.poolKey.currency0);
 
             _swapExactInputSingle(params);
-        } else if (swapInfo.swapType == SwapType.ExactOutput) {
-            IV4Router.ExactOutputParams memory params = abi.decode(swapInfo.params, (IV4Router.ExactOutputParams));
+        } else if (swapType == SwapType.ExactOutput) {
+            IV4Router.ExactOutputParams memory params = abi.decode(params, (IV4Router.ExactOutputParams));
             inputCurrency = params.path[0].intermediateCurrency;
             outputCurrency = params.currencyOut;
 
             _swapExactOutput(params);
-        } else if (swapInfo.swapType == SwapType.ExactOutputSingle) {
-            IV4Router.ExactOutputSingleParams memory params =
-                abi.decode(swapInfo.params, (IV4Router.ExactOutputSingleParams));
+        } else if (swapType == SwapType.ExactOutputSingle) {
+            IV4Router.ExactOutputSingleParams memory params = abi.decode(params, (IV4Router.ExactOutputSingleParams));
             (inputCurrency, outputCurrency) = params.zeroForOne
                 ? (params.poolKey.currency0, params.poolKey.currency1)
                 : (params.poolKey.currency1, params.poolKey.currency0);
@@ -71,10 +70,10 @@ abstract contract V4Router is IV4Router {
         }
 
         // settle
-        _payAndSettle(inputCurrency, swapInfo.msgSender);
+        _payAndSettle(inputCurrency, msgSender);
 
         // take
-        _take(outputCurrency, swapInfo.msgSender);
+        _take(outputCurrency, msgSender);
 
         return bytes("");
     }

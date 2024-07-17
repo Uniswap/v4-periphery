@@ -19,12 +19,6 @@ interface IV4Router is IUnlockCallback {
     error TooLittleReceived();
     error TooMuchRequested();
 
-    struct SwapInfo {
-        SwapType swapType;
-        address msgSender;
-        bytes params;
-    }
-
     struct ExactInputSingleParams {
         PoolKey poolKey;
         bool zeroForOne;
