@@ -11,6 +11,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PathKey} from "./libraries/PathKey.sol";
+import {BytesLib} from "./libraries/BytesLib.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 
 /// @title UniswapV4Router
@@ -18,6 +19,7 @@ import {IV4Router} from "./interfaces/IV4Router.sol";
 abstract contract V4Router is IV4Router {
     using CurrencyLibrary for Currency;
     using TransientStateLibrary for IPoolManager;
+    using BytesLib for bytes;
 
     IPoolManager immutable poolManager;
 
@@ -33,33 +35,41 @@ abstract contract V4Router is IV4Router {
     function unlockCallback(bytes calldata encodedSwapInfo) external override returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert NotPoolManager();
 
-        (SwapType swapType, address msgSender, bytes memory params) =
-            abi.decode(encodedSwapInfo, (SwapType, address, bytes));
+        SwapType swapType;
+        address msgSender;
+        // TODO dont decode to swapParams at all, just decode directly to the struct in each if statement
+        bytes calldata swapParams = encodedSwapInfo.toBytes(2);
+        assembly {
+            swapType := calldataload(encodedSwapInfo.offset)
+            msgSender := calldataload(add(encodedSwapInfo.offset, 0x20))
+        }
 
         Currency inputCurrency;
         Currency outputCurrency;
 
         if (swapType == SwapType.ExactInput) {
-            IV4Router.ExactInputParams memory params = abi.decode(params, (IV4Router.ExactInputParams));
+            IV4Router.ExactInputParams memory params = abi.decode(swapParams, (IV4Router.ExactInputParams));
             inputCurrency = params.currencyIn;
             outputCurrency = params.path[params.path.length - 1].intermediateCurrency;
 
             _swapExactInput(params);
         } else if (swapType == SwapType.ExactInputSingle) {
-            IV4Router.ExactInputSingleParams memory params = abi.decode(params, (IV4Router.ExactInputSingleParams));
+            IV4Router.ExactInputSingleParams memory params =
+                abi.decode(swapParams, (IV4Router.ExactInputSingleParams));
             (inputCurrency, outputCurrency) = params.zeroForOne
                 ? (params.poolKey.currency0, params.poolKey.currency1)
                 : (params.poolKey.currency1, params.poolKey.currency0);
 
             _swapExactInputSingle(params);
         } else if (swapType == SwapType.ExactOutput) {
-            IV4Router.ExactOutputParams memory params = abi.decode(params, (IV4Router.ExactOutputParams));
+            IV4Router.ExactOutputParams memory params = abi.decode(swapParams, (IV4Router.ExactOutputParams));
             inputCurrency = params.path[0].intermediateCurrency;
             outputCurrency = params.currencyOut;
 
             _swapExactOutput(params);
         } else if (swapType == SwapType.ExactOutputSingle) {
-            IV4Router.ExactOutputSingleParams memory params = abi.decode(params, (IV4Router.ExactOutputSingleParams));
+            IV4Router.ExactOutputSingleParams memory params =
+                abi.decode(swapParams, (IV4Router.ExactOutputSingleParams));
             (inputCurrency, outputCurrency) = params.zeroForOne
                 ? (params.poolKey.currency0, params.poolKey.currency1)
                 : (params.poolKey.currency1, params.poolKey.currency0);
@@ -177,6 +187,7 @@ abstract contract V4Router is IV4Router {
         poolManager.take(currency, recipient, uint256(delta));
     }
 
+    // TODO native support !!
     function _payAndSettle(Currency currency, address payer) private {
         int256 delta = poolManager.currencyDelta(address(this), currency);
         if (delta > 0) revert();
