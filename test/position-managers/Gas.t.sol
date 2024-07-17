@@ -297,5 +297,80 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
 
     function test_gas_burn() public {}
     function test_gas_burnEmpty() public {}
-    function test_gas_collect() public {}
+
+    function test_gas_collect_erc20() public {
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // donate to create fee revenue
+        donateRouter.donate(range.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        Planner.Plan memory planner =
+            Planner.init().add(Actions.COLLECT, abi.encode(tokenId, address(this), ZERO_BYTES, false));
+
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        snapLastCall("collect_erc20");
+    }
+
+    // same-range gas tests
+    function test_gas_sameRange_mint() public {
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+
+        Planner.Plan memory plan = Planner.init().add(
+            Actions.MINT, abi.encode(range, 10_001 ether, block.timestamp + 1, address(this), ZERO_BYTES)
+        );
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+        vm.prank(alice);
+        lpm.modifyLiquidities(abi.encode(plan.actions, plan.params, currencies, currencies));
+        snapLastCall("sameRange_mint");
+    }
+
+    function test_gas_sameRange_decrease() public {
+        // two positions of the same range, one of them decreases the entirety of the liquidity
+        vm.startPrank(alice);
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        vm.stopPrank();
+
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        Planner.Plan memory planner =
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES, false));
+
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        snapLastCall("sameRange_decreaseAllLiquidity");
+    }
+
+    function test_gas_sameRange_collect() public {
+        // two positions of the same range, one of them collects all their fees
+        vm.startPrank(alice);
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        vm.stopPrank();
+
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // donate to create fee revenue
+        donateRouter.donate(range.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        Planner.Plan memory planner =
+            Planner.init().add(Actions.COLLECT, abi.encode(tokenId, address(this), ZERO_BYTES, false));
+
+        Currency[] memory currencies = new Currency[](2);
+        currencies[0] = currency0;
+        currencies[1] = currency1;
+
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        snapLastCall("sameRange_collect");
+    }
 }
