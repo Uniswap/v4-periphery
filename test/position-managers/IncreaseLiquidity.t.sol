@@ -86,7 +86,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         // alice provides liquidity
         vm.prank(alice);
         _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.lastTokenId();
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
@@ -143,7 +143,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         // alice provides liquidity
         vm.prank(alice);
         _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.lastTokenId();
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
@@ -191,12 +191,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
     //     // alice provides liquidity
     //     vm.prank(alice);
     //     _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
-    //     uint256 tokenIdAlice = lpm.lastTokenId();
+    //     uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
     //     // bob provides liquidity
     //     vm.prank(bob);
     //     _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
-    //     uint256 tokenIdBob = lpm.lastTokenId();
+    //     uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
     //     // swap to create fees
     //     uint256 swapAmount = 0.001e18;
@@ -273,12 +273,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         // alice provides liquidity
         vm.prank(alice);
         _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.lastTokenId();
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
         _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
-        uint256 tokenIdBob = lpm.lastTokenId();
+        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;

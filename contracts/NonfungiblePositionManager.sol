@@ -28,8 +28,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
 
-    /// @dev The ID of the last minted token. Skips 0
-    uint256 public lastTokenId;
+    /// @dev The ID of the next token that will be minted. Skips 0
+    uint256 public nextTokenId = 1;
 
     // maps the ERC721 tokenId to the keys that uniquely identify a liquidity position (owner, range)
     mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
@@ -99,7 +99,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         // mint receipt token
         uint256 tokenId;
         unchecked {
-            tokenId = ++lastTokenId;
+            tokenId = nextTokenId++;
         }
         _mint(owner, tokenId);
 

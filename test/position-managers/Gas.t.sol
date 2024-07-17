@@ -90,7 +90,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
 
     function test_gas_increaseLiquidity_erc20() public {
         _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.lastTokenId();
+        uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
             Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
@@ -103,7 +103,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
 
     function test_gas_increaseLiquidity_erc6909() public {
         _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.lastTokenId();
+        uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
             Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
@@ -124,7 +124,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         // alice provides liquidity
         vm.prank(alice);
         _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.lastTokenId();
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
@@ -165,12 +165,12 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         // alice provides liquidity
         vm.prank(alice);
         _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.lastTokenId();
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
         _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
-        uint256 tokenIdBob = lpm.lastTokenId();
+        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // donate to create fees
         uint256 amountDonate = 20e18;
@@ -222,7 +222,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         // alice provides liquidity
         vm.prank(alice);
         _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.lastTokenId();
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
@@ -256,7 +256,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
 
     function test_gas_decreaseLiquidity_erc20() public {
         _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.lastTokenId();
+        uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
             Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
@@ -269,7 +269,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
 
     function test_gas_decreaseLiquidity_erc6909() public {
         _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.lastTokenId();
+        uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
             Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
