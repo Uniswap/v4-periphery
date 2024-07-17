@@ -10,10 +10,10 @@ contract V4RouterImplementation is V4Router {
     constructor(IPoolManager _poolManager) V4Router(_poolManager) {}
 
     function swap(IV4Router.SwapType swapType, bytes memory params) external {
-        _v4Swap(swapType, PaymentAddresses({payer: msg.sender, recipient: msg.sender}), params);
+        _v4Swap(swapType, params);
     }
 
-    function _pay(address token, address payer, uint256 amount) internal override {
-        IERC20Minimal(token).transferFrom(payer, address(poolManager), amount);
+    function _pay(address token, address payer, address recipient, uint256 amount) internal override {
+        IERC20Minimal(token).transferFrom(payer, recipient, amount);
     }
 }
