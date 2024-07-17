@@ -16,6 +16,7 @@ import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {FeeMath} from "../shared/FeeMath.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -33,6 +34,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
     using Planner for Planner.Plan;
+    using FeeMath for INonfungiblePositionManager;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -276,11 +278,76 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
 
         planner = planner.finalize(range);
 
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params));
+        lpm.modifyLiquidities(planner.zip());
         snapLastCall("decreaseLiquidity_erc6909");
     }
 
     function test_gas_burn() public {}
     function test_gas_burnEmpty() public {}
-    function test_gas_collect() public {}
+
+    function test_gas_collect_erc20() public {
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // donate to create fee revenue
+        donateRouter.donate(range.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        // Collect by calling decrease with 0.
+        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 0, ZERO_BYTES, false));
+
+        planner = planner.finalize(range);
+        lpm.modifyLiquidities(planner.zip());
+        snapLastCall("collect_erc20");
+    }
+
+    // same-range gas tests
+    function test_gas_sameRange_mint() public {
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT, abi.encode(range, 10_001 ether, block.timestamp + 1, address(this), ZERO_BYTES)
+        );
+        planner = planner.finalize(range);
+        vm.prank(alice);
+        lpm.modifyLiquidities(planner.zip());
+        snapLastCall("sameRange_mint");
+    }
+
+    function test_gas_sameRange_decrease() public {
+        // two positions of the same range, one of them decreases the entirety of the liquidity
+        vm.startPrank(alice);
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        vm.stopPrank();
+
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        Planner.Plan memory planner =
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES, false));
+
+        planner = planner.finalize(range);
+
+        lpm.modifyLiquidities(planner.zip());
+        snapLastCall("sameRange_decreaseAllLiquidity");
+    }
+
+    function test_gas_sameRange_collect() public {
+        // two positions of the same range, one of them collects all their fees
+        vm.startPrank(alice);
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        vm.stopPrank();
+
+        _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // donate to create fee revenue
+        donateRouter.donate(range.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 0, ZERO_BYTES, false));
+
+        planner = planner.finalize(range);
+
+        lpm.modifyLiquidities(planner.zip());
+        snapLastCall("sameRange_collect");
+    }
 }
