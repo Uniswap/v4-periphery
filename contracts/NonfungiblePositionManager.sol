@@ -18,9 +18,6 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {TransientLiquidityDelta} from "./libraries/TransientLiquidityDelta.sol";
-
-import "forge-std/console2.sol";
 
 contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
     using CurrencyLibrary for Currency;
@@ -30,7 +27,6 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
-    using TransientLiquidityDelta for Currency;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
@@ -54,15 +50,9 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         // TODO: Fix double encode/decode
         (bytes memory unlockData, address sender) = abi.decode(payload, (bytes, address));
 
-        (Actions[] memory actions, bytes[] memory params, Currency[] memory currencies) =
-            abi.decode(unlockData, (Actions[], bytes[], Currency[]));
+        (Actions[] memory actions, bytes[] memory params) = abi.decode(unlockData, (Actions[], bytes[]));
 
         bytes[] memory returnData = _dispatch(actions, params, sender);
-
-        for (uint256 i; i < currencies.length; i++) {
-            currencies[i].close(manager, sender, false); // TODO: support claims
-            currencies[i].close(manager, address(this), true); // position manager always takes 6909
-        }
 
         return abi.encode(returnData);
     }
@@ -76,25 +66,23 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         returnData = new bytes[](actions.length);
         for (uint256 i; i < actions.length; i++) {
             if (actions[i] == Actions.INCREASE) {
-                (uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims) =
-                    abi.decode(params[i], (uint256, uint256, bytes, bool));
-                returnData[i] = abi.encode(increaseLiquidity(tokenId, liquidity, hookData, claims, sender));
+                (uint256 tokenId, uint256 liquidity, bytes memory hookData) =
+                    abi.decode(params[i], (uint256, uint256, bytes));
+                returnData[i] = abi.encode(increaseLiquidity(tokenId, liquidity, hookData, sender));
             } else if (actions[i] == Actions.DECREASE) {
-                (uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims) =
-                    abi.decode(params[i], (uint256, uint256, bytes, bool));
-                returnData[i] = abi.encode(decreaseLiquidity(tokenId, liquidity, hookData, claims, sender));
+                (uint256 tokenId, uint256 liquidity, bytes memory hookData) =
+                    abi.decode(params[i], (uint256, uint256, bytes));
+                returnData[i] = abi.encode(decreaseLiquidity(tokenId, liquidity, hookData, sender));
             } else if (actions[i] == Actions.MINT) {
                 (LiquidityRange memory range, uint256 liquidity, uint256 deadline, address owner, bytes memory hookData)
                 = abi.decode(params[i], (LiquidityRange, uint256, uint256, address, bytes));
-                (BalanceDelta delta, uint256 tokenId) = mint(range, liquidity, deadline, owner, hookData, sender);
-                returnData[i] = abi.encode(delta, tokenId);
+                returnData[i] = abi.encode(mint(range, liquidity, deadline, owner, hookData));
+            } else if (actions[i] == Actions.CLOSE_CURRENCY) {
+                (Currency currency) = abi.decode(params[i], (Currency));
+                returnData[i] = abi.encode(close(currency, sender));
             } else if (actions[i] == Actions.BURN) {
                 (uint256 tokenId) = abi.decode(params[i], (uint256));
                 burn(tokenId, sender);
-            } else if (actions[i] == Actions.COLLECT) {
-                (uint256 tokenId, address recipient, bytes memory hookData, bool claims) =
-                    abi.decode(params[i], (uint256, address, bytes, bool));
-                returnData[i] = abi.encode(collect(tokenId, recipient, hookData, claims, sender));
             } else {
                 revert UnsupportedAction();
             }
@@ -106,34 +94,54 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         uint256 liquidity,
         uint256 deadline,
         address owner,
-        bytes memory hookData,
-        address sender
-    ) internal checkDeadline(deadline) returns (BalanceDelta delta, uint256 tokenId) {
-        delta = _increaseLiquidity(owner, range, liquidity, hookData, sender);
-
+        bytes memory hookData
+    ) internal checkDeadline(deadline) returns (BalanceDelta delta) {
         // mint receipt token
-        _mint(owner, (tokenId = nextTokenId++));
-        tokenPositions[tokenId] = TokenPosition({owner: owner, range: range});
+        uint256 tokenId;
+        unchecked {
+            tokenId = nextTokenId++;
+        }
+        _mint(owner, tokenId);
+
+        (delta,) = _modifyLiquidity(range, liquidity.toInt256(), bytes32(tokenId), hookData);
+
+        tokenPositions[tokenId] = TokenPosition({owner: owner, range: range, operator: address(0x0)});
     }
 
-    function increaseLiquidity(uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims, address sender)
+    // Note: Calling increase with 0 will accrue any underlying fees.
+    function increaseLiquidity(uint256 tokenId, uint256 liquidity, bytes memory hookData, address sender)
         internal
         isAuthorizedForToken(tokenId, sender)
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
-
-        delta = _increaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData, sender);
+        // Note: The tokenId is used as the salt for this position, so every minted liquidity has unique storage in the pool manager.
+        (delta,) = _modifyLiquidity(tokenPos.range, liquidity.toInt256(), bytes32(tokenId), hookData);
     }
 
-    function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes memory hookData, bool claims, address sender)
+    // Note: Calling decrease with 0 will accrue any underlying fees.
+    function decreaseLiquidity(uint256 tokenId, uint256 liquidity, bytes memory hookData, address sender)
         internal
         isAuthorizedForToken(tokenId, sender)
         returns (BalanceDelta delta)
     {
         TokenPosition memory tokenPos = tokenPositions[tokenId];
+        (delta,) = _modifyLiquidity(tokenPos.range, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+    }
 
-        delta = _decreaseLiquidity(tokenPos.owner, tokenPos.range, liquidity, hookData);
+    // there is no authorization scheme because the payer/recipient is always the sender
+    // TODO: Add more advanced functionality for other payers/recipients, needs auth scheme.
+    function close(Currency currency, address sender) internal returns (int256 currencyDelta) {
+        // this address has applied all deltas on behalf of the user/owner
+        // it is safe to close this entire delta because of slippage checks throughout the batched calls.
+        currencyDelta = manager.currencyDelta(address(this), currency);
+
+        // the sender is the payer or receiver
+        if (currencyDelta < 0) {
+            currency.settle(manager, sender, uint256(-int256(currencyDelta)), false);
+        } else {
+            currency.take(manager, sender, uint256(int256(currencyDelta)), false);
+        }
     }
 
     function burn(uint256 tokenId, address sender) internal isAuthorizedForToken(tokenId, sender) {
@@ -146,39 +154,29 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         _burn(tokenId);
     }
 
-    function collect(uint256 tokenId, address recipient, bytes memory hookData, bool claims, address sender)
-        internal
-        isAuthorizedForToken(tokenId, sender)
-        returns (BalanceDelta delta)
-    {
-        TokenPosition memory tokenPos = tokenPositions[tokenId];
-
-        delta = _collect(recipient, tokenPos.owner, tokenPos.range, hookData, sender);
-    }
-
-    function feesOwed(uint256 tokenId) external view returns (uint256 token0Owed, uint256 token1Owed) {
-        TokenPosition memory tokenPosition = tokenPositions[tokenId];
-        return feesOwed(tokenPosition.owner, tokenPosition.range);
-    }
-
     // TODO: Bug - Positions are overrideable unless we can allow two of the same users to have distinct positions.
     function _beforeTokenTransfer(address from, address to, uint256 tokenId) internal override {
         TokenPosition storage tokenPosition = tokenPositions[tokenId];
         LiquidityRangeId rangeId = tokenPosition.range.toId();
         Position storage position = positions[from][rangeId];
-        position.operator = address(0x0);
 
         // transfer position data to destination
         positions[to][rangeId] = position;
         delete positions[from][rangeId];
 
         // update token position
-        tokenPositions[tokenId] = TokenPosition({owner: to, range: tokenPosition.range});
+        tokenPositions[tokenId] = TokenPosition({owner: to, range: tokenPosition.range, operator: address(0x0)});
     }
 
-    function _getAndIncrementNonce(uint256 tokenId) internal override returns (uint256) {
-        TokenPosition memory tokenPosition = tokenPositions[tokenId];
-        return uint256(positions[tokenPosition.owner][tokenPosition.range.toId()].nonce++);
+    // override ERC721 approval by setting operator
+    function _approve(address spender, uint256 tokenId) internal override {
+        tokenPositions[tokenId].operator = spender;
+    }
+
+    function getApproved(uint256 tokenId) public view override returns (address) {
+        require(_exists(tokenId), "ERC721: approved query for nonexistent token");
+
+        return tokenPositions[tokenId].operator;
     }
 
     modifier isAuthorizedForToken(uint256 tokenId, address sender) {

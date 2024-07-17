@@ -17,6 +17,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -35,6 +36,8 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     using CurrencyLibrary for Currency;
     using LiquidityRangeIdLibrary for LiquidityRange;
     using Planner for Planner.Plan;
+    using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -74,25 +77,19 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(
-            Actions.MINT, abi.encode(range, liquidityToAdd, uint256(block.timestamp + 1), address(this), ZERO_BYTES)
-        );
-
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
 
-        bytes[] memory result = lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
-
-        (BalanceDelta delta, uint256 tokenId) = abi.decode(result[0], (BalanceDelta, uint256));
+        uint256 tokenId = lpm.nextTokenId();
+        BalanceDelta delta = _mint(range, liquidityToAdd, uint256(block.timestamp + 1), address(this), ZERO_BYTES);
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), address(this));
-        (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
+
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+
         assertEq(liquidity, uint256(params.liquidityDelta));
         assertEq(balance0Before - currency0.balanceOfSelf(), uint256(int256(-delta.amount0())), "incorrect amount0");
         assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())), "incorrect amount1");
@@ -116,23 +113,15 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(
-            Actions.MINT, abi.encode(range, liquidityToAdd, uint256(block.timestamp + 1), address(this), ZERO_BYTES)
-        );
-
-        bytes[] memory result = lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
-        (BalanceDelta delta, uint256 tokenId) = abi.decode(result[0], (BalanceDelta, uint256));
+        uint256 tokenId = lpm.nextTokenId();
+        BalanceDelta delta = _mint(range, liquidityToAdd, uint256(block.timestamp + 1), address(this), ZERO_BYTES);
 
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
+
         assertEq(uint256(int256(-delta.amount0())), amount0Desired);
         assertEq(uint256(int256(-delta.amount1())), amount1Desired);
         assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())));
@@ -147,18 +136,9 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(
-            Actions.MINT, abi.encode(range, liquidityToAdd, uint256(block.timestamp + 1), alice, ZERO_BYTES)
-        );
+        uint256 tokenId = lpm.nextTokenId();
+        _mint(range, liquidityToAdd, uint256(block.timestamp + 1), address(alice), ZERO_BYTES);
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-
-        bytes[] memory results = lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
-
-        (, uint256 tokenId) = abi.decode(results[0], (BalanceDelta, uint256));
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), alice);
     }
@@ -220,29 +200,30 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
-        (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
+
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+
         assertEq(liquidity, uint256(params.liquidityDelta));
 
         // burn liquidity
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
-        // TODO, encode this under one call
-        BalanceDelta deltaDecrease = _decreaseLiquidity(tokenId, liquidity, ZERO_BYTES, false);
-        BalanceDelta deltaCollect = _collect(tokenId, address(this), ZERO_BYTES, false);
+
+        BalanceDelta deltaDecrease = _decreaseLiquidity(tokenId, liquidity, ZERO_BYTES);
         _burn(tokenId);
-        (,, liquidity,,,,) = lpm.positions(address(this), range.toId());
+
+        (liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+
         assertEq(liquidity, 0);
 
         // TODO: slightly off by 1 bip (0.0001%)
         assertApproxEqRel(
-            currency0.balanceOfSelf(),
-            balance0BeforeBurn + uint256(uint128(deltaDecrease.amount0())) + uint256(uint128(deltaCollect.amount0())),
-            0.0001e18
+            currency0.balanceOfSelf(), balance0BeforeBurn + uint256(uint128(deltaDecrease.amount0())), 0.0001e18
         );
         assertApproxEqRel(
-            currency1.balanceOfSelf(),
-            balance1BeforeBurn + uint256(uint128(deltaDecrease.amount1())) + uint256(uint128(deltaCollect.amount1())),
-            0.0001e18
+            currency1.balanceOfSelf(), balance1BeforeBurn + uint256(uint128(deltaDecrease.amount1())), 0.0001e18
         );
 
         // OZ 721 will revert if the token does not exist
@@ -254,7 +235,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
     }
 
-    function test_decreaseLiquidity1(IPoolManager.ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta)
+    function test_decreaseLiquidity(IPoolManager.ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta)
         public
     {
         uint256 tokenId;
@@ -266,16 +247,13 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-        uint256 balance0Before = currency0.balanceOfSelf();
-        uint256 balance1Before = currency1.balanceOfSelf();
-        _decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
+        _decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES);
 
-        (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
-
-        // On decrease, balance doesn't change (currenct functionality).
-        assertEq(currency0.balanceOfSelf() - balance0Before, 0);
-        assertEq(currency1.balanceOfSelf() - balance1Before, 0);
     }
 
     // function test_decreaseLiquidity_collectFees(
@@ -298,7 +276,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     //     uint256 balance0Before = currency0.balanceOfSelf();
     //     uint256 balance1Before = currency1.balanceOfSelf();
     //             BalanceDelta delta = lpm.decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
-    //     (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
+    //     (uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
     //     assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
     //     // express key.fee as wad (i.e. 3000 = 0.003e18)

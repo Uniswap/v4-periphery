@@ -16,6 +16,7 @@ import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {FeeMath} from "../shared/FeeMath.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -33,10 +34,13 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
     using Planner for Planner.Plan;
+    using FeeMath for INonfungiblePositionManager;
 
     PoolId poolId;
-    address alice = makeAddr("ALICE");
-    address bob = makeAddr("BOB");
+    address alice;
+    uint256 alicePK;
+    address bob;
+    uint256 bobPK;
 
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
@@ -46,6 +50,9 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     LiquidityRange range;
 
     function setUp() public {
+        (alice, alicePK) = makeAddrAndKey("ALICE");
+        (bob, bobPK) = makeAddrAndKey("BOB");
+
         Deployers.deployFreshManagerAndRouters();
         Deployers.deployMintAndApprove2Currencies();
 
@@ -80,14 +87,60 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     }
 
     function test_gas_mint() public {
-        Planner.Plan memory plan = Planner.init().add(
+        Planner.Plan memory planner = Planner.init().add(
             Actions.MINT, abi.encode(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES)
         );
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-        lpm.modifyLiquidities(abi.encode(plan.actions, plan.params, currencies, currencies));
+        planner = planner.finalize(range);
+        lpm.modifyLiquidities(planner.zip());
         snapLastCall("mint");
+    }
+
+    function test_gas_mint_differentRanges() public {
+        // Explicitly mint to a new range on the same pool.
+        LiquidityRange memory bob_mint = LiquidityRange({poolKey: key, tickLower: 0, tickUpper: 60});
+        vm.startPrank(bob);
+        _mint(bob_mint, 10_000 ether, block.timestamp + 1, address(bob), ZERO_BYTES);
+        vm.stopPrank();
+        // Mint to a diff range, diff user.
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT, abi.encode(range, 10_000 ether, block.timestamp + 1, address(alice), ZERO_BYTES)
+        );
+        planner = planner.finalize(range);
+        vm.prank(alice);
+        lpm.modifyLiquidities(planner.zip());
+        snapLastCall("mint_differentRanges");
+    }
+
+    function test_gas_mint_sameTickLower() public {
+        // Explicitly mint to range whos tickLower is the same.
+        LiquidityRange memory bob_mint = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: -60});
+        vm.startPrank(bob);
+        _mint(bob_mint, 10_000 ether, block.timestamp + 1, address(bob), ZERO_BYTES);
+        vm.stopPrank();
+        // Mint to a diff range, diff user.
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT, abi.encode(range, 10_000 ether, block.timestamp + 1, address(alice), ZERO_BYTES)
+        );
+        planner = planner.finalize(range);
+        vm.prank(alice);
+        lpm.modifyLiquidities(planner.zip());
+        snapLastCall("mint_same_tickLower");
+    }
+
+    function test_gas_mint_sameTickUpper() public {
+        // Explicitly mint to range whos tickUpperis the same.
+        LiquidityRange memory bob_mint = LiquidityRange({poolKey: key, tickLower: 60, tickUpper: 300});
+        vm.startPrank(bob);
+        _mint(bob_mint, 10_000 ether, block.timestamp + 1, address(bob), ZERO_BYTES);
+        vm.stopPrank();
+        // Mint to a diff range, diff user.
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT, abi.encode(range, 10_000 ether, block.timestamp + 1, address(alice), ZERO_BYTES)
+        );
+        planner = planner.finalize(range);
+        vm.prank(alice);
+        lpm.modifyLiquidities(planner.zip());
+        snapLastCall("mint_same_tickUpper");
     }
 
     function test_gas_increaseLiquidity_erc20() public {
@@ -95,13 +148,11 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES, false));
+            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
+        planner = planner.finalize(range);
 
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params));
         snapLastCall("increaseLiquidity_erc20");
     }
 
@@ -110,13 +161,11 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES, true));
+            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
+        planner = planner.finalize(range);
 
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params));
         snapLastCall("increaseLiquidity_erc6909");
     }
 
@@ -137,29 +186,28 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
 
         // donate to create fees
-        donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
+        uint256 amountDonate = 0.2e18;
+        donateRouter.donate(key, amountDonate, amountDonate, ZERO_BYTES);
 
         // alice uses her exact fees to increase liquidity
-        (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
+        uint256 tokensOwedAlice = amountDonate.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob) - 1;
 
         (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(range.tickLower),
             TickMath.getSqrtPriceAtTick(range.tickUpper),
-            token0Owed,
-            token1Owed
+            tokensOwedAlice,
+            tokensOwedAlice
         );
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES, false));
+            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
+        planner = planner.finalize(range);
 
         vm.prank(alice);
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params));
         snapLastCall("autocompound_exactUnclaimedFees");
     }
 
@@ -180,24 +228,23 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // donate to create fees
-        donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
+        uint256 amountDonate = 20e18;
+        donateRouter.donate(key, amountDonate, amountDonate, ZERO_BYTES);
+        uint256 tokensOwedAlice = amountDonate.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob) - 1;
 
         // bob collects fees so some of alice's fees are now cached
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.COLLECT, abi.encode(tokenIdBob, bob, ZERO_BYTES, false));
+        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenIdBob, 0, ZERO_BYTES));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
+        planner = planner.finalize(range);
 
         vm.prank(bob);
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params));
 
         // donate to create more fees
-        donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
+        donateRouter.donate(key, amountDonate, amountDonate, ZERO_BYTES);
 
-        (uint256 newToken0Owed, uint256 newToken1Owed) = lpm.feesOwed(tokenIdAlice);
+        tokensOwedAlice = tokensOwedAlice + amountDonate.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob) - 1;
 
         // alice will use ALL of her fees to increase liquidity
         {
@@ -206,18 +253,16 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
                 sqrtPriceX96,
                 TickMath.getSqrtPriceAtTick(range.tickLower),
                 TickMath.getSqrtPriceAtTick(range.tickUpper),
-                newToken0Owed,
-                newToken1Owed
+                tokensOwedAlice,
+                tokensOwedAlice
             );
 
-            planner = Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES, false));
+            planner = Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
 
-            currencies = new Currency[](2);
-            currencies[0] = currency0;
-            currencies[1] = currency1;
+            planner = planner.finalize(range);
 
             vm.prank(alice);
-            lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+            lpm.modifyLiquidities(abi.encode(planner.actions, planner.params));
             snapLastCall("autocompound_exactUnclaimedFees_exactCustodiedFees");
         }
     }
@@ -239,29 +284,28 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
 
         // donate to create fees
-        donateRouter.donate(key, 20e18, 20e18, ZERO_BYTES);
+        uint256 amountDonate = 20e18;
+        donateRouter.donate(key, amountDonate, amountDonate, ZERO_BYTES);
 
         // alice will use half of her fees to increase liquidity
-        (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
+        uint256 halfTokensOwedAlice = (amountDonate.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob) - 1) / 2;
 
         (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(range.tickLower),
             TickMath.getSqrtPriceAtTick(range.tickUpper),
-            token0Owed / 2,
-            token1Owed / 2
+            halfTokensOwedAlice,
+            halfTokensOwedAlice
         );
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES, false));
+            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
+        planner = planner.finalize(range);
 
         vm.prank(alice);
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params));
         snapLastCall("autocompound_excessFeesCredit");
     }
 
@@ -270,13 +314,11 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES, false));
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
+        planner = planner.finalize(range);
 
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params));
         snapLastCall("decreaseLiquidity_erc20");
     }
 
@@ -285,18 +327,92 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES, true));
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
+        planner = planner.finalize(range);
 
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        lpm.modifyLiquidities(planner.zip());
         snapLastCall("decreaseLiquidity_erc6909");
     }
 
     function test_gas_burn() public {}
     function test_gas_burnEmpty() public {}
+    function test_gas_collect() public {}
+
+    function test_gas_permit() public {
+        // alice permits for the first time
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice gives operator permission to bob
+        uint256 nonce = 1;
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+
+        vm.prank(alice);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
+        snapLastCall("permit");
+    }
+
+    function test_gas_permit_secondPosition() public {
+        // alice permits for her two tokens, benchmark the 2nd permit
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice gives operator permission to bob
+        uint256 nonce = 1;
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+
+        vm.prank(alice);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
+
+        // alice creates another position
+        vm.prank(alice);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice gives operator permission to bob
+        nonce = 2;
+        digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+        (v, r, s) = vm.sign(alicePK, digest);
+
+        vm.prank(alice);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
+        snapLastCall("permit_secondPosition");
+    }
+
+    function test_gas_permit_twice() public {
+        // alice permits the same token, twice
+        address charlie = makeAddr("CHARLIE");
+
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice gives operator permission to bob
+        uint256 nonce = 1;
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+
+        vm.prank(alice);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
+
+        // alice gives operator permission to charlie
+        nonce = 2;
+        digest = lpm.getDigest(charlie, tokenIdAlice, nonce, block.timestamp + 1);
+        (v, r, s) = vm.sign(alicePK, digest);
+
+        vm.prank(alice);
+        lpm.permit(charlie, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
+        snapLastCall("permit_twice");
+    }
 
     function test_gas_collect_erc20() public {
         _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
@@ -305,14 +421,11 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         // donate to create fee revenue
         donateRouter.donate(range.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.COLLECT, abi.encode(tokenId, address(this), ZERO_BYTES, false));
+        // Collect by calling decrease with 0.
+        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 0, ZERO_BYTES, false));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        planner = planner.finalize(range);
+        lpm.modifyLiquidities(planner.zip());
         snapLastCall("collect_erc20");
     }
 
@@ -320,14 +433,12 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     function test_gas_sameRange_mint() public {
         _mint(range, 10_000 ether, block.timestamp + 1, address(this), ZERO_BYTES);
 
-        Planner.Plan memory plan = Planner.init().add(
-            Actions.MINT, abi.encode(range, 10_001 ether, block.timestamp + 1, address(this), ZERO_BYTES)
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT, abi.encode(range, 10_001 ether, block.timestamp + 1, address(alice), ZERO_BYTES)
         );
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
+        planner = planner.finalize(range);
         vm.prank(alice);
-        lpm.modifyLiquidities(abi.encode(plan.actions, plan.params, currencies, currencies));
+        lpm.modifyLiquidities(planner.zip());
         snapLastCall("sameRange_mint");
     }
 
@@ -343,11 +454,9 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         Planner.Plan memory planner =
             Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES, false));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
+        planner = planner.finalize(range);
 
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        lpm.modifyLiquidities(planner.zip());
         snapLastCall("sameRange_decreaseAllLiquidity");
     }
 
@@ -363,14 +472,11 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         // donate to create fee revenue
         donateRouter.donate(range.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.COLLECT, abi.encode(tokenId, address(this), ZERO_BYTES, false));
+        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 0, ZERO_BYTES, false));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
+        planner = planner.finalize(range);
 
-        lpm.modifyLiquidities(abi.encode(planner.actions, planner.params, currencies));
+        lpm.modifyLiquidities(planner.zip());
         snapLastCall("sameRange_collect");
     }
 }
