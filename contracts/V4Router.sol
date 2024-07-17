@@ -71,14 +71,10 @@ abstract contract V4Router is IV4Router {
         }
 
         // settle
-        int256 delta = poolManager.currencyDelta(address(this), inputCurrency);
-        if (delta > 0) revert();
-        _payAndSettle(inputCurrency, swapInfo.msgSender, uint256(-delta));
+        _payAndSettle(inputCurrency, swapInfo.msgSender);
 
         // take
-        delta = poolManager.currencyDelta(address(this), outputCurrency);
-        if (delta < 0) revert();
-        poolManager.take(outputCurrency, swapInfo.msgSender, uint256(delta));
+        _take(outputCurrency, swapInfo.msgSender);
 
         return bytes("");
     }
@@ -175,9 +171,19 @@ abstract contract V4Router is IV4Router {
         poolKey = PoolKey(currency0, currency1, params.fee, params.tickSpacing, params.hooks);
     }
 
-    function _payAndSettle(Currency currency, address payer, uint256 settleAmount) private {
+    function _take(Currency currency, address recipient) private {
+        int256 delta = poolManager.currencyDelta(address(this), currency);
+        if (delta < 0) revert();
+
+        poolManager.take(currency, recipient, uint256(delta));
+    }
+
+    function _payAndSettle(Currency currency, address payer) private {
+        int256 delta = poolManager.currencyDelta(address(this), currency);
+        if (delta > 0) revert();
+
         poolManager.sync(currency);
-        _pay(Currency.unwrap(currency), payer, address(poolManager), settleAmount);
+        _pay(Currency.unwrap(currency), payer, address(poolManager), uint256(-delta));
         poolManager.settle(currency);
     }
 
