@@ -18,12 +18,10 @@ contract MulticallTest is Test {
 
         bytes[] memory results = multicall.multicall(calls);
 
-        // First call should revert
         (uint256 a, uint256 b) = abi.decode(results[0], (uint256, uint256));
         assertEq(a, 10);
         assertEq(b, 20);
 
-        // Second call should return a tuple
         (a, b) = abi.decode(results[1], (uint256, uint256));
         assertEq(a, 1);
         assertEq(b, 2);
@@ -51,8 +49,11 @@ contract MulticallTest is Test {
 
     function test_multicall_pays() public {
         assertEq(address(multicall).balance, 0);
-        multicall.pays{value: 100}();
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(MockMulticall(multicall).pays.selector);
+        multicall.multicall{value: 100}(calls);
         assertEq(address(multicall).balance, 100);
+        assertEq(multicall.paid(), 100);
     }
 
     function test_multicall_returnSender() public view {
