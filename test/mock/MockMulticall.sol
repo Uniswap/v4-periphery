@@ -20,7 +20,7 @@ contract MockMulticall is Multicall {
     uint256 public paid;
 
     function pays() external payable {
-        paid += msg.value;
+        paid = msg.value;
     }
 
     function returnSender() external view returns (address) {

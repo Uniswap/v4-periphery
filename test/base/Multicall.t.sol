@@ -56,14 +56,32 @@ contract MulticallTest is Test {
         assertEq(multicall.paid(), 100);
     }
 
-    function test_multicall_returnSender() public view {
-        assertEq(multicall.returnSender(), address(this));
+    function test_multicall_returnSender() public {
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(MockMulticall(multicall).returnSender.selector);
+        bytes[] memory results = multicall.multicall(calls);
+        address sender = abi.decode(results[0], (address));
+        assertEq(sender, address(this));
     }
 
     function test_multicall_returnSender_prank() public {
         address alice = makeAddr("ALICE");
+
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(MockMulticall(multicall).returnSender.selector, alice);
         vm.prank(alice);
-        address sender = multicall.returnSender();
+        bytes[] memory results = multicall.multicall(calls);
+        address sender = abi.decode(results[0], (address));
         assertEq(sender, alice);
+    }
+
+    function test_multicall_double_send() public {
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(MockMulticall(multicall).pays.selector);
+        calls[1] = abi.encodeWithSelector(MockMulticall(multicall).pays.selector);
+
+        multicall.multicall{value: 100}(calls);
+        assertEq(address(multicall).balance, 100);
+        assertEq(multicall.paid(), 100);
     }
 }
