@@ -9,6 +9,6 @@ contract MiddlewareRemoveFactory is BaseMiddlewareFactory {
     constructor(IPoolManager _manager) BaseMiddlewareFactory(_manager) {}
 
     function _deployMiddleware(address implementation, bytes32 salt) internal override returns (address middleware) {
-        return address(new MiddlewareRemove{salt: salt}(manager, implementation));
+        middleware = address(new MiddlewareRemove{salt: salt}(manager, implementation));
     }
 }

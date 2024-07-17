@@ -7,14 +7,15 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BaseHook} from "./../../contracts/BaseHook.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {console} from "./../../lib/forge-gas-snapshot/lib/forge-std/src/console.sol";
 
-contract RemoveOutOfGas is BaseHook {
+contract HooksOutOfGas is BaseHook {
     uint256 counter;
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    // middleware implementations do not need to be mined
+    // for testing
     function validateHookAddress(BaseHook _this) internal pure override {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -25,8 +26,8 @@ contract RemoveOutOfGas is BaseHook {
             afterAddLiquidity: false,
             beforeRemoveLiquidity: true,
             afterRemoveLiquidity: true,
-            beforeSwap: false,
-            afterSwap: false,
+            beforeSwap: true,
+            afterSwap: true,
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: false,
@@ -34,6 +35,24 @@ contract RemoveOutOfGas is BaseHook {
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
+    }
+
+    function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
+        external
+        override
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
+        consumeAllGas();
+        return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+    }
+
+    function afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
+        external
+        override
+        returns (bytes4, int128)
+    {
+        consumeAllGas();
+        return (BaseHook.afterSwap.selector, 0);
     }
 
     function beforeRemoveLiquidity(

@@ -30,11 +30,7 @@ contract MiddlewareRemove is BaseMiddleware {
     bytes internal constant ZERO_BYTES = bytes("");
     uint256 public constant GAS_LIMIT = 10_000_000;
 
-    constructor(IPoolManager _manager, address _impl) BaseMiddleware(_manager, _impl) {
-        if (IHooks(address(this)).hasPermission(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG)) {
-            HookPermissionForbidden.selector.revertWith(address(this));
-        }
-    }
+    constructor(IPoolManager _manager, address _impl) BaseMiddleware(_manager, _impl) {}
 
     function beforeRemoveLiquidity(
         address sender,
@@ -85,6 +81,15 @@ contract MiddlewareRemove is BaseMiddleware {
         if (countAfter != countBefore) {
             // purpousely revert to cause the whole hook to reset
             revert HookModifiedDeltas();
+        }
+    }
+
+    function _ensureValidFlags(address _impl) internal view virtual override {
+        if (uint160(address(this)) & Hooks.ALL_HOOK_MASK != uint160(_impl) & Hooks.ALL_HOOK_MASK) {
+            revert FlagsMismatch();
+        }
+        if (IHooks(address(this)).hasPermission(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG)) {
+            HookPermissionForbidden.selector.revertWith(address(this));
         }
     }
 }
