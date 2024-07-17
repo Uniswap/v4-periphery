@@ -174,8 +174,8 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // confirm the positions are same range
-        (, LiquidityRange memory rangeAlice) = lpm.tokenPositions(tokenIdAlice);
-        (, LiquidityRange memory rangeBob) = lpm.tokenPositions(tokenIdBob);
+        (, LiquidityRange memory rangeAlice,) = lpm.tokenPositions(tokenIdAlice);
+        (, LiquidityRange memory rangeBob,) = lpm.tokenPositions(tokenIdBob);
         assertEq(rangeAlice.tickLower, rangeBob.tickLower);
         assertEq(rangeAlice.tickUpper, rangeBob.tickUpper);
 

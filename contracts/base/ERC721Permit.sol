@@ -11,8 +11,7 @@ import {IERC1271} from "../interfaces/external/IERC1271.sol";
 /// @title ERC721 with permit
 /// @notice Nonfungible tokens that support an approve via signature, i.e. permit
 abstract contract ERC721Permit is ERC721, IERC721Permit {
-    /// @dev Gets the current nonce for a token ID and then increments it, returning the original value
-    function _getAndIncrementNonce(uint256 tokenId) internal virtual returns (uint256);
+    mapping(address owner => mapping(uint256 word => uint256 bitmap)) public nonces;
 
     /// @dev The hash of the name used in the permit signature verification
     bytes32 private immutable nameHash;
@@ -46,22 +45,17 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
         0x49ecf333e5b8c95c40fdafc95c1ad136e8914a8fb55e9dc8bb01eaa83a2df9ad;
 
     /// @inheritdoc IERC721Permit
-    function permit(address spender, uint256 tokenId, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+    function permit(address spender, uint256 tokenId, uint256 deadline, uint256 nonce, uint8 v, bytes32 r, bytes32 s)
         external
         payable
         override
     {
         require(block.timestamp <= deadline, "Permit expired");
 
-        bytes32 digest = keccak256(
-            abi.encodePacked(
-                "\x19\x01",
-                DOMAIN_SEPARATOR(),
-                keccak256(abi.encode(PERMIT_TYPEHASH, spender, tokenId, _getAndIncrementNonce(tokenId), deadline))
-            )
-        );
         address owner = ownerOf(tokenId);
         require(spender != owner, "ERC721Permit: approval to current owner");
+
+        bytes32 digest = getDigest(spender, tokenId, nonce, deadline);
 
         if (Address.isContract(owner)) {
             require(IERC1271(owner).isValidSignature(digest, abi.encodePacked(r, s, v)) == 0x1626ba7e, "Unauthorized");
@@ -71,6 +65,40 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
             require(recoveredAddress == owner, "Unauthorized");
         }
 
+        _useUnorderedNonce(owner, nonce);
         approve(spender, tokenId);
+    }
+
+    function getDigest(address spender, uint256 tokenId, uint256 _nonce, uint256 deadline)
+        public
+        view
+        returns (bytes32 digest)
+    {
+        digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                DOMAIN_SEPARATOR(),
+                keccak256(abi.encode(PERMIT_TYPEHASH, spender, tokenId, _nonce, deadline))
+            )
+        );
+    }
+
+    /// @notice Returns the index of the bitmap and the bit position within the bitmap. Used for unordered nonces
+    /// @param nonce The nonce to get the associated word and bit positions
+    /// @return wordPos The word position or index into the nonceBitmap
+    /// @return bitPos The bit position
+    /// @dev The first 248 bits of the nonce value is the index of the desired bitmap
+    /// @dev The last 8 bits of the nonce value is the position of the bit in the bitmap
+    function bitmapPositions(uint256 nonce) private pure returns (uint256 wordPos, uint256 bitPos) {
+        wordPos = uint248(nonce >> 8);
+        bitPos = uint8(nonce);
+    }
+
+    function _useUnorderedNonce(address from, uint256 nonce) internal {
+        (uint256 wordPos, uint256 bitPos) = bitmapPositions(nonce);
+        uint256 bit = 1 << bitPos;
+        uint256 flipped = nonces[from][wordPos] ^= bit;
+
+        if (flipped & bit == 0) revert NonceAlreadyUsed();
     }
 }

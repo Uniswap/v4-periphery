@@ -121,6 +121,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
+
         assertEq(uint256(int256(-delta.amount0())), amount0Desired);
         assertEq(uint256(int256(-delta.amount1())), amount1Desired);
         assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())));
@@ -209,7 +210,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         // burn liquidity
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
-        // TODO, encode this under one call
+
         BalanceDelta deltaDecrease = _decreaseLiquidity(tokenId, liquidity, ZERO_BYTES);
         _burn(tokenId);
 
@@ -275,7 +276,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     //     uint256 balance0Before = currency0.balanceOfSelf();
     //     uint256 balance1Before = currency1.balanceOfSelf();
     //             BalanceDelta delta = lpm.decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
-    //     (,, uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
+    //     (uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
     //     assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
     //     // express key.fee as wad (i.e. 3000 = 0.003e18)

@@ -11,10 +11,6 @@ interface IBaseLiquidityManagement {
 
     // details about the liquidity position
     struct Position {
-        // the nonce for permits
-        uint96 nonce;
-        // the address that is approved for spending this token
-        address operator;
         uint256 liquidity;
         // the fee growth of the aggregate position as of the last action on the individual position
         uint256 feeGrowthInside0LastX128;

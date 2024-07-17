@@ -105,7 +105,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
 
         (delta,) = _modifyLiquidity(range, liquidity.toInt256(), bytes32(tokenId), hookData);
 
-        tokenPositions[tokenId] = TokenPosition({owner: owner, range: range});
+        tokenPositions[tokenId] = TokenPosition({owner: owner, range: range, operator: address(0x0)});
     }
 
     // Note: Calling increase with 0 will accrue any underlying fees.
@@ -159,19 +159,24 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         TokenPosition storage tokenPosition = tokenPositions[tokenId];
         LiquidityRangeId rangeId = tokenPosition.range.toId();
         Position storage position = positions[from][rangeId];
-        position.operator = address(0x0);
 
         // transfer position data to destination
         positions[to][rangeId] = position;
         delete positions[from][rangeId];
 
         // update token position
-        tokenPositions[tokenId] = TokenPosition({owner: to, range: tokenPosition.range});
+        tokenPositions[tokenId] = TokenPosition({owner: to, range: tokenPosition.range, operator: address(0x0)});
     }
 
-    function _getAndIncrementNonce(uint256 tokenId) internal override returns (uint256) {
-        TokenPosition memory tokenPosition = tokenPositions[tokenId];
-        return uint256(positions[tokenPosition.owner][tokenPosition.range.toId()].nonce++);
+    // override ERC721 approval by setting operator
+    function _approve(address spender, uint256 tokenId) internal override {
+        tokenPositions[tokenId].operator = spender;
+    }
+
+    function getApproved(uint256 tokenId) public view override returns (address) {
+        require(_exists(tokenId), "ERC721: approved query for nonexistent token");
+
+        return tokenPositions[tokenId].operator;
     }
 
     modifier isAuthorizedForToken(uint256 tokenId, address sender) {
