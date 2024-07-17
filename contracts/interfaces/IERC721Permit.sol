@@ -4,6 +4,8 @@ pragma solidity >=0.7.5;
 /// @title ERC721 with permit
 /// @notice Extension to ERC721 that includes a permit function for signature based approvals
 interface IERC721Permit {
+    error NonceAlreadyUsed();
+
     /// @notice The permit typehash used in the permit signature
     /// @return The typehash for the permit
     function PERMIT_TYPEHASH() external pure returns (bytes32);
@@ -19,7 +21,7 @@ interface IERC721Permit {
     /// @param v Must produce valid secp256k1 signature from the holder along with `r` and `s`
     /// @param r Must produce valid secp256k1 signature from the holder along with `v` and `s`
     /// @param s Must produce valid secp256k1 signature from the holder along with `r` and `v`
-    function permit(address spender, uint256 tokenId, uint256 deadline, uint8 v, bytes32 r, bytes32 s)
+    function permit(address spender, uint256 tokenId, uint256 deadline, uint256 nonce, uint8 v, bytes32 r, bytes32 s)
         external
         payable;
 }

@@ -68,14 +68,11 @@ contract MulticallTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquid
 
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.MINT, abi.encode(range, 100e18, block.timestamp + 1, address(this), ZERO_BYTES));
-
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = range.poolKey.currency0;
-        currencies[1] = range.poolKey.currency1;
+        planner = planner.finalize(range);
 
         calls[1] = abi.encodeWithSelector(
             NonfungiblePositionManager(lpm).modifyLiquidities.selector,
-            abi.encode(planner.actions, planner.params, currencies)
+            planner.zip()
         );
 
         lpm.multicall(calls);
