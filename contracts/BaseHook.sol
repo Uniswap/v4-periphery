@@ -6,26 +6,18 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {SafeCallback} from "./base/SafeCallback.sol";
+import {ImmutableState} from "./base/ImmutableState.sol";
 
-abstract contract BaseHook is IHooks {
-    error NotPoolManager();
+abstract contract BaseHook is IHooks, SafeCallback {
     error NotSelf();
     error InvalidPool();
     error LockFailure();
     error HookNotImplemented();
 
-    /// @notice The address of the pool manager
-    IPoolManager public immutable poolManager;
-
-    constructor(IPoolManager _poolManager) {
-        poolManager = _poolManager;
+    constructor(IPoolManager _manager) ImmutableState(_manager) {
         validateHookAddress(this);
-    }
-
-    /// @dev Only the pool manager may call this function
-    modifier poolManagerOnly() {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
-        _;
     }
 
     /// @dev Only this address may call this function
@@ -49,12 +41,7 @@ abstract contract BaseHook is IHooks {
         Hooks.validateHookPermissions(_this, getHookPermissions());
     }
 
-    function lockAcquired(address, /*sender*/ bytes calldata data)
-        external
-        virtual
-        poolManagerOnly
-        returns (bytes memory)
-    {
+    function _unlockCallback(bytes calldata data) internal virtual override returns (bytes memory) {
         (bool success, bytes memory returnData) = address(this).call(data);
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();
@@ -100,7 +87,7 @@ abstract contract BaseHook is IHooks {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external virtual returns (bytes4) {
+    ) external virtual returns (bytes4, BalanceDelta) {
         revert HookNotImplemented();
     }
 
@@ -110,14 +97,14 @@ abstract contract BaseHook is IHooks {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external virtual returns (bytes4) {
+    ) external virtual returns (bytes4, BalanceDelta) {
         revert HookNotImplemented();
     }
 
     function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
         external
         virtual
-        returns (bytes4)
+        returns (bytes4, BeforeSwapDelta, uint24)
     {
         revert HookNotImplemented();
     }
@@ -125,7 +112,7 @@ abstract contract BaseHook is IHooks {
     function afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
         external
         virtual
-        returns (bytes4)
+        returns (bytes4, int128)
     {
         revert HookNotImplemented();
     }

@@ -4,7 +4,7 @@ Uniswap v4 is a new automated market maker protocol that provides extensibility 
 
 ## Contributing
 
-If you’re interested in contributing please see the [contribution guidelines](https://github.com/Uniswap/periphery-next/blob/main/CONTRIBUTING.md)!
+If you’re interested in contributing please see the [contribution guidelines](https://github.com/Uniswap/v4-periphery/blob/main/CONTRIBUTING.md)!
 
 ## Repository Structure
 
@@ -31,24 +31,24 @@ Eventually, some hooks that have been audited and are considered production-read
 To utilize the contracts and deploy to a local testnet, you can install the code in your repo with forge:
 
 ```solidity
-forge install https://github.com/Uniswap/periphery-next
+forge install https://github.com/Uniswap/v4-periphery
 ```
 
 If you are building hooks, it may be useful to inherit from the `BaseHook` contract:
 
 ```solidity
 
-import {BaseHook} from 'periphery-next/contracts/BaseHook.sol';
+import {BaseHook} from 'v4-periphery/contracts/BaseHook.sol';
 
 contract CoolHook is BaseHook {
     // Override the hook callbacks you want on your hook
-    function beforeModifyPosition(
+    function beforeAddLiquidity(
         address,
         IPoolManager.PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params
     ) external override poolManagerOnly returns (bytes4) {
         // hook logic
-        return BaseHook.beforeModifyPosition.selector;
+        return BaseHook.beforeAddLiquidity.selector;
     }
 }
 
@@ -56,4 +56,4 @@ contract CoolHook is BaseHook {
 
 ## License
 
-The license for Uniswap V4 Periphery is the GNU General Public License (GPL 2.0), see [LICENSE](https://github.com/Uniswap/periphery-next/blob/main/LICENSE).
+The license for Uniswap V4 Periphery is the GNU General Public License (GPL 2.0), see [LICENSE](https://github.com/Uniswap/v4-periphery/blob/main/LICENSE).
