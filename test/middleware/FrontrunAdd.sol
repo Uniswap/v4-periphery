@@ -8,12 +8,19 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BaseHook} from "./../../contracts/BaseHook.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
-contract FeeOnRemove is BaseHook {
+contract FrontrunAdd is BaseHook {
+    using PoolIdLibrary for PoolKey;
+
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    uint128 public constant LIQUIDITY_FEE = 543; // 5.43%
-    uint128 public constant TOTAL_BIPS = 10000;
+    bytes internal constant ZERO_BYTES = bytes("");
+    uint160 public constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
+    int256 public constant SWAP_AMOUNT = 1000;
+
+    mapping(PoolId => bool) hasLiquidity;
 
     // for testing
     function validateHookAddress(BaseHook _this) internal pure override {}
@@ -22,10 +29,10 @@ contract FeeOnRemove is BaseHook {
         return Hooks.Permissions({
             beforeInitialize: false,
             afterInitialize: false,
-            beforeAddLiquidity: false,
+            beforeAddLiquidity: true,
             afterAddLiquidity: false,
             beforeRemoveLiquidity: false,
-            afterRemoveLiquidity: true,
+            afterRemoveLiquidity: false,
             beforeSwap: false,
             afterSwap: false,
             beforeDonate: false,
@@ -37,19 +44,21 @@ contract FeeOnRemove is BaseHook {
         });
     }
 
-    function afterRemoveLiquidity(
+    function beforeAddLiquidity(
         address,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata,
-        BalanceDelta delta,
         bytes calldata
-    ) external override onlyByManager returns (bytes4, BalanceDelta) {
-        uint128 feeAmount0 = uint128(delta.amount0()) * LIQUIDITY_FEE / TOTAL_BIPS;
-        uint128 feeAmount1 = uint128(delta.amount1()) * LIQUIDITY_FEE / TOTAL_BIPS;
-
-        manager.mint(address(this), key.currency0.toId(), feeAmount0);
-        manager.mint(address(this), key.currency1.toId(), feeAmount1);
-
-        return (IHooks.afterRemoveLiquidity.selector, toBalanceDelta(int128(feeAmount0), int128(feeAmount1)));
+    ) external override returns (bytes4) {
+        if (hasLiquidity[key.toId()]) {
+            BalanceDelta swapDelta =
+                manager.swap(key, IPoolManager.SwapParams(true, SWAP_AMOUNT, MIN_PRICE_LIMIT), ZERO_BYTES);
+            key.currency0.transfer(address(manager), uint128(-swapDelta.amount0()));
+            manager.settle(key.currency0);
+            manager.take(key.currency1, address(this), uint128(swapDelta.amount1()));
+        } else {
+            hasLiquidity[key.toId()] = true;
+        }
+        return IHooks.beforeAddLiquidity.selector;
     }
 }

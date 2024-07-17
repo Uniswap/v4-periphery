@@ -15,8 +15,9 @@ contract FrontrunRemove is BaseHook {
 
     bytes internal constant ZERO_BYTES = bytes("");
     uint160 public constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
+    int256 public constant SWAP_AMOUNT = 1000;
 
-    // middleware implementations do not need to be mined
+    // for testing
     function validateHookAddress(BaseHook _this) internal pure override {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -44,7 +45,8 @@ contract FrontrunRemove is BaseHook {
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
     ) external override returns (bytes4) {
-        BalanceDelta swapDelta = manager.swap(key, IPoolManager.SwapParams(true, 1000, MIN_PRICE_LIMIT), ZERO_BYTES);
+        BalanceDelta swapDelta =
+            manager.swap(key, IPoolManager.SwapParams(true, SWAP_AMOUNT, MIN_PRICE_LIMIT), ZERO_BYTES);
         key.currency0.transfer(address(manager), uint128(-swapDelta.amount0()));
         manager.settle(key.currency0);
         manager.take(key.currency1, address(this), uint128(swapDelta.amount1()));
