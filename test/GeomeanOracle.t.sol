@@ -69,7 +69,12 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testBeforeInitializeRevertsIfFee() public {
-        vm.expectRevert(GeomeanOracle.OnlyOneOraclePoolAllowed.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector, abi.encodeWithSelector(GeomeanOracle.OnlyOneOraclePoolAllowed.selector)
+            )
+        );
+
         manager.initialize(
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 1, MAX_TICK_SPACING, geomeanOracle),
             SQRT_PRICE_1_1,
@@ -78,7 +83,12 @@ contract TestGeomeanOracle is Test, Deployers {
     }
 
     function testBeforeInitializeRevertsIfNotMaxTickSpacing() public {
-        vm.expectRevert(GeomeanOracle.OnlyOneOraclePoolAllowed.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector, abi.encodeWithSelector(GeomeanOracle.OnlyOneOraclePoolAllowed.selector)
+            )
+        );
+
         manager.initialize(
             PoolKey(Currency.wrap(address(token0)), Currency.wrap(address(token1)), 0, 60, geomeanOracle),
             SQRT_PRICE_1_1,
@@ -209,7 +219,13 @@ contract TestGeomeanOracle is Test, Deployers {
             ZERO_BYTES
         );
 
-        vm.expectRevert(GeomeanOracle.OraclePoolMustLockLiquidity.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector,
+                abi.encodeWithSelector(GeomeanOracle.OraclePoolMustLockLiquidity.selector)
+            )
+        );
+
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
