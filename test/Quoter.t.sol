@@ -639,7 +639,7 @@ contract QuoterTest is Test, Deployers {
 
     function getExactInputParams(MockERC20[] memory _tokenPath, uint256 amountIn)
         internal
-        view
+        pure
         returns (IQuoter.QuoteExactParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
@@ -649,13 +649,12 @@ contract QuoterTest is Test, Deployers {
 
         params.exactCurrency = Currency.wrap(address(_tokenPath[0]));
         params.path = path;
-        params.recipient = address(this);
         params.exactAmount = uint128(amountIn);
     }
 
     function getExactOutputParams(MockERC20[] memory _tokenPath, uint256 amountOut)
         internal
-        view
+        pure
         returns (IQuoter.QuoteExactParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
@@ -665,7 +664,6 @@ contract QuoterTest is Test, Deployers {
 
         params.exactCurrency = Currency.wrap(address(_tokenPath[_tokenPath.length - 1]));
         params.path = path;
-        params.recipient = address(this);
         params.exactAmount = uint128(amountOut);
     }
 }

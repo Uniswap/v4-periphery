@@ -74,7 +74,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 expectedAmountOut = 992054607780215625;
 
         IV4Router.ExactInputSingleParams memory params =
-            IV4Router.ExactInputSingleParams(key0, true, address(this), uint128(amountIn), 0, 0, bytes(""));
+            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
         uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
@@ -95,7 +95,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 expectedAmountOut = 992054607780215625;
 
         IV4Router.ExactInputSingleParams memory params =
-            IV4Router.ExactInputSingleParams(key0, false, address(this), uint128(amountIn), 0, 0, bytes(""));
+            IV4Router.ExactInputSingleParams(key0, false, uint128(amountIn), 0, 0, bytes(""));
 
         uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
         uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
@@ -212,7 +212,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 expectedAmountIn = 1008049273448486163;
 
         IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, true, address(this), uint128(amountOut), 0, 0, bytes(""));
+            IV4Router.ExactOutputSingleParams(key0, true, uint128(amountOut), 0, 0, bytes(""));
 
         uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
         uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
@@ -233,7 +233,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         uint256 expectedAmountIn = 1008049273448486163;
 
         IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, false, address(this), uint128(amountOut), 0, 0, bytes(""));
+            IV4Router.ExactOutputSingleParams(key0, false, uint128(amountOut), 0, 0, bytes(""));
 
         uint256 prevBalance0 = key0.currency0.balanceOf(address(this));
         uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
@@ -372,7 +372,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
 
     function getExactInputParams(MockERC20[] memory _tokenPath, uint256 amountIn)
         internal
-        view
+        pure
         returns (IV4Router.ExactInputParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
@@ -382,14 +382,13 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
 
         params.currencyIn = Currency.wrap(address(_tokenPath[0]));
         params.path = path;
-        params.recipient = address(this);
         params.amountIn = uint128(amountIn);
         params.amountOutMinimum = 0;
     }
 
     function getExactOutputParams(MockERC20[] memory _tokenPath, uint256 amountOut)
         internal
-        view
+        pure
         returns (IV4Router.ExactOutputParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
@@ -399,7 +398,6 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
 
         params.currencyOut = Currency.wrap(address(_tokenPath[_tokenPath.length - 1]));
         params.path = path;
-        params.recipient = address(this);
         params.amountOut = uint128(amountOut);
         params.amountInMaximum = type(uint128).max;
     }
