@@ -22,6 +22,7 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC721Permit} from "../../contracts/interfaces/IERC721Permit.sol";
 
 import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
+import {INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
 
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
@@ -83,7 +84,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
     function test_permit_increaseLiquidity() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
@@ -111,7 +112,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
     function test_permit_decreaseLiquidity() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
@@ -134,7 +135,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
     function test_permit_collect() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // donate to create fee revenue
@@ -165,7 +166,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
 
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob cannot permit himself on alice's token
@@ -183,15 +184,15 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         // increaseLiquidity fails if the owner did not permit
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob cannot increase liquidity on alice's token
         uint256 newLiquidity = 2e18;
         bytes memory increase = LiquidityOperations.getIncreaseEncoded(tokenIdAlice, newLiquidity, ZERO_BYTES);
         vm.startPrank(bob);
-        vm.expectRevert("Not approved");
-        lpm.modifyLiquidities(increase);
+        vm.expectRevert(abi.encodeWithSelector(INonfungiblePositionManager.NotApproved.selector, address(bob)));
+        lpm.modifyLiquidities(increase, _deadline);
         vm.stopPrank();
     }
 
@@ -199,15 +200,15 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         // decreaseLiquidity fails if the owner did not permit
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob cannot decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
-        bytes memory decrease = LiquidityOperations.getDecreaseEncoded(tokenIdAlice, 0.4444e18, ZERO_BYTES);
+        bytes memory decrease = LiquidityOperations.getDecreaseEncoded(tokenIdAlice, liquidityToRemove, ZERO_BYTES);
         vm.startPrank(bob);
-        vm.expectRevert("Not approved");
-        lpm.modifyLiquidities(decrease);
+        vm.expectRevert(abi.encodeWithSelector(INonfungiblePositionManager.NotApproved.selector, address(bob)));
+        lpm.modifyLiquidities(decrease, _deadline);
         vm.stopPrank();
     }
 
@@ -215,7 +216,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         // collect fails if the owner did not permit
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // donate to create fee revenue
@@ -227,15 +228,15 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         address recipient = address(0x00444400);
         bytes memory collect = LiquidityOperations.getCollectEncoded(tokenIdAlice, recipient, ZERO_BYTES);
         vm.startPrank(bob);
-        vm.expectRevert("Not approved");
-        lpm.modifyLiquidities(collect);
+        vm.expectRevert(abi.encodeWithSelector(INonfungiblePositionManager.NotApproved.selector, address(bob)));
+        lpm.modifyLiquidities(collect, block.timestamp + 1);
         vm.stopPrank();
     }
 
     function test_permit_nonceAlreadyUsed() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
@@ -256,13 +257,13 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
     function test_permit_nonceAlreadyUsed_twoPositions() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.prank(alice);
         range.tickLower = -600;
         range.tickUpper = 600;
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice2 = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions for first token

@@ -59,14 +59,10 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         planner = planner.add(Actions.MINT, abi.encode("test"));
         planner = planner.add(Actions.BURN, abi.encode("test"));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-
         bytes[] memory badParams = new bytes[](1);
 
         vm.expectRevert(INonfungiblePositionManager.MismatchedLengths.selector);
-        lpm.modifyLiquidities(abi.encode(planner.actions, badParams, currencies));
+        lpm.modifyLiquidities(abi.encode(planner.actions, badParams), block.timestamp + 1);
     }
 
     function test_mint_withLiquidityDelta(IPoolManager.ModifyLiquidityParams memory params) public {
@@ -81,7 +77,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        BalanceDelta delta = _mint(range, liquidityToAdd, uint256(block.timestamp + 1), address(this), ZERO_BYTES);
+        BalanceDelta delta = _mint(range, liquidityToAdd, address(this), ZERO_BYTES);
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), address(this));
@@ -114,7 +110,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        BalanceDelta delta = _mint(range, liquidityToAdd, uint256(block.timestamp + 1), address(this), ZERO_BYTES);
+        BalanceDelta delta = _mint(range, liquidityToAdd, address(this), ZERO_BYTES);
 
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
@@ -137,7 +133,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         uint256 tokenId = lpm.nextTokenId();
-        _mint(range, liquidityToAdd, uint256(block.timestamp + 1), address(alice), ZERO_BYTES);
+        _mint(range, liquidityToAdd, address(alice), ZERO_BYTES);
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), alice);
