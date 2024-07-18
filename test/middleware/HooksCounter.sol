@@ -9,7 +9,7 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/type
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
-contract Counter is BaseHook {
+contract HooksCounter is BaseHook {
     using PoolIdLibrary for PoolKey;
 
     mapping(PoolId => uint256) public beforeInitializeCount;
