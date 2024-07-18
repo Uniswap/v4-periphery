@@ -12,7 +12,7 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
-import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
@@ -21,9 +21,9 @@ import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
-import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
-import {Actions, INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
+import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
+import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
+import {Actions, INonfungiblePositionManager} from "../../src/interfaces/INonfungiblePositionManager.sol";
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
@@ -76,7 +76,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
-    function test_increaseLiquidity_withExactFees() public {
+    function test_increaseLiquidity_withExactFees1() public {
         // Alice and Bob provide liquidity on the range
         // Alice uses her exact fees to increase liquidity (compounding)
 
@@ -85,12 +85,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, bob, ZERO_BYTES);
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -120,7 +120,8 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
         planner = planner.finalize(range.poolKey);
         vm.startPrank(alice);
-        lpm.modifyLiquidities(planner.zip());
+        bytes memory actions = planner.zip();
+        lpm.modifyLiquidities(actions, _deadline);
         vm.stopPrank();
 
         // It is not exact because of the error in the fee calculation and error in the
@@ -142,12 +143,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, bob, ZERO_BYTES);
 
         // donate to create fees
         uint256 amountDonate = 0.2e18;
@@ -272,12 +273,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
