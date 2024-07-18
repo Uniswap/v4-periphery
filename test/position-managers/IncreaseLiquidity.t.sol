@@ -181,87 +181,72 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
     }
 
-    // function test_increaseLiquidity_withExcessFees() public {
-    //     // Alice and Bob provide liquidity on the range
-    //     // Alice uses her fees to increase liquidity. Excess fees are accounted to alice
-    //     uint256 liquidityAlice = 3_000e18;
-    //     uint256 liquidityBob = 1_000e18;
-    //     uint256 totalLiquidity = liquidityAlice + liquidityBob;
+    function test_increaseLiquidity_withExcessFees() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her fees to increase liquidity. Leftover fees are claimed by alice
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+        uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
-    //     // alice provides liquidity
-    //     vm.prank(alice);
-    //     _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
-    //     uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        // alice provides liquidity
+        vm.startPrank(alice);
+        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        vm.stopPrank();
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
-    //     // bob provides liquidity
-    //     vm.prank(bob);
-    //     _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
-    //     uint256 tokenIdBob = lpm.nextTokenId() - 1;
+        // bob provides liquidity
+        vm.startPrank(bob);
+        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        vm.stopPrank();
+        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
-    //     // swap to create fees
-    //     uint256 swapAmount = 0.001e18;
-    //     swap(key, true, -int256(swapAmount), ZERO_BYTES);
-    //     swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
+        // donate to create fees
+        uint256 feeRevenue = 0.1e18;
+        donateRouter.donate(key, feeRevenue, feeRevenue, ZERO_BYTES);
 
-    //     // alice will use half of her fees to increase liquidity
-    //     (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
-    //     {
-    //         (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
-    //         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
-    //             sqrtPriceX96,
-    //             TickMath.getSqrtPriceAtTick(range.tickLower),
-    //             TickMath.getSqrtPriceAtTick(range.tickUpper),
-    //             token0Owed / 2,
-    //             token1Owed / 2
-    //         );
+        {
+            // alice will use half of her fees to increase liquidity
+            BalanceDelta feesAccrued = lpm.feesOwed(tokenIdAlice);
 
-    //         vm.startPrank(alice);
-    //         _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
-    //         vm.stopPrank();
-    //     }
+            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+            uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(range.tickLower),
+                TickMath.getSqrtPriceAtTick(range.tickUpper),
+                uint128(feesAccrued.amount0() / 2),
+                uint128(feesAccrued.amount1() / 2)
+            );
 
-    //     {
-    //         // bob collects his fees
-    //         uint256 balance0BeforeBob = currency0.balanceOf(bob);
-    //         uint256 balance1BeforeBob = currency1.balanceOf(bob);
-    //         vm.startPrank(bob);
-    //         _collect(tokenIdBob, bob, ZERO_BYTES, false);
-    //         vm.stopPrank();
-    //         uint256 balance0AfterBob = currency0.balanceOf(bob);
-    //         uint256 balance1AfterBob = currency1.balanceOf(bob);
-    //         assertApproxEqAbs(
-    //             balance0AfterBob - balance0BeforeBob,
-    //             swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
-    //             1 wei
-    //         );
-    //         assertApproxEqAbs(
-    //             balance1AfterBob - balance1BeforeBob,
-    //             swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
-    //             1 wei
-    //         );
-    //     }
+            uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+            uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+            vm.startPrank(alice);
+            _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
+            vm.stopPrank();
+            uint256 balance0AfterAlice = currency0.balanceOf(alice);
+            uint256 balance1AfterAlice = currency1.balanceOf(alice);
 
-    //     {
-    //         // alice collects her fees, which should be about half of the fees
-    //         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
-    //         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
-    //         vm.startPrank(alice);
-    //         _collect(tokenIdAlice, alice, ZERO_BYTES, false);
-    //         vm.stopPrank();
-    //         uint256 balance0AfterAlice = currency0.balanceOf(alice);
-    //         uint256 balance1AfterAlice = currency1.balanceOf(alice);
-    //         assertApproxEqAbs(
-    //             balance0AfterAlice - balance0BeforeAlice,
-    //             swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, totalLiquidity) / 2,
-    //             9 wei
-    //         );
-    //         assertApproxEqAbs(
-    //             balance1AfterAlice - balance1BeforeAlice,
-    //             swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, totalLiquidity) / 2,
-    //             1 wei
-    //         );
-    //     }
-    // }
+            assertApproxEqAbs(balance0AfterAlice - balance0BeforeAlice, uint128(feesAccrued.amount0()) / 2, 1 wei);
+
+            assertApproxEqAbs(balance1AfterAlice - balance1BeforeAlice, uint128(feesAccrued.amount1()) / 2, 1 wei);
+        }
+
+        {
+            // bob collects his fees
+            uint256 balance0BeforeBob = currency0.balanceOf(bob);
+            uint256 balance1BeforeBob = currency1.balanceOf(bob);
+            vm.startPrank(bob);
+            _collect(tokenIdBob, bob, ZERO_BYTES);
+            vm.stopPrank();
+            uint256 balance0AfterBob = currency0.balanceOf(bob);
+            uint256 balance1AfterBob = currency1.balanceOf(bob);
+            assertApproxEqAbs(
+                balance0AfterBob - balance0BeforeBob, feeRevenue.mulDivDown(liquidityBob, totalLiquidity), 1 wei
+            );
+            assertApproxEqAbs(
+                balance1AfterBob - balance1BeforeBob, feeRevenue.mulDivDown(liquidityBob, totalLiquidity), 1 wei
+            );
+        }
+    }
 
     function test_increaseLiquidity_withInsufficientFees() public {
         // Alice and Bob provide liquidity on the range
