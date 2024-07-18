@@ -247,44 +247,56 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+        BalanceDelta delta = _decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES);
+
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
+
+        assertEq(currency0.balanceOfSelf() - balance0Before, uint128(delta.amount0()));
+        assertEq(currency1.balanceOfSelf() - balance1Before, uint128(delta.amount1()));
+    }
+
+    function test_decreaseLiquidity_collectFees(
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 decreaseLiquidityDelta
+    ) public {
+        uint256 tokenId;
+        (tokenId, params) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
+        decreaseLiquidityDelta = bound(decreaseLiquidityDelta, 1, uint256(params.liquidityDelta));
+
+        LiquidityRange memory range =
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        // donate to generate fee revenue
+        uint256 feeRevenue0 = 1e18;
+        uint256 feeRevenue1 = 0.1e18;
+        donateRouter.donate(key, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
         _decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES);
 
         bytes32 positionId =
             keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
         (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
-
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
+
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(range.tickLower),
+            TickMath.getSqrtPriceAtTick(range.tickUpper),
+            uint128(decreaseLiquidityDelta)
+        );
+
+        // claimed both principal liquidity and fee revenue
+        assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, amount0 + feeRevenue0, 1 wei);
+        assertApproxEqAbs(currency1.balanceOfSelf() - balance1Before, amount1 + feeRevenue1, 1 wei);
     }
-
-    // function test_decreaseLiquidity_collectFees(
-    //     IPoolManager.ModifyLiquidityParams memory params,
-    //     uint256 decreaseLiquidityDelta
-    // ) public {
-    //     uint256 tokenId;
-    //     (tokenId, params) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-    //     vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
-    //     vm.assume(0 < decreaseLiquidityDelta);
-    //     vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
-    //     vm.assume(int256(decreaseLiquidityDelta) <= params.liquidityDelta);
-
-    //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
-
-    //     // swap to create fees
-    //     uint256 swapAmount = 0.01e18;
-    //     swap(key, false, int256(swapAmount), ZERO_BYTES);
-
-    //     uint256 balance0Before = currency0.balanceOfSelf();
-    //     uint256 balance1Before = currency1.balanceOfSelf();
-    //             BalanceDelta delta = lpm.decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
-    //     (uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
-    //     assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
-
-    //     // express key.fee as wad (i.e. 3000 = 0.003e18)
-    //     uint256 feeWad = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
-
-    //     assertEq(currency0.balanceOfSelf() - balance0Before, uint256(int256(-delta.amount0())), "boo");
-    //     assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(-delta.amount1())), "guh");
-    // }
 
     function test_mintTransferBurn() public {}
     function test_mintTransferCollect() public {}
