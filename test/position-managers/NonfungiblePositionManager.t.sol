@@ -286,4 +286,19 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     function test_mintTransferCollect() public {}
     function test_mintTransferIncrease() public {}
     function test_mintTransferDecrease() public {}
+
+    function test_initialize(IPoolManager.ModifyLiquidityParams memory params) public {
+        // initialize a new pool and add liquidity
+        key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
+        lpm.initializePool(key, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+
+        // add liquidity to verify pool initialized
+        LiquidityRange memory range =
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        _mint(range, 100e18, address(this), ZERO_BYTES);
+
+        assertEq(lpm.ownerOf(1), address(this));
+    }
 }
