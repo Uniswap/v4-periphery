@@ -5,8 +5,8 @@ import {Vm} from "forge-std/Vm.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
-import {NonfungiblePositionManager, Actions} from "../../contracts/NonfungiblePositionManager.sol";
-import {LiquidityRange} from "../../contracts/types/LiquidityRange.sol";
+import {NonfungiblePositionManager, Actions} from "../../src/NonfungiblePositionManager.sol";
+import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 import {Planner} from "../utils/Planner.sol";
 
 contract LiquidityOperations {

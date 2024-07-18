@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import "../../contracts/base/Multicall.sol";
+import "../../src/base/Multicall.sol";
 
 contract MockMulticall is Multicall {
     function functionThatRevertsWithError(string memory error) external pure {

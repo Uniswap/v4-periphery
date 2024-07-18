@@ -6,7 +6,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 import {ChainId} from "../libraries/ChainId.sol";
 import {IERC721Permit} from "../interfaces/IERC721Permit.sol";
-import {IERC1271} from "../interfaces/external/IERC1271.sol";
+import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
 /// @title ERC721 with permit
 /// @notice Nonfungible tokens that support an approve via signature, i.e. permit

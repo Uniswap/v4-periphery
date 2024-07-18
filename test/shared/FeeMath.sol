@@ -11,9 +11,9 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
-import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
-import {LiquidityRange} from "../../contracts/types/LiquidityRange.sol";
+import {INonfungiblePositionManager} from "../../src/interfaces/INonfungiblePositionManager.sol";
+import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
+import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 
 library FeeMath {
     using SafeCast for uint256;
