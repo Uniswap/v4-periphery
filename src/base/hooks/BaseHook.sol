@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.24;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
@@ -8,7 +8,6 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {SafeCallback} from "../SafeCallback.sol";
-import {ImmutableState} from "../ImmutableState.sol";
 
 abstract contract BaseHook is IHooks, SafeCallback {
     error NotSelf();
@@ -16,7 +15,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
     error LockFailure();
     error HookNotImplemented();
 
-    constructor(IPoolManager _manager) ImmutableState(_manager) {
+    constructor(IPoolManager _manager) SafeCallback(_manager) {
         validateHookAddress(this);
     }
 
