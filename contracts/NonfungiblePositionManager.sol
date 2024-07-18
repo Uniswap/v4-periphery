@@ -17,6 +17,8 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
@@ -160,6 +162,35 @@ contract NonfungiblePositionManager is
         delete tokenPositions[tokenId];
         // Burn the token.
         _burn(tokenId);
+    }
+
+    function feesOwed(uint256 tokenId) external view returns (BalanceDelta feesAccrued) {
+        TokenPosition memory tokenPos = tokenPositions[tokenId];
+        (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) = manager.getFeeGrowthInside(
+            tokenPos.range.poolKey.toId(), tokenPos.range.tickLower, tokenPos.range.tickUpper
+        );
+
+        // TODO: optimize
+        bytes32 positionId = keccak256(
+            abi.encodePacked(address(this), tokenPos.range.tickLower, tokenPos.range.tickUpper, bytes32(tokenId))
+        );
+
+        (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) =
+            manager.getPositionInfo(tokenPos.range.poolKey.toId(), positionId);
+
+        feesAccrued = toBalanceDelta(
+            int128(getFeeOwed(feeGrowthInside0X128, feeGrowthInside0LastX128, liquidity)),
+            int128(getFeeOwed(feeGrowthInside1X128, feeGrowthInside1LastX128, liquidity))
+        );
+    }
+
+    function getFeeOwed(uint256 feeGrowthInsideX128, uint256 feeGrowthInsideLastX128, uint256 liquidity)
+        internal
+        pure
+        returns (uint128 tokenOwed)
+    {
+        tokenOwed =
+            (FullMath.mulDiv(feeGrowthInsideX128 - feeGrowthInsideLastX128, liquidity, FixedPoint128.Q128)).toUint128();
     }
 
     // TODO: Bug - Positions are overrideable unless we can allow two of the same users to have distinct positions.
