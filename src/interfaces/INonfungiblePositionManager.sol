@@ -28,7 +28,7 @@ interface INonfungiblePositionManager {
     /// @param payload is an encoding of actions, params, and currencies
     /// @param deadline is the deadline for the batched actions to be executed
     /// @return returnData is the endocing of each actions return information
-    function modifyLiquidities(bytes calldata payload, uint256 deadline) external returns (bytes[] memory);
+    function modifyLiquidities(bytes calldata payload, uint256 deadline) external payable returns (bytes[] memory);
 
     function nextTokenId() external view returns (uint256);
 }
