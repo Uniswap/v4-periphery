@@ -201,10 +201,11 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             );
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
-
             vm.startPrank(alice);
-            increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
+            _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
             vm.stopPrank();
+            uint256 balance0AfterAlice = currency0.balanceOf(alice);
+            uint256 balance1AfterAlice = currency1.balanceOf(alice);
 
             assertApproxEqAbs(
                 currency0.balanceOf(alice) - balance0BeforeAlice,
@@ -216,6 +217,10 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
                 swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, totalLiquidity) / 2,
                 tolerance
             );
+
+            assertApproxEqAbs(balance0AfterAlice - balance0BeforeAlice, uint128(feesAccrued.amount0()) / 2, 1 wei);
+
+            assertApproxEqAbs(balance1AfterAlice - balance1BeforeAlice, uint128(feesAccrued.amount1()) / 2, 1 wei);
         }
 
         {
@@ -235,6 +240,15 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
                 currency1.balanceOf(bob) - balance1BeforeBob,
                 swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
                 tolerance
+            );
+            
+            uint256 balance0AfterBob = currency0.balanceOf(bob);
+            uint256 balance1AfterBob = currency1.balanceOf(bob);
+            assertApproxEqAbs(
+                balance0AfterBob - balance0BeforeBob, feeRevenue.mulDivDown(liquidityBob, totalLiquidity), 1 wei
+            );
+            assertApproxEqAbs(
+                balance1AfterBob - balance1BeforeBob, feeRevenue.mulDivDown(liquidityBob, totalLiquidity), 1 wei
             );
         }
     }
