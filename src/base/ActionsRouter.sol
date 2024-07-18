@@ -55,7 +55,7 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
                 else if (action == Actions.MINT_POSITION) _mintPosition(params[actionIndex]);
                 else if (action == Actions.BURN_POSITION) _burnPosition(params[actionIndex]);
                 else if (action == Actions.DONATE) _donate(params[actionIndex]);
-                else _handleAdditionalActions2(action, params[actionIndex]);
+                else _handleAdditionalActions1(action, params[actionIndex]);
             } else {
                 if (action == Actions.SETTLE) _settle(params[actionIndex]);
                 else if (action == Actions.TAKE) _take(params[actionIndex]);
