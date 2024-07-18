@@ -46,6 +46,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     /// @return returnData is the endocing of each actions return information
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
         external
+        payable
         checkDeadline(deadline)
         returns (bytes[] memory)
     {
