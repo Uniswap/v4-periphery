@@ -119,7 +119,66 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     // rebalance: burn and mint
-    function test_execute_rebalance() public {}
+    function test_execute_rebalance_perfect() public {
+        uint256 initialLiquidity = 100e18;
+
+        // mint a position on range [-300, 300]
+        BalanceDelta delta = _mint(range, initialLiquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // we'll burn and mint to [-60, 60], so calculate the liquidity units
+        LiquidityRange memory newRange = LiquidityRange({poolKey: range.poolKey, tickLower: -60, tickUpper: 60});
+        uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(newRange.tickLower),
+            TickMath.getSqrtPriceAtTick(newRange.tickUpper),
+            uint128(-delta.amount0()),
+            uint128(-delta.amount1())
+        );
+
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, initialLiquidity, ZERO_BYTES));
+        planner = planner.add(Actions.BURN, abi.encode(tokenId));
+        planner = planner.add(
+            Actions.MINT, abi.encode(newRange, newLiquidity, block.timestamp + 1, address(this), ZERO_BYTES)
+        );
+        planner = planner.finalize(range);
+        bytes[] memory data = lpm.modifyLiquidities(planner.zip());
+        int256 delta0 = abi.decode(data[data.length - 2], (int256));
+        int256 delta1 = abi.decode(data[data.length - 1], (int256));
+
+        uint256 balance0After = currency0.balanceOfSelf();
+        uint256 balance1After = currency1.balanceOfSelf();
+
+        // wow there's 1 wei of imprecision, where the user is paying 1 wei of dust
+        assertApproxEqAbs(delta0, 0, 1 wei);
+        assertApproxEqAbs(delta1, 0, 1 wei);
+        assertApproxEqAbs(balance0Before - balance0After, 0, 1 wei);
+        assertApproxEqAbs(balance1Before - balance1After, 0, 1 wei);
+
+        // old position was burned
+        vm.expectRevert();
+        lpm.ownerOf(tokenId);
+
+        // old position has no liquidity
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        uint128 liquidity = manager.getPositionLiquidity(range.poolKey.toId(), positionId);
+        assertEq(liquidity, 0);
+
+        // new token was minted
+        uint256 newTokenId = lpm.nextTokenId() - 1;
+        assertEq(lpm.ownerOf(newTokenId), address(this));
+
+        // new token has expected liquidity
+        positionId = keccak256(abi.encodePacked(address(lpm), newRange.tickLower, newRange.tickUpper, bytes32(newTokenId)));
+        liquidity = manager.getPositionLiquidity(range.poolKey.toId(), positionId);
+        assertEq(liquidity, newLiquidity);
+    }
+
     // coalesce: burn and increase
     function test_execute_coalesce() public {}
     // split: decrease and mint
