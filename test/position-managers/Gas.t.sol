@@ -157,19 +157,20 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         snapLastCall("increaseLiquidity_erc20");
     }
 
-    function test_gas_increaseLiquidity_erc6909() public {
-        _mint(range, 10_000 ether, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
+    // TODO: ERC6909 Support.
+    // function test_gas_increaseLiquidity_erc6909() public {
+    //     _mint(range, 10_000 ether, address(this), ZERO_BYTES);
+    //     uint256 tokenId = lpm.nextTokenId() - 1;
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
+    //     Planner.Plan memory planner =
+    //         Planner.init().add(Actions.INCREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
 
-        planner = planner.finalize(range.poolKey);
+    //     planner = planner.finalize(range.poolKey);
 
-        bytes memory actions = planner.zip();
-        lpm.modifyLiquidities(actions, _deadline);
-        snapLastCall("increaseLiquidity_erc6909");
-    }
+    //     bytes memory actions = planner.zip();
+    //     lpm.modifyLiquidities(actions, _deadline);
+    //     snapLastCall("increaseLiquidity_erc6909");
+    // }
 
     function test_gas_autocompound_exactUnclaimedFees() public {
         // Alice and Bob provide liquidity on the range
@@ -329,19 +330,20 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         snapLastCall("decreaseLiquidity_erc20");
     }
 
-    function test_gas_decreaseLiquidity_erc6909() public {
-        _mint(range, 10_000 ether, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
+    // TODO: ERC6909 Support
+    // function test_gas_decreaseLiquidity_erc6909() public {
+    //     _mint(range, 10_000 ether, address(this), ZERO_BYTES);
+    //     uint256 tokenId = lpm.nextTokenId() - 1;
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
+    //     Planner.Plan memory planner =
+    //         Planner.init().add(Actions.DECREASE, abi.encode(tokenId, 10_000 ether, ZERO_BYTES));
 
-        planner = planner.finalize(range.poolKey);
+    //     planner = planner.finalize(range.poolKey);
 
-        bytes memory actions = planner.zip();
-        lpm.modifyLiquidities(actions, _deadline);
-        snapLastCall("decreaseLiquidity_erc6909");
-    }
+    //     bytes memory actions = planner.zip();
+    //     lpm.modifyLiquidities(actions, _deadline);
+    //     snapLastCall("decreaseLiquidity_erc6909");
+    // }
 
     function test_gas_burn() public {}
     function test_gas_burnEmpty() public {}

@@ -3,10 +3,10 @@ pragma solidity ^0.8.24;
 
 import {ERC721} from "solmate/tokens/ERC721.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
 import {ChainId} from "../libraries/ChainId.sol";
 import {IERC721Permit} from "../interfaces/IERC721Permit.sol";
-import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
 /// @title ERC721 with permit
 /// @notice Nonfungible tokens that support an approve via signature, i.e. permit

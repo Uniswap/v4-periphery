@@ -5,12 +5,10 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {INonfungiblePositionManager, Actions} from "./interfaces/INonfungiblePositionManager.sol";
@@ -81,11 +79,12 @@ contract NonfungiblePositionManager is
             } else if (actions[i] == Actions.DECREASE) {
                 returnData[i] = _decrease(params[i], sender);
             } else if (actions[i] == Actions.MINT) {
+                // TODO: Mint will be coupled with increase.
                 returnData[i] = _mint(params[i]);
             } else if (actions[i] == Actions.CLOSE_CURRENCY) {
                 returnData[i] = _close(params[i], sender);
             } else if (actions[i] == Actions.BURN) {
-                // TODO: Burn will just be moved outside of this.. or coupled with a decrease..
+                // TODO: Burn will be coupled with decrease.
                 (uint256 tokenId) = abi.decode(params[i], (uint256));
                 burn(tokenId, sender);
             } else {
