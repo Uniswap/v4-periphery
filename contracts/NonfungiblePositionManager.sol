@@ -105,7 +105,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
 
         (delta,) = _modifyLiquidity(range, liquidity.toInt256(), bytes32(tokenId), hookData);
 
-        tokenPositions[tokenId] = TokenPosition({owner: owner, range: range, operator: address(0x0)});
+        tokenPositions[tokenId] = TokenPosition({owner: owner, range: range});
     }
 
     // Note: Calling increase with 0 will accrue any underlying fees.
@@ -152,31 +152,6 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         delete tokenPositions[tokenId];
         // Burn the token.
         _burn(tokenId);
-    }
-
-    // TODO: Bug - Positions are overrideable unless we can allow two of the same users to have distinct positions.
-    function _beforeTokenTransfer(address from, address to, uint256 tokenId) internal override {
-        TokenPosition storage tokenPosition = tokenPositions[tokenId];
-        LiquidityRangeId rangeId = tokenPosition.range.toId();
-        Position storage position = positions[from][rangeId];
-
-        // transfer position data to destination
-        positions[to][rangeId] = position;
-        delete positions[from][rangeId];
-
-        // update token position
-        tokenPositions[tokenId] = TokenPosition({owner: to, range: tokenPosition.range, operator: address(0x0)});
-    }
-
-    // override ERC721 approval by setting operator
-    function _approve(address spender, uint256 tokenId) internal override {
-        tokenPositions[tokenId].operator = spender;
-    }
-
-    function getApproved(uint256 tokenId) public view override returns (address) {
-        require(_exists(tokenId), "ERC721: approved query for nonexistent token");
-
-        return tokenPositions[tokenId].operator;
     }
 
     modifier isAuthorizedForToken(uint256 tokenId, address sender) {

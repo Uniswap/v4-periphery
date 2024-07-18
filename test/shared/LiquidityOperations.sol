@@ -36,7 +36,7 @@ contract LiquidityOperations {
         internal
         returns (BalanceDelta)
     {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
+        (, LiquidityRange memory _range) = lpm.tokenPositions(tokenId);
         return _increaseLiquidity(_range, tokenId, liquidityToAdd, hookData);
     }
 
@@ -58,7 +58,7 @@ contract LiquidityOperations {
         internal
         returns (BalanceDelta)
     {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
+        (, LiquidityRange memory _range) = lpm.tokenPositions(tokenId);
 
         return _decreaseLiquidity(_range, tokenId, liquidityToRemove, hookData);
     }
@@ -79,7 +79,7 @@ contract LiquidityOperations {
     }
 
     function _collect(uint256 tokenId, address recipient, bytes memory hookData) internal returns (BalanceDelta) {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
+        (, LiquidityRange memory _range) = lpm.tokenPositions(tokenId);
         return _collect(_range, tokenId, recipient, hookData);
     }
 
@@ -120,7 +120,7 @@ contract LiquidityOperations {
         view
         returns (bytes memory)
     {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
+        (, LiquidityRange memory _range) = lpm.tokenPositions(tokenId);
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, hookData));
         planner = planner.finalize(_range);
@@ -132,7 +132,7 @@ contract LiquidityOperations {
         view
         returns (bytes memory)
     {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
+        (, LiquidityRange memory _range) = lpm.tokenPositions(tokenId);
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, liquidityToRemove, hookData));
         planner = planner.finalize(_range);
@@ -144,7 +144,7 @@ contract LiquidityOperations {
         view
         returns (bytes memory)
     {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
+        (, LiquidityRange memory _range) = lpm.tokenPositions(tokenId);
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, 0, hookData));
 

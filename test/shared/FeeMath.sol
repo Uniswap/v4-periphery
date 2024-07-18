@@ -27,7 +27,7 @@ library FeeMath {
         view
         returns (BalanceDelta feesOwed)
     {
-        (, LiquidityRange memory range,) = posm.tokenPositions(tokenId);
+        (, LiquidityRange memory range) = posm.tokenPositions(tokenId);
 
         // getPosition(poolId, owner, tL, tU, salt)
         // owner is the position manager

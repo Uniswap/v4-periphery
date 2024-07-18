@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
 
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {ERC721} from "solmate/tokens/ERC721.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 import {ChainId} from "../libraries/ChainId.sol";
@@ -23,6 +23,11 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
     constructor(string memory name_, string memory symbol_, string memory version_) ERC721(name_, symbol_) {
         nameHash = keccak256(bytes(name_));
         versionHash = keccak256(bytes(version_));
+    }
+
+    // TODO: implement here, or in posm
+    function tokenURI(uint256) public pure override returns (string memory) {
+        return "https://example.com";
     }
 
     /// @inheritdoc IERC721Permit
@@ -81,6 +86,10 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
                 keccak256(abi.encode(PERMIT_TYPEHASH, spender, tokenId, _nonce, deadline))
             )
         );
+    }
+
+    function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
+        return spender == ownerOf(tokenId) || getApproved[tokenId] == spender || isApprovedForAll[ownerOf(tokenId)][spender];
     }
 
     /// @notice Returns the index of the bitmap and the bit position within the bitmap. Used for unordered nonces

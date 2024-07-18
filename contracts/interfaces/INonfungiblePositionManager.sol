@@ -20,14 +20,13 @@ interface INonfungiblePositionManager {
     struct TokenPosition {
         address owner;
         LiquidityRange range;
-        address operator;
     }
 
     error MustBeUnlockedByThisContract();
     error DeadlinePassed();
     error UnsupportedAction();
 
-    function tokenPositions(uint256 tokenId) external view returns (address, LiquidityRange memory, address);
+    function tokenPositions(uint256 tokenId) external view returns (address, LiquidityRange memory);
 
     /// @notice Batches many liquidity modification calls to pool manager
     /// @param payload is an encoding of actions, params, and currencies
