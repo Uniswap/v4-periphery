@@ -29,7 +29,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     using StateLibrary for IPoolManager;
 
     event Initialize(
-        PoolId poolId,
+        PoolId indexed poolId,
         Currency indexed currency0,
         Currency indexed currency1,
         uint24 fee,
@@ -41,7 +41,7 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     );
     event Swap(
         PoolId indexed id,
-        address sender,
+        address indexed sender,
         int128 amount0,
         int128 amount1,
         uint160 sqrtPriceX96,
@@ -140,7 +140,12 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     function testFullRange_beforeInitialize_RevertsIfWrongSpacing() public {
         PoolKey memory wrongKey = PoolKey(key.currency0, key.currency1, 0, TICK_SPACING + 1, fullRange);
 
-        vm.expectRevert(FullRange.TickSpacingNotDefault.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector, abi.encodeWithSelector(FullRange.TickSpacingNotDefault.selector)
+            )
+        );
+
         manager.initialize(wrongKey, SQRT_PRICE_1_1, ZERO_BYTES);
     }
 
@@ -757,7 +762,12 @@ contract TestFullRange is Test, Deployers, GasSnapshot {
     function testFullRange_BeforeModifyPositionFailsWithWrongMsgSender() public {
         manager.initialize(key, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        vm.expectRevert(FullRange.SenderMustBeHook.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector, abi.encodeWithSelector(FullRange.SenderMustBeHook.selector)
+            )
+        );
+
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams({tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: 100, salt: 0}),
