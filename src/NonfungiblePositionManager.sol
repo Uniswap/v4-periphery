@@ -196,6 +196,7 @@ contract NonfungiblePositionManager is
         if (liquidity > 0) revert PositionMustBeEmpty();
     }
 
+    // TODO: Move this to a posm state-view library.
     function getPositionIdFromTokenId(uint256 tokenId) public view returns (bytes32 positionId) {
         LiquidityRange memory range = tokenRange[tokenId];
         bytes32 salt = bytes32(tokenId);
@@ -203,7 +204,6 @@ contract NonfungiblePositionManager is
         int24 tickUpper = range.tickUpper;
         address owner = address(this);
 
-        // TODO: reorganize this into library on core?
         // positionId = keccak256(abi.encodePacked(owner, tickLower, tickUpper, salt))
         /// @solidity memory-safe-assembly
         assembly {
