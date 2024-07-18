@@ -179,7 +179,7 @@ abstract contract V4Router is IV4Router {
     function _payAndSettle(Currency currency, address msgSender, int128 settleAmount) private {
         poolManager.sync(currency);
         _pay(Currency.unwrap(currency), msgSender, address(poolManager), uint256(uint128(-settleAmount)));
-        poolManager.settle(currency);
+        poolManager.settle();
     }
 
     function _pay(address token, address payer, address recipient, uint256 amount) internal virtual;
