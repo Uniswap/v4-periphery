@@ -7,8 +7,8 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
-import {INonfungiblePositionManager, Actions} from "../../../contracts/interfaces/INonfungiblePositionManager.sol";
-import {LiquidityRange} from "../../../contracts/types/LiquidityRange.sol";
+import {INonfungiblePositionManager, Actions} from "../../../src/interfaces/INonfungiblePositionManager.sol";
+import {LiquidityRange} from "../../../src/types/LiquidityRange.sol";
 import {Planner} from "../../utils/Planner.sol";
 
 contract LiquidityFuzzers is Fuzzers {

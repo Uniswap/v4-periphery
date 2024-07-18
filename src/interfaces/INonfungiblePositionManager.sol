@@ -19,7 +19,7 @@ interface INonfungiblePositionManager {
 
     struct TokenPosition {
         address owner;
-        bytes32 rangeId;
+        LiquidityRange range;
         address operator;
     }
 
