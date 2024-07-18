@@ -76,7 +76,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
-    function test_increaseLiquidity_withExactFees() public {
+    function test_increaseLiquidity_withExactFees1() public {
         // Alice and Bob provide liquidity on the range
         // Alice uses her exact fees to increase liquidity (compounding)
 
@@ -85,12 +85,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, bob, ZERO_BYTES);
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -120,7 +120,8 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
         planner = planner.finalize(range);
         vm.startPrank(alice);
-        lpm.modifyLiquidities(planner.zip());
+        bytes memory actions = planner.zip();
+        lpm.modifyLiquidities(actions, _deadline);
         vm.stopPrank();
 
         // It is not exact because of the error in the fee calculation and error in the
@@ -142,12 +143,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, bob, ZERO_BYTES);
 
         // donate to create fees
         uint256 amountDonate = 0.2e18;
@@ -272,12 +273,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees

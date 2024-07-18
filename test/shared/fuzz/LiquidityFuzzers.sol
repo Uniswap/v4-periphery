@@ -26,12 +26,12 @@ contract LiquidityFuzzers is Fuzzers {
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-        Planner.Plan memory planner = Planner.init().add(
-            Actions.MINT, abi.encode(range, uint256(params.liquidityDelta), block.timestamp, recipient, hookData)
-        );
+        Planner.Plan memory planner =
+            Planner.init().add(Actions.MINT, abi.encode(range, uint256(params.liquidityDelta), recipient, hookData));
 
         planner = planner.finalize(range);
-        lpm.modifyLiquidities(planner.zip());
+        bytes memory actions = planner.zip();
+        lpm.modifyLiquidities(actions, block.timestamp + 1);
 
         uint256 tokenId = lpm.nextTokenId() - 1;
         return (tokenId, params);

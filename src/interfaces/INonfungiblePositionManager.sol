@@ -16,6 +16,7 @@ enum Actions {
 
 interface INonfungiblePositionManager {
     error MismatchedLengths();
+    error NotApproved(address caller);
 
     struct TokenPosition {
         address owner;
@@ -31,8 +32,9 @@ interface INonfungiblePositionManager {
 
     /// @notice Batches many liquidity modification calls to pool manager
     /// @param payload is an encoding of actions, params, and currencies
+    /// @param deadline is the deadline for the batched actions to be executed
     /// @return returnData is the endocing of each actions return information
-    function modifyLiquidities(bytes calldata payload) external returns (bytes[] memory);
+    function modifyLiquidities(bytes calldata payload, uint256 deadline) external returns (bytes[] memory);
 
     /// TODO Can decide if we want burn to auto encode a decrease/collect.
     //// @notice Burn a position and delete the tokenId
