@@ -41,6 +41,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
+    uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
     function setUp() public {
         Deployers.deployFreshManagerAndRouters();
@@ -52,6 +53,14 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
         IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+
+        // Give tokens to Alice and Bob, with approvals
+        IERC20(Currency.unwrap(currency0)).transfer(alice, STARTING_USER_BALANCE);
+        IERC20(Currency.unwrap(currency1)).transfer(alice, STARTING_USER_BALANCE);
+        vm.startPrank(alice);
+        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        vm.stopPrank();
     }
 
     function test_modifyLiquidities_reverts_mismatchedLengths() public {
@@ -298,10 +307,145 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         assertApproxEqAbs(currency1.balanceOfSelf() - balance1Before, amount1 + feeRevenue1, 1 wei);
     }
 
-    function test_mintTransferBurn() public {}
-    function test_mintTransferCollect() public {}
-    function test_mintTransferIncrease() public {}
-    function test_mintTransferDecrease() public {}
+    function test_mintTransferBurn() public {
+        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
+        uint256 liquidity = 100e18;
+        BalanceDelta mintDelta = _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // transfer to alice
+        lpm.transferFrom(address(this), alice, tokenId);
+
+        // alice can decrease liquidity and burn
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, liquidity, ZERO_BYTES));
+        planner = planner.add(Actions.BURN, abi.encode(tokenId));
+        planner = planner.finalize(range);
+        bytes memory calls = planner.zip();
+
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency0.balanceOf(alice);
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls);
+
+        // token was burned and does not exist anymore
+        vm.expectRevert();
+        lpm.ownerOf(tokenId);
+
+        // alice received the principal liquidity
+        assertApproxEqAbs(currency0.balanceOf(alice) - balance0BeforeAlice, uint128(-mintDelta.amount0()), 1 wei);
+        assertApproxEqAbs(currency1.balanceOf(alice) - balance1BeforeAlice, uint128(-mintDelta.amount1()), 1 wei);
+    }
+
+    function test_mintTransferCollect() public {
+        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
+        uint256 liquidity = 100e18;
+        _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // donate to generate fee revenue
+        uint256 feeRevenue0 = 1e18;
+        uint256 feeRevenue1 = 0.1e18;
+        donateRouter.donate(key, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        // transfer to alice
+        lpm.transferFrom(address(this), alice, tokenId);
+
+        // alice can collect the fees
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+        vm.startPrank(alice);
+        BalanceDelta delta = _collect(tokenId, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice received the fee revenue
+        assertApproxEqAbs(currency0.balanceOf(alice) - balance0BeforeAlice, feeRevenue0, 1 wei);
+        assertApproxEqAbs(currency1.balanceOf(alice) - balance1BeforeAlice, feeRevenue1, 1 wei);
+        assertApproxEqAbs(uint128(delta.amount0()), feeRevenue0, 1 wei);
+        assertApproxEqAbs(uint128(delta.amount1()), feeRevenue1, 1 wei);
+    }
+
+    function test_mintTransferIncrease() public {
+        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
+        uint256 liquidity = 100e18;
+        _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // transfer to alice
+        lpm.transferFrom(address(this), alice, tokenId);
+
+        // alice increases liquidity and is the payer
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+        vm.startPrank(alice);
+        uint256 liquidityToAdd = 10e18;
+        BalanceDelta delta = _increaseLiquidity(tokenId, liquidityToAdd, ZERO_BYTES);
+        vm.stopPrank();
+
+        // position liquidity increased
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 newLiq,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        assertEq(newLiq, liquidity + liquidityToAdd);
+
+        // alice paid the tokens
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(range.tickLower),
+            TickMath.getSqrtPriceAtTick(range.tickUpper),
+            uint128(liquidityToAdd)
+        );
+        assertApproxEqAbs(balance0BeforeAlice - currency0.balanceOf(alice), amount0, 1 wei);
+        assertApproxEqAbs(balance1BeforeAlice - currency1.balanceOf(alice), amount1, 1 wei);
+        assertApproxEqAbs(uint128(-delta.amount0()), amount0, 1 wei);
+        assertApproxEqAbs(uint128(-delta.amount1()), amount1, 1 wei);
+    }
+
+    function test_mintTransferDecrease() public {
+        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
+        uint256 liquidity = 100e18;
+        _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // donate to generate fee revenue
+        uint256 feeRevenue0 = 1e18;
+        uint256 feeRevenue1 = 0.1e18;
+        donateRouter.donate(key, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        // transfer to alice
+        lpm.transferFrom(address(this), alice, tokenId);
+
+        {
+            // alice decreases liquidity and is the recipient
+            uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+            uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+            vm.startPrank(alice);
+            uint256 liquidityToRemove = 10e18;
+            BalanceDelta delta = _decreaseLiquidity(tokenId, liquidityToRemove, ZERO_BYTES);
+            vm.stopPrank();
+
+            {
+                // position liquidity decreased
+                bytes32 positionId =
+                    keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+                (uint256 newLiq,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+                assertEq(newLiq, liquidity - liquidityToRemove);
+            }
+
+            // alice received the principal + fees
+            (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+                SQRT_PRICE_1_1,
+                TickMath.getSqrtPriceAtTick(range.tickLower),
+                TickMath.getSqrtPriceAtTick(range.tickUpper),
+                uint128(liquidityToRemove)
+            );
+            assertApproxEqAbs(currency0.balanceOf(alice) - balance0BeforeAlice, amount0 + feeRevenue0, 1 wei);
+            assertApproxEqAbs(currency1.balanceOf(alice) - balance1BeforeAlice, amount1 + feeRevenue1, 1 wei);
+            assertApproxEqAbs(uint128(delta.amount0()), amount0 + feeRevenue0, 1 wei);
+            assertApproxEqAbs(uint128(delta.amount1()), amount1 + feeRevenue1, 1 wei);
+        }
+    }
 
     function test_initialize(IPoolManager.ModifyLiquidityParams memory params) public {
         // initialize a new pool and add liquidity
