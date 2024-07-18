@@ -15,8 +15,6 @@ import {Locker} from "../libraries/Locker.sol";
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.
 /// @dev If an inheriting contract does not want to support all commands, they should simply revert with the
 /// UnsupportedAction error in their overriding function
-/// If additional actions are required, define new unique action constants, and implement the logic for handling them
-/// in the `_handleAdditionalActions{1/2}` functions
 /// The _msgSender function returns the msg.sender from the call to executeActions. This allows actions to know which
 /// address instructed the action to be requested. The msg.sender within the unlockCallback with be the v4 PoolManager.
 abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
@@ -39,6 +37,7 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
     /// @notice function that is called by the PoolManager through the SafeCallback.unlockCallback
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         // TODO decode in calldata directly for gas
+        // TODO would it be better to use a struct
         (uint256[] memory actions, bytes[] memory params) = abi.decode(data, (uint256[], bytes[]));
 
         uint256 numActions = actions.length;
@@ -47,23 +46,20 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
         for (uint256 actionIndex = 0; actionIndex < numActions; actionIndex++) {
             uint256 action = actions[actionIndex];
 
-            // separate actions on a pool, and settling deltas
-            if (action < 0x10) {
+            // separate actions on a pool for gas optimisation reasons
+            if (action < Actions.SETTLE) {
                 if (action == Actions.SWAP) _swap(params[actionIndex]);
                 else if (action == Actions.INCREASE_LIQUIDITY) _increaseLiquidity(params[actionIndex]);
                 else if (action == Actions.DECREASE_LIQUIDITY) _decreaseLiquidity(params[actionIndex]);
-                else if (action == Actions.MINT_POSITION) _mintPosition(params[actionIndex]);
-                else if (action == Actions.BURN_POSITION) _burnPosition(params[actionIndex]);
                 else if (action == Actions.DONATE) _donate(params[actionIndex]);
-                else _handleAdditionalActions1(action, params[actionIndex]);
+                else if (action == Actions.CLEAR_DELTA) _clearDelta(params[actionIndex]);
+                else revert UnsupportedAction(action);
             } else {
                 if (action == Actions.SETTLE) _settle(params[actionIndex]);
                 else if (action == Actions.TAKE) _take(params[actionIndex]);
                 else if (action == Actions.MINT_6909) _mint6909(params[actionIndex]);
                 else if (action == Actions.BURN_6909) _burn6909(params[actionIndex]);
-                else if (action == Actions.CLEAR_DELTA) _clearDelta(params[actionIndex]);
-                else if (action == Actions.SWEEP_ETH) _sweepETH(params[actionIndex]);
-                else _handleAdditionalActions2(action, params[actionIndex]);
+                else revert UnsupportedAction(action);
             }
         }
 
@@ -108,15 +104,6 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
         if (delta < 0) revert();
 
         poolManager.take(currency, recipient, uint256(delta));
-    }
-
-    /// @notice function to sweep any excess ETH back to a recipient
-    function _sweepETH(bytes memory params) internal virtual {
-        // TODO decode in calldata
-        (address recipient) = abi.decode(params, (address));
-
-        uint256 balance = address(this).balance;
-        if (balance > 0) recipient.safeTransferETH(balance);
     }
 
     function _swap(bytes memory params) internal virtual;
