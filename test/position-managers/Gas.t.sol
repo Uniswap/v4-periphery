@@ -339,6 +339,31 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     function test_gas_burnEmpty() public {}
     function test_gas_collect() public {}
 
+    function test_gas_multicall_initialize_mint() public {
+        key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
+
+        // Use multicall to initialize a pool and mint liquidity
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(
+            NonfungiblePositionManager(lpm).initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES
+        );
+
+        range = LiquidityRange({
+            poolKey: key,
+            tickLower: TickMath.minUsableTick(key.tickSpacing),
+            tickUpper: TickMath.maxUsableTick(key.tickSpacing)
+        });
+
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(Actions.MINT, abi.encode(range, 100e18, block.timestamp + 1, address(this), ZERO_BYTES));
+        planner = planner.finalize(range);
+
+        calls[1] = abi.encodeWithSelector(NonfungiblePositionManager(lpm).modifyLiquidities.selector, planner.zip());
+
+        lpm.multicall(calls);
+        snapLastCall("multicall_initialize_mint");
+    }
+
     function test_gas_permit() public {
         // alice permits for the first time
         uint256 liquidityAlice = 1e18;

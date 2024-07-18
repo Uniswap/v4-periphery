@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {INonfungiblePositionManager, Actions} from "./interfaces/INonfungiblePositionManager.sol";
 import {BaseLiquidityManagement} from "./base/BaseLiquidityManagement.sol";
+import {Multicall} from "./base/Multicall.sol";
+import {PoolInitializer} from "./base/PoolInitializer.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -19,7 +21,13 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
-contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
+contract NonfungiblePositionManager is
+    INonfungiblePositionManager,
+    BaseLiquidityManagement,
+    ERC721Permit,
+    PoolInitializer,
+    Multicall
+{
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;
