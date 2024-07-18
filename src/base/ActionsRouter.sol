@@ -2,6 +2,11 @@
 pragma solidity ^0.8.24;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
+
+import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
+
 import {SafeCallback} from "./SafeCallback.sol";
 import {ReentrancyLock} from "./ReentrancyLock.sol";
 import {Actions} from "../libraries/Actions.sol";
@@ -15,17 +20,25 @@ import {Locker} from "../libraries/Locker.sol";
 /// The _msgSender function returns the msg.sender from the call to executeActions. This allows actions to know which
 /// address instructed the action to be requested. The msg.sender within the unlockCallback with be the v4 PoolManager.
 abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
+    using TransientStateLibrary for IPoolManager;
+    using SafeTransferLib for address;
+
     /// @notice emitted when different numbers of parameters and actions are provided
     error LengthMismatch();
-    error UnsupportedAction();
+
+    /// @notice emitted when an inheriting contract does not support an action
+    error UnsupportedAction(uint256 action);
 
     constructor(IPoolManager poolManager) SafeCallback(poolManager) {}
 
-    function executeActions(bytes calldata params) external payable isNotLocked {
+    /// @notice internal function that triggers the execution of a set of actions on v4
+    function _executeActions(bytes calldata params) internal isNotLocked {
         poolManager.unlock(params);
     }
 
+    /// @notice function that is called by the PoolManager through the SafeCallback.unlockCallback
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
+        // TODO decode in calldata directly for gas
         (uint256[] memory actions, bytes[] memory params) = abi.decode(data, (uint256[], bytes[]));
 
         uint256 numActions = actions.length;
@@ -53,51 +66,43 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
                 else _handleAdditionalActions2(action, params[actionIndex]);
             }
         }
+
+        // TODO do we want to return anything?
     }
 
-    // Internal function that returns the msg.sender who called executeActions
+    /// @notice function that returns the msg.sender who called executeActions
     function _msgSender() internal view virtual returns (address) {
         return Locker.get();
     }
 
-    /// @notice Internal settle function to settle the open delta of a currency
+    /// @notice function to settle the open delta of a currency
     /// @dev The `_pay` function must implement necessary safety checks on the value of payer.
     /// If approvals are used on this contract, do not allow `_pay` to pull tokens from any payer.
     /// @dev The function is virtual and can be overrided if different parameters or logic are required.
-    function _settle(bytes calldata params) internal virtual {
-        // abi.decode(params, (Currency, payer))
-        Currency currency;
-        address payer;
-        assembly {
-            currency := calldataload(params.offset)
-            payer := calldataload(add(params.offset, 0x20))
-        }
+    function _settle(bytes memory params) internal virtual {
+        // TODO decode in calldata
+        (Currency currency, address payer) = abi.decode(params, (Currency, address));
 
         int256 delta = poolManager.currencyDelta(address(this), currency);
         if (delta > 0) revert();
 
         if (currency.isNative()) {
-            poolManager.settle({value: uint256(-settleAmount)});
+            poolManager.settle{value: uint256(-delta)}();
         } else {
             poolManager.sync(currency);
-            _pay(currency, payer, address(poolManager), uint256(-settleAmount));
+            _pay(currency, payer, address(poolManager), uint256(-delta));
             poolManager.settle();
         }
     }
 
-    /// @notice abstract function to implement the payment of tokens to the pool manager
+    /// @notice abstract function to implement the payment of tokens to the pool manager during a settle
     function _pay(Currency currency, address payer, address recipient, uint256 amount) internal virtual;
 
-    /// @notice Internal take function to take owed currency from the pool manager to a recipient
+    /// @notice function to take owed currency from the pool manager to a recipient
     /// @dev The function is virtual and can be overrided if different parameters or logic are required.
-    function _take(bytes calldata params) internal virtual {
-        // abi.decode(params, (Currency, address))
-        Currency currency;
-        address recipient;
-        assembly {
-            currency := calldataload(params.offset)
-            recipient := calldataload(add(params.offset, 0x20))
-        }
+    function _take(bytes memory params) internal virtual {
+        // TODO decode in calldata
+        (Currency currency, address recipient) = abi.decode(params, (Currency, address));
 
         int256 delta = poolManager.currencyDelta(address(this), currency);
         if (delta < 0) revert();
@@ -106,36 +111,33 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
     }
 
     /// @notice function to sweep any excess ETH back to a recipient
-    function _sweepETH(bytes calldata params) internal virtual {
-        // abi.decode(params, (address))
-        address payable recipient;
-        assembly {
-            recipient := calldataload(params.offset, 0x20)
-        }
+    function _sweepETH(bytes memory params) internal virtual {
+        // TODO decode in calldata
+        (address recipient) = abi.decode(params, (address));
 
-        balance = address(this).balance;
+        uint256 balance = address(this).balance;
         if (balance > 0) recipient.safeTransferETH(balance);
     }
 
-    function _swap(bytes calldata params) internal virtual;
+    function _swap(bytes memory params) internal virtual;
 
-    function _increaseLiquidity(bytes calldata params) internal virtual;
+    function _increaseLiquidity(bytes memory params) internal virtual;
 
-    function _decreaseLiquidity(bytes calldata params) internal virtual;
+    function _decreaseLiquidity(bytes memory params) internal virtual;
 
-    function _mintPosition(bytes calldata params) internal virtual;
+    function _mintPosition(bytes memory params) internal virtual;
 
-    function _burnPosition(bytes calldata params) internal virtual;
+    function _burnPosition(bytes memory params) internal virtual;
 
-    function _donate(bytes calldata params) internal virtual;
+    function _donate(bytes memory params) internal virtual;
 
-    function _mint6909(bytes calldata params) internal virtual;
+    function _mint6909(bytes memory params) internal virtual;
 
-    function _burn6909(bytes calldata params) internal virtual;
+    function _burn6909(bytes memory params) internal virtual;
 
-    function _clearDelta(bytes calldata params) internal virtual;
+    function _clearDelta(bytes memory params) internal virtual;
 
-    function _handleAdditionalActions1(uint256 action, bytes calldata params) internal virtual;
+    function _handleAdditionalActions1(uint256 action, bytes memory params) internal virtual;
 
-    function _handleAdditionalActions2(uint256 action, bytes calldata params) internal virtual;
+    function _handleAdditionalActions2(uint256 action, bytes memory params) internal virtual;
 }

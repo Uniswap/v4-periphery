@@ -12,6 +12,7 @@ library Actions {
     uint256 constant MINT_POSITION = 0x03;
     uint256 constant BURN_POSITION = 0x04;
     uint256 constant DONATE = 0x05;
+    uint256 constant SWEEP_ETH = 0x06;
 
     // Settling deltas
     uint256 constant SETTLE = 0x10;
