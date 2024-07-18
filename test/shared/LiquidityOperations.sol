@@ -15,18 +15,18 @@ contract LiquidityOperations {
 
     using Planner for Planner.Plan;
 
-    function _mint(
-        LiquidityRange memory _range,
-        uint256 liquidity,
-        uint256 deadline,
-        address recipient,
-        bytes memory hookData
-    ) internal returns (BalanceDelta) {
+    uint256 _deadline = block.timestamp + 1;
+
+    function _mint(LiquidityRange memory _range, uint256 liquidity, address recipient, bytes memory hookData)
+        internal
+        returns (BalanceDelta)
+    {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode(_range, liquidity, deadline, recipient, hookData));
+        planner = planner.add(Actions.MINT, abi.encode(_range, liquidity, recipient, hookData));
         planner = planner.finalize(_range); // Close the currencies.
 
-        bytes[] memory result = lpm.modifyLiquidities(planner.zip());
+        bytes memory actions = planner.zip();
+        bytes[] memory result = lpm.modifyLiquidities(actions, _deadline);
         return abi.decode(result[0], (BalanceDelta));
     }
 
@@ -50,7 +50,8 @@ contract LiquidityOperations {
         planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, hookData));
 
         planner = planner.finalize(_range); // Close the currencies.
-        bytes[] memory result = lpm.modifyLiquidities(planner.zip());
+        bytes memory actions = planner.zip();
+        bytes[] memory result = lpm.modifyLiquidities(actions, _deadline);
         return abi.decode(result[0], (BalanceDelta));
     }
 
@@ -74,7 +75,8 @@ contract LiquidityOperations {
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, liquidityToRemove, hookData));
 
         planner = planner.finalize(_range); // Close the currencies.
-        bytes[] memory result = lpm.modifyLiquidities(planner.zip());
+        bytes memory actions = planner.zip();
+        bytes[] memory result = lpm.modifyLiquidities(actions, _deadline);
         return abi.decode(result[0], (BalanceDelta));
     }
 
@@ -93,7 +95,8 @@ contract LiquidityOperations {
 
         planner = planner.finalize(_range); // Close the currencies.
 
-        bytes[] memory result = lpm.modifyLiquidities(planner.zip());
+        bytes memory actions = planner.zip();
+        bytes[] memory result = lpm.modifyLiquidities(actions, _deadline);
         return abi.decode(result[0], (BalanceDelta));
     }
 
@@ -101,7 +104,8 @@ contract LiquidityOperations {
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.BURN, abi.encode(tokenId));
         // No close needed on burn.
-        lpm.modifyLiquidities(planner.zip());
+        bytes memory actions = planner.zip();
+        lpm.modifyLiquidities(actions, _deadline);
     }
 
     // TODO: organize somewhere else, or rename this file to NFTLiquidityHelpers?

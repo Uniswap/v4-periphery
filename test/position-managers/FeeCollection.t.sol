@@ -166,11 +166,11 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         vm.prank(alice);
-        _mint(range, uint256(params.liquidityDelta), block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, uint256(params.liquidityDelta), alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.prank(bob);
-        _mint(range, liquidityDeltaBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityDeltaBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // confirm the positions are same range
@@ -228,14 +228,14 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 liquidityBob = 1000e18;
 
         vm.prank(alice);
-        BalanceDelta lpDeltaAlice = _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        BalanceDelta lpDeltaAlice = _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         uint256 aliceBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(alice));
         uint256 aliceBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(alice));
 
         vm.prank(bob);
-        BalanceDelta lpDeltaBob = _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        BalanceDelta lpDeltaBob = _mint(range, liquidityBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         uint256 bobBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(bob));
