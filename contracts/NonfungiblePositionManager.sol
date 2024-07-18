@@ -3,7 +3,8 @@ pragma solidity ^0.8.24;
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {INonfungiblePositionManager, Actions} from "./interfaces/INonfungiblePositionManager.sol";
-import {BaseLiquidityManagement} from "./base/BaseLiquidityManagement.sol";
+import {SafeCallback} from "./base/SafeCallback.sol";
+import {ImmutableState} from "./base/ImmutableState.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -19,7 +20,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
-contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidityManagement, ERC721Permit {
+contract NonfungiblePositionManager is INonfungiblePositionManager, ERC721Permit, SafeCallback {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;
@@ -35,7 +36,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
     mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
 
     constructor(IPoolManager _manager)
-        BaseLiquidityManagement(_manager)
+        ImmutableState(_manager)
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
@@ -152,6 +153,30 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, BaseLiquidit
         delete tokenPositions[tokenId];
         // Burn the token.
         _burn(tokenId);
+    }
+
+    function _modifyLiquidity(LiquidityRange memory range, int256 liquidityChange, bytes32 salt, bytes memory hookData)
+        internal
+        returns (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued)
+    {
+        (liquidityDelta, totalFeesAccrued) = manager.modifyLiquidity(
+            range.poolKey,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: range.tickLower,
+                tickUpper: range.tickUpper,
+                liquidityDelta: liquidityChange,
+                salt: salt
+            }),
+            hookData
+        );
+    }
+
+    function _validateBurn(address owner, LiquidityRange memory range) internal {
+        // LiquidityRangeId rangeId = range.toId();
+        // Position storage position = positions[owner][rangeId];
+        // if (position.liquidity > 0) revert PositionMustBeEmpty();
+        // if (position.tokensOwed0 != 0 && position.tokensOwed1 != 0) revert TokensMustBeCollected();
+        // delete positions[owner][rangeId];
     }
 
     modifier isAuthorizedForToken(uint256 tokenId, address sender) {
