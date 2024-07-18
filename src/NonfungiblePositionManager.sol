@@ -1,32 +1,32 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {ERC721Permit} from "./base/ERC721Permit.sol";
-import {INonfungiblePositionManager, Actions} from "./interfaces/INonfungiblePositionManager.sol";
-import {BaseLiquidityManagement} from "./base/BaseLiquidityManagement.sol";
-import {Multicall} from "./base/Multicall.sol";
-import {PoolInitializer} from "./base/PoolInitializer.sol";
-
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {CurrencySettleTake} from "./libraries/CurrencySettleTake.sol";
-import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "./types/LiquidityRange.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
+import {ERC721Permit} from "./base/ERC721Permit.sol";
+import {INonfungiblePositionManager, Actions} from "./interfaces/INonfungiblePositionManager.sol";
+import {SafeCallback} from "./base/SafeCallback.sol";
+import {ImmutableState} from "./base/ImmutableState.sol";
+import {Multicall} from "./base/Multicall.sol";
+import {PoolInitializer} from "./base/PoolInitializer.sol";
+import {CurrencySettleTake} from "./libraries/CurrencySettleTake.sol";
+import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "./types/LiquidityRange.sol";
+
 contract NonfungiblePositionManager is
     INonfungiblePositionManager,
-    BaseLiquidityManagement,
     ERC721Permit,
     PoolInitializer,
-    Multicall
+    Multicall,
+    SafeCallback
 {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
@@ -39,11 +39,11 @@ contract NonfungiblePositionManager is
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
-    // maps the ERC721 tokenId to the keys that uniquely identify a liquidity position (owner, range)
-    mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
+    // maps the ERC721 tokenId to its Range (poolKey, tick range)
+    mapping(uint256 tokenId => LiquidityRange range) public tokenRange;
 
     constructor(IPoolManager _manager)
-        BaseLiquidityManagement(_manager)
+        ImmutableState(_manager)
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
@@ -104,9 +104,8 @@ contract NonfungiblePositionManager is
 
         _requireApprovedOrOwner(tokenId, sender);
 
-        TokenPosition memory tokenPos = tokenPositions[tokenId];
         // Note: The tokenId is used as the salt for this position, so every minted liquidity has unique storage in the pool manager.
-        (BalanceDelta delta,) = _modifyLiquidity(tokenPos.range, liquidity.toInt256(), bytes32(tokenId), hookData);
+        (BalanceDelta delta,) = _modifyLiquidity(tokenRange[tokenId], liquidity.toInt256(), bytes32(tokenId), hookData);
         return abi.encode(delta);
     }
 
@@ -120,9 +119,9 @@ contract NonfungiblePositionManager is
 
         _requireApprovedOrOwner(tokenId, sender);
 
-        TokenPosition memory tokenPos = tokenPositions[tokenId];
         // Note: the tokenId is used as the salt.
-        (BalanceDelta delta,) = _modifyLiquidity(tokenPos.range, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+        (BalanceDelta delta,) =
+            _modifyLiquidity(tokenRange[tokenId], -(liquidity.toInt256()), bytes32(tokenId), hookData);
         return abi.encode(delta);
     }
 
@@ -139,7 +138,8 @@ contract NonfungiblePositionManager is
 
         (BalanceDelta delta,) = _modifyLiquidity(range, liquidity.toInt256(), bytes32(tokenId), hookData);
 
-        tokenPositions[tokenId] = TokenPosition({owner: owner, range: range, operator: address(0x0)});
+        tokenRange[tokenId] = range;
+
         return abi.encode(delta);
     }
 
@@ -165,37 +165,55 @@ contract NonfungiblePositionManager is
     function burn(uint256 tokenId, address sender) internal {
         _requireApprovedOrOwner(tokenId, sender);
         // We do not need to enforce the pool manager to be unlocked bc this function is purely clearing storage for the minted tokenId.
-        TokenPosition memory tokenPos = tokenPositions[tokenId];
+
         // Checks that the full position's liquidity has been removed and all tokens have been collected from tokensOwed.
-        _validateBurn(tokenPos.owner, tokenPos.range);
-        delete tokenPositions[tokenId];
+        _validateBurn(tokenId);
+
+        delete tokenRange[tokenId];
         // Burn the token.
         _burn(tokenId);
     }
 
-    // TODO: Bug - Positions are overrideable unless we can allow two of the same users to have distinct positions.
-    function _beforeTokenTransfer(address from, address to, uint256 tokenId) internal override {
-        TokenPosition storage tokenPosition = tokenPositions[tokenId];
-        LiquidityRangeId rangeId = tokenPosition.range.toId();
-        Position storage position = positions[from][rangeId];
-
-        // transfer position data to destination
-        positions[to][rangeId] = position;
-        delete positions[from][rangeId];
-
-        // update token position
-        tokenPositions[tokenId] = TokenPosition({owner: to, range: tokenPosition.range, operator: address(0x0)});
+    function _modifyLiquidity(LiquidityRange memory range, int256 liquidityChange, bytes32 salt, bytes memory hookData)
+        internal
+        returns (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued)
+    {
+        (liquidityDelta, totalFeesAccrued) = manager.modifyLiquidity(
+            range.poolKey,
+            IPoolManager.ModifyLiquidityParams({
+                tickLower: range.tickLower,
+                tickUpper: range.tickUpper,
+                liquidityDelta: liquidityChange,
+                salt: salt
+            }),
+            hookData
+        );
     }
 
-    // override ERC721 approval by setting operator
-    function _approve(address spender, uint256 tokenId) internal override {
-        tokenPositions[tokenId].operator = spender;
+    function _validateBurn(uint256 tokenId) internal {
+        bytes32 positionId = getPositionIdFromTokenId(tokenId);
+        uint128 liquidity = manager.getPositionLiquidity(tokenRange[tokenId].poolKey.toId(), positionId);
+        if (liquidity > 0) revert PositionMustBeEmpty();
     }
 
-    function getApproved(uint256 tokenId) public view override returns (address) {
-        require(_exists(tokenId), "ERC721: approved query for nonexistent token");
+    // TODO: Move this to a posm state-view library.
+    function getPositionIdFromTokenId(uint256 tokenId) public view returns (bytes32 positionId) {
+        LiquidityRange memory range = tokenRange[tokenId];
+        bytes32 salt = bytes32(tokenId);
+        int24 tickLower = range.tickLower;
+        int24 tickUpper = range.tickUpper;
+        address owner = address(this);
 
-        return tokenPositions[tokenId].operator;
+        // positionId = keccak256(abi.encodePacked(owner, tickLower, tickUpper, salt))
+        /// @solidity memory-safe-assembly
+        assembly {
+            mstore(0x26, salt) // [0x26, 0x46)
+            mstore(0x06, tickUpper) // [0x23, 0x26)
+            mstore(0x03, tickLower) // [0x20, 0x23)
+            mstore(0, owner) // [0x0c, 0x20)
+            positionId := keccak256(0x0c, 0x3a) // len is 58 bytes
+            mstore(0x26, 0) // rewrite 0x26 to 0
+        }
     }
 
     function _requireApprovedOrOwner(uint256 tokenId, address sender) internal view {

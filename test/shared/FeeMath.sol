@@ -27,16 +27,16 @@ library FeeMath {
         view
         returns (BalanceDelta feesOwed)
     {
-        (, LiquidityRange memory range,) = posm.tokenPositions(tokenId);
+        (PoolKey memory poolKey, int24 tickLower, int24 tickUpper) = posm.tokenRange(tokenId);
 
         // getPosition(poolId, owner, tL, tU, salt)
         // owner is the position manager
         // salt is the tokenId
         Position.Info memory position =
-            manager.getPosition(range.poolKey.toId(), address(posm), range.tickLower, range.tickUpper, bytes32(tokenId));
+            manager.getPosition(poolKey.toId(), address(posm), tickLower, tickUpper, bytes32(tokenId));
 
         (uint256 feeGrowthInside0X218, uint256 feeGrowthInside1X128) =
-            manager.getFeeGrowthInside(range.poolKey.toId(), range.tickLower, range.tickUpper);
+            manager.getFeeGrowthInside(poolKey.toId(), tickLower, tickUpper);
 
         feesOwed = getFeesOwed(
             feeGrowthInside0X218,

@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Vm} from "forge-std/Vm.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 import {NonfungiblePositionManager, Actions} from "../../src/NonfungiblePositionManager.sol";
 import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
@@ -23,7 +24,7 @@ contract LiquidityOperations {
     {
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.MINT, abi.encode(_range, liquidity, recipient, hookData));
-        planner = planner.finalize(_range); // Close the currencies.
+        planner = planner.finalize(_range.poolKey); // Close the currencies.
 
         bytes memory actions = planner.zip();
         bytes[] memory result = lpm.modifyLiquidities(actions, _deadline);
@@ -36,8 +37,8 @@ contract LiquidityOperations {
         internal
         returns (BalanceDelta)
     {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
-        return _increaseLiquidity(_range, tokenId, liquidityToAdd, hookData);
+        (PoolKey memory key, int24 tickLower, int24 tickUpper) = lpm.tokenRange(tokenId);
+        return _increaseLiquidity(LiquidityRange(key, tickLower, tickUpper), tokenId, liquidityToAdd, hookData);
     }
 
     function _increaseLiquidity(
@@ -49,7 +50,7 @@ contract LiquidityOperations {
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, hookData));
 
-        planner = planner.finalize(_range); // Close the currencies.
+        planner = planner.finalize(_range.poolKey); // Close the currencies.
         bytes memory actions = planner.zip();
         bytes[] memory result = lpm.modifyLiquidities(actions, _deadline);
         return abi.decode(result[0], (BalanceDelta));
@@ -59,9 +60,9 @@ contract LiquidityOperations {
         internal
         returns (BalanceDelta)
     {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
+        (PoolKey memory key, int24 tickLower, int24 tickUpper) = lpm.tokenRange(tokenId);
 
-        return _decreaseLiquidity(_range, tokenId, liquidityToRemove, hookData);
+        return _decreaseLiquidity(LiquidityRange(key, tickLower, tickUpper), tokenId, liquidityToRemove, hookData);
     }
 
     // do not make external call before unlockAndExecute, allows us to test reverts
@@ -74,15 +75,15 @@ contract LiquidityOperations {
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, liquidityToRemove, hookData));
 
-        planner = planner.finalize(_range); // Close the currencies.
+        planner = planner.finalize(_range.poolKey); // Close the currencies.
         bytes memory actions = planner.zip();
         bytes[] memory result = lpm.modifyLiquidities(actions, _deadline);
         return abi.decode(result[0], (BalanceDelta));
     }
 
     function _collect(uint256 tokenId, address recipient, bytes memory hookData) internal returns (BalanceDelta) {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
-        return _collect(_range, tokenId, recipient, hookData);
+        (PoolKey memory key, int24 tickLower, int24 tickUpper) = lpm.tokenRange(tokenId);
+        return _collect(LiquidityRange(key, tickLower, tickUpper), tokenId, recipient, hookData);
     }
 
     // do not make external call before unlockAndExecute, allows us to test reverts
@@ -93,7 +94,7 @@ contract LiquidityOperations {
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, 0, hookData));
 
-        planner = planner.finalize(_range); // Close the currencies.
+        planner = planner.finalize(_range.poolKey); // Close the currencies.
 
         bytes memory actions = planner.zip();
         bytes[] memory result = lpm.modifyLiquidities(actions, _deadline);
@@ -124,10 +125,10 @@ contract LiquidityOperations {
         view
         returns (bytes memory)
     {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
+        (PoolKey memory key,,) = lpm.tokenRange(tokenId);
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, hookData));
-        planner = planner.finalize(_range);
+        planner = planner.finalize(key);
         return planner.zip();
     }
 
@@ -136,10 +137,10 @@ contract LiquidityOperations {
         view
         returns (bytes memory)
     {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
+        (PoolKey memory key,,) = lpm.tokenRange(tokenId);
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, liquidityToRemove, hookData));
-        planner = planner.finalize(_range);
+        planner = planner.finalize(key);
         return planner.zip();
     }
 
@@ -148,13 +149,13 @@ contract LiquidityOperations {
         view
         returns (bytes memory)
     {
-        (, LiquidityRange memory _range,) = lpm.tokenPositions(tokenId);
+        (PoolKey memory poolKey,,) = lpm.tokenRange(tokenId);
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, 0, hookData));
 
         // TODO: allow recipient when supported on CLOSE_CURRENCY?
-        planner = planner.add(Actions.CLOSE_CURRENCY, abi.encode(_range.poolKey.currency0));
-        planner = planner.add(Actions.CLOSE_CURRENCY, abi.encode(_range.poolKey.currency1));
+        planner = planner.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency0));
+        planner = planner.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency1));
         return planner.zip();
     }
 }
