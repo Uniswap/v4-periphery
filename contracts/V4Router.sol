@@ -54,8 +54,7 @@ abstract contract V4Router is IV4Router {
 
             _swapExactInput(params);
         } else if (swapType == SwapType.ExactInputSingle) {
-            IV4Router.ExactInputSingleParams memory params =
-                abi.decode(swapParams, (IV4Router.ExactInputSingleParams));
+            IV4Router.ExactInputSingleParams memory params = abi.decode(swapParams, (IV4Router.ExactInputSingleParams));
             (inputCurrency, outputCurrency) = params.zeroForOne
                 ? (params.poolKey.currency0, params.poolKey.currency1)
                 : (params.poolKey.currency1, params.poolKey.currency0);
@@ -194,7 +193,7 @@ abstract contract V4Router is IV4Router {
 
         poolManager.sync(currency);
         _pay(Currency.unwrap(currency), payer, address(poolManager), uint256(-delta));
-        poolManager.settle(currency);
+        poolManager.settle();
     }
 
     function _pay(address token, address payer, address recipient, uint256 amount) internal virtual;
