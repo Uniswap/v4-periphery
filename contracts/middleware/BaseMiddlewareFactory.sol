@@ -5,7 +5,7 @@ import {IMiddlewareFactory} from "../interfaces/IMiddlewareFactory.sol";
 import {BaseMiddleware} from "./BaseMiddleware.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
-contract BaseMiddlewareFactory is IMiddlewareFactory {
+abstract contract BaseMiddlewareFactory is IMiddlewareFactory {
     mapping(address => address) private _implementations;
 
     IPoolManager public immutable manager;
@@ -24,7 +24,5 @@ contract BaseMiddlewareFactory is IMiddlewareFactory {
         emit MiddlewareCreated(implementation, middleware);
     }
 
-    function _deployMiddleware(address implementation, bytes32 salt) internal virtual returns (address middleware) {
-        middleware = address(new BaseMiddleware{salt: salt}(manager, implementation));
-    }
+    function _deployMiddleware(address implementation, bytes32 salt) internal virtual returns (address middleware) {}
 }
