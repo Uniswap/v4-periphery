@@ -110,7 +110,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, ZERO_BYTES));
         planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd2, ZERO_BYTES));
 
-        planner = planner.finalize(range);
+        planner = planner.finalize(range.poolKey);
         lpm.modifyLiquidities(planner.zip());
 
         bytes32 positionId =
@@ -134,7 +134,7 @@ contract ExecuteTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquidit
         );
         planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, ZERO_BYTES));
 
-        planner = planner.finalize(range);
+        planner = planner.finalize(range.poolKey);
         lpm.modifyLiquidities(planner.zip());
 
         bytes32 positionId =

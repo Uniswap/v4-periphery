@@ -30,7 +30,7 @@ contract LiquidityFuzzers is Fuzzers {
             Actions.MINT, abi.encode(range, uint256(params.liquidityDelta), block.timestamp, recipient, hookData)
         );
 
-        planner = planner.finalize(range);
+        planner = planner.finalize(range.poolKey);
         lpm.modifyLiquidities(planner.zip());
 
         uint256 tokenId = lpm.nextTokenId() - 1;

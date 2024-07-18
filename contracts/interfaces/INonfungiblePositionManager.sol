@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {LiquidityRange} from "../types/LiquidityRange.sol";
 
 enum Actions {
@@ -16,17 +17,15 @@ enum Actions {
 
 interface INonfungiblePositionManager {
     error MismatchedLengths();
-
-    struct TokenPosition {
-        address owner;
-        LiquidityRange range;
-    }
-
     error MustBeUnlockedByThisContract();
     error DeadlinePassed();
     error UnsupportedAction();
+    error PositionMustBeEmpty();
 
-    function tokenPositions(uint256 tokenId) external view returns (address, LiquidityRange memory);
+    function tokenRange(uint256 tokenId)
+        external
+        view
+        returns (PoolKey memory poolKey, int24 tickLower, int24 tickUpper);
 
     /// @notice Batches many liquidity modification calls to pool manager
     /// @param payload is an encoding of actions, params, and currencies

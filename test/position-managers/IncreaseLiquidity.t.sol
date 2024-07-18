@@ -118,7 +118,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
-        planner = planner.finalize(range);
+        planner = planner.finalize(range.poolKey);
         vm.startPrank(alice);
         lpm.modifyLiquidities(planner.zip());
         vm.stopPrank();

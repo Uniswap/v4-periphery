@@ -32,8 +32,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, ERC721Permit
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
-    // maps the ERC721 tokenId to the keys that uniquely identify a liquidity position (owner, range)
-    mapping(uint256 tokenId => TokenPosition position) public tokenPositions;
+    // maps the ERC721 tokenId to its Range (poolKey, tick range)
+    mapping(uint256 tokenId => LiquidityRange range) public tokenRange;
 
     constructor(IPoolManager _manager)
         ImmutableState(_manager)
@@ -106,7 +106,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, ERC721Permit
 
         (delta,) = _modifyLiquidity(range, liquidity.toInt256(), bytes32(tokenId), hookData);
 
-        tokenPositions[tokenId] = TokenPosition({owner: owner, range: range});
+        tokenRange[tokenId] = range;
     }
 
     // Note: Calling increase with 0 will accrue any underlying fees.
@@ -115,9 +115,8 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, ERC721Permit
         isAuthorizedForToken(tokenId, sender)
         returns (BalanceDelta delta)
     {
-        TokenPosition memory tokenPos = tokenPositions[tokenId];
         // Note: The tokenId is used as the salt for this position, so every minted liquidity has unique storage in the pool manager.
-        (delta,) = _modifyLiquidity(tokenPos.range, liquidity.toInt256(), bytes32(tokenId), hookData);
+        (delta,) = _modifyLiquidity(tokenRange[tokenId], liquidity.toInt256(), bytes32(tokenId), hookData);
     }
 
     // Note: Calling decrease with 0 will accrue any underlying fees.
@@ -126,8 +125,7 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, ERC721Permit
         isAuthorizedForToken(tokenId, sender)
         returns (BalanceDelta delta)
     {
-        TokenPosition memory tokenPos = tokenPositions[tokenId];
-        (delta,) = _modifyLiquidity(tokenPos.range, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+        (delta,) = _modifyLiquidity(tokenRange[tokenId], -(liquidity.toInt256()), bytes32(tokenId), hookData);
     }
 
     // there is no authorization scheme because the payer/recipient is always the sender
@@ -147,10 +145,11 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, ERC721Permit
 
     function burn(uint256 tokenId, address sender) internal isAuthorizedForToken(tokenId, sender) {
         // We do not need to enforce the pool manager to be unlocked bc this function is purely clearing storage for the minted tokenId.
-        TokenPosition memory tokenPos = tokenPositions[tokenId];
+
         // Checks that the full position's liquidity has been removed and all tokens have been collected from tokensOwed.
-        _validateBurn(tokenPos.owner, tokenPos.range);
-        delete tokenPositions[tokenId];
+        _validateBurn(tokenId);
+
+        delete tokenRange[tokenId];
         // Burn the token.
         _burn(tokenId);
     }
@@ -171,12 +170,30 @@ contract NonfungiblePositionManager is INonfungiblePositionManager, ERC721Permit
         );
     }
 
-    function _validateBurn(address owner, LiquidityRange memory range) internal {
-        // LiquidityRangeId rangeId = range.toId();
-        // Position storage position = positions[owner][rangeId];
-        // if (position.liquidity > 0) revert PositionMustBeEmpty();
-        // if (position.tokensOwed0 != 0 && position.tokensOwed1 != 0) revert TokensMustBeCollected();
-        // delete positions[owner][rangeId];
+    function _validateBurn(uint256 tokenId) internal {
+        bytes32 positionId = getPositionIdFromTokenId(tokenId);
+        uint128 liquidity = manager.getPositionLiquidity(tokenRange[tokenId].poolKey.toId(), positionId);
+        if (liquidity > 0) revert PositionMustBeEmpty();
+    }
+
+    function getPositionIdFromTokenId(uint256 tokenId) public view returns (bytes32 positionId) {
+        LiquidityRange memory range = tokenRange[tokenId];
+        bytes32 salt = bytes32(tokenId);
+        int24 tickLower = range.tickLower;
+        int24 tickUpper = range.tickUpper;
+        address owner = address(this);
+
+        // TODO: reorganize this into library on core?
+        // positionId = keccak256(abi.encodePacked(owner, tickLower, tickUpper, salt))
+        /// @solidity memory-safe-assembly
+        assembly {
+            mstore(0x26, salt) // [0x26, 0x46)
+            mstore(0x06, tickUpper) // [0x23, 0x26)
+            mstore(0x03, tickLower) // [0x20, 0x23)
+            mstore(0, owner) // [0x0c, 0x20)
+            positionId := keccak256(0x0c, 0x3a) // len is 58 bytes
+            mstore(0x26, 0) // rewrite 0x26 to 0
+        }
     }
 
     modifier isAuthorizedForToken(uint256 tokenId, address sender) {

@@ -89,7 +89,8 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
     }
 
     function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
-        return spender == ownerOf(tokenId) || getApproved[tokenId] == spender || isApprovedForAll[ownerOf(tokenId)][spender];
+        return spender == ownerOf(tokenId) || getApproved[tokenId] == spender
+            || isApprovedForAll[ownerOf(tokenId)][spender];
     }
 
     /// @notice Returns the index of the bitmap and the bit position within the bitmap. Used for unordered nonces
