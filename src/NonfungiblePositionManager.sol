@@ -123,7 +123,7 @@ contract NonfungiblePositionManager is
             _modifyLiquidity(tokenRange[tokenId], -(liquidity.toInt256()), bytes32(tokenId), hookData);
         return abi.encode(delta);
     }
-
+     /// @param params is an encoding of LiquidityRange memory range, uint256 liquidity, address recipient, bytes hookData where recipient is the receiver / owner of the ERC721
     function _mint(bytes memory param) internal returns (bytes memory) {
         (LiquidityRange memory range, uint256 liquidity, address owner, bytes memory hookData) =
             abi.decode(param, (LiquidityRange, uint256, address, bytes));
