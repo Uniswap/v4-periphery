@@ -27,21 +27,16 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
     bytes32 public constant override PERMIT_TYPEHASH =
         0x49ecf333e5b8c95c40fdafc95c1ad136e8914a8fb55e9dc8bb01eaa83a2df9ad;
 
+    /// @dev Value is equal to keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
+    bytes32 public constant EIP712DOMAIN_TYPEHASH = 0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f;
+
     /// @notice Computes the nameHash and versionHash
     constructor(string memory name_, string memory symbol_, string memory version_) ERC721(name_, symbol_) {
         nameHash = keccak256(bytes(name_));
         versionHash = keccak256(bytes(version_));
 
-        cachedDomainSeparator = keccak256(
-            abi.encode(
-                // keccak256('EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)')
-                0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f,
-                nameHash,
-                versionHash,
-                block.chainid,
-                address(this)
-            )
-        );
+        cachedDomainSeparator =
+            keccak256(abi.encode(EIP712DOMAIN_TYPEHASH, nameHash, versionHash, block.chainid, address(this)));
         cachedChainId = block.chainid;
         cachedAddressThis = address(this);
     }
@@ -56,16 +51,7 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
         if (block.chainid == cachedChainId && address(this) == cachedAddressThis) {
             return cachedDomainSeparator;
         } else {
-            return keccak256(
-                abi.encode(
-                    // keccak256('EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)')
-                    0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f,
-                    nameHash,
-                    versionHash,
-                    block.chainid,
-                    address(this)
-                )
-            );
+            return keccak256(abi.encode(EIP712DOMAIN_TYPEHASH, nameHash, versionHash, block.chainid, address(this)));
         }
     }
 
@@ -83,7 +69,10 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
         bytes32 digest = getDigest(spender, tokenId, nonce, deadline);
 
         if (Address.isContract(owner)) {
-            if (IERC1271(owner).isValidSignature(digest, abi.encodePacked(r, s, v)) != IERC1271.isValidSignature.selector) {
+            if (
+                IERC1271(owner).isValidSignature(digest, abi.encodePacked(r, s, v))
+                    != IERC1271.isValidSignature.selector
+            ) {
                 revert Unauthorized();
             }
         } else {
