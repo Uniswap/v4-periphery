@@ -18,6 +18,7 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
@@ -68,27 +69,6 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         vm.stopPrank();
     }
 
-    // TODO: we dont accept collecting fees as 6909 yet
-    // function test_collect_6909(IPoolManager.ModifyLiquidityParams memory params) public {
-    //     params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
-    //     uint256 tokenId;
-    //     (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-    //     vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
-
-    //     // swap to create fees
-    //     uint256 swapAmount = 0.01e18;
-    //     swap(key, false, -int256(swapAmount), ZERO_BYTES);
-
-    //     // collect fees
-    //     BalanceDelta delta = collect(tokenId, address(this), ZERO_BYTES, true);
-
-    //     assertEq(delta.amount0(), 0);
-
-    //     assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(FEE_WAD), 1 wei);
-
-    //     assertEq(uint256(int256(delta.amount1())), manager.balanceOf(address(this), currency1.toId()));
-    // }
-
     function test_collect_erc20(IPoolManager.ModifyLiquidityParams memory params) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         uint256 tokenId;
@@ -109,50 +89,6 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         assertEq(uint256(int256(delta.amount0())), currency0.balanceOfSelf() - balance0Before);
         assertEq(uint256(int256(delta.amount1())), currency1.balanceOfSelf() - balance1Before);
     }
-
-    // TODO: we dont accept collecting fees as 6909 yet
-    // two users with the same range; one user cannot collect the other's fees
-    // function test_collect_sameRange_6909(IPoolManager.ModifyLiquidityParams memory params, uint256 liquidityDeltaBob)
-    //     public
-    // {
-    //     params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
-    //     params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
-    //     vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
-
-    //     liquidityDeltaBob = bound(liquidityDeltaBob, 100e18, 100_000e18);
-
-    //     LiquidityRange memory range =
-    //         LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
-    //     vm.prank(alice);
-    //     mint(range, uint256(params.liquidityDelta), block.timestamp + 1, alice, ZERO_BYTES);
-    //     uint256 tokenIdAlice = lpm.nextTokenId() - 1;
-
-    //     vm.prank(bob);
-    //     mint(range, liquidityDeltaBob, block.timestamp + 1, bob, ZERO_BYTES);
-    //     uint256 tokenIdBob = lpm.nextTokenId() - 1;
-
-    //     // swap to create fees
-    //     uint256 swapAmount = 0.01e18;
-    //     swap(key, false, -int256(swapAmount), ZERO_BYTES);
-
-    //     // alice collects only her fees
-    //     vm.prank(alice);
-    //     BalanceDelta delta = collect(tokenIdAlice, alice, ZERO_BYTES, true);
-    //     assertEq(uint256(uint128(delta.amount0())), manager.balanceOf(alice, currency0.toId()));
-    //     assertEq(uint256(uint128(delta.amount1())), manager.balanceOf(alice, currency1.toId()));
-    //     assertTrue(delta.amount1() != 0);
-
-    //     // bob collects only his fees
-    //     vm.prank(bob);
-    //     delta = collect(tokenIdBob, bob, ZERO_BYTES, true);
-    //     assertEq(uint256(uint128(delta.amount0())), manager.balanceOf(bob, currency0.toId()));
-    //     assertEq(uint256(uint128(delta.amount1())), manager.balanceOf(bob, currency1.toId()));
-    //     assertTrue(delta.amount1() != 0);
-
-    //     // position manager holds no fees now
-    //     assertApproxEqAbs(manager.balanceOf(address(lpm), currency0.toId()), 0, 1 wei);
-    //     assertApproxEqAbs(manager.balanceOf(address(lpm), currency1.toId()), 0, 1 wei);
-    // }
 
     function test_collect_sameRange_erc20(IPoolManager.ModifyLiquidityParams memory params, uint256 liquidityDeltaBob)
         public
@@ -286,4 +222,8 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
             tolerance
         );
     }
+
+    // TODO: ERC6909 Support.
+    function test_collect_6909() public {}
+    function test_collect_sameRange_6909() public {}
 }

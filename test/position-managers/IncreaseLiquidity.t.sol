@@ -28,6 +28,8 @@ import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
 
+import "forge-std/console2.sol";
+
 contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
@@ -46,6 +48,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
     uint256 FEE_WAD;
 
     LiquidityRange range;
+
+    // Error tolerance.
+    uint256 tolerance = 0.00000000001 ether;
 
     function setUp() public {
         Deployers.deployFreshManagerAndRouters();
@@ -76,7 +81,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
-    function test_increaseLiquidity_withExactFees1() public {
+    function test_increaseLiquidity_withExactFees() public {
         // Alice and Bob provide liquidity on the range
         // Alice uses her exact fees to increase liquidity (compounding)
 
@@ -122,9 +127,6 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         vm.startPrank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         vm.stopPrank();
-
-        // It is not exact because of the error in the fee calculation and error in the
-        uint256 tolerance = 0.00000000001 ether;
 
         // alice barely spent any tokens
         // TODO: This is a case for not caring about dust left in pool manager :/
@@ -172,96 +174,86 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
         vm.stopPrank();
 
-        // It is not exact because of the error in the fee calculation and error in the
-        uint256 tolerance = 0.00000000001 ether;
-
         // alice barely spent any tokens
         // TODO: This is a case for not caring about dust left in pool manager :/
         assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
         assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
     }
 
-    // function test_increaseLiquidity_withExcessFees() public {
-    //     // Alice and Bob provide liquidity on the range
-    //     // Alice uses her fees to increase liquidity. Excess fees are accounted to alice
-    //     uint256 liquidityAlice = 3_000e18;
-    //     uint256 liquidityBob = 1_000e18;
-    //     uint256 totalLiquidity = liquidityAlice + liquidityBob;
+    function test_increaseLiquidity_sameRange_withExcessFees() public {
+        // Alice and Bob provide liquidity on the same range
+        // Alice uses half her fees to increase liquidity. The other half are collected to her wallet.
+        // Bob collects all fees.
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+        uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
-    //     // alice provides liquidity
-    //     vm.prank(alice);
-    //     mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
-    //     uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        // alice provides liquidity
+        vm.prank(alice);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
-    //     // bob provides liquidity
-    //     vm.prank(bob);
-    //     mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
-    //     uint256 tokenIdBob = lpm.nextTokenId() - 1;
+        // bob provides liquidity
+        vm.prank(bob);
+        mint(range, liquidityBob, bob, ZERO_BYTES);
+        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
-    //     // swap to create fees
-    //     uint256 swapAmount = 0.001e18;
-    //     swap(key, true, -int256(swapAmount), ZERO_BYTES);
-    //     swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
+        // swap to create fees
+        uint256 swapAmount = 0.001e18;
+        swap(key, true, -int256(swapAmount), ZERO_BYTES);
+        swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
 
-    //     // alice will use half of her fees to increase liquidity
-    //     (uint256 token0Owed, uint256 token1Owed) = lpm.feesOwed(tokenIdAlice);
-    //     {
-    //         (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
-    //         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
-    //             sqrtPriceX96,
-    //             TickMath.getSqrtPriceAtTick(range.tickLower),
-    //             TickMath.getSqrtPriceAtTick(range.tickUpper),
-    //             token0Owed / 2,
-    //             token1Owed / 2
-    //         );
+        // alice will use half of her fees to increase liquidity
+        BalanceDelta aliceFeesOwed = IPositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
 
-    //         vm.startPrank(alice);
-    //         increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
-    //         vm.stopPrank();
-    //     }
+        {
+            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+            uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(range.tickLower),
+                TickMath.getSqrtPriceAtTick(range.tickUpper),
+                uint256(int256(aliceFeesOwed.amount0() / 2)),
+                uint256(int256(aliceFeesOwed.amount1() / 2))
+            );
+            uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+            uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
-    //     {
-    //         // bob collects his fees
-    //         uint256 balance0BeforeBob = currency0.balanceOf(bob);
-    //         uint256 balance1BeforeBob = currency1.balanceOf(bob);
-    //         vm.startPrank(bob);
-    //         collect(tokenIdBob, bob, ZERO_BYTES, false);
-    //         vm.stopPrank();
-    //         uint256 balance0AfterBob = currency0.balanceOf(bob);
-    //         uint256 balance1AfterBob = currency1.balanceOf(bob);
-    //         assertApproxEqAbs(
-    //             balance0AfterBob - balance0BeforeBob,
-    //             swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
-    //             1 wei
-    //         );
-    //         assertApproxEqAbs(
-    //             balance1AfterBob - balance1BeforeBob,
-    //             swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
-    //             1 wei
-    //         );
-    //     }
+            vm.startPrank(alice);
+            increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
+            vm.stopPrank();
 
-    //     {
-    //         // alice collects her fees, which should be about half of the fees
-    //         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
-    //         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
-    //         vm.startPrank(alice);
-    //         collect(tokenIdAlice, alice, ZERO_BYTES, false);
-    //         vm.stopPrank();
-    //         uint256 balance0AfterAlice = currency0.balanceOf(alice);
-    //         uint256 balance1AfterAlice = currency1.balanceOf(alice);
-    //         assertApproxEqAbs(
-    //             balance0AfterAlice - balance0BeforeAlice,
-    //             swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, totalLiquidity) / 2,
-    //             9 wei
-    //         );
-    //         assertApproxEqAbs(
-    //             balance1AfterAlice - balance1BeforeAlice,
-    //             swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, totalLiquidity) / 2,
-    //             1 wei
-    //         );
-    //     }
-    // }
+            assertApproxEqAbs(
+                currency0.balanceOf(alice) - balance0BeforeAlice,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, totalLiquidity) / 2,
+                tolerance
+            );
+            assertApproxEqAbs(
+                currency1.balanceOf(alice) - balance1BeforeAlice,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, totalLiquidity) / 2,
+                tolerance
+            );
+        }
+
+        {
+            // bob collects his fees
+            uint256 balance0BeforeBob = currency0.balanceOf(bob);
+            uint256 balance1BeforeBob = currency1.balanceOf(bob);
+            vm.startPrank(bob);
+            collect(tokenIdBob, ZERO_BYTES);
+            vm.stopPrank();
+
+            assertApproxEqAbs(
+                currency0.balanceOf(bob) - balance0BeforeBob,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
+                tolerance
+            );
+            assertApproxEqAbs(
+                currency1.balanceOf(bob) - balance1BeforeBob,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
+                tolerance
+            );
+        }
+    }
 
     function test_increaseLiquidity_withInsufficientFees() public {
         // Alice and Bob provide liquidity on the range
@@ -323,12 +315,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
             assertApproxEqAbs(
                 balance0AfterBob - balance0BeforeBob,
                 swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
-                1 wei
+                tolerance
             );
             assertApproxEqAbs(
                 balance1AfterBob - balance1BeforeBob,
                 swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
-                1 wei
+                tolerance
             );
         }
     }

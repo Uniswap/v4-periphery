@@ -21,6 +21,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 
 import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
@@ -139,52 +140,6 @@ contract PositionManagerTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, 
         assertEq(lpm.ownerOf(tokenId), alice);
     }
 
-    // function test_mint_slippageRevert(int24 tickLower, int24 tickUpper, uint256 amount0Desired, uint256 amount1Desired)
-    //     public
-    // {
-    //     (tickLower, tickUpper) = createFuzzyLiquidityParams(key, tickLower, tickUpper, DEAD_VALUE);
-    //     vm.assume(tickLower < 0 && 0 < tickUpper);
-
-    //     (amount0Desired, amount1Desired) =
-    //         createFuzzyAmountDesired(key, tickLower, tickUpper, amount0Desired, amount1Desired);
-    //     vm.assume(0.00001e18 < amount0Desired);
-    //     vm.assume(0.00001e18 < amount1Desired);
-
-    //     uint256 amount0Min = amount0Desired - 1;
-    //     uint256 amount1Min = amount1Desired - 1;
-
-    //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
-    //     IPositionManager.MintParams memory params = IPositionManager.MintParams({
-    //         range: range,
-    //         amount0Desired: amount0Desired,
-    //         amount1Desired: amount1Desired,
-    //         amount0Min: amount0Min,
-    //         amount1Min: amount1Min,
-    //         deadline: block.timestamp + 1,
-    //         recipient: address(this),
-    //         hookData: ZERO_BYTES
-    //     });
-
-    //     // seed some liquidity so we can move the price
-    //     modifyLiquidityRouter.modifyLiquidity(
-    //         key,
-    //         IPoolManager.ModifyLiquidityParams({
-    //             tickLower: TickMath.minUsableTick(key.tickSpacing),
-    //             tickUpper: TickMath.maxUsableTick(key.tickSpacing),
-    //             liquidityDelta: 100_000e18,
-    //             salt: 0
-    //         }),
-    //         ZERO_BYTES
-    //     );
-
-    //     // swap to move the price
-    //     swap(key, true, -1000e18, ZERO_BYTES);
-
-    //     // will revert because amount0Min and amount1Min are very strict
-    //     vm.expectRevert();
-    //     lpm.mint(params);
-    // }
-
     function test_burn(IPoolManager.ModifyLiquidityParams memory params) public {
         uint256 balance0Start = currency0.balanceOfSelf();
         uint256 balance1Start = currency1.balanceOfSelf();
@@ -252,40 +207,38 @@ contract PositionManagerTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, 
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
     }
 
-    // function test_decreaseLiquidity_collectFees(
-    //     IPoolManager.ModifyLiquidityParams memory params,
-    //     uint256 decreaseLiquidityDelta
-    // ) public {
-    //     uint256 tokenId;
-    //     (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-    //     vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
-    //     vm.assume(0 < decreaseLiquidityDelta);
-    //     vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
-    //     vm.assume(int256(decreaseLiquidityDelta) <= params.liquidityDelta);
+    function test_decreaseLiquidity_assertCollectedBalance(
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 decreaseLiquidityDelta
+    ) public {
+        uint256 tokenId;
+        (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
+        vm.assume(0 < decreaseLiquidityDelta);
+        vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
+        vm.assume(int256(decreaseLiquidityDelta) <= params.liquidityDelta);
 
-    //     LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        LiquidityRange memory range =
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-    //     // swap to create fees
-    //     uint256 swapAmount = 0.01e18;
-    //     swap(key, false, int256(swapAmount), ZERO_BYTES);
+        // swap to create fees
+        uint256 swapAmount = 0.01e18;
+        swap(key, false, int256(swapAmount), ZERO_BYTES);
 
-    //     uint256 balance0Before = currency0.balanceOfSelf();
-    //     uint256 balance1Before = currency1.balanceOfSelf();
-    //             BalanceDelta delta = lpm.decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES, false);
-    //     (uint256 liquidity,,,,) = lpm.positions(address(this), range.toId());
-    //     assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+        BalanceDelta delta = decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES);
 
-    //     // express key.fee as wad (i.e. 3000 = 0.003e18)
-    //     uint256 feeWad = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
 
-    //     assertEq(currency0.balanceOfSelf() - balance0Before, uint256(int256(-delta.amount0())), "boo");
-    //     assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(-delta.amount1())), "guh");
-    // }
+        assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
-    function test_mintTransferBurn() public {}
-    function test_mintTransferCollect() public {}
-    function test_mintTransferIncrease() public {}
-    function test_mintTransferDecrease() public {}
+        // The change in balance equals the delta returned.
+        assertEq(currency0.balanceOfSelf() - balance0Before, uint256(int256(delta.amount0())), "boo");
+        assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(delta.amount1())), "guh");
+    }
 
     function test_initialize(IPoolManager.ModifyLiquidityParams memory params) public {
         // initialize a new pool and add liquidity
@@ -301,4 +254,10 @@ contract PositionManagerTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, 
 
         assertEq(lpm.ownerOf(1), address(this));
     }
+
+    function test_mintTransferBurn() public {}
+    function test_mintTransferCollect() public {}
+    function test_mintTransferIncrease() public {}
+    function test_mintTransferDecrease() public {}
+    function test_mint_slippageRevert() public {}
 }

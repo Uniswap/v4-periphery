@@ -24,6 +24,7 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
+import {IMulticall} from "../../src/interfaces/IMulticall.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
@@ -56,7 +57,7 @@ contract MulticallTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquid
 
         // Use multicall to initialize a pool and mint liquidity
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(PositionManager(lpm).initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
+        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
 
         LiquidityRange memory range = LiquidityRange({
             poolKey: key,
@@ -68,9 +69,9 @@ contract MulticallTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquid
         planner = planner.add(Actions.MINT, abi.encode(range, 100e18, address(this), ZERO_BYTES));
         bytes memory actions = planner.finalize(range.poolKey);
 
-        calls[1] = abi.encodeWithSelector(PositionManager(lpm).modifyLiquidities.selector, actions, _deadline);
+        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
-        lpm.multicall(calls);
+        IMulticall(address(lpm)).multicall(calls);
 
         // test swap, doesn't revert
         swap(key, true, -1e18, ZERO_BYTES);
