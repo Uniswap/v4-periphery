@@ -202,7 +202,6 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
 
     function testRevertOnDeltaFlags() public {
         uint160 flags = uint160(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG);
-<<<<<<< HEAD
         address removeReturnDeltas = address(1 << 100 | flags);
         (address hookAddress, bytes32 salt) = HookMiner.find(
             address(factory),
@@ -212,13 +211,6 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         );
         vm.expectRevert(abi.encodePacked(bytes16(MiddlewareRemove.HookPermissionForbidden.selector), hookAddress));
         factory.createMiddleware(address(removeReturnDeltas), salt);
-=======
-        (address hookAddress, bytes32 salt) = HookMiner.find(
-            address(factory), flags, type(MiddlewareRemove).creationCode, abi.encode(address(manager), address(counter))
-        );
-        vm.expectRevert(MiddlewareRemove.HookPermissionForbidden.selector);
-        factory.createMiddleware(address(counter), salt);
->>>>>>> 39903e2 (override deltas edge case with internal delegatecall)
     }
 
     // from BaseMiddlewareFactory.t.sol
