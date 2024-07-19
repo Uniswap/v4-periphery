@@ -32,6 +32,7 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
     constructor(IPoolManager poolManager) SafeCallback(poolManager) {}
 
     /// @notice internal function that triggers the execution of a set of actions on v4
+    /// TODO move the reentrancy lock modifier up a level
     function _executeActions(bytes calldata params) internal isNotLocked {
         poolManager.unlock(params);
     }
