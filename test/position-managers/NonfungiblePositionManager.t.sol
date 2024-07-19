@@ -191,7 +191,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
 
         // create liquidity we can burn
         uint256 tokenId;
-        (tokenId, params) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         assertEq(tokenId, 1);
@@ -235,7 +235,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         public
     {
         uint256 tokenId;
-        (tokenId, params) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.assume(0 < decreaseLiquidityDelta);
         vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
         vm.assume(int256(decreaseLiquidityDelta) <= params.liquidityDelta);
@@ -257,7 +257,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     //     uint256 decreaseLiquidityDelta
     // ) public {
     //     uint256 tokenId;
-    //     (tokenId, params) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+    //     (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
     //     vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
     //     vm.assume(0 < decreaseLiquidityDelta);
     //     vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));

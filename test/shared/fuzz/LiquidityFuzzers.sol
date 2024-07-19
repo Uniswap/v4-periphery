@@ -14,7 +14,7 @@ import {Planner} from "../../utils/Planner.sol";
 contract LiquidityFuzzers is Fuzzers {
     using Planner for Planner.Plan;
 
-    function createFuzzyLiquidity(
+    function addFuzzyLiquidity(
         INonfungiblePositionManager lpm,
         address recipient,
         PoolKey memory key,
