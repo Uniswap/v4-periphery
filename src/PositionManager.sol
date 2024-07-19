@@ -157,7 +157,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         // the sender is the payer or receiver
         if (currencyDelta < 0) {
             currency.settle(manager, sender, uint256(-int256(currencyDelta)), false);
-        } else {
+        } else if (currencyDelta > 0) {
             currency.take(manager, sender, uint256(int256(currencyDelta)), false);
         }
 
