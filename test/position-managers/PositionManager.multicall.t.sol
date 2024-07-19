@@ -67,4 +67,6 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(result.amount0(), amountSpecified);
         assertGt(result.amount1(), 0);
     }
+
+    function test_multicall_permitAndDecrease() public {}
 }
