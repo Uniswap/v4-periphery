@@ -80,7 +80,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
     //     swap(key, false, -int256(swapAmount), ZERO_BYTES);
 
     //     // collect fees
-    //     BalanceDelta delta = _collect(tokenId, address(this), ZERO_BYTES, true);
+    //     BalanceDelta delta = collect(tokenId, address(this), ZERO_BYTES, true);
 
     //     assertEq(delta.amount0(), 0);
 
@@ -102,7 +102,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = _collect(tokenId, address(this), ZERO_BYTES);
+        BalanceDelta delta = collect(tokenId, address(this), ZERO_BYTES);
 
         // express key.fee as wad (i.e. 3000 = 0.003e18)
         assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(FEE_WAD), 1 wei);
@@ -124,11 +124,11 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
     //     LiquidityRange memory range =
     //         LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
     //     vm.prank(alice);
-    //     _mint(range, uint256(params.liquidityDelta), block.timestamp + 1, alice, ZERO_BYTES);
+    //     mint(range, uint256(params.liquidityDelta), block.timestamp + 1, alice, ZERO_BYTES);
     //     uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
     //     vm.prank(bob);
-    //     _mint(range, liquidityDeltaBob, block.timestamp + 1, bob, ZERO_BYTES);
+    //     mint(range, liquidityDeltaBob, block.timestamp + 1, bob, ZERO_BYTES);
     //     uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
     //     // swap to create fees
@@ -137,14 +137,14 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
 
     //     // alice collects only her fees
     //     vm.prank(alice);
-    //     BalanceDelta delta = _collect(tokenIdAlice, alice, ZERO_BYTES, true);
+    //     BalanceDelta delta = collect(tokenIdAlice, alice, ZERO_BYTES, true);
     //     assertEq(uint256(uint128(delta.amount0())), manager.balanceOf(alice, currency0.toId()));
     //     assertEq(uint256(uint128(delta.amount1())), manager.balanceOf(alice, currency1.toId()));
     //     assertTrue(delta.amount1() != 0);
 
     //     // bob collects only his fees
     //     vm.prank(bob);
-    //     delta = _collect(tokenIdBob, bob, ZERO_BYTES, true);
+    //     delta = collect(tokenIdBob, bob, ZERO_BYTES, true);
     //     assertEq(uint256(uint128(delta.amount0())), manager.balanceOf(bob, currency0.toId()));
     //     assertEq(uint256(uint128(delta.amount1())), manager.balanceOf(bob, currency1.toId()));
     //     assertTrue(delta.amount1() != 0);
@@ -166,11 +166,11 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         vm.prank(alice);
-        _mint(range, uint256(params.liquidityDelta), alice, ZERO_BYTES);
+        mint(range, uint256(params.liquidityDelta), alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.prank(bob);
-        _mint(range, liquidityDeltaBob, bob, ZERO_BYTES);
+        mint(range, liquidityDeltaBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // confirm the positions are same range
@@ -187,7 +187,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 balance0AliceBefore = currency0.balanceOf(alice);
         uint256 balance1AliceBefore = currency1.balanceOf(alice);
         vm.startPrank(alice);
-        BalanceDelta delta = _collect(tokenIdAlice, alice, ZERO_BYTES);
+        BalanceDelta delta = collect(tokenIdAlice, alice, ZERO_BYTES);
         vm.stopPrank();
         uint256 balance0AliceAfter = currency0.balanceOf(alice);
         uint256 balance1AliceAfter = currency1.balanceOf(alice);
@@ -200,7 +200,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
         vm.startPrank(bob);
-        delta = _collect(tokenIdBob, bob, ZERO_BYTES);
+        delta = collect(tokenIdBob, bob, ZERO_BYTES);
         vm.stopPrank();
         uint256 balance0BobAfter = currency0.balanceOf(bob);
         uint256 balance1BobAfter = currency1.balanceOf(bob);
@@ -228,14 +228,14 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 liquidityBob = 1000e18;
 
         vm.prank(alice);
-        BalanceDelta lpDeltaAlice = _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        BalanceDelta lpDeltaAlice = mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         uint256 aliceBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(alice));
         uint256 aliceBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(alice));
 
         vm.prank(bob);
-        BalanceDelta lpDeltaBob = _mint(range, liquidityBob, bob, ZERO_BYTES);
+        BalanceDelta lpDeltaBob = mint(range, liquidityBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         uint256 bobBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(bob));
@@ -249,7 +249,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         // alice decreases liquidity
         vm.startPrank(alice);
         lpm.approve(address(this), tokenIdAlice);
-        _decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES);
+        decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES);
         vm.stopPrank();
 
         uint256 tolerance = 0.000000001 ether;
@@ -270,7 +270,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         // bob decreases half of his liquidity
         vm.startPrank(bob);
         lpm.approve(address(this), tokenIdBob);
-        _decreaseLiquidity(tokenIdBob, liquidityBob / 2, ZERO_BYTES);
+        decreaseLiquidity(tokenIdBob, liquidityBob / 2, ZERO_BYTES);
         vm.stopPrank();
 
         // bob has accrued half his principle liquidity + any fees in token0

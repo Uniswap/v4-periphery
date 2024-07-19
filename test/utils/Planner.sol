@@ -34,13 +34,13 @@ library Planner {
         return Plan({actions: actions, params: params});
     }
 
-    function finalize(Plan memory plan, PoolKey memory poolKey) internal pure returns (Plan memory) {
+    function finalize(Plan memory plan, PoolKey memory poolKey) internal pure returns (bytes memory) {
         plan = plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency0));
         plan = plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency1));
-        return plan;
+        return plan.encode();
     }
 
-    function zip(Plan memory plan) internal pure returns (bytes memory) {
+    function encode(Plan memory plan) internal pure returns (bytes memory) {
         return abi.encode(plan.actions, plan.params);
     }
 }

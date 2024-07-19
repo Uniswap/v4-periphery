@@ -84,7 +84,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
     function test_permit_increaseLiquidity() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
@@ -95,7 +95,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
         vm.startPrank(bob);
-        _increaseLiquidity(tokenIdAlice, newLiquidity, ZERO_BYTES);
+        increaseLiquidity(tokenIdAlice, newLiquidity, ZERO_BYTES);
         vm.stopPrank();
 
         // alice's position has new liquidity
@@ -112,7 +112,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
     function test_permit_decreaseLiquidity() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
@@ -121,7 +121,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
         vm.startPrank(bob);
-        _decreaseLiquidity(tokenIdAlice, liquidityToRemove, ZERO_BYTES);
+        decreaseLiquidity(tokenIdAlice, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
         // alice's position decreased liquidity
@@ -135,7 +135,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
     function test_permit_collect() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // donate to create fee revenue
@@ -153,7 +153,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
         vm.startPrank(bob);
-        _collect(tokenIdAlice, recipient, ZERO_BYTES);
+        collect(tokenIdAlice, recipient, ZERO_BYTES);
         vm.stopPrank();
 
         assertApproxEqAbs(currency0.balanceOf(recipient), balance0BobBefore + currency0Revenue, 1 wei);
@@ -166,7 +166,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
 
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob cannot permit himself on alice's token
@@ -184,7 +184,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         // increaseLiquidity fails if the owner did not permit
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob cannot increase liquidity on alice's token
@@ -200,7 +200,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         // decreaseLiquidity fails if the owner did not permit
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob cannot decrease liquidity on alice's token
@@ -216,7 +216,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         // collect fails if the owner did not permit
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // donate to create fee revenue
@@ -236,7 +236,7 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
     function test_permit_nonceAlreadyUsed() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
@@ -257,13 +257,13 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
     function test_permit_nonceAlreadyUsed_twoPositions() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.prank(alice);
         range.tickLower = -600;
         range.tickUpper = 600;
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice2 = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions for first token

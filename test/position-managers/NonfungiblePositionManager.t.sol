@@ -77,7 +77,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        BalanceDelta delta = _mint(range, liquidityToAdd, address(this), ZERO_BYTES);
+        BalanceDelta delta = mint(range, liquidityToAdd, address(this), ZERO_BYTES);
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), address(this));
@@ -110,7 +110,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        BalanceDelta delta = _mint(range, liquidityToAdd, address(this), ZERO_BYTES);
+        BalanceDelta delta = mint(range, liquidityToAdd, address(this), ZERO_BYTES);
 
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
@@ -133,7 +133,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         uint256 tokenId = lpm.nextTokenId();
-        _mint(range, liquidityToAdd, address(alice), ZERO_BYTES);
+        mint(range, liquidityToAdd, address(alice), ZERO_BYTES);
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), alice);
@@ -207,8 +207,8 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
-        BalanceDelta deltaDecrease = _decreaseLiquidity(tokenId, liquidity, ZERO_BYTES);
-        _burn(tokenId);
+        BalanceDelta deltaDecrease = decreaseLiquidity(tokenId, liquidity, ZERO_BYTES);
+        burn(tokenId);
 
         (liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
 
@@ -243,7 +243,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-        _decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES);
+        decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES);
 
         bytes32 positionId =
             keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
@@ -297,7 +297,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         // add liquidity to verify pool initialized
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
-        _mint(range, 100e18, address(this), ZERO_BYTES);
+        mint(range, 100e18, address(this), ZERO_BYTES);
 
         assertEq(lpm.ownerOf(1), address(this));
     }

@@ -85,12 +85,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(range, liquidityBob, bob, ZERO_BYTES);
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -118,10 +118,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
-        planner = planner.finalize(range.poolKey);
+        bytes memory calls = planner.finalize(range.poolKey);
         vm.startPrank(alice);
-        bytes memory actions = planner.zip();
-        lpm.modifyLiquidities(actions, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         vm.stopPrank();
 
         // It is not exact because of the error in the fee calculation and error in the
@@ -143,12 +142,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(range, liquidityBob, bob, ZERO_BYTES);
 
         // donate to create fees
         uint256 amountDonate = 0.2e18;
@@ -170,7 +169,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
         vm.startPrank(alice);
-        _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
+        increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
         vm.stopPrank();
 
         // It is not exact because of the error in the fee calculation and error in the
@@ -191,12 +190,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
     //     // alice provides liquidity
     //     vm.prank(alice);
-    //     _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+    //     mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
     //     uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
     //     // bob provides liquidity
     //     vm.prank(bob);
-    //     _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+    //     mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
     //     uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
     //     // swap to create fees
@@ -217,7 +216,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
     //         );
 
     //         vm.startPrank(alice);
-    //         _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
+    //         increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES, false);
     //         vm.stopPrank();
     //     }
 
@@ -226,7 +225,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
     //         uint256 balance0BeforeBob = currency0.balanceOf(bob);
     //         uint256 balance1BeforeBob = currency1.balanceOf(bob);
     //         vm.startPrank(bob);
-    //         _collect(tokenIdBob, bob, ZERO_BYTES, false);
+    //         collect(tokenIdBob, bob, ZERO_BYTES, false);
     //         vm.stopPrank();
     //         uint256 balance0AfterBob = currency0.balanceOf(bob);
     //         uint256 balance1AfterBob = currency1.balanceOf(bob);
@@ -247,7 +246,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
     //         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
     //         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
     //         vm.startPrank(alice);
-    //         _collect(tokenIdAlice, alice, ZERO_BYTES, false);
+    //         collect(tokenIdAlice, alice, ZERO_BYTES, false);
     //         vm.stopPrank();
     //         uint256 balance0AfterAlice = currency0.balanceOf(alice);
     //         uint256 balance1AfterAlice = currency1.balanceOf(alice);
@@ -273,12 +272,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(range, liquidityBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
@@ -302,7 +301,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
             vm.startPrank(alice);
-            _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
+            increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
             vm.stopPrank();
             uint256 balance0AfterAlice = currency0.balanceOf(alice);
             uint256 balance1AfterAlice = currency1.balanceOf(alice);
@@ -317,7 +316,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
             uint256 balance0BeforeBob = currency0.balanceOf(bob);
             uint256 balance1BeforeBob = currency1.balanceOf(bob);
             vm.startPrank(bob);
-            _collect(tokenIdBob, bob, ZERO_BYTES);
+            collect(tokenIdBob, bob, ZERO_BYTES);
             vm.stopPrank();
             uint256 balance0AfterBob = currency0.balanceOf(bob);
             uint256 balance1AfterBob = currency1.balanceOf(bob);
