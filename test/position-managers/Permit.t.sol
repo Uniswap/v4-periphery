@@ -280,4 +280,63 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         lpm.permit(bob, tokenIdAlice2, block.timestamp + 1, nonce, v, r, s);
         vm.stopPrank();
     }
+
+    // Bob can use alice's signature to permit & decrease liquidity
+    function test_permit_operatorSelfPermit() public {
+        uint256 liquidityAlice = 1e18;
+        vm.startPrank(alice);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // Alice gives Bob permission to operate on her liquidity
+        uint256 nonce = 1;
+        bytes32 digest = lpm.getDigest(bob, tokenId, nonce, block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+
+        // bob gives himself permission
+        vm.prank(bob);
+        lpm.permit(bob, tokenId, block.timestamp + 1, nonce, v, r, s);
+
+        // bob can decrease liquidity on alice's token
+        uint256 liquidityToRemove = 0.4444e18;
+        vm.startPrank(bob);
+        decreaseLiquidity(tokenId, liquidityToRemove, ZERO_BYTES);
+        vm.stopPrank();
+
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        assertEq(liquidity, liquidityAlice - liquidityToRemove);
+    }
+
+    // Charlie uses Alice's signature to give permission to Bob
+    function test_permit_thirdParty() public {
+        uint256 liquidityAlice = 1e18;
+        vm.startPrank(alice);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // Alice gives Bob permission to operate on her liquidity
+        uint256 nonce = 1;
+        bytes32 digest = lpm.getDigest(bob, tokenId, nonce, block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+
+        // charlie gives Bob permission to operate on alice's token
+        address charlie = makeAddr("CHARLIE");
+        vm.prank(charlie);
+        lpm.permit(bob, tokenId, block.timestamp + 1, nonce, v, r, s);
+
+        // bob can decrease liquidity on alice's token
+        uint256 liquidityToRemove = 0.4444e18;
+        vm.startPrank(bob);
+        decreaseLiquidity(tokenId, liquidityToRemove, ZERO_BYTES);
+        vm.stopPrank();
+
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        assertEq(liquidity, liquidityAlice - liquidityToRemove);
+    }
 }

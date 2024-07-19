@@ -78,4 +78,6 @@ contract MulticallTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquid
         // test swap, doesn't revert
         swap(key, true, -1e18, ZERO_BYTES);
     }
+
+    function test_multicall_permitAndDecrease() public {}
 }

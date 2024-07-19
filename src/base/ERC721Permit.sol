@@ -71,7 +71,22 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
         }
 
         _useUnorderedNonce(owner, nonce);
-        approve(spender, tokenId);
+        _approve(owner, spender, tokenId);
+    }
+
+    function approve(address spender, uint256 id) public override {
+        // override Solmate's ERC721 approve so approve() and permit() share the same code paths
+
+        address owner = _ownerOf[id];
+
+        require(msg.sender == owner || isApprovedForAll[owner][msg.sender], "NOT_AUTHORIZED");
+
+        _approve(owner, spender, id);        
+    }
+
+    function _approve(address owner, address spender, uint256 id) internal {
+        getApproved[id] = spender;
+        emit Approval(owner, spender, id);
     }
 
     function getDigest(address spender, uint256 tokenId, uint256 _nonce, uint256 deadline)
