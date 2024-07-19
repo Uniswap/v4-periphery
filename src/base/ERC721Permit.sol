@@ -79,7 +79,7 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
 
         require(msg.sender == owner || isApprovedForAll[owner][msg.sender], "NOT_AUTHORIZED");
 
-        _approve(owner, spender, id);        
+        _approve(owner, spender, id);
     }
 
     function _approve(address owner, address spender, uint256 id) internal {
