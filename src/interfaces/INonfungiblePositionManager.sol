@@ -19,6 +19,7 @@ interface INonfungiblePositionManager {
     error UnsupportedAction();
     error PositionMustBeEmpty();
 
+    // TODO: This will just return a positionId
     function tokenRange(uint256 tokenId)
         external
         view

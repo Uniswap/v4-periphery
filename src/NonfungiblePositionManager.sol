@@ -206,7 +206,6 @@ contract NonfungiblePositionManager is
         address owner = address(this);
 
         // positionId = keccak256(abi.encodePacked(owner, tickLower, tickUpper, salt))
-        /// @solidity memory-safe-assembly
         assembly {
             mstore(0x26, salt) // [0x26, 0x46)
             mstore(0x06, tickUpper) // [0x23, 0x26)
