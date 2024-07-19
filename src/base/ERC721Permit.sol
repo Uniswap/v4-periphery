@@ -73,19 +73,21 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
         payable
         override
     {
-        require(block.timestamp <= deadline, "Permit expired");
+        if (block.timestamp > deadline) revert DeadlineExpired();
 
         address owner = ownerOf(tokenId);
-        require(spender != owner, "ERC721Permit: approval to current owner");
+        if (spender == owner) revert NoSelfPermit();
 
         bytes32 digest = getDigest(spender, tokenId, nonce, deadline);
 
         if (Address.isContract(owner)) {
-            require(IERC1271(owner).isValidSignature(digest, abi.encodePacked(r, s, v)) == 0x1626ba7e, "Unauthorized");
+            if (IERC1271(owner).isValidSignature(digest, abi.encodePacked(r, s, v)) != IERC1271.isValidSignature.selector) {
+                revert Unauthorized();
+            }
         } else {
             address recoveredAddress = ecrecover(digest, v, r, s);
-            require(recoveredAddress != address(0), "Invalid signature");
-            require(recoveredAddress == owner, "Unauthorized");
+            if (recoveredAddress == address(0)) revert InvalidSignature();
+            if (recoveredAddress != owner) revert Unauthorized();
         }
 
         _useUnorderedNonce(owner, nonce);
@@ -97,7 +99,7 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
 
         address owner = _ownerOf[id];
 
-        require(msg.sender == owner || isApprovedForAll[owner][msg.sender], "NOT_AUTHORIZED");
+        if (msg.sender != owner && !isApprovedForAll[owner][msg.sender]) revert Unauthorized();
 
         _approve(owner, spender, id);
     }
