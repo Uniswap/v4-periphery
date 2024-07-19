@@ -22,39 +22,39 @@ contract MockBaseActionsRouter is BaseActionsRouter {
         _executeActions(params);
     }
 
-    function _settle(bytes memory /* params **/ ) internal override {
+    function _settle(bytes calldata /* params **/ ) internal override {
         settleCount++;
     }
 
-    function _take(bytes memory /* params **/ ) internal override {
+    function _take(bytes calldata /* params **/ ) internal override {
         takeCount++;
     }
 
-    function _swap(bytes memory /* params **/ ) internal override {
+    function _swap(bytes calldata /* params **/ ) internal override {
         swapCount++;
     }
 
-    function _increaseLiquidity(bytes memory /* params **/ ) internal override {
+    function _increaseLiquidity(bytes calldata /* params **/ ) internal override {
         increaseLiqCount++;
     }
 
-    function _decreaseLiquidity(bytes memory /* params **/ ) internal override {
+    function _decreaseLiquidity(bytes calldata /* params **/ ) internal override {
         decreaseLiqCount++;
     }
 
-    function _donate(bytes memory /* params **/ ) internal override {
+    function _donate(bytes calldata /* params **/ ) internal override {
         donateCount++;
     }
 
-    function _mint6909(bytes memory /* params **/ ) internal override {
+    function _mint6909(bytes calldata /* params **/ ) internal override {
         mintCount++;
     }
 
-    function _burn6909(bytes memory /* params **/ ) internal override {
+    function _burn6909(bytes calldata /* params **/ ) internal override {
         burnCount++;
     }
 
-    function _clearDelta(bytes memory /* params **/ ) internal override {
+    function _clearDelta(bytes calldata /* params **/ ) internal override {
         clearCount++;
     }
 

@@ -11,6 +11,7 @@ import {SafeCallback} from "./SafeCallback.sol";
 import {ReentrancyLock} from "./ReentrancyLock.sol";
 import {Actions} from "../libraries/Actions.sol";
 import {Locker} from "../libraries/Locker.sol";
+import {BytesLib} from "../libraries/BytesLib.sol";
 
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.
 /// @dev If an inheriting contract does not want to support all commands, they should simply revert with the
@@ -20,6 +21,7 @@ import {Locker} from "../libraries/Locker.sol";
 abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
     using TransientStateLibrary for IPoolManager;
     using SafeTransferLib for address;
+    using BytesLib for bytes;
 
     /// @notice emitted when different numbers of parameters and actions are provided
     error LengthMismatch();
@@ -36,9 +38,11 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
 
     /// @notice function that is called by the PoolManager through the SafeCallback.unlockCallback
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        // TODO decode in calldata directly for gas
         // TODO would it be better to use a struct
-        (uint256[] memory actions, bytes[] memory params) = abi.decode(data, (uint256[], bytes[]));
+        
+        // abi.decode(data, (uint256[], bytes[]));
+        uint256[] calldata actions = data.toUint256Array(0);
+        bytes[] calldata params = data.toBytesArray(1);
 
         uint256 numActions = actions.length;
         if (numActions != params.length) revert LengthMismatch();
@@ -75,7 +79,7 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
     /// @dev The `_pay` function must implement necessary safety checks on the value of payer.
     /// If approvals are used on this contract, do not allow `_pay` to pull tokens from any payer.
     /// @dev The function is virtual and can be overrided if different parameters or logic are required.
-    function _settle(bytes memory params) internal virtual {
+    function _settle(bytes calldata params) internal virtual {
         // TODO decode in calldata
         (Currency currency, address payer) = abi.decode(params, (Currency, address));
 
@@ -96,7 +100,7 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
 
     /// @notice function to take owed currency from the pool manager to a recipient
     /// @dev The function is virtual and can be overrided if different parameters or logic are required.
-    function _take(bytes memory params) internal virtual {
+    function _take(bytes calldata params) internal virtual {
         // TODO decode in calldata
         (Currency currency, address recipient) = abi.decode(params, (Currency, address));
 
@@ -106,17 +110,17 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
         poolManager.take(currency, recipient, uint256(delta));
     }
 
-    function _swap(bytes memory params) internal virtual;
+    function _swap(bytes calldata params) internal virtual;
 
-    function _increaseLiquidity(bytes memory params) internal virtual;
+    function _increaseLiquidity(bytes calldata params) internal virtual;
 
-    function _decreaseLiquidity(bytes memory params) internal virtual;
+    function _decreaseLiquidity(bytes calldata params) internal virtual;
 
-    function _donate(bytes memory params) internal virtual;
+    function _donate(bytes calldata params) internal virtual;
 
-    function _mint6909(bytes memory params) internal virtual;
+    function _mint6909(bytes calldata params) internal virtual;
 
-    function _burn6909(bytes memory params) internal virtual;
+    function _burn6909(bytes calldata params) internal virtual;
 
-    function _clearDelta(bytes memory params) internal virtual;
+    function _clearDelta(bytes calldata params) internal virtual;
 }
