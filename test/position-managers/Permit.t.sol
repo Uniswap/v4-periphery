@@ -14,6 +14,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IERC721Permit} from "../../src/interfaces/IERC721Permit.sol";
+import {ERC721Permit} from "../../src/base/ERC721Permit.sol";
 
 import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
 import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
@@ -68,10 +69,17 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
-    function test_permitTypeHash() public {
+    function test_permitTypeHash() public view {
         assertEq(
             IERC721Permit(address(lpm)).PERMIT_TYPEHASH(),
             keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)")
+        );
+    }
+
+    function test_domainTypeHash() public view {
+        assertEq(
+            ERC721Permit(address(lpm)).EIP712DOMAIN_TYPEHASH(),
+            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
         );
     }
 
