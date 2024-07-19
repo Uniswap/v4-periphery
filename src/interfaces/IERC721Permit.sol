@@ -5,6 +5,10 @@ pragma solidity >=0.7.5;
 /// @notice Extension to ERC721 that includes a permit function for signature based approvals
 interface IERC721Permit {
     error NonceAlreadyUsed();
+    error DeadlineExpired();
+    error NoSelfPermit();
+    error Unauthorized();
+    error InvalidSignature();
 
     /// @notice The permit typehash used in the permit signature
     /// @return The typehash for the permit

@@ -169,7 +169,7 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPK, digest);
 
         vm.startPrank(bob);
-        vm.expectRevert("Unauthorized");
+        vm.expectRevert(IERC721Permit.Unauthorized.selector);
         lpm.permit(bob, tokenIdAlice, block.timestamp + 1, 0, v, r, s);
         vm.stopPrank();
     }
