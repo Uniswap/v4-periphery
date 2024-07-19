@@ -21,9 +21,9 @@ import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
+import {PositionManager} from "../../src/PositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
-import {Actions, INonfungiblePositionManager} from "../../src/interfaces/INonfungiblePositionManager.sol";
+import {Actions, IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
@@ -34,7 +34,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
     using Planner for Planner.Plan;
-    using FeeMath for INonfungiblePositionManager;
+    using FeeMath for IPositionManager;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -54,7 +54,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
-        lpm = new NonfungiblePositionManager(manager);
+        lpm = new PositionManager(manager);
         IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
         IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
 
@@ -99,7 +99,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice uses her exact fees to increase liquidity
         // Slight error in this calculation vs. actual fees.. TODO: Fix this.
-        BalanceDelta feesOwedAlice = INonfungiblePositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
+        BalanceDelta feesOwedAlice = IPositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
         // Note: You can alternatively calculate Alice's fees owed from the swap amount, fee on the pool, and total liquidity in that range.
         // swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob);
 
@@ -286,7 +286,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
 
         // alice will use all of her fees + additional capital to increase liquidity
-        BalanceDelta feesOwed = INonfungiblePositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
+        BalanceDelta feesOwed = IPositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
 
         {
             (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());

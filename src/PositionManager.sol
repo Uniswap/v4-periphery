@@ -11,7 +11,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
-import {INonfungiblePositionManager, Actions} from "./interfaces/INonfungiblePositionManager.sol";
+import {IPositionManager, Actions} from "./interfaces/IPositionManager.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {ImmutableState} from "./base/ImmutableState.sol";
 import {Multicall} from "./base/Multicall.sol";
@@ -19,13 +19,7 @@ import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {CurrencySettleTake} from "./libraries/CurrencySettleTake.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "./types/LiquidityRange.sol";
 
-contract NonfungiblePositionManager is
-    INonfungiblePositionManager,
-    ERC721Permit,
-    PoolInitializer,
-    Multicall,
-    SafeCallback
-{
+contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;

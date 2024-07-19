@@ -12,7 +12,7 @@ enum Actions {
     CLOSE_CURRENCY
 }
 
-interface INonfungiblePositionManager {
+interface IPositionManager {
     error MismatchedLengths();
     error NotApproved(address caller);
     error DeadlinePassed();

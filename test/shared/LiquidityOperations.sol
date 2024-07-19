@@ -6,14 +6,14 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {NonfungiblePositionManager, Actions} from "../../src/NonfungiblePositionManager.sol";
+import {PositionManager, Actions} from "../../src/PositionManager.sol";
 import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 import {Planner} from "../utils/Planner.sol";
 
 abstract contract LiquidityOperations is CommonBase {
     using Planner for Planner.Plan;
 
-    NonfungiblePositionManager lpm;
+    PositionManager lpm;
 
     uint256 _deadline = block.timestamp + 1;
 

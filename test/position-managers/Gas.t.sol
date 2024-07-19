@@ -21,8 +21,8 @@ import {FeeMath} from "../shared/FeeMath.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-import {INonfungiblePositionManager, Actions} from "../../src/interfaces/INonfungiblePositionManager.sol";
-import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
+import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
+import {PositionManager} from "../../src/PositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
 
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
@@ -34,7 +34,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
     using Planner for Planner.Plan;
-    using FeeMath for INonfungiblePositionManager;
+    using FeeMath for IPositionManager;
 
     PoolId poolId;
     address alice;
@@ -59,7 +59,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
-        lpm = new NonfungiblePositionManager(manager);
+        lpm = new PositionManager(manager);
         IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
         IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
 
@@ -251,9 +251,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
 
         // Use multicall to initialize a pool and mint liquidity
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(
-            NonfungiblePositionManager(lpm).initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES
-        );
+        calls[0] = abi.encodeWithSelector(PositionManager(lpm).initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
 
         range = LiquidityRange({
             poolKey: key,
@@ -265,8 +263,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
         planner = planner.add(Actions.MINT, abi.encode(range, 100e18, address(this), ZERO_BYTES));
         bytes memory actions = planner.finalize(range.poolKey);
 
-        calls[1] =
-            abi.encodeWithSelector(NonfungiblePositionManager(lpm).modifyLiquidities.selector, actions, _deadline);
+        calls[1] = abi.encodeWithSelector(PositionManager(lpm).modifyLiquidities.selector, actions, _deadline);
 
         lpm.multicall(calls);
         snapLastCall("PositionManager_multicall_initialize_mint");
