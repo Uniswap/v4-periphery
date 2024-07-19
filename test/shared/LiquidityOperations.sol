@@ -62,16 +62,6 @@ abstract contract LiquidityOperations is CommonBase {
         lpm.modifyLiquidities(actions, _deadline);
     }
 
-    // TODO: organize somewhere else, or rename this file to NFTLiquidityHelpers?
-    function _permit(address signer, uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {
-        bytes32 digest = lpm.getDigest(operator, tokenId, 1, block.timestamp + 1);
-
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
-
-        vm.prank(signer);
-        lpm.permit(operator, tokenId, block.timestamp + 1, nonce, v, r, s);
-    }
-
     // Helper functions for getting encoded calldata for .modifyLiquidities
     function getIncreaseEncoded(uint256 tokenId, uint256 liquidityToAdd, bytes memory hookData)
         internal
