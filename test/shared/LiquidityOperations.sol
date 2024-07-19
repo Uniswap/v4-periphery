@@ -48,8 +48,8 @@ abstract contract LiquidityOperations is CommonBase {
         return abi.decode(result[0], (BalanceDelta));
     }
 
-    function collect(uint256 tokenId, address recipient, bytes memory hookData) internal returns (BalanceDelta) {
-        bytes memory calls = getCollectEncoded(tokenId, recipient, hookData);
+    function collect(uint256 tokenId, bytes memory hookData) internal returns (BalanceDelta) {
+        bytes memory calls = getCollectEncoded(tokenId, hookData);
         bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
         return abi.decode(result[0], (BalanceDelta));
     }
@@ -85,11 +85,7 @@ abstract contract LiquidityOperations is CommonBase {
         return planner.finalize(key);
     }
 
-    function getCollectEncoded(uint256 tokenId, address recipient, bytes memory hookData)
-        internal
-        view
-        returns (bytes memory)
-    {
+    function getCollectEncoded(uint256 tokenId, bytes memory hookData) internal view returns (bytes memory) {
         (PoolKey memory poolKey,,) = lpm.tokenRange(tokenId);
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, 0, hookData));

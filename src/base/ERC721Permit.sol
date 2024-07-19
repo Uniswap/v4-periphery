@@ -14,7 +14,7 @@ contract ERC721Permit is ERC721 {
     }
 
     // TODO: Use PositionDescriptor.
-    function tokenURI(uint256 id) public view override returns (string memory) {
-        return "";
+    function tokenURI(uint256 id) public pure override returns (string memory) {
+        return string(abi.encode(id));
     }
 }

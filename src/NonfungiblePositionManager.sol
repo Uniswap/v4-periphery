@@ -191,7 +191,7 @@ contract NonfungiblePositionManager is
         );
     }
 
-    function _validateBurn(uint256 tokenId) internal {
+    function _validateBurn(uint256 tokenId) internal view {
         bytes32 positionId = getPositionIdFromTokenId(tokenId);
         uint128 liquidity = manager.getPositionLiquidity(tokenRange[tokenId].poolKey.toId(), positionId);
         if (liquidity > 0) revert PositionMustBeEmpty();
