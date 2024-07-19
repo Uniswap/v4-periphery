@@ -12,7 +12,7 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
-import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
@@ -22,9 +22,9 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-import {INonfungiblePositionManager, Actions} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
-import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
-import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
+import {INonfungiblePositionManager, Actions} from "../../src/interfaces/INonfungiblePositionManager.sol";
+import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
+import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
@@ -68,14 +68,10 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         planner = planner.add(Actions.MINT, abi.encode("test"));
         planner = planner.add(Actions.BURN, abi.encode("test"));
 
-        Currency[] memory currencies = new Currency[](2);
-        currencies[0] = currency0;
-        currencies[1] = currency1;
-
         bytes[] memory badParams = new bytes[](1);
 
         vm.expectRevert(INonfungiblePositionManager.MismatchedLengths.selector);
-        lpm.modifyLiquidities(abi.encode(planner.actions, badParams, currencies));
+        lpm.modifyLiquidities(abi.encode(planner.actions, badParams), block.timestamp + 1);
     }
 
     function test_mint_withLiquidityDelta(IPoolManager.ModifyLiquidityParams memory params) public {
@@ -90,7 +86,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        BalanceDelta delta = _mint(range, liquidityToAdd, uint256(block.timestamp + 1), address(this), ZERO_BYTES);
+        BalanceDelta delta = _mint(range, liquidityToAdd, address(this), ZERO_BYTES);
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), address(this));
@@ -123,7 +119,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        BalanceDelta delta = _mint(range, liquidityToAdd, uint256(block.timestamp + 1), address(this), ZERO_BYTES);
+        BalanceDelta delta = _mint(range, liquidityToAdd, address(this), ZERO_BYTES);
 
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
@@ -146,7 +142,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         uint256 tokenId = lpm.nextTokenId();
-        _mint(range, liquidityToAdd, uint256(block.timestamp + 1), address(alice), ZERO_BYTES);
+        _mint(range, liquidityToAdd, address(alice), ZERO_BYTES);
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), alice);
@@ -173,7 +169,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     //         amount1Desired: amount1Desired,
     //         amount0Min: amount0Min,
     //         amount1Min: amount1Min,
-    //         deadline: block.timestamp + 1,
+    //         deadline:
     //         recipient: address(this),
     //         hookData: ZERO_BYTES
     //     });
@@ -310,7 +306,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     function test_mintTransferBurn() public {
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
-        BalanceDelta mintDelta = _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        BalanceDelta mintDelta = _mint(range, liquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // transfer to alice
@@ -320,14 +316,14 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, liquidity, ZERO_BYTES));
         planner = planner.add(Actions.BURN, abi.encode(tokenId));
-        planner = planner.finalize(range);
+        planner = planner.finalize(range.poolKey);
         bytes memory calls = planner.zip();
 
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency0.balanceOf(alice);
 
         vm.prank(alice);
-        lpm.modifyLiquidities(calls);
+        lpm.modifyLiquidities(calls, _deadline);
 
         // token was burned and does not exist anymore
         vm.expectRevert();
@@ -341,7 +337,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     function test_mintTransferCollect() public {
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
-        _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        _mint(range, liquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to generate fee revenue
@@ -369,7 +365,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     function test_mintTransferIncrease() public {
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
-        _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        _mint(range, liquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // transfer to alice
@@ -405,7 +401,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
     function test_mintTransferDecrease() public {
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
-        _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        _mint(range, liquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to generate fee revenue
@@ -457,7 +453,7 @@ contract NonfungiblePositionManagerTest is Test, Deployers, GasSnapshot, Liquidi
         // add liquidity to verify pool initialized
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
-        _mint(range, 100e18, block.timestamp + 1, address(this), ZERO_BYTES);
+        _mint(range, 100e18, address(this), ZERO_BYTES);
 
         assertEq(lpm.ownerOf(1), address(this));
     }

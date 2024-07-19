@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
-import {INonfungiblePositionManager, Actions} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
-import {LiquidityRange} from "../../contracts/types/LiquidityRange.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+
+import {INonfungiblePositionManager, Actions} from "../../src/interfaces/INonfungiblePositionManager.sol";
+import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 
 library Planner {
     using Planner for Plan;
@@ -32,9 +34,9 @@ library Planner {
         return Plan({actions: actions, params: params});
     }
 
-    function finalize(Plan memory plan, LiquidityRange memory range) internal pure returns (Plan memory) {
-        plan = plan.add(Actions.CLOSE_CURRENCY, abi.encode(range.poolKey.currency0));
-        plan = plan.add(Actions.CLOSE_CURRENCY, abi.encode(range.poolKey.currency1));
+    function finalize(Plan memory plan, PoolKey memory poolKey) internal pure returns (Plan memory) {
+        plan = plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency0));
+        plan = plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency1));
         return plan;
     }
 

@@ -11,9 +11,9 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {INonfungiblePositionManager} from "../../contracts/interfaces/INonfungiblePositionManager.sol";
-import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
-import {LiquidityRange} from "../../contracts/types/LiquidityRange.sol";
+import {INonfungiblePositionManager} from "../../src/interfaces/INonfungiblePositionManager.sol";
+import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
+import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 
 library FeeMath {
     using SafeCast for uint256;
@@ -27,16 +27,16 @@ library FeeMath {
         view
         returns (BalanceDelta feesOwed)
     {
-        (, LiquidityRange memory range,) = posm.tokenPositions(tokenId);
+        (PoolKey memory poolKey, int24 tickLower, int24 tickUpper) = posm.tokenRange(tokenId);
 
         // getPosition(poolId, owner, tL, tU, salt)
         // owner is the position manager
         // salt is the tokenId
         Position.Info memory position =
-            manager.getPosition(range.poolKey.toId(), address(posm), range.tickLower, range.tickUpper, bytes32(tokenId));
+            manager.getPosition(poolKey.toId(), address(posm), tickLower, tickUpper, bytes32(tokenId));
 
         (uint256 feeGrowthInside0X218, uint256 feeGrowthInside1X128) =
-            manager.getFeeGrowthInside(range.poolKey.toId(), range.tickLower, range.tickUpper);
+            manager.getFeeGrowthInside(poolKey.toId(), tickLower, tickUpper);
 
         feesOwed = getFeesOwed(
             feeGrowthInside0X218,

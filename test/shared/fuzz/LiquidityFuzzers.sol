@@ -7,8 +7,8 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
-import {INonfungiblePositionManager, Actions} from "../../../contracts/interfaces/INonfungiblePositionManager.sol";
-import {LiquidityRange} from "../../../contracts/types/LiquidityRange.sol";
+import {INonfungiblePositionManager, Actions} from "../../../src/interfaces/INonfungiblePositionManager.sol";
+import {LiquidityRange} from "../../../src/types/LiquidityRange.sol";
 import {Planner} from "../../utils/Planner.sol";
 
 contract LiquidityFuzzers is Fuzzers {
@@ -26,12 +26,12 @@ contract LiquidityFuzzers is Fuzzers {
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-        Planner.Plan memory planner = Planner.init().add(
-            Actions.MINT, abi.encode(range, uint256(params.liquidityDelta), block.timestamp, recipient, hookData)
-        );
+        Planner.Plan memory planner =
+            Planner.init().add(Actions.MINT, abi.encode(range, uint256(params.liquidityDelta), recipient, hookData));
 
-        planner = planner.finalize(range);
-        lpm.modifyLiquidities(planner.zip());
+        planner = planner.finalize(range.poolKey);
+        bytes memory actions = planner.zip();
+        lpm.modifyLiquidities(actions, block.timestamp + 1);
 
         uint256 tokenId = lpm.nextTokenId() - 1;
         return (tokenId, params);

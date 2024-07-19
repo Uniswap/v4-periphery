@@ -12,15 +12,15 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
-import {LiquidityAmounts} from "../../contracts/libraries/LiquidityAmounts.sol";
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-import {NonfungiblePositionManager} from "../../contracts/NonfungiblePositionManager.sol";
-import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../contracts/types/LiquidityRange.sol";
+import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
+import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
@@ -170,18 +170,18 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         vm.prank(alice);
-        _mint(range, uint256(params.liquidityDelta), block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, uint256(params.liquidityDelta), alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.prank(bob);
-        _mint(range, liquidityDeltaBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityDeltaBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // confirm the positions are same range
-        (, LiquidityRange memory rangeAlice,) = lpm.tokenPositions(tokenIdAlice);
-        (, LiquidityRange memory rangeBob,) = lpm.tokenPositions(tokenIdBob);
-        assertEq(rangeAlice.tickLower, rangeBob.tickLower);
-        assertEq(rangeAlice.tickUpper, rangeBob.tickUpper);
+        (, int24 tickLowerAlice, int24 tickUpperAlice) = lpm.tokenRange(tokenIdAlice);
+        (, int24 tickLowerBob, int24 tickUpperBob) = lpm.tokenRange(tokenIdBob);
+        assertEq(tickLowerAlice, tickLowerBob);
+        assertEq(tickUpperAlice, tickUpperBob);
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
@@ -220,7 +220,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
 
     function test_collect_donate() public {
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -120, tickUpper: 120});
-        _mint(range, 10e18, block.timestamp + 1, address(this), ZERO_BYTES);
+        _mint(range, 10e18, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to generate fee revenue
@@ -252,12 +252,12 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 liquidityBob = 1000e18;
 
         vm.startPrank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        _mint(range, liquidityAlice, alice, ZERO_BYTES);
         vm.stopPrank();
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.startPrank(bob);
-        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        _mint(range, liquidityBob, bob, ZERO_BYTES);
         vm.stopPrank();
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
@@ -330,14 +330,14 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 liquidityBob = 1000e18;
 
         vm.prank(alice);
-        BalanceDelta lpDeltaAlice = _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        BalanceDelta lpDeltaAlice = _mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         uint256 aliceBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(alice));
         uint256 aliceBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(alice));
 
         vm.prank(bob);
-        BalanceDelta lpDeltaBob = _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        BalanceDelta lpDeltaBob = _mint(range, liquidityBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         uint256 bobBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(bob));
