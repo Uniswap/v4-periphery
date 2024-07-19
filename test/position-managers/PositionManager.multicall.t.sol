@@ -10,7 +10,8 @@ import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
+import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -26,11 +27,20 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using Planner for Planner.Plan;
+    using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
 
     PoolId poolId;
-    address alice = makeAddr("ALICE");
+    address alice;
+    uint256 alicePK;
+    address bob;
+
+    uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
     function setUp() public {
+        (alice, alicePK) = makeAddrAndKey("ALICE");
+        (bob,) = makeAddrAndKey("BOB");
+
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
@@ -38,6 +48,12 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
+        
+        seedBalance(alice);
+        seedBalance(bob);
+
+        approvePosmFor(alice);
+        approvePosmFor(bob);
     }
 
     function test_multicall_initializePool_mint() public {
@@ -68,5 +84,35 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertGt(result.amount1(), 0);
     }
 
-    function test_multicall_permitAndDecrease() public {}
+    function test_multicall_permitAndDecrease() public {
+        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -60, tickUpper: 60});
+        uint256 liquidityAlice = 1e18;
+        vm.startPrank(alice);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+        uint256 tokenId = lpm.nextTokenId() - 1;
+
+        // Alice gives Bob permission to operate on her liquidity
+        uint256 nonce = 1;
+        bytes32 digest = lpm.getDigest(bob, tokenId, nonce, block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+
+        // bob gives himself permission and decreases liquidity
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(
+            NonfungiblePositionManager(lpm).permit.selector, bob, tokenId, block.timestamp + 1, nonce, v, r, s
+        );
+        uint256 liquidityToRemove = 0.4444e18;
+        bytes memory actions = LiquidityOperations.getDecreaseEncoded(tokenId, 0.4444e18, ZERO_BYTES);
+        calls[1] =
+            abi.encodeWithSelector(NonfungiblePositionManager(lpm).modifyLiquidities.selector, actions, _deadline);
+
+        vm.prank(bob);
+        lpm.multicall(calls);
+
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        assertEq(liquidity, liquidityAlice - liquidityToRemove);
+    }
 }
