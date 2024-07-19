@@ -7,7 +7,7 @@ library Actions {
 
     uint256 constant SWAP = 0x00;
     uint256 constant INCREASE_LIQUIDITY = 0x01;
-    uint256 constant DECREASE_LIQUIDITY = 0x01;
+    uint256 constant DECREASE_LIQUIDITY = 0x02;
     uint256 constant DONATE = 0x03;
     uint256 constant CLEAR_DELTA = 0x04;
     uint256 constant SETTLE = 0x05;

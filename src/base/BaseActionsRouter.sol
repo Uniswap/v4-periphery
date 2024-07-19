@@ -112,10 +112,6 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
 
     function _decreaseLiquidity(bytes memory params) internal virtual;
 
-    function _mintPosition(bytes memory params) internal virtual;
-
-    function _burnPosition(bytes memory params) internal virtual;
-
     function _donate(bytes memory params) internal virtual;
 
     function _mint6909(bytes memory params) internal virtual;
@@ -123,8 +119,4 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
     function _burn6909(bytes memory params) internal virtual;
 
     function _clearDelta(bytes memory params) internal virtual;
-
-    function _handleAdditionalActions1(uint256 action, bytes memory params) internal virtual;
-
-    function _handleAdditionalActions2(uint256 action, bytes memory params) internal virtual;
 }
