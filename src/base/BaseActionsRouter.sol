@@ -39,7 +39,7 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
     /// @notice function that is called by the PoolManager through the SafeCallback.unlockCallback
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         // TODO would it be better to use a struct
-        
+
         // abi.decode(data, (uint256[], bytes[]));
         uint256[] calldata actions = data.toUint256Array(0);
         bytes[] calldata params = data.toBytesArray(1);
