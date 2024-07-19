@@ -39,6 +39,11 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
+    modifier checkDeadline(uint256 deadline) {
+        if (block.timestamp > deadline) revert DeadlinePassed();
+        _;
+    }
+
     /// @param unlockData is an encoding of actions, params, and currencies
     /// @return returnData is the endocing of each actions return information
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
@@ -65,9 +70,10 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         internal
         returns (bytes[] memory returnData)
     {
-        if (actions.length != params.length) revert MismatchedLengths();
-        returnData = new bytes[](actions.length);
-        for (uint256 i; i < actions.length; i++) {
+        uint256 length = actions.length;
+        if (length != params.length) revert MismatchedLengths();
+        returnData = new bytes[](length);
+        for (uint256 i; i < length; i++) {
             if (actions[i] == Actions.INCREASE) {
                 returnData[i] = _increase(params[i], sender);
             } else if (actions[i] == Actions.DECREASE) {
@@ -126,6 +132,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
 
         // mint receipt token
         uint256 tokenId;
+        // tokenId is assigned to current nextTokenId before incrementing it
         unchecked {
             tokenId = nextTokenId++;
         }
@@ -159,7 +166,6 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
 
     function burn(uint256 tokenId, address sender) internal {
         _requireApprovedOrOwner(tokenId, sender);
-        // We do not need to enforce the pool manager to be unlocked bc this function is purely clearing storage for the minted tokenId.
 
         // Checks that the full position's liquidity has been removed and all tokens have been collected from tokensOwed.
         _validateBurn(tokenId);
@@ -185,6 +191,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         );
     }
 
+    // ensures liquidity of the position is empty before burning the token.
     function _validateBurn(uint256 tokenId) internal view {
         bytes32 positionId = getPositionIdFromTokenId(tokenId);
         uint128 liquidity = manager.getPositionLiquidity(tokenRange[tokenId].poolKey.toId(), positionId);
@@ -212,10 +219,5 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
 
     function _requireApprovedOrOwner(uint256 tokenId, address sender) internal view {
         if (!_isApprovedOrOwner(sender, tokenId)) revert NotApproved(sender);
-    }
-
-    modifier checkDeadline(uint256 deadline) {
-        if (block.timestamp > deadline) revert DeadlinePassed();
-        _;
     }
 }
