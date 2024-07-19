@@ -2,7 +2,6 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -10,29 +9,21 @@ import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
-import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC721Permit} from "../../src/interfaces/IERC721Permit.sol";
 
 import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
-import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
+import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 import {INonfungiblePositionManager} from "../../src/interfaces/INonfungiblePositionManager.sol";
-
-import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 
-contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperations {
+contract PermitTest is Test, Deployers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
-    using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -44,9 +35,6 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
 
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
-    // expresses the fee as a wad (i.e. 3000 = 0.003e18 = 0.30%)
-    uint256 FEE_WAD;
-
     LiquidityRange range;
 
     function setUp() public {
@@ -57,7 +45,6 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
         Deployers.deployMintAndApprove2Currencies();
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
-        FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
         lpm = new NonfungiblePositionManager(manager);
         IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
@@ -79,6 +66,13 @@ contract PermitTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperation
 
         // define a reusable range
         range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
+    }
+
+    function test_permitTypeHash() public {
+        assertEq(
+            IERC721Permit(address(lpm)).PERMIT_TYPEHASH(),
+            keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)")
+        );
     }
 
     function test_permit_increaseLiquidity() public {
