@@ -5,39 +5,23 @@ import {ERC721} from "solmate/src/tokens/ERC721.sol";
 
 import {IERC721Permit} from "../interfaces/IERC721Permit.sol";
 
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
+
 /// @title ERC721 with permit
 /// @notice Nonfungible tokens that support an approve via signature, i.e. permit
-abstract contract ERC721Permit is ERC721, IERC721Permit {
+abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712 {
     mapping(address owner => mapping(uint256 word => uint256 bitmap)) public nonces;
-
-    /// @dev The hash of the name used in the permit signature verification
-    bytes32 private immutable nameHash;
-
-    /// @dev The hash of the version string used in the permit signature verification
-    bytes32 private immutable versionHash;
-
-    bytes32 private immutable cachedDomainSeparator;
-    uint256 private immutable cachedChainId;
-    address private immutable cachedAddressThis;
 
     /// @inheritdoc IERC721Permit
     /// @dev Value is equal to keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)");
     bytes32 public constant override PERMIT_TYPEHASH =
         0x49ecf333e5b8c95c40fdafc95c1ad136e8914a8fb55e9dc8bb01eaa83a2df9ad;
 
-    /// @dev Value is equal to keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
-    bytes32 public constant EIP712DOMAIN_TYPEHASH = 0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f;
-
     /// @notice Computes the nameHash and versionHash
-    constructor(string memory name_, string memory symbol_, string memory version_) ERC721(name_, symbol_) {
-        nameHash = keccak256(bytes(name_));
-        versionHash = keccak256(bytes(version_));
-
-        cachedDomainSeparator =
-            keccak256(abi.encode(EIP712DOMAIN_TYPEHASH, nameHash, versionHash, block.chainid, address(this)));
-        cachedChainId = block.chainid;
-        cachedAddressThis = address(this);
-    }
+    constructor(string memory name_, string memory symbol_, string memory version_)
+        ERC721(name_, symbol_)
+        EIP712(name_, version_)
+    {}
 
     // TODO: implement here, or in posm
     function tokenURI(uint256) public pure override returns (string memory) {
@@ -46,11 +30,7 @@ abstract contract ERC721Permit is ERC721, IERC721Permit {
 
     /// @inheritdoc IERC721Permit
     function DOMAIN_SEPARATOR() public view returns (bytes32) {
-        if (block.chainid == cachedChainId && address(this) == cachedAddressThis) {
-            return cachedDomainSeparator;
-        } else {
-            return keccak256(abi.encode(EIP712DOMAIN_TYPEHASH, nameHash, versionHash, block.chainid, address(this)));
-        }
+        return _domainSeparatorV4();
     }
 
     /// @inheritdoc IERC721Permit

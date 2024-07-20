@@ -76,13 +76,6 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         );
     }
 
-    function test_domainTypeHash() public view {
-        assertEq(
-            ERC721Permit(address(lpm)).EIP712DOMAIN_TYPEHASH(),
-            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
-        );
-    }
-
     function test_permit_increaseLiquidity() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
