@@ -15,6 +15,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IERC721Permit} from "../../src/interfaces/IERC721Permit.sol";
 import {ERC721Permit} from "../../src/base/ERC721Permit.sol";
+import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
 
 import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
 import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
@@ -244,7 +245,7 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
 
         vm.startPrank(alice);
-        vm.expectRevert(IERC721Permit.NonceAlreadyUsed.selector);
+        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
         lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
         vm.stopPrank();
     }
@@ -271,7 +272,7 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
 
         vm.startPrank(alice);
-        vm.expectRevert(IERC721Permit.NonceAlreadyUsed.selector);
+        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
         lpm.permit(bob, tokenIdAlice2, block.timestamp + 1, nonce, v, r, s);
         vm.stopPrank();
     }

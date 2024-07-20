@@ -4,7 +4,6 @@ pragma solidity >=0.7.5;
 /// @title ERC721 with permit
 /// @notice Extension to ERC721 that includes a permit function for signature based approvals
 interface IERC721Permit {
-    error NonceAlreadyUsed();
     error DeadlineExpired();
     error NoSelfPermit();
     error Unauthorized();
