@@ -6,14 +6,13 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
 import {IERC721Permit} from "../interfaces/IERC721Permit.sol";
+import {UnorderedNonce} from "./UnorderedNonce.sol";
 
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
 
 /// @title ERC721 with permit
 /// @notice Nonfungible tokens that support an approve via signature, i.e. permit
-abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712 {
-    mapping(address owner => mapping(uint256 word => uint256 bitmap)) public nonces;
-
+abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce {
     /// @inheritdoc IERC721Permit
     /// @dev Value is equal to keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)");
     bytes32 public constant override PERMIT_TYPEHASH =
@@ -96,24 +95,5 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712 {
     function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
         return spender == ownerOf(tokenId) || getApproved[tokenId] == spender
             || isApprovedForAll[ownerOf(tokenId)][spender];
-    }
-
-    /// @notice Returns the index of the bitmap and the bit position within the bitmap. Used for unordered nonces
-    /// @param nonce The nonce to get the associated word and bit positions
-    /// @return wordPos The word position or index into the nonceBitmap
-    /// @return bitPos The bit position
-    /// @dev The first 248 bits of the nonce value is the index of the desired bitmap
-    /// @dev The last 8 bits of the nonce value is the position of the bit in the bitmap
-    function bitmapPositions(uint256 nonce) private pure returns (uint256 wordPos, uint256 bitPos) {
-        wordPos = uint248(nonce >> 8);
-        bitPos = uint8(nonce);
-    }
-
-    function _useUnorderedNonce(address from, uint256 nonce) internal {
-        (uint256 wordPos, uint256 bitPos) = bitmapPositions(nonce);
-        uint256 bit = 1 << bitPos;
-        uint256 flipped = nonces[from][wordPos] ^= bit;
-
-        if (flipped & bit == 0) revert NonceAlreadyUsed();
     }
 }
