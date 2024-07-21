@@ -54,6 +54,11 @@ contract PositionManager is
         _;
     }
 
+    // TODO: implement
+    function tokenURI(uint256) public pure override returns (string memory) {
+        return "https://example.com";
+    }    
+
     /// @param unlockData is an encoding of actions, params, and currencies
     /// @return returnData is the endocing of each actions return information
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
