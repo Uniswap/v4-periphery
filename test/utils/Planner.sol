@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {INonfungiblePositionManager, Actions} from "../../src/interfaces/INonfungiblePositionManager.sol";
+import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
 import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 
 library Planner {
@@ -34,13 +34,13 @@ library Planner {
         return Plan({actions: actions, params: params});
     }
 
-    function finalize(Plan memory plan, PoolKey memory poolKey) internal pure returns (Plan memory) {
+    function finalize(Plan memory plan, PoolKey memory poolKey) internal pure returns (bytes memory) {
         plan = plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency0));
         plan = plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency1));
-        return plan;
+        return plan.encode();
     }
 
-    function zip(Plan memory plan) internal pure returns (bytes memory) {
+    function encode(Plan memory plan) internal pure returns (bytes memory) {
         return abi.encode(plan.actions, plan.params);
     }
 }

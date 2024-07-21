@@ -12,13 +12,14 @@ enum Actions {
     CLOSE_CURRENCY
 }
 
-interface INonfungiblePositionManager {
+interface IPositionManager {
     error MismatchedLengths();
     error NotApproved(address caller);
     error DeadlinePassed();
     error UnsupportedAction();
     error PositionMustBeEmpty();
 
+    // TODO: This will just return a positionId
     function tokenRange(uint256 tokenId)
         external
         view

@@ -13,7 +13,7 @@ import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
-import {INonfungiblePositionManager, Actions} from "./interfaces/INonfungiblePositionManager.sol";
+import {IPositionManager, Actions} from "./interfaces/IPositionManager.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {ImmutableState} from "./base/ImmutableState.sol";
 import {Multicall} from "./base/Multicall.sol";
@@ -21,13 +21,7 @@ import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {CurrencySettleTake} from "./libraries/CurrencySettleTake.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "./types/LiquidityRange.sol";
 
-contract NonfungiblePositionManager is
-    INonfungiblePositionManager,
-    ERC721Permit,
-    PoolInitializer,
-    Multicall,
-    SafeCallback
-{
+contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;
@@ -46,6 +40,11 @@ contract NonfungiblePositionManager is
         ImmutableState(_manager)
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
+
+    modifier checkDeadline(uint256 deadline) {
+        if (block.timestamp > deadline) revert DeadlinePassed();
+        _;
+    }
 
     /// @param unlockData is an encoding of actions, params, and currencies
     /// @return returnData is the endocing of each actions return information
@@ -73,9 +72,10 @@ contract NonfungiblePositionManager is
         internal
         returns (bytes[] memory returnData)
     {
-        if (actions.length != params.length) revert MismatchedLengths();
-        returnData = new bytes[](actions.length);
-        for (uint256 i; i < actions.length; i++) {
+        uint256 length = actions.length;
+        if (length != params.length) revert MismatchedLengths();
+        returnData = new bytes[](length);
+        for (uint256 i; i < length; i++) {
             if (actions[i] == Actions.INCREASE) {
                 returnData[i] = _increase(params[i], sender);
             } else if (actions[i] == Actions.DECREASE) {
@@ -126,12 +126,15 @@ contract NonfungiblePositionManager is
         return abi.encode(delta);
     }
 
+    /// @param param is an encoding of LiquidityRange memory range, uint256 liquidity, address recipient, bytes hookData where recipient is the receiver / owner of the ERC721
+    /// @return returns an encoding of the BalanceDelta from the initial increase
     function _mint(bytes memory param) internal returns (bytes memory) {
         (LiquidityRange memory range, uint256 liquidity, address owner, bytes memory hookData) =
             abi.decode(param, (LiquidityRange, uint256, address, bytes));
 
         // mint receipt token
         uint256 tokenId;
+        // tokenId is assigned to current nextTokenId before incrementing it
         unchecked {
             tokenId = nextTokenId++;
         }
@@ -156,7 +159,7 @@ contract NonfungiblePositionManager is
         // the sender is the payer or receiver
         if (currencyDelta < 0) {
             currency.settle(manager, sender, uint256(-int256(currencyDelta)), false);
-        } else {
+        } else if (currencyDelta > 0) {
             currency.take(manager, sender, uint256(int256(currencyDelta)), false);
         }
 
@@ -165,7 +168,6 @@ contract NonfungiblePositionManager is
 
     function burn(uint256 tokenId, address sender) internal {
         _requireApprovedOrOwner(tokenId, sender);
-        // We do not need to enforce the pool manager to be unlocked bc this function is purely clearing storage for the minted tokenId.
 
         // Checks that the full position's liquidity has been removed and all tokens have been collected from tokensOwed.
         _validateBurn(tokenId);
@@ -191,7 +193,8 @@ contract NonfungiblePositionManager is
         );
     }
 
-    function _validateBurn(uint256 tokenId) internal {
+    // ensures liquidity of the position is empty before burning the token.
+    function _validateBurn(uint256 tokenId) internal view {
         bytes32 positionId = getPositionIdFromTokenId(tokenId);
         uint128 liquidity = manager.getPositionLiquidity(tokenRange[tokenId].poolKey.toId(), positionId);
         if (liquidity > 0) revert PositionMustBeEmpty();
@@ -206,7 +209,6 @@ contract NonfungiblePositionManager is
         address owner = address(this);
 
         // positionId = keccak256(abi.encodePacked(owner, tickLower, tickUpper, salt))
-        /// @solidity memory-safe-assembly
         assembly {
             mstore(0x26, salt) // [0x26, 0x46)
             mstore(0x06, tickUpper) // [0x23, 0x26)
@@ -242,10 +244,5 @@ contract NonfungiblePositionManager is
 
     function _requireApprovedOrOwner(uint256 tokenId, address sender) internal view {
         if (!_isApprovedOrOwner(sender, tokenId)) revert NotApproved(sender);
-    }
-
-    modifier checkDeadline(uint256 deadline) {
-        if (block.timestamp > deadline) revert DeadlinePassed();
-        _;
     }
 }

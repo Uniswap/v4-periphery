@@ -21,12 +21,14 @@ import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
-import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
+import {PositionManager} from "../../src/PositionManager.sol";
 import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
-import {Actions, INonfungiblePositionManager} from "../../src/interfaces/INonfungiblePositionManager.sol";
+import {Actions, IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
+
+import "forge-std/console2.sol";
 
 contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
@@ -34,7 +36,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
     using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
     using Planner for Planner.Plan;
-    using FeeMath for INonfungiblePositionManager;
+    using FeeMath for IPositionManager;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -47,6 +49,9 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
     LiquidityRange range;
 
+    // Error tolerance.
+    uint256 tolerance = 0.00000000001 ether;
+
     function setUp() public {
         Deployers.deployFreshManagerAndRouters();
         Deployers.deployMintAndApprove2Currencies();
@@ -54,7 +59,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
-        lpm = new NonfungiblePositionManager(manager);
+        lpm = new PositionManager(manager);
         IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
         IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
 
@@ -76,7 +81,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
-    function test_increaseLiquidity_withExactFees1() public {
+    function test_increaseLiquidity_withExactFees() public {
         // Alice and Bob provide liquidity on the range
         // Alice uses her exact fees to increase liquidity (compounding)
 
@@ -85,12 +90,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(range, liquidityBob, bob, ZERO_BYTES);
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -99,7 +104,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice uses her exact fees to increase liquidity
         // Slight error in this calculation vs. actual fees.. TODO: Fix this.
-        BalanceDelta feesOwedAlice = INonfungiblePositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
+        BalanceDelta feesOwedAlice = IPositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
         // Note: You can alternatively calculate Alice's fees owed from the swap amount, fee on the pool, and total liquidity in that range.
         // swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob);
 
@@ -118,14 +123,10 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
-        planner = planner.finalize(range.poolKey);
+        bytes memory calls = planner.finalize(range.poolKey);
         vm.startPrank(alice);
-        bytes memory actions = planner.zip();
-        lpm.modifyLiquidities(actions, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         vm.stopPrank();
-
-        // It is not exact because of the error in the fee calculation and error in the
-        uint256 tolerance = 0.00000000001 ether;
 
         // alice barely spent any tokens
         // TODO: This is a case for not caring about dust left in pool manager :/
@@ -143,12 +144,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(range, liquidityBob, bob, ZERO_BYTES);
 
         // donate to create fees
         uint256 amountDonate = 0.2e18;
@@ -170,11 +171,8 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
         vm.startPrank(alice);
-        _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
+        increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
         vm.stopPrank();
-
-        // It is not exact because of the error in the fee calculation and error in the
-        uint256 tolerance = 0.00000000001 ether;
 
         // alice barely spent any tokens
         // TODO: This is a case for not caring about dust left in pool manager :/
@@ -182,53 +180,60 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
     }
 
-    function test_increaseLiquidity_withExcessFees() public {
-        // Alice and Bob provide liquidity on the range
-        // Alice uses her fees to increase liquidity. Leftover fees are claimed by alice
+    function test_increaseLiquidity_sameRange_withExcessFees() public {
+        // Alice and Bob provide liquidity on the same range
+        // Alice uses half her fees to increase liquidity. The other half are collected to her wallet.
+        // Bob collects all fees.
         uint256 liquidityAlice = 3_000e18;
         uint256 liquidityBob = 1_000e18;
         uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
         vm.startPrank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         vm.stopPrank();
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.startPrank(bob);
-        _mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(range, liquidityBob, bob, ZERO_BYTES);
         vm.stopPrank();
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
-        // donate to create fees
-        uint256 feeRevenue = 0.1e18;
-        donateRouter.donate(key, feeRevenue, feeRevenue, ZERO_BYTES);
+        // swap to create fees
+        uint256 swapAmount = 0.001e18;
+        swap(key, true, -int256(swapAmount), ZERO_BYTES);
+        swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
+
+        // alice will use half of her fees to increase liquidity
+        BalanceDelta aliceFeesOwed = IPositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
 
         {
-            // alice will use half of her fees to increase liquidity
-            BalanceDelta feesAccrued = lpm.feesOwed(tokenIdAlice);
-
             (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
                 TickMath.getSqrtPriceAtTick(range.tickLower),
                 TickMath.getSqrtPriceAtTick(range.tickUpper),
-                uint128(feesAccrued.amount0() / 2),
-                uint128(feesAccrued.amount1() / 2)
+                uint256(int256(aliceFeesOwed.amount0() / 2)),
+                uint256(int256(aliceFeesOwed.amount1() / 2))
             );
-
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+
             vm.startPrank(alice);
-            _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
+            increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
             vm.stopPrank();
-            uint256 balance0AfterAlice = currency0.balanceOf(alice);
-            uint256 balance1AfterAlice = currency1.balanceOf(alice);
 
-            assertApproxEqAbs(balance0AfterAlice - balance0BeforeAlice, uint128(feesAccrued.amount0()) / 2, 1 wei);
-
-            assertApproxEqAbs(balance1AfterAlice - balance1BeforeAlice, uint128(feesAccrued.amount1()) / 2, 1 wei);
+            assertApproxEqAbs(
+                currency0.balanceOf(alice) - balance0BeforeAlice,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, totalLiquidity) / 2,
+                tolerance
+            );
+            assertApproxEqAbs(
+                currency1.balanceOf(alice) - balance1BeforeAlice,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, totalLiquidity) / 2,
+                tolerance
+            );
         }
 
         {
@@ -236,15 +241,18 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
             uint256 balance0BeforeBob = currency0.balanceOf(bob);
             uint256 balance1BeforeBob = currency1.balanceOf(bob);
             vm.startPrank(bob);
-            _collect(tokenIdBob, bob, ZERO_BYTES);
+            collect(tokenIdBob, ZERO_BYTES);
             vm.stopPrank();
-            uint256 balance0AfterBob = currency0.balanceOf(bob);
-            uint256 balance1AfterBob = currency1.balanceOf(bob);
+
             assertApproxEqAbs(
-                balance0AfterBob - balance0BeforeBob, feeRevenue.mulDivDown(liquidityBob, totalLiquidity), 1 wei
+                currency0.balanceOf(bob) - balance0BeforeBob,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
+                tolerance
             );
             assertApproxEqAbs(
-                balance1AfterBob - balance1BeforeBob, feeRevenue.mulDivDown(liquidityBob, totalLiquidity), 1 wei
+                currency1.balanceOf(bob) - balance1BeforeBob,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
+                tolerance
             );
         }
     }
@@ -258,12 +266,12 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
 
         // alice provides liquidity
         vm.prank(alice);
-        _mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        _mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(range, liquidityBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
@@ -272,7 +280,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
 
         // alice will use all of her fees + additional capital to increase liquidity
-        BalanceDelta feesOwed = INonfungiblePositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
+        BalanceDelta feesOwed = IPositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
 
         {
             (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
@@ -287,7 +295,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
             vm.startPrank(alice);
-            _increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
+            increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
             vm.stopPrank();
             uint256 balance0AfterAlice = currency0.balanceOf(alice);
             uint256 balance1AfterAlice = currency1.balanceOf(alice);
@@ -302,19 +310,19 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
             uint256 balance0BeforeBob = currency0.balanceOf(bob);
             uint256 balance1BeforeBob = currency1.balanceOf(bob);
             vm.startPrank(bob);
-            _collect(tokenIdBob, bob, ZERO_BYTES);
+            collect(tokenIdBob, ZERO_BYTES);
             vm.stopPrank();
             uint256 balance0AfterBob = currency0.balanceOf(bob);
             uint256 balance1AfterBob = currency1.balanceOf(bob);
             assertApproxEqAbs(
                 balance0AfterBob - balance0BeforeBob,
                 swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
-                1 wei
+                tolerance
             );
             assertApproxEqAbs(
                 balance1AfterBob - balance1BeforeBob,
                 swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
-                1 wei
+                tolerance
             );
         }
     }
