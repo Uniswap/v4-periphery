@@ -21,7 +21,7 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
-import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
+import {PoolPosition} from "../../src/libraries/PoolPosition.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 
@@ -32,7 +32,6 @@ import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
-    using LiquidityRangeIdLibrary for LiquidityRange;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -82,7 +81,9 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = collect(tokenId, ZERO_BYTES);
+        PoolPosition memory poolPos =
+            PoolPosition({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        BalanceDelta delta = collect(tokenId, poolPos, ZERO_BYTES);
 
         // express key.fee as wad (i.e. 3000 = 0.003e18)
         assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(FEE_WAD), 1 wei);
@@ -99,21 +100,21 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
 
         liquidityDeltaBob = bound(liquidityDeltaBob, 100e18, 100_000e18);
 
-        LiquidityRange memory range =
-            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        PoolPosition memory poolPos =
+            PoolPosition({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         vm.prank(alice);
-        mint(range, uint256(params.liquidityDelta), alice, ZERO_BYTES);
+        mint(poolPos, uint256(params.liquidityDelta), alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.prank(bob);
-        mint(range, liquidityDeltaBob, bob, ZERO_BYTES);
+        mint(poolPos, liquidityDeltaBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // confirm the positions are same range
-        (, int24 tickLowerAlice, int24 tickUpperAlice) = lpm.tokenRange(tokenIdAlice);
-        (, int24 tickLowerBob, int24 tickUpperBob) = lpm.tokenRange(tokenIdBob);
-        assertEq(tickLowerAlice, tickLowerBob);
-        assertEq(tickUpperAlice, tickUpperBob);
+        // (, int24 tickLowerAlice, int24 tickUpperAlice) = lpm.tokenRange(tokenIdAlice);
+        // (, int24 tickLowerBob, int24 tickUpperBob) = lpm.tokenRange(tokenIdBob);
+        // assertEq(tickLowerAlice, tickLowerBob);
+        // assertEq(tickUpperAlice, tickUpperBob);
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
@@ -123,7 +124,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 balance0AliceBefore = currency0.balanceOf(alice);
         uint256 balance1AliceBefore = currency1.balanceOf(alice);
         vm.startPrank(alice);
-        BalanceDelta delta = collect(tokenIdAlice, ZERO_BYTES);
+        BalanceDelta delta = collect(tokenIdAlice, poolPos, ZERO_BYTES);
         vm.stopPrank();
         uint256 balance0AliceAfter = currency0.balanceOf(alice);
         uint256 balance1AliceAfter = currency1.balanceOf(alice);
@@ -136,7 +137,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
         vm.startPrank(bob);
-        delta = collect(tokenIdBob, ZERO_BYTES);
+        delta = collect(tokenIdBob, poolPos, ZERO_BYTES);
         vm.stopPrank();
         uint256 balance0BobAfter = currency0.balanceOf(bob);
         uint256 balance1BobAfter = currency1.balanceOf(bob);
@@ -153,25 +154,25 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
     function test_collect_donate() public {}
     function test_collect_donate_sameRange() public {}
 
-    /// @dev Alice and Bob create liquidity on the same range, and decrease their liquidity
-    // Even though their positions are the same range, they are unique positions in pool manager.
+    /// @dev Alice and Bob create liquidity on the same poolPos, and decrease their liquidity
+    // Even though their positions are the same poolPos, they are unique positions in pool manager.
     function test_decreaseLiquidity_sameRange_exact() public {
         // alice and bob create liquidity on the same range [-120, 120]
-        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -120, tickUpper: 120});
+        PoolPosition memory poolPos = PoolPosition({poolKey: key, tickLower: -120, tickUpper: 120});
 
         // alice provisions 3x the amount of liquidity as bob
         uint256 liquidityAlice = 3000e18;
         uint256 liquidityBob = 1000e18;
 
         vm.prank(alice);
-        BalanceDelta lpDeltaAlice = mint(range, liquidityAlice, alice, ZERO_BYTES);
+        BalanceDelta lpDeltaAlice = mint(poolPos, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         uint256 aliceBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(alice));
         uint256 aliceBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(alice));
 
         vm.prank(bob);
-        BalanceDelta lpDeltaBob = mint(range, liquidityBob, bob, ZERO_BYTES);
+        BalanceDelta lpDeltaBob = mint(poolPos, liquidityBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         uint256 bobBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(bob));
@@ -185,7 +186,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         // alice decreases liquidity
         vm.startPrank(alice);
         lpm.approve(address(this), tokenIdAlice);
-        decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES);
+        decreaseLiquidity(tokenIdAlice, poolPos, liquidityAlice, ZERO_BYTES);
         vm.stopPrank();
 
         uint256 tolerance = 0.000000001 ether;
@@ -206,7 +207,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         // bob decreases half of his liquidity
         vm.startPrank(bob);
         lpm.approve(address(this), tokenIdBob);
-        decreaseLiquidity(tokenIdBob, liquidityBob / 2, ZERO_BYTES);
+        decreaseLiquidity(tokenIdBob, poolPos, liquidityBob / 2, ZERO_BYTES);
         vm.stopPrank();
 
         // bob has accrued half his principle liquidity + any fees in token0

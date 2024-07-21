@@ -18,12 +18,13 @@ interface IPositionManager {
     error DeadlinePassed();
     error UnsupportedAction();
     error PositionMustBeEmpty();
+    error IncorrectPoolPositionForTokenId(uint256 tokenId);
 
-    // TODO: This will just return a positionId
-    function tokenRange(uint256 tokenId)
-        external
-        view
-        returns (PoolKey memory poolKey, int24 tickLower, int24 tickUpper);
+    /// @notice Maps the ERC721 tokenId to a positionId, which is a keccak256 hash of the positions pool key, range (tickLower, tickUpper)
+    /// Enforces that a minted ERC721 token is tied to one range on one pool.
+    /// @param tokenId the ERC721 tokenId, assigned at mint
+    /// @return poolPositionId the hash of the position's poolkey, tickLower, and tickUpper
+    function poolPositions(uint256 tokenId) external view returns (bytes32 poolPositionId);
 
     /// @notice Batches many liquidity modification calls to pool manager
     /// @param payload is an encoding of actions, params, and currencies

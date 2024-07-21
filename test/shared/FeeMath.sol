@@ -13,7 +13,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
-import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
+import {PoolPosition} from "../../src/libraries/PoolPosition.sol";
 
 library FeeMath {
     using SafeCast for uint256;
@@ -22,21 +22,20 @@ library FeeMath {
     using PoolIdLibrary for PoolKey;
 
     /// @notice Calculates the fees accrued to a position. Used for testing purposes.
-    function getFeesOwed(IPositionManager posm, IPoolManager manager, uint256 tokenId)
+    function getFeesOwed(IPositionManager posm, IPoolManager manager, PoolPosition memory poolPos, uint256 tokenId)
         internal
         view
         returns (BalanceDelta feesOwed)
     {
-        (PoolKey memory poolKey, int24 tickLower, int24 tickUpper) = posm.tokenRange(tokenId);
-
         // getPosition(poolId, owner, tL, tU, salt)
         // owner is the position manager
         // salt is the tokenId
-        Position.Info memory position =
-            manager.getPosition(poolKey.toId(), address(posm), tickLower, tickUpper, bytes32(tokenId));
+        Position.Info memory position = manager.getPosition(
+            poolPos.poolKey.toId(), address(posm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)
+        );
 
         (uint256 feeGrowthInside0X218, uint256 feeGrowthInside1X128) =
-            manager.getFeeGrowthInside(poolKey.toId(), tickLower, tickUpper);
+            manager.getFeeGrowthInside(poolPos.poolKey.toId(), poolPos.tickLower, poolPos.tickUpper);
 
         feesOwed = getFeesOwed(
             feeGrowthInside0X218,

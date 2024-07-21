@@ -7,7 +7,7 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 import {PositionManager, Actions} from "../../src/PositionManager.sol";
-import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
+import {PoolPosition} from "../../src/libraries/PoolPosition.sol";
 import {Planner} from "../utils/Planner.sol";
 
 abstract contract LiquidityOperations is CommonBase {
@@ -17,39 +17,46 @@ abstract contract LiquidityOperations is CommonBase {
 
     uint256 _deadline = block.timestamp + 1;
 
-    function mint(LiquidityRange memory _range, uint256 liquidity, address recipient, bytes memory hookData)
+    function mint(PoolPosition memory poolPos, uint256 liquidity, address recipient, bytes memory hookData)
         internal
         returns (BalanceDelta)
     {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode(_range, liquidity, recipient, hookData));
+        planner = planner.add(Actions.MINT, abi.encode(poolPos, liquidity, recipient, hookData));
 
-        bytes memory calls = planner.finalize(_range.poolKey);
+        bytes memory calls = planner.finalize(poolPos.poolKey);
         bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
         return abi.decode(result[0], (BalanceDelta));
     }
 
-    function increaseLiquidity(uint256 tokenId, uint256 liquidityToAdd, bytes memory hookData)
-        internal
-        returns (BalanceDelta)
-    {
-        bytes memory calls = getIncreaseEncoded(tokenId, liquidityToAdd, hookData);
+    function increaseLiquidity(
+        uint256 tokenId,
+        PoolPosition memory poolPos,
+        uint256 liquidityToAdd,
+        bytes memory hookData
+    ) internal returns (BalanceDelta) {
+        bytes memory calls = getIncreaseEncoded(tokenId, poolPos, liquidityToAdd, hookData);
         bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
         return abi.decode(result[0], (BalanceDelta));
     }
 
     // do not make external call before unlockAndExecute, allows us to test reverts
-    function decreaseLiquidity(uint256 tokenId, uint256 liquidityToRemove, bytes memory hookData)
-        internal
-        returns (BalanceDelta)
-    {
-        bytes memory calls = getDecreaseEncoded(tokenId, liquidityToRemove, hookData);
+    function decreaseLiquidity(
+        uint256 tokenId,
+        PoolPosition memory poolPos,
+        uint256 liquidityToRemove,
+        bytes memory hookData
+    ) internal returns (BalanceDelta) {
+        bytes memory calls = getDecreaseEncoded(tokenId, poolPos, liquidityToRemove, hookData);
         bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
         return abi.decode(result[0], (BalanceDelta));
     }
 
-    function collect(uint256 tokenId, bytes memory hookData) internal returns (BalanceDelta) {
-        bytes memory calls = getCollectEncoded(tokenId, hookData);
+    function collect(uint256 tokenId, PoolPosition memory poolPos, bytes memory hookData)
+        internal
+        returns (BalanceDelta)
+    {
+        bytes memory calls = getCollectEncoded(tokenId, poolPos, hookData);
         bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
         return abi.decode(result[0], (BalanceDelta));
     }
@@ -63,32 +70,35 @@ abstract contract LiquidityOperations is CommonBase {
     }
 
     // Helper functions for getting encoded calldata for .modifyLiquidities
-    function getIncreaseEncoded(uint256 tokenId, uint256 liquidityToAdd, bytes memory hookData)
-        internal
-        view
-        returns (bytes memory)
-    {
-        (PoolKey memory key,,) = lpm.tokenRange(tokenId);
+    function getIncreaseEncoded(
+        uint256 tokenId,
+        PoolPosition memory poolPos,
+        uint256 liquidityToAdd,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, liquidityToAdd, hookData));
-        return planner.finalize(key);
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, poolPos, liquidityToAdd, hookData));
+        return planner.finalize(poolPos.poolKey);
     }
 
-    function getDecreaseEncoded(uint256 tokenId, uint256 liquidityToRemove, bytes memory hookData)
-        internal
-        view
-        returns (bytes memory)
-    {
-        (PoolKey memory key,,) = lpm.tokenRange(tokenId);
+    function getDecreaseEncoded(
+        uint256 tokenId,
+        PoolPosition memory poolPos,
+        uint256 liquidityToRemove,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, liquidityToRemove, hookData));
-        return planner.finalize(key);
+        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, poolPos, liquidityToRemove, hookData));
+        return planner.finalize(poolPos.poolKey);
     }
 
-    function getCollectEncoded(uint256 tokenId, bytes memory hookData) internal view returns (bytes memory) {
-        (PoolKey memory poolKey,,) = lpm.tokenRange(tokenId);
+    function getCollectEncoded(uint256 tokenId, PoolPosition memory poolPos, bytes memory hookData)
+        internal
+        pure
+        returns (bytes memory)
+    {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, 0, hookData));
-        return planner.finalize(poolKey);
+        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, poolPos, 0, hookData));
+        return planner.finalize(poolPos.poolKey);
     }
 }
