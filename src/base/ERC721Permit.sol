@@ -24,11 +24,6 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce 
         EIP712(name_, version_)
     {}
 
-    // TODO: implement here, or in posm
-    function tokenURI(uint256) public pure override returns (string memory) {
-        return "https://example.com";
-    }
-
     /// @inheritdoc IERC721Permit
     function DOMAIN_SEPARATOR() public view returns (bytes32) {
         return _domainSeparatorV4();

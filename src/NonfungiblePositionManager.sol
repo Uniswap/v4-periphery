@@ -45,6 +45,11 @@ contract NonfungiblePositionManager is
         ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
     {}
 
+    // TODO: implement
+    function tokenURI(uint256) public pure override returns (string memory) {
+        return "https://example.com";
+    }
+
     /// @param unlockData is an encoding of actions, params, and currencies
     /// @return returnData is the endocing of each actions return information
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
