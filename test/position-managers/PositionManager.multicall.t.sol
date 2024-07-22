@@ -66,7 +66,10 @@ contract PositionManagerMulticallTest is Test, Deployers, LiquidityFuzzers, Liqu
 
         IMulticall(address(lpm)).multicall(calls);
 
-        // test swap, doesn't revert
-        swap(key, true, -1e18, ZERO_BYTES);
+        // test swap, doesn't revert, showing the pool was initialized
+        int256 amountSpecified = -1e18;
+        BalanceDelta result = swap(key, true, amountSpecified, ZERO_BYTES);
+        assertEq(result.amount0(), amountSpecified);
+        assertGt(result.amount1(), 0);
     }
 }
