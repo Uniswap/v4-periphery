@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {HooksCounter} from "./middleware/HooksCounter.sol";
-import {MiddlewareRemove} from "../contracts/middleware/MiddlewareRemove.sol";
+import {MiddlewareRemoveNoDeltas} from "../contracts/middleware/MiddlewareRemoveNoDeltas.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {TestERC20} from "@uniswap/v4-core/src/test/TestERC20.sol";
@@ -58,7 +58,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         (address hookAddress, bytes32 salt) = HookMiner.find(
             address(factory),
             COUNTER_FLAGS,
-            type(MiddlewareRemove).creationCode,
+            type(MiddlewareRemoveNoDeltas).creationCode,
             abi.encode(address(manager), address(hookscounter))
         );
         middleware = factory.createMiddleware(address(hookscounter), salt);
@@ -68,12 +68,11 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
     function testFrontrunRemove() public {
         uint160 flags = uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG);
         FrontrunRemove frontrunRemove = FrontrunRemove(address(flags));
-        FrontrunRemove impl = new FrontrunRemove(manager);
-        vm.etch(address(frontrunRemove), address(impl).code);
+        vm.etch(address(frontrunRemove), address(new FrontrunRemove(manager)).code);
         (, bytes32 salt) = HookMiner.find(
             address(factory),
             flags,
-            type(MiddlewareRemove).creationCode,
+            type(MiddlewareRemoveNoDeltas).creationCode,
             abi.encode(address(manager), address(frontrunRemove))
         );
         middleware = factory.createMiddleware(address(frontrunRemove), salt);
@@ -121,7 +120,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         (, bytes32 salt) = HookMiner.find(
             address(factory),
             flags,
-            type(MiddlewareRemove).creationCode,
+            type(MiddlewareRemoveNoDeltas).creationCode,
             abi.encode(address(manager), address(feeOnRemove))
         );
         middleware = factory.createMiddleware(address(feeOnRemove), salt);
@@ -156,10 +155,10 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
                 | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG
         );
-        (address hookAddress, bytes32 salt) = HookMiner.find(
+        (, bytes32 salt) = HookMiner.find(
             address(factory),
             flags,
-            type(MiddlewareRemove).creationCode,
+            type(MiddlewareRemoveNoDeltas).creationCode,
             abi.encode(address(manager), address(hookscounter))
         );
         testOn(address(hookscounter), salt);
@@ -170,20 +169,20 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         );
         HooksRevert hooksRevert = HooksRevert(address(flags));
         vm.etch(address(hooksRevert), address(new HooksRevert(manager)).code);
-        (hookAddress, salt) = HookMiner.find(
+        (, salt) = HookMiner.find(
             address(factory),
             flags,
-            type(MiddlewareRemove).creationCode,
+            type(MiddlewareRemoveNoDeltas).creationCode,
             abi.encode(address(manager), address(hooksRevert))
         );
         testOn(address(hooksRevert), salt);
 
         HooksOutOfGas hooksOutOfGas = HooksOutOfGas(address(flags));
         vm.etch(address(hooksOutOfGas), address(new HooksOutOfGas(manager)).code);
-        (hookAddress, salt) = HookMiner.find(
+        (, salt) = HookMiner.find(
             address(factory),
             flags,
-            type(MiddlewareRemove).creationCode,
+            type(MiddlewareRemoveNoDeltas).creationCode,
             abi.encode(address(manager), address(hooksOutOfGas))
         );
         testOn(address(hooksOutOfGas), salt);
@@ -206,10 +205,12 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         (address hookAddress, bytes32 salt) = HookMiner.find(
             address(factory),
             flags,
-            type(MiddlewareRemove).creationCode,
+            type(MiddlewareRemoveNoDeltas).creationCode,
             abi.encode(address(manager), address(removeReturnDeltas))
         );
-        vm.expectRevert(abi.encodePacked(bytes16(MiddlewareRemove.HookPermissionForbidden.selector), hookAddress));
+        vm.expectRevert(
+            abi.encodePacked(bytes16(MiddlewareRemoveNoDeltas.HookPermissionForbidden.selector), hookAddress)
+        );
         factory.createMiddleware(address(removeReturnDeltas), salt);
     }
 
@@ -223,7 +224,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         (, bytes32 salt) = HookMiner.find(
             address(factory),
             flags,
-            type(MiddlewareRemove).creationCode,
+            type(MiddlewareRemoveNoDeltas).creationCode,
             abi.encode(address(manager), address(hookscounter))
         );
         factory.createMiddleware(address(hookscounter), salt);
@@ -237,10 +238,10 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         vm.etch(address(hookscounter), address(new HooksCounter(manager)).code);
         uint160 incorrectFlags = uint160(Hooks.BEFORE_INITIALIZE_FLAG);
 
-        (address hookAddress, bytes32 salt) = HookMiner.find(
+        (, bytes32 salt) = HookMiner.find(
             address(factory),
             incorrectFlags,
-            type(MiddlewareRemove).creationCode,
+            type(MiddlewareRemoveNoDeltas).creationCode,
             abi.encode(address(manager), address(counter2))
         );
         address implementation = address(counter2);
