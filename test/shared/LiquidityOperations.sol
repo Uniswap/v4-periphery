@@ -21,10 +21,7 @@ abstract contract LiquidityOperations is CommonBase {
         internal
         returns (BalanceDelta)
     {
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode(_range, liquidity, recipient, hookData));
-
-        bytes memory calls = planner.finalize(_range.poolKey);
+        bytes memory calls = getMintEncoded(_range, liquidity, recipient, hookData);
         bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
         return abi.decode(result[0], (BalanceDelta));
     }
@@ -63,6 +60,13 @@ abstract contract LiquidityOperations is CommonBase {
     }
 
     // Helper functions for getting encoded calldata for .modifyLiquidities
+    function getMintEncoded(LiquidityRange memory _range, uint256 liquidity, address recipient, bytes memory hookData) internal view returns (bytes memory){
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(Actions.MINT, abi.encode(_range, liquidity, recipient, hookData));
+
+        return planner.finalize(_range.poolKey);
+    }
+
     function getIncreaseEncoded(uint256 tokenId, uint256 liquidityToAdd, bytes memory hookData)
         internal
         view
