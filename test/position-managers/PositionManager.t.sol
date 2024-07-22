@@ -244,7 +244,7 @@ contract PositionManagerTest is Test, Deployers, LiquidityFuzzers, LiquidityOper
         assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(delta.amount1())), "guh");
     }
 
-    function test_initialize(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_initialize() public {
         // initialize a new pool and add liquidity
         key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
         lpm.initializePool(key, SQRT_PRICE_1_1, ZERO_BYTES);
@@ -256,6 +256,7 @@ contract PositionManagerTest is Test, Deployers, LiquidityFuzzers, LiquidityOper
         assertEq(lpFee, key.fee);
     }
 
+    function test_initialize_fuzz() public {}
     function test_mintTransferBurn() public {}
     function test_mintTransferCollect() public {}
     function test_mintTransferIncrease() public {}

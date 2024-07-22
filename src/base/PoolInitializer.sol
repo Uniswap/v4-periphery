@@ -10,6 +10,6 @@ abstract contract PoolInitializer is ImmutableState {
         external
         returns (int24)
     {
-        return manager.initialize(key, sqrtPriceX96, hookData);
+        return poolManager.initialize(key, sqrtPriceX96, hookData);
     }
 }

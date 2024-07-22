@@ -6,15 +6,15 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "./ImmutableState.sol";
 
 abstract contract SafeCallback is ImmutableState, IUnlockCallback {
-    error NotManager();
+    error NotPoolManager();
 
-    modifier onlyByManager() {
-        if (msg.sender != address(manager)) revert NotManager();
+    modifier onlyByPoolManager() {
+        if (msg.sender != address(poolManager)) revert NotPoolManager();
         _;
     }
 
     /// @dev We force the onlyByManager modifier by exposing a virtual function after the onlyByManager check.
-    function unlockCallback(bytes calldata data) external onlyByManager returns (bytes memory) {
+    function unlockCallback(bytes calldata data) external onlyByPoolManager returns (bytes memory) {
         return _unlockCallback(data);
     }
 
