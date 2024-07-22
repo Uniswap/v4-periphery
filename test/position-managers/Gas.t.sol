@@ -106,7 +106,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
 
     function test_gas_mint_sameTickLower() public {
         // Explicitly mint to range whos tickLower is the same.
-        LiquidityRange memory bob_mint = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: -60});
+        LiquidityRange memory bob_mint = LiquidityRange({poolKey: key, tickLower: range.tickLower, tickUpper: -60});
         vm.startPrank(bob);
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
@@ -121,7 +121,7 @@ contract GasTest is Test, Deployers, GasSnapshot, LiquidityOperations {
 
     function test_gas_mint_sameTickUpper() public {
         // Explicitly mint to range whos tickUpperis the same.
-        LiquidityRange memory bob_mint = LiquidityRange({poolKey: key, tickLower: 60, tickUpper: 300});
+        LiquidityRange memory bob_mint = LiquidityRange({poolKey: key, tickLower: 60, tickUpper: range.tickUpper});
         vm.startPrank(bob);
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
