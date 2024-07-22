@@ -35,7 +35,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
 
     constructor(IPoolManager _manager)
         ImmutableState(_manager)
-        ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
+        ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
     {}
 
     modifier checkDeadline(uint256 deadline) {
