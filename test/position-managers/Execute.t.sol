@@ -55,7 +55,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
-    function test_execute_increaseLiquidity_once(uint256 initialLiquidity, uint256 liquidityToAdd) public {
+    function test_fuzz_execute_increaseLiquidity_once(uint256 initialLiquidity, uint256 liquidityToAdd) public {
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
         mint(range, initialLiquidity, address(this), ZERO_BYTES);
@@ -70,7 +70,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
 
-    function test_execute_increaseLiquidity_twice(
+    function test_fuzz_execute_increaseLiquidity_twice(
         uint256 initialiLiquidity,
         uint256 liquidityToAdd,
         uint256 liquidityToAdd2
@@ -97,7 +97,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     // this case doesnt make sense in real world usage, so it doesnt have a cool name. but its a good test case
-    function test_execute_mintAndIncrease(uint256 initialLiquidity, uint256 liquidityToAdd) public {
+    function test_fuzz_execute_mintAndIncrease(uint256 initialLiquidity, uint256 liquidityToAdd) public {
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
 

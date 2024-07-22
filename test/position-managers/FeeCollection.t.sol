@@ -48,7 +48,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         approvePosmFor(bob);
     }
 
-    function test_collect_erc20(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_collect_erc20(IPoolManager.ModifyLiquidityParams memory params) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
@@ -69,9 +69,10 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(uint256(int256(delta.amount1())), currency1.balanceOfSelf() - balance1Before);
     }
 
-    function test_collect_sameRange_erc20(IPoolManager.ModifyLiquidityParams memory params, uint256 liquidityDeltaBob)
-        public
-    {
+    function test_fuzz_collect_sameRange_erc20(
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 liquidityDeltaBob
+    ) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
@@ -124,13 +125,10 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(uint256(uint128(delta.amount1())), balance1BobAfter - balance1BobBefore);
         assertTrue(delta.amount1() != 0);
 
-        // position manager holds no fees now
-        assertApproxEqAbs(manager.balanceOf(address(lpm), currency0.toId()), 0, 1 wei);
-        assertApproxEqAbs(manager.balanceOf(address(lpm), currency1.toId()), 0, 1 wei);
+        // position manager should never hold fees
+        assertEq(manager.balanceOf(address(lpm), currency0.toId()), 0);
+        assertEq(manager.balanceOf(address(lpm), currency1.toId()), 0);
     }
-
-    function test_collect_donate() public {}
-    function test_collect_donate_sameRange() public {}
 
     /// @dev Alice and Bob create liquidity on the same range, and decrease their liquidity
     // Even though their positions are the same range, they are unique positions in pool manager.
@@ -208,6 +206,8 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         }
     }
 
+    function test_collect_donate() public {}
+    function test_collect_donate_sameRange() public {}
     // TODO: ERC6909 Support.
     function test_collect_6909() public {}
     function test_collect_sameRange_6909() public {}

@@ -235,8 +235,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
         // The change in balance equals the delta returned.
-        assertEq(currency0.balanceOfSelf() - balance0Before, uint256(int256(delta.amount0())), "boo");
-        assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(delta.amount1())), "guh");
+        assertEq(currency0.balanceOfSelf() - balance0Before, uint256(int256(delta.amount0())));
+        assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(delta.amount1())));
     }
 
     function test_initialize() public {

@@ -113,7 +113,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         vm.stopPrank();
 
         // alice barely spent any tokens
-        // TODO: This is a case for not caring about dust left in pool manager :/
+        // TODO: Use clear.
         assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
         assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
     }
@@ -159,7 +159,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         vm.stopPrank();
 
         // alice barely spent any tokens
-        // TODO: This is a case for not caring about dust left in pool manager :/
+        // TODO: Use clear.
         assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
         assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
     }
@@ -283,8 +283,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             uint256 balance1AfterAlice = currency1.balanceOf(alice);
 
             // Alice owed feesOwed amount in 0 and 1 because she places feesOwed * 2 back into the pool.
-            assertApproxEqAbs(balance0BeforeAlice - balance0AfterAlice, uint256(int256(feesOwed.amount0())), 37 wei);
-            assertApproxEqAbs(balance1BeforeAlice - balance1AfterAlice, uint256(int256(feesOwed.amount1())), 1 wei);
+            assertApproxEqAbs(balance0BeforeAlice - balance0AfterAlice, uint256(int256(feesOwed.amount0())), tolerance);
+            assertApproxEqAbs(balance1BeforeAlice - balance1AfterAlice, uint256(int256(feesOwed.amount1())), tolerance);
         }
 
         {
