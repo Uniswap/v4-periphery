@@ -54,8 +54,11 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         lpm.modifyLiquidities(abi.encode(planner.actions, badParams), block.timestamp + 1);
     }
 
-    function test_mint_withLiquidityDelta(IPoolManager.ModifyLiquidityParams memory params) public {
-        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+    function test_fuzz_mint_withLiquidityDelta(IPoolManager.ModifyLiquidityParams memory params, uint160 sqrtPriceX96)
+        public
+    {
+        bound(sqrtPriceX96, MIN_PRICE_LIMIT, MAX_PRICE_LIMIT);
+        params = createFuzzyLiquidityParams(key, params, sqrtPriceX96);
         // liquidity is a uint
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
