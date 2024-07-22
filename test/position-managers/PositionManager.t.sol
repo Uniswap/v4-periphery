@@ -190,9 +190,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     ) public {
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-        vm.assume(0 < decreaseLiquidityDelta);
-        vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
-        vm.assume(int256(decreaseLiquidityDelta) <= params.liquidityDelta);
+        decreaseLiquidityDelta = uint256(bound(int256(decreaseLiquidityDelta), 0, params.liquidityDelta));
 
         LiquidityRange memory range =
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
