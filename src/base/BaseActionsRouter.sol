@@ -2,19 +2,12 @@
 pragma solidity ^0.8.24;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-
-import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
-
 import {SafeCallback} from "./SafeCallback.sol";
 import {BytesLib} from "../libraries/BytesLib.sol";
 
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.
 /// @dev Suggested uint256 action values are defined in Actions.sol, however any definition can be used
 abstract contract BaseActionsRouter is SafeCallback {
-    using TransientStateLibrary for IPoolManager;
-    using SafeTransferLib for address;
     using BytesLib for bytes;
 
     /// @notice emitted when different numbers of parameters and actions are provided
@@ -46,6 +39,7 @@ abstract contract BaseActionsRouter is SafeCallback {
         }
 
         // TODO do we want to return anything?
+        return "";
     }
 
     /// @notice function to handle the parsing and execution of an action and its parameters
