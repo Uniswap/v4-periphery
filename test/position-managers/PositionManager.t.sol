@@ -117,7 +117,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
     }
 
-    function test_mint_recipient(IPoolManager.ModifyLiquidityParams memory seedParams) public {
+    function test_fuzz_mint_recipient(IPoolManager.ModifyLiquidityParams memory seedParams) public {
         IPoolManager.ModifyLiquidityParams memory params = createFuzzyLiquidityParams(key, seedParams, SQRT_PRICE_1_1);
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
@@ -142,7 +142,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
 
-    function test_burn(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_burn(IPoolManager.ModifyLiquidityParams memory params) public {
         uint256 balance0Start = currency0.balanceOfSelf();
         uint256 balance1Start = currency1.balanceOfSelf();
 
@@ -171,26 +171,23 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         assertEq(liquidity, 0);
 
-        // TODO: slightly off by 1 bip (0.0001%)
-        assertApproxEqRel(
-            currency0.balanceOfSelf(), balance0BeforeBurn + uint256(uint128(deltaDecrease.amount0())), 0.0001e18
-        );
-        assertApproxEqRel(
-            currency1.balanceOfSelf(), balance1BeforeBurn + uint256(uint128(deltaDecrease.amount1())), 0.0001e18
-        );
+        assertEq(currency0.balanceOfSelf(), balance0BeforeBurn + uint256(int256(deltaDecrease.amount0())));
+        assertEq(currency1.balanceOfSelf(), balance1BeforeBurn + uint256(uint128(deltaDecrease.amount1())));
 
         // OZ 721 will revert if the token does not exist
         vm.expectRevert();
         lpm.ownerOf(1);
 
         // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
+        // Potentially because we round down in core. I believe this is known in V3. But let's check!
         assertApproxEqAbs(currency0.balanceOfSelf(), balance0Start, 1 wei);
         assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
     }
 
-    function test_decreaseLiquidity(IPoolManager.ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta)
-        public
-    {
+    function test_fuzz_decreaseLiquidity(
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 decreaseLiquidityDelta
+    ) public {
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.assume(0 < decreaseLiquidityDelta);
@@ -209,7 +206,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
     }
 
-    function test_decreaseLiquidity_assertCollectedBalance(
+    function test_fuzz_decreaseLiquidity_assertCollectedBalance(
         IPoolManager.ModifyLiquidityParams memory params,
         uint256 decreaseLiquidityDelta
     ) public {
