@@ -17,13 +17,12 @@ import {ImmutableState} from "./base/ImmutableState.sol";
 import {Multicall} from "./base/Multicall.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {CurrencySettleTake} from "./libraries/CurrencySettleTake.sol";
-import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "./types/LiquidityRange.sol";
+import {LiquidityRange} from "./types/LiquidityRange.sol";
 
 contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;
-    using LiquidityRangeIdLibrary for LiquidityRange;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
