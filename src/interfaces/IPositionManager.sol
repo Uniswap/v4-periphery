@@ -26,7 +26,7 @@ interface IPositionManager {
         returns (PoolKey memory poolKey, int24 tickLower, int24 tickUpper);
 
     /// @notice Batches many liquidity modification calls to pool manager
-    /// @param payload is an encoding of actions, params, and currencies
+    /// @param payload is an encoding of actions, and parameters for those actions
     /// @param deadline is the deadline for the batched actions to be executed
     /// @return returnData is the endocing of each actions return information
     function modifyLiquidities(bytes calldata payload, uint256 deadline) external returns (bytes[] memory);
