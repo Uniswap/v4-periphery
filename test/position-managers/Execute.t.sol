@@ -5,7 +5,6 @@ import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -18,13 +17,11 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
-
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
-
-import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
+import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
-contract ExecuteTest is Test, Deployers, LiquidityFuzzers, LiquidityOperations {
+contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -35,37 +32,24 @@ contract ExecuteTest is Test, Deployers, LiquidityFuzzers, LiquidityOperations {
     address alice = makeAddr("ALICE");
     address bob = makeAddr("BOB");
 
-    uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
-
-    // expresses the fee as a wad (i.e. 3000 = 0.003e18 = 0.30%)
-    uint256 FEE_WAD;
-
     LiquidityRange range;
 
     function setUp() public {
-        Deployers.deployFreshManagerAndRouters();
-        Deployers.deployMintAndApprove2Currencies();
+        deployFreshManagerAndRouters();
+        deployMintAndApprove2Currencies();
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
-        FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
-        lpm = new PositionManager(manager);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        // Requires currency0 and currency1 to be set in base Deployers contract.
+        deployAndApprovePosm(manager);
 
-        // Give tokens to Alice and Bob, with approvals
-        IERC20(Currency.unwrap(currency0)).transfer(alice, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency1)).transfer(alice, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency0)).transfer(bob, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency1)).transfer(bob, STARTING_USER_BALANCE);
-        vm.startPrank(alice);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
-        vm.stopPrank();
-        vm.startPrank(bob);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
-        vm.stopPrank();
+        // Give tokens to Alice and Bob.
+        seedBalance(alice);
+        seedBalance(bob);
+
+        // Approve posm for Alice and bob.
+        approvePosmFor(alice);
+        approvePosmFor(bob);
 
         // define a reusable range
         range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});

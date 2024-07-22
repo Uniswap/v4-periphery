@@ -5,7 +5,6 @@ import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -19,13 +18,11 @@ import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.s
 import {PositionManager} from "../../src/PositionManager.sol";
 import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 import {IMulticall} from "../../src/interfaces/IMulticall.sol";
-
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
-
-import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
+import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
-contract PositionManagerMulticallTest is Test, Deployers, LiquidityFuzzers, LiquidityOperations {
+contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using Planner for Planner.Plan;
@@ -34,15 +31,13 @@ contract PositionManagerMulticallTest is Test, Deployers, LiquidityFuzzers, Liqu
     address alice = makeAddr("ALICE");
 
     function setUp() public {
-        Deployers.deployFreshManagerAndRouters();
-        Deployers.deployMintAndApprove2Currencies();
+        deployFreshManagerAndRouters();
+        deployMintAndApprove2Currencies();
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        lpm = new PositionManager(manager);
-
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        // Requires currency0 and currency1 to be set in base Deployers contract.
+        deployAndApprovePosm(manager);
     }
 
     function test_multicall_initializePool_mint() public {
