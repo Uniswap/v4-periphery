@@ -249,14 +249,11 @@ contract PositionManagerTest is Test, Deployers, LiquidityFuzzers, LiquidityOper
         key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
         lpm.initializePool(key, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
-
-        // add liquidity to verify pool initialized
-        LiquidityRange memory range =
-            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
-        mint(range, 100e18, address(this), ZERO_BYTES);
-
-        assertEq(lpm.ownerOf(1), address(this));
+        (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee) = manager.getSlot0(key.toId());
+        assertEq(sqrtPriceX96, SQRT_PRICE_1_1);
+        assertEq(tick, 0);
+        assertEq(protocolFee, 0);
+        assertEq(lpFee, key.fee);
     }
 
     function test_mintTransferBurn() public {}
