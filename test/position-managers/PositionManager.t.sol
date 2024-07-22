@@ -74,6 +74,7 @@ contract PositionManagerTest is Test, Deployers, LiquidityFuzzers, LiquidityOper
         BalanceDelta delta = mint(range, liquidityToAdd, address(this), ZERO_BYTES);
 
         assertEq(tokenId, 1);
+        assertEq(lpm.nextTokenId(), 2);
         assertEq(lpm.ownerOf(tokenId), address(this));
 
         bytes32 positionId =
@@ -127,10 +128,20 @@ contract PositionManagerTest is Test, Deployers, LiquidityFuzzers, LiquidityOper
             LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         uint256 tokenId = lpm.nextTokenId();
-        mint(range, liquidityToAdd, address(alice), ZERO_BYTES);
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+        BalanceDelta delta = mint(range, liquidityToAdd, alice, ZERO_BYTES);
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), alice);
+
+        // alice was not the payer
+        assertEq(balance0Before - currency0.balanceOfSelf(), uint256(int256(-delta.amount0())));
+        assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
+        assertEq(currency0.balanceOf(alice), balance0BeforeAlice);
+        assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
 
     function test_burn(IPoolManager.ModifyLiquidityParams memory params) public {
