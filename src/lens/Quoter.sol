@@ -14,7 +14,6 @@ import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
 import {PathKey, PathKeyLib} from "../libraries/PathKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {ImmutableState} from "../base/ImmutableState.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
 
 contract Quoter is IQuoter, SafeCallback {
@@ -53,7 +52,7 @@ contract Quoter is IQuoter, SafeCallback {
         _;
     }
 
-    constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}
+    constructor(IPoolManager _poolManager) SafeCallback(_poolManager) {}
 
     /// @inheritdoc IQuoter
     function quoteExactInputSingle(QuoteExactSingleParams memory params)

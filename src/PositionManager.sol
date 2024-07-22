@@ -13,7 +13,6 @@ import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientSta
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {IPositionManager, Actions} from "./interfaces/IPositionManager.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
-import {ImmutableState} from "./base/ImmutableState.sol";
 import {Multicall} from "./base/Multicall.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {CurrencySettleTake} from "./libraries/CurrencySettleTake.sol";
@@ -33,8 +32,8 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     // maps the ERC721 tokenId to its Range (poolKey, tick range)
     mapping(uint256 tokenId => LiquidityRange range) public tokenRange;
 
-    constructor(IPoolManager _manager)
-        ImmutableState(_manager)
+    constructor(IPoolManager _poolManager)
+        SafeCallback(_poolManager)
         ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
     {}
 
