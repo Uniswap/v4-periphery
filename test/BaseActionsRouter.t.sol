@@ -76,7 +76,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
     function test_clear_suceeds() public {
         Plan memory plan = ActionsRouterPlanner.init();
         for (uint256 i = 0; i < 10; i++) {
-            plan.add(Actions.CLEAR_DELTA, "");
+            plan.add(Actions.CLEAR, "");
         }
 
         assertEq(router.clearCount(), 0);
