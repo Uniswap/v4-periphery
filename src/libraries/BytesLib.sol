@@ -5,6 +5,7 @@ pragma solidity ^0.8.0;
 library BytesLib {
     error SliceOutOfBounds();
 
+    /// @notice equivalent to SliceOutOfBounds.selector
     bytes4 constant SLICE_ERROR_SELECTOR = 0x3b99b53d;
 
     /// @notice Performs the equivalent of `abi.decode(data, (uint256[], bytes[]))` in calldata
