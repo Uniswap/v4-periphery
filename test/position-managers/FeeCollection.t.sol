@@ -17,10 +17,13 @@ import {PositionManager} from "../../src/PositionManager.sol";
 import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
+import {FeeMath} from "../shared/FeeMath.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 
 contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
+    using FeeMath for IPositionManager;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -58,13 +61,16 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 swapAmount = 0.01e18;
         swap(key, false, -int256(swapAmount), ZERO_BYTES);
 
+        BalanceDelta expectedFees = IPositionManager(address(lpm)).getFeesOwed(manager, tokenId);
+
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
         BalanceDelta delta = collect(tokenId, ZERO_BYTES);
 
-        // express key.fee as wad (i.e. 3000 = 0.003e18)
-        assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(FEE_WAD), 1 wei);
+        assertEq(uint256(int256(delta.amount1())), uint256(int256(expectedFees.amount1())));
+        assertEq(uint256(int256(delta.amount0())), uint256(int256(expectedFees.amount0())));
+
         assertEq(uint256(int256(delta.amount0())), currency0.balanceOfSelf() - balance0Before);
         assertEq(uint256(int256(delta.amount1())), currency1.balanceOfSelf() - balance1Before);
     }
