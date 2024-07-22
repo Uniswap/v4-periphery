@@ -42,8 +42,7 @@ abstract contract BaseActionsRouter is SafeCallback, ReentrancyLock {
         // TODO would it be better to use a struct
 
         // abi.decode(data, (uint256[], bytes[]));
-        uint256[] calldata actions = data.toUint256Array(0);
-        bytes[] calldata params = data.toBytesArray(1);
+        (uint256[] calldata actions, bytes[] calldata params) = data.decodeInCalldata();
 
         uint256 numActions = actions.length;
         if (numActions != params.length) revert LengthMismatch();
