@@ -68,6 +68,10 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
         BalanceDelta delta = collect(tokenId, ZERO_BYTES);
 
+<<<<<<< HEAD
+=======
+        assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(FEE_WAD), 1 wei);
+>>>>>>> cc1ea4e (additional cleanup and fuzz initialize)
         assertEq(uint256(int256(delta.amount1())), uint256(int256(expectedFees.amount1())));
         assertEq(uint256(int256(delta.amount0())), uint256(int256(expectedFees.amount0())));
 

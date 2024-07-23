@@ -126,7 +126,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         BalanceDelta delta = _mint(range, initialLiquidity, block.timestamp + 1, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        // we'll burn and mint to [-60, 60], so calculate the liquidity units
+        // we'll burn and mint a new position on [-60, 60]; calculate the liquidity units for the new range
         LiquidityRange memory newRange = LiquidityRange({poolKey: range.poolKey, tickLower: -60, tickUpper: 60});
         uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             SQRT_PRICE_1_1,
@@ -142,18 +142,25 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, initialLiquidity, ZERO_BYTES));
         planner = planner.add(Actions.BURN, abi.encode(tokenId));
+<<<<<<< HEAD
         planner = planner.add(
             Actions.MINT, abi.encode(newRange, newLiquidity, block.timestamp + 1, address(this), ZERO_BYTES)
         );
         planner = planner.finalize(range);
         bytes[] memory data = lpm.modifyLiquidities(planner.zip());
+=======
+        planner = planner.add(Actions.MINT, abi.encode(newRange, newLiquidity, address(this), ZERO_BYTES));
+        bytes memory calls = planner.finalize(range.poolKey);
+
+        bytes[] memory data = lpm.modifyLiquidities(calls, _deadline);
+>>>>>>> cc1ea4e (additional cleanup and fuzz initialize)
         int256 delta0 = abi.decode(data[data.length - 2], (int256));
         int256 delta1 = abi.decode(data[data.length - 1], (int256));
 
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
 
-        // wow there's 1 wei of imprecision, where the user is paying 1 wei of dust
+        // TODO: use clear so user does not pay 1 wei
         assertApproxEqAbs(delta0, 0, 1 wei);
         assertApproxEqAbs(delta1, 0, 1 wei);
         assertApproxEqAbs(balance0Before - balance0After, 0, 1 wei);
