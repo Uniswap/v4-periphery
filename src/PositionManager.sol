@@ -15,12 +15,12 @@ import {IPositionManager, Actions} from "./interfaces/IPositionManager.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {Multicall} from "./base/Multicall.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
-import {CurrencySettleTake} from "./libraries/CurrencySettleTake.sol";
+import {CurrencySettler} from "./libraries/CurrencySettler.sol";
 import {LiquidityRange} from "./types/LiquidityRange.sol";
 
 contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback {
     using CurrencyLibrary for Currency;
-    using CurrencySettleTake for Currency;
+    using CurrencySettler for IPoolManager;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
@@ -154,9 +154,9 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
 
         // the sender is the payer or receiver
         if (currencyDelta < 0) {
-            currency.settle(poolManager, sender, uint256(-int256(currencyDelta)), false);
+            poolManager.settle(currency, sender, uint256(-int256(currencyDelta)));
         } else if (currencyDelta > 0) {
-            currency.take(poolManager, sender, uint256(int256(currencyDelta)), false);
+            poolManager.take(currency, sender, uint256(int256(currencyDelta)));
         }
 
         return abi.encode(currencyDelta);
