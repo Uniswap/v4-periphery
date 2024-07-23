@@ -3,23 +3,25 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {PathKey} from "../contracts/libraries/PathKey.sol";
-import {IQuoter} from "../contracts/interfaces/IQuoter.sol";
-import {Quoter} from "../contracts/lens/Quoter.sol";
-import {LiquidityAmounts} from "../contracts/libraries/LiquidityAmounts.sol";
-import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PathKey} from "../src/libraries/PathKey.sol";
+import {IQuoter} from "../src/interfaces/IQuoter.sol";
+import {Quoter} from "../src/lens/Quoter.sol";
+
+// v4-core
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+
+// solmate
+import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 contract QuoterTest is Test, Deployers {
     using SafeCast for *;
