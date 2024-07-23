@@ -127,51 +127,53 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
     }
 
-    // function test_burn_native(IPoolManager.ModifyLiquidityParams memory params) public {
-    //     uint256 balance0Start = currency0.balanceOfSelf();
-    //     uint256 balance1Start = currency1.balanceOfSelf();
+    function test_burn_native(IPoolManager.ModifyLiquidityParams memory params) public {
+        uint256 balance0Start = address(this).balance;
+        uint256 balance1Start = currency1.balanceOfSelf();
 
-    //     // create liquidity we can burn
-    //     uint256 tokenId;
-    //     (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-    //     LiquidityRange memory range =
-    //         LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
-    //     assertEq(tokenId, 1);
-    //     assertEq(lpm.ownerOf(1), address(this));
+        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
 
-    //     bytes32 positionId =
-    //         keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
-    //     (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        uint256 liquidityToAdd =
+            params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
+        LiquidityRange memory range =
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-    //     assertEq(liquidity, uint256(params.liquidityDelta));
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, range, liquidityToAdd, address(this), ZERO_BYTES);
 
-    //     // burn liquidity
-    //     uint256 balance0BeforeBurn = currency0.balanceOfSelf();
-    //     uint256 balance1BeforeBurn = currency1.balanceOfSelf();
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        assertEq(liquidity, uint256(params.liquidityDelta));
 
-    //     BalanceDelta deltaDecrease = decreaseLiquidity(tokenId, liquidity, ZERO_BYTES);
-    //     burn(tokenId);
+        // burn liquidity
+        uint256 balance0BeforeBurn = currency0.balanceOfSelf();
+        uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
-    //     (liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        BalanceDelta deltaDecrease = decreaseLiquidity(tokenId, liquidity, ZERO_BYTES);
+        burn(tokenId);
 
-    //     assertEq(liquidity, 0);
+        (liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        assertEq(liquidity, 0);
 
-    //     // TODO: slightly off by 1 bip (0.0001%)
-    //     assertApproxEqRel(
-    //         currency0.balanceOfSelf(), balance0BeforeBurn + uint256(uint128(deltaDecrease.amount0())), 0.0001e18
-    //     );
-    //     assertApproxEqRel(
-    //         currency1.balanceOfSelf(), balance1BeforeBurn + uint256(uint128(deltaDecrease.amount1())), 0.0001e18
-    //     );
+        // TODO: slightly off by 1 bip (0.0001%)
+        assertApproxEqRel(
+            currency0.balanceOfSelf(), balance0BeforeBurn + uint256(uint128(deltaDecrease.amount0())), 0.0001e18
+        );
+        assertApproxEqRel(
+            currency1.balanceOfSelf(), balance1BeforeBurn + uint256(uint128(deltaDecrease.amount1())), 0.0001e18
+        );
 
-    //     // OZ 721 will revert if the token does not exist
-    //     vm.expectRevert();
-    //     lpm.ownerOf(1);
+        // OZ 721 will revert if the token does not exist
+        vm.expectRevert();
+        lpm.ownerOf(1);
 
-    //     // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
-    //     assertApproxEqAbs(currency0.balanceOfSelf(), balance0Start, 1 wei);
-    //     assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
-    // }
+        // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
+        assertApproxEqAbs(currency0.balanceOfSelf(), balance0Start, 1 wei);
+        assertApproxEqAbs(address(this).balance, balance0Start, 1 wei);
+        assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
+    }
 
     // function test_increaseLiquidity_mative(IPoolManager.ModifyLiquidityParams memory params, uint256 increaseLiquidityDelta) public {}
 
