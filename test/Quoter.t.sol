@@ -33,8 +33,8 @@ contract QuoterTest is Test, Deployers {
     // Max tick for full range with tick spacing of 60
     int24 internal constant MAX_TICK = -MIN_TICK;
 
-    uint160 internal constant SQRT_RATIO_100_102 = 78447570448055484695608110440;
-    uint160 internal constant SQRT_RATIO_102_100 = 80016521857016594389520272648;
+    uint160 internal constant SQRT_PRICE_100_102 = 78447570448055484695608110440;
+    uint160 internal constant SQRT_PRICE_102_100 = 80016521857016594389520272648;
 
     uint256 internal constant CONTROLLER_GAS_LIMIT = 500000;
 
@@ -54,7 +54,7 @@ contract QuoterTest is Test, Deployers {
 
     function setUp() public {
         deployFreshManagerAndRouters();
-        quoter = new Quoter(address(manager));
+        quoter = new Quoter(IPoolManager(manager));
         positionManager = new PoolModifyLiquidityTest(manager);
 
         // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)
@@ -329,13 +329,13 @@ contract QuoterTest is Test, Deployers {
                 zeroForOne: true,
                 recipient: address(this),
                 exactAmount: type(uint128).max,
-                sqrtPriceLimitX96: SQRT_RATIO_100_102,
+                sqrtPriceLimitX96: SQRT_PRICE_100_102,
                 hookData: ZERO_BYTES
             })
         );
 
         assertEq(deltaAmounts[0], 9981);
-        assertEq(sqrtPriceX96After, SQRT_RATIO_100_102);
+        assertEq(sqrtPriceX96After, SQRT_PRICE_100_102);
         assertEq(initializedTicksLoaded, 0);
     }
 
@@ -347,13 +347,13 @@ contract QuoterTest is Test, Deployers {
                 zeroForOne: false,
                 recipient: address(this),
                 exactAmount: type(uint128).max,
-                sqrtPriceLimitX96: SQRT_RATIO_102_100,
+                sqrtPriceLimitX96: SQRT_PRICE_102_100,
                 hookData: ZERO_BYTES
             })
         );
 
         assertEq(deltaAmounts[1], 9981);
-        assertEq(sqrtPriceX96After, SQRT_RATIO_102_100);
+        assertEq(sqrtPriceX96After, SQRT_PRICE_102_100);
         assertEq(initializedTicksLoaded, 0);
     }
 
