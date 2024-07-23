@@ -7,8 +7,6 @@ import "forge-std/Script.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateView} from "../src/lens/StateView.sol";
 
-import "forge-std/console2.sol";
-
 contract DeployStateView is Script {
     function setUp() public {}
 
