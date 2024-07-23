@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
 import {BaseMiddleware} from "./BaseMiddleware.sol";
@@ -11,11 +11,10 @@ import {BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import {NonZeroDeltaCount} from "@uniswap/v4-core/src/libraries/NonZeroDeltaCount.sol";
-import {IExttload} from "@uniswap/v4-core/src/interfaces/IExttload.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {console} from "../../lib/forge-std/src/console.sol";
 
 contract MiddlewareRemoveNoDeltas is BaseMiddleware {
     using CustomRevert for bytes4;
@@ -25,7 +24,6 @@ contract MiddlewareRemoveNoDeltas is BaseMiddleware {
     using PoolIdLibrary for PoolKey;
 
     error HookPermissionForbidden(address hooks);
-    error HookModifiedPrice();
     error HookModifiedDeltas();
     error FailedImplementationCall();
 
@@ -35,57 +33,55 @@ contract MiddlewareRemoveNoDeltas is BaseMiddleware {
     constructor(IPoolManager _manager, address _impl) BaseMiddleware(_manager, _impl) {}
 
     function beforeRemoveLiquidity(
-        address sender,
-        PoolKey calldata key,
-        IPoolManager.ModifyLiquidityParams calldata params,
-        bytes calldata hookData
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        bytes calldata
     ) external returns (bytes4) {
-        address(this).delegatecall{gas: GAS_LIMIT}(
-            abi.encodeWithSelector(this._callAndEnsurePriceNoDeltas.selector, msg.data)
+        (bool success,) = address(this).delegatecall{gas: GAS_LIMIT}(
+            abi.encodeWithSelector(this._callAndEnsureNoDeltasBefore.selector, msg.data)
         );
+        console.log(success);
         return BaseHook.beforeRemoveLiquidity.selector;
     }
 
-    // if this reverts, the entire hook will be undone
-    function _callAndEnsurePriceNoDeltas(bytes calldata data) external {
-        (, PoolKey memory key,,) = abi.decode(data[4:], (address, PoolKey, IPoolManager.ModifyLiquidityParams, bytes));
-        (uint160 priceBefore,,,) = manager.getSlot0(key.toId());
-        (bool success,) = address(implementation).delegatecall(data);
+    function _callAndEnsureNoDeltasBefore(bytes calldata data) external {
+        (bool success, bytes memory returnData) = address(implementation).delegatecall(data);
         if (!success) {
             revert FailedImplementationCall();
         }
-        (uint160 priceAfter,,,) = manager.getSlot0(key.toId());
-        if (priceAfter != priceBefore) {
-            // purpousely revert to cause the whole hook to reset
-            revert HookModifiedPrice();
+        (bytes4 selector) = abi.decode(returnData, (bytes4));
+        if (selector != BaseHook.beforeRemoveLiquidity.selector) {
+            revert Hooks.InvalidHookResponse();
         }
-        _ensureNoDeltas();
+        if (manager.getNonzeroDeltaCount() != 0) {
+            revert HookModifiedDeltas();
+        }
     }
 
     function afterRemoveLiquidity(
-        address sender,
-        PoolKey calldata key,
-        IPoolManager.ModifyLiquidityParams calldata params,
-        BalanceDelta delta,
-        bytes calldata hookData
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        BalanceDelta,
+        bytes calldata
     ) external returns (bytes4, BalanceDelta) {
         address(this).delegatecall{gas: GAS_LIMIT}(
-            abi.encodeWithSelector(this._callAndEnsureNoDeltas.selector, msg.data)
+            abi.encodeWithSelector(this._callAndEnsureNoDeltasAfter.selector, msg.data)
         );
         return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
-    // if this reverts, the entire hook will be undone
-    function _callAndEnsureNoDeltas(bytes calldata data) external {
-        (bool success,) = address(implementation).delegatecall(data);
+    function _callAndEnsureNoDeltasAfter(bytes calldata data) external {
+        (bool success, bytes memory returnData) = address(implementation).delegatecall(data);
         if (!success) {
             revert FailedImplementationCall();
         }
-        _ensureNoDeltas();
-    }
-
-    function _ensureNoDeltas() internal view {
-        if (manager.getNonzeroDeltaCount() != 0) {
+        (bytes4 selector, BalanceDelta returnDelta) = abi.decode(returnData, (bytes4, BalanceDelta));
+        if (selector != BaseHook.afterRemoveLiquidity.selector) {
+            revert Hooks.InvalidHookResponse();
+        }
+        if (manager.getNonzeroDeltaCount() != 0 || returnDelta != BalanceDeltaLibrary.ZERO_DELTA) {
             revert HookModifiedDeltas();
         }
     }

@@ -1,14 +1,36 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.24;
 
-import {BaseMiddlewareFactory} from "./BaseMiddlewareFactory.sol";
-import {MiddlewareRemoveNoDeltas} from "./MiddlewareRemoveNoDeltas.sol";
+import {IMiddlewareFactory} from "../interfaces/IMiddlewareFactory.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {MiddlewareRemove} from "./MiddlewareRemove.sol";
+import {MiddlewareRemoveNoDeltas} from "./MiddlewareRemoveNoDeltas.sol";
 
-contract MiddlewareRemoveFactory is BaseMiddlewareFactory {
-    constructor(IPoolManager _manager) BaseMiddlewareFactory(_manager) {}
+contract MiddlewareRemoveFactory {
+    event MiddlewareCreated(address implementation, address middleware, uint256 maxFeeBips);
 
-    function _deployMiddleware(address implementation, bytes32 salt) internal override returns (address middleware) {
-        middleware = address(new MiddlewareRemoveNoDeltas{salt: salt}(manager, implementation));
+    mapping(address => address) private _implementations;
+
+    IPoolManager public immutable manager;
+
+    constructor(IPoolManager _manager) {
+        manager = _manager;
+    }
+
+    function getImplementation(address middleware) external view returns (address implementation) {
+        return _implementations[middleware];
+    }
+
+    function createMiddleware(address implementation, uint256 maxFeeBips, bytes32 salt)
+        external
+        returns (address middleware)
+    {
+        if (maxFeeBips == 0) {
+            middleware = address(new MiddlewareRemoveNoDeltas{salt: salt}(manager, implementation));
+        } else {
+            middleware = address(new MiddlewareRemove{salt: salt}(manager, implementation, maxFeeBips));
+        }
+        _implementations[middleware] = implementation;
+        emit MiddlewareCreated(implementation, middleware, maxFeeBips);
     }
 }
