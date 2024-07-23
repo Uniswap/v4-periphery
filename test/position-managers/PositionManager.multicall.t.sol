@@ -2,54 +2,42 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
-import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
-import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
-import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
+import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 import {IMulticall} from "../../src/interfaces/IMulticall.sol";
-
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
-
-import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
+import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
-contract MulticallTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
+contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
-    using LiquidityRangeIdLibrary for LiquidityRange;
     using Planner for Planner.Plan;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
 
     function setUp() public {
-        Deployers.deployFreshManagerAndRouters();
-        Deployers.deployMintAndApprove2Currencies();
+        deployFreshManagerAndRouters();
+        deployMintAndApprove2Currencies();
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        lpm = new PositionManager(manager);
-
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        // Requires currency0 and currency1 to be set in base Deployers contract.
+        deployAndApprovePosm(manager);
     }
 
     function test_multicall_initializePool_mint() public {
@@ -73,7 +61,10 @@ contract MulticallTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Liquid
 
         IMulticall(address(lpm)).multicall(calls);
 
-        // test swap, doesn't revert
-        swap(key, true, -1e18, ZERO_BYTES);
+        // test swap, doesn't revert, showing the pool was initialized
+        int256 amountSpecified = -1e18;
+        BalanceDelta result = swap(key, true, amountSpecified, ZERO_BYTES);
+        assertEq(result.amount0(), amountSpecified);
+        assertGt(result.amount1(), 0);
     }
 }

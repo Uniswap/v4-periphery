@@ -2,16 +2,13 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
@@ -19,21 +16,17 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
-import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
+import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 import {Actions, IPositionManager} from "../../src/interfaces/IPositionManager.sol";
-import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
 import {Planner} from "../utils/Planner.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
+import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
-import "forge-std/console2.sol";
-
-contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, LiquidityOperations {
+contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
-    using LiquidityRangeIdLibrary for LiquidityRange;
     using PoolIdLibrary for PoolKey;
     using Planner for Planner.Plan;
     using FeeMath for IPositionManager;
@@ -41,8 +34,6 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
     PoolId poolId;
     address alice = makeAddr("ALICE");
     address bob = makeAddr("BOB");
-
-    uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
     // expresses the fee as a wad (i.e. 3000 = 0.003e18 = 0.30%)
     uint256 FEE_WAD;
@@ -53,29 +44,22 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
     uint256 tolerance = 0.00000000001 ether;
 
     function setUp() public {
-        Deployers.deployFreshManagerAndRouters();
-        Deployers.deployMintAndApprove2Currencies();
+        deployFreshManagerAndRouters();
+        deployMintAndApprove2Currencies();
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
-        lpm = new PositionManager(manager);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        // Requires currency0 and currency1 to be set in base Deployers contract.
+        deployAndApprovePosm(manager);
 
-        // Give tokens to Alice and Bob, with approvals
-        IERC20(Currency.unwrap(currency0)).transfer(alice, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency1)).transfer(alice, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency0)).transfer(bob, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency1)).transfer(bob, STARTING_USER_BALANCE);
-        vm.startPrank(alice);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
-        vm.stopPrank();
-        vm.startPrank(bob);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
-        vm.stopPrank();
+        // Give tokens to Alice and Bob.
+        seedBalance(alice);
+        seedBalance(bob);
+
+        // Approve posm for Alice and bob.
+        approvePosmFor(alice);
+        approvePosmFor(bob);
 
         // define a reusable range
         range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
@@ -129,7 +113,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         vm.stopPrank();
 
         // alice barely spent any tokens
-        // TODO: This is a case for not caring about dust left in pool manager :/
+        // TODO: Use clear.
         assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
         assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
     }
@@ -175,7 +159,7 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
         vm.stopPrank();
 
         // alice barely spent any tokens
-        // TODO: This is a case for not caring about dust left in pool manager :/
+        // TODO: Use clear.
         assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
         assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
     }
@@ -301,8 +285,8 @@ contract IncreaseLiquidityTest is Test, Deployers, GasSnapshot, Fuzzers, Liquidi
             uint256 balance1AfterAlice = currency1.balanceOf(alice);
 
             // Alice owed feesOwed amount in 0 and 1 because she places feesOwed * 2 back into the pool.
-            assertApproxEqAbs(balance0BeforeAlice - balance0AfterAlice, uint256(int256(feesOwed.amount0())), 37 wei);
-            assertApproxEqAbs(balance1BeforeAlice - balance1AfterAlice, uint256(int256(feesOwed.amount1())), 1 wei);
+            assertApproxEqAbs(balance0BeforeAlice - balance0AfterAlice, uint256(int256(feesOwed.amount0())), tolerance);
+            assertApproxEqAbs(balance1BeforeAlice - balance1AfterAlice, uint256(int256(feesOwed.amount1())), tolerance);
         }
 
         {

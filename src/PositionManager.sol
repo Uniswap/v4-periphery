@@ -5,27 +5,25 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {IPositionManager, Actions} from "./interfaces/IPositionManager.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
-import {ImmutableState} from "./base/ImmutableState.sol";
 import {Multicall} from "./base/Multicall.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {CurrencySettleTake} from "./libraries/CurrencySettleTake.sol";
-import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "./types/LiquidityRange.sol";
+import {LiquidityRange} from "./types/LiquidityRange.sol";
 
 contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback {
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;
-    using LiquidityRangeIdLibrary for LiquidityRange;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
@@ -36,9 +34,9 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     // maps the ERC721 tokenId to its Range (poolKey, tick range)
     mapping(uint256 tokenId => LiquidityRange range) public tokenRange;
 
-    constructor(IPoolManager _manager)
-        ImmutableState(_manager)
-        ERC721Permit("Uniswap V4 Positions NFT-V1", "UNI-V4-POS", "1")
+    constructor(IPoolManager _poolManager)
+        SafeCallback(_poolManager)
+        ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
     {}
 
     modifier checkDeadline(uint256 deadline) {
@@ -54,7 +52,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         returns (bytes[] memory)
     {
         // TODO: Edit the encoding/decoding.
-        return abi.decode(manager.unlock(abi.encode(unlockData, msg.sender)), (bytes[]));
+        return abi.decode(poolManager.unlock(abi.encode(unlockData, msg.sender)), (bytes[]));
     }
 
     function _unlockCallback(bytes calldata payload) internal override returns (bytes memory) {
@@ -149,18 +147,18 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
 
     /// @param params is an encoding of the Currency to close
     /// @param sender is the msg.sender encoded by the `modifyLiquidities` function before the `unlockCallback`.
-    /// @return int256 the balance of the currency being settled by this call
+    /// @return an encoding of int256 the balance of the currency being settled by this call
     function _close(bytes memory params, address sender) internal returns (bytes memory) {
         (Currency currency) = abi.decode(params, (Currency));
         // this address has applied all deltas on behalf of the user/owner
         // it is safe to close this entire delta because of slippage checks throughout the batched calls.
-        int256 currencyDelta = manager.currencyDelta(address(this), currency);
+        int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
 
         // the sender is the payer or receiver
         if (currencyDelta < 0) {
-            currency.settle(manager, sender, uint256(-int256(currencyDelta)), false);
+            currency.settle(poolManager, sender, uint256(-int256(currencyDelta)), false);
         } else if (currencyDelta > 0) {
-            currency.take(manager, sender, uint256(int256(currencyDelta)), false);
+            currency.take(poolManager, sender, uint256(int256(currencyDelta)), false);
         }
 
         return abi.encode(currencyDelta);
@@ -181,7 +179,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         internal
         returns (BalanceDelta liquidityDelta, BalanceDelta totalFeesAccrued)
     {
-        (liquidityDelta, totalFeesAccrued) = manager.modifyLiquidity(
+        (liquidityDelta, totalFeesAccrued) = poolManager.modifyLiquidity(
             range.poolKey,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: range.tickLower,
@@ -196,7 +194,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     // ensures liquidity of the position is empty before burning the token.
     function _validateBurn(uint256 tokenId) internal view {
         bytes32 positionId = getPositionIdFromTokenId(tokenId);
-        uint128 liquidity = manager.getPositionLiquidity(tokenRange[tokenId].poolKey.toId(), positionId);
+        uint128 liquidity = poolManager.getPositionLiquidity(tokenRange[tokenId].poolKey.toId(), positionId);
         if (liquidity > 0) revert PositionMustBeEmpty();
     }
 
@@ -217,29 +215,6 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
             positionId := keccak256(0x0c, 0x3a) // len is 58 bytes
             mstore(0x26, 0) // rewrite 0x26 to 0
         }
-    }
-
-    function feesOwed(uint256 tokenId) external view returns (BalanceDelta feesAccrued) {
-        LiquidityRange memory range = tokenRange[tokenId];
-        (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
-            manager.getFeeGrowthInside(range.poolKey.toId(), range.tickLower, range.tickUpper);
-
-        (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) =
-            manager.getPositionInfo(range.poolKey.toId(), getPositionIdFromTokenId(tokenId));
-
-        feesAccrued = toBalanceDelta(
-            int128(getFeeOwed(feeGrowthInside0X128, feeGrowthInside0LastX128, liquidity)),
-            int128(getFeeOwed(feeGrowthInside1X128, feeGrowthInside1LastX128, liquidity))
-        );
-    }
-
-    function getFeeOwed(uint256 feeGrowthInsideX128, uint256 feeGrowthInsideLastX128, uint256 liquidity)
-        internal
-        pure
-        returns (uint128 tokenOwed)
-    {
-        tokenOwed =
-            (FullMath.mulDiv(feeGrowthInsideX128 - feeGrowthInsideLastX128, liquidity, FixedPoint128.Q128)).toUint128();
     }
 
     function _requireApprovedOrOwner(uint256 tokenId, address sender) internal view {

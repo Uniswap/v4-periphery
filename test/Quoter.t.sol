@@ -54,7 +54,7 @@ contract QuoterTest is Test, Deployers {
 
     function setUp() public {
         deployFreshManagerAndRouters();
-        quoter = new Quoter(address(manager));
+        quoter = new Quoter(IPoolManager(manager));
         positionManager = new PoolModifyLiquidityTest(manager);
 
         // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)

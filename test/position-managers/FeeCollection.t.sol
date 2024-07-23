@@ -2,74 +2,56 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
-import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
-import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../src/types/LiquidityRange.sol";
-
+import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
+import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
+import {FeeMath} from "../shared/FeeMath.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 
-import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
-
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-
-contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, LiquidityOperations {
+contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
-    using LiquidityRangeIdLibrary for LiquidityRange;
+    using FeeMath for IPositionManager;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
     address bob = makeAddr("BOB");
 
-    uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
-
     // expresses the fee as a wad (i.e. 3000 = 0.003e18)
     uint256 FEE_WAD;
 
     function setUp() public {
-        Deployers.deployFreshManagerAndRouters();
-        Deployers.deployMintAndApprove2Currencies();
+        deployFreshManagerAndRouters();
+        deployMintAndApprove2Currencies();
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
-        lpm = new PositionManager(manager);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        // Requires currency0 and currency1 to be set in base Deployers contract.
+        deployAndApprovePosm(manager);
 
-        // Give tokens to Alice and Bob, with approvals
-        IERC20(Currency.unwrap(currency0)).transfer(alice, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency1)).transfer(alice, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency0)).transfer(bob, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency1)).transfer(bob, STARTING_USER_BALANCE);
-        vm.startPrank(alice);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
-        vm.stopPrank();
-        vm.startPrank(bob);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
-        vm.stopPrank();
+        // Give tokens to Alice and Bob.
+        seedBalance(alice);
+        seedBalance(bob);
+
+        // Approve posm for Alice and bob.
+        approvePosmFor(alice);
+        approvePosmFor(bob);
     }
 
-    function test_collect_erc20(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_collect_erc20(IPoolManager.ModifyLiquidityParams memory params) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
@@ -79,7 +61,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 swapAmount = 0.01e18;
         swap(key, false, -int256(swapAmount), ZERO_BYTES);
 
-        BalanceDelta feesAccrued = lpm.feesOwed(tokenId);
+        BalanceDelta expectedFees = IPositionManager(address(lpm)).getFeesOwed(manager, tokenId);
 
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
@@ -88,15 +70,17 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
 
         // express key.fee as wad (i.e. 3000 = 0.003e18)
         assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(FEE_WAD), 1 wei);
-        assertEq(delta.amount0(), feesAccrued.amount0());
-        assertEq(delta.amount1(), feesAccrued.amount1());
+        assertEq(uint256(int256(delta.amount1())), uint256(int256(expectedFees.amount1())));
+        assertEq(uint256(int256(delta.amount0())), uint256(int256(expectedFees.amount0())));
+
         assertEq(uint256(int256(delta.amount0())), currency0.balanceOfSelf() - balance0Before);
         assertEq(uint256(int256(delta.amount1())), currency1.balanceOfSelf() - balance1Before);
     }
 
-    function test_collect_sameRange_erc20(IPoolManager.ModifyLiquidityParams memory params, uint256 liquidityDeltaBob)
-        public
-    {
+    function test_fuzz_collect_sameRange_erc20(
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 liquidityDeltaBob
+    ) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
@@ -149,9 +133,9 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         assertEq(uint256(uint128(delta.amount1())), balance1BobAfter - balance1BobBefore);
         assertTrue(delta.amount1() != 0);
 
-        // position manager holds no fees now
-        assertApproxEqAbs(manager.balanceOf(address(lpm), currency0.toId()), 0, 1 wei);
-        assertApproxEqAbs(manager.balanceOf(address(lpm), currency1.toId()), 0, 1 wei);
+        // position manager should never hold fees
+        assertEq(manager.balanceOf(address(lpm), currency0.toId()), 0);
+        assertEq(manager.balanceOf(address(lpm), currency1.toId()), 0);
     }
 
     function test_collect_donate() public {
@@ -163,7 +147,7 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 feeRevenue = 1e18;
         donateRouter.donate(key, feeRevenue, feeRevenue, ZERO_BYTES);
 
-        BalanceDelta feesAccrued = lpm.feesOwed(tokenId);
+        BalanceDelta expectedFees = IPositionManager(address(lpm)).getFeesOwed(manager, tokenId);
 
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
@@ -172,8 +156,8 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
 
         assertApproxEqAbs(uint256(int256(delta.amount0())), feeRevenue, 1 wei);
         assertApproxEqAbs(uint256(int256(delta.amount1())), feeRevenue, 1 wei);
-        assertEq(delta.amount0(), feesAccrued.amount0());
-        assertEq(delta.amount1(), feesAccrued.amount1());
+        assertEq(delta.amount0(), expectedFees.amount0());
+        assertEq(delta.amount1(), expectedFees.amount1());
 
         assertEq(uint256(int256(delta.amount0())), currency0.balanceOfSelf() - balance0Before);
         assertEq(uint256(int256(delta.amount1())), currency1.balanceOfSelf() - balance1Before);
@@ -204,14 +188,14 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
 
         {
             // alice collects her share
-            BalanceDelta feesAccruedAlice = lpm.feesOwed(tokenIdAlice);
+            BalanceDelta expectedFeesAlice = IPositionManager(address(lpm)).getFeesOwed(manager, tokenIdAlice);
             assertApproxEqAbs(
-                uint128(feesAccruedAlice.amount0()),
+                uint128(expectedFeesAlice.amount0()),
                 feeRevenue0.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob),
                 1 wei
             );
             assertApproxEqAbs(
-                uint128(feesAccruedAlice.amount1()),
+                uint128(expectedFeesAlice.amount1()),
                 feeRevenue1.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob),
                 1 wei
             );
@@ -222,22 +206,22 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
             BalanceDelta deltaAlice = collect(tokenIdAlice, ZERO_BYTES);
             vm.stopPrank();
 
-            assertEq(deltaAlice.amount0(), feesAccruedAlice.amount0());
-            assertEq(deltaAlice.amount1(), feesAccruedAlice.amount1());
-            assertEq(currency0.balanceOf(alice), balance0BeforeAlice + uint256(uint128(feesAccruedAlice.amount0())));
-            assertEq(currency1.balanceOf(alice), balance1BeforeAlice + uint256(uint128(feesAccruedAlice.amount1())));
+            assertEq(deltaAlice.amount0(), expectedFeesAlice.amount0());
+            assertEq(deltaAlice.amount1(), expectedFeesAlice.amount1());
+            assertEq(currency0.balanceOf(alice), balance0BeforeAlice + uint256(uint128(expectedFeesAlice.amount0())));
+            assertEq(currency1.balanceOf(alice), balance1BeforeAlice + uint256(uint128(expectedFeesAlice.amount1())));
         }
 
         {
             // bob collects his share
-            BalanceDelta feesAccruedBob = lpm.feesOwed(tokenIdBob);
+            BalanceDelta expectedFeesBob = IPositionManager(address(lpm)).getFeesOwed(manager, tokenIdBob);
             assertApproxEqAbs(
-                uint128(feesAccruedBob.amount0()),
+                uint128(expectedFeesBob.amount0()),
                 feeRevenue0.mulDivDown(liquidityBob, liquidityAlice + liquidityBob),
                 1 wei
             );
             assertApproxEqAbs(
-                uint128(feesAccruedBob.amount1()),
+                uint128(expectedFeesBob.amount1()),
                 feeRevenue1.mulDivDown(liquidityBob, liquidityAlice + liquidityBob),
                 1 wei
             );
@@ -248,10 +232,10 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
             BalanceDelta deltaBob = collect(tokenIdBob, ZERO_BYTES);
             vm.stopPrank();
 
-            assertEq(deltaBob.amount0(), feesAccruedBob.amount0());
-            assertEq(deltaBob.amount1(), feesAccruedBob.amount1());
-            assertEq(currency0.balanceOf(bob), balance0BeforeBob + uint256(uint128(feesAccruedBob.amount0())));
-            assertEq(currency1.balanceOf(bob), balance1BeforeBob + uint256(uint128(feesAccruedBob.amount1())));
+            assertEq(deltaBob.amount0(), expectedFeesBob.amount0());
+            assertEq(deltaBob.amount1(), expectedFeesBob.amount1());
+            assertEq(currency0.balanceOf(bob), balance0BeforeBob + uint256(uint128(expectedFeesBob.amount0())));
+            assertEq(currency1.balanceOf(bob), balance1BeforeBob + uint256(uint128(expectedFeesBob.amount1())));
         }
     }
 
@@ -265,64 +249,70 @@ contract FeeCollectionTest is Test, Deployers, GasSnapshot, LiquidityFuzzers, Li
         uint256 liquidityAlice = 3000e18;
         uint256 liquidityBob = 1000e18;
 
-        vm.prank(alice);
+        vm.startPrank(alice);
         BalanceDelta lpDeltaAlice = mint(range, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
-        uint256 aliceBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(alice));
-        uint256 aliceBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(alice));
-
-        vm.prank(bob);
+        vm.startPrank(bob);
         BalanceDelta lpDeltaBob = mint(range, liquidityBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
-
-        uint256 bobBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(bob));
-        uint256 bobBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(bob));
+        vm.stopPrank();
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
         swap(key, true, -int256(swapAmount), ZERO_BYTES); // zeroForOne is true, so zero is the input
         swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back, // zeroForOne is false, so one is the input
 
-        // alice decreases liquidity
-        vm.startPrank(alice);
-        lpm.approve(address(this), tokenIdAlice);
-        decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES);
-        vm.stopPrank();
-
         uint256 tolerance = 0.000000001 ether;
 
-        // alice has accrued her principle liquidity + any fees in token0
-        assertApproxEqAbs(
-            IERC20(Currency.unwrap(currency0)).balanceOf(address(alice)) - aliceBalance0Before,
-            uint256(int256(-lpDeltaAlice.amount0())) + swapAmount.mulWadDown(FEE_WAD) * 3 / 4,
-            tolerance
-        );
-        // alice has accrued her principle liquidity + any fees in token1
-        assertApproxEqAbs(
-            IERC20(Currency.unwrap(currency1)).balanceOf(address(alice)) - aliceBalance1Before,
-            uint256(int256(-lpDeltaAlice.amount1())) + swapAmount.mulWadDown(FEE_WAD) * 3 / 4,
-            tolerance
-        );
+        {
+            uint256 aliceBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(alice));
+            uint256 aliceBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(alice));
+            // alice decreases liquidity
+            vm.startPrank(alice);
+            decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES);
+            vm.stopPrank();
 
-        // bob decreases half of his liquidity
-        vm.startPrank(bob);
-        lpm.approve(address(this), tokenIdBob);
-        decreaseLiquidity(tokenIdBob, liquidityBob / 2, ZERO_BYTES);
-        vm.stopPrank();
+            // alice has accrued her principle liquidity + any fees in token0
+            assertApproxEqAbs(
+                IERC20(Currency.unwrap(currency0)).balanceOf(address(alice)) - aliceBalance0Before,
+                uint256(int256(-lpDeltaAlice.amount0()))
+                    + swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob),
+                tolerance
+            );
+            // alice has accrued her principle liquidity + any fees in token1
+            assertApproxEqAbs(
+                IERC20(Currency.unwrap(currency1)).balanceOf(address(alice)) - aliceBalance1Before,
+                uint256(int256(-lpDeltaAlice.amount1()))
+                    + swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob),
+                tolerance
+            );
+        }
 
-        // bob has accrued half his principle liquidity + any fees in token0
-        assertApproxEqAbs(
-            IERC20(Currency.unwrap(currency0)).balanceOf(address(bob)) - bobBalance0Before,
-            uint256(int256(-lpDeltaBob.amount0()) / 2) + swapAmount.mulWadDown(FEE_WAD) * 1 / 4,
-            tolerance
-        );
-        // bob has accrued half his principle liquidity + any fees in token0
-        assertApproxEqAbs(
-            IERC20(Currency.unwrap(currency1)).balanceOf(address(bob)) - bobBalance1Before,
-            uint256(int256(-lpDeltaBob.amount1()) / 2) + swapAmount.mulWadDown(FEE_WAD) * 1 / 4,
-            tolerance
-        );
+        {
+            uint256 bobBalance0Before = IERC20(Currency.unwrap(currency0)).balanceOf(address(bob));
+            uint256 bobBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(bob));
+            // bob decreases half of his liquidity
+            vm.startPrank(bob);
+            decreaseLiquidity(tokenIdBob, liquidityBob / 2, ZERO_BYTES);
+            vm.stopPrank();
+
+            // bob has accrued half his principle liquidity + any fees in token0
+            assertApproxEqAbs(
+                IERC20(Currency.unwrap(currency0)).balanceOf(address(bob)) - bobBalance0Before,
+                uint256(int256(-lpDeltaBob.amount0()) / 2)
+                    + swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, liquidityAlice + liquidityBob),
+                tolerance
+            );
+            // bob has accrued half his principle liquidity + any fees in token0
+            assertApproxEqAbs(
+                IERC20(Currency.unwrap(currency1)).balanceOf(address(bob)) - bobBalance1Before,
+                uint256(int256(-lpDeltaBob.amount1()) / 2)
+                    + swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, liquidityAlice + liquidityBob),
+                tolerance
+            );
+        }
     }
 
     // TODO: ERC6909 Support.
