@@ -101,7 +101,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
 
-        uint256 tokenId = 1; // assume that the .mint() produces tokenId=1, to be used in increaseLiquidity
+        uint256 tokenId = lpm.nextTokenId(); // assume that the .mint() produces tokenId=1, to be used in increaseLiquidity
 
         Planner.Plan memory planner = Planner.init();
 
