@@ -12,12 +12,10 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
-import {IV4Router} from "../contracts/interfaces/IV4Router.sol";
+import {IV4Router} from "../src/interfaces/IV4Router.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {V4RouterImplementation} from "./shared/implementation/V4RouterImplementation.sol";
-import {PathKey} from "../contracts/libraries/PathKey.sol";
-import {UniswapV4ERC20} from "../contracts/libraries/UniswapV4ERC20.sol";
-import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
+import {PathKey} from "../src/libraries/PathKey.sol";
 
 contract V4RouterTest is Test, Deployers, GasSnapshot {
     using CurrencyLibrary for Currency;
