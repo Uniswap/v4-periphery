@@ -5,10 +5,13 @@ pragma solidity ^0.8.24;
 /// @dev These are suggested common commands, however additional commands should be defined as required
 library Actions {
     // pool actions
-    uint256 constant SWAP = 0x00;
-    uint256 constant INCREASE_LIQUIDITY = 0x01;
-    uint256 constant DECREASE_LIQUIDITY = 0x02;
-    uint256 constant DONATE = 0x03;
+    uint256 constant INCREASE_LIQUIDITY = 0x00;
+    uint256 constant DECREASE_LIQUIDITY = 0x01;
+    uint256 constant SWAP_EXACT_IN_SINGLE = 0x02;
+    uint256 constant SWAP_EXACT_IN = 0x03;
+    uint256 constant SWAP_EXACT_OUT_SINGLE = 0x04;
+    uint256 constant SWAP_EXACT_OUT = 0x05;
+    uint256 constant DONATE = 0x06;
 
     // closing deltas on the pool manager
     uint256 constant SETTLE = 0x10;

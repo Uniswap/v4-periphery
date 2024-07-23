@@ -1,90 +1,68 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PathKey} from "./libraries/PathKey.sol";
 import {BytesLib} from "./libraries/BytesLib.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
+import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
+import {Actions} from "./libraries/Actions.sol";
 
 /// @title UniswapV4Router
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
-abstract contract V4Router is IV4Router {
+/// @dev the entry point to executing actions in this contract is calling `BaseActionsRouter._executeActions`
+/// An inheriting contract should call _executeActions at the point that they wish actions to be executed
+abstract contract V4Router is IV4Router, BaseActionsRouter {
     using CurrencyLibrary for Currency;
     using TransientStateLibrary for IPoolManager;
     using BytesLib for bytes;
 
-    IPoolManager immutable poolManager;
+    constructor(IPoolManager poolManager) BaseActionsRouter(poolManager) {}
 
-    constructor(IPoolManager _poolManager) {
-        poolManager = _poolManager;
-    }
-
-    function _v4Swap(SwapType swapType, bytes memory params) internal {
-        poolManager.unlock(abi.encode(swapType, msg.sender, params));
-    }
-
-    /// @inheritdoc IUnlockCallback
-    function unlockCallback(bytes calldata encodedSwapInfo) external override returns (bytes memory) {
-        if (msg.sender != address(poolManager)) revert NotPoolManager();
-
-        SwapType swapType;
-        address msgSender;
-        // TODO dont decode to swapParams at all, just decode directly to the struct in each if statement
-        bytes calldata swapParams = encodedSwapInfo.toBytes(2);
-        assembly {
-            swapType := calldataload(encodedSwapInfo.offset)
-            msgSender := calldataload(add(encodedSwapInfo.offset, 0x20))
-        }
-
-        Currency inputCurrency;
-        Currency outputCurrency;
-
-        if (swapType == SwapType.ExactInput) {
-            IV4Router.ExactInputParams memory params = abi.decode(swapParams, (IV4Router.ExactInputParams));
-            inputCurrency = params.currencyIn;
-            outputCurrency = params.path[params.path.length - 1].intermediateCurrency;
-
-            _swapExactInput(params);
-        } else if (swapType == SwapType.ExactInputSingle) {
-            IV4Router.ExactInputSingleParams memory params = abi.decode(swapParams, (IV4Router.ExactInputSingleParams));
-            (inputCurrency, outputCurrency) = params.zeroForOne
-                ? (params.poolKey.currency0, params.poolKey.currency1)
-                : (params.poolKey.currency1, params.poolKey.currency0);
-
-            _swapExactInputSingle(params);
-        } else if (swapType == SwapType.ExactOutput) {
-            IV4Router.ExactOutputParams memory params = abi.decode(swapParams, (IV4Router.ExactOutputParams));
-            inputCurrency = params.path[0].intermediateCurrency;
-            outputCurrency = params.currencyOut;
-
-            _swapExactOutput(params);
-        } else if (swapType == SwapType.ExactOutputSingle) {
-            IV4Router.ExactOutputSingleParams memory params =
-                abi.decode(swapParams, (IV4Router.ExactOutputSingleParams));
-            (inputCurrency, outputCurrency) = params.zeroForOne
-                ? (params.poolKey.currency0, params.poolKey.currency1)
-                : (params.poolKey.currency1, params.poolKey.currency0);
-
-            _swapExactOutputSingle(params);
+    function _handleAction(uint256 action, bytes calldata params) internal override {
+        // swap actions and payment actions in different blocks for gas efficiency
+        if (action < 0x10) {
+            if (action == Actions.SWAP_EXACT_IN) {
+                _swapExactInput(abi.decode(params, (IV4Router.ExactInputParams)));
+            } else if (action == Actions.SWAP_EXACT_IN_SINGLE) {
+                _swapExactInputSingle(abi.decode(params, (IV4Router.ExactInputSingleParams)));
+            } else if (action == Actions.SWAP_EXACT_OUT) {
+                _swapExactOutput(abi.decode(params, (IV4Router.ExactOutputParams)));
+            } else if (action == Actions.SWAP_EXACT_OUT_SINGLE) {
+                _swapExactOutputSingle(abi.decode(params, (IV4Router.ExactOutputSingleParams)));
+            } else {
+                revert UnsupportedAction(action);
+            }
         } else {
-            revert InvalidSwapType();
+            if (action == Actions.SETTLE) {
+                // equivalent: abi.decode(params, (Currency))
+                Currency currency;
+                assembly ("memory-safe") {
+                    currency := calldataload(params.offset)
+                }
+
+                // TODO support address(this) paying too
+                _payAndSettle(currency, _msgSender());
+            } else if (action == Actions.TAKE) {
+                // equivalent: abi.decode(params, (Currency, address))
+                Currency currency;
+                address recipient;
+                assembly ("memory-safe") {
+                    currency := calldataload(params.offset)
+                    recipient := calldataload(add(params.offset, 0x20))
+                }
+
+                // TODO add min amount??
+                _take(currency, recipient);
+            } else {
+                revert UnsupportedAction(action);
+            }
         }
-
-        // settle
-        _payAndSettle(inputCurrency, msgSender);
-
-        // take
-        _take(outputCurrency, msgSender);
-
-        return bytes("");
     }
 
     function _swapExactInputSingle(IV4Router.ExactInputSingleParams memory params) private {
@@ -187,6 +165,7 @@ abstract contract V4Router is IV4Router {
     }
 
     // TODO native support !!
+    // TODO use currency settle take library
     function _payAndSettle(Currency currency, address payer) private {
         int256 delta = poolManager.currencyDelta(address(this), currency);
         if (delta > 0) revert();

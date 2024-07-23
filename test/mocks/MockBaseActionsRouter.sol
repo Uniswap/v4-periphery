@@ -21,13 +21,13 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
 
     constructor(IPoolManager poolManager) BaseActionsRouter(poolManager) {}
 
-    function executeAction(bytes calldata params) external isNotLocked {
+    function executeActions(bytes calldata params) external isNotLocked {
         _executeActions(params);
     }
 
     function _handleAction(uint256 action, bytes calldata params) internal override {
         if (action < Actions.SETTLE) {
-            if (action == Actions.SWAP) _swap(params);
+            if (action == Actions.SWAP_EXACT_IN) _swap(params);
             else if (action == Actions.INCREASE_LIQUIDITY) _increaseLiquidity(params);
             else if (action == Actions.DECREASE_LIQUIDITY) _decreaseLiquidity(params);
             else if (action == Actions.DONATE) _donate(params);
