@@ -94,9 +94,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         _finalizePlan(key0.currency0, key0.currency1, address(this));
         bytes memory data = plan.encode();
 
-        snapStart("RouterExactInputSingle");
         router.executeActions(data);
-        snapEnd();
+        snapLastCall("RouterExactInputSingle");
 
         uint256 newBalance0 = key0.currency0.balanceOf(address(this));
         uint256 newBalance1 = key0.currency1.balanceOf(address(this));
@@ -143,9 +142,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         _finalizePlan(currency0, currency1, address(this));
         bytes memory data = plan.encode();
 
-        snapStart("RouterExactIn1Hop");
         router.executeActions(data);
-        snapEnd();
+        snapLastCall("RouterExactIn1Hop");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -194,9 +192,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         _finalizePlan(currency0, currency2, address(this));
         bytes memory data = plan.encode();
 
-        snapStart("RouterExactIn2Hops");
         router.executeActions(data);
-        snapEnd();
+        snapLastCall("RouterExactIn2Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -227,9 +224,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         _finalizePlan(currency0, currency3, address(this));
         bytes memory data = plan.encode();
 
-        snapStart("RouterExactIn3Hops");
         router.executeActions(data);
-        snapEnd();
+        snapLastCall("RouterExactIn3Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance3 = currency3.balanceOfSelf();
@@ -256,9 +252,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         _finalizePlan(key0.currency0, key0.currency1, address(this));
         bytes memory data = plan.encode();
 
-        snapStart("RouterExactOutputSingle");
         router.executeActions(data);
-        snapEnd();
+        snapLastCall("RouterExactOutputSingle");
 
         uint256 newBalance0 = key0.currency0.balanceOf(address(this));
         uint256 newBalance1 = key0.currency1.balanceOf(address(this));
@@ -305,9 +300,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         _finalizePlan(currency0, currency1, address(this));
         bytes memory data = plan.encode();
 
-        snapStart("RouterExactOut1Hop");
         router.executeActions(data);
-        snapEnd();
+        snapLastCall("RouterExactOut1Hop");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -331,9 +325,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         _finalizePlan(currency1, currency0, address(this));
         bytes memory data = plan.encode();
 
-        snapStart("RouterExactOut1Hop");
         router.executeActions(data);
-        snapEnd();
+        snapLastCall("RouterExactOut1Hop");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -359,9 +352,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         _finalizePlan(currency0, currency2, address(this));
         bytes memory data = plan.encode();
 
-        snapStart("RouterExactOut2Hops");
         router.executeActions(data);
-        snapEnd();
+        snapLastCall("RouterExactOut2Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -392,9 +384,8 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         _finalizePlan(currency0, currency3, address(this));
         bytes memory data = plan.encode();
 
-        snapStart("RouterExactOut3Hops");
         router.executeActions(data);
-        snapEnd();
+        snapLastCall("RouterExactOut3Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance3 = currency3.balanceOfSelf();
