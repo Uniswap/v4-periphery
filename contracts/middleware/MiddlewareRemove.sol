@@ -22,6 +22,7 @@ contract MiddlewareRemove is BaseMiddleware {
     using TransientStateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
 
+    error HookPermissionForbidden(address hooks);
     error HookModifiedDeltasBeforeRemove();
     error HookTookTooMuchFee();
     error HookInvalidDeltasAfterRemove();
@@ -148,6 +149,9 @@ contract MiddlewareRemove is BaseMiddleware {
     function _ensureValidFlags(address _impl) internal view virtual override {
         if (uint160(address(this)) & Hooks.ALL_HOOK_MASK != uint160(_impl) & Hooks.ALL_HOOK_MASK) {
             revert FlagsMismatch();
+        }
+        if (!IHooks(address(this)).hasPermission(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG)) {
+            HookPermissionForbidden.selector.revertWith(address(this));
         }
     }
 }
