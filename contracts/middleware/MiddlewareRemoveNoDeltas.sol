@@ -14,7 +14,6 @@ import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {console} from "../../lib/forge-std/src/console.sol";
 
 contract MiddlewareRemoveNoDeltas is BaseMiddleware {
     using CustomRevert for bytes4;
@@ -41,7 +40,6 @@ contract MiddlewareRemoveNoDeltas is BaseMiddleware {
         (bool success,) = address(this).delegatecall{gas: GAS_LIMIT}(
             abi.encodeWithSelector(this._callAndEnsureNoDeltasBefore.selector, msg.data)
         );
-        console.log(success);
         return BaseHook.beforeRemoveLiquidity.selector;
     }
 

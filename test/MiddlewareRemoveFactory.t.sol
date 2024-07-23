@@ -107,36 +107,86 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         assertTrue(out1 < outNormal1);
     }
 
-    function testFeeOnRemove() public {
+    function testRevertOnNotSettled() public {
         uint160 flags = uint160(Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
         FeeOnRemove feeOnRemove = FeeOnRemove(address(flags));
-        FeeOnRemove impl = new FeeOnRemove(manager);
-        vm.etch(address(feeOnRemove), address(impl).code);
-        (, bytes32 salt) = MiddlewareMiner.find(address(factory), flags, address(manager), address(feeOnRemove), 0);
-        middleware = factory.createMiddleware(address(feeOnRemove), 0, salt);
+        vm.etch(address(feeOnRemove), address(new FeeOnRemove(manager)).code);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(feeOnRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
+    }
+
+    function testFeesOnRemove() public {
+        uint160 flags = uint160(Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
+        FeeOnRemove feeOnRemove = FeeOnRemove(address(flags));
+        vm.etch(address(feeOnRemove), address(new FeeOnRemove(manager)).code);
 
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(feeOnRemove), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
+    }
 
+    function testFeeOnVariousMaxFees() public {
+        (uint256 outNormal0, uint256 outNormal1) = getNormal();
+        (uint256 outWithFees0, uint256 outWithFees1) = getWithFees();
+        uint256 out0;
+        uint256 out1;
+        (out0, out1) = testFeeOnRemove(0);
+        assertEq(out0, outNormal0);
+        assertEq(out1, outNormal1);
+        (out0, out1) = testFeeOnRemove(100);
+        assertEq(out0, outNormal0);
+        assertEq(out1, outNormal1);
+        (out0, out1) = testFeeOnRemove(542);
+        assertEq(out0, outNormal0);
+        assertEq(out1, outNormal1);
+        // once we allow 543, the hook starts to charge fees
+        (out0, out1) = testFeeOnRemove(543);
+        assertEq(out0, outWithFees0);
+        assertEq(out1, outWithFees1);
+    }
+
+    function getNormal() internal returns (uint256 outNormal0, uint256 outNormal1) {
         IHooks noHooks = IHooks(address(0));
         (key,) = initPoolAndAddLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         uint256 initialBalance0 = token0.balanceOf(address(this));
         uint256 initialBalance1 = token1.balanceOf(address(this));
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
-        uint256 outNormal0 = token0.balanceOf(address(this)) - initialBalance0;
-        uint256 outNormal1 = token1.balanceOf(address(this)) - initialBalance1;
+        outNormal0 = token0.balanceOf(address(this)) - initialBalance0;
+        outNormal1 = token1.balanceOf(address(this)) - initialBalance1;
+    }
+
+    function getWithFees() internal returns (uint256 outWithFees0, uint256 outWithFees1) {
+        uint160 flags = uint160(Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG);
+        FeeOnRemove feeOnRemove = FeeOnRemove(address(flags));
+        vm.etch(address(feeOnRemove), address(new FeeOnRemove(manager)).code);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, feeOnRemove, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        uint256 initialBalance0 = token0.balanceOf(address(this));
+        uint256 initialBalance1 = token1.balanceOf(address(this));
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
+        outWithFees0 = token0.balanceOf(address(this)) - initialBalance0;
+        outWithFees1 = token1.balanceOf(address(this)) - initialBalance1;
+    }
+
+    function testFeeOnRemove(uint256 maxFeeBips) internal returns (uint256 out0, uint256 out1) {
+        uint160 flags;
+        if (maxFeeBips == 0) {
+            flags = uint160(Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
+        } else {
+            flags = uint160(Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG);
+        }
+        FeeOnRemove feeOnRemove = FeeOnRemove(address(flags));
+        vm.etch(address(feeOnRemove), address(new FeeOnRemove(manager)).code);
+        (, bytes32 salt) =
+            MiddlewareMiner.find(address(factory), flags, address(manager), address(feeOnRemove), maxFeeBips);
+        middleware = factory.createMiddleware(address(feeOnRemove), maxFeeBips, salt);
 
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
-        initialBalance0 = token0.balanceOf(address(this));
-        initialBalance1 = token1.balanceOf(address(this));
+        uint256 initialBalance0 = token0.balanceOf(address(this));
+        uint256 initialBalance1 = token1.balanceOf(address(this));
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
-        uint256 out0 = token0.balanceOf(address(this)) - initialBalance0;
-        uint256 out1 = token1.balanceOf(address(this)) - initialBalance1;
-
-        // no fees taken
-        assertEq(outNormal0, out0);
-        assertEq(outNormal1, out1);
+        out0 = token0.balanceOf(address(this)) - initialBalance0;
+        out1 = token1.balanceOf(address(this)) - initialBalance1;
     }
 
     function testVariousFactory() public {
@@ -145,9 +195,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
                 | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_DONATE_FLAG | Hooks.AFTER_DONATE_FLAG
         );
-        (, bytes32 salt) = MiddlewareMiner.find(address(factory), flags, address(manager), address(hookscounter), 0);
-
-        testOn(address(hookscounter), salt);
+        testOn(address(hookscounter), flags);
 
         flags = uint160(
             Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
@@ -155,27 +203,33 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         );
         HooksRevert hooksRevert = HooksRevert(address(flags));
         vm.etch(address(hooksRevert), address(new HooksRevert(manager)).code);
-        (, salt) = MiddlewareMiner.find(address(factory), flags, address(manager), address(hooksRevert), 0);
-
-        testOn(address(hooksRevert), salt);
+        testOn(address(hooksRevert), flags);
 
         HooksOutOfGas hooksOutOfGas = HooksOutOfGas(address(flags));
         vm.etch(address(hooksOutOfGas), address(new HooksOutOfGas(manager)).code);
-        (, salt) = MiddlewareMiner.find(address(factory), flags, address(manager), address(hooksOutOfGas), 0);
-
-        testOn(address(hooksOutOfGas), salt);
+        testOn(address(hooksOutOfGas), flags);
     }
 
     // creates a middleware on an implementation
-    function testOn(address implementation, bytes32 salt) internal {
-        address hookAddress = factory.createMiddleware(implementation, 0, salt);
-
+    function testOn(address implementation, uint160 flags) internal {
+        uint256 maxFeeBips = 0;
+        (, bytes32 salt) = MiddlewareMiner.find(address(factory), flags, address(manager), implementation, maxFeeBips);
+        address hookAddress = factory.createMiddleware(implementation, maxFeeBips, salt);
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
-
         // does not revert
         uint256 gasLeft = gasleft();
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
-        console.log(gasLeft - gasleft());
+        console.log("A", gasLeft - gasleft());
+        assertEq(factory.getImplementation(hookAddress), implementation);
+
+        maxFeeBips = 100;
+        (, salt) = MiddlewareMiner.find(address(factory), flags, address(manager), implementation, maxFeeBips);
+        hookAddress = factory.createMiddleware(implementation, maxFeeBips, salt);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        // does not revert
+        gasLeft = gasleft();
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
+        console.log("B", gasLeft - gasleft());
         assertEq(factory.getImplementation(hookAddress), implementation);
     }
 

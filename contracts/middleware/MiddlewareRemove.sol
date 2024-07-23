@@ -112,7 +112,7 @@ contract MiddlewareRemove is BaseMiddleware {
         uint256 nonzeroHookDeltaCount;
         int256 hookDelta = manager.currencyDelta(address(this), key.currency0);
         if (hookDelta != 0) {
-            if (hookDelta != returnDelta.amount0()) {
+            if (-hookDelta != returnDelta.amount0()) {
                 revert HookInvalidDeltasAfterRemove();
             }
             nonzeroHookDeltaCount++;
@@ -122,7 +122,7 @@ contract MiddlewareRemove is BaseMiddleware {
         }
         hookDelta = manager.currencyDelta(address(this), key.currency1);
         if (hookDelta != 0) {
-            if (hookDelta != returnDelta.amount1()) {
+            if (-hookDelta != returnDelta.amount1()) {
                 revert HookInvalidDeltasAfterRemove();
             }
             nonzeroHookDeltaCount++;
@@ -131,7 +131,7 @@ contract MiddlewareRemove is BaseMiddleware {
             }
         }
 
-        // edge case in case the hook modified caller's deltas?
+        // weird edge case in case the hook settled the caller's deltas
         if (manager.currencyDelta(sender, key.currency0) != 0) {
             nonzeroHookDeltaCount++;
         }
