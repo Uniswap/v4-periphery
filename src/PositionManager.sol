@@ -156,6 +156,15 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         // the sender is the payer or receiver
         if (currencyDelta < 0) {
             currency.settle(poolManager, sender, uint256(-int256(currencyDelta)), false);
+
+            // if there are native tokens left over after settling, return to sender
+            if (currency.isNative()) {
+                uint256 nativeBalance = CurrencyLibrary.NATIVE.balanceOfSelf();
+                if (nativeBalance > 0) {
+                    address(sender).call{value: nativeBalance}("");
+                    // CurrencyLibrary.NATIVE.transfer(sender, nativeBalance);
+                }
+            }
         } else if (currencyDelta > 0) {
             currency.take(poolManager, sender, uint256(int256(currencyDelta)), false);
         }
