@@ -13,6 +13,7 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -404,6 +405,19 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(lpFee, key.fee);
     }
 
-    function test_fuzz_initialize() public {}
+    function test_fuzz_initialize(uint160 sqrtPrice, uint24 fee) public {
+        sqrtPrice = uint160(bound(sqrtPrice, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE));
+        fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
+        key =
+            PoolKey({currency0: currency0, currency1: currency1, fee: fee, tickSpacing: 10, hooks: IHooks(address(0))});
+        lpm.initializePool(key, sqrtPrice, ZERO_BYTES);
+
+        (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee) = manager.getSlot0(key.toId());
+        assertEq(sqrtPriceX96, sqrtPrice);
+        assertEq(tick, TickMath.getTickAtSqrtPrice(sqrtPrice));
+        assertEq(protocolFee, 0);
+        assertEq(lpFee, fee);
+    }
+
     function test_mint_slippageRevert() public {}
 }
