@@ -28,6 +28,9 @@ contract MiddlewareRemoveNoDeltas is BaseMiddleware {
 
     bytes internal constant ZERO_BYTES = bytes("");
     uint256 public constant GAS_LIMIT = 10_000_000;
+    uint256 public constant MAX_BIPS = 10_000;
+
+    uint256 public constant maxFeeBips = 0;
 
     constructor(IPoolManager _manager, address _impl) BaseMiddleware(_manager, _impl) {}
 

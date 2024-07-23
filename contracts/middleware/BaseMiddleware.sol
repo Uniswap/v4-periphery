@@ -29,9 +29,6 @@ abstract contract BaseMiddleware is Proxy {
         return implementation;
     }
 
-    // REMOVE THIS
-    receive() external payable {}
-
     /// @notice Ensure that the implementation contract has the correct hook flags.
     /// @dev Override to enforce hook flags.
     function _ensureValidFlags(address _impl) internal view virtual {
