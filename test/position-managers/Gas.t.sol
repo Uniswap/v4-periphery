@@ -39,6 +39,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     uint256 FEE_WAD;
 
     LiquidityRange range;
+    LiquidityRange nativeRange;
 
     function setUp() public {
         (alice, alicePK) = makeAddrAndKey("ALICE");
@@ -48,6 +49,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         deployMintAndApprove2Currencies();
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (nativeKey,) = initPool(CurrencyLibrary.NATIVE, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
@@ -63,6 +65,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
         // define a reusable range
         range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
+        nativeRange = LiquidityRange({poolKey: nativeKey, tickLower: -300, tickUpper: 300});
     }
 
     function test_gas_mint() public {
@@ -317,4 +320,57 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_burn() public {}
     function test_gas_burnEmpty() public {}
+
+    // Native Token Gas Tests
+    function test_gas_mint_native() public {
+        uint256 liquidityToAdd = 10_000 ether;
+        bytes memory calls = getMintEncoded(nativeRange, liquidityToAdd, address(this), ZERO_BYTES);
+
+        (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(nativeRange.tickLower),
+            TickMath.getSqrtPriceAtTick(nativeRange.tickUpper),
+            uint128(liquidityToAdd)
+        );
+        lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
+        snapLastCall("PositionManager_mint_native");
+    }
+
+    function test_gas_increase_native() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, nativeRange, 10_000 ether, address(this), ZERO_BYTES);
+
+        uint256 liquidityToAdd = 10_000 ether;
+        bytes memory calls = getIncreaseEncoded(tokenId, liquidityToAdd, ZERO_BYTES);
+        (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(nativeRange.tickLower),
+            TickMath.getSqrtPriceAtTick(nativeRange.tickUpper),
+            uint128(liquidityToAdd)
+        );
+        lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
+        snapLastCall("PositionManager_increaseLiquidity_native");
+    }
+
+    function test_gas_decrease_native() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, nativeRange, 10_000 ether, address(this), ZERO_BYTES);
+
+        uint256 liquidityToRemove = 10_000 ether;
+        bytes memory calls = getDecreaseEncoded(tokenId, liquidityToRemove, ZERO_BYTES);
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_decreaseLiquidity_native");
+    }
+
+    function test_gas_collect_native() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, nativeRange, 10_000 ether, address(this), ZERO_BYTES);
+
+        // donate to create fee revenue
+        donateRouter.donate{value: 0.2e18}(nativeRange.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        bytes memory calls = getCollectEncoded(tokenId, ZERO_BYTES);
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_collect_native");
+    }
 }
