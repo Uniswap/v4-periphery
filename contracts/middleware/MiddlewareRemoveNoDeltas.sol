@@ -27,7 +27,7 @@ contract MiddlewareRemoveNoDeltas is BaseMiddleware {
     error FailedImplementationCall();
 
     bytes internal constant ZERO_BYTES = bytes("");
-    uint256 public constant GAS_LIMIT = 10_000_000;
+    uint256 public constant GAS_LIMIT = 5_000_000;
     uint256 public constant MAX_BIPS = 10_000;
 
     uint256 public constant maxFeeBips = 0;
