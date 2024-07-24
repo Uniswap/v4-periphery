@@ -196,8 +196,8 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     /// @dev Send excess native tokens back to the recipient (sender)
     /// @param recipient the receiver of the excess native tokens. Should be the caller, the one that sent the native tokens
     function _sweepNativeToken(address recipient) internal {
-        uint256 nativeBalance = CurrencyLibrary.NATIVE.balanceOfSelf();
-        if (nativeBalance > 0) CurrencyLibrary.NATIVE.transfer(recipient, nativeBalance);
+        uint256 nativeBalance = address(this).balance;
+        if (nativeBalance > 0) address(recipient).call{value: nativeBalance}("");
     }
 
     // ensures liquidity of the position is empty before burning the token.
