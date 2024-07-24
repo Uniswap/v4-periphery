@@ -9,6 +9,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
+import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {IPositionManager, Actions} from "./interfaces/IPositionManager.sol";
@@ -19,6 +20,7 @@ import {CurrencySettleTake} from "./libraries/CurrencySettleTake.sol";
 import {LiquidityRange} from "./types/LiquidityRange.sol";
 
 contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback {
+    using SafeTransferLib for address;
     using CurrencyLibrary for Currency;
     using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;
@@ -197,7 +199,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     /// @param recipient the receiver of the excess native tokens. Should be the caller, the one that sent the native tokens
     function _sweepNativeToken(address recipient) internal {
         uint256 nativeBalance = address(this).balance;
-        if (nativeBalance > 0) address(recipient).call{value: nativeBalance}("");
+        if (nativeBalance > 0) recipient.safeTransferETH(nativeBalance);
     }
 
     // ensures liquidity of the position is empty before burning the token.

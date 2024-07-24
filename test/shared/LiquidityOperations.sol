@@ -87,7 +87,7 @@ abstract contract LiquidityOperations is CommonBase {
     // Helper functions for getting encoded calldata for .modifyLiquidities
     function getMintEncoded(LiquidityRange memory _range, uint256 liquidity, address recipient, bytes memory hookData)
         internal
-        view
+        pure
         returns (bytes memory)
     {
         Planner.Plan memory planner = Planner.init();
