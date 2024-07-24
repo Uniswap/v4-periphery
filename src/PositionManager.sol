@@ -50,6 +50,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     /// @return returnData is the endocing of each actions return information
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
         external
+        payable
         checkDeadline(deadline)
         returns (bytes[] memory)
     {
@@ -159,6 +160,9 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         // the sender is the payer or receiver
         if (currencyDelta < 0) {
             _settle(currency, sender, uint256(-int256(currencyDelta)));
+
+            // if there are native tokens left over after settling, return to sender
+            if (currency.isNative()) _sweepNativeToken(sender);
         } else if (currencyDelta > 0) {
             poolManager.take(currency, sender, uint256(int256(currencyDelta)));
         }
@@ -191,6 +195,13 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
             }),
             hookData
         );
+    }
+
+    /// @dev Send excess native tokens back to the recipient (sender)
+    /// @param recipient the receiver of the excess native tokens. Should be the caller, the one that sent the native tokens
+    function _sweepNativeToken(address recipient) internal {
+        uint256 nativeBalance = address(this).balance;
+        if (nativeBalance > 0) address(recipient).call{value: nativeBalance}("");
     }
 
     // ensures liquidity of the position is empty before burning the token.

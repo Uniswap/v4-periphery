@@ -35,6 +35,8 @@ contract MockDeltaResolver is Test, DeltaResolver, IUnlockCallback {
         balanceAfter = currency.balanceOf(recipient);
 
         assertEq(balanceBefore - amount, balanceAfter);
+
+        return "";
     }
 
     function _pay(Currency token, address payer, uint256 amount) internal override {
