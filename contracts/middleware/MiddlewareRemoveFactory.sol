@@ -17,10 +17,22 @@ contract MiddlewareRemoveFactory {
         manager = _manager;
     }
 
+    /**
+     * @notice Get the implementation address for a given middleware.
+     * @param middleware The address of the middleware.
+     * @return implementation The address of the implementation.
+     */
     function getImplementation(address middleware) external view returns (address implementation) {
         return _implementations[middleware];
     }
 
+    /**
+     * @notice Create a new middlewareRemove contract.
+     * @param implementation The address of the implementation or an existing hook.
+     * @param maxFeeBips The maximum fee in basis points the hook is allowed to charge on removeLiquidity.
+     * @param salt The salt for deploying to the right flags.
+     * @return middleware The address of the newly created middlewareRemove contract.
+     */
     function createMiddleware(address implementation, uint256 maxFeeBips, bytes32 salt)
         external
         returns (address middleware)
