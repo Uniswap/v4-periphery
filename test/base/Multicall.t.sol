@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import {MockMulticall} from "../mock/MockMulticall.sol";
+import {MockMulticall} from "../mocks/MockMulticall.sol";
 
 contract MulticallTest is Test {
     MockMulticall multicall;
