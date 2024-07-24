@@ -2,8 +2,8 @@
 pragma solidity ^0.8.24;
 
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {IERC20Minimal} from "v4-core/interfaces/external/IERC20Minimal.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
 
 /// @notice Library used to interact with PoolManager.sol to settle any open deltas.
 /// To settle a positive delta (a credit to the user), a user may take or mint.
