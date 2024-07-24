@@ -336,6 +336,21 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         snapLastCall("PositionManager_mint_native");
     }
 
+    function test_gas_mint_native_excess() public {
+        uint256 liquidityToAdd = 10_000 ether;
+        bytes memory calls = getMintEncoded(nativeRange, liquidityToAdd, address(this), ZERO_BYTES);
+
+        (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(nativeRange.tickLower),
+            TickMath.getSqrtPriceAtTick(nativeRange.tickUpper),
+            uint128(liquidityToAdd)
+        );
+        // overpay on the native token
+        lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline);
+        snapLastCall("PositionManager_mint_nativeWithSweep");
+    }
+
     function test_gas_increase_native() public {
         uint256 tokenId = lpm.nextTokenId();
         mintWithNative(SQRT_PRICE_1_1, nativeRange, 10_000 ether, address(this), ZERO_BYTES);
