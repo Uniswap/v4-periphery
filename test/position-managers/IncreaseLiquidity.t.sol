@@ -190,7 +190,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         {
             // alice will use half of her fees to increase liquidity
             BalanceDelta aliceFeesOwed = IPositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
-            
+
             (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
@@ -216,9 +216,13 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
                 tolerance
             );
 
-            assertApproxEqAbs(currency0.balanceOf(alice) - balance0BeforeAlice, uint128(aliceFeesOwed.amount0()) / 2, tolerance);
+            assertApproxEqAbs(
+                currency0.balanceOf(alice) - balance0BeforeAlice, uint128(aliceFeesOwed.amount0()) / 2, tolerance
+            );
 
-            assertApproxEqAbs(currency1.balanceOf(alice) - balance1BeforeAlice, uint128(aliceFeesOwed.amount1()) / 2, tolerance);
+            assertApproxEqAbs(
+                currency1.balanceOf(alice) - balance1BeforeAlice, uint128(aliceFeesOwed.amount1()) / 2, tolerance
+            );
         }
 
         {
@@ -243,10 +247,14 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             uint256 balance0AfterBob = currency0.balanceOf(bob);
             uint256 balance1AfterBob = currency1.balanceOf(bob);
             assertApproxEqAbs(
-                balance0AfterBob - balance0BeforeBob, swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity), 1 wei
+                balance0AfterBob - balance0BeforeBob,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
+                1 wei
             );
             assertApproxEqAbs(
-                balance1AfterBob - balance1BeforeBob, swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity), 1 wei
+                balance1AfterBob - balance1BeforeBob,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
+                1 wei
             );
         }
     }

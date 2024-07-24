@@ -282,6 +282,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency0.balanceOfSelf() - balance0Before, uint256(int256(delta.amount0())));
         assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(delta.amount1())));
     }
+
     function test_mintTransferBurn() public {
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;

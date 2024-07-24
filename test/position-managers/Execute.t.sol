@@ -175,7 +175,8 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(lpm.ownerOf(newTokenId), address(this));
 
         // new token has expected liquidity
-        positionId = keccak256(abi.encodePacked(address(lpm), newRange.tickLower, newRange.tickUpper, bytes32(newTokenId)));
+        positionId =
+            keccak256(abi.encodePacked(address(lpm), newRange.tickLower, newRange.tickUpper, bytes32(newTokenId)));
         liquidity = manager.getPositionLiquidity(range.poolKey.toId(), positionId);
         assertEq(liquidity, newLiquidity);
     }
