@@ -258,7 +258,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
     }
 
-    function test_decreaseLiquidity_native(
+    function test_fuzz_decreaseLiquidity_native(
         IPoolManager.ModifyLiquidityParams memory params,
         uint256 decreaseLiquidityDelta
     ) public {
@@ -296,5 +296,28 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOfSelf() - balance1Before, uint128(delta.amount1()));
     }
 
-    // function test_collect_native() public {}
+    function test_fuzz_collect_native(IPoolManager.ModifyLiquidityParams memory params) public {
+        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+
+        LiquidityRange memory range =
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        // mint the position with native token liquidity
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, range, uint256(params.liquidityDelta), address(this), ZERO_BYTES);
+
+        // donate to generate fee revenue
+        uint256 feeRevenue0 = 1e18;
+        uint256 feeRevenue1 = 0.1e18;
+        donateRouter.donate{value: 1e18}(key, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        uint256 balance0Before = address(this).balance;
+        uint256 balance1Before = currency1.balanceOfSelf();
+        BalanceDelta delta = collect(tokenId, ZERO_BYTES);
+
+        assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, feeRevenue0, 1 wei); // TODO: fuzzer off by 1 wei
+        assertEq(currency0.balanceOfSelf() - balance0Before, uint128(delta.amount0()));
+        assertEq(currency1.balanceOfSelf() - balance1Before, uint128(delta.amount1()));
+    }
 }
