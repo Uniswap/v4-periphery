@@ -10,17 +10,21 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 
+// TODO to remove when Permit2 is added
+import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
+import {ERC20} from "solmate/tokens/ERC20.sol";
+
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {IPositionManager, Actions} from "./interfaces/IPositionManager.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {Multicall} from "./base/Multicall.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
-import {CurrencySettler} from "./libraries/CurrencySettler.sol";
+import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {LiquidityRange} from "./types/LiquidityRange.sol";
 
-contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback {
+contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback, DeltaResolver {
     using CurrencyLibrary for Currency;
-    using CurrencySettler for IPoolManager;
+    using SafeTransferLib for ERC20;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
@@ -154,7 +158,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
 
         // the sender is the payer or receiver
         if (currencyDelta < 0) {
-            poolManager.settle(currency, sender, uint256(-int256(currencyDelta)));
+            _settle(currency, sender, uint256(-int256(currencyDelta)));
         } else if (currencyDelta > 0) {
             poolManager.take(currency, sender, uint256(int256(currencyDelta)));
         }
@@ -194,6 +198,12 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         bytes32 positionId = getPositionIdFromTokenId(tokenId);
         uint128 liquidity = poolManager.getPositionLiquidity(tokenRange[tokenId].poolKey.toId(), positionId);
         if (liquidity > 0) revert PositionMustBeEmpty();
+    }
+
+    // implementation of abstract function DeltaResolver._pay
+    function _pay(Currency token, address payer, uint256 amount) internal override {
+        // TODO this should use Permit2
+        ERC20(Currency.unwrap(token)).safeTransferFrom(payer, address(poolManager), amount);
     }
 
     // TODO: Move this to a posm state-view library.
