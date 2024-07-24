@@ -33,7 +33,6 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
-    uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
     function setUp() public {
         deployFreshManagerAndRouters();
@@ -43,6 +42,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
+
+        seedBalance(alice);
+        approvePosmFor(alice);
     }
 
     function test_modifyLiquidities_reverts_mismatchedLengths() public {
@@ -215,7 +217,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 decreaseLiquidityDelta
     ) public {
         uint256 tokenId;
-        (tokenId, params) = createFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
         decreaseLiquidityDelta = bound(decreaseLiquidityDelta, 1, uint256(params.liquidityDelta));
 
@@ -283,7 +285,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mintTransferBurn() public {
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
-        BalanceDelta mintDelta = _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        BalanceDelta mintDelta = mint(range, liquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // transfer to alice
@@ -293,14 +295,13 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, liquidity, ZERO_BYTES));
         planner = planner.add(Actions.BURN, abi.encode(tokenId));
-        planner = planner.finalize(range);
-        bytes memory calls = planner.zip();
+        bytes memory calls = planner.finalize(range.poolKey);
 
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency0.balanceOf(alice);
 
         vm.prank(alice);
-        lpm.modifyLiquidities(calls);
+        lpm.modifyLiquidities(calls, _deadline);
 
         // token was burned and does not exist anymore
         vm.expectRevert();
@@ -314,7 +315,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mintTransferCollect() public {
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
-        _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        mint(range, liquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to generate fee revenue
@@ -329,7 +330,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
         vm.startPrank(alice);
-        BalanceDelta delta = _collect(tokenId, alice, ZERO_BYTES);
+        BalanceDelta delta = collect(tokenId, ZERO_BYTES);
         vm.stopPrank();
 
         // alice received the fee revenue
@@ -342,7 +343,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mintTransferIncrease() public {
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
-        _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        mint(range, liquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // transfer to alice
@@ -353,7 +354,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
         vm.startPrank(alice);
         uint256 liquidityToAdd = 10e18;
-        BalanceDelta delta = _increaseLiquidity(tokenId, liquidityToAdd, ZERO_BYTES);
+        BalanceDelta delta = increaseLiquidity(tokenId, liquidityToAdd, ZERO_BYTES);
         vm.stopPrank();
 
         // position liquidity increased
@@ -378,7 +379,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mintTransferDecrease() public {
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
-        _mint(range, liquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        mint(range, liquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to generate fee revenue
@@ -395,7 +396,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
             vm.startPrank(alice);
             uint256 liquidityToRemove = 10e18;
-            BalanceDelta delta = _decreaseLiquidity(tokenId, liquidityToRemove, ZERO_BYTES);
+            BalanceDelta delta = decreaseLiquidity(tokenId, liquidityToRemove, ZERO_BYTES);
             vm.stopPrank();
 
             {

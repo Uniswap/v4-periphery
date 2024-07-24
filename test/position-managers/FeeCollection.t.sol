@@ -68,10 +68,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
         BalanceDelta delta = collect(tokenId, ZERO_BYTES);
 
-<<<<<<< HEAD
-=======
         assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(FEE_WAD), 1 wei);
->>>>>>> cc1ea4e (additional cleanup and fuzz initialize)
         assertEq(uint256(int256(delta.amount1())), uint256(int256(expectedFees.amount1())));
         assertEq(uint256(int256(delta.amount0())), uint256(int256(expectedFees.amount0())));
 
@@ -142,24 +139,24 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     function test_collect_donate() public {
         LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -120, tickUpper: 120});
-        _mint(range, 10e18, block.timestamp + 1, address(this), ZERO_BYTES);
+        mint(range, 10e18, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to generate fee revenue
         uint256 feeRevenue = 1e18;
         donateRouter.donate(key, feeRevenue, feeRevenue, ZERO_BYTES);
 
-        BalanceDelta feesAccrued = lpm.feesOwed(tokenId);
+        BalanceDelta expectedFees = IPositionManager(address(lpm)).getFeesOwed(manager, tokenId);
 
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = _collect(tokenId, address(this), ZERO_BYTES);
+        BalanceDelta delta = collect(tokenId, ZERO_BYTES);
 
         assertApproxEqAbs(uint256(int256(delta.amount0())), feeRevenue, 1 wei);
         assertApproxEqAbs(uint256(int256(delta.amount1())), feeRevenue, 1 wei);
-        assertEq(delta.amount0(), feesAccrued.amount0());
-        assertEq(delta.amount1(), feesAccrued.amount1());
+        assertEq(delta.amount0(), expectedFees.amount0());
+        assertEq(delta.amount1(), expectedFees.amount1());
 
         assertEq(uint256(int256(delta.amount0())), currency0.balanceOfSelf() - balance0Before);
         assertEq(uint256(int256(delta.amount1())), currency1.balanceOfSelf() - balance1Before);
@@ -174,12 +171,12 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 liquidityBob = 1000e18;
 
         vm.startPrank(alice);
-        _mint(range, liquidityAlice, block.timestamp + 1, alice, ZERO_BYTES);
+        mint(range, liquidityAlice, alice, ZERO_BYTES);
         vm.stopPrank();
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.startPrank(bob);
-        _mint(range, liquidityBob, block.timestamp + 1, bob, ZERO_BYTES);
+        mint(range, liquidityBob, bob, ZERO_BYTES);
         vm.stopPrank();
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
@@ -190,14 +187,14 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         {
             // alice collects her share
-            BalanceDelta feesAccruedAlice = lpm.feesOwed(tokenIdAlice);
+            BalanceDelta expectedFeesAlice = IPositionManager(address(lpm)).getFeesOwed(manager, tokenIdAlice);
             assertApproxEqAbs(
-                uint128(feesAccruedAlice.amount0()),
+                uint128(expectedFeesAlice.amount0()),
                 feeRevenue0.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob),
                 1 wei
             );
             assertApproxEqAbs(
-                uint128(feesAccruedAlice.amount1()),
+                uint128(expectedFeesAlice.amount1()),
                 feeRevenue1.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob),
                 1 wei
             );
@@ -205,25 +202,25 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
             vm.startPrank(alice);
-            BalanceDelta deltaAlice = _collect(tokenIdAlice, alice, ZERO_BYTES);
+            BalanceDelta deltaAlice = collect(tokenIdAlice, ZERO_BYTES);
             vm.stopPrank();
 
-            assertEq(deltaAlice.amount0(), feesAccruedAlice.amount0());
-            assertEq(deltaAlice.amount1(), feesAccruedAlice.amount1());
-            assertEq(currency0.balanceOf(alice), balance0BeforeAlice + uint256(uint128(feesAccruedAlice.amount0())));
-            assertEq(currency1.balanceOf(alice), balance1BeforeAlice + uint256(uint128(feesAccruedAlice.amount1())));
+            assertEq(deltaAlice.amount0(), expectedFeesAlice.amount0());
+            assertEq(deltaAlice.amount1(), expectedFeesAlice.amount1());
+            assertEq(currency0.balanceOf(alice), balance0BeforeAlice + uint256(uint128(expectedFeesAlice.amount0())));
+            assertEq(currency1.balanceOf(alice), balance1BeforeAlice + uint256(uint128(expectedFeesAlice.amount1())));
         }
 
         {
             // bob collects his share
-            BalanceDelta feesAccruedBob = lpm.feesOwed(tokenIdBob);
+            BalanceDelta expectedFeesBob = IPositionManager(address(lpm)).getFeesOwed(manager, tokenIdBob);
             assertApproxEqAbs(
-                uint128(feesAccruedBob.amount0()),
+                uint128(expectedFeesBob.amount0()),
                 feeRevenue0.mulDivDown(liquidityBob, liquidityAlice + liquidityBob),
                 1 wei
             );
             assertApproxEqAbs(
-                uint128(feesAccruedBob.amount1()),
+                uint128(expectedFeesBob.amount1()),
                 feeRevenue1.mulDivDown(liquidityBob, liquidityAlice + liquidityBob),
                 1 wei
             );
@@ -231,13 +228,13 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
             uint256 balance0BeforeBob = currency0.balanceOf(bob);
             uint256 balance1BeforeBob = currency1.balanceOf(bob);
             vm.startPrank(bob);
-            BalanceDelta deltaBob = _collect(tokenIdBob, bob, ZERO_BYTES);
+            BalanceDelta deltaBob = collect(tokenIdBob, ZERO_BYTES);
             vm.stopPrank();
 
-            assertEq(deltaBob.amount0(), feesAccruedBob.amount0());
-            assertEq(deltaBob.amount1(), feesAccruedBob.amount1());
-            assertEq(currency0.balanceOf(bob), balance0BeforeBob + uint256(uint128(feesAccruedBob.amount0())));
-            assertEq(currency1.balanceOf(bob), balance1BeforeBob + uint256(uint128(feesAccruedBob.amount1())));
+            assertEq(deltaBob.amount0(), expectedFeesBob.amount0());
+            assertEq(deltaBob.amount1(), expectedFeesBob.amount1());
+            assertEq(currency0.balanceOf(bob), balance0BeforeBob + uint256(uint128(expectedFeesBob.amount0())));
+            assertEq(currency1.balanceOf(bob), balance1BeforeBob + uint256(uint128(expectedFeesBob.amount1())));
         }
     }
 
@@ -317,8 +314,6 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         }
     }
 
-    function test_collect_donate() public {}
-    function test_collect_donate_sameRange() public {}
     // TODO: ERC6909 Support.
     function test_collect_6909() public {}
     function test_collect_sameRange_6909() public {}

@@ -11,6 +11,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -123,7 +125,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 initialLiquidity = 100e18;
 
         // mint a position on range [-300, 300]
-        BalanceDelta delta = _mint(range, initialLiquidity, block.timestamp + 1, address(this), ZERO_BYTES);
+        BalanceDelta delta = mint(range, initialLiquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // we'll burn and mint a new position on [-60, 60]; calculate the liquidity units for the new range
@@ -142,18 +144,10 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, initialLiquidity, ZERO_BYTES));
         planner = planner.add(Actions.BURN, abi.encode(tokenId));
-<<<<<<< HEAD
-        planner = planner.add(
-            Actions.MINT, abi.encode(newRange, newLiquidity, block.timestamp + 1, address(this), ZERO_BYTES)
-        );
-        planner = planner.finalize(range);
-        bytes[] memory data = lpm.modifyLiquidities(planner.zip());
-=======
         planner = planner.add(Actions.MINT, abi.encode(newRange, newLiquidity, address(this), ZERO_BYTES));
         bytes memory calls = planner.finalize(range.poolKey);
 
         bytes[] memory data = lpm.modifyLiquidities(calls, _deadline);
->>>>>>> cc1ea4e (additional cleanup and fuzz initialize)
         int256 delta0 = abi.decode(data[data.length - 2], (int256));
         int256 delta1 = abi.decode(data[data.length - 1], (int256));
 
