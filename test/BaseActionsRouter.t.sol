@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {MockBaseActionsRouter} from "./mocks/MockBaseActionsRouter.sol";
-import {ActionsRouterPlanner, Plan} from "./utils/ActionsRouterPlanner.sol";
+import {ActionsRouterPlanner, Plan} from "./shared/ActionsRouterPlanner.sol";
 import {Actions} from "../src/libraries/Actions.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Test} from "forge-std/Test.sol";
