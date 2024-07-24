@@ -8,7 +8,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PathKey} from "./libraries/PathKey.sol";
-import {BytesLib} from "./libraries/BytesLib.sol";
+import {CalldataBytesLib} from "./libraries/CalldataBytesLib.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
@@ -20,7 +20,7 @@ import {Actions} from "./libraries/Actions.sol";
 abstract contract V4Router is IV4Router, BaseActionsRouter {
     using CurrencyLibrary for Currency;
     using TransientStateLibrary for IPoolManager;
-    using BytesLib for bytes;
+    using CalldataBytesLib for bytes;
 
     constructor(IPoolManager poolManager) BaseActionsRouter(poolManager) {}
 

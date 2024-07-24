@@ -3,15 +3,15 @@ pragma solidity ^0.8.24;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SafeCallback} from "./SafeCallback.sol";
-import {BytesLib} from "../libraries/BytesLib.sol";
+import {CalldataBytesLib} from "../libraries/CalldataBytesLib.sol";
 
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.
 /// @dev Suggested uint256 action values are defined in Actions.sol, however any definition can be used
 abstract contract BaseActionsRouter is SafeCallback {
-    using BytesLib for bytes;
+    using CalldataBytesLib for bytes;
 
     /// @notice emitted when different numbers of parameters and actions are provided
-    error LengthMismatch();
+    error InputLengthMismatch();
 
     /// @notice emitted when an inheriting contract does not support an action
     error UnsupportedAction(uint256 action);
@@ -30,7 +30,7 @@ abstract contract BaseActionsRouter is SafeCallback {
         (uint256[] calldata actions, bytes[] calldata params) = data.decodeInCalldata();
 
         uint256 numActions = actions.length;
-        if (numActions != params.length) revert LengthMismatch();
+        if (numActions != params.length) revert InputLengthMismatch();
 
         for (uint256 actionIndex = 0; actionIndex < numActions; actionIndex++) {
             uint256 action = actions[actionIndex];

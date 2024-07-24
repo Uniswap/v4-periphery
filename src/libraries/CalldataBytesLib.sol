@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 /// @title Library for Bytes Manipulation
-library BytesLib {
+library CalldataBytesLib {
     error SliceOutOfBounds();
 
     /// @notice equivalent to SliceOutOfBounds.selector
