@@ -220,7 +220,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_fuzz_increaseLiquidity_native_excess(IPoolManager.ModifyLiquidityParams memory params) public {
         // fuzz for the range
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
-        vm.assume(params.tickLower < -60 && 60 < params.tickUpper); // two-sided liquidity
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
 
         // TODO: figure out if we can fuzz the increase liquidity delta. we're annoyingly getting TickLiquidityOverflow
         uint256 liquidityToAdd = 1e18;
@@ -258,26 +258,43 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
     }
 
-    // function test_decreaseLiquidity_native(IPoolManager.ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta)
-    //     public
-    // {
-    //     uint256 tokenId;
-    //     (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-    //     vm.assume(0 < decreaseLiquidityDelta);
-    //     vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
-    //     vm.assume(int256(decreaseLiquidityDelta) <= params.liquidityDelta);
+    function test_decreaseLiquidity_native(
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 decreaseLiquidityDelta
+    ) public {
+        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+        decreaseLiquidityDelta = bound(decreaseLiquidityDelta, 1, uint256(params.liquidityDelta));
 
-    //     LiquidityRange memory range =
-    //         LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        LiquidityRange memory range =
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-    //     decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES);
+        // mint the position with native token liquidity
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, range, uint256(params.liquidityDelta), address(this), ZERO_BYTES);
 
-    //     bytes32 positionId =
-    //         keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
-    //     (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        uint256 balance0Before = address(this).balance;
+        uint256 balance1Before = currency1.balanceOfSelf();
 
-    //     assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
-    // }
+        // decrease liquidity and receive native tokens
+        (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(params.tickLower),
+            TickMath.getSqrtPriceAtTick(params.tickUpper),
+            uint128(decreaseLiquidityDelta)
+        );
+        BalanceDelta delta = decreaseLiquidity(tokenId, decreaseLiquidityDelta, ZERO_BYTES);
+
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
+
+        // verify native token balances changed as expected
+        assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, amount0, 1 wei);
+        assertEq(currency0.balanceOfSelf() - balance0Before, uint128(delta.amount0()));
+        assertEq(currency1.balanceOfSelf() - balance1Before, uint128(delta.amount1()));
+    }
 
     // function test_collect_native() public {}
 }
