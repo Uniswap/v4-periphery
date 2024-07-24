@@ -121,7 +121,7 @@ contract StateView is ImmutableState {
     }
 
     /**
-     * @notice Retrieves the position info without needing to calulcate the `positionId`.
+     * @notice Retrieves the position info without needing to calculate the `positionId`.
      * @dev Corresponds to pools[poolId].positions[positionId]
      * @param poolId The ID of the pool.
      * @param owner The owner of the liquidity position.
@@ -157,7 +157,7 @@ contract StateView is ImmutableState {
 
     /**
      * @notice Retrieves the liquidity of a position.
-     * @dev Corresponds to pools[poolId].positions[positionId].liquidity. A more gas efficient version of getPositionInfo
+     * @dev Corresponds to pools[poolId].positions[positionId].liquidity. More gas efficient for just retrieiving liquidity as compared to getPositionInfo
      * @param poolId The ID of the pool.
      * @param positionId The ID of the position.
      * @return liquidity The liquidity of the position.
@@ -167,8 +167,8 @@ contract StateView is ImmutableState {
     }
 
     /**
-     * @notice Live calculate the fee growth inside a tick range of a pool
-     * @dev pools[poolId].feeGrowthInside0LastX128 in Position.Info is cached and can become stale. This function will live calculate the feeGrowthInside
+     * @notice Calculate the fee growth inside a tick range of a pool
+     * @dev pools[poolId].feeGrowthInside0LastX128 in Position.Info is cached and can become stale. This function will calculate the up to date feeGrowthInside
      * @param poolId The ID of the pool.
      * @param tickLower The lower tick of the range.
      * @param tickUpper The upper tick of the range.
