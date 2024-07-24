@@ -222,15 +222,19 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         console.log("A", gasLeft - gasleft());
         assertEq(factory.getImplementation(hookAddress), implementation);
 
+        flags = flags | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG;
+        address implementationWithReturnsDelta = address(flags);
+        vm.etch(implementationWithReturnsDelta, implementation.code);
         maxFeeBips = 100;
-        (, salt) = MiddlewareMiner.find(address(factory), flags, address(manager), implementation, maxFeeBips);
-        hookAddress = factory.createMiddleware(implementation, maxFeeBips, salt);
+        (, salt) =
+            MiddlewareMiner.find(address(factory), flags, address(manager), implementationWithReturnsDelta, maxFeeBips);
+        hookAddress = factory.createMiddleware(implementationWithReturnsDelta, maxFeeBips, salt);
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         // does not revert
         gasLeft = gasleft();
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         console.log("B", gasLeft - gasleft());
-        assertEq(factory.getImplementation(hookAddress), implementation);
+        assertEq(factory.getImplementation(hookAddress), implementationWithReturnsDelta);
     }
 
     function testRevertOnDeltaFlags() public {
