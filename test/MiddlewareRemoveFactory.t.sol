@@ -24,6 +24,7 @@ import {SafeCallback} from "./../contracts/base/SafeCallback.sol";
 import {FeeOnRemove} from "./middleware/FeeOnRemove.sol";
 import {FrontrunRemove} from "./middleware/FrontrunRemove.sol";
 import {BaseMiddleware} from "./../contracts/middleware/BaseMiddleware.sol";
+import {RemoveGriefs} from "./middleware/RemoveGriefs.sol";
 
 contract MiddlewareRemoveFactoryTest is Test, Deployers {
     HookEnabledSwapRouter router;
@@ -208,6 +209,11 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         HooksOutOfGas hooksOutOfGas = HooksOutOfGas(address(flags));
         vm.etch(address(hooksOutOfGas), address(new HooksOutOfGas(manager)).code);
         testOn(address(hooksOutOfGas), flags);
+
+        flags = uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
+        RemoveGriefs removeGriefs = RemoveGriefs(address(flags));
+        vm.etch(address(removeGriefs), address(new RemoveGriefs(manager)).code);
+        testOn(address(removeGriefs), flags);
     }
 
     // creates a middleware on an implementation
