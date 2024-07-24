@@ -9,7 +9,7 @@ import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
 import {IPositionManager, Actions} from "../../../src/interfaces/IPositionManager.sol";
 import {LiquidityRange} from "../../../src/types/LiquidityRange.sol";
-import {Planner} from "../../utils/Planner.sol";
+import {Planner} from "../../shared/Planner.sol";
 
 contract LiquidityFuzzers is Fuzzers {
     using Planner for Planner.Plan;

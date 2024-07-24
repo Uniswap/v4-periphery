@@ -8,7 +8,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 import {PositionManager, Actions} from "../../src/PositionManager.sol";
 import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
-import {Planner} from "../utils/Planner.sol";
+import {Planner} from "../shared/Planner.sol";
 
 abstract contract LiquidityOperations is CommonBase {
     using Planner for Planner.Plan;
