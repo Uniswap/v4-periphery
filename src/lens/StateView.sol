@@ -10,6 +10,8 @@ import {ImmutableState} from "../base/ImmutableState.sol";
 
 /// @notice A view only contract wrapping the StateLibrary.sol library for reading storage in v4-core.
 contract StateView is ImmutableState {
+    using StateLibrary for IPoolManager;
+
     constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}
 
     /**
@@ -26,7 +28,7 @@ contract StateView is ImmutableState {
         view
         returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)
     {
-        return StateLibrary.getSlot0(poolManager, poolId);
+        return poolManager.getSlot0(poolId);
     }
 
     /**
@@ -49,7 +51,7 @@ contract StateView is ImmutableState {
             uint256 feeGrowthOutside1X128
         )
     {
-        return StateLibrary.getTickInfo(poolManager, poolId, tick);
+        return poolManager.getTickInfo(poolId, tick);
     }
 
     /**
@@ -65,7 +67,7 @@ contract StateView is ImmutableState {
         view
         returns (uint128 liquidityGross, int128 liquidityNet)
     {
-        return StateLibrary.getTickLiquidity(poolManager, poolId, tick);
+        return poolManager.getTickLiquidity(poolId, tick);
     }
 
     /**
@@ -81,7 +83,7 @@ contract StateView is ImmutableState {
         view
         returns (uint256 feeGrowthOutside0X128, uint256 feeGrowthOutside1X128)
     {
-        return StateLibrary.getTickFeeGrowthOutside(poolManager, poolId, tick);
+        return poolManager.getTickFeeGrowthOutside(poolId, tick);
     }
 
     /**
@@ -96,7 +98,7 @@ contract StateView is ImmutableState {
         view
         returns (uint256 feeGrowthGlobal0, uint256 feeGrowthGlobal1)
     {
-        return StateLibrary.getFeeGrowthGlobals(poolManager, poolId);
+        return poolManager.getFeeGrowthGlobals(poolId);
     }
 
     /**
@@ -106,7 +108,7 @@ contract StateView is ImmutableState {
      * @return liquidity The liquidity of the pool.
      */
     function getLiquidity(PoolId poolId) external view returns (uint128 liquidity) {
-        return StateLibrary.getLiquidity(poolManager, poolId);
+        return poolManager.getLiquidity(poolId);
     }
 
     /**
@@ -117,7 +119,7 @@ contract StateView is ImmutableState {
      * @return tickBitmap The bitmap of the tick.
      */
     function getTickBitmap(PoolId poolId, int16 tick) external view returns (uint256 tickBitmap) {
-        return StateLibrary.getTickBitmap(poolManager, poolId, tick);
+        return poolManager.getTickBitmap(poolId, tick);
     }
 
     /**
@@ -152,7 +154,7 @@ contract StateView is ImmutableState {
         view
         returns (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128)
     {
-        return StateLibrary.getPositionInfo(poolManager, poolId, positionId);
+        return poolManager.getPositionInfo(poolId, positionId);
     }
 
     /**
@@ -163,7 +165,7 @@ contract StateView is ImmutableState {
      * @return liquidity The liquidity of the position.
      */
     function getPositionLiquidity(PoolId poolId, bytes32 positionId) external view returns (uint128 liquidity) {
-        return StateLibrary.getPositionLiquidity(poolManager, poolId, positionId);
+        return poolManager.getPositionLiquidity(poolId, positionId);
     }
 
     /**
@@ -180,6 +182,6 @@ contract StateView is ImmutableState {
         view
         returns (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128)
     {
-        return StateLibrary.getFeeGrowthInside(poolManager, poolId, tickLower, tickUpper);
+        return poolManager.getFeeGrowthInside(poolId, tickLower, tickUpper);
     }
 }
