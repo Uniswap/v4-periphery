@@ -55,7 +55,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         vm.deal(address(this), type(uint256).max);
     }
 
-    function test_mint_native(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_mint_native(IPoolManager.ModifyLiquidityParams memory params) public {
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
 
@@ -90,7 +90,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     // minting with excess native tokens are returned to caller
-    function test_mint_native_excess(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_mint_native_excess(IPoolManager.ModifyLiquidityParams memory params) public {
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
 
@@ -127,7 +127,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
     }
 
-    function test_burn_native(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_burn_native(IPoolManager.ModifyLiquidityParams memory params) public {
         uint256 balance0Start = address(this).balance;
         uint256 balance1Start = currency1.balanceOfSelf();
 
@@ -175,7 +175,46 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
     }
 
-    // function test_increaseLiquidity_mative(IPoolManager.ModifyLiquidityParams memory params, uint256 increaseLiquidityDelta) public {}
+    function test_fuzz_increaseLiquidity_native(IPoolManager.ModifyLiquidityParams memory params) public {
+        // fuzz for the range
+        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+        vm.assume(params.tickLower < -60 && 60 < params.tickUpper); // two-sided liquidity
+
+        // TODO: figure out if we can fuzz the increase liquidity delta. we're annoyingly getting TickLiquidityOverflow
+        uint256 liquidityToAdd = 1e18;
+        LiquidityRange memory range =
+            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        // mint the position with native token liquidity
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, range, liquidityToAdd, address(this), ZERO_BYTES);
+
+        uint256 balance0Before = address(this).balance;
+        uint256 balance1Before = currency1.balanceOfSelf();
+
+        // calculate how much native token is required for the liquidity increase (doubling the liquidity)
+        (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(params.tickLower),
+            TickMath.getSqrtPriceAtTick(params.tickUpper),
+            uint128(liquidityToAdd)
+        );
+
+        bytes memory calls = getIncreaseEncoded(tokenId, liquidityToAdd, ZERO_BYTES); // double the liquidity
+        bytes[] memory result = lpm.modifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
+        BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
+
+        // verify position liquidity increased
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+        assertEq(liquidity, liquidityToAdd + liquidityToAdd); // liquidity was doubled
+
+        // verify native token balances changed as expected
+        assertEq(balance0Before - currency0.balanceOfSelf(), amount0 + 1 wei);
+        assertEq(balance0Before - currency0.balanceOfSelf(), uint256(int256(-delta.amount0())));
+        assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
+    }
 
     // function test_decreaseLiquidity_native(IPoolManager.ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta)
     //     public
