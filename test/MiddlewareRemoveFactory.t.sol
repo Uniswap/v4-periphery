@@ -25,6 +25,7 @@ import {FeeOnRemove} from "./middleware/FeeOnRemove.sol";
 import {FrontrunRemove} from "./middleware/FrontrunRemove.sol";
 import {BaseMiddleware} from "./../contracts/middleware/BaseMiddleware.sol";
 import {RemoveGriefs} from "./middleware/RemoveGriefs.sol";
+import {RemoveReturnsMaxDeltas} from "./middleware/RemoveReturnsMaxDeltas.sol";
 
 contract MiddlewareRemoveFactoryTest is Test, Deployers {
     HookEnabledSwapRouter router;
@@ -214,6 +215,16 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         RemoveGriefs removeGriefs = RemoveGriefs(address(flags));
         vm.etch(address(removeGriefs), address(new RemoveGriefs(manager)).code);
         testOn(address(removeGriefs), flags);
+
+        flags = uint160(Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
+        uint160 flagsWithDeltas = flags | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG;
+        (address hookAddress,) =
+            MiddlewareMiner.find(address(factory), flagsWithDeltas, address(manager), address(flagsWithDeltas), 100);
+        currency0.transfer(address(hookAddress), currency0.balanceOf(address(this)) / 2);
+        currency1.transfer(address(hookAddress), currency1.balanceOf(address(this)) / 2);
+        RemoveReturnsMaxDeltas removeReturnsMaxDeltas = RemoveReturnsMaxDeltas(address(flags));
+        vm.etch(address(removeReturnsMaxDeltas), address(new RemoveReturnsMaxDeltas(manager)).code);
+        testOn(address(removeReturnsMaxDeltas), flags);
     }
 
     // creates a middleware on an implementation

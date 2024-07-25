@@ -14,6 +14,7 @@ import {NonZeroDeltaCount} from "@uniswap/v4-core/src/libraries/NonZeroDeltaCoun
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {console} from "@openzeppelin/lib/forge-std/src/console.sol";
 
 contract MiddlewareRemove is BaseMiddleware {
     using CustomRevert for bytes4;
@@ -101,15 +102,17 @@ contract MiddlewareRemove is BaseMiddleware {
             revert Hooks.InvalidHookResponse();
         }
         uint256 nonzeroDeltaCount = manager.getNonzeroDeltaCount();
-        if (nonzeroDeltaCount == 0 && returnDelta == BalanceDeltaLibrary.ZERO_DELTA) {
-            return returnDelta;
-        }
+        // if (nonzeroDeltaCount == 0 && returnDelta == BalanceDeltaLibrary.ZERO_DELTA) {
+        //     return returnDelta;
+        // }
         if (
             returnDelta.amount0() > int256(uint256(int256(delta.amount0())) * maxFeeBips / MAX_BIPS)
                 || returnDelta.amount1() > int256(uint256(int256(delta.amount1())) * maxFeeBips / MAX_BIPS)
         ) {
             revert HookTookTooMuchFee();
         }
+        // error on overflow
+        returnDelta - delta;
         uint256 nonzeroHookDeltaCount;
         int256 hookDelta = manager.currencyDelta(address(this), key.currency0);
         if (hookDelta != 0) {
@@ -133,15 +136,16 @@ contract MiddlewareRemove is BaseMiddleware {
         }
 
         // weird edge case in case the hook settled the caller's deltas
-        if (manager.currencyDelta(sender, key.currency0) != 0) {
-            nonzeroHookDeltaCount++;
-        }
-        if (manager.currencyDelta(sender, key.currency1) != 0) {
-            nonzeroHookDeltaCount++;
-        }
-        if (nonzeroHookDeltaCount == nonzeroDeltaCount) {
-            return returnDelta;
-        }
+        // can prob delete this
+        // if (manager.currencyDelta(sender, key.currency0) != 0) {
+        //     nonzeroHookDeltaCount++;
+        // }
+        // if (manager.currencyDelta(sender, key.currency1) != 0) {
+        //     nonzeroHookDeltaCount++;
+        // }
+        // if (nonzeroHookDeltaCount == nonzeroDeltaCount) {
+        //     return returnDelta;
+        // }
 
         revert HookInvalidDeltasAfterRemove();
     }
