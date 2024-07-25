@@ -139,7 +139,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     }
 
     /// @param params is an encoding of the Currency to close
-    /// @return btyes an encoding of int256 the balance of the currency being settled by this call
+    /// @return bytes an encoding of int256 the balance of the currency being settled by this call
     function _close(bytes memory params) internal returns (bytes memory) {
         (Currency currency) = abi.decode(params, (Currency));
         // this address has applied all deltas on behalf of the user/owner
