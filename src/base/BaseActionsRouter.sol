@@ -16,7 +16,7 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// @notice emitted when an inheriting contract does not support an action
     error UnsupportedAction(uint256 action);
 
-    constructor(IPoolManager poolManager) SafeCallback(poolManager) {}
+    constructor(IPoolManager _poolManager) SafeCallback(_poolManager) {}
 
     /// @notice internal function that triggers the execution of a set of actions on v4
     /// @dev inheriting contracts should call this function to trigger execution
