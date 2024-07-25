@@ -7,6 +7,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+
 import {PathKey, PathKeyLib} from "./libraries/PathKey.sol";
 import {CalldataBytesLib} from "./libraries/CalldataBytesLib.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
@@ -24,6 +25,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
     using CalldataBytesLib for bytes;
 
     constructor(IPoolManager poolManager) BaseActionsRouter(poolManager) {}
+
+    /// @inheritdoc IV4Router
+    uint256 public constant override ENTIRE_OPEN_DELTA = 0;
 
     function _handleAction(uint256 action, bytes calldata params) internal override {
         // swap actions and payment actions in different blocks for gas efficiency
@@ -43,23 +47,27 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
             if (action == Actions.SETTLE) {
                 // equivalent: abi.decode(params, (Currency))
                 Currency currency;
+                uint256 amount;
                 assembly ("memory-safe") {
                     currency := calldataload(params.offset)
+                    amount := calldataload(add(params.offset, 0x20))
                 }
 
                 // TODO support address(this) paying too
-                _payAndSettle(currency, _msgSender());
+                _payAndSettle(currency, _msgSender(), amount);
             } else if (action == Actions.TAKE) {
-                // equivalent: abi.decode(params, (Currency, address))
+                // equivalent: abi.decode(params, (Currency, address, uint256))
                 Currency currency;
                 address recipient;
+                uint256 amount;
                 assembly ("memory-safe") {
                     currency := calldataload(params.offset)
                     recipient := calldataload(add(params.offset, 0x20))
+                    amount := calldataload(add(params.offset, 0x40))
                 }
 
-                // TODO add min amount??
-                _take(currency, recipient);
+                // TODO should _take have a minAmountOut added slippage check?
+                _take(currency, recipient, amount);
             } else {
                 revert UnsupportedAction(action);
             }
@@ -153,21 +161,28 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
         }
     }
 
-    function _take(Currency currency, address recipient) private {
-        int256 delta = poolManager.currencyDelta(address(this), currency);
-        if (delta < 0) revert();
-
-        poolManager.take(currency, recipient, uint256(delta));
+    // TODO use DeltaResolver
+    function _take(Currency currency, address recipient, uint256 amount) private {
+        if (amount == ENTIRE_OPEN_DELTA) {
+            int256 delta = poolManager.currencyDelta(address(this), currency);
+            if (delta < 0) revert InvalidDeltaForAction();
+            amount = uint256(delta);
+        }
+        poolManager.take(currency, recipient, amount);
     }
 
     // TODO native support !!
-    // TODO use currency settle take library
-    function _payAndSettle(Currency currency, address payer) private {
-        int256 delta = poolManager.currencyDelta(address(this), currency);
-        if (delta > 0) revert();
+    // TODO should it have a maxAmountOut added slippage protection?
+    // TODO use DeltaResolver
+    function _payAndSettle(Currency currency, address payer, uint256 amount) private {
+        if (amount == ENTIRE_OPEN_DELTA) {
+            int256 delta = poolManager.currencyDelta(address(this), currency);
+            if (delta > 0) revert InvalidDeltaForAction();
+            amount = uint256(-delta);
+        }
 
         poolManager.sync(currency);
-        _pay(Currency.unwrap(currency), payer, address(poolManager), uint256(-delta));
+        _pay(Currency.unwrap(currency), payer, address(poolManager), amount);
         poolManager.settle();
     }
 

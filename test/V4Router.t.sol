@@ -448,7 +448,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
     }
 
     function _finalizePlan(Currency inputCurrency, Currency outputCurrency, address recipient) internal {
-        plan = plan.add(Actions.SETTLE, abi.encode(inputCurrency));
-        plan = plan.add(Actions.TAKE, abi.encode(outputCurrency, recipient));
+        plan = plan.add(Actions.SETTLE, abi.encode(inputCurrency, router.ENTIRE_OPEN_DELTA()));
+        plan = plan.add(Actions.TAKE, abi.encode(outputCurrency, recipient, router.ENTIRE_OPEN_DELTA()));
     }
 }
