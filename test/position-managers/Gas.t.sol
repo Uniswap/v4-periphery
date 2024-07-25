@@ -259,8 +259,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         donateRouter.donate(poolPos.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
         // Collect by calling decrease with 0.
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 0, ZERO_BYTES, false));
+        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 0, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(poolPos.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -289,7 +288,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 10_000 ether, ZERO_BYTES, false));
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 10_000 ether, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(poolPos.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -308,20 +307,56 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         // donate to create fee revenue
         donateRouter.donate(poolPos.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 0, ZERO_BYTES, false));
+        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 0, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(poolPos.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_collect_sameRange");
     }
 
+    function test_gas_burn_nonEmptyPosition() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+
+        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, poolPos, ZERO_BYTES));
+        bytes memory calls = planner.finalize(poolPos.poolKey);
+
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_burn_nonEmpty");
+    }
+
+    function test_gas_burnEmpty() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+
+        decreaseLiquidity(tokenId, poolPos, 10_000 ether, ZERO_BYTES);
+        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, poolPos, ZERO_BYTES));
+
+        // There is no need to include CLOSE commands.
+        bytes memory calls = planner.encode();
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_burn_empty");
+    }
+
+    function test_gas_decrease_burnEmpty_batch() public {
+        // Will be more expensive than not encoding a decrease and just encoding a burn.
+        // ie. check this against PositionManager_burn_nonEmpty
+        uint256 tokenId = lpm.nextTokenId();
+        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+
+        Planner.Plan memory planner =
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 10_000 ether, ZERO_BYTES));
+        planner = planner.add(Actions.BURN, abi.encode(tokenId, poolPos, ZERO_BYTES));
+
+        // We must include CLOSE commands.
+        bytes memory calls = planner.finalize(poolPos.poolKey);
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_decrease_burnEmpty");
+    }
+
     // TODO: ERC6909 Support.
     function test_gas_increaseLiquidity_erc6909() public {}
     function test_gas_decreaseLiquidity_erc6909() public {}
-
-    function test_gas_burn() public {}
-    function test_gas_burnEmpty() public {}
 
     // Native Token Gas Tests
     function test_gas_mint_native() public {
@@ -389,5 +424,45 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = getCollectEncoded(tokenId, poolPosNative, ZERO_BYTES);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_collect_native");
+    }
+
+    function test_gas_burn_nonEmptyPosition_native() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, poolPosNative, 10_000 ether, address(this), ZERO_BYTES);
+
+        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, poolPosNative, ZERO_BYTES));
+        bytes memory calls = planner.finalize(poolPosNative.poolKey);
+
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_burn_nonEmpty_native");
+    }
+
+    function test_gas_burnEmpty_native() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, poolPosNative, 10_000 ether, address(this), ZERO_BYTES);
+
+        decreaseLiquidity(tokenId, poolPosNative, 10_000 ether, ZERO_BYTES);
+        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, poolPosNative, ZERO_BYTES));
+
+        // There is no need to include CLOSE commands.
+        bytes memory calls = planner.encode();
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_burn_empty_native");
+    }
+
+    function test_gas_decrease_burnEmpty_batch_native() public {
+        // Will be more expensive than not encoding a decrease and just encoding a burn.
+        // ie. check this against PositionManager_burn_nonEmpty
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, poolPosNative, 10_000 ether, address(this), ZERO_BYTES);
+
+        Planner.Plan memory planner =
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPosNative, 10_000 ether, ZERO_BYTES));
+        planner = planner.add(Actions.BURN, abi.encode(tokenId, poolPosNative, ZERO_BYTES));
+
+        // We must include CLOSE commands.
+        bytes memory calls = planner.finalize(poolPosNative.poolKey);
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_decrease_burnEmpty_native");
     }
 }

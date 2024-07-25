@@ -85,10 +85,9 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
                 returnData[i] = _mint(params[i]);
             } else if (actions[i] == Actions.CLOSE_CURRENCY) {
                 returnData[i] = _close(params[i], sender);
-                // } else if (actions[i] == Actions.BURN) {
-                //     // TODO: Burn will be coupled with decrease.
-                //     (uint256 tokenId) = abi.decode(params[i], (uint256));
-                //     burn(tokenId, sender);
+            } else if (actions[i] == Actions.BURN) {
+                // Will automatically decrease if the position is not empty.
+                returnData[i] = _burn(params[i], sender);
             } else {
                 revert UnsupportedAction();
             }
@@ -103,10 +102,8 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     function _increase(bytes memory param, address sender) internal returns (bytes memory) {
         (uint256 tokenId, PoolPosition memory poolPos, uint256 liquidity, bytes memory hookData) =
             abi.decode(param, (uint256, PoolPosition, uint256, bytes));
-        _requireApprovedOrOwner(tokenId, sender);
 
-        if (poolPositions[tokenId] != poolPos.toId()) revert IncorrectPoolPositionForTokenId(tokenId);
-
+        _beforeModify(poolPos, tokenId, sender);
         // Note: The tokenId is used as the salt for this position, so every minted liquidity has unique storage in the pool manager.
         (BalanceDelta delta,) = _modifyLiquidity(poolPos, liquidity.toInt256(), bytes32(tokenId), hookData);
         return abi.encode(delta);
@@ -120,9 +117,8 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     function _decrease(bytes memory params, address sender) internal returns (bytes memory) {
         (uint256 tokenId, PoolPosition memory poolPos, uint256 liquidity, bytes memory hookData) =
             abi.decode(params, (uint256, PoolPosition, uint256, bytes));
-        _requireApprovedOrOwner(tokenId, sender);
-        if (poolPositions[tokenId] != poolPos.toId()) revert IncorrectPoolPositionForTokenId(tokenId);
 
+        _beforeModify(poolPos, tokenId, sender);
         // Note: the tokenId is used as the salt.
         (BalanceDelta delta,) = _modifyLiquidity(poolPos, -(liquidity.toInt256()), bytes32(tokenId), hookData);
         return abi.encode(delta);
@@ -142,6 +138,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         }
         _mint(owner, tokenId);
 
+        // _beforeModify is not enforced here because the tokenId is newly minted
         (BalanceDelta delta,) = _modifyLiquidity(poolPos, liquidity.toInt256(), bytes32(tokenId), hookData);
 
         poolPositions[tokenId] = poolPos.toId();
@@ -171,16 +168,28 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         return abi.encode(currencyDelta);
     }
 
-    // function burn(uint256 tokenId, address sender) internal {
-    //     _requireApprovedOrOwner(tokenId, sender);
+    /// note: this is overloaded with ERC721Permit._burn
+    function _burn(bytes memory params, address sender) internal returns (bytes memory) {
+        (uint256 tokenId, PoolPosition memory poolPos, bytes memory hookData) =
+            abi.decode(params, (uint256, PoolPosition, bytes));
 
-    //     // Checks that the full position's liquidity has been removed and all tokens have been collected from tokensOwed.
-    //     _validateBurn(tokenId);
+        _beforeModify(poolPos, tokenId, sender);
+        uint256 liquidity = _beforeBurn(poolPos, tokenId);
 
-    //     delete tokenRange[tokenId];
-    //     // Burn the token.
-    //     _burn(tokenId);
-    // }
+        // Can only call modify if there is non zero liquidity.
+        BalanceDelta delta;
+        if (liquidity > 0) (delta,) = _modifyLiquidity(poolPos, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+
+        delete poolPositions[tokenId];
+        // Burn the token.
+        _burn(tokenId);
+        return abi.encode(delta);
+    }
+
+    function _beforeModify(PoolPosition memory poolPos, uint256 tokenId, address sender) private view {
+        if (!_isApprovedOrOwner(sender, tokenId)) revert NotApproved(sender);
+        if (poolPositions[tokenId] != poolPos.toId()) revert IncorrectPoolPositionForTokenId(tokenId);
+    }
 
     function _modifyLiquidity(PoolPosition memory poolPos, int256 liquidityChange, bytes32 salt, bytes memory hookData)
         internal
@@ -198,40 +207,17 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         );
     }
 
+    function _beforeBurn(PoolPosition memory poolPos, uint256 tokenId) internal view returns (uint128 liquidity) {
+        // TODO: Calculate positionId with Position.calculatePositionKey in v4-core.
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(this), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
+        liquidity = poolManager.getPositionLiquidity(poolPos.poolKey.toId(), positionId);
+    }
+
     /// @dev Send excess native tokens back to the recipient (sender)
     /// @param recipient the receiver of the excess native tokens. Should be the caller, the one that sent the native tokens
     function _sweepNativeToken(address recipient) internal {
         uint256 nativeBalance = address(this).balance;
         if (nativeBalance > 0) recipient.safeTransferETH(nativeBalance);
-    }
-
-    // // ensures liquidity of the position is empty before burning the token.
-    // function _validateBurn(uint256 tokenId) internal view {
-    //     bytes32 positionId = getPositionIdFromTokenId(tokenId);
-    //     uint128 liquidity = manager.getPositionLiquidity(tokenRange[tokenId].poolKey.toId(), positionId);
-    //     if (liquidity > 0) revert PositionMustBeEmpty();
-    // }
-
-    // // TODO: Move this to a posm state-view library.
-    // function getPositionIdFromTokenId(uint256 tokenId) public view returns (bytes32 positionId) {
-    //     LiquidityRange memory range = tokenRange[tokenId];
-    //     bytes32 salt = bytes32(tokenId);
-    //     int24 tickLower = range.tickLower;
-    //     int24 tickUpper = range.tickUpper;
-    //     address owner = address(this);
-
-    //     // positionId = keccak256(abi.encodePacked(owner, tickLower, tickUpper, salt))
-    //     assembly {
-    //         mstore(0x26, salt) // [0x26, 0x46)
-    //         mstore(0x06, tickUpper) // [0x23, 0x26)
-    //         mstore(0x03, tickLower) // [0x20, 0x23)
-    //         mstore(0, owner) // [0x0c, 0x20)
-    //         positionId := keccak256(0x0c, 0x3a) // len is 58 bytes
-    //         mstore(0x26, 0) // rewrite 0x26 to 0
-    //     }
-    // }
-
-    function _requireApprovedOrOwner(uint256 tokenId, address sender) internal view {
-        if (!_isApprovedOrOwner(sender, tokenId)) revert NotApproved(sender);
     }
 }

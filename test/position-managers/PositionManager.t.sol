@@ -143,47 +143,102 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
 
-    // function test_fuzz_burn(IPoolManager.ModifyLiquidityParams memory params) public {
-    //     uint256 balance0Start = currency0.balanceOfSelf();
-    //     uint256 balance1Start = currency1.balanceOfSelf();
+    function test_fuzz_burn_emptyPosition(IPoolManager.ModifyLiquidityParams memory params) public {
+        uint256 balance0Start = currency0.balanceOfSelf();
+        uint256 balance1Start = currency1.balanceOfSelf();
 
-    //     // create liquidity we can burn
-    //     uint256 tokenId;
-    //     (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-    //     PoolPosition memory poolPos =
-    //         PoolPosition({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
-    //     assertEq(tokenId, 1);
-    //     assertEq(lpm.ownerOf(1), address(this));
+        // create liquidity we can burn
+        uint256 tokenId;
+        (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        PoolPosition memory poolPos =
+            PoolPosition({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        assertEq(tokenId, 1);
+        assertEq(lpm.ownerOf(1), address(this));
 
-    //     bytes32 positionId =
-    //         keccak256(abi.encodePacked(address(lpm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
-    //     (uint256 liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
 
-    //     assertEq(liquidity, uint256(params.liquidityDelta));
+        assertEq(liquidity, uint256(params.liquidityDelta));
 
-    //     // burn liquidity
-    //     uint256 balance0BeforeBurn = currency0.balanceOfSelf();
-    //     uint256 balance1BeforeBurn = currency1.balanceOfSelf();
+        // burn liquidity
+        uint256 balance0BeforeBurn = currency0.balanceOfSelf();
+        uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
-    //     BalanceDelta deltaDecrease = decreaseLiquidity(tokenId, poolPos, liquidity, ZERO_BYTES);
-    //     burn(tokenId);
+        BalanceDelta deltaDecrease = decreaseLiquidity(tokenId, poolPos, liquidity, ZERO_BYTES);
+        // No decrease will happen on the burn call so the delta will be 0.
+        (BalanceDelta delta) = burn(tokenId, poolPos, ZERO_BYTES);
+        assertEq(delta.amount0(), 0);
+        assertEq(delta.amount1(), 0);
 
-    //     (liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+        (liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
 
-    //     assertEq(liquidity, 0);
+        assertEq(liquidity, 0);
 
-    //     assertEq(currency0.balanceOfSelf(), balance0BeforeBurn + uint256(int256(deltaDecrease.amount0())));
-    //     assertEq(currency1.balanceOfSelf(), balance1BeforeBurn + uint256(uint128(deltaDecrease.amount1())));
+        assertEq(currency0.balanceOfSelf(), balance0BeforeBurn + uint256(int256(deltaDecrease.amount0())));
+        assertEq(currency1.balanceOfSelf(), balance1BeforeBurn + uint256(uint128(deltaDecrease.amount1())));
 
-    //     // OZ 721 will revert if the token does not exist
-    //     vm.expectRevert();
-    //     lpm.ownerOf(1);
+        // OZ 721 will revert if the token does not exist
+        vm.expectRevert();
+        lpm.ownerOf(1);
 
-    //     // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
-    //     // Potentially because we round down in core. I believe this is known in V3. But let's check!
-    //     assertApproxEqAbs(currency0.balanceOfSelf(), balance0Start, 1 wei);
-    //     assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
-    // }
+        // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
+        // Potentially because we round down in core. I believe this is known in V3. But let's check!
+        assertApproxEqAbs(currency0.balanceOfSelf(), balance0Start, 1 wei);
+        assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
+    }
+
+    function test_fuzz_burn_nonEmptyPosition(IPoolManager.ModifyLiquidityParams memory params) public {
+        uint256 balance0Start = currency0.balanceOfSelf();
+        uint256 balance1Start = currency1.balanceOfSelf();
+
+        // create liquidity we can burn
+        uint256 tokenId;
+        (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        PoolPosition memory poolPos =
+            PoolPosition({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        assertEq(tokenId, 1);
+        assertEq(lpm.ownerOf(1), address(this));
+
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+
+        assertEq(liquidity, uint256(params.liquidityDelta));
+
+        (uint160 sqrtPriceX96,,,) = manager.getSlot0(key.toId());
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(params.tickLower),
+            TickMath.getSqrtPriceAtTick(params.tickUpper),
+            uint128(int128(params.liquidityDelta))
+        );
+
+        // burn liquidity
+        uint256 balance0BeforeBurn = currency0.balanceOfSelf();
+        uint256 balance1BeforeBurn = currency1.balanceOfSelf();
+
+        // No decrease will happen on the burn call so the delta will be 0.
+        BalanceDelta deltaBurn = burn(tokenId, poolPos, ZERO_BYTES);
+        assertEq(uint256(int256(deltaBurn.amount0())), amount0);
+        assertEq(uint256(int256(deltaBurn.amount1())), amount1);
+
+        (liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+
+        assertEq(liquidity, 0);
+
+        assertEq(currency0.balanceOfSelf(), balance0BeforeBurn + uint256(int256(deltaBurn.amount0())));
+        assertEq(currency1.balanceOfSelf(), balance1BeforeBurn + uint256(uint128(deltaBurn.amount1())));
+
+        // OZ 721 will revert if the token does not exist
+        vm.expectRevert();
+        lpm.ownerOf(1);
+
+        // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
+        // Potentially because we round down in core. I believe this is known in V3. But let's check!
+        assertApproxEqAbs(currency0.balanceOfSelf(), balance0Start, 1 wei);
+        assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
+    }
 
     function test_fuzz_decreaseLiquidity(
         IPoolManager.ModifyLiquidityParams memory params,

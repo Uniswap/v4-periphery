@@ -83,12 +83,14 @@ abstract contract LiquidityOperations is CommonBase {
         return abi.decode(result[0], (BalanceDelta));
     }
 
-    function burn(uint256 tokenId) internal {
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.BURN, abi.encode(tokenId));
-        // No close needed on burn.
-        bytes memory actions = planner.encode();
-        lpm.modifyLiquidities(actions, _deadline);
+    // This is encoded with close calls. Not all burns need to be encoded with closes if there is no liquidity in the position.
+    function burn(uint256 tokenId, PoolPosition memory poolPos, bytes memory hookData)
+        internal
+        returns (BalanceDelta)
+    {
+        bytes memory calls = getBurnEncoded(tokenId, poolPos, hookData);
+        bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
+        return abi.decode(result[0], (BalanceDelta));
     }
 
     // Helper functions for getting encoded calldata for .modifyLiquidities
@@ -132,6 +134,17 @@ abstract contract LiquidityOperations is CommonBase {
     {
         Planner.Plan memory planner = Planner.init();
         planner = planner.add(Actions.DECREASE, abi.encode(tokenId, poolPos, 0, hookData));
+        return planner.finalize(poolPos.poolKey);
+    }
+
+    function getBurnEncoded(uint256 tokenId, PoolPosition memory poolPos, bytes memory hookData)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(Actions.BURN, abi.encode(tokenId, poolPos, hookData));
+        // Close needed on burn in case there is liquidity left in the position.
         return planner.finalize(poolPos.poolKey);
     }
 }
