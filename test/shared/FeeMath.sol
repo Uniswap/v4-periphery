@@ -27,22 +27,19 @@ library FeeMath {
         view
         returns (BalanceDelta feesOwed)
     {
-        // getPosition(poolId, owner, tL, tU, salt)
+        PoolId poolId = config.poolKey.toId();
+
+        // getPositionInfo(poolId, owner, tL, tU, salt)
         // owner is the position manager
         // salt is the tokenId
-        Position.Info memory position = manager.getPosition(
-            config.poolKey.toId(), address(posm), config.tickLower, config.tickUpper, bytes32(tokenId)
-        );
+        (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) =
+            manager.getPositionInfo(poolId, address(posm), config.tickLower, config.tickUpper, bytes32(tokenId));
 
         (uint256 feeGrowthInside0X218, uint256 feeGrowthInside1X128) =
-            manager.getFeeGrowthInside(config.poolKey.toId(), config.tickLower, config.tickUpper);
+            manager.getFeeGrowthInside(poolId, config.tickLower, config.tickUpper);
 
         feesOwed = getFeesOwed(
-            feeGrowthInside0X218,
-            feeGrowthInside1X128,
-            position.feeGrowthInside0LastX128,
-            position.feeGrowthInside1LastX128,
-            position.liquidity
+            feeGrowthInside0X218, feeGrowthInside1X128, feeGrowthInside0LastX128, feeGrowthInside1LastX128, liquidity
         );
     }
 
