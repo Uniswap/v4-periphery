@@ -29,7 +29,7 @@ import {LiquidityRange, LiquidityRangeId, LiquidityRangeIdLibrary} from "../../s
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
-import {Planner} from "../utils/Planner.sol";
+import {Planner} from "../shared/Planner.sol";
 
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
