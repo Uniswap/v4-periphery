@@ -75,11 +75,11 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         plan = ActionsRouterPlanner.init();
     }
 
-    function testRouter_bytecodeSize() public {
-        snapSize("RouterBytecode", address(router));
+    function test_gas_bytecodeSize() public {
+        snapSize("V4Router_Bytecode", address(router));
     }
 
-    function testRouter_swapExactInputSingle_zeroForOne() public {
+    function test_gas_swapExactInputSingle_zeroForOne() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
@@ -94,7 +94,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("RouterExactInputSingle");
+        snapLastCall("V4Router_ExactInputSingle");
 
         uint256 newBalance0 = key0.currency0.balanceOf(address(this));
         uint256 newBalance1 = key0.currency1.balanceOf(address(this));
@@ -103,7 +103,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(newBalance1 - prevBalance1, expectedAmountOut);
     }
 
-    function testRouter_swapExactInputSingle_oneForZero() public {
+    function test_swapExactInputSingle_oneForZero() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
@@ -126,7 +126,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(newBalance0 - prevBalance0, expectedAmountOut);
     }
 
-    function testRouter_swapExactIn_1Hop_zeroForOne() public {
+    function test_gas_swapExactIn_1Hop_zeroForOne() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
@@ -142,7 +142,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("RouterExactIn1Hop");
+        snapLastCall("V4Router_ExactIn1Hop");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -151,7 +151,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(newBalance1 - prevBalance1, expectedAmountOut);
     }
 
-    function testRouter_swapExactIn_1Hop_oneForZero() public {
+    function test_swapExactIn_1Hop_oneForZero() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
@@ -174,7 +174,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(newBalance0 - prevBalance0, expectedAmountOut);
     }
 
-    function testRouter_swapExactIn_2Hops() public {
+    function test_gas_swapExactIn_2Hops() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 984211133872795298;
 
@@ -192,7 +192,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("RouterExactIn2Hops");
+        snapLastCall("V4Router_ExactIn2Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -206,7 +206,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(currency2.balanceOf(address(router)), 0);
     }
 
-    function testRouter_swapExactIn_3Hops() public {
+    function test_gas_swapExactIn_3Hops() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 976467664490096191;
 
@@ -224,7 +224,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("RouterExactIn3Hops");
+        snapLastCall("V4Router_ExactIn3Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance3 = currency3.balanceOfSelf();
@@ -237,7 +237,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(currency3.balanceOf(address(router)), 0);
     }
 
-    function testRouter_swapExactOutputSingle_zeroForOne() public {
+    function test_gas_swapExactOutputSingle_zeroForOne() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
@@ -252,7 +252,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("RouterExactOutputSingle");
+        snapLastCall("V4Router_ExactOutputSingle");
 
         uint256 newBalance0 = key0.currency0.balanceOf(address(this));
         uint256 newBalance1 = key0.currency1.balanceOf(address(this));
@@ -261,7 +261,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(newBalance1 - prevBalance1, amountOut);
     }
 
-    function testRouter_swapExactOutputSingle_oneForZero() public {
+    function test_swapExactOutputSingle_oneForZero() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
@@ -284,7 +284,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(newBalance0 - prevBalance0, amountOut);
     }
 
-    function testRouter_swapExactOut_1Hop_zeroForOne() public {
+    function test_gas_swapExactOut_1Hop_zeroForOne() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
@@ -300,7 +300,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("RouterExactOut1Hop");
+        snapLastCall("V4Router_ExactOut1Hop");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -309,7 +309,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(newBalance1 - prevBalance1, amountOut);
     }
 
-    function testRouter_swapExactOut_1Hop_oneForZero() public {
+    function test_gas_swapExactOut_1Hop_oneForZero() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
@@ -325,7 +325,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("RouterExactOut1Hop");
+        snapLastCall("V4Router_ExactOut1Hop");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -334,7 +334,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(newBalance0 - prevBalance0, amountOut);
     }
 
-    function testRouter_swapExactOut_2Hops() public {
+    function test_gas_swapExactOut_2Hops() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1016204441757464409;
 
@@ -352,7 +352,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("RouterExactOut2Hops");
+        snapLastCall("V4Router_ExactOut2Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -366,7 +366,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(currency2.balanceOf(address(router)), 0);
     }
 
-    function testRouter_swapExactOut_3Hops() public {
+    function test_gas_swapExactOut_3Hops() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1024467570922834110;
 
@@ -384,7 +384,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("RouterExactOut3Hops");
+        snapLastCall("V4Router_ExactOut3Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance3 = currency3.balanceOfSelf();
