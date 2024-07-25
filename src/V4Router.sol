@@ -7,7 +7,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {PathKey} from "./libraries/PathKey.sol";
+import {PathKey, PathKeyLib} from "./libraries/PathKey.sol";
 import {CalldataBytesLib} from "./libraries/CalldataBytesLib.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
@@ -18,6 +18,7 @@ import {Actions} from "./libraries/Actions.sol";
 /// @dev the entry point to executing actions in this contract is calling `BaseActionsRouter._executeActions`
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
 abstract contract V4Router is IV4Router, BaseActionsRouter {
+    using PathKeyLib for PathKey;
     using CurrencyLibrary for Currency;
     using TransientStateLibrary for IPoolManager;
     using CalldataBytesLib for bytes;
@@ -26,7 +27,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
 
     function _handleAction(uint256 action, bytes calldata params) internal override {
         // swap actions and payment actions in different blocks for gas efficiency
-        if (action < 0x10) {
+        if (action < Actions.SETTLE) {
             if (action == Actions.SWAP_EXACT_IN) {
                 _swapExactInput(abi.decode(params, (IV4Router.ExactInputParams)));
             } else if (action == Actions.SWAP_EXACT_IN_SINGLE) {
@@ -77,16 +78,20 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
 
     function _swapExactInput(IV4Router.ExactInputParams memory params) private {
         unchecked {
+            // Caching for gas savings
             uint256 pathLength = params.path.length;
             uint128 amountOut;
+            uint128 amountIn = params.amountIn;
+            Currency currencyIn = params.currencyIn;
+            PathKey memory pathKey;
 
             for (uint256 i = 0; i < pathLength; i++) {
-                (PoolKey memory poolKey, bool zeroForOne) = _getPoolAndSwapDirection(params.path[i], params.currencyIn);
-                amountOut =
-                    uint128(_swap(poolKey, zeroForOne, int256(-int128(params.amountIn)), 0, params.path[i].hookData));
+                pathKey = params.path[i];
+                (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(currencyIn);
+                amountOut = uint128(_swap(poolKey, zeroForOne, int256(-int128(amountIn)), 0, pathKey.hookData));
 
-                params.amountIn = amountOut;
-                params.currencyIn = params.path[i].intermediateCurrency;
+                amountIn = amountOut;
+                currencyIn = pathKey.intermediateCurrency;
             }
 
             if (amountOut < params.amountOutMinimum) revert TooLittleReceived();
@@ -105,18 +110,20 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
 
     function _swapExactOutput(IV4Router.ExactOutputParams memory params) private {
         unchecked {
+            // Caching for gas savings
             uint256 pathLength = params.path.length;
             uint128 amountIn;
+            uint128 amountOut = params.amountOut;
+            Currency currencyOut = params.currencyOut;
+            PathKey memory pathKey;
 
             for (uint256 i = pathLength; i > 0; i--) {
-                (PoolKey memory poolKey, bool oneForZero) =
-                    _getPoolAndSwapDirection(params.path[i - 1], params.currencyOut);
-                amountIn = uint128(
-                    -_swap(poolKey, !oneForZero, int256(int128(params.amountOut)), 0, params.path[i - 1].hookData)
-                );
+                pathKey = params.path[i - 1];
+                (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
+                amountIn = uint128(-_swap(poolKey, !oneForZero, int256(int128(amountOut)), 0, pathKey.hookData));
 
-                params.amountOut = amountIn;
-                params.currencyOut = params.path[i - 1].intermediateCurrency;
+                amountOut = amountIn;
+                currencyOut = pathKey.intermediateCurrency;
             }
             if (amountIn > params.amountInMaximum) revert TooMuchRequested();
         }
@@ -129,32 +136,21 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
         uint160 sqrtPriceLimitX96,
         bytes memory hookData
     ) private returns (int128 reciprocalAmount) {
-        BalanceDelta delta = poolManager.swap(
-            poolKey,
-            IPoolManager.SwapParams(
-                zeroForOne,
-                amountSpecified,
-                sqrtPriceLimitX96 == 0
-                    ? (zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1)
-                    : sqrtPriceLimitX96
-            ),
-            hookData
-        );
+        unchecked {
+            BalanceDelta delta = poolManager.swap(
+                poolKey,
+                IPoolManager.SwapParams(
+                    zeroForOne,
+                    amountSpecified,
+                    sqrtPriceLimitX96 == 0
+                        ? (zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1)
+                        : sqrtPriceLimitX96
+                ),
+                hookData
+            );
 
-        reciprocalAmount = (zeroForOne == amountSpecified < 0) ? delta.amount1() : delta.amount0();
-    }
-
-    function _getPoolAndSwapDirection(PathKey memory params, Currency currencyIn)
-        private
-        pure
-        returns (PoolKey memory poolKey, bool zeroForOne)
-    {
-        (Currency currency0, Currency currency1) = currencyIn < params.intermediateCurrency
-            ? (currencyIn, params.intermediateCurrency)
-            : (params.intermediateCurrency, currencyIn);
-
-        zeroForOne = currencyIn == currency0;
-        poolKey = PoolKey(currency0, currency1, params.fee, params.tickSpacing, params.hooks);
+            reciprocalAmount = (zeroForOne == amountSpecified < 0) ? delta.amount1() : delta.amount0();
+        }
     }
 
     function _take(Currency currency, address recipient) private {

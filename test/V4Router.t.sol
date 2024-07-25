@@ -2,7 +2,6 @@
 pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
-import {console2} from "forge-std/console2.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
@@ -15,7 +14,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 import {IV4Router} from "../src/interfaces/IV4Router.sol";
 import {V4RouterImplementation} from "./shared/implementation/V4RouterImplementation.sol";
-import {Plan, ActionsRouterPlanner} from "./utils/ActionsRouterPlanner.sol";
+import {Plan, ActionsRouterPlanner} from "./shared/ActionsRouterPlanner.sol";
 import {PathKey} from "../src/libraries/PathKey.sol";
 import {Actions} from "../src/libraries/Actions.sol";
 

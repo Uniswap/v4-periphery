@@ -8,9 +8,12 @@ import {PathKey} from "../libraries/PathKey.sol";
 /// @title IV4Router
 /// @notice Interface containing all the structs and errors for different v4 swap types
 interface IV4Router {
+    /// @notice Emitted when an exactInput swap does not receive its minAmountOut
     error TooLittleReceived();
+    /// @notice Emitted when an exactOutput is asked for more than its maxAmountIn
     error TooMuchRequested();
 
+    /// @notice Parameters for a single-hop exact-input swap
     struct ExactInputSingleParams {
         PoolKey poolKey;
         bool zeroForOne;
@@ -20,6 +23,7 @@ interface IV4Router {
         bytes hookData;
     }
 
+    /// @notice Parameters for a multi-hop exact-input swap
     struct ExactInputParams {
         Currency currencyIn;
         PathKey[] path;
@@ -27,6 +31,7 @@ interface IV4Router {
         uint128 amountOutMinimum;
     }
 
+    /// @notice Parameters for a single-hop exact-output swap
     struct ExactOutputSingleParams {
         PoolKey poolKey;
         bool zeroForOne;
@@ -36,6 +41,7 @@ interface IV4Router {
         bytes hookData;
     }
 
+    /// @notice Parameters for a multi-hop exact-output swap
     struct ExactOutputParams {
         Currency currencyOut;
         PathKey[] path;
