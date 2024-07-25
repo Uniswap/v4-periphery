@@ -218,7 +218,6 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
-        // No decrease will happen on the burn call so the delta will be 0.
         BalanceDelta deltaBurn = burn(tokenId, config, ZERO_BYTES);
         assertEq(uint256(int256(deltaBurn.amount0())), amount0);
         assertEq(uint256(int256(deltaBurn.amount1())), amount1);
