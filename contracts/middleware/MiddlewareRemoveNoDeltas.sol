@@ -5,75 +5,41 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
-import {BaseMiddleware} from "./BaseMiddleware.sol";
+import {BaseRemove} from "./BaseRemove.sol";
 import {BaseHook} from "../BaseHook.sol";
 import {BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
-contract MiddlewareRemoveNoDeltas is BaseMiddleware {
+contract MiddlewareRemoveNoDeltas is BaseRemove {
     using CustomRevert for bytes4;
     using Hooks for IHooks;
-    using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
-    using PoolIdLibrary for PoolKey;
 
-    error HookPermissionForbidden(address hooks);
-    error HookModifiedDeltas();
-    error FailedImplementationCall();
-
-    bytes internal constant ZERO_BYTES = bytes("");
-    uint256 public constant GAS_LIMIT = 5_000_000;
-    uint256 public constant MAX_BIPS = 10_000;
-
-    uint256 public constant maxFeeBips = 0;
-
-    constructor(IPoolManager _manager, address _impl) BaseMiddleware(_manager, _impl) {}
-
-    function beforeRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external returns (bytes4) {
-        (bool success,) = address(this).delegatecall{gas: GAS_LIMIT}(
-            abi.encodeWithSelector(this._callAndEnsureNoDeltasBefore.selector, msg.data)
-        );
-        return BaseHook.beforeRemoveLiquidity.selector;
-    }
-
-    function _callAndEnsureNoDeltasBefore(bytes calldata data) external {
-        (bool success, bytes memory returnData) = address(implementation).delegatecall(data);
-        if (!success) {
-            revert FailedImplementationCall();
-        }
-        (bytes4 selector) = abi.decode(returnData, (bytes4));
-        if (selector != BaseHook.beforeRemoveLiquidity.selector) {
-            revert Hooks.InvalidHookResponse();
-        }
-        if (manager.getNonzeroDeltaCount() != 0) {
-            revert HookModifiedDeltas();
-        }
-    }
+    constructor(IPoolManager _manager, address _impl) BaseRemove(_manager, _impl) {}
 
     function afterRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        BalanceDelta,
-        bytes calldata
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata params,
+        BalanceDelta delta,
+        bytes calldata hookData
     ) external returns (bytes4, BalanceDelta) {
+        if (bytes32(hookData) == OVERRIDE_BYTES) {
+            (, bytes memory returnData) = address(implementation).delegatecall(
+                abi.encodeWithSelector(this.beforeRemoveLiquidity.selector, sender, key, params, delta, hookData[32:])
+            );
+            return abi.decode(returnData, (bytes4, BalanceDelta));
+        }
         address(this).delegatecall{gas: GAS_LIMIT}(
-            abi.encodeWithSelector(this._callAndEnsureNoDeltasAfter.selector, msg.data)
+            abi.encodeWithSelector(this._afterRemoveLiquidity.selector, msg.data)
         );
         return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
-    function _callAndEnsureNoDeltasAfter(bytes calldata data) external {
+    function _afterRemoveLiquidity(bytes calldata data) external {
         (bool success, bytes memory returnData) = address(implementation).delegatecall(data);
         if (!success) {
             revert FailedImplementationCall();

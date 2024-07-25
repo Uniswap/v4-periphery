@@ -26,6 +26,7 @@ import {FrontrunRemove} from "./middleware/FrontrunRemove.sol";
 import {BaseMiddleware} from "./../contracts/middleware/BaseMiddleware.sol";
 import {RemoveGriefs} from "./middleware/RemoveGriefs.sol";
 import {RemoveReturnsMaxDeltas} from "./middleware/RemoveReturnsMaxDeltas.sol";
+import {BaseRemove} from "./../contracts/middleware/BaseRemove.sol";
 
 contract MiddlewareRemoveFactoryTest is Test, Deployers {
     HookEnabledSwapRouter router;
@@ -259,9 +260,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         address removeReturnDeltas = address(1 << 100 | flags);
         (address hookAddress, bytes32 salt) =
             MiddlewareMiner.find(address(factory), flags, address(manager), address(removeReturnDeltas), 0);
-        vm.expectRevert(
-            abi.encodePacked(bytes16(MiddlewareRemoveNoDeltas.HookPermissionForbidden.selector), hookAddress)
-        );
+        vm.expectRevert(abi.encodePacked(bytes16(BaseRemove.HookPermissionForbidden.selector), hookAddress));
         factory.createMiddleware(address(removeReturnDeltas), 0, salt);
     }
 

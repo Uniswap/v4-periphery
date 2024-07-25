@@ -5,66 +5,27 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
-import {BaseMiddleware} from "./BaseMiddleware.sol";
+import {BaseRemove} from "./BaseRemove.sol";
 import {BaseHook} from "../BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {NonZeroDeltaCount} from "@uniswap/v4-core/src/libraries/NonZeroDeltaCount.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {console} from "@openzeppelin/lib/forge-std/src/console.sol";
 
-contract MiddlewareRemove is BaseMiddleware {
+contract MiddlewareRemove is BaseRemove {
     using CustomRevert for bytes4;
     using Hooks for IHooks;
-    using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
-    using PoolIdLibrary for PoolKey;
 
-    error HookPermissionForbidden(address hooks);
     error HookModifiedDeltasBeforeRemove();
     error HookTookTooMuchFee();
     error HookInvalidDeltasAfterRemove();
-    error FailedImplementationCall();
     error MaxFeeBipsTooHigh();
 
-    bytes internal constant ZERO_BYTES = bytes("");
-    uint256 public constant GAS_LIMIT = 5_000_000;
-    uint256 public constant MAX_BIPS = 10_000;
-
-    uint256 public immutable maxFeeBips;
-
-    constructor(IPoolManager _manager, address _impl, uint256 _maxFeeBips) BaseMiddleware(_manager, _impl) {
+    constructor(IPoolManager _manager, address _impl, uint256 _maxFeeBips) BaseRemove(_manager, _impl) {
         if (_maxFeeBips > MAX_BIPS) revert MaxFeeBipsTooHigh();
         maxFeeBips = _maxFeeBips;
-    }
-
-    function beforeRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external returns (bytes4) {
-        address(this).delegatecall{gas: GAS_LIMIT}(
-            abi.encodeWithSelector(this._callAndEnsureNoDeltas.selector, msg.data)
-        );
-        return BaseHook.beforeRemoveLiquidity.selector;
-    }
-
-    function _callAndEnsureNoDeltas(bytes calldata data) external {
-        (bool success, bytes memory returnData) = address(implementation).delegatecall(data);
-        if (!success) {
-            revert FailedImplementationCall();
-        }
-        (bytes4 selector) = abi.decode(returnData, (bytes4));
-        if (selector != BaseHook.beforeRemoveLiquidity.selector) {
-            revert Hooks.InvalidHookResponse();
-        }
-        if (manager.getNonzeroDeltaCount() != 0) {
-            revert HookModifiedDeltasBeforeRemove();
-        }
     }
 
     function afterRemoveLiquidity(
@@ -74,6 +35,12 @@ contract MiddlewareRemove is BaseMiddleware {
         BalanceDelta delta,
         bytes calldata hookData
     ) external returns (bytes4, BalanceDelta) {
+        if (bytes32(hookData) == OVERRIDE_BYTES) {
+            (, bytes memory returnData) = address(implementation).delegatecall(
+                abi.encodeWithSelector(this.beforeRemoveLiquidity.selector, sender, key, params, delta, hookData[32:])
+            );
+            return abi.decode(returnData, (bytes4, BalanceDelta));
+        }
         (bool success, bytes memory returnData) = address(this).delegatecall{gas: GAS_LIMIT}(
             abi.encodeWithSelector(this._callAndEnsureValidDeltas.selector, sender, key, params, delta, hookData)
         );
