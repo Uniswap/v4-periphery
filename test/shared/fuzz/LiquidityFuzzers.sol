@@ -8,7 +8,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
 import {IPositionManager, Actions} from "../../../src/interfaces/IPositionManager.sol";
-import {LiquidityRange} from "../../../src/types/LiquidityRange.sol";
+import {PositionConfig} from "../../../src/libraries/PositionConfig.sol";
 import {Planner} from "../../shared/Planner.sol";
 
 contract LiquidityFuzzers is Fuzzers {
@@ -23,13 +23,13 @@ contract LiquidityFuzzers is Fuzzers {
         bytes memory hookData
     ) internal returns (uint256, IPoolManager.ModifyLiquidityParams memory) {
         params = Fuzzers.createFuzzyLiquidityParams(key, params, sqrtPriceX96);
-        LiquidityRange memory range =
-            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(range, uint256(params.liquidityDelta), recipient, hookData));
+            Planner.init().add(Actions.MINT, abi.encode(config, uint256(params.liquidityDelta), recipient, hookData));
 
-        bytes memory calls = planner.finalize(range.poolKey);
+        bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, block.timestamp + 1);
 
         uint256 tokenId = lpm.nextTokenId() - 1;
