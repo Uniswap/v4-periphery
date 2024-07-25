@@ -19,7 +19,6 @@ import {Multicall} from "./base/Multicall.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
-import {LiquidityNegation} from "./libraries/LiquidityNegation.sol";
 
 contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback, DeltaResolver {
     using SafeTransferLib for *;
@@ -29,7 +28,6 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
-    using LiquidityNegation for uint256;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
@@ -122,9 +120,8 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
 
         _validateModify(config, tokenId, sender);
 
-        int256 liquidityDelta = liquidity.toNegativeInt256();
         // Note: the tokenId is used as the salt.
-        BalanceDelta delta = _modifyLiquidity(config, liquidityDelta, bytes32(tokenId), hookData);
+        BalanceDelta delta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
         return abi.encode(delta);
     }
 
@@ -172,10 +169,10 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         return abi.encode(currencyDelta);
     }
 
-    /// note: this is overloaded with ERC721Permit._burn
     /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, bytes hookData
     /// @param sender the msg.sender, set by the `modifyLiquidities` function before the `unlockCallback`. Using msg.sender directly inside
     /// the _unlockCallback will be the pool manager.
+    /// @dev this is overloaded with ERC721Permit._burn
     function _burn(bytes memory params, address sender) internal returns (bytes memory) {
         (uint256 tokenId, PositionConfig memory config, bytes memory hookData) =
             abi.decode(params, (uint256, PositionConfig, bytes));
@@ -186,8 +183,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         // Can only call modify if there is non zero liquidity.
         BalanceDelta delta;
 
-        int256 liquidityDelta = liquidity.toNegativeInt256();
-        if (liquidity > 0) delta = _modifyLiquidity(config, liquidityDelta, bytes32(tokenId), hookData);
+        if (liquidity > 0) delta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
 
         delete positionConfigs[tokenId];
         // Burn the token.
