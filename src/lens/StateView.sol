@@ -130,14 +130,16 @@ contract StateView is ImmutableState {
      * @param tickLower The lower tick of the liquidity range.
      * @param tickUpper The upper tick of the liquidity range.
      * @param salt The bytes32 randomness to further distinguish position state.
-     * @return Position.Info A struct containing (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128)
+     * @return liquidity The liquidity of the position.
+     * @return feeGrowthInside0LastX128 The fee growth inside the position for token0.
+     * @return feeGrowthInside1LastX128 The fee growth inside the position for token1.
      */
-    function getPosition(PoolId poolId, address owner, int24 tickLower, int24 tickUpper, bytes32 salt)
+    function getPositionInfo(PoolId poolId, address owner, int24 tickLower, int24 tickUpper, bytes32 salt)
         external
         view
-        returns (Position.Info memory)
+        returns (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128)
     {
-        return StateLibrary.getPosition(poolManager, poolId, owner, tickLower, tickUpper, salt);
+        return poolManager.getPositionInfo(poolId, owner, tickLower, tickUpper, salt);
     }
 
     /**
