@@ -96,7 +96,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
             for (uint256 i = 0; i < pathLength; i++) {
                 pathKey = params.path[i];
                 (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(currencyIn);
-                amountOut = uint128(_swap(poolKey, zeroForOne, int256(-int128(amountIn)), 0, pathKey.hookData));
+                amountOut = uint128(_swap(poolKey, zeroForOne, -int256(uint256(amountIn)), 0, pathKey.hookData));
 
                 amountIn = amountOut;
                 currencyIn = pathKey.intermediateCurrency;
@@ -128,7 +128,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
             for (uint256 i = pathLength; i > 0; i--) {
                 pathKey = params.path[i - 1];
                 (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
-                amountIn = uint128(-_swap(poolKey, !oneForZero, int256(int128(amountOut)), 0, pathKey.hookData));
+                amountIn = uint128(-_swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, pathKey.hookData));
 
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;
