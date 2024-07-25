@@ -19,7 +19,7 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
     uint256 public mintCount;
     uint256 public burnCount;
 
-    constructor(IPoolManager poolManager) BaseActionsRouter(poolManager) {}
+    constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
     function executeAction(bytes calldata params) external isNotLocked {
         _executeActions(params);

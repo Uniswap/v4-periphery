@@ -10,20 +10,20 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
+import {ERC20} from "solmate/tokens/ERC20.sol";
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {IPositionManager, Actions} from "./interfaces/IPositionManager.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {Multicall} from "./base/Multicall.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
-import {CurrencySettleTake} from "./libraries/CurrencySettleTake.sol";
+import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
 import {LiquidityNegation} from "./libraries/LiquidityNegation.sol";
 
-contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback {
-    using SafeTransferLib for address;
+contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback, DeltaResolver {
+    using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
-    using CurrencySettleTake for Currency;
     using PoolIdLibrary for PoolKey;
     using PositionConfigLibrary for PositionConfig;
     using StateLibrary for IPoolManager;
@@ -161,12 +161,12 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
 
         // the sender is the payer or receiver
         if (currencyDelta < 0) {
-            currency.settle(poolManager, sender, uint256(-int256(currencyDelta)), false);
+            _settle(currency, sender, uint256(-currencyDelta));
 
             // if there are native tokens left over after settling, return to sender
             if (currency.isNative()) _sweepNativeToken(sender);
         } else if (currencyDelta > 0) {
-            currency.take(poolManager, sender, uint256(int256(currencyDelta)), false);
+            _take(currency, sender, uint256(currencyDelta));
         }
 
         return abi.encode(currencyDelta);
@@ -232,5 +232,11 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     function _sweepNativeToken(address recipient) internal {
         uint256 nativeBalance = address(this).balance;
         if (nativeBalance > 0) recipient.safeTransferETH(nativeBalance);
+    }
+
+    // implementation of abstract function DeltaResolver._pay
+    function _pay(Currency token, address payer, uint256 amount) internal override {
+        // TODO this should use Permit2
+        ERC20(Currency.unwrap(token)).safeTransferFrom(payer, address(poolManager), amount);
     }
 }
