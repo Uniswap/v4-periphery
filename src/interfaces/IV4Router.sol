@@ -12,11 +12,6 @@ interface IV4Router {
     error TooLittleReceived();
     /// @notice Emitted when an exactOutput is asked for more than its maxAmountIn
     error TooMuchRequested();
-    /// @notice Emitted trying to settle a positive delta, or take a negative delta
-    error InvalidDeltaForAction();
-
-    /// @notice Value used to signal that an entire open delta should be taken/settled
-    function ENTIRE_OPEN_DELTA() external view virtual returns (uint256);
 
     /// @notice Parameters for a single-hop exact-input swap
     struct ExactInputSingleParams {

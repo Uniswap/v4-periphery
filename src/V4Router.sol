@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -12,23 +11,20 @@ import {PathKey, PathKeyLib} from "./libraries/PathKey.sol";
 import {CalldataBytesLib} from "./libraries/CalldataBytesLib.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
+import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {Actions} from "./libraries/Actions.sol";
 
 /// @title UniswapV4Router
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
 /// @dev the entry point to executing actions in this contract is calling `BaseActionsRouter._executeActions`
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
-abstract contract V4Router is IV4Router, BaseActionsRouter {
+abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using PathKeyLib for PathKey;
-    using CurrencyLibrary for Currency;
-    using TransientStateLibrary for IPoolManager;
     using CalldataBytesLib for bytes;
 
     constructor(IPoolManager poolManager) BaseActionsRouter(poolManager) {}
 
-    /// @inheritdoc IV4Router
-    uint256 public constant override ENTIRE_OPEN_DELTA = 0;
-
+    // TODO native support !!
     function _handleAction(uint256 action, bytes calldata params) internal override {
         // swap actions and payment actions in different blocks for gas efficiency
         if (action < Actions.SETTLE) {
@@ -45,7 +41,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
             }
         } else {
             if (action == Actions.SETTLE) {
-                // equivalent: abi.decode(params, (Currency))
+                // equivalent: abi.decode(params, (Currency, uint256))
                 Currency currency;
                 uint256 amount;
                 assembly ("memory-safe") {
@@ -54,7 +50,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
                 }
 
                 // TODO support address(this) paying too
-                _payAndSettle(currency, _msgSender(), amount);
+                // TODO should it have a maxAmountOut added slippage protection?
+                _settle(currency, _msgSender(), amount);
             } else if (action == Actions.TAKE) {
                 // equivalent: abi.decode(params, (Currency, address, uint256))
                 Currency currency;
@@ -160,31 +157,4 @@ abstract contract V4Router is IV4Router, BaseActionsRouter {
             reciprocalAmount = (zeroForOne == amountSpecified < 0) ? delta.amount1() : delta.amount0();
         }
     }
-
-    // TODO use DeltaResolver
-    function _take(Currency currency, address recipient, uint256 amount) private {
-        if (amount == ENTIRE_OPEN_DELTA) {
-            int256 delta = poolManager.currencyDelta(address(this), currency);
-            if (delta < 0) revert InvalidDeltaForAction();
-            amount = uint256(delta);
-        }
-        poolManager.take(currency, recipient, amount);
-    }
-
-    // TODO native support !!
-    // TODO should it have a maxAmountOut added slippage protection?
-    // TODO use DeltaResolver
-    function _payAndSettle(Currency currency, address payer, uint256 amount) private {
-        if (amount == ENTIRE_OPEN_DELTA) {
-            int256 delta = poolManager.currencyDelta(address(this), currency);
-            if (delta > 0) revert InvalidDeltaForAction();
-            amount = uint256(-delta);
-        }
-
-        poolManager.sync(currency);
-        _pay(Currency.unwrap(currency), payer, address(poolManager), amount);
-        poolManager.settle();
-    }
-
-    function _pay(address token, address payer, address recipient, uint256 amount) internal virtual;
 }
