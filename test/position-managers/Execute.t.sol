@@ -20,7 +20,7 @@ import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.s
 import {PositionManager} from "../../src/PositionManager.sol";
 import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
-import {Planner} from "../utils/Planner.sol";
+import {Planner} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
 contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
