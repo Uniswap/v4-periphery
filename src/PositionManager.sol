@@ -13,6 +13,7 @@ import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
 import {ERC20} from "solmate/tokens/ERC20.sol";
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
+import {ReentrancyLock} from "./base/ReentrancyLock.sol";
 import {IPositionManager, Actions} from "./interfaces/IPositionManager.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {Multicall} from "./base/Multicall.sol";
@@ -20,7 +21,15 @@ import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
 
-contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Multicall, SafeCallback, DeltaResolver {
+contract PositionManager is
+    IPositionManager,
+    ERC721Permit,
+    PoolInitializer,
+    Multicall,
+    SafeCallback,
+    DeltaResolver,
+    ReentrancyLock
+{
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -50,44 +59,39 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
         external
         payable
+        isNotLocked
         checkDeadline(deadline)
         returns (bytes[] memory)
     {
         // TODO: Edit the encoding/decoding.
-        return abi.decode(poolManager.unlock(abi.encode(unlockData, msg.sender)), (bytes[]));
+        return abi.decode(poolManager.unlock(unlockData), (bytes[]));
     }
 
     function _unlockCallback(bytes calldata payload) internal override returns (bytes memory) {
-        // TODO: Fix double encode/decode
-        (bytes memory unlockData, address sender) = abi.decode(payload, (bytes, address));
+        (Actions[] memory actions, bytes[] memory params) = abi.decode(payload, (Actions[], bytes[]));
 
-        (Actions[] memory actions, bytes[] memory params) = abi.decode(unlockData, (Actions[], bytes[]));
-
-        bytes[] memory returnData = _dispatch(actions, params, sender);
+        bytes[] memory returnData = _dispatch(actions, params);
 
         return abi.encode(returnData);
     }
 
-    function _dispatch(Actions[] memory actions, bytes[] memory params, address sender)
-        internal
-        returns (bytes[] memory returnData)
-    {
+    function _dispatch(Actions[] memory actions, bytes[] memory params) internal returns (bytes[] memory returnData) {
         uint256 length = actions.length;
         if (length != params.length) revert MismatchedLengths();
         returnData = new bytes[](length);
         for (uint256 i; i < length; i++) {
             if (actions[i] == Actions.INCREASE) {
-                returnData[i] = _increase(params[i], sender);
+                returnData[i] = _increase(params[i]);
             } else if (actions[i] == Actions.DECREASE) {
-                returnData[i] = _decrease(params[i], sender);
+                returnData[i] = _decrease(params[i]);
             } else if (actions[i] == Actions.MINT) {
                 // TODO: Mint will be coupled with increase.
                 returnData[i] = _mint(params[i]);
             } else if (actions[i] == Actions.CLOSE_CURRENCY) {
-                returnData[i] = _close(params[i], sender);
+                returnData[i] = _close(params[i]);
             } else if (actions[i] == Actions.BURN) {
                 // Will automatically decrease liquidity to 0 if the position is not already empty.
-                returnData[i] = _burn(params[i], sender);
+                returnData[i] = _burn(params[i]);
             } else {
                 revert UnsupportedAction();
             }
@@ -95,30 +99,26 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     }
 
     /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes hookData
-    /// @param sender the msg.sender, set by the `modifyLiquidities` function before the `unlockCallback`. Using msg.sender directly inside
-    /// the _unlockCallback will be the pool manager.
     /// @return returns an encoding of the BalanceDelta applied by this increase call, including credited fees.
     /// @dev Calling increase with 0 liquidity will credit the caller with any underlying fees of the position
-    function _increase(bytes memory params, address sender) internal returns (bytes memory) {
+    function _increase(bytes memory params) internal returns (bytes memory) {
         (uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes memory hookData) =
             abi.decode(params, (uint256, PositionConfig, uint256, bytes));
 
-        _validateModify(config, tokenId, sender);
+        _validateModify(config, tokenId);
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta delta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         return abi.encode(delta);
     }
 
     /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes hookData
-    /// @param sender the msg.sender, set by the `modifyLiquidities` function before the `unlockCallback`. Using msg.sender directly inside
-    /// the _unlockCallback will be the pool manager.
     /// @return returns an encoding of the BalanceDelta applied by this increase call, including credited fees.
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
-    function _decrease(bytes memory params, address sender) internal returns (bytes memory) {
+    function _decrease(bytes memory params) internal returns (bytes memory) {
         (uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes memory hookData) =
             abi.decode(params, (uint256, PositionConfig, uint256, bytes));
 
-        _validateModify(config, tokenId, sender);
+        _validateModify(config, tokenId);
 
         // Note: the tokenId is used as the salt.
         BalanceDelta delta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
@@ -148,36 +148,34 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
     }
 
     /// @param params is an encoding of the Currency to close
-    /// @param sender is the msg.sender encoded by the `modifyLiquidities` function before the `unlockCallback`.
-    /// @return an encoding of int256 the balance of the currency being settled by this call
-    function _close(bytes memory params, address sender) internal returns (bytes memory) {
+    /// @return bytes an encoding of int256 the balance of the currency being settled by this call
+    function _close(bytes memory params) internal returns (bytes memory) {
         (Currency currency) = abi.decode(params, (Currency));
         // this address has applied all deltas on behalf of the user/owner
         // it is safe to close this entire delta because of slippage checks throughout the batched calls.
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
 
-        // the sender is the payer or receiver
+        // the locker is the payer or receiver
+        address caller = _getLocker();
         if (currencyDelta < 0) {
-            _settle(currency, sender, uint256(-currencyDelta));
+            _settle(currency, caller, uint256(-currencyDelta));
 
-            // if there are native tokens left over after settling, return to sender
-            if (currency.isNative()) _sweepNativeToken(sender);
+            // if there are native tokens left over after settling, return to locker
+            if (currency.isNative()) _sweepNativeToken(caller);
         } else if (currencyDelta > 0) {
-            _take(currency, sender, uint256(currencyDelta));
+            _take(currency, caller, uint256(currencyDelta));
         }
 
         return abi.encode(currencyDelta);
     }
 
     /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, bytes hookData
-    /// @param sender the msg.sender, set by the `modifyLiquidities` function before the `unlockCallback`. Using msg.sender directly inside
-    /// the _unlockCallback will be the pool manager.
     /// @dev this is overloaded with ERC721Permit._burn
-    function _burn(bytes memory params, address sender) internal returns (bytes memory) {
+    function _burn(bytes memory params) internal returns (bytes memory) {
         (uint256 tokenId, PositionConfig memory config, bytes memory hookData) =
             abi.decode(params, (uint256, PositionConfig, bytes));
 
-        _validateModify(config, tokenId, sender);
+        _validateModify(config, tokenId);
         uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
 
         // Can only call modify if there is non zero liquidity.
@@ -191,8 +189,8 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         return abi.encode(delta);
     }
 
-    function _validateModify(PositionConfig memory config, uint256 tokenId, address sender) private view {
-        if (!_isApprovedOrOwner(sender, tokenId)) revert NotApproved(sender);
+    function _validateModify(PositionConfig memory config, uint256 tokenId) private view {
+        if (!_isApprovedOrOwner(_getLocker(), tokenId)) revert NotApproved(_getLocker());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
     }
 
@@ -223,7 +221,7 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
         liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
     }
 
-    /// @dev Send excess native tokens back to the recipient (sender)
+    /// @dev Send excess native tokens back to the recipient (locker)
     /// @param recipient the receiver of the excess native tokens. Should be the caller, the one that sent the native tokens
     function _sweepNativeToken(address recipient) internal {
         uint256 nativeBalance = address(this).balance;
