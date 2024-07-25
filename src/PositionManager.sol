@@ -9,8 +9,8 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-import {SafeTransferLib} from "solmate/utils/SafeTransferLib.sol";
-import {ERC20} from "solmate/tokens/ERC20.sol";
+import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
+import {ERC20} from "solmate/src/tokens/ERC20.sol";
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {IPositionManager, Actions} from "./interfaces/IPositionManager.sol";
