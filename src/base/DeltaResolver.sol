@@ -15,7 +15,7 @@ abstract contract DeltaResolver is ImmutableState {
         poolManager.take(currency, recipient, amount);
     }
 
-    /// @notice Settle (pay) a currency to the PoolManager
+    /// @notice Pay and settle a currency to the PoolManager
     /// @dev The implementing contract must ensure that the `payer` is a secure address
     /// @param currency Currency to settle
     /// @param payer Address of the payer
