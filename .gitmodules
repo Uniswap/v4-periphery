@@ -1,3 +1,6 @@
 [submodule "lib/v4-core"]
 	path = lib/v4-core
 	url = https://github.com/Uniswap/v4-core
+[submodule "lib/permit2"]
+	path = lib/permit2
+	url = https://github.com/Uniswap/permit2
