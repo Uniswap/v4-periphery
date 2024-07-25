@@ -6,7 +6,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
 import {ImmutableState} from "../../src/base/ImmutableState.sol";
-import {ERC20} from "solmate/tokens/ERC20.sol";
+import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {Test} from "forge-std/Test.sol";
 
 contract MockDeltaResolver is Test, DeltaResolver, IUnlockCallback {
