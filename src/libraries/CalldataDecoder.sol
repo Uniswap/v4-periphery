@@ -4,8 +4,8 @@ pragma solidity ^0.8.0;
 /// @title Library for abi decoding in calldata
 library CalldataDecoder {
     error SliceOutOfBounds();
-    /// @notice equivalent to SliceOutOfBounds.selector
 
+    /// @notice equivalent to SliceOutOfBounds.selector
     bytes4 constant SLICE_ERROR_SELECTOR = 0x3b99b53d;
 
     /// @notice Performs the equivalent of `abi.decode(data, (uint256[], bytes[]))` in calldata
