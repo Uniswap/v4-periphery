@@ -7,6 +7,14 @@ import {ImmutableState} from "./ImmutableState.sol";
 /// @notice Abstract contract used to sync, send, and settle funds to the pool manager
 /// @dev Note that sync() is called before any erc-20 transfer in `settle`.
 abstract contract DeltaResolver is ImmutableState {
+    /// @notice Take an amount of currency out of the PoolManager
+    /// @param currency Currency to take
+    /// @param recipient Address to receive the currency
+    /// @param amount Amount to take
+    function _take(Currency currency, address recipient, uint256 amount) internal {
+        poolManager.take(currency, recipient, amount);
+    }
+
     /// @notice Settle (pay) a currency to the PoolManager
     /// @dev The implementing contract must ensure that the `payer` is a secure address
     /// @param currency Currency to settle

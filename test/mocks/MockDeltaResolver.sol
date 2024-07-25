@@ -25,7 +25,7 @@ contract MockDeltaResolver is Test, DeltaResolver, IUnlockCallback {
         address recipient = (currency.isNative()) ? address(this) : caller;
 
         uint256 balanceBefore = currency.balanceOf(recipient);
-        poolManager.take(currency, recipient, amount);
+        _take(currency, recipient, amount);
         uint256 balanceAfter = currency.balanceOf(recipient);
 
         assertEq(balanceBefore + amount, balanceAfter);

@@ -159,12 +159,12 @@ contract PositionManager is IPositionManager, ERC721Permit, PoolInitializer, Mul
 
         // the sender is the payer or receiver
         if (currencyDelta < 0) {
-            _settle(currency, sender, uint256(-int256(currencyDelta)));
+            _settle(currency, sender, uint256(-currencyDelta));
 
             // if there are native tokens left over after settling, return to sender
             if (currency.isNative()) _sweepNativeToken(sender);
         } else if (currencyDelta > 0) {
-            poolManager.take(currency, sender, uint256(int256(currencyDelta)));
+            _take(currency, sender, uint256(currencyDelta));
         }
 
         return abi.encode(currencyDelta);
