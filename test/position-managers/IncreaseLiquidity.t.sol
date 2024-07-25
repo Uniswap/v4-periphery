@@ -154,7 +154,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
-        vm.startPrank(alice);
+        // bob can increase liquidity for alice even though he is not the owner / not approved
+        vm.startPrank(bob);
         increaseLiquidity(tokenIdAlice, config, liquidityDelta, ZERO_BYTES);
         vm.stopPrank();
 
