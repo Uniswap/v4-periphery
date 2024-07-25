@@ -28,22 +28,19 @@ library FeeMath {
         returns (BalanceDelta feesOwed)
     {
         (PoolKey memory poolKey, int24 tickLower, int24 tickUpper) = posm.tokenRange(tokenId);
+        PoolId poolId = poolKey.toId();
 
-        // getPosition(poolId, owner, tL, tU, salt)
+        // getPositionInfo(poolId, owner, tL, tU, salt)
         // owner is the position manager
         // salt is the tokenId
-        Position.Info memory position =
-            manager.getPosition(poolKey.toId(), address(posm), tickLower, tickUpper, bytes32(tokenId));
+        (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) =
+            manager.getPositionInfo(poolId, address(posm), tickLower, tickUpper, bytes32(tokenId));
 
         (uint256 feeGrowthInside0X218, uint256 feeGrowthInside1X128) =
-            manager.getFeeGrowthInside(poolKey.toId(), tickLower, tickUpper);
+            manager.getFeeGrowthInside(poolId, tickLower, tickUpper);
 
         feesOwed = getFeesOwed(
-            feeGrowthInside0X218,
-            feeGrowthInside1X128,
-            position.feeGrowthInside0LastX128,
-            position.feeGrowthInside1LastX128,
-            position.liquidity
+            feeGrowthInside0X218, feeGrowthInside1X128, feeGrowthInside0LastX128, feeGrowthInside1LastX128, liquidity
         );
     }
 

@@ -20,7 +20,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
 import {Actions, IPositionManager} from "../../src/interfaces/IPositionManager.sol";
-import {Planner} from "../utils/Planner.sol";
+import {Planner} from "../shared/Planner.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
