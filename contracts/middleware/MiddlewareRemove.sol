@@ -102,9 +102,9 @@ contract MiddlewareRemove is BaseMiddleware {
             revert Hooks.InvalidHookResponse();
         }
         uint256 nonzeroDeltaCount = manager.getNonzeroDeltaCount();
-        // if (nonzeroDeltaCount == 0 && returnDelta == BalanceDeltaLibrary.ZERO_DELTA) {
-        //     return returnDelta;
-        // }
+        if (nonzeroDeltaCount == 0 && returnDelta == BalanceDeltaLibrary.ZERO_DELTA) {
+            return returnDelta;
+        }
         if (
             returnDelta.amount0() > int256(uint256(int256(delta.amount0())) * maxFeeBips / MAX_BIPS)
                 || returnDelta.amount1() > int256(uint256(int256(delta.amount1())) * maxFeeBips / MAX_BIPS)
