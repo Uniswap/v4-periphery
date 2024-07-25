@@ -6,7 +6,6 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BaseActionsRouter} from "../../src/base/BaseActionsRouter.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
-import {Locker} from "../../src/libraries/Locker.sol";
 
 contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
     uint256 public swapCount;
@@ -43,7 +42,7 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
     }
 
     function _msgSender() internal view override returns (address) {
-        return Locker.get();
+        return _getLocker();
     }
 
     function _settle(bytes calldata /* params **/ ) internal {
