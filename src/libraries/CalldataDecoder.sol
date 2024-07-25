@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.0;
 
-/// @title Library for Bytes Manipulation
-library BytesLib {
+/// @title Library for abi decoding in calldata
+library CalldataDecoder {
     error SliceOutOfBounds();
 
     /// @notice equivalent to SliceOutOfBounds.selector
@@ -12,7 +12,7 @@ library BytesLib {
     /// @param _bytes The input bytes string to extract input arrays from
     /// @return actions The uint256 calldata array of actions
     /// @return params The bytes calldata array of parameters
-    function decodeInCalldata(bytes calldata _bytes)
+    function decodeActionsRouterParams(bytes calldata _bytes)
         internal
         pure
         returns (uint256[] calldata actions, bytes[] calldata params)

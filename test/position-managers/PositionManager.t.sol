@@ -23,6 +23,8 @@ import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
+import {ReentrantToken} from "../mocks/ReentrantToken.sol";
+import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -53,6 +55,24 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         vm.expectRevert(IPositionManager.MismatchedLengths.selector);
         lpm.modifyLiquidities(abi.encode(planner.actions, badParams), block.timestamp + 1);
+    }
+
+    function test_modifyLiquidities_reverts_reentrancy() public {
+        // Create a reentrant token and initialize the pool
+        ReentrantToken reentrantToken = new ReentrantToken(lpm);
+        (currency0, currency1) = (address(reentrantToken) < Currency.unwrap(currency1))
+            ? (Currency.wrap(address(reentrantToken)), currency1)
+            : (currency1, Currency.wrap(address(reentrantToken)));
+
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        // Try to add liquidity at that range, but the token reenters posm
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: 0, tickUpper: 60});
+        bytes memory calls = getMintEncoded(config, 1e18, address(this), "");
+
+        // SafeTransferLib does not bubble the ContractLocked error and instead reverts with its own error
+        vm.expectRevert("TRANSFER_FROM_FAILED");
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
     }
 
     function test_fuzz_mint_withLiquidityDelta(IPoolManager.ModifyLiquidityParams memory params, uint160 sqrtPriceX96)
