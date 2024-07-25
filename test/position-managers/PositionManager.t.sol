@@ -18,7 +18,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
-import {PoolPosition} from "../../src/libraries/PoolPosition.sol";
+import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner} from "../shared/Planner.sol";
@@ -63,22 +63,22 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // liquidity is a uint
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
-        PoolPosition memory poolPos =
-            PoolPosition({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        BalanceDelta delta = mint(poolPos, liquidityToAdd, address(this), ZERO_BYTES);
+        BalanceDelta delta = mint(config, liquidityToAdd, address(this), ZERO_BYTES);
 
         assertEq(tokenId, 1);
         assertEq(lpm.nextTokenId(), 2);
         assertEq(lpm.ownerOf(tokenId), address(this));
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
         assertEq(balance0Before - currency0.balanceOfSelf(), uint256(int256(-delta.amount0())), "incorrect amount0");
@@ -98,13 +98,13 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             amount1Desired
         );
 
-        PoolPosition memory poolPos = PoolPosition({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        BalanceDelta delta = mint(poolPos, liquidityToAdd, address(this), ZERO_BYTES);
+        BalanceDelta delta = mint(config, liquidityToAdd, address(this), ZERO_BYTES);
 
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
@@ -123,15 +123,15 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
 
-        PoolPosition memory poolPos =
-            PoolPosition({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         uint256 tokenId = lpm.nextTokenId();
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
-        BalanceDelta delta = mint(poolPos, liquidityToAdd, alice, ZERO_BYTES);
+        BalanceDelta delta = mint(config, liquidityToAdd, alice, ZERO_BYTES);
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), alice);
@@ -150,14 +150,14 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // create liquidity we can burn
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-        PoolPosition memory poolPos =
-            PoolPosition({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
 
@@ -165,13 +165,13 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
-        BalanceDelta deltaDecrease = decreaseLiquidity(tokenId, poolPos, liquidity, ZERO_BYTES);
+        BalanceDelta deltaDecrease = decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
         // No decrease will happen on the burn call so the delta will be 0.
-        (BalanceDelta delta) = burn(tokenId, poolPos, ZERO_BYTES);
+        (BalanceDelta delta) = burn(tokenId, config, ZERO_BYTES);
         assertEq(delta.amount0(), 0);
         assertEq(delta.amount1(), 0);
 
-        (liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+        (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, 0);
 
@@ -195,14 +195,14 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // create liquidity we can burn
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
-        PoolPosition memory poolPos =
-            PoolPosition({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
 
@@ -219,11 +219,11 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
         // No decrease will happen on the burn call so the delta will be 0.
-        BalanceDelta deltaBurn = burn(tokenId, poolPos, ZERO_BYTES);
+        BalanceDelta deltaBurn = burn(tokenId, config, ZERO_BYTES);
         assertEq(uint256(int256(deltaBurn.amount0())), amount0);
         assertEq(uint256(int256(deltaBurn.amount1())), amount1);
 
-        (liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+        (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, 0);
 
@@ -248,14 +248,14 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         decreaseLiquidityDelta = uint256(bound(int256(decreaseLiquidityDelta), 0, params.liquidityDelta));
 
-        PoolPosition memory poolPos =
-            PoolPosition({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-        decreaseLiquidity(tokenId, poolPos, decreaseLiquidityDelta, ZERO_BYTES);
+        decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
     }
@@ -271,8 +271,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
         vm.assume(int256(decreaseLiquidityDelta) <= params.liquidityDelta);
 
-        PoolPosition memory poolPos =
-            PoolPosition({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
@@ -280,11 +280,11 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = decreaseLiquidity(tokenId, poolPos, decreaseLiquidityDelta, ZERO_BYTES);
+        BalanceDelta delta = decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 

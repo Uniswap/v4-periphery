@@ -18,7 +18,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
-import {PoolPosition} from "../../src/libraries/PoolPosition.sol";
+import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {IMulticall} from "../../src/interfaces/IMulticall.sol";
 import {Planner} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
@@ -38,8 +38,8 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     // expresses the fee as a wad (i.e. 3000 = 0.003e18 = 0.30%)
     uint256 FEE_WAD;
 
-    PoolPosition poolPos;
-    PoolPosition poolPosNative;
+    PositionConfig config;
+    PositionConfig configNative;
 
     function setUp() public {
         (alice, alicePK) = makeAddrAndKey("ALICE");
@@ -64,28 +64,28 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         approvePosmFor(bob);
 
         // define a reusable range
-        poolPos = PoolPosition({poolKey: key, tickLower: -300, tickUpper: 300});
-        poolPosNative = PoolPosition({poolKey: nativeKey, tickLower: -300, tickUpper: 300});
+        config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
+        configNative = PositionConfig({poolKey: nativeKey, tickLower: -300, tickUpper: 300});
     }
 
     function test_gas_mint() public {
         Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(poolPos, 10_000 ether, address(this), ZERO_BYTES));
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+            Planner.init().add(Actions.MINT, abi.encode(config, 10_000 ether, address(this), ZERO_BYTES));
+        bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint");
     }
 
     function test_gas_mint_differentRanges() public {
         // Explicitly mint to a new range on the same pool.
-        PoolPosition memory bob_mint = PoolPosition({poolKey: key, tickLower: 0, tickUpper: 60});
+        PositionConfig memory bob_mint = PositionConfig({poolKey: key, tickLower: 0, tickUpper: 60});
         vm.startPrank(bob);
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
-        // Mint to a diff poolPos, diff user.
+        // Mint to a diff config, diff user.
         Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(poolPos, 10_000 ether, address(alice), ZERO_BYTES));
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+            Planner.init().add(Actions.MINT, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
+        bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint_warmedPool_differentRange");
@@ -93,14 +93,14 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_mint_sameTickLower() public {
         // Explicitly mint to range whos tickLower is the same.
-        PoolPosition memory bob_mint = PoolPosition({poolKey: key, tickLower: -300, tickUpper: -60});
+        PositionConfig memory bob_mint = PositionConfig({poolKey: key, tickLower: -300, tickUpper: -60});
         vm.startPrank(bob);
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
-        // Mint to a diff poolPos, diff user.
+        // Mint to a diff config, diff user.
         Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(poolPos, 10_000 ether, address(alice), ZERO_BYTES));
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+            Planner.init().add(Actions.MINT, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
+        bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint_onSameTickLower");
@@ -108,27 +108,27 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_mint_sameTickUpper() public {
         // Explicitly mint to range whos tickUpperis the same.
-        PoolPosition memory bob_mint = PoolPosition({poolKey: key, tickLower: 60, tickUpper: 300});
+        PositionConfig memory bob_mint = PositionConfig({poolKey: key, tickLower: 60, tickUpper: 300});
         vm.startPrank(bob);
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
-        // Mint to a diff poolPos, diff user.
+        // Mint to a diff config, diff user.
         Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(poolPos, 10_000 ether, address(alice), ZERO_BYTES));
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+            Planner.init().add(Actions.MINT, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
+        bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint_onSameTickUpper");
     }
 
     function test_gas_increaseLiquidity_erc20() public {
-        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, poolPos, 10_000 ether, ZERO_BYTES));
+            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+        bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_increaseLiquidity_erc20");
     }
@@ -142,12 +142,12 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
         // alice provides liquidity
         vm.prank(alice);
-        mint(poolPos, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        mint(poolPos, liquidityBob, bob, ZERO_BYTES);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
 
         // donate to create fees
         uint256 amountDonate = 0.2e18;
@@ -156,19 +156,19 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         // alice uses her exact fees to increase liquidity
         uint256 tokensOwedAlice = amountDonate.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob) - 1;
 
-        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, poolPos.poolKey.toId());
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(poolPos.tickLower),
-            TickMath.getSqrtPriceAtTick(poolPos.tickUpper),
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
             tokensOwedAlice,
             tokensOwedAlice
         );
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, poolPos, liquidityDelta, ZERO_BYTES));
+            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+        bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_increase_autocompoundExactUnclaimedFees");
@@ -183,12 +183,12 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
         // alice provides liquidity
         vm.prank(alice);
-        mint(poolPos, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        mint(poolPos, liquidityBob, bob, ZERO_BYTES);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
 
         // donate to create fees
         uint256 amountDonate = 20e18;
@@ -197,19 +197,19 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         // alice will use half of her fees to increase liquidity
         uint256 halfTokensOwedAlice = (amountDonate.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob) - 1) / 2;
 
-        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, poolPos.poolKey.toId());
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(poolPos.tickLower),
-            TickMath.getSqrtPriceAtTick(poolPos.tickUpper),
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
             halfTokensOwedAlice,
             halfTokensOwedAlice
         );
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, poolPos, liquidityDelta, ZERO_BYTES));
+            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+        bytes memory calls = planner.finalize(config.poolKey);
 
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
@@ -217,13 +217,13 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     }
 
     function test_gas_decreaseLiquidity() public {
-        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 10_000 ether, ZERO_BYTES));
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+        bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decreaseLiquidity");
     }
@@ -235,15 +235,15 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        poolPos = PoolPosition({
+        config = PositionConfig({
             poolKey: key,
             tickLower: TickMath.minUsableTick(key.tickSpacing),
             tickUpper: TickMath.maxUsableTick(key.tickSpacing)
         });
 
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode(poolPos, 100e18, address(this), ZERO_BYTES));
-        bytes memory actions = planner.finalize(poolPos.poolKey);
+        planner = planner.add(Actions.MINT, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        bytes memory actions = planner.finalize(config.poolKey);
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
@@ -252,74 +252,74 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     }
 
     function test_gas_collect() public {
-        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to create fee revenue
-        donateRouter.donate(poolPos.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
+        donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
         // Collect by calling decrease with 0.
-        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 0, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 0, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+        bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_collect");
     }
 
     // same-range gas tests
     function test_gas_sameRange_mint() public {
-        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(poolPos, 10_001 ether, address(alice), ZERO_BYTES));
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+            Planner.init().add(Actions.MINT, abi.encode(config, 10_001 ether, address(alice), ZERO_BYTES));
+        bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint_sameRange");
     }
 
     function test_gas_sameRange_decrease() public {
-        // two positions of the same poolPos, one of them decreases the entirety of the liquidity
+        // two positions of the same config, one of them decreases the entirety of the liquidity
         vm.startPrank(alice);
-        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, address(this), ZERO_BYTES);
         vm.stopPrank();
 
-        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 10_000 ether, ZERO_BYTES));
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+        bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decrease_sameRange_allLiquidity");
     }
 
     function test_gas_sameRange_collect() public {
-        // two positions of the same poolPos, one of them collects all their fees
+        // two positions of the same config, one of them collects all their fees
         vm.startPrank(alice);
-        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, address(this), ZERO_BYTES);
         vm.stopPrank();
 
-        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to create fee revenue
-        donateRouter.donate(poolPos.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
+        donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
-        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 0, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 0, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+        bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_collect_sameRange");
     }
 
     function test_gas_burn_nonEmptyPosition() public {
         uint256 tokenId = lpm.nextTokenId();
-        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, poolPos, ZERO_BYTES));
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, config, ZERO_BYTES));
+        bytes memory calls = planner.finalize(config.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_burn_nonEmpty");
@@ -327,10 +327,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_burnEmpty() public {
         uint256 tokenId = lpm.nextTokenId();
-        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
-        decreaseLiquidity(tokenId, poolPos, 10_000 ether, ZERO_BYTES);
-        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, poolPos, ZERO_BYTES));
+        decreaseLiquidity(tokenId, config, 10_000 ether, ZERO_BYTES);
+        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, config, ZERO_BYTES));
 
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
@@ -342,14 +342,14 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         // Will be more expensive than not encoding a decrease and just encoding a burn.
         // ie. check this against PositionManager_burn_nonEmpty
         uint256 tokenId = lpm.nextTokenId();
-        mint(poolPos, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPos, 10_000 ether, ZERO_BYTES));
-        planner = planner.add(Actions.BURN, abi.encode(tokenId, poolPos, ZERO_BYTES));
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
+        planner = planner.add(Actions.BURN, abi.encode(tokenId, config, ZERO_BYTES));
 
         // We must include CLOSE commands.
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+        bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decrease_burnEmpty");
     }
@@ -361,12 +361,12 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     // Native Token Gas Tests
     function test_gas_mint_native() public {
         uint256 liquidityToAdd = 10_000 ether;
-        bytes memory calls = getMintEncoded(poolPosNative, liquidityToAdd, address(this), ZERO_BYTES);
+        bytes memory calls = getMintEncoded(configNative, liquidityToAdd, address(this), ZERO_BYTES);
 
         (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
             SQRT_PRICE_1_1,
-            TickMath.getSqrtPriceAtTick(poolPosNative.tickLower),
-            TickMath.getSqrtPriceAtTick(poolPosNative.tickUpper),
+            TickMath.getSqrtPriceAtTick(configNative.tickLower),
+            TickMath.getSqrtPriceAtTick(configNative.tickUpper),
             uint128(liquidityToAdd)
         );
         lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
@@ -375,12 +375,12 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_mint_native_excess() public {
         uint256 liquidityToAdd = 10_000 ether;
-        bytes memory calls = getMintEncoded(poolPosNative, liquidityToAdd, address(this), ZERO_BYTES);
+        bytes memory calls = getMintEncoded(configNative, liquidityToAdd, address(this), ZERO_BYTES);
 
         (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
             SQRT_PRICE_1_1,
-            TickMath.getSqrtPriceAtTick(poolPosNative.tickLower),
-            TickMath.getSqrtPriceAtTick(poolPosNative.tickUpper),
+            TickMath.getSqrtPriceAtTick(configNative.tickLower),
+            TickMath.getSqrtPriceAtTick(configNative.tickUpper),
             uint128(liquidityToAdd)
         );
         // overpay on the native token
@@ -390,14 +390,14 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_increase_native() public {
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, poolPosNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
         uint256 liquidityToAdd = 10_000 ether;
-        bytes memory calls = getIncreaseEncoded(tokenId, poolPosNative, liquidityToAdd, ZERO_BYTES);
+        bytes memory calls = getIncreaseEncoded(tokenId, configNative, liquidityToAdd, ZERO_BYTES);
         (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
             SQRT_PRICE_1_1,
-            TickMath.getSqrtPriceAtTick(poolPosNative.tickLower),
-            TickMath.getSqrtPriceAtTick(poolPosNative.tickUpper),
+            TickMath.getSqrtPriceAtTick(configNative.tickLower),
+            TickMath.getSqrtPriceAtTick(configNative.tickUpper),
             uint128(liquidityToAdd)
         );
         lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
@@ -406,32 +406,32 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_decrease_native() public {
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, poolPosNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
         uint256 liquidityToRemove = 10_000 ether;
-        bytes memory calls = getDecreaseEncoded(tokenId, poolPosNative, liquidityToRemove, ZERO_BYTES);
+        bytes memory calls = getDecreaseEncoded(tokenId, configNative, liquidityToRemove, ZERO_BYTES);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decreaseLiquidity_native");
     }
 
     function test_gas_collect_native() public {
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, poolPosNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
         // donate to create fee revenue
-        donateRouter.donate{value: 0.2e18}(poolPosNative.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
+        donateRouter.donate{value: 0.2e18}(configNative.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
-        bytes memory calls = getCollectEncoded(tokenId, poolPosNative, ZERO_BYTES);
+        bytes memory calls = getCollectEncoded(tokenId, configNative, ZERO_BYTES);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_collect_native");
     }
 
     function test_gas_burn_nonEmptyPosition_native() public {
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, poolPosNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, poolPosNative, ZERO_BYTES));
-        bytes memory calls = planner.finalize(poolPosNative.poolKey);
+        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, configNative, ZERO_BYTES));
+        bytes memory calls = planner.finalize(configNative.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_burn_nonEmpty_native");
@@ -439,10 +439,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_burnEmpty_native() public {
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, poolPosNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
-        decreaseLiquidity(tokenId, poolPosNative, 10_000 ether, ZERO_BYTES);
-        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, poolPosNative, ZERO_BYTES));
+        decreaseLiquidity(tokenId, configNative, 10_000 ether, ZERO_BYTES);
+        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, configNative, ZERO_BYTES));
 
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
@@ -454,14 +454,14 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         // Will be more expensive than not encoding a decrease and just encoding a burn.
         // ie. check this against PositionManager_burn_nonEmpty
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, poolPosNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
         Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, poolPosNative, 10_000 ether, ZERO_BYTES));
-        planner = planner.add(Actions.BURN, abi.encode(tokenId, poolPosNative, ZERO_BYTES));
+            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, configNative, 10_000 ether, ZERO_BYTES));
+        planner = planner.add(Actions.BURN, abi.encode(tokenId, configNative, ZERO_BYTES));
 
         // We must include CLOSE commands.
-        bytes memory calls = planner.finalize(poolPosNative.poolKey);
+        bytes memory calls = planner.finalize(configNative.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decrease_burnEmpty_native");
     }

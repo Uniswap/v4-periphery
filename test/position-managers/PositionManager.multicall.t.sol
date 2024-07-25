@@ -16,7 +16,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
-import {PoolPosition} from "../../src/libraries/PoolPosition.sol";
+import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {IMulticall} from "../../src/interfaces/IMulticall.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner} from "../shared/Planner.sol";
@@ -47,15 +47,15 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        PoolPosition memory poolPos = PoolPosition({
+        PositionConfig memory config = PositionConfig({
             poolKey: key,
             tickLower: TickMath.minUsableTick(key.tickSpacing),
             tickUpper: TickMath.maxUsableTick(key.tickSpacing)
         });
 
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode(poolPos, 100e18, address(this), ZERO_BYTES));
-        bytes memory actions = planner.finalize(poolPos.poolKey);
+        planner = planner.add(Actions.MINT, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        bytes memory actions = planner.finalize(config.poolKey);
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 

@@ -16,7 +16,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
-import {PoolPosition} from "../../src/libraries/PoolPosition.sol";
+import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner} from "../shared/Planner.sol";
@@ -33,7 +33,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
     address alice = makeAddr("ALICE");
     address bob = makeAddr("BOB");
 
-    PoolPosition poolPos;
+    PositionConfig config;
 
     function setUp() public {
         deployFreshManagerAndRouters();
@@ -53,20 +53,20 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         approvePosmFor(bob);
 
         // define a reusable pool position
-        poolPos = PoolPosition({poolKey: key, tickLower: -300, tickUpper: 300});
+        config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
     function test_fuzz_execute_increaseLiquidity_once(uint256 initialLiquidity, uint256 liquidityToAdd) public {
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
-        mint(poolPos, initialLiquidity, address(this), ZERO_BYTES);
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        increaseLiquidity(tokenId, poolPos, liquidityToAdd, ZERO_BYTES);
+        increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
@@ -79,20 +79,20 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
         liquidityToAdd2 = bound(liquidityToAdd2, 1e18, 1000e18);
-        mint(poolPos, initialLiquidity, address(this), ZERO_BYTES);
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner = Planner.init();
 
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, poolPos, liquidityToAdd, ZERO_BYTES));
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, poolPos, liquidityToAdd2, ZERO_BYTES));
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd2, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+        bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd + liquidityToAdd2);
     }
@@ -106,15 +106,15 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         Planner.Plan memory planner = Planner.init();
 
-        planner = planner.add(Actions.MINT, abi.encode(poolPos, initialLiquidity, address(this), ZERO_BYTES));
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, poolPos, liquidityToAdd, ZERO_BYTES));
+        planner = planner.add(Actions.MINT, abi.encode(config, initialLiquidity, address(this), ZERO_BYTES));
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(poolPos.poolKey);
+        bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), poolPos.tickLower, poolPos.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(poolPos.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
