@@ -25,7 +25,7 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
         _executeActions(params);
     }
 
-    function _handleAction(uint256 action, bytes calldata params) internal override {
+    function _handleAction(uint256 action, bytes calldata params) internal override returns (bytes memory) {
         if (action < Actions.SETTLE) {
             if (action == Actions.SWAP) _swap(params);
             else if (action == Actions.INCREASE_LIQUIDITY) _increaseLiquidity(params);
@@ -40,6 +40,7 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
             else if (action == Actions.BURN_6909) _burn6909(params);
             else revert UnsupportedAction(action);
         }
+        return "";
     }
 
     function _msgSender() internal view override returns (address) {
