@@ -3,75 +3,23 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
-import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
-import {V4RouterImplementation} from "../shared/implementation/V4RouterImplementation.sol";
+import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
 import {Plan, ActionsRouterPlanner} from "../shared/ActionsRouterPlanner.sol";
-import {PathKey} from "../../src/libraries/PathKey.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 
-contract V4RouterTest is Test, Deployers, GasSnapshot {
+contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
     using CurrencyLibrary for Currency;
     using ActionsRouterPlanner for Plan;
 
-    PoolModifyLiquidityTest positionManager;
-    V4RouterImplementation router;
-
-    // currency0 and currency1 are defined in Deployers.sol
-    Currency currency2;
-    Currency currency3;
-
-    PoolKey key0;
-    PoolKey key1;
-    PoolKey key2;
-
-    Currency[] tokenPath;
-
-    Plan plan;
-
     function setUp() public {
-        deployFreshManagerAndRouters();
-
-        router = new V4RouterImplementation(manager);
-        positionManager = new PoolModifyLiquidityTest(manager);
-
-        MockERC20 token0 = new MockERC20("Test0", "0", 18);
-        token0.mint(address(this), 2 ** 128);
-        currency0 = Currency.wrap(address(token0));
-
-        MockERC20 token1 = new MockERC20("Test1", "1", 18);
-        token1.mint(address(this), 2 ** 128);
-        currency1 = Currency.wrap(address(token1));
-
-        MockERC20 token2 = new MockERC20("Test2", "2", 18);
-        token2.mint(address(this), 2 ** 128);
-        currency2 = Currency.wrap(address(token2));
-
-        MockERC20 token3 = new MockERC20("Test3", "3", 18);
-        token3.mint(address(this), 2 ** 128);
-        currency3 = Currency.wrap(address(token3));
-
-        key0 = createPoolKey(token0, token1, address(0));
-        key1 = createPoolKey(token1, token2, address(0));
-        key2 = createPoolKey(token2, token3, address(0));
-
-        setupPool(key0);
-        setupPool(key1);
-        setupPool(key2);
-
-        token0.approve(address(router), type(uint256).max);
-        token1.approve(address(router), type(uint256).max);
-        token2.approve(address(router), type(uint256).max);
-        token3.approve(address(router), type(uint256).max);
-
+        setupRouterCurrenciesAndPoolsWithLiquidity();
         plan = ActionsRouterPlanner.init();
     }
 
@@ -395,60 +343,5 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
         assertEq(currency1.balanceOf(address(router)), 0);
         assertEq(currency2.balanceOf(address(router)), 0);
         assertEq(currency3.balanceOf(address(router)), 0);
-    }
-
-    function createPoolKey(MockERC20 tokenA, MockERC20 tokenB, address hookAddr)
-        internal
-        pure
-        returns (PoolKey memory)
-    {
-        if (address(tokenA) > address(tokenB)) (tokenA, tokenB) = (tokenB, tokenA);
-        return PoolKey(Currency.wrap(address(tokenA)), Currency.wrap(address(tokenB)), 3000, 60, IHooks(hookAddr));
-    }
-
-    function setupPool(PoolKey memory poolKey) internal {
-        manager.initialize(poolKey, SQRT_PRICE_1_1, ZERO_BYTES);
-        MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
-        MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyLiquidity(
-            poolKey, IPoolManager.ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x"
-        );
-    }
-
-    function _getExactInputParams(Currency[] memory _tokenPath, uint256 amountIn)
-        internal
-        pure
-        returns (IV4Router.ExactInputParams memory params)
-    {
-        PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
-        for (uint256 i = 0; i < _tokenPath.length - 1; i++) {
-            path[i] = PathKey(_tokenPath[i + 1], 3000, 60, IHooks(address(0)), bytes(""));
-        }
-
-        params.currencyIn = _tokenPath[0];
-        params.path = path;
-        params.amountIn = uint128(amountIn);
-        params.amountOutMinimum = 0;
-    }
-
-    function _getExactOutputParams(Currency[] memory _tokenPath, uint256 amountOut)
-        internal
-        pure
-        returns (IV4Router.ExactOutputParams memory params)
-    {
-        PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
-        for (uint256 i = _tokenPath.length - 1; i > 0; i--) {
-            path[i - 1] = PathKey(_tokenPath[i - 1], 3000, 60, IHooks(address(0)), bytes(""));
-        }
-
-        params.currencyOut = _tokenPath[_tokenPath.length - 1];
-        params.path = path;
-        params.amountOut = uint128(amountOut);
-        params.amountInMaximum = type(uint128).max;
-    }
-
-    function _finalizePlan(Currency inputCurrency, Currency outputCurrency, address recipient) internal {
-        plan = plan.add(Actions.SETTLE_ALL, abi.encode(inputCurrency));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(outputCurrency, recipient));
     }
 }
