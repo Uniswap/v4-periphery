@@ -13,6 +13,7 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -71,7 +72,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = getMintEncoded(config, 1e18, address(this), "");
 
         // SafeTransferLib does not bubble the ContractLocked error and instead reverts with its own error
-        vm.expectRevert("TRANSFER_FROM_FAILED");
+        vm.expectRevert(abi.encodeWithSelector(IAllowanceTransfer.AllowanceExpired.selector, 0));
         lpm.modifyLiquidities(calls, block.timestamp + 1);
     }
 
