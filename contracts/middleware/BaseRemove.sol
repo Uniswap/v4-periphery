@@ -36,9 +36,10 @@ abstract contract BaseRemove is BaseMiddleware {
         bytes calldata hookData
     ) external returns (bytes4) {
         if (bytes32(hookData) == OVERRIDE_BYTES) {
-            (, bytes memory returnData) = address(implementation).delegatecall(
+            (bool success, bytes memory returnData) = address(implementation).delegatecall(
                 abi.encodeWithSelector(this.beforeRemoveLiquidity.selector, sender, key, params, hookData[32:])
             );
+            return BaseHook.beforeRemoveLiquidity.selector;
             return abi.decode(returnData, (bytes4));
         }
         address(this).delegatecall{gas: GAS_LIMIT}(

@@ -29,7 +29,7 @@ contract MiddlewareRemoveNoDeltas is BaseRemove {
     ) external returns (bytes4, BalanceDelta) {
         if (bytes32(hookData) == OVERRIDE_BYTES) {
             (, bytes memory returnData) = address(implementation).delegatecall(
-                abi.encodeWithSelector(this.beforeRemoveLiquidity.selector, sender, key, params, delta, hookData[32:])
+                abi.encodeWithSelector(this.afterRemoveLiquidity.selector, sender, key, params, delta, hookData[32:])
             );
             return abi.decode(returnData, (bytes4, BalanceDelta));
         }

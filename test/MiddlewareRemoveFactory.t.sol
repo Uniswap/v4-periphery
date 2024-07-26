@@ -211,8 +211,10 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         HooksOutOfGas hooksOutOfGas = HooksOutOfGas(address(flags));
         vm.etch(address(hooksOutOfGas), address(new HooksOutOfGas(manager)).code);
         testOn(address(hooksOutOfGas), flags);
+    }
 
-        flags = uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
+    function testGriefs() public {
+        uint160 flags = uint160(Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
         RemoveGriefs removeGriefs = RemoveGriefs(address(flags));
         vm.etch(address(removeGriefs), address(new RemoveGriefs(manager)).code);
         testOn(address(removeGriefs), flags);
@@ -333,5 +335,32 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         assertEq(counterProxy.beforeRemoveLiquidityCount(id), 1);
         assertEq(counterProxy.afterRemoveLiquidityCount(id), 1);
+    }
+
+    function testDataChaining() public {
+        (PoolKey memory key,) =
+            initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        HooksCounter counterProxy = HooksCounter(middleware);
+        modifyLiquidityRouter.modifyLiquidity(
+            key, REMOVE_LIQUIDITY_PARAMS, hex"23b70c8dec38c3dec67a5596870027b04c4058cb3ac57b4e589bf628ac6669e7FFFF"
+        );
+        assertEq(counterProxy.lastHookData(), hex"FFFF");
+
+        hookscounter = HooksCounter(address(COUNTER_FLAGS | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG));
+        vm.etch(address(hookscounter), address(new HooksCounter(manager)).code);
+        (, bytes32 salt) = MiddlewareMiner.find(
+            address(factory),
+            COUNTER_FLAGS | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG,
+            address(manager),
+            address(hookscounter),
+            777
+        );
+        middleware = factory.createMiddleware(address(hookscounter), 777, salt);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        counterProxy = HooksCounter(middleware);
+        modifyLiquidityRouter.modifyLiquidity(
+            key, REMOVE_LIQUIDITY_PARAMS, hex"23b70c8dec38c3dec67a5596870027b04c4058cb3ac57b4e589bf628ac6669e7AAAA"
+        );
+        assertEq(counterProxy.lastHookData(), hex"AAAA");
     }
 }
