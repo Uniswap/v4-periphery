@@ -33,7 +33,7 @@ contract PermitTest is Test, PosmTestSetup {
     address bob;
     uint256 bobPK;
 
-    PositionConfig range;
+    PositionConfig config;
 
     function setUp() public {
         (alice, alicePK) = makeAddrAndKey("ALICE");
@@ -54,7 +54,7 @@ contract PermitTest is Test, PosmTestSetup {
         approvePosmFor(bob);
 
         // define a reusable range
-        range = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
+        config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
     function test_permitTypeHash() public view {
@@ -67,7 +67,7 @@ contract PermitTest is Test, PosmTestSetup {
     function test_permit_increaseLiquidity() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
@@ -78,13 +78,13 @@ contract PermitTest is Test, PosmTestSetup {
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
         vm.startPrank(bob);
-        increaseLiquidity(tokenIdAlice, range, newLiquidity, ZERO_BYTES);
+        increaseLiquidity(tokenIdAlice, config, newLiquidity, ZERO_BYTES);
         vm.stopPrank();
 
         // alice's position has new liquidity
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenIdAlice)));
-        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, liquidityAlice + newLiquidity);
 
         // bob used his tokens to increase liquidity
@@ -95,7 +95,7 @@ contract PermitTest is Test, PosmTestSetup {
     function test_permit_decreaseLiquidity() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
@@ -104,13 +104,13 @@ contract PermitTest is Test, PosmTestSetup {
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
         vm.startPrank(bob);
-        decreaseLiquidity(tokenIdAlice, range, liquidityToRemove, ZERO_BYTES);
+        decreaseLiquidity(tokenIdAlice, config, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
         // alice's position decreased liquidity
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenIdAlice)));
-        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
@@ -118,7 +118,7 @@ contract PermitTest is Test, PosmTestSetup {
     function test_permit_collect() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // donate to create fee revenue
@@ -136,7 +136,7 @@ contract PermitTest is Test, PosmTestSetup {
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
         vm.startPrank(bob);
-        collect(tokenIdAlice, range, ZERO_BYTES);
+        collect(tokenIdAlice, config, ZERO_BYTES);
         vm.stopPrank();
 
         assertApproxEqAbs(currency0.balanceOf(recipient), balance0BobBefore + currency0Revenue, 1 wei);
@@ -149,7 +149,7 @@ contract PermitTest is Test, PosmTestSetup {
 
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob cannot permit himself on alice's token
@@ -168,12 +168,12 @@ contract PermitTest is Test, PosmTestSetup {
         // increaseLiquidity fails if the owner did not permit
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob cannot increase liquidity on alice's token
         uint256 newLiquidity = 2e18;
-        bytes memory increase = getIncreaseEncoded(tokenIdAlice, range, newLiquidity, ZERO_BYTES);
+        bytes memory increase = getIncreaseEncoded(tokenIdAlice, config, newLiquidity, ZERO_BYTES);
         vm.startPrank(bob);
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
         lpm.modifyLiquidities(increase, _deadline);
@@ -184,12 +184,12 @@ contract PermitTest is Test, PosmTestSetup {
         // decreaseLiquidity fails if the owner did not permit
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob cannot decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
-        bytes memory decrease = getDecreaseEncoded(tokenIdAlice, range, liquidityToRemove, ZERO_BYTES);
+        bytes memory decrease = getDecreaseEncoded(tokenIdAlice, config, liquidityToRemove, ZERO_BYTES);
         vm.startPrank(bob);
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
         lpm.modifyLiquidities(decrease, _deadline);
@@ -200,7 +200,7 @@ contract PermitTest is Test, PosmTestSetup {
         // collect fails if the owner did not permit
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // donate to create fee revenue
@@ -209,7 +209,7 @@ contract PermitTest is Test, PosmTestSetup {
         donateRouter.donate(key, currency0Revenue, currency1Revenue, ZERO_BYTES);
 
         // bob cannot collect fees
-        bytes memory collect = getCollectEncoded(tokenIdAlice, range, ZERO_BYTES);
+        bytes memory collect = getCollectEncoded(tokenIdAlice, config, ZERO_BYTES);
         vm.startPrank(bob);
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
         lpm.modifyLiquidities(collect, block.timestamp + 1);
@@ -219,7 +219,7 @@ contract PermitTest is Test, PosmTestSetup {
     function test_permit_nonceAlreadyUsed() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
@@ -240,13 +240,13 @@ contract PermitTest is Test, PosmTestSetup {
     function test_permit_nonceAlreadyUsed_twoPositions() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.prank(alice);
-        range.tickLower = -600;
-        range.tickUpper = 600;
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        config.tickLower = -600;
+        config.tickUpper = 600;
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice2 = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions for first token
@@ -268,7 +268,7 @@ contract PermitTest is Test, PosmTestSetup {
     function test_permit_operatorSelfPermit() public {
         uint256 liquidityAlice = 1e18;
         vm.startPrank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         vm.stopPrank();
         uint256 tokenId = lpm.nextTokenId() - 1;
 
@@ -284,12 +284,12 @@ contract PermitTest is Test, PosmTestSetup {
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
         vm.startPrank(bob);
-        decreaseLiquidity(tokenId, range, liquidityToRemove, ZERO_BYTES);
+        decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
 
@@ -297,7 +297,7 @@ contract PermitTest is Test, PosmTestSetup {
     function test_permit_thirdParty() public {
         uint256 liquidityAlice = 1e18;
         vm.startPrank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         vm.stopPrank();
         uint256 tokenId = lpm.nextTokenId() - 1;
 
@@ -314,12 +314,12 @@ contract PermitTest is Test, PosmTestSetup {
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
         vm.startPrank(bob);
-        decreaseLiquidity(tokenId, range, liquidityToRemove, ZERO_BYTES);
+        decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), range.tickLower, range.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(range.poolKey.toId(), positionId);
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
 }
