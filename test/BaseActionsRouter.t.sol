@@ -7,7 +7,7 @@ import {Actions} from "../src/libraries/Actions.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
+import {GasSnapshot} from "forge-gas-snapshot/src/GasSnapshot.sol";
 
 contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
     using ActionsRouterPlanner for Plan;
