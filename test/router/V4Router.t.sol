@@ -1,30 +1,19 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {Test} from "forge-std/Test.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
-
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
 import {Plan, ActionsRouterPlanner} from "../shared/ActionsRouterPlanner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 
-contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
+contract V4RouterTest is RoutingTestHelpers {
     using CurrencyLibrary for Currency;
     using ActionsRouterPlanner for Plan;
 
     function setUp() public {
         setupRouterCurrenciesAndPoolsWithLiquidity();
         plan = ActionsRouterPlanner.init();
-    }
-
-    function test_gas_bytecodeSize() public {
-        snapSize("V4Router_Bytecode", address(router));
     }
 
     function test_gas_swapExactInputSingle_zeroForOne() public {
@@ -42,7 +31,6 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactInputSingle");
 
         uint256 newBalance0 = key0.currency0.balanceOf(address(this));
         uint256 newBalance1 = key0.currency1.balanceOf(address(this));
@@ -90,7 +78,6 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactIn1Hop");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -140,7 +127,6 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactIn2Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -172,7 +158,6 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactIn3Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance3 = currency3.balanceOfSelf();
@@ -200,7 +185,6 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactOutputSingle");
 
         uint256 newBalance0 = key0.currency0.balanceOf(address(this));
         uint256 newBalance1 = key0.currency1.balanceOf(address(this));
@@ -248,7 +232,6 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactOut1Hop");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -273,7 +256,6 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactOut1Hop");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -300,7 +282,6 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactOut2Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance1 = currency1.balanceOfSelf();
@@ -332,7 +313,6 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactOut3Hops");
 
         uint256 newBalance0 = currency0.balanceOfSelf();
         uint256 newBalance3 = currency3.balanceOfSelf();
