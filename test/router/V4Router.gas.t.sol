@@ -48,7 +48,22 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactIn1Hop");
+        snapLastCall("V4Router_ExactIn1Hop_zeroForOne");
+    }
+
+    function test_swapExactIn_1Hop_oneForZero() public {
+        uint256 amountIn = 1 ether;
+
+        tokenPath.push(currency1);
+        tokenPath.push(currency0);
+        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
+
+        plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
+        _finalizePlan(currency1, currency0, address(this));
+        bytes memory data = plan.encode();
+
+        router.executeActions(data);
+        snapLastCall("V4Router_ExactIn1Hop_oneForZero");
     }
 
     function test_gas_swapExactIn_2Hops() public {
