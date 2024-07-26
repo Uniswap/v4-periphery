@@ -166,6 +166,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     }
 
     function test_increaseLiquidity_withUnapprovedCaller() public {
+        // Alice provides liquidity
+        // Bob increases Alice's liquidity without being approved
         uint256 liquidityAlice = 3_000e18;
 
         // alice provides liquidity
