@@ -1,19 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ImmutableState} from "./ImmutableState.sol";
-import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 
 /// @notice Abstract contract used to sync, send, and settle funds to the pool manager
 /// @dev Note that sync() is called before any erc-20 transfer in `settle`.
 abstract contract DeltaResolver is ImmutableState {
-    using TransientStateLibrary for IPoolManager;
-
-    /// @notice Value used to signal that an entire open delta should be taken/settled
-    uint256 public constant ENTIRE_OPEN_DELTA = 0;
-
     /// @notice Emitted trying to settle a positive delta, or take a negative delta
     error InvalidDeltaForAction();
 
@@ -22,12 +15,6 @@ abstract contract DeltaResolver is ImmutableState {
     /// @param recipient Address to receive the currency
     /// @param amount Amount to take
     function _take(Currency currency, address recipient, uint256 amount) internal {
-        if (amount == ENTIRE_OPEN_DELTA) {
-            int256 delta = poolManager.currencyDelta(address(this), currency);
-            if (delta < 0) revert InvalidDeltaForAction();
-            amount = uint256(delta);
-        }
-
         poolManager.take(currency, recipient, amount);
     }
 
@@ -37,12 +24,6 @@ abstract contract DeltaResolver is ImmutableState {
     /// @param payer Address of the payer
     /// @param amount Amount to send
     function _settle(Currency currency, address payer, uint256 amount) internal {
-        if (amount == ENTIRE_OPEN_DELTA) {
-            int256 delta = poolManager.currencyDelta(address(this), currency);
-            if (delta > 0) revert InvalidDeltaForAction();
-            amount = uint256(-delta);
-        }
-
         if (currency.isNative()) {
             poolManager.settle{value: amount}();
         } else {

@@ -12,11 +12,11 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
-import {IV4Router} from "../src/interfaces/IV4Router.sol";
-import {V4RouterImplementation} from "./shared/implementation/V4RouterImplementation.sol";
-import {Plan, ActionsRouterPlanner} from "./shared/ActionsRouterPlanner.sol";
-import {PathKey} from "../src/libraries/PathKey.sol";
-import {Actions} from "../src/libraries/Actions.sol";
+import {IV4Router} from "../../src/interfaces/IV4Router.sol";
+import {V4RouterImplementation} from "../shared/implementation/V4RouterImplementation.sol";
+import {Plan, ActionsRouterPlanner} from "../shared/ActionsRouterPlanner.sol";
+import {PathKey} from "../../src/libraries/PathKey.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 
 contract V4RouterTest is Test, Deployers, GasSnapshot {
     using CurrencyLibrary for Currency;
@@ -448,7 +448,7 @@ contract V4RouterTest is Test, Deployers, GasSnapshot {
     }
 
     function _finalizePlan(Currency inputCurrency, Currency outputCurrency, address recipient) internal {
-        plan = plan.add(Actions.SETTLE, abi.encode(inputCurrency, router.ENTIRE_OPEN_DELTA()));
-        plan = plan.add(Actions.TAKE, abi.encode(outputCurrency, recipient, router.ENTIRE_OPEN_DELTA()));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(inputCurrency));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(outputCurrency, recipient));
     }
 }

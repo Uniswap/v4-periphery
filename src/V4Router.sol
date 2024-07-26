@@ -6,6 +6,8 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 import {PathKey, PathKeyLib} from "./libraries/PathKey.sol";
 import {CalldataBytesLib} from "./libraries/CalldataBytesLib.sol";
@@ -21,6 +23,7 @@ import {Actions} from "./libraries/Actions.sol";
 abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using PathKeyLib for PathKey;
     using CalldataBytesLib for bytes;
+    using TransientStateLibrary for IPoolManager;
 
     constructor(IPoolManager poolManager) BaseActionsRouter(poolManager) {}
 
@@ -40,31 +43,34 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 revert UnsupportedAction(action);
             }
         } else {
-            if (action == Actions.SETTLE) {
-                // equivalent: abi.decode(params, (Currency, uint256))
+            if (action == Actions.SETTLE_ALL) {
+                // equivalent: abi.decode(params, (Currency))
                 Currency currency;
-                uint256 amount;
                 assembly ("memory-safe") {
                     currency := calldataload(params.offset)
-                    amount := calldataload(add(params.offset, 0x20))
                 }
+
+                int256 delta = poolManager.currencyDelta(address(this), currency);
+                if (delta > 0) revert InvalidDeltaForAction();
 
                 // TODO support address(this) paying too
                 // TODO should it have a maxAmountOut added slippage protection?
-                _settle(currency, _msgSender(), amount);
-            } else if (action == Actions.TAKE) {
-                // equivalent: abi.decode(params, (Currency, address, uint256))
+                _settle(currency, _msgSender(), uint256(-delta));
+            } else if (action == Actions.TAKE_ALL) {
+                // equivalent: abi.decode(params, (Currency, address))
                 Currency currency;
                 address recipient;
-                uint256 amount;
                 assembly ("memory-safe") {
                     currency := calldataload(params.offset)
                     recipient := calldataload(add(params.offset, 0x20))
-                    amount := calldataload(add(params.offset, 0x40))
                 }
 
+                int256 delta = poolManager.currencyDelta(address(this), currency);
+                if (delta < 0) revert InvalidDeltaForAction();
+
                 // TODO should _take have a minAmountOut added slippage check?
-                _take(currency, recipient, amount);
+                // TODO recipient mapping
+                _take(currency, recipient, uint256(delta));
             } else {
                 revert UnsupportedAction(action);
             }
@@ -157,4 +163,6 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             reciprocalAmount = (zeroForOne == amountSpecified < 0) ? delta.amount1() : delta.amount0();
         }
     }
+
+    function _mapAmount(uint256 amount) internal returns (uint256) {}
 }

@@ -15,10 +15,15 @@ library Actions {
 
     // closing deltas on the pool manager
     uint256 constant SETTLE = 0x10;
-    uint256 constant TAKE = 0x11;
-    uint256 constant CLOSE_CURRENCY = 0x12;
-    uint256 constant CLOSE_PAIR = 0x13;
-    uint256 constant CLEAR = 0x14;
+    uint256 constant SETTLE_ALL = 0x11;
+    
+    uint256 constant TAKE = 0x12;
+    uint256 constant TAKE_ALL = 0x13;
+    uint256 constant TAKE_PORTION = 0x14;
+
+    uint256 constant CLOSE_CURRENCY = 0x15;
+    uint256 constant CLOSE_PAIR = 0x16;
+    uint256 constant CLEAR = 0x17;
 
     // minting/burning 6909s to close deltas
     uint256 constant MINT_6909 = 0x20;
