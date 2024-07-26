@@ -166,36 +166,12 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     }
 
     function test_increaseLiquidity_withUnapprovedCaller() public {
-        // Alice and Bob provide liquidity on the range
-        // Alice uses her exact fees to increase liquidity (compounding)
-
         uint256 liquidityAlice = 3_000e18;
-        uint256 liquidityBob = 1_000e18;
 
         // alice provides liquidity
         vm.prank(alice);
         mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
-
-        // bob provides liquidity
-        vm.prank(bob);
-        mint(config, liquidityBob, bob, ZERO_BYTES);
-
-        // donate to create fees
-        uint256 amountDonate = 0.2e18;
-        donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
-
-        // subtract 1 cause we'd rather take than pay
-        uint256 feesAmount = amountDonate.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob) - 1;
-
-        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
-        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(config.tickLower),
-            TickMath.getSqrtPriceAtTick(config.tickUpper),
-            feesAmount,
-            feesAmount
-        );
 
         bytes32 positionId =
             keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice)));
@@ -203,13 +179,13 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // bob can increase liquidity for alice even though he is not the owner / not approved
         vm.startPrank(bob);
-        increaseLiquidity(tokenIdAlice, config, liquidityDelta, ZERO_BYTES);
+        increaseLiquidity(tokenIdAlice, config, 100e18, ZERO_BYTES);
         vm.stopPrank();
 
         uint128 newLiquidity = StateLibrary.getPositionLiquidity(manager, config.poolKey.toId(), positionId);
 
         // assert liqudity increased by the correct amount
-        assertEq(newLiquidity, oldLiquidity + uint128(liquidityDelta));
+        assertEq(newLiquidity, oldLiquidity + uint128(100e18));
     }
 
     function test_increaseLiquidity_sameRange_withExcessFees() public {
