@@ -6,11 +6,11 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
@@ -34,8 +34,6 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
     address alice;
     uint256 alicePK;
     address bob;
-
-    uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
     function setUp() public {
         (alice, alicePK) = makeAddrAndKey("ALICE");
@@ -85,7 +83,7 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_multicall_permitAndDecrease() public {
-        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -60, tickUpper: 60});
+        PositionConfig memory range = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 60});
         uint256 liquidityAlice = 1e18;
         vm.startPrank(alice);
         mint(range, liquidityAlice, alice, ZERO_BYTES);
@@ -100,12 +98,12 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         // bob gives himself permission and decreases liquidity
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(
-            NonfungiblePositionManager(lpm).permit.selector, bob, tokenId, block.timestamp + 1, nonce, v, r, s
+            PositionManager(lpm).permit.selector, bob, tokenId, block.timestamp + 1, nonce, v, r, s
         );
         uint256 liquidityToRemove = 0.4444e18;
-        bytes memory actions = LiquidityOperations.getDecreaseEncoded(tokenId, 0.4444e18, ZERO_BYTES);
+        bytes memory actions = getDecreaseEncoded(tokenId, range, 0.4444e18, ZERO_BYTES);
         calls[1] =
-            abi.encodeWithSelector(NonfungiblePositionManager(lpm).modifyLiquidities.selector, actions, _deadline);
+            abi.encodeWithSelector(PositionManager(lpm).modifyLiquidities.selector, actions, _deadline);
 
         vm.prank(bob);
         lpm.multicall(calls);

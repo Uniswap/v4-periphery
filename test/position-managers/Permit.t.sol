@@ -5,11 +5,10 @@ import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
@@ -17,13 +16,12 @@ import {IERC721Permit} from "../../src/interfaces/IERC721Permit.sol";
 import {ERC721Permit} from "../../src/base/ERC721Permit.sol";
 import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
 
-import {NonfungiblePositionManager} from "../../src/NonfungiblePositionManager.sol";
-import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
-import {INonfungiblePositionManager} from "../../src/interfaces/INonfungiblePositionManager.sol";
+import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 
-import {LiquidityOperations} from "../shared/LiquidityOperations.sol";
+import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
-contract PermitTest is Test, Deployers, LiquidityOperations {
+contract PermitTest is Test, PosmTestSetup {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -35,39 +33,28 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
     address bob;
     uint256 bobPK;
 
-    uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
-
-    LiquidityRange range;
+    PositionConfig range;
 
     function setUp() public {
         (alice, alicePK) = makeAddrAndKey("ALICE");
         (bob, bobPK) = makeAddrAndKey("BOB");
 
-        Deployers.deployFreshManagerAndRouters();
-        Deployers.deployMintAndApprove2Currencies();
+        deployFreshManagerAndRouters();
+        deployMintAndApprove2Currencies();
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        lpm = new NonfungiblePositionManager(manager);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        // Requires currency0 and currency1 to be set in base Deployers contract.
+        deployAndApprovePosm(manager);
+        
+        seedBalance(alice);
+        seedBalance(bob);
 
-        // Give tokens to Alice and Bob, with approvals
-        IERC20(Currency.unwrap(currency0)).transfer(alice, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency1)).transfer(alice, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency0)).transfer(bob, STARTING_USER_BALANCE);
-        IERC20(Currency.unwrap(currency1)).transfer(bob, STARTING_USER_BALANCE);
-        vm.startPrank(alice);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
-        vm.stopPrank();
-        vm.startPrank(bob);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
-        vm.stopPrank();
+        approvePosmFor(alice);
+        approvePosmFor(bob);
 
         // define a reusable range
-        range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
+        range = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
     function test_permitTypeHash() public view {
@@ -84,14 +71,14 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
-        _permit(alice, alicePK, tokenIdAlice, bob, 1);
+        permit(alice, alicePK, tokenIdAlice, bob, 1);
 
         // bob can increase liquidity on alice's token
         uint256 newLiquidity = 2e18;
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
         vm.startPrank(bob);
-        increaseLiquidity(tokenIdAlice, newLiquidity, ZERO_BYTES);
+        increaseLiquidity(tokenIdAlice, range, newLiquidity, ZERO_BYTES);
         vm.stopPrank();
 
         // alice's position has new liquidity
@@ -112,12 +99,12 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
-        _permit(alice, alicePK, tokenIdAlice, bob, 1);
+        permit(alice, alicePK, tokenIdAlice, bob, 1);
 
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
         vm.startPrank(bob);
-        decreaseLiquidity(tokenIdAlice, liquidityToRemove, ZERO_BYTES);
+        decreaseLiquidity(tokenIdAlice, range, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
         // alice's position decreased liquidity
@@ -140,7 +127,7 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         donateRouter.donate(key, currency0Revenue, currency1Revenue, ZERO_BYTES);
 
         // alice gives bob operator permissions
-        _permit(alice, alicePK, tokenIdAlice, bob, 1);
+        permit(alice, alicePK, tokenIdAlice, bob, 1);
 
         // TODO: test collection to recipient with a permissioned operator
 
@@ -149,7 +136,7 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
         vm.startPrank(bob);
-        collect(tokenIdAlice, recipient, ZERO_BYTES);
+        collect(tokenIdAlice, range, ZERO_BYTES);
         vm.stopPrank();
 
         assertApproxEqAbs(currency0.balanceOf(recipient), balance0BobBefore + currency0Revenue, 1 wei);
@@ -166,13 +153,14 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob cannot permit himself on alice's token
-        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, 0, block.timestamp + 1);
+        uint256 nonce = 1;
+        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPK, digest);
 
         vm.startPrank(bob);
         vm.expectRevert(IERC721Permit.Unauthorized.selector);
-        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, 0, v, r, s);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
         vm.stopPrank();
     }
 
@@ -185,9 +173,9 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
 
         // bob cannot increase liquidity on alice's token
         uint256 newLiquidity = 2e18;
-        bytes memory increase = LiquidityOperations.getIncreaseEncoded(tokenIdAlice, newLiquidity, ZERO_BYTES);
+        bytes memory increase = getIncreaseEncoded(tokenIdAlice, range, newLiquidity, ZERO_BYTES);
         vm.startPrank(bob);
-        vm.expectRevert(abi.encodeWithSelector(INonfungiblePositionManager.NotApproved.selector, address(bob)));
+        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
         lpm.modifyLiquidities(increase, _deadline);
         vm.stopPrank();
     }
@@ -201,9 +189,9 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
 
         // bob cannot decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
-        bytes memory decrease = LiquidityOperations.getDecreaseEncoded(tokenIdAlice, liquidityToRemove, ZERO_BYTES);
+        bytes memory decrease = getDecreaseEncoded(tokenIdAlice, range, liquidityToRemove, ZERO_BYTES);
         vm.startPrank(bob);
-        vm.expectRevert(abi.encodeWithSelector(INonfungiblePositionManager.NotApproved.selector, address(bob)));
+        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
         lpm.modifyLiquidities(decrease, _deadline);
         vm.stopPrank();
     }
@@ -222,9 +210,9 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
 
         // bob cannot collect fees to a recipient
         address recipient = address(0x00444400);
-        bytes memory collect = LiquidityOperations.getCollectEncoded(tokenIdAlice, recipient, ZERO_BYTES);
+        bytes memory collect = getCollectEncoded(tokenIdAlice, range, ZERO_BYTES);
         vm.startPrank(bob);
-        vm.expectRevert(abi.encodeWithSelector(INonfungiblePositionManager.NotApproved.selector, address(bob)));
+        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
         lpm.modifyLiquidities(collect, block.timestamp + 1);
         vm.stopPrank();
     }
@@ -237,7 +225,7 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
 
         // alice gives bob operator permissions
         uint256 nonce = 1;
-        _permit(alice, alicePK, tokenIdAlice, bob, nonce);
+        permit(alice, alicePK, tokenIdAlice, bob, nonce);
 
         // alice cannot reuse the nonce
         bytes32 digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
@@ -264,7 +252,7 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
 
         // alice gives bob operator permissions for first token
         uint256 nonce = 1;
-        _permit(alice, alicePK, tokenIdAlice, bob, nonce);
+        permit(alice, alicePK, tokenIdAlice, bob, nonce);
 
         // alice cannot reuse the nonce for the second token
         bytes32 digest = lpm.getDigest(bob, tokenIdAlice2, nonce, block.timestamp + 1);
@@ -297,7 +285,7 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
         vm.startPrank(bob);
-        decreaseLiquidity(tokenId, liquidityToRemove, ZERO_BYTES);
+        decreaseLiquidity(tokenId, range, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
         bytes32 positionId =
@@ -327,7 +315,7 @@ contract PermitTest is Test, Deployers, LiquidityOperations {
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
         vm.startPrank(bob);
-        decreaseLiquidity(tokenId, liquidityToRemove, ZERO_BYTES);
+        decreaseLiquidity(tokenId, range, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
         bytes32 positionId =

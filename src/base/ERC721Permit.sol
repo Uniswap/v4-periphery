@@ -2,11 +2,12 @@
 pragma solidity ^0.8.24;
 
 import {ERC721} from "solmate/src/tokens/ERC721.sol";
+import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 import {IERC721Permit} from "../interfaces/IERC721Permit.sol";
 import {UnorderedNonce} from "./UnorderedNonce.sol";
-
-import {EIP712} from "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
 
 /// @title ERC721 with permit
 /// @notice Nonfungible tokens that support an approve via signature, i.e. permit
@@ -40,7 +41,7 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce 
 
         bytes32 digest = getDigest(spender, tokenId, nonce, deadline);
 
-        if (Address.isContract(owner)) {
+        if (owner.code.length != 0) {
             if (
                 IERC1271(owner).isValidSignature(digest, abi.encodePacked(r, s, v))
                     != IERC1271.isValidSignature.selector
