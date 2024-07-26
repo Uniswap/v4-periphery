@@ -109,7 +109,7 @@ contract PositionManager is
         (uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes memory hookData) =
             abi.decode(params, (uint256, PositionConfig, uint256, bytes));
 
-        _validateModify(config, tokenId);
+        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta delta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         return abi.encode(delta);
@@ -122,7 +122,8 @@ contract PositionManager is
         (uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes memory hookData) =
             abi.decode(params, (uint256, PositionConfig, uint256, bytes));
 
-        _validateModify(config, tokenId);
+        if (!_isApprovedOrOwner(_getLocker(), tokenId)) revert NotApproved(_getLocker());
+        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
 
         // Note: the tokenId is used as the salt.
         BalanceDelta delta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
@@ -179,7 +180,8 @@ contract PositionManager is
         (uint256 tokenId, PositionConfig memory config, bytes memory hookData) =
             abi.decode(params, (uint256, PositionConfig, bytes));
 
-        _validateModify(config, tokenId);
+        if (!_isApprovedOrOwner(_getLocker(), tokenId)) revert NotApproved(_getLocker());
+        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
 
         // Can only call modify if there is non zero liquidity.
@@ -191,11 +193,6 @@ contract PositionManager is
         // Burn the token.
         _burn(tokenId);
         return abi.encode(delta);
-    }
-
-    function _validateModify(PositionConfig memory config, uint256 tokenId) private view {
-        if (!_isApprovedOrOwner(_getLocker(), tokenId)) revert NotApproved(_getLocker());
-        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
     }
 
     function _modifyLiquidity(PositionConfig memory config, int256 liquidityChange, bytes32 salt, bytes memory hookData)
