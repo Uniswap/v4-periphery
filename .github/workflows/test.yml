@@ -20,6 +20,9 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
+      
+      - name: Print Remappings
+        run: forge remappings
 
       - name: Run tests
         run: forge test -vvv
