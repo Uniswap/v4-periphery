@@ -46,7 +46,7 @@ contract PermitTest is Test, PosmTestSetup {
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
-        
+
         seedBalance(alice);
         seedBalance(bob);
 
@@ -154,7 +154,7 @@ contract PermitTest is Test, PosmTestSetup {
 
         // bob cannot permit himself on alice's token
         uint256 nonce = 1;
-        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPK, digest);
 
@@ -208,8 +208,7 @@ contract PermitTest is Test, PosmTestSetup {
         uint256 currency1Revenue = 0.2222e18;
         donateRouter.donate(key, currency0Revenue, currency1Revenue, ZERO_BYTES);
 
-        // bob cannot collect fees to a recipient
-        address recipient = address(0x00444400);
+        // bob cannot collect fees
         bytes memory collect = getCollectEncoded(tokenIdAlice, range, ZERO_BYTES);
         vm.startPrank(bob);
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
@@ -228,7 +227,7 @@ contract PermitTest is Test, PosmTestSetup {
         permit(alice, alicePK, tokenIdAlice, bob, nonce);
 
         // alice cannot reuse the nonce
-        bytes32 digest = lpm.getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
 
@@ -255,7 +254,7 @@ contract PermitTest is Test, PosmTestSetup {
         permit(alice, alicePK, tokenIdAlice, bob, nonce);
 
         // alice cannot reuse the nonce for the second token
-        bytes32 digest = lpm.getDigest(bob, tokenIdAlice2, nonce, block.timestamp + 1);
+        bytes32 digest = getDigest(bob, tokenIdAlice2, nonce, block.timestamp + 1);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
 
@@ -275,7 +274,7 @@ contract PermitTest is Test, PosmTestSetup {
 
         // Alice gives Bob permission to operate on her liquidity
         uint256 nonce = 1;
-        bytes32 digest = lpm.getDigest(bob, tokenId, nonce, block.timestamp + 1);
+        bytes32 digest = getDigest(bob, tokenId, nonce, block.timestamp + 1);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
 
         // bob gives himself permission
@@ -304,7 +303,7 @@ contract PermitTest is Test, PosmTestSetup {
 
         // Alice gives Bob permission to operate on her liquidity
         uint256 nonce = 1;
-        bytes32 digest = lpm.getDigest(bob, tokenId, nonce, block.timestamp + 1);
+        bytes32 digest = getDigest(bob, tokenId, nonce, block.timestamp + 1);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
 
         // charlie gives Bob permission to operate on alice's token

@@ -46,7 +46,7 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
-        
+
         seedBalance(alice);
         seedBalance(bob);
 
@@ -92,7 +92,7 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // Alice gives Bob permission to operate on her liquidity
         uint256 nonce = 1;
-        bytes32 digest = lpm.getDigest(bob, tokenId, nonce, block.timestamp + 1);
+        bytes32 digest = getDigest(bob, tokenId, nonce, block.timestamp + 1);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
 
         // bob gives himself permission and decreases liquidity
@@ -102,8 +102,7 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
         uint256 liquidityToRemove = 0.4444e18;
         bytes memory actions = getDecreaseEncoded(tokenId, range, 0.4444e18, ZERO_BYTES);
-        calls[1] =
-            abi.encodeWithSelector(PositionManager(lpm).modifyLiquidities.selector, actions, _deadline);
+        calls[1] = abi.encodeWithSelector(PositionManager(lpm).modifyLiquidities.selector, actions, _deadline);
 
         vm.prank(bob);
         lpm.multicall(calls);

@@ -39,7 +39,7 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce 
         address owner = ownerOf(tokenId);
         if (spender == owner) revert NoSelfPermit();
 
-        bytes32 digest = getDigest(spender, tokenId, nonce, deadline);
+        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(PERMIT_TYPEHASH, spender, tokenId, nonce, deadline)));
 
         if (owner.code.length != 0) {
             if (
@@ -71,20 +71,6 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce 
     function _approve(address owner, address spender, uint256 id) internal {
         getApproved[id] = spender;
         emit Approval(owner, spender, id);
-    }
-
-    function getDigest(address spender, uint256 tokenId, uint256 _nonce, uint256 deadline)
-        public
-        view
-        returns (bytes32 digest)
-    {
-        digest = keccak256(
-            abi.encodePacked(
-                "\x19\x01",
-                DOMAIN_SEPARATOR(),
-                keccak256(abi.encode(PERMIT_TYPEHASH, spender, tokenId, _nonce, deadline))
-            )
-        );
     }
 
     function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
