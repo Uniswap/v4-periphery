@@ -71,7 +71,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: 0, tickUpper: 60});
         bytes memory calls = getMintEncoded(config, 1e18, address(this), "");
 
-        // SafeTransferLib does not bubble the ContractLocked error and instead reverts with its own error
+        // Permit2.transferFrom does not bubble the ContractLocked error and instead reverts with its own error
         vm.expectRevert(abi.encodeWithSelector(IAllowanceTransfer.AllowanceExpired.selector, 0));
         lpm.modifyLiquidities(calls, block.timestamp + 1);
     }
