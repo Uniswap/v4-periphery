@@ -10,7 +10,7 @@ import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientSta
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 import {PathKey, PathKeyLib} from "./libraries/PathKey.sol";
-import {CalldataBytesLib} from "./libraries/CalldataBytesLib.sol";
+import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
@@ -22,7 +22,7 @@ import {Actions} from "./libraries/Actions.sol";
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
 abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using PathKeyLib for PathKey;
-    using CalldataBytesLib for bytes;
+    using CalldataDecoder for bytes;
     using TransientStateLibrary for IPoolManager;
 
     constructor(IPoolManager poolManager) BaseActionsRouter(poolManager) {}

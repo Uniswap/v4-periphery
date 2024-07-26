@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {V4RouterImplementation} from "../shared/implementation/V4RouterImplementation.sol";
 import {Plan, ActionsRouterPlanner} from "../shared/ActionsRouterPlanner.sol";
-import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PathKey} from "../../src/libraries/PathKey.sol";
 import {Actions} from "../../src/libraries/Actions.sol";

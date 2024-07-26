@@ -10,13 +10,13 @@ import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
-import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
+import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {IMulticall} from "../../src/interfaces/IMulticall.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner} from "../shared/Planner.sol";
@@ -47,15 +47,15 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        LiquidityRange memory range = LiquidityRange({
+        PositionConfig memory config = PositionConfig({
             poolKey: key,
             tickLower: TickMath.minUsableTick(key.tickSpacing),
             tickUpper: TickMath.maxUsableTick(key.tickSpacing)
         });
 
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode(range, 100e18, address(this), ZERO_BYTES));
-        bytes memory actions = planner.finalize(range.poolKey);
+        planner = planner.add(Actions.MINT, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        bytes memory actions = planner.finalize(config.poolKey);
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
