@@ -110,7 +110,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactOut1Hop");
+        snapLastCall("V4Router_ExactOut1Hop_zeroForOne");
     }
 
     function test_gas_swapExactOut_1Hop_oneForZero() public {
@@ -125,7 +125,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.encode();
 
         router.executeActions(data);
-        snapLastCall("V4Router_ExactOut1Hop");
+        snapLastCall("V4Router_ExactOut1Hop_oneForZero");
     }
 
     function test_gas_swapExactOut_2Hops() public {

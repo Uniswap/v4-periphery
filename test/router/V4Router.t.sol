@@ -16,7 +16,7 @@ contract V4RouterTest is RoutingTestHelpers {
         plan = ActionsRouterPlanner.init();
     }
 
-    function test_gas_swapExactInputSingle_zeroForOne() public {
+    function test_swapExactInputSingle_zeroForOne() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
@@ -62,7 +62,7 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(newBalance0 - prevBalance0, expectedAmountOut);
     }
 
-    function test_gas_swapExactIn_1Hop_zeroForOne() public {
+    function test_swapExactIn_1Hop_zeroForOne() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
@@ -109,7 +109,7 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(newBalance0 - prevBalance0, expectedAmountOut);
     }
 
-    function test_gas_swapExactIn_2Hops() public {
+    function test_swapExactIn_2Hops() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 984211133872795298;
 
@@ -140,7 +140,7 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(currency2.balanceOf(address(router)), 0);
     }
 
-    function test_gas_swapExactIn_3Hops() public {
+    function test_swapExactIn_3Hops() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 976467664490096191;
 
@@ -170,7 +170,7 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(currency3.balanceOf(address(router)), 0);
     }
 
-    function test_gas_swapExactOutputSingle_zeroForOne() public {
+    function test_swapExactOutputSingle_zeroForOne() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
@@ -216,7 +216,7 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(newBalance0 - prevBalance0, amountOut);
     }
 
-    function test_gas_swapExactOut_1Hop_zeroForOne() public {
+    function test_swapExactOut_1Hop_zeroForOne() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
@@ -240,7 +240,7 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(newBalance1 - prevBalance1, amountOut);
     }
 
-    function test_gas_swapExactOut_1Hop_oneForZero() public {
+    function test_swapExactOut_1Hop_oneForZero() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
@@ -264,7 +264,7 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(newBalance0 - prevBalance0, amountOut);
     }
 
-    function test_gas_swapExactOut_2Hops() public {
+    function test_swapExactOut_2Hops() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1016204441757464409;
 
@@ -295,7 +295,7 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(currency2.balanceOf(address(router)), 0);
     }
 
-    function test_gas_swapExactOut_3Hops() public {
+    function test_swapExactOut_3Hops() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1024467570922834110;
 
