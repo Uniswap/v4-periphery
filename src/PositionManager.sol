@@ -110,7 +110,7 @@ contract PositionManager is
         (uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes memory hookData) =
             abi.decode(params, (uint256, PositionConfig, uint256, bytes));
 
-        if (!_isApprovedOrOwner(_getLocker(), tokenId)) revert NotApproved(_getLocker());
+        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
 
         // Note: the tokenId is used as the salt.
@@ -149,7 +149,7 @@ contract PositionManager is
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
 
         // the locker is the payer or receiver
-        address caller = _getLocker();
+        address caller = _msgSender();
         if (currencyDelta < 0) {
             _settle(currency, caller, uint256(-currencyDelta));
 
@@ -168,7 +168,7 @@ contract PositionManager is
         (uint256 tokenId, PositionConfig memory config, bytes memory hookData) =
             abi.decode(params, (uint256, PositionConfig, bytes));
 
-        if (!_isApprovedOrOwner(_getLocker(), tokenId)) revert NotApproved(_getLocker());
+        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
 
