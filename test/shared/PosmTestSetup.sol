@@ -42,7 +42,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         _approvePosmAsASpender();
     }
 
-    function approvePosmNative() public {
+    function approvePosmCurrency1() public {
         // Assumes currency0 is the native token so only execute approvals for currency1.
         IERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
         permit2.approve(Currency.unwrap(currency1), address(lpm), type(uint160).max, type(uint48).max);
