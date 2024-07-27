@@ -9,12 +9,13 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
-import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
+import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
@@ -57,16 +58,20 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
 
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
         // swap to create fees
         uint256 swapAmount = 0.01e18;
         swap(key, false, -int256(swapAmount), ZERO_BYTES);
 
-        BalanceDelta expectedFees = IPositionManager(address(lpm)).getFeesOwed(manager, tokenId);
+        BalanceDelta expectedFees = IPositionManager(address(lpm)).getFeesOwed(manager, config, tokenId);
 
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = collect(tokenId, ZERO_BYTES);
+
+        BalanceDelta delta = collect(tokenId, config, ZERO_BYTES);
 
         assertApproxEqAbs(uint256(int256(delta.amount1())), swapAmount.mulWadDown(FEE_WAD), 1 wei);
         assertEq(uint256(int256(delta.amount1())), uint256(int256(expectedFees.amount1())));
@@ -86,21 +91,21 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         liquidityDeltaBob = bound(liquidityDeltaBob, 100e18, 100_000e18);
 
-        LiquidityRange memory range =
-            LiquidityRange({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         vm.prank(alice);
-        mint(range, uint256(params.liquidityDelta), alice, ZERO_BYTES);
+        mint(config, uint256(params.liquidityDelta), alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.prank(bob);
-        mint(range, liquidityDeltaBob, bob, ZERO_BYTES);
+        mint(config, liquidityDeltaBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // confirm the positions are same range
-        (, int24 tickLowerAlice, int24 tickUpperAlice) = lpm.tokenRange(tokenIdAlice);
-        (, int24 tickLowerBob, int24 tickUpperBob) = lpm.tokenRange(tokenIdBob);
-        assertEq(tickLowerAlice, tickLowerBob);
-        assertEq(tickUpperAlice, tickUpperBob);
+        // (, int24 tickLowerAlice, int24 tickUpperAlice) = lpm.tokenRange(tokenIdAlice);
+        // (, int24 tickLowerBob, int24 tickUpperBob) = lpm.tokenRange(tokenIdBob);
+        // assertEq(tickLowerAlice, tickLowerBob);
+        // assertEq(tickUpperAlice, tickUpperBob);
 
         // swap to create fees
         uint256 swapAmount = 0.01e18;
@@ -110,7 +115,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0AliceBefore = currency0.balanceOf(alice);
         uint256 balance1AliceBefore = currency1.balanceOf(alice);
         vm.startPrank(alice);
-        BalanceDelta delta = collect(tokenIdAlice, ZERO_BYTES);
+        BalanceDelta delta = collect(tokenIdAlice, config, ZERO_BYTES);
         vm.stopPrank();
         uint256 balance0AliceAfter = currency0.balanceOf(alice);
         uint256 balance1AliceAfter = currency1.balanceOf(alice);
@@ -123,7 +128,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0BobBefore = currency0.balanceOf(bob);
         uint256 balance1BobBefore = currency1.balanceOf(bob);
         vm.startPrank(bob);
-        delta = collect(tokenIdBob, ZERO_BYTES);
+        delta = collect(tokenIdBob, config, ZERO_BYTES);
         vm.stopPrank();
         uint256 balance0BobAfter = currency0.balanceOf(bob);
         uint256 balance1BobAfter = currency1.balanceOf(bob);
@@ -138,20 +143,20 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_collect_donate() public {
-        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -120, tickUpper: 120});
-        mint(range, 10e18, address(this), ZERO_BYTES);
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        mint(config, 10e18, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to generate fee revenue
         uint256 feeRevenue = 1e18;
         donateRouter.donate(key, feeRevenue, feeRevenue, ZERO_BYTES);
 
-        BalanceDelta expectedFees = IPositionManager(address(lpm)).getFeesOwed(manager, tokenId);
+        BalanceDelta expectedFees = IPositionManager(address(lpm)).getFeesOwed(manager, config, tokenId);
 
         // collect fees
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = collect(tokenId, ZERO_BYTES);
+        BalanceDelta delta = collect(tokenId, config, ZERO_BYTES);
 
         assertApproxEqAbs(uint256(int256(delta.amount0())), feeRevenue, 1 wei);
         assertApproxEqAbs(uint256(int256(delta.amount1())), feeRevenue, 1 wei);
@@ -164,19 +169,19 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     function test_collect_donate_sameRange() public {
         // alice and bob create liquidity on the same range [-120, 120]
-        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -120, tickUpper: 120});
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
 
         // alice provisions 3x the amount of liquidity as bob
         uint256 liquidityAlice = 3000e18;
         uint256 liquidityBob = 1000e18;
 
         vm.startPrank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         vm.stopPrank();
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.startPrank(bob);
-        mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
         vm.stopPrank();
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
@@ -187,7 +192,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         {
             // alice collects her share
-            BalanceDelta expectedFeesAlice = IPositionManager(address(lpm)).getFeesOwed(manager, tokenIdAlice);
+            BalanceDelta expectedFeesAlice = IPositionManager(address(lpm)).getFeesOwed(manager, config, tokenIdAlice);
             assertApproxEqAbs(
                 uint128(expectedFeesAlice.amount0()),
                 feeRevenue0.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob),
@@ -202,7 +207,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
             vm.startPrank(alice);
-            BalanceDelta deltaAlice = collect(tokenIdAlice, ZERO_BYTES);
+            BalanceDelta deltaAlice = collect(tokenIdAlice, config, ZERO_BYTES);
             vm.stopPrank();
 
             assertEq(deltaAlice.amount0(), expectedFeesAlice.amount0());
@@ -213,7 +218,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         {
             // bob collects his share
-            BalanceDelta expectedFeesBob = IPositionManager(address(lpm)).getFeesOwed(manager, tokenIdBob);
+            BalanceDelta expectedFeesBob = IPositionManager(address(lpm)).getFeesOwed(manager, config, tokenIdBob);
             assertApproxEqAbs(
                 uint128(expectedFeesBob.amount0()),
                 feeRevenue0.mulDivDown(liquidityBob, liquidityAlice + liquidityBob),
@@ -228,7 +233,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
             uint256 balance0BeforeBob = currency0.balanceOf(bob);
             uint256 balance1BeforeBob = currency1.balanceOf(bob);
             vm.startPrank(bob);
-            BalanceDelta deltaBob = collect(tokenIdBob, ZERO_BYTES);
+            BalanceDelta deltaBob = collect(tokenIdBob, config, ZERO_BYTES);
             vm.stopPrank();
 
             assertEq(deltaBob.amount0(), expectedFeesBob.amount0());
@@ -238,24 +243,24 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         }
     }
 
-    /// @dev Alice and Bob create liquidity on the same range, and decrease their liquidity
-    // Even though their positions are the same range, they are unique positions in pool manager.
+    /// @dev Alice and Bob create liquidity on the same config, and decrease their liquidity
+    // Even though their positions are the same config, they are unique positions in pool manager.
     function test_decreaseLiquidity_sameRange_exact() public {
         // alice and bob create liquidity on the same range [-120, 120]
-        LiquidityRange memory range = LiquidityRange({poolKey: key, tickLower: -120, tickUpper: 120});
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
 
         // alice provisions 3x the amount of liquidity as bob
         uint256 liquidityAlice = 3000e18;
         uint256 liquidityBob = 1000e18;
 
+        uint256 tokenIdAlice = lpm.nextTokenId();
         vm.startPrank(alice);
-        BalanceDelta lpDeltaAlice = mint(range, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        BalanceDelta lpDeltaAlice = mint(config, liquidityAlice, alice, ZERO_BYTES);
         vm.stopPrank();
 
+        uint256 tokenIdBob = lpm.nextTokenId();
         vm.startPrank(bob);
-        BalanceDelta lpDeltaBob = mint(range, liquidityBob, bob, ZERO_BYTES);
-        uint256 tokenIdBob = lpm.nextTokenId() - 1;
+        BalanceDelta lpDeltaBob = mint(config, liquidityBob, bob, ZERO_BYTES);
         vm.stopPrank();
 
         // swap to create fees
@@ -270,7 +275,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
             uint256 aliceBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(alice));
             // alice decreases liquidity
             vm.startPrank(alice);
-            decreaseLiquidity(tokenIdAlice, liquidityAlice, ZERO_BYTES);
+            decreaseLiquidity(tokenIdAlice, config, liquidityAlice, ZERO_BYTES);
             vm.stopPrank();
 
             // alice has accrued her principle liquidity + any fees in token0
@@ -294,7 +299,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
             uint256 bobBalance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(bob));
             // bob decreases half of his liquidity
             vm.startPrank(bob);
-            decreaseLiquidity(tokenIdBob, liquidityBob / 2, ZERO_BYTES);
+            decreaseLiquidity(tokenIdBob, config, liquidityBob / 2, ZERO_BYTES);
             vm.stopPrank();
 
             // bob has accrued half his principle liquidity + any fees in token0

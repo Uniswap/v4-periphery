@@ -3,12 +3,12 @@ pragma solidity ^0.8.24;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SafeCallback} from "./SafeCallback.sol";
-import {BytesLib} from "../libraries/BytesLib.sol";
+import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
 
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.
 /// @dev Suggested uint256 action values are defined in Actions.sol, however any definition can be used
 abstract contract BaseActionsRouter is SafeCallback {
-    using BytesLib for bytes;
+    using CalldataDecoder for bytes;
 
     /// @notice emitted when different numbers of parameters and actions are provided
     error LengthMismatch();
@@ -16,7 +16,7 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// @notice emitted when an inheriting contract does not support an action
     error UnsupportedAction(uint256 action);
 
-    constructor(IPoolManager poolManager) SafeCallback(poolManager) {}
+    constructor(IPoolManager _poolManager) SafeCallback(_poolManager) {}
 
     /// @notice internal function that triggers the execution of a set of actions on v4
     /// @dev inheriting contracts should call this function to trigger execution
@@ -27,7 +27,7 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// @notice function that is called by the PoolManager through the SafeCallback.unlockCallback
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         // abi.decode(data, (uint256[], bytes[]));
-        (uint256[] calldata actions, bytes[] calldata params) = data.decodeInCalldata();
+        (uint256[] calldata actions, bytes[] calldata params) = data.decodeActionsRouterParams();
 
         uint256 numActions = actions.length;
         if (numActions != params.length) revert LengthMismatch();

@@ -8,7 +8,7 @@ import {ImmutableState} from "./ImmutableState.sol";
 abstract contract SafeCallback is ImmutableState, IUnlockCallback {
     error NotPoolManager();
 
-    constructor(IPoolManager poolManager) ImmutableState(poolManager) {}
+    constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}
 
     modifier onlyByPoolManager() {
         if (msg.sender != address(poolManager)) revert NotPoolManager();

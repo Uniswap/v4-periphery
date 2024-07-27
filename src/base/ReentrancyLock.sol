@@ -13,4 +13,8 @@ contract ReentrancyLock {
         _;
         Locker.set(address(0));
     }
+
+    function _getLocker() internal view returns (address) {
+        return Locker.get();
+    }
 }

@@ -11,14 +11,15 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
-import {LiquidityRange} from "../../src/types/LiquidityRange.sol";
+import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {Actions, IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Planner} from "../shared/Planner.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
@@ -38,7 +39,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     // expresses the fee as a wad (i.e. 3000 = 0.003e18 = 0.30%)
     uint256 FEE_WAD;
 
-    LiquidityRange range;
+    PositionConfig config;
 
     // Error tolerance.
     uint256 tolerance = 0.00000000001 ether;
@@ -62,7 +63,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         approvePosmFor(bob);
 
         // define a reusable range
-        range = LiquidityRange({poolKey: key, tickLower: -300, tickUpper: 300});
+        config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
     function test_increaseLiquidity_withExactFees() public {
@@ -74,12 +75,12 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -88,15 +89,15 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // alice uses her exact fees to increase liquidity
         // Slight error in this calculation vs. actual fees.. TODO: Fix this.
-        BalanceDelta feesOwedAlice = IPositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
+        BalanceDelta feesOwedAlice = IPositionManager(lpm).getFeesOwed(manager, config, tokenIdAlice);
         // Note: You can alternatively calculate Alice's fees owed from the swap amount, fee on the pool, and total liquidity in that range.
         // swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob);
 
-        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(range.tickLower),
-            TickMath.getSqrtPriceAtTick(range.tickUpper),
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
             uint256(int256(feesOwedAlice.amount0())),
             uint256(int256(feesOwedAlice.amount1()))
         );
@@ -106,8 +107,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, liquidityDelta, ZERO_BYTES));
-        bytes memory calls = planner.finalize(range.poolKey);
+        planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        bytes memory calls = planner.finalize(config.poolKey);
         vm.startPrank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         vm.stopPrank();
@@ -128,12 +129,12 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
 
         // donate to create fees
         uint256 amountDonate = 0.2e18;
@@ -142,11 +143,11 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         // subtract 1 cause we'd rather take than pay
         uint256 feesAmount = amountDonate.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob) - 1;
 
-        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(range.tickLower),
-            TickMath.getSqrtPriceAtTick(range.tickUpper),
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
             feesAmount,
             feesAmount
         );
@@ -155,13 +156,38 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
         vm.startPrank(alice);
-        increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
+        increaseLiquidity(tokenIdAlice, config, liquidityDelta, ZERO_BYTES);
         vm.stopPrank();
 
         // alice barely spent any tokens
         // TODO: Use clear.
         assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
         assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
+    }
+
+    function test_increaseLiquidity_withUnapprovedCaller() public {
+        // Alice provides liquidity
+        // Bob increases Alice's liquidity without being approved
+        uint256 liquidityAlice = 3_000e18;
+
+        // alice provides liquidity
+        vm.prank(alice);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice)));
+        uint128 oldLiquidity = StateLibrary.getPositionLiquidity(manager, config.poolKey.toId(), positionId);
+
+        // bob can increase liquidity for alice even though he is not the owner / not approved
+        vm.startPrank(bob);
+        increaseLiquidity(tokenIdAlice, config, 100e18, ZERO_BYTES);
+        vm.stopPrank();
+
+        uint128 newLiquidity = StateLibrary.getPositionLiquidity(manager, config.poolKey.toId(), positionId);
+
+        // assert liqudity increased by the correct amount
+        assertEq(newLiquidity, oldLiquidity + uint128(100e18));
     }
 
     function test_increaseLiquidity_sameRange_withExcessFees() public {
@@ -174,12 +200,12 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
@@ -189,20 +215,20 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         {
             // alice will use half of her fees to increase liquidity
-            BalanceDelta aliceFeesOwed = IPositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
+            BalanceDelta aliceFeesOwed = IPositionManager(lpm).getFeesOwed(manager, config, tokenIdAlice);
 
-            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
-                TickMath.getSqrtPriceAtTick(range.tickLower),
-                TickMath.getSqrtPriceAtTick(range.tickUpper),
+                TickMath.getSqrtPriceAtTick(config.tickLower),
+                TickMath.getSqrtPriceAtTick(config.tickUpper),
                 uint256(int256(aliceFeesOwed.amount0() / 2)),
                 uint256(int256(aliceFeesOwed.amount1() / 2))
             );
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
             vm.startPrank(alice);
-            increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
+            increaseLiquidity(tokenIdAlice, config, liquidityDelta, ZERO_BYTES);
             vm.stopPrank();
 
             assertApproxEqAbs(
@@ -230,7 +256,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             uint256 balance0BeforeBob = currency0.balanceOf(bob);
             uint256 balance1BeforeBob = currency1.balanceOf(bob);
             vm.startPrank(bob);
-            collect(tokenIdBob, ZERO_BYTES);
+            collect(tokenIdBob, config, ZERO_BYTES);
             vm.stopPrank();
 
             assertApproxEqAbs(
@@ -268,12 +294,12 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // alice provides liquidity
         vm.prank(alice);
-        mint(range, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // bob provides liquidity
         vm.prank(bob);
-        mint(range, liquidityBob, bob, ZERO_BYTES);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
         uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // swap to create fees
@@ -282,14 +308,14 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
 
         // alice will use all of her fees + additional capital to increase liquidity
-        BalanceDelta feesOwed = IPositionManager(lpm).getFeesOwed(manager, tokenIdAlice);
+        BalanceDelta feesOwed = IPositionManager(lpm).getFeesOwed(manager, config, tokenIdAlice);
 
         {
-            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, range.poolKey.toId());
+            (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
-                TickMath.getSqrtPriceAtTick(range.tickLower),
-                TickMath.getSqrtPriceAtTick(range.tickUpper),
+                TickMath.getSqrtPriceAtTick(config.tickLower),
+                TickMath.getSqrtPriceAtTick(config.tickUpper),
                 uint256(int256(feesOwed.amount0())) * 2,
                 uint256(int256(feesOwed.amount1())) * 2
             );
@@ -297,7 +323,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
             vm.startPrank(alice);
-            increaseLiquidity(tokenIdAlice, liquidityDelta, ZERO_BYTES);
+            increaseLiquidity(tokenIdAlice, config, liquidityDelta, ZERO_BYTES);
             vm.stopPrank();
             uint256 balance0AfterAlice = currency0.balanceOf(alice);
             uint256 balance1AfterAlice = currency1.balanceOf(alice);
@@ -312,7 +338,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             uint256 balance0BeforeBob = currency0.balanceOf(bob);
             uint256 balance1BeforeBob = currency1.balanceOf(bob);
             vm.startPrank(bob);
-            collect(tokenIdBob, ZERO_BYTES);
+            collect(tokenIdBob, config, ZERO_BYTES);
             vm.stopPrank();
             uint256 balance0AfterBob = currency0.balanceOf(bob);
             uint256 balance1AfterBob = currency1.balanceOf(bob);
