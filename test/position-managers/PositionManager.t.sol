@@ -369,11 +369,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // transfer to alice
         lpm.transferFrom(address(this), alice, tokenId);
 
-        // alice can decrease liquidity and burn
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, liquidity, ZERO_BYTES));
-        planner = planner.add(Actions.BURN, abi.encode(tokenId));
-        bytes memory calls = planner.finalize(config.poolKey);
+        // alice can burn the position
+        bytes memory calls = getBurnEncoded(tokenId, config, ZERO_BYTES);
 
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency0.balanceOf(alice);

@@ -144,8 +144,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
 
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, initialLiquidity, ZERO_BYTES));
-        planner = planner.add(Actions.BURN, abi.encode(tokenId));
+        planner = planner.add(Actions.BURN, abi.encode(tokenId, config, ZERO_BYTES));
         planner = planner.add(Actions.MINT, abi.encode(newConfig, newLiquidity, address(this), ZERO_BYTES));
         bytes memory calls = planner.finalize(config.poolKey);
 
