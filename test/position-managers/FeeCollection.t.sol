@@ -52,6 +52,23 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         approvePosmFor(bob);
     }
 
+    // asserts that donations agree with feesOwed helper function
+    function test_fuzz_getFeesOwed_donate(uint256 feeRevenue0, uint256 feeRevenue1) public {
+        feeRevenue0 = bound(feeRevenue0, 0, 100_000_000 ether);
+        feeRevenue1 = bound(feeRevenue1, 0, 100_000_000 ether);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 10e18, address(this), ZERO_BYTES);
+
+        // donate to generate fee revenue
+        donateRouter.donate(key, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        BalanceDelta expectedFees = IPositionManager(address(lpm)).getFeesOwed(manager, config, tokenId);
+        assertApproxEqAbs(uint128(expectedFees.amount0()), feeRevenue0, 1 wei); // imprecision 😅
+        assertApproxEqAbs(uint128(expectedFees.amount1()), feeRevenue1, 1 wei);
+    }
+
     function test_fuzz_collect_erc20(IPoolManager.ModifyLiquidityParams memory params) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         uint256 tokenId;
