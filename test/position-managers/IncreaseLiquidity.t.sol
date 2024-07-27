@@ -343,15 +343,20 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0, type(uint256).max));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1, type(uint256).max));
+        planner.add(Actions.SWEEP_ERC20_TO, abi.encode(currency0, address(this)));
+        planner.add(Actions.SWEEP_ERC20_TO, abi.encode(currency1, address(this)));
 
-        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 0);
-        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 0);
+        uint256 balanceBefore0 = currency0.balanceOf(address(this));
+        uint256 balanceBefore1 = currency1.balanceOf(address(this));
+
+        assertEq(currency0.balanceOf(address(lpm)), 0);
+        assertEq(currency0.balanceOf(address(lpm)), 0);
 
         currency0.transfer(address(lpm), 100e18);
         currency1.transfer(address(lpm), 100e18);
 
-        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 100e18);
-        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 100e18);
+        assertEq(currency0.balanceOf(address(lpm)), 100e18);
+        assertEq(currency0.balanceOf(address(lpm)), 100e18);
 
         bytes memory calls = planner.encode();
 
@@ -360,7 +365,11 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 amount0 = abi.decode(results[1], (uint256));
         uint256 amount1 = abi.decode(results[2], (uint256));
 
-        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 100e18 - amount0);
-        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 100e18 - amount1);
+        // The balances were swept back to this address.
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 0);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 0);
+
+        assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amount0);
+        assertEq(currency1.balanceOf(address(this)), balanceBefore0 - amount0);
     }
 }

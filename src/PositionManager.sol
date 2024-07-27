@@ -85,6 +85,8 @@ contract PositionManager is
             return _burn(params);
         } else if (action == Actions.SETTLE_WITH_BALANCE) {
             return _settleWithBalance(params);
+        } else if (action == Actions.SWEEP_ERC20_TO) {
+            _sweepERC20To(params);
         } else {
             revert UnsupportedAction(action);
         }
@@ -233,6 +235,13 @@ contract PositionManager is
     function _sweepNativeToken(address recipient) internal {
         uint256 nativeBalance = address(this).balance;
         if (nativeBalance > 0) recipient.safeTransferETH(nativeBalance);
+    }
+
+    /// @param params an encoding of Currency, address
+    function _sweepERC20To(bytes calldata params) internal {
+        (Currency currency, address to) = abi.decode(params, (Currency, address));
+        uint256 tokenBalance = ERC20(Currency.unwrap(currency)).balanceOf(address(this));
+        if (tokenBalance > 0) currency.transfer(to, tokenBalance);
     }
 
     // implementation of abstract function DeltaResolver._pay

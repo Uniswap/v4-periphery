@@ -27,4 +27,5 @@ library Actions {
 
     // settle using the balance contract
     uint256 constant SETTLE_WITH_BALANCE = 0x24;
+    uint256 constant SWEEP_ERC20_TO = 0x25;
 }
