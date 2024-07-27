@@ -21,14 +21,14 @@ import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {IMulticall} from "../../src/interfaces/IMulticall.sol";
-import {Planner} from "../shared/Planner.sol";
+import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
 contract GasTest is Test, PosmTestSetup, GasSnapshot {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
-    using Planner for Planner.Plan;
+    using Planner for Plan;
 
     PoolId poolId;
     address alice;
@@ -70,7 +70,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     }
 
     function test_gas_mint() public {
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.MINT_POSITION, abi.encode(config, 10_000 ether, address(this), ZERO_BYTES));
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -84,7 +84,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
         // Mint to a diff config, diff user.
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.MINT_POSITION, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
         bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
@@ -99,7 +99,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
         // Mint to a diff config, diff user.
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.MINT_POSITION, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
         bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
@@ -114,7 +114,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
         // Mint to a diff config, diff user.
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.MINT_POSITION, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
         bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
@@ -126,7 +126,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(config.poolKey);
@@ -166,7 +166,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
             tokensOwedAlice
         );
 
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(config.poolKey);
@@ -207,7 +207,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
             halfTokensOwedAlice
         );
 
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(config.poolKey);
@@ -221,7 +221,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(config.poolKey);
@@ -242,8 +242,8 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
             tickUpper: TickMath.maxUsableTick(key.tickSpacing)
         });
 
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT_POSITION, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode(config, 100e18, address(this), ZERO_BYTES));
         bytes memory actions = planner.finalize(config.poolKey);
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
@@ -260,8 +260,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
         // Collect by calling decrease with 0.
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, ZERO_BYTES));
+        Plan memory planner = Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -272,7 +271,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     function test_gas_sameRange_mint() public {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.MINT_POSITION, abi.encode(config, 10_001 ether, address(alice), ZERO_BYTES));
         bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
@@ -289,7 +288,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(config.poolKey);
@@ -309,8 +308,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         // donate to create fee revenue
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, ZERO_BYTES));
+        Plan memory planner = Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -321,7 +319,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner = Planner.init().add(Actions.BURN_POSITION, abi.encode(tokenId, config, ZERO_BYTES));
+        Plan memory planner = Planner.init().add(Actions.BURN_POSITION, abi.encode(tokenId, config, ZERO_BYTES));
         bytes memory calls = planner.finalize(config.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
@@ -333,7 +331,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
         decreaseLiquidity(tokenId, config, 10_000 ether, ZERO_BYTES);
-        Planner.Plan memory planner = Planner.init().add(Actions.BURN_POSITION, abi.encode(tokenId, config, ZERO_BYTES));
+        Plan memory planner = Planner.init().add(Actions.BURN_POSITION, abi.encode(tokenId, config, ZERO_BYTES));
 
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
@@ -347,9 +345,9 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
-        planner = planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, ZERO_BYTES));
+        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, ZERO_BYTES));
 
         // We must include CLOSE commands.
         bytes memory calls = planner.finalize(config.poolKey);
@@ -433,8 +431,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 tokenId = lpm.nextTokenId();
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.BURN_POSITION, abi.encode(tokenId, configNative, ZERO_BYTES));
+        Plan memory planner = Planner.init().add(Actions.BURN_POSITION, abi.encode(tokenId, configNative, ZERO_BYTES));
         bytes memory calls = planner.finalize(configNative.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
@@ -446,8 +443,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
         decreaseLiquidity(tokenId, configNative, 10_000 ether, ZERO_BYTES);
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.BURN_POSITION, abi.encode(tokenId, configNative, ZERO_BYTES));
+        Plan memory planner = Planner.init().add(Actions.BURN_POSITION, abi.encode(tokenId, configNative, ZERO_BYTES));
 
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
@@ -461,9 +457,9 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 tokenId = lpm.nextTokenId();
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner =
+        Plan memory planner =
             Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, configNative, 10_000 ether, ZERO_BYTES));
-        planner = planner.add(Actions.BURN_POSITION, abi.encode(tokenId, configNative, ZERO_BYTES));
+        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, configNative, ZERO_BYTES));
 
         // We must include CLOSE commands.
         bytes memory calls = planner.finalize(configNative.poolKey);

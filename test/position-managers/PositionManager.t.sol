@@ -24,7 +24,7 @@ import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {BaseActionsRouterReturns} from "../../src/base/BaseActionsRouterReturns.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
-import {Planner} from "../shared/Planner.sol";
+import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {ReentrantToken} from "../mocks/ReentrantToken.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
@@ -32,7 +32,7 @@ import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
-    using Planner for Planner.Plan;
+    using Planner for Plan;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -50,9 +50,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_modifyLiquidities_reverts_mismatchedLengths() public {
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT_POSITION, abi.encode("test"));
-        planner = planner.add(Actions.BURN_POSITION, abi.encode("test"));
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode("test"));
+        planner.add(Actions.BURN_POSITION, abi.encode("test"));
 
         bytes[] memory badParams = new bytes[](1);
 

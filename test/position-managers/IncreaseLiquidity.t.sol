@@ -22,7 +22,7 @@ import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
-import {Planner} from "../shared/Planner.sol";
+import {Planner, Plan} from "../shared/Planner.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
@@ -30,7 +30,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
-    using Planner for Planner.Plan;
+    using Planner for Plan;
     using FeeMath for IPositionManager;
 
     PoolId poolId;
@@ -107,8 +107,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
         // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        Plan memory planner = Planner.init();
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
         bytes memory calls = planner.finalize(config.poolKey);
         vm.startPrank(alice);
         lpm.modifyLiquidities(calls, _deadline);

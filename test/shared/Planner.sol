@@ -6,13 +6,13 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 
+struct Plan {
+    uint256[] actions;
+    bytes[] params;
+}
+
 library Planner {
     using Planner for Plan;
-
-    struct Plan {
-        uint256[] actions;
-        bytes[] params;
-    }
 
     function init() internal pure returns (Plan memory plan) {
         return Plan({actions: new uint256[](0), params: new bytes[](0)});
@@ -31,12 +31,15 @@ library Planner {
         actions[actions.length - 1] = action;
         params[params.length - 1] = param;
 
-        return Plan({actions: actions, params: params});
+        plan.actions = actions;
+        plan.params = params;
+
+        return plan;
     }
 
     function finalize(Plan memory plan, PoolKey memory poolKey) internal pure returns (bytes memory) {
-        plan = plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency0));
-        plan = plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency1));
+        plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency0));
+        plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency1));
         return plan.encode();
     }
 

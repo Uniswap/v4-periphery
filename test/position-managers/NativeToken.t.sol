@@ -30,14 +30,14 @@ import {PositionManager} from "../../src/PositionManager.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
-import {Planner} from "../shared/Planner.sol";
+import {Planner, Plan} from "../shared/Planner.sol";
 import {PositionConfig, PositionConfigLibrary} from "../../src/libraries/PositionConfig.sol";
 
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PositionConfigLibrary for PositionConfig;
-    using Planner for Planner.Plan;
+    using Planner for Plan;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using SafeCast for *;
