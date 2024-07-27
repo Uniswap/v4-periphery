@@ -75,13 +75,15 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 liquidityBob = 1_000e18;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
         mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -129,13 +131,15 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 liquidityBob = 1_000e18;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
         mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
 
         // donate to create fees
         uint256 amountDonate = 0.2e18;
@@ -172,9 +176,10 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 liquidityAlice = 3_000e18;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice));
@@ -200,14 +205,16 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
         vm.prank(bob);
+        uint256 tokenIdBob = lpm.nextTokenId();
         mint(config, liquidityBob, bob, ZERO_BYTES);
-        uint256 tokenIdBob = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -294,14 +301,16 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
+        uint256 tokenIdBob = lpm.nextTokenId();
         mint(config, liquidityBob, bob, ZERO_BYTES);
-        uint256 tokenIdBob = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;

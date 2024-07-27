@@ -363,8 +363,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mintTransferBurn() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
         BalanceDelta mintDelta = mint(config, liquidity, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         // transfer to alice
         lpm.transferFrom(address(this), alice, tokenId);
@@ -390,8 +390,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mintTransferCollect() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
         mint(config, liquidity, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to generate fee revenue
         uint256 feeRevenue0 = 1e18;
@@ -418,8 +418,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mintTransferIncrease() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
         mint(config, liquidity, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         // transfer to alice
         lpm.transferFrom(address(this), alice, tokenId);
@@ -454,8 +454,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mintTransferDecrease() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
         mint(config, liquidity, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to generate fee revenue
         uint256 feeRevenue0 = 1e18;

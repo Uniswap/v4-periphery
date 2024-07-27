@@ -122,8 +122,8 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     }
 
     function test_gas_increaseLiquidity_erc20() public {
+        uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
             Planner.init().add(Actions.INCREASE, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
@@ -141,13 +141,15 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 liquidityBob = 1_000e18;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
         mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
 
         // donate to create fees
         uint256 amountDonate = 0.2e18;
@@ -182,13 +184,15 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 liquidityBob = 1_000e18;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
         mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
 
         // donate to create fees
         uint256 amountDonate = 20e18;
@@ -217,8 +221,8 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     }
 
     function test_gas_decreaseLiquidity() public {
+        uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
             Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
@@ -252,8 +256,8 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     }
 
     function test_gas_collect() public {
+        uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to create fee revenue
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
@@ -284,8 +288,8 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
         vm.stopPrank();
 
+        uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner =
             Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
@@ -301,8 +305,8 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
         vm.stopPrank();
 
+        uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to create fee revenue
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);

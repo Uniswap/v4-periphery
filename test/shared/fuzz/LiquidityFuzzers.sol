@@ -30,9 +30,9 @@ contract LiquidityFuzzers is Fuzzers {
             Planner.init().add(Actions.MINT, abi.encode(config, uint256(params.liquidityDelta), recipient, hookData));
 
         bytes memory calls = planner.finalize(config.poolKey);
+        uint256 tokenId = lpm.nextTokenId();
         lpm.modifyLiquidities(calls, block.timestamp + 1);
 
-        uint256 tokenId = lpm.nextTokenId() - 1;
         return (tokenId, params);
     }
 }

@@ -62,8 +62,8 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_fuzz_execute_increaseLiquidity_once(uint256 initialLiquidity, uint256 liquidityToAdd) public {
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
+        uint256 tokenId = lpm.nextTokenId();
         mint(config, initialLiquidity, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
 
@@ -82,8 +82,8 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
         liquidityToAdd2 = bound(liquidityToAdd2, 1e18, 1000e18);
+        uint256 tokenId = lpm.nextTokenId();
         mint(config, initialLiquidity, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         Planner.Plan memory planner = Planner.init();
 
@@ -127,8 +127,8 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 initialLiquidity = 100e18;
 
         // mint a position on range [-300, 300]
+        uint256 tokenId = lpm.nextTokenId();
         BalanceDelta delta = mint(config, initialLiquidity, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         // we'll burn and mint a new position on [-60, 60]; calculate the liquidity units for the new range
         PositionConfig memory newConfig = PositionConfig({poolKey: config.poolKey, tickLower: -60, tickUpper: 60});

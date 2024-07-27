@@ -93,13 +93,15 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         PositionConfig memory config =
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, uint256(params.liquidityDelta), alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
-        vm.prank(bob);
+        vm.startPrank(bob);
+        uint256 tokenIdBob = lpm.nextTokenId();
         mint(config, liquidityDeltaBob, bob, ZERO_BYTES);
-        uint256 tokenIdBob = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // confirm the positions are same range
         // (, int24 tickLowerAlice, int24 tickUpperAlice) = lpm.tokenRange(tokenIdAlice);
@@ -144,8 +146,8 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     function test_collect_donate() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
         mint(config, 10e18, address(this), ZERO_BYTES);
-        uint256 tokenId = lpm.nextTokenId() - 1;
 
         // donate to generate fee revenue
         uint256 feeRevenue = 1e18;
@@ -176,14 +178,14 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 liquidityBob = 1000e18;
 
         vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
         vm.stopPrank();
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         vm.startPrank(bob);
+        uint256 tokenIdBob = lpm.nextTokenId();
         mint(config, liquidityBob, bob, ZERO_BYTES);
         vm.stopPrank();
-        uint256 tokenIdBob = lpm.nextTokenId() - 1;
 
         // donate to generate fee revenue
         uint256 feeRevenue0 = 1e18;
