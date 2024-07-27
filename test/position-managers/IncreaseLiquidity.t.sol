@@ -20,7 +20,8 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {Actions, IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 import {Planner} from "../shared/Planner.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
@@ -107,7 +108,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        planner = planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
         bytes memory calls = planner.finalize(config.poolKey);
         vm.startPrank(alice);
         lpm.modifyLiquidities(calls, _deadline);

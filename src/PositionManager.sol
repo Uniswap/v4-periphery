@@ -14,12 +14,14 @@ import {ERC20} from "solmate/src/tokens/ERC20.sol";
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
-import {IPositionManager, Actions} from "./interfaces/IPositionManager.sol";
+import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {Multicall} from "./base/Multicall.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
+import {BaseActionsRouterReturns} from "./base/BaseActionsRouterReturns.sol";
+import {Actions} from "./libraries/Actions.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -28,7 +30,8 @@ contract PositionManager is
     Multicall,
     SafeCallback,
     DeltaResolver,
-    ReentrancyLock
+    ReentrancyLock,
+    BaseActionsRouterReturns
 {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
@@ -45,7 +48,7 @@ contract PositionManager is
     mapping(uint256 tokenId => bytes32 configId) public positionConfigs;
 
     constructor(IPoolManager _poolManager)
-        SafeCallback(_poolManager)
+        BaseActionsRouterReturns(_poolManager)
         ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
     {}
 
@@ -63,39 +66,28 @@ contract PositionManager is
         checkDeadline(deadline)
         returns (bytes[] memory)
     {
-        // TODO: Edit the encoding/decoding.
-        return abi.decode(poolManager.unlock(unlockData), (bytes[]));
+        // For now POSM will bubble up sub call return values.
+        return _executeActions(unlockData);
     }
 
-    function _unlockCallback(bytes calldata payload) internal override returns (bytes memory) {
-        (Actions[] memory actions, bytes[] memory params) = abi.decode(payload, (Actions[], bytes[]));
-
-        bytes[] memory returnData = _dispatch(actions, params);
-
-        return abi.encode(returnData);
-    }
-
-    function _dispatch(Actions[] memory actions, bytes[] memory params) internal returns (bytes[] memory returnData) {
-        uint256 length = actions.length;
-        if (length != params.length) revert MismatchedLengths();
-        returnData = new bytes[](length);
-        for (uint256 i; i < length; i++) {
-            if (actions[i] == Actions.INCREASE) {
-                returnData[i] = _increase(params[i]);
-            } else if (actions[i] == Actions.DECREASE) {
-                returnData[i] = _decrease(params[i]);
-            } else if (actions[i] == Actions.MINT) {
-                // TODO: Mint will be coupled with increase.
-                returnData[i] = _mint(params[i]);
-            } else if (actions[i] == Actions.CLOSE_CURRENCY) {
-                returnData[i] = _close(params[i]);
-            } else if (actions[i] == Actions.BURN) {
-                // Will automatically decrease liquidity to 0 if the position is not already empty.
-                returnData[i] = _burn(params[i]);
-            } else {
-                revert UnsupportedAction();
-            }
+    function _handleAction(uint256 action, bytes calldata params) internal override returns (bytes memory) {
+        if (action == Actions.INCREASE_LIQUIDITY) {
+            return _increase(params);
+        } else if (action == Actions.DECREASE_LIQUIDITY) {
+            return _decrease(params);
+        } else if (action == Actions.MINT_POSITION) {
+            return _mint(params);
+        } else if (action == Actions.CLOSE_CURRENCY) {
+            return _close(params);
+        } else if (action == Actions.BURN_POSITION) {
+            return _burn(params);
+        } else {
+            revert UnsupportedAction(action);
         }
+    }
+
+    function _msgSender() internal view override returns (address) {
+        return _getLocker();
     }
 
     /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes hookData

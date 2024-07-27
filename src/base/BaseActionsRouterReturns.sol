@@ -7,7 +7,8 @@ import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
 
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.
 /// @dev Suggested uint256 action values are defined in Actions.sol, however any definition can be used
-abstract contract BaseActionsRouter is SafeCallback {
+/// @dev This contract handles return values from sub calls to _handleAction.
+abstract contract BaseActionsRouterReturns is SafeCallback {
     using CalldataDecoder for bytes;
 
     /// @notice emitted when different numbers of parameters and actions are provided
@@ -20,8 +21,8 @@ abstract contract BaseActionsRouter is SafeCallback {
 
     /// @notice internal function that triggers the execution of a set of actions on v4
     /// @dev inheriting contracts should call this function to trigger execution
-    function _executeActions(bytes calldata unlockData) internal {
-        poolManager.unlock(unlockData);
+    function _executeActions(bytes calldata unlockData) internal returns (bytes[] memory) {
+        return abi.decode(poolManager.unlock(unlockData), (bytes[]));
     }
 
     /// @notice function that is called by the PoolManager through the SafeCallback.unlockCallback
@@ -32,18 +33,18 @@ abstract contract BaseActionsRouter is SafeCallback {
         uint256 numActions = actions.length;
         if (numActions != params.length) revert LengthMismatch();
 
+        bytes[] memory results = new bytes[](numActions);
         for (uint256 actionIndex = 0; actionIndex < numActions; actionIndex++) {
             uint256 action = actions[actionIndex];
 
-            _handleAction(action, params[actionIndex]);
+            results[actionIndex] = _handleAction(action, params[actionIndex]);
         }
 
-        // TODO do we want to return anything?
-        return "";
+        return abi.encode(results);
     }
 
     /// @notice function to handle the parsing and execution of an action and its parameters
-    function _handleAction(uint256 action, bytes calldata params) internal virtual;
+    function _handleAction(uint256 action, bytes calldata params) internal virtual returns (bytes memory);
 
     /// @notice function that returns address considered executer of the actions
     /// @dev The other context functions, _msgData and _msgValue, are not supported by this contract

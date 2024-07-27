@@ -20,4 +20,8 @@ library Actions {
     // minting/burning 6909s to close deltas
     uint256 constant MINT_6909 = 0x20;
     uint256 constant BURN_6909 = 0x21;
+
+    // mint + burn ERC721 position
+    uint256 constant MINT_POSITION = 0x22;
+    uint256 constant BURN_POSITION = 0x23;
 }

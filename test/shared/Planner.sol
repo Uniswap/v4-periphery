@@ -3,22 +3,23 @@ pragma solidity ^0.8.20;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 
 library Planner {
     using Planner for Plan;
 
     struct Plan {
-        Actions[] actions;
+        uint256[] actions;
         bytes[] params;
     }
 
     function init() internal pure returns (Plan memory plan) {
-        return Plan({actions: new Actions[](0), params: new bytes[](0)});
+        return Plan({actions: new uint256[](0), params: new bytes[](0)});
     }
 
-    function add(Plan memory plan, Actions action, bytes memory param) internal pure returns (Plan memory) {
-        Actions[] memory actions = new Actions[](plan.actions.length + 1);
+    function add(Plan memory plan, uint256 action, bytes memory param) internal pure returns (Plan memory) {
+        uint256[] memory actions = new uint256[](plan.actions.length + 1);
         bytes[] memory params = new bytes[](plan.params.length + 1);
 
         for (uint256 i; i < actions.length - 1; i++) {

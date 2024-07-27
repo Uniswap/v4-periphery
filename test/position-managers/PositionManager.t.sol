@@ -17,9 +17,11 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {BaseActionsRouterReturns} from "../../src/base/BaseActionsRouterReturns.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner} from "../shared/Planner.sol";
@@ -49,12 +51,12 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     function test_modifyLiquidities_reverts_mismatchedLengths() public {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode("test"));
-        planner = planner.add(Actions.BURN, abi.encode("test"));
+        planner = planner.add(Actions.MINT_POSITION, abi.encode("test"));
+        planner = planner.add(Actions.BURN_POSITION, abi.encode("test"));
 
         bytes[] memory badParams = new bytes[](1);
 
-        vm.expectRevert(IPositionManager.MismatchedLengths.selector);
+        vm.expectRevert(BaseActionsRouterReturns.LengthMismatch.selector);
         lpm.modifyLiquidities(abi.encode(planner.actions, badParams), block.timestamp + 1);
     }
 

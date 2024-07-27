@@ -14,7 +14,8 @@ import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {IMulticall} from "../../src/interfaces/IMulticall.sol";
@@ -54,7 +55,7 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         });
 
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        planner = planner.add(Actions.MINT_POSITION, abi.encode(config, 100e18, address(this), ZERO_BYTES));
         bytes memory actions = planner.finalize(config.poolKey);
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);

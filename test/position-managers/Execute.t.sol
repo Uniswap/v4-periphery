@@ -15,9 +15,10 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner} from "../shared/Planner.sol";
@@ -85,8 +86,8 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         Planner.Plan memory planner = Planner.init();
 
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd2, ZERO_BYTES));
+        planner = planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
+        planner = planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd2, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -107,8 +108,8 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         Planner.Plan memory planner = Planner.init();
 
-        planner = planner.add(Actions.MINT, abi.encode(config, initialLiquidity, address(this), ZERO_BYTES));
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
+        planner = planner.add(Actions.MINT_POSITION, abi.encode(config, initialLiquidity, address(this), ZERO_BYTES));
+        planner = planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
