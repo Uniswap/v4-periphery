@@ -47,6 +47,8 @@ contract PositionManager is
     /// @inheritdoc IPositionManager
     mapping(uint256 tokenId => bytes32 configId) public positionConfigs;
 
+    uint256 public constant FULL_DELTA = type(uint256).max;
+
     constructor(IPoolManager _poolManager)
         BaseActionsRouterReturns(_poolManager)
         ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
@@ -81,6 +83,8 @@ contract PositionManager is
             return _close(params);
         } else if (action == Actions.BURN_POSITION) {
             return _burn(params);
+        } else if (action == Actions.SETTLE_WITH_BALANCE) {
+            return _settleWithBalance(params);
         } else {
             revert UnsupportedAction(action);
         }
@@ -162,6 +166,20 @@ contract PositionManager is
         return abi.encode(currencyDelta);
     }
 
+    /// @param params is an encoding of Currency, uint256 amount
+    /// @dev if amount == FULL_DELTA, it settles the full negative delta
+    /// @dev uses this addresses balance to settle a negative delta
+    /// @dev Should not be called for NATIVE settling bc does not sweep.
+    function _settleWithBalance(bytes memory params) internal returns (bytes memory) {
+        (Currency currency, uint256 amount) = abi.decode(params, (Currency, uint256));
+
+        amount = amount == FULL_DELTA ? _getFullSettleAmount(currency) : amount;
+
+        // set the payer to this address, performs a transfer.
+        _settle(currency, address(this), amount);
+        return abi.encode(amount);
+    }
+
     /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, bytes hookData
     /// @dev this is overloaded with ERC721Permit._burn
     function _burn(bytes memory params) internal returns (bytes memory) {
@@ -218,8 +236,27 @@ contract PositionManager is
     }
 
     // implementation of abstract function DeltaResolver._pay
-    function _pay(Currency token, address payer, uint256 amount) internal override {
-        // TODO this should use Permit2
-        ERC20(Currency.unwrap(token)).safeTransferFrom(payer, address(poolManager), amount);
+    function _pay(Currency currency, address payer, uint256 amount) internal override {
+        if (payer == address(this)) {
+            // TODO: This transfer no eth check. This is guaranteed to not be eth.
+            currency.transfer(address(poolManager), amount);
+        } else {
+            // TODO this should use Permit2
+            ERC20(Currency.unwrap(currency)).safeTransferFrom(payer, address(poolManager), amount);
+        }
+    }
+
+    function _getFullSettleAmount(Currency currency) private view returns (uint256 amount) {
+        int256 _amount = poolManager.currencyDelta(address(this), currency);
+        // If the amount is positive, it should be taken not settled for.
+        if (_amount > 0) revert IncorrectUseOfSettle();
+        amount = uint256(-_amount);
+    }
+
+    function _getFullTakeAmount(Currency currency) private view returns (uint256 amount) {
+        int256 _amount = poolManager.currencyDelta(address(this), currency);
+        // If the amount is negative, it should be settled not taken.
+        if (_amount < 0) revert IncorrectUseOfTake();
+        amount = uint256(_amount);
     }
 }

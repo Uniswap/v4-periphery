@@ -335,4 +335,32 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             );
         }
     }
+
+    function test_mint_settleWithBalance() public {
+        uint256 liquidityAlice = 3_000e18;
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0, type(uint256).max));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1, type(uint256).max));
+
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 0);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 0);
+
+        currency0.transfer(address(lpm), 100e18);
+        currency1.transfer(address(lpm), 100e18);
+
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 100e18);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 100e18);
+
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        bytes[] memory results = lpm.modifyLiquidities(calls, _deadline);
+        uint256 amount0 = abi.decode(results[1], (uint256));
+        uint256 amount1 = abi.decode(results[2], (uint256));
+
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 100e18 - amount0);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 100e18 - amount1);
+    }
 }

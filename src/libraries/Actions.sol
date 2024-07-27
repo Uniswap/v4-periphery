@@ -24,4 +24,7 @@ library Actions {
     // mint + burn ERC721 position
     uint256 constant MINT_POSITION = 0x22;
     uint256 constant BURN_POSITION = 0x23;
+
+    // settle using the balance contract
+    uint256 constant SETTLE_WITH_BALANCE = 0x24;
 }

@@ -6,6 +6,9 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 interface IPositionManager {
     error NotApproved(address caller);
     error DeadlinePassed();
+    error NothingToSettle();
+    error IncorrectUseOfTake();
+    error IncorrectUseOfSettle();
     error IncorrectPositionConfigForTokenId(uint256 tokenId);
 
     /// @notice Maps the ERC721 tokenId to a configId, which is a keccak256 hash of the position's pool key, and range (tickLower, tickUpper)
