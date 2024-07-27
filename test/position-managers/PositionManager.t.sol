@@ -284,8 +284,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
-        assertEq(currency0.balanceOfSelf() - balance0Before, uint128(delta.amount0()));
-        assertEq(currency1.balanceOfSelf() - balance1Before, uint128(delta.amount1()));
+        assertEq(currency0.balanceOfSelf(), balance0Before + uint256(uint128(delta.amount0())));
+        assertEq(currency1.balanceOfSelf(), balance1Before + uint256(uint128(delta.amount1())));
     }
 
     function test_decreaseLiquidity_collectFees(

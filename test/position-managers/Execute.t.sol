@@ -157,8 +157,8 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
             uint256 balance1After = currency1.balanceOfSelf();
 
             // TODO: use clear so user does not pay 1 wei
-            assertApproxEqAbs(delta0, 0, 1 wei);
-            assertApproxEqAbs(delta1, 0, 1 wei);
+            assertEq(delta0, -1 wei);
+            assertEq(delta1, -1 wei);
             assertApproxEqAbs(balance0Before - balance0After, 0, 1 wei);
             assertApproxEqAbs(balance1Before - balance1After, 0, 1 wei);
         }

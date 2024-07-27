@@ -165,8 +165,8 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(delta.amount0(), expectedFees.amount0());
         assertEq(delta.amount1(), expectedFees.amount1());
 
-        assertEq(uint256(int256(delta.amount0())), currency0.balanceOfSelf() - balance0Before);
-        assertEq(uint256(int256(delta.amount1())), currency1.balanceOfSelf() - balance1Before);
+        assertEq(balance0Before + uint256(uint128(delta.amount0())), currency0.balanceOfSelf());
+        assertEq(balance1Before + uint256(uint128(delta.amount1())), currency1.balanceOfSelf());
     }
 
     function test_collect_donate_sameRange() public {
