@@ -15,6 +15,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
+import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -176,7 +177,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice));
         uint128 oldLiquidity = StateLibrary.getPositionLiquidity(manager, config.poolKey.toId(), positionId);
 
         // bob can increase liquidity for alice even though he is not the owner / not approved

@@ -149,37 +149,42 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = planner.finalize(config.poolKey);
 
         bytes[] memory data = lpm.modifyLiquidities(calls, _deadline);
-        int256 delta0 = abi.decode(data[data.length - 2], (int256));
-        int256 delta1 = abi.decode(data[data.length - 1], (int256));
+        {
+            int256 delta0 = abi.decode(data[data.length - 2], (int256));
+            int256 delta1 = abi.decode(data[data.length - 1], (int256));
 
-        uint256 balance0After = currency0.balanceOfSelf();
-        uint256 balance1After = currency1.balanceOfSelf();
+            uint256 balance0After = currency0.balanceOfSelf();
+            uint256 balance1After = currency1.balanceOfSelf();
 
-        // TODO: use clear so user does not pay 1 wei
-        assertApproxEqAbs(delta0, 0, 1 wei);
-        assertApproxEqAbs(delta1, 0, 1 wei);
-        assertApproxEqAbs(balance0Before - balance0After, 0, 1 wei);
-        assertApproxEqAbs(balance1Before - balance1After, 0, 1 wei);
+            // TODO: use clear so user does not pay 1 wei
+            assertApproxEqAbs(delta0, 0, 1 wei);
+            assertApproxEqAbs(delta1, 0, 1 wei);
+            assertApproxEqAbs(balance0Before - balance0After, 0, 1 wei);
+            assertApproxEqAbs(balance1Before - balance1After, 0, 1 wei);
+        }
 
         // old position was burned
         vm.expectRevert();
         lpm.ownerOf(tokenId);
 
-        // old position has no liquidity
-        bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
-        uint128 liquidity = manager.getPositionLiquidity(config.poolKey.toId(), positionId);
-        assertEq(liquidity, 0);
+        {
+            // old position has no liquidity
+            bytes32 positionId =
+                Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+            uint128 liquidity = manager.getPositionLiquidity(config.poolKey.toId(), positionId);
+            assertEq(liquidity, 0);
 
-        // new token was minted
-        uint256 newTokenId = lpm.nextTokenId() - 1;
-        assertEq(lpm.ownerOf(newTokenId), address(this));
+            // new token was minted
+            uint256 newTokenId = lpm.nextTokenId() - 1;
+            assertEq(lpm.ownerOf(newTokenId), address(this));
 
-        // new token has expected liquidity
-        positionId =
-            keccak256(abi.encodePacked(address(lpm), newConfig.tickLower, newConfig.tickUpper, bytes32(newTokenId)));
-        liquidity = manager.getPositionLiquidity(config.poolKey.toId(), positionId);
-        assertEq(liquidity, newLiquidity);
+            // new token has expected liquidity
+            positionId = Position.calculatePositionKey(
+                address(lpm), newConfig.tickLower, newConfig.tickUpper, bytes32(newTokenId)
+            );
+            liquidity = manager.getPositionLiquidity(config.poolKey.toId(), positionId);
+            assertEq(liquidity, newLiquidity);
+        }
     }
 
     // coalesce: burn and increase

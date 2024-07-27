@@ -434,7 +434,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // position liquidity increased
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 newLiq,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(newLiq, liquidity + liquidityToAdd);
 
@@ -477,7 +477,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             {
                 // position liquidity decreased
                 bytes32 positionId =
-                    keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+                    Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
                 (uint256 newLiq,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
                 assertEq(newLiq, liquidity - liquidityToRemove);
             }
