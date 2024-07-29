@@ -11,7 +11,7 @@ contract ReentrantToken is MockERC20 {
         posm = _posm;
     }
 
-    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+    function transferFrom(address, /*from*/ address, /*to*/ uint256 /*amount*/ ) public override returns (bool) {
         // we dont need data because itll revert before it does anything
         posm.modifyLiquidities("", type(uint256).max);
         return true;
