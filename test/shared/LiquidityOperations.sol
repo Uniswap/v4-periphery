@@ -150,7 +150,7 @@ abstract contract LiquidityOperations is CommonBase {
         return planner.finalize(config.poolKey);
     }
 
-    function snapLastDelta() internal returns (BalanceDelta delta) {
+    function snapLastDelta() internal view returns (BalanceDelta delta) {
         delta = hook.deltas(hook.getDeltasLength() - 1); // just want the most recetly written to delta
     }
 }

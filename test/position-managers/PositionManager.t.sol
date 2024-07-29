@@ -22,7 +22,7 @@ import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {BaseActionsRouterReturns} from "../../src/base/BaseActionsRouterReturns.sol";
+import {BaseActionsRouter} from "../../src/base/BaseActionsRouter.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
@@ -60,7 +60,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         bytes[] memory badParams = new bytes[](1);
 
-        vm.expectRevert(BaseActionsRouterReturns.LengthMismatch.selector);
+        vm.expectRevert(BaseActionsRouter.LengthMismatch.selector);
         lpm.modifyLiquidities(abi.encode(planner.actions, badParams), block.timestamp + 1);
     }
 

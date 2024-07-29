@@ -260,7 +260,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, ZERO_BYTES); // double the liquidity
-        bytes[] memory result = lpm.modifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
+        lpm.modifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
         BalanceDelta delta = snapLastDelta();
 
         // verify position liquidity increased

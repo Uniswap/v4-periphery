@@ -38,7 +38,6 @@ abstract contract BaseActionsRouter is SafeCallback {
             _handleAction(action, params[actionIndex]);
         }
 
-        // TODO do we want to return anything?
         return "";
     }
 
