@@ -370,25 +370,4 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(intermediateBalanceBefore - intermediateBalanceAfter, 0);
         assertEq(currency0.balanceOf(address(router)), 0);
     }
-
-    function test_nativeIn_swapExactOut_2Hops_sendTooMuchETH() public {
-        uint256 amountOut = 1 ether;
-        uint256 expectedAmountIn = 1016204441757464409;
-
-        tokenPath.push(CurrencyLibrary.NATIVE);
-        tokenPath.push(currency0);
-        tokenPath.push(currency1);
-        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
-
-        uint256 intermediateBalanceBefore = currency0.balanceOfSelf();
-
-        plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-
-        _finalizeExecuteAndCheckSwap(CurrencyLibrary.NATIVE, currency1, expectedAmountIn, amountOut, true);
-
-        uint256 intermediateBalanceAfter = currency0.balanceOfSelf();
-
-        assertEq(intermediateBalanceBefore - intermediateBalanceAfter, 0);
-        assertEq(currency0.balanceOf(address(router)), 0);
-    }
 }
