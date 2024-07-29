@@ -358,6 +358,51 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         lpm.modifyLiquidities(calls, _deadline);
     }
 
-    function test_increaseLiquidity_slippage_exactDoesNotRevert() public {}
-    function test_increaseLiquidity_slippage_revert_swap() public {}
+    function test_increaseLiquidity_slippage_exactDoesNotRevert() public {
+        // increasing liquidity with perfect slippage parameters does not revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        uint128 newLiquidity = 10e18;
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            newLiquidity
+        );
+        assertEq(amount0, amount1); // symmetric liquidity addition
+        uint128 slippage = uint128(amount0) + 1;
+
+        bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, slippage, slippage, ZERO_BYTES);
+        bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
+
+        // confirm that delta == slippage tolerance
+        assertEq(-delta.amount0(), int128(slippage));
+        assertEq(-delta.amount1(), int128(slippage));
+    }
+
+    /// price movement from swaps will cause slippage reverts
+    function test_increaseLiquidity_slippage_revert_swap() public {
+        // increasing liquidity with perfect slippage parameters does not revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        uint128 newLiquidity = 10e18;
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            newLiquidity
+        );
+        assertEq(amount0, amount1); // symmetric liquidity addition
+        uint128 slippage = uint128(amount0) + 1;
+
+        // swap to create slippage
+        swap(key, true, -10e18, ZERO_BYTES);
+
+        bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, slippage, slippage, ZERO_BYTES);
+        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
 }
