@@ -10,7 +10,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PathKey} from "../../src/libraries/PathKey.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
@@ -26,6 +26,7 @@ contract RoutingTestHelpers is Test, Deployers {
     PoolModifyLiquidityTest positionManager;
     V4RouterImplementation router;
 
+    // nativeKey is already defined in Deployers.sol
     PoolKey key0;
     PoolKey key1;
     PoolKey key2;
@@ -50,6 +51,7 @@ contract RoutingTestHelpers is Test, Deployers {
         currency2 = Currency.wrap(address(tokens[2]));
         currency3 = Currency.wrap(address(tokens[3]));
 
+        nativeKey = createNativePoolWithLiquidity(currency0, address(0));
         key0 = createPoolWithLiquidity(currency0, currency1, address(0));
         key1 = createPoolWithLiquidity(currency1, currency2, address(0));
         key2 = createPoolWithLiquidity(currency2, currency3, address(0));
@@ -74,6 +76,19 @@ contract RoutingTestHelpers is Test, Deployers {
         MockERC20(Currency.unwrap(currencyA)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(currencyB)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity(_key, IPoolManager.ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x");
+    }
+
+    function createNativePoolWithLiquidity(Currency currency, address hookAddr)
+        internal
+        returns (PoolKey memory _key)
+    {
+        _key = PoolKey(CurrencyLibrary.NATIVE, currency, 3000, 60, IHooks(hookAddr));
+
+        manager.initialize(_key, SQRT_PRICE_1_1, ZERO_BYTES);
+        MockERC20(Currency.unwrap(currency)).approve(address(positionManager), type(uint256).max);
+        positionManager.modifyLiquidity{value: 200 ether}(
+            _key, IPoolManager.ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x"
+        );
     }
 
     function _getExactInputParams(Currency[] memory _tokenPath, uint256 amountIn)
@@ -111,5 +126,48 @@ contract RoutingTestHelpers is Test, Deployers {
     function _finalizePlan(Currency inputCurrency, Currency outputCurrency, address recipient) internal {
         plan = plan.add(Actions.SETTLE_ALL, abi.encode(inputCurrency));
         plan = plan.add(Actions.TAKE_ALL, abi.encode(outputCurrency, recipient));
+    }
+
+    function _finalizeExecuteAndCheckSwap(
+        Currency inputCurrency,
+        Currency outputCurrency,
+        uint256 amountIn,
+        uint256 amountOut
+    ) internal {
+        _finalizeExecuteAndCheckSwap(inputCurrency, outputCurrency, amountIn, amountOut, false);
+    }
+
+    function _finalizeExecuteAndCheckSwap(
+        Currency inputCurrency,
+        Currency outputCurrency,
+        uint256 amountIn,
+        uint256 amountOut,
+        bool ethInputExactOutput
+    ) internal {
+        uint256 prevBalanceIn = inputCurrency.balanceOfSelf();
+        uint256 prevBalanceOut = outputCurrency.balanceOfSelf();
+
+        _finalizePlan(inputCurrency, outputCurrency, address(this));
+        bytes memory data = plan.encode();
+
+        uint256 value = (inputCurrency.isNative()) ? amountIn : 0;
+
+        if (ethInputExactOutput) {
+            // send too much ETH to mimic slippage
+            // then make sure the router can sweep back excess input
+            value += 0.1 ether;
+            router.executeActionsAndSweepETH{value: value}(data);
+        } else {
+            // otherwise just execute as normal
+            router.executeActions{value: value}(data);
+        }
+
+        uint256 newBalanceIn = inputCurrency.balanceOfSelf();
+        uint256 newBalanceOut = outputCurrency.balanceOfSelf();
+
+        assertEq(prevBalanceIn - newBalanceIn, amountIn);
+        assertEq(newBalanceOut - prevBalanceOut, amountOut);
+        assertEq(inputCurrency.balanceOf(address(router)), 0);
+        assertEq(outputCurrency.balanceOf(address(router)), 0);
     }
 }
