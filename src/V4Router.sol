@@ -162,6 +162,4 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             reciprocalAmount = (zeroForOne == amountSpecified < 0) ? delta.amount1() : delta.amount0();
         }
     }
-
-    function _mapAmount(uint256 amount) internal returns (uint256) {}
 }
