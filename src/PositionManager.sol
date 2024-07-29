@@ -21,7 +21,6 @@ import {Multicall} from "./base/Multicall.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
-import {PositionManagerImmutableState} from "./base/PositionManagerImmutableState.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -30,8 +29,7 @@ contract PositionManager is
     Multicall,
     SafeCallback,
     DeltaResolver,
-    ReentrancyLock,
-    PositionManagerImmutableState
+    ReentrancyLock
 {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
@@ -47,11 +45,14 @@ contract PositionManager is
     /// @inheritdoc IPositionManager
     mapping(uint256 tokenId => bytes32 configId) public positionConfigs;
 
+    IAllowanceTransfer public immutable permit2;
+
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         SafeCallback(_poolManager)
-        PositionManagerImmutableState(_permit2)
         ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
-    {}
+    {
+        permit2 = _permit2;
+    }
 
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed();
