@@ -7,7 +7,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 import {PathKey, PathKeyLib} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
@@ -25,7 +24,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using CalldataDecoder for bytes;
     using TransientStateLibrary for IPoolManager;
 
-    constructor(IPoolManager poolManager) BaseActionsRouter(poolManager) {}
+    constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
     // TODO native support !!
     function _handleAction(uint256 action, bytes calldata params) internal override {
