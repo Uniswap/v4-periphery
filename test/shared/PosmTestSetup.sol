@@ -23,46 +23,34 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         approvePosm();
     }
 
-    function deployPosm(IPoolManager poolManager) public {
+    function deployPosm(IPoolManager poolManager) internal {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
         lpm = new PositionManager(poolManager, permit2);
     }
 
-    function seedBalance(address to) public {
+    function seedBalance(address to) internal {
         IERC20(Currency.unwrap(currency0)).transfer(to, STARTING_USER_BALANCE);
         IERC20(Currency.unwrap(currency1)).transfer(to, STARTING_USER_BALANCE);
     }
 
-    function approvePosm() public {
-        // Because POSM uses permit2, we must execute 2 permits/approvals.
-        // 1. First, the caller must approve permit2 on the token.
-        _approvePermit2AsASpender();
-        // 2. Then, the caller must approve POSM as a spender of permit2. TODO: This could also be a signature.
-        _approvePosmAsASpenderOfPermit2();
+    function approvePosm() internal {
+        approvePosmCurrency(currency0);
+        approvePosmCurrency(currency1);
     }
 
-    function approvePosmCurrency1() public {
-        // Assumes currency0 is the native token so only execute approvals for currency1.
-        IERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
-        permit2.approve(Currency.unwrap(currency1), address(lpm), type(uint160).max, type(uint48).max);
+    function approvePosmCurrency(Currency currency) internal {
+        // Because POSM uses permit2, we must execute 2 permits/approvals.
+        // 1. First, the caller must approve permit2 on the token.
+        IERC20(Currency.unwrap(currency)).approve(address(permit2), type(uint256).max);
+        // 2. Then, the caller must approve POSM as a spender of permit2. TODO: This could also be a signature.
+        permit2.approve(Currency.unwrap(currency), address(lpm), type(uint160).max, type(uint48).max);
     }
 
     // Does the same approvals as approvePosm, but for a specific address.
-    function approvePosmFor(address addr) public {
+    function approvePosmFor(address addr) internal {
         vm.startPrank(addr);
-        _approvePermit2AsASpender();
-        _approvePosmAsASpenderOfPermit2();
+        approvePosm();
         vm.stopPrank();
-    }
-
-    function _approvePermit2AsASpender() internal {
-        IERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
-    }
-
-    function _approvePosmAsASpenderOfPermit2() internal {
-        permit2.approve(Currency.unwrap(currency0), address(lpm), type(uint160).max, type(uint48).max);
-        permit2.approve(Currency.unwrap(currency1), address(lpm), type(uint160).max, type(uint48).max);
     }
 }
