@@ -156,7 +156,7 @@ contract RoutingTestHelpers is Test, Deployers {
             // send too much ETH to mimic slippage
             // then make sure the router can sweep back excess input
             value += 0.1 ether;
-            router.executeActionsAndSweepETH{value: value}(data);
+            router.executeActionsAndSweepExcessETH{value: value}(data);
         } else {
             // otherwise just execute as normal
             router.executeActions{value: value}(data);
