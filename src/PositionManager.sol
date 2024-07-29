@@ -11,6 +11,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
@@ -47,10 +48,14 @@ contract PositionManager is
     /// @inheritdoc IPositionManager
     mapping(uint256 tokenId => bytes32 configId) public positionConfigs;
 
-    constructor(IPoolManager _poolManager)
+    IAllowanceTransfer public immutable permit2;
+
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouterReturns(_poolManager)
         ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
-    {}
+    {
+        permit2 = _permit2;
+    }
 
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed();
@@ -219,7 +224,7 @@ contract PositionManager is
 
     // implementation of abstract function DeltaResolver._pay
     function _pay(Currency token, address payer, uint256 amount) internal override {
-        // TODO this should use Permit2
-        ERC20(Currency.unwrap(token)).safeTransferFrom(payer, address(poolManager), amount);
+        // TODO: Should we also support direct transfer?
+        permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(token));
     }
 }
