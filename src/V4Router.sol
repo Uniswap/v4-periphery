@@ -14,12 +14,14 @@ import {IV4Router} from "./interfaces/IV4Router.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {Actions} from "./libraries/Actions.sol";
+import {SafeCast} from "./libraries/SafeCast.sol";
 
 /// @title UniswapV4Router
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
 /// @dev the entry point to executing actions in this contract is calling `BaseActionsRouter._executeActions`
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
 abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
+    using SafeCast for *;
     using PathKeyLib for PathKey;
     using CalldataDecoder for bytes;
     using TransientStateLibrary for IPoolManager;
@@ -98,7 +100,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             for (uint256 i = 0; i < pathLength; i++) {
                 pathKey = params.path[i];
                 (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(currencyIn);
-                amountOut = uint128(_swap(poolKey, zeroForOne, -int256(uint256(amountIn)), 0, pathKey.hookData));
+                // The output delta will always be positive, except for when interacting with certain hook pools
+                amountOut = _swap(poolKey, zeroForOne, -int256(uint256(amountIn)), 0, pathKey.hookData).toUint128();
 
                 amountIn = amountOut;
                 currencyIn = pathKey.intermediateCurrency;
@@ -130,7 +133,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             for (uint256 i = pathLength; i > 0; i--) {
                 pathKey = params.path[i - 1];
                 (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
-                amountIn = uint128(-_swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, pathKey.hookData));
+                // The output delta will always be negative, except for when interacting with certain hook pools
+                amountIn = (-_swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, pathKey.hookData)).toUint128();
 
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;

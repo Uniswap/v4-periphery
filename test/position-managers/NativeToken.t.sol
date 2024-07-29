@@ -50,8 +50,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         currency0 = CurrencyLibrary.NATIVE;
         (nativeKey, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        lpm = new PositionManager(manager);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        deployPosm(manager);
+        // currency0 is the native token so only execute approvals for currency1.
+        approvePosmCurrency(currency1);
 
         vm.deal(address(this), type(uint256).max);
     }

@@ -33,8 +33,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        _finalizePlan(key0.currency0, key0.currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactInputSingle");
@@ -48,8 +47,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(currency0, currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency1, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactIn1Hop_zeroForOne");
@@ -63,8 +61,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(currency1, currency0, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency1, currency0, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactIn1Hop_oneForZero");
@@ -79,8 +76,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(currency0, currency2, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency2, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactIn2Hops");
@@ -96,8 +92,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(currency0, currency3, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency3, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactIn3Hops");
@@ -114,8 +109,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
             IV4Router.ExactInputSingleParams(nativeKey, true, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        _finalizePlan(nativeKey.currency0, nativeKey.currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(nativeKey.currency0, nativeKey.currency1, address(this));
 
         router.executeActions{value: amountIn}(data);
         snapLastCall("V4Router_ExactInputSingle_nativeIn");
@@ -128,8 +122,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
             IV4Router.ExactInputSingleParams(nativeKey, false, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        _finalizePlan(nativeKey.currency1, nativeKey.currency0, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(nativeKey.currency1, nativeKey.currency0, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactInputSingle_nativeOut");
@@ -143,8 +136,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(CurrencyLibrary.NATIVE, currency0, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(CurrencyLibrary.NATIVE, currency0, address(this));
 
         router.executeActions{value: amountIn}(data);
         snapLastCall("V4Router_ExactIn1Hop_nativeIn");
@@ -158,8 +150,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(currency0, CurrencyLibrary.NATIVE, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, CurrencyLibrary.NATIVE, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactIn1Hop_nativeOut");
@@ -174,8 +165,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(CurrencyLibrary.NATIVE, currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(CurrencyLibrary.NATIVE, currency1, address(this));
 
         router.executeActions{value: amountIn}(data);
         snapLastCall("V4Router_ExactIn2Hops_nativeIn");
@@ -191,8 +181,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(CurrencyLibrary.NATIVE, currency2, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(CurrencyLibrary.NATIVE, currency2, address(this));
 
         router.executeActions{value: amountIn}(data);
         snapLastCall("V4Router_ExactIn3Hops_nativeIn");
@@ -209,8 +198,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
             IV4Router.ExactOutputSingleParams(key0, true, uint128(amountOut), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
-        _finalizePlan(key0.currency0, key0.currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactOutputSingle");
@@ -224,8 +212,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(currency0, currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency1, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactOut1Hop_zeroForOne");
@@ -239,8 +226,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(currency1, currency0, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency1, currency0, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactOut1Hop_oneForZero");
@@ -255,8 +241,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(currency0, currency2, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency2, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactOut2Hops");
@@ -272,8 +257,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(currency0, currency3, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency3, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactOut3Hops");
@@ -290,8 +274,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
             IV4Router.ExactOutputSingleParams(nativeKey, true, uint128(amountOut), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
-        _finalizePlan(nativeKey.currency0, nativeKey.currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(nativeKey.currency0, nativeKey.currency1, address(this));
 
         router.executeActionsAndSweepExcessETH{value: 2 ether}(data);
         snapLastCall("V4Router_ExactOutputSingle_nativeIn_sweepETH");
@@ -305,8 +288,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(CurrencyLibrary.NATIVE, currency0, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(CurrencyLibrary.NATIVE, currency0, address(this));
 
         router.executeActionsAndSweepExcessETH{value: 2 ether}(data);
         snapLastCall("V4Router_ExactOut1Hop_nativeIn_sweepETH");
@@ -320,8 +302,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(currency0, CurrencyLibrary.NATIVE, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, CurrencyLibrary.NATIVE, address(this));
 
         router.executeActions(data);
         snapLastCall("V4Router_ExactOut1Hop_nativeOut");
@@ -336,8 +317,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(CurrencyLibrary.NATIVE, currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(CurrencyLibrary.NATIVE, currency1, address(this));
 
         router.executeActionsAndSweepExcessETH{value: 2 ether}(data);
         snapLastCall("V4Router_ExactOut2Hops_nativeOut");
@@ -353,8 +333,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(CurrencyLibrary.NATIVE, currency2, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(CurrencyLibrary.NATIVE, currency2, address(this));
 
         router.executeActionsAndSweepExcessETH{value: 2 ether}(data);
         snapLastCall("V4Router_ExactOut3Hops_nativeOut");

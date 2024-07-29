@@ -19,7 +19,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LiquidityOperations} from "./LiquidityOperations.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 
-/// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
+/// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the router.
 contract RoutingTestHelpers is Test, Deployers {
     using ActionsRouterPlanner for Plan;
 
@@ -123,11 +123,6 @@ contract RoutingTestHelpers is Test, Deployers {
         params.amountInMaximum = type(uint128).max;
     }
 
-    function _finalizePlan(Currency inputCurrency, Currency outputCurrency, address recipient) internal {
-        plan = plan.add(Actions.SETTLE_ALL, abi.encode(inputCurrency));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(outputCurrency, recipient));
-    }
-
     function _finalizeExecuteAndCheckSwap(
         Currency inputCurrency,
         Currency outputCurrency,
@@ -147,8 +142,7 @@ contract RoutingTestHelpers is Test, Deployers {
         uint256 prevBalanceIn = inputCurrency.balanceOfSelf();
         uint256 prevBalanceOut = outputCurrency.balanceOfSelf();
 
-        _finalizePlan(inputCurrency, outputCurrency, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, address(this));
 
         uint256 value = (inputCurrency.isNative()) ? amountIn : 0;
 
