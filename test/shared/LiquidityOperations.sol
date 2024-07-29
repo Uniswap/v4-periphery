@@ -21,6 +21,8 @@ abstract contract LiquidityOperations is CommonBase {
 
     uint256 _deadline = block.timestamp + 1;
 
+    uint128 constant MAX_SLIPPAGE_INCREASE = type(uint128).max;
+
     function mint(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData)
         internal
         returns (BalanceDelta)
@@ -111,8 +113,22 @@ abstract contract LiquidityOperations is CommonBase {
         uint256 liquidityToAdd,
         bytes memory hookData
     ) internal pure returns (bytes memory) {
+        // max slippage
+        return
+            getIncreaseEncoded(tokenId, config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, hookData);
+    }
+
+    function getIncreaseEncoded(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint256 liquidityToAdd,
+        uint128 amount0Max,
+        uint128 amount1Max,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, hookData));
+        planner =
+            planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, amount0Max, amount1Max, hookData));
         return planner.finalize(config.poolKey);
     }
 

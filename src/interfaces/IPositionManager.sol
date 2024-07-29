@@ -15,6 +15,7 @@ enum Actions {
 interface IPositionManager {
     error MismatchedLengths();
     error NotApproved(address caller);
+    error SlippageExceeded();
     error DeadlinePassed();
     error UnsupportedAction();
     error IncorrectPositionConfigForTokenId(uint256 tokenId);

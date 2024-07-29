@@ -107,7 +107,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        planner =
+            planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, config, liquidityDelta, 0 wei, 0 wei, ZERO_BYTES));
         bytes memory calls = planner.finalize(config.poolKey);
         vm.startPrank(alice);
         lpm.modifyLiquidities(calls, _deadline);
@@ -334,4 +335,29 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             );
         }
     }
+
+    function test_increaseLiquidity_slippage_revertAmount0() public {
+        // increasing liquidity with strict slippage parameters (amount0) will revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // revert since amount0Max is too low
+        bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, 1 wei, type(uint128).max, ZERO_BYTES);
+        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_increaseLiquidity_slippage_revertAmount1() public {
+        // increasing liquidity with strict slippage parameters (amount1) will revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // revert since amount1Max is too low
+        bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, type(uint128).max, 1 wei, ZERO_BYTES);
+        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_increaseLiquidity_slippage_exactDoesNotRevert() public {}
+    function test_increaseLiquidity_slippage_revert_swap() public {}
 }

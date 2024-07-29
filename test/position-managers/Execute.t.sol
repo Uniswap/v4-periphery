@@ -85,8 +85,14 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         Planner.Plan memory planner = Planner.init();
 
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd2, ZERO_BYTES));
+        planner = planner.add(
+            Actions.INCREASE,
+            abi.encode(tokenId, config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+        planner = planner.add(
+            Actions.INCREASE,
+            abi.encode(tokenId, config, liquidityToAdd2, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -108,7 +114,10 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         Planner.Plan memory planner = Planner.init();
 
         planner = planner.add(Actions.MINT, abi.encode(config, initialLiquidity, address(this), ZERO_BYTES));
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
+        planner = planner.add(
+            Actions.INCREASE,
+            abi.encode(tokenId, config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);

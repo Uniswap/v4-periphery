@@ -125,8 +125,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.INCREASE,
+            abi.encode(tokenId, config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -165,8 +167,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
             tokensOwedAlice
         );
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.INCREASE,
+            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
 
         bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
@@ -206,8 +210,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
             halfTokensOwedAlice
         );
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.INCREASE, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.INCREASE,
+            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
 
         bytes memory calls = planner.finalize(config.poolKey);
 
