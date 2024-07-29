@@ -22,14 +22,14 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
     function test_swap_suceeds() public {
         Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
-            plan.add(Actions.SWAP, "");
+            plan.add(Actions.SWAP_EXACT_IN, "");
         }
 
         bytes memory data = plan.encode();
 
         assertEq(router.swapCount(), 0);
 
-        router.executeAction(data);
+        router.executeActions(data);
         snapLastCall("BaseActionsRouter_mock10commands");
         assertEq(router.swapCount(), 10);
     }
@@ -43,7 +43,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.increaseLiqCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.increaseLiqCount(), 10);
     }
 
@@ -56,7 +56,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.decreaseLiqCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.decreaseLiqCount(), 10);
     }
 
@@ -69,7 +69,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.donateCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.donateCount(), 10);
     }
 
@@ -82,7 +82,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.clearCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.clearCount(), 10);
     }
 
@@ -95,7 +95,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.settleCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.settleCount(), 10);
     }
 
@@ -108,7 +108,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.takeCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.takeCount(), 10);
     }
 
@@ -121,7 +121,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.mintCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.mintCount(), 10);
     }
 
@@ -134,7 +134,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.burnCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.burnCount(), 10);
     }
 }

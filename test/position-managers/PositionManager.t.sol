@@ -60,7 +60,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         bytes[] memory badParams = new bytes[](1);
 
-        vm.expectRevert(BaseActionsRouter.LengthMismatch.selector);
+        vm.expectRevert(BaseActionsRouter.InputLengthMismatch.selector);
         lpm.modifyLiquidities(abi.encode(planner.actions, badParams), block.timestamp + 1);
     }
 

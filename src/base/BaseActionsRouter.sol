@@ -11,7 +11,7 @@ abstract contract BaseActionsRouter is SafeCallback {
     using CalldataDecoder for bytes;
 
     /// @notice emitted when different numbers of parameters and actions are provided
-    error LengthMismatch();
+    error InputLengthMismatch();
 
     /// @notice emitted when an inheriting contract does not support an action
     error UnsupportedAction(uint256 action);
@@ -30,7 +30,7 @@ abstract contract BaseActionsRouter is SafeCallback {
         (uint256[] calldata actions, bytes[] calldata params) = data.decodeActionsRouterParams();
 
         uint256 numActions = actions.length;
-        if (numActions != params.length) revert LengthMismatch();
+        if (numActions != params.length) revert InputLengthMismatch();
 
         for (uint256 actionIndex = 0; actionIndex < numActions; actionIndex++) {
             uint256 action = actions[actionIndex];
@@ -48,6 +48,6 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// @dev The other context functions, _msgData and _msgValue, are not supported by this contract
     /// In many contracts this will be the address that calls the initial entry point that calls `_executeActions`
     /// `msg.sender` shouldnt be used, as this will be the v4 pool manager contract that calls `unlockCallback`
-    /// If using ReentrancyLock.sol, this function can return Locker.get() - locker of the contract
+    /// If using ReentrancyLock.sol, this function can return _getLocker()
     function _msgSender() internal view virtual returns (address);
 }
