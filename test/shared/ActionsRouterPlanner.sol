@@ -41,6 +41,7 @@ library ActionsRouterPlanner {
 
     function finalizeSwap(Plan memory plan, Currency inputCurrency, Currency outputCurrency, address recipient)
         internal
+        pure
         returns (bytes memory)
     {
         plan = plan.add(Actions.SETTLE_ALL, abi.encode(inputCurrency));
