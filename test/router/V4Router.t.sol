@@ -27,8 +27,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        _finalizePlan(key0.currency0, key0.currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
 
         router.executeActions(data);
 
@@ -50,8 +49,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        _finalizePlan(key0.currency1, key0.currency0, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(key0.currency1, key0.currency0, address(this));
 
         router.executeActions(data);
 
@@ -74,8 +72,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance1 = currency1.balanceOfSelf();
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(currency0, currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency1, address(this));
 
         router.executeActions(data);
 
@@ -97,8 +94,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance1 = currency1.balanceOfSelf();
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(currency1, currency0, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency1, currency0, address(this));
 
         router.executeActions(data);
 
@@ -123,8 +119,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance2 = currency2.balanceOfSelf();
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(currency0, currency2, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency2, address(this));
 
         router.executeActions(data);
 
@@ -154,8 +149,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance3 = currency3.balanceOfSelf();
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        _finalizePlan(currency0, currency3, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency3, address(this));
 
         router.executeActions(data);
 
@@ -181,8 +175,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
-        _finalizePlan(key0.currency0, key0.currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
 
         router.executeActions(data);
 
@@ -204,8 +197,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance1 = key0.currency1.balanceOf(address(this));
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
-        _finalizePlan(key0.currency1, key0.currency0, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(key0.currency1, key0.currency0, address(this));
 
         router.executeActions(data);
 
@@ -228,8 +220,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance1 = currency1.balanceOfSelf();
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(currency0, currency1, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency1, address(this));
 
         router.executeActions(data);
 
@@ -252,8 +243,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance1 = currency1.balanceOfSelf();
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(currency1, currency0, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency1, currency0, address(this));
 
         router.executeActions(data);
 
@@ -278,8 +268,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance2 = currency2.balanceOfSelf();
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(currency0, currency2, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency2, address(this));
 
         router.executeActions(data);
 
@@ -309,8 +298,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 prevBalance3 = currency3.balanceOfSelf();
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        _finalizePlan(currency0, currency3, address(this));
-        bytes memory data = plan.encode();
+        bytes memory data = plan.finalizeSwap(currency0, currency3, address(this));
 
         router.executeActions(data);
 
