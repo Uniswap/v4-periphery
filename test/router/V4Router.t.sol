@@ -4,16 +4,16 @@ pragma solidity ^0.8.19;
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
-import {Plan, ActionsRouterPlanner} from "../shared/ActionsRouterPlanner.sol";
+import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 
 contract V4RouterTest is RoutingTestHelpers {
     using CurrencyLibrary for Currency;
-    using ActionsRouterPlanner for Plan;
+    using Planner for Plan;
 
     function setUp() public {
         setupRouterCurrenciesAndPoolsWithLiquidity();
-        plan = ActionsRouterPlanner.init();
+        plan = Planner.init();
     }
 
     function test_swapExactInputSingle_zeroForOne() public {
