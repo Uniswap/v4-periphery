@@ -101,9 +101,19 @@ abstract contract LiquidityOperations is CommonBase {
         pure
         returns (bytes memory)
     {
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode(config, liquidity, recipient, hookData));
+        return getMintEncoded(config, liquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, recipient, hookData);
+    }
 
+    function getMintEncoded(
+        PositionConfig memory config,
+        uint256 liquidity,
+        uint128 amount0Max,
+        uint128 amount1Max,
+        address recipient,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
+        Planner.Plan memory planner = Planner.init();
+        planner = planner.add(Actions.MINT, abi.encode(config, liquidity, amount0Max, amount1Max, recipient, hookData));
         return planner.finalize(config.poolKey);
     }
 

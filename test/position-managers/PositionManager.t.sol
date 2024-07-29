@@ -164,6 +164,65 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
 
+    function test_mint_slippage_revertAmount0() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+
+        bytes memory calls = getMintEncoded(config, 1e18, 1 wei, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES);
+        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_mint_slippage_revertAmount1() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+
+        bytes memory calls = getMintEncoded(config, 1e18, MAX_SLIPPAGE_INCREASE, 1 wei, address(this), ZERO_BYTES);
+        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_mint_slippage_exactDoesNotRevert() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+
+        uint256 liquidity = 1e18;
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(liquidity)
+        );
+        assertEq(amount0, amount1); // symmetric liquidity
+        uint128 slippage = uint128(amount0) + 1;
+
+        bytes memory calls = getMintEncoded(config, liquidity, slippage, slippage, address(this), ZERO_BYTES);
+        bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
+        assertEq(uint256(int256(-delta.amount0())), slippage);
+        assertEq(uint256(int256(-delta.amount1())), slippage);
+    }
+
+    function test_mint_slippage_revert_swap() public {
+        // swapping will cause a slippage revert
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+
+        uint256 liquidity = 100e18;
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(liquidity)
+        );
+        assertEq(amount0, amount1); // symmetric liquidity
+        uint128 slippage = uint128(amount0) + 1;
+
+        bytes memory calls = getMintEncoded(config, liquidity, slippage, slippage, address(this), ZERO_BYTES);
+
+        // swap to move the price and cause a slippage revert
+        swap(key, true, -1e18, ZERO_BYTES);
+
+        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
     function test_fuzz_burn_emptyPosition(IPoolManager.ModifyLiquidityParams memory params) public {
         uint256 balance0Start = currency0.balanceOfSelf();
         uint256 balance1Start = currency1.balanceOfSelf();

@@ -26,8 +26,18 @@ contract LiquidityFuzzers is Fuzzers {
         PositionConfig memory config =
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(config, uint256(params.liquidityDelta), recipient, hookData));
+        uint128 MAX_SLIPPAGE_INCREASE = type(uint128).max;
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT,
+            abi.encode(
+                config,
+                uint256(params.liquidityDelta),
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                recipient,
+                hookData
+            )
+        );
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, block.timestamp + 1);

@@ -69,8 +69,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     }
 
     function test_gas_mint() public {
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(config, 10_000 ether, address(this), ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT,
+            abi.encode(config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+        );
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint");
@@ -83,8 +85,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
         // Mint to a diff config, diff user.
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT,
+            abi.encode(config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(alice), ZERO_BYTES)
+        );
         bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
@@ -98,8 +102,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
         // Mint to a diff config, diff user.
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT,
+            abi.encode(config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(alice), ZERO_BYTES)
+        );
         bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
@@ -113,8 +119,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
         // Mint to a diff config, diff user.
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT,
+            abi.encode(config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(alice), ZERO_BYTES)
+        );
         bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
@@ -248,7 +256,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         });
 
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        planner = planner.add(
+            Actions.MINT,
+            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+        );
         bytes memory actions = planner.finalize(config.poolKey);
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
@@ -276,8 +287,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
     function test_gas_sameRange_mint() public {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(config, 10_001 ether, address(alice), ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.MINT,
+            abi.encode(config, 10_001 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(alice), ZERO_BYTES)
+        );
         bytes memory calls = planner.finalize(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);

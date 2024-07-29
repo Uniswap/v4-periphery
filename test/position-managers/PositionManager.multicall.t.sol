@@ -54,7 +54,10 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         });
 
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        planner = planner.add(
+            Actions.MINT,
+            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+        );
         bytes memory actions = planner.finalize(config.poolKey);
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);

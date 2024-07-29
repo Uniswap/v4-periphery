@@ -137,8 +137,14 @@ contract PositionManager is
     /// @param params is an encoding of PositionConfig memory config, uint256 liquidity, address recipient, bytes hookData where recipient is the receiver / owner of the ERC721
     /// @return returns an encoding of the BalanceDelta from the initial increase
     function _mint(bytes memory params) internal returns (bytes memory) {
-        (PositionConfig memory config, uint256 liquidity, address owner, bytes memory hookData) =
-            abi.decode(params, (PositionConfig, uint256, address, bytes));
+        (
+            PositionConfig memory config,
+            uint256 liquidity,
+            uint128 amount0Max,
+            uint128 amount1Max,
+            address owner,
+            bytes memory hookData
+        ) = abi.decode(params, (PositionConfig, uint256, uint128, uint128, address, bytes));
 
         // mint receipt token
         uint256 tokenId;
@@ -150,6 +156,8 @@ contract PositionManager is
 
         // _beforeModify is not called here because the tokenId is newly minted
         BalanceDelta delta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+        if (amount0Max < uint128(-delta.amount0())) revert SlippageExceeded();
+        if (amount1Max < uint128(-delta.amount1())) revert SlippageExceeded();
 
         positionConfigs[tokenId] = config.toId();
 

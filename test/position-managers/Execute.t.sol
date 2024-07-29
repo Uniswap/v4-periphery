@@ -113,7 +113,12 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         Planner.Plan memory planner = Planner.init();
 
-        planner = planner.add(Actions.MINT, abi.encode(config, initialLiquidity, address(this), ZERO_BYTES));
+        planner = planner.add(
+            Actions.MINT,
+            abi.encode(
+                config, initialLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES
+            )
+        );
         planner = planner.add(
             Actions.INCREASE,
             abi.encode(tokenId, config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
