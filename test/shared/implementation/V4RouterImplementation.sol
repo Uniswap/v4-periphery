@@ -17,7 +17,7 @@ contract V4RouterImplementation is V4Router, ReentrancyLock {
         _executeActions(params);
     }
 
-    function executeActionsAndSweepETH(bytes calldata params) external payable isNotLocked {
+    function executeActionsAndSweepExcessETH(bytes calldata params) external payable isNotLocked {
         _executeActions(params);
 
         uint256 balance = address(this).balance;
