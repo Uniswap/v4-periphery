@@ -159,8 +159,9 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         uint256 tokenIdAlice = lpm.nextTokenId();
         vm.startPrank(alice);
-        BalanceDelta lpDeltaAlice = mint(config, liquidityAlice, alice, ZERO_BYTES);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
         vm.stopPrank();
+        BalanceDelta lpDeltaAlice = snapLastDelta();
 
         uint256 tokenIdBob = lpm.nextTokenId();
         vm.startPrank(bob);

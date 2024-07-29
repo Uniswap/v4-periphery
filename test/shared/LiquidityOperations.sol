@@ -24,13 +24,9 @@ abstract contract LiquidityOperations is CommonBase {
 
     uint256 _deadline = block.timestamp + 1;
 
-    function mint(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData)
-        internal
-        returns (BalanceDelta delta)
-    {
+    function mint(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData) internal {
         bytes memory calls = getMintEncoded(config, liquidity, recipient, hookData);
         lpm.modifyLiquidities(calls, _deadline);
-        delta = hook.deltas(0);
     }
 
     function mintWithNative(
@@ -39,7 +35,7 @@ abstract contract LiquidityOperations is CommonBase {
         uint256 liquidity,
         address recipient,
         bytes memory hookData
-    ) internal returns (BalanceDelta delta) {
+    ) internal {
         // determine the amount of ETH to send on-mint
         (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
             sqrtPriceX96,
@@ -50,7 +46,6 @@ abstract contract LiquidityOperations is CommonBase {
         bytes memory calls = getMintEncoded(config, liquidity, recipient, hookData);
         // add extra wei because modifyLiquidities may be rounding up, LiquidityAmounts is imprecise?
         lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
-        delta = hook.deltas(0);
     }
 
     function increaseLiquidity(
@@ -58,10 +53,9 @@ abstract contract LiquidityOperations is CommonBase {
         PositionConfig memory config,
         uint256 liquidityToAdd,
         bytes memory hookData
-    ) internal returns (BalanceDelta delta) {
+    ) internal {
         bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, hookData);
         lpm.modifyLiquidities(calls, _deadline);
-        delta = hook.deltas(0);
     }
 
     // do not make external call before unlockAndExecute, allows us to test reverts
@@ -70,29 +64,20 @@ abstract contract LiquidityOperations is CommonBase {
         PositionConfig memory config,
         uint256 liquidityToRemove,
         bytes memory hookData
-    ) internal returns (BalanceDelta delta) {
+    ) internal {
         bytes memory calls = getDecreaseEncoded(tokenId, config, liquidityToRemove, hookData);
         lpm.modifyLiquidities(calls, _deadline);
-        delta = hook.deltas(0);
     }
 
-    function collect(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
-        internal
-        returns (BalanceDelta delta)
-    {
+    function collect(uint256 tokenId, PositionConfig memory config, bytes memory hookData) internal {
         bytes memory calls = getCollectEncoded(tokenId, config, hookData);
         lpm.modifyLiquidities(calls, _deadline);
-        delta = hook.deltas(0);
     }
 
     // This is encoded with close calls. Not all burns need to be encoded with closes if there is no liquidity in the position.
-    function burn(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
-        internal
-        returns (BalanceDelta delta)
-    {
+    function burn(uint256 tokenId, PositionConfig memory config, bytes memory hookData) internal {
         bytes memory calls = getBurnEncoded(tokenId, config, hookData);
         lpm.modifyLiquidities(calls, _deadline);
-        delta = hook.deltas(0);
     }
 
     // Helper functions for getting encoded calldata for .modifyLiquidities

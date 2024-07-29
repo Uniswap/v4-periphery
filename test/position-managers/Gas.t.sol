@@ -49,10 +49,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        // This is needed to receive return deltas from modifyLiquidity calls.
-        deployPosmHookSavesDelta();
-
-        (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         (nativeKey,) = initPool(CurrencyLibrary.NATIVE, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 

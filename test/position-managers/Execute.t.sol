@@ -41,10 +41,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        // deploy this since all functions used in LiquidityOperations require the snapshotting to work
-        deployPosmHookSavesDelta();
-
-        (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);

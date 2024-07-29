@@ -100,7 +100,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        BalanceDelta delta = mint(config, liquidityToAdd, address(this), ZERO_BYTES);
+        mint(config, liquidityToAdd, address(this), ZERO_BYTES);
+        BalanceDelta delta = snapLastDelta();
 
         assertEq(tokenId, 1);
         assertEq(lpm.nextTokenId(), 2);
@@ -134,7 +135,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        BalanceDelta delta = mint(config, liquidityToAdd, address(this), ZERO_BYTES);
+        mint(config, liquidityToAdd, address(this), ZERO_BYTES);
+        BalanceDelta delta = snapLastDelta();
 
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
@@ -161,7 +163,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
-        BalanceDelta delta = mint(config, liquidityToAdd, alice, ZERO_BYTES);
+        mint(config, liquidityToAdd, alice, ZERO_BYTES);
+        BalanceDelta delta = snapLastDelta();
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), alice);
