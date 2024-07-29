@@ -61,10 +61,13 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     function test_modifyLiquidities_reverts_reentrancy() public {
         // Create a reentrant token and initialize the pool
-        ReentrantToken reentrantToken = new ReentrantToken(lpm);
-        (currency0, currency1) = (address(reentrantToken) < Currency.unwrap(currency1))
-            ? (Currency.wrap(address(reentrantToken)), currency1)
-            : (currency1, Currency.wrap(address(reentrantToken)));
+        Currency reentrantToken = Currency.wrap(address(new ReentrantToken(lpm)));
+        (currency0, currency1) = (Currency.unwrap(reentrantToken) < Currency.unwrap(currency1))
+            ? (reentrantToken, currency1)
+            : (currency1, reentrantToken);
+
+        // Set up approvals for the reentrant token
+        approvePosmCurrency(reentrantToken);
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
@@ -73,7 +76,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = getMintEncoded(config, 1e18, address(this), "");
 
         // Permit2.transferFrom does not bubble the ContractLocked error and instead reverts with its own error
-        vm.expectRevert(abi.encodeWithSelector(IAllowanceTransfer.AllowanceExpired.selector, 0));
+        vm.expectRevert("TRANSFER_FROM_FAILED");
         lpm.modifyLiquidities(calls, block.timestamp + 1);
     }
 
