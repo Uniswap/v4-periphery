@@ -39,7 +39,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         // 1. First, the caller must approve permit2 on the token.
         _approvePermit2AsASpender();
         // 2. Then, the caller must approve POSM as a spender of permit2. TODO: This could also be a signature.
-        _approvePosmAsASpender();
+        _approvePosmAsASpenderOfPermit2();
     }
 
     function approvePosmCurrency1() public {
@@ -61,7 +61,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         IERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
     }
 
-    function _approvePosmAsASpender() internal {
+    function _approvePosmAsASpenderOfPermit2() internal {
         permit2.approve(Currency.unwrap(currency0), address(lpm), type(uint160).max, type(uint48).max);
         permit2.approve(Currency.unwrap(currency1), address(lpm), type(uint160).max, type(uint48).max);
     }
