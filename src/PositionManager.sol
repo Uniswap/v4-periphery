@@ -82,6 +82,7 @@ contract PositionManager is
         } else if (action == Actions.CLOSE_CURRENCY) {
             _close(params);
         } else if (action == Actions.BURN_POSITION) {
+            // Will automatically decrease liquidity to 0 if the position is not already empty.
             _burn(params);
         } else {
             revert UnsupportedAction(action);
