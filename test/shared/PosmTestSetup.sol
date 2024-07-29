@@ -52,7 +52,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     function approvePosmFor(address addr) public {
         vm.startPrank(addr);
         _approvePermit2AsASpender();
-        _approvePosmAsASpender();
+        _approvePosmAsASpenderOfPermit2();
         vm.stopPrank();
     }
 
