@@ -16,7 +16,6 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
-import {SafeCallback} from "./base/SafeCallback.sol";
 import {Multicall} from "./base/Multicall.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
@@ -29,7 +28,6 @@ contract PositionManager is
     ERC721Permit,
     PoolInitializer,
     Multicall,
-    SafeCallback,
     DeltaResolver,
     ReentrancyLock,
     BaseActionsRouter
