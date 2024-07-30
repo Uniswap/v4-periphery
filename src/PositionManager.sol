@@ -229,11 +229,4 @@ contract PositionManager is
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
         }
     }
-
-    function _getFullSettleAmount(Currency currency) private view returns (uint256 amount) {
-        int256 _amount = poolManager.currencyDelta(address(this), currency);
-        // If the amount is positive, it should be taken not settled for.
-        if (_amount > 0) revert IncorrectUseOfSettle();
-        amount = uint256(-_amount);
-    }
 }

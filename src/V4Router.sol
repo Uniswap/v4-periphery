@@ -51,12 +51,11 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                     currency := calldataload(params.offset)
                 }
 
-                int256 delta = poolManager.currencyDelta(address(this), currency);
-                if (delta > 0) revert InvalidDeltaForAction();
+                uint256 amount = _getFullSettleAmount(currency);
 
                 // TODO support address(this) paying too
                 // TODO should it have a maxAmountOut added slippage protection?
-                _settle(currency, _msgSender(), uint256(-delta));
+                _settle(currency, _msgSender(), amount);
             } else if (action == Actions.TAKE_ALL) {
                 // equivalent: abi.decode(params, (Currency, address))
                 Currency currency;
@@ -66,12 +65,11 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                     recipient := calldataload(add(params.offset, 0x20))
                 }
 
-                int256 delta = poolManager.currencyDelta(address(this), currency);
-                if (delta < 0) revert InvalidDeltaForAction();
+                uint256 amount = _getFullTakeAmount(currency);
 
                 // TODO should _take have a minAmountOut added slippage check?
                 // TODO recipient mapping
-                _take(currency, recipient, uint256(delta));
+                _take(currency, recipient, amount);
             } else {
                 revert UnsupportedAction(action);
             }
