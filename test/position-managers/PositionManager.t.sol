@@ -101,7 +101,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         uint256 tokenId = lpm.nextTokenId();
         mint(config, liquidityToAdd, address(this), ZERO_BYTES);
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
 
         assertEq(tokenId, 1);
         assertEq(lpm.nextTokenId(), 2);
@@ -136,7 +136,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         uint256 tokenId = lpm.nextTokenId();
         mint(config, liquidityToAdd, address(this), ZERO_BYTES);
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
 
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
@@ -164,7 +164,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
         mint(config, liquidityToAdd, alice, ZERO_BYTES);
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
 
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(tokenId), alice);
@@ -199,7 +199,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
         decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
-        BalanceDelta deltaDecrease = snapLastDelta();
+        BalanceDelta deltaDecrease = getLastDelta();
         uint256 deltasSnapsLength = hook.getDeltasLength();
         // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array with be the same length.
         burn(tokenId, config, ZERO_BYTES);
@@ -253,7 +253,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
         burn(tokenId, config, ZERO_BYTES);
-        BalanceDelta deltaBurn = snapLastDelta();
+        BalanceDelta deltaBurn = getLastDelta();
 
         assertEq(uint256(int256(deltaBurn.amount0())), amount0);
         assertEq(uint256(int256(deltaBurn.amount1())), amount1);
@@ -316,7 +316,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
         decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));

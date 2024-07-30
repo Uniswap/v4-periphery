@@ -20,8 +20,6 @@ abstract contract LiquidityOperations is CommonBase {
 
     PositionManager lpm;
 
-    HookSavesDelta hook;
-
     uint256 _deadline = block.timestamp + 1;
 
     function mint(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData) internal {
@@ -133,9 +131,5 @@ abstract contract LiquidityOperations is CommonBase {
         planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, hookData));
         // Close needed on burn in case there is liquidity left in the position.
         return planner.finalize(config.poolKey);
-    }
-
-    function snapLastDelta() internal view returns (BalanceDelta delta) {
-        delta = hook.deltas(hook.getDeltasLength() - 1); // just want the most recetly written to delta
     }
 }

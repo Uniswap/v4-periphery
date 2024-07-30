@@ -75,7 +75,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
 
         collect(tokenId, config, ZERO_BYTES);
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
 
         assertEq(uint256(int256(delta.amount1())), uint256(int256(expectedFees.amount1())));
         assertEq(uint256(int256(delta.amount0())), uint256(int256(expectedFees.amount0())));
@@ -120,7 +120,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         vm.startPrank(alice);
         collect(tokenIdAlice, config, ZERO_BYTES);
         vm.stopPrank();
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
         uint256 balance0AliceAfter = currency0.balanceOf(alice);
         uint256 balance1AliceAfter = currency1.balanceOf(alice);
 
@@ -134,7 +134,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         vm.startPrank(bob);
         collect(tokenIdBob, config, ZERO_BYTES);
         vm.stopPrank();
-        delta = snapLastDelta();
+        delta = getLastDelta();
         uint256 balance0BobAfter = currency0.balanceOf(bob);
         uint256 balance1BobAfter = currency1.balanceOf(bob);
 
@@ -161,13 +161,13 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         vm.startPrank(alice);
         mint(config, liquidityAlice, alice, ZERO_BYTES);
         vm.stopPrank();
-        BalanceDelta lpDeltaAlice = snapLastDelta();
+        BalanceDelta lpDeltaAlice = getLastDelta();
 
         uint256 tokenIdBob = lpm.nextTokenId();
         vm.startPrank(bob);
         mint(config, liquidityBob, bob, ZERO_BYTES);
         vm.stopPrank();
-        BalanceDelta lpDeltaBob = snapLastDelta();
+        BalanceDelta lpDeltaBob = getLastDelta();
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;

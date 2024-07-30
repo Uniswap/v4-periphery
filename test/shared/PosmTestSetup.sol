@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -19,6 +20,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
     IAllowanceTransfer permit2;
+    HookSavesDelta hook;
     address hookAddr = address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
 
     function deployPosmHookSavesDelta() public {
@@ -61,5 +63,9 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         vm.startPrank(addr);
         approvePosm();
         vm.stopPrank();
+    }
+
+    function getLastDelta() internal view returns (BalanceDelta delta) {
+        delta = hook.deltas(hook.getDeltasLength() - 1); // just want the most recetly written to delta
     }
 }
