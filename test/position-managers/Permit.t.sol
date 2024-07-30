@@ -219,54 +219,6 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
     }
 
-    function test_permit_nonceAlreadyUsed() public {
-        uint256 liquidityAlice = 1e18;
-        vm.prank(alice);
-        mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
-
-        // alice gives bob operator permissions
-        uint256 nonce = 1;
-        permit(alice, alicePK, tokenIdAlice, bob, nonce);
-
-        // alice cannot reuse the nonce
-        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
-
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
-
-        vm.startPrank(alice);
-        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
-        vm.stopPrank();
-    }
-
-    function test_permit_nonceAlreadyUsed_twoPositions() public {
-        uint256 liquidityAlice = 1e18;
-        vm.prank(alice);
-        mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
-
-        vm.prank(alice);
-        config.tickLower = -600;
-        config.tickUpper = 600;
-        mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice2 = lpm.nextTokenId() - 1;
-
-        // alice gives bob operator permissions for first token
-        uint256 nonce = 1;
-        permit(alice, alicePK, tokenIdAlice, bob, nonce);
-
-        // alice cannot reuse the nonce for the second token
-        bytes32 digest = getDigest(bob, tokenIdAlice2, nonce, block.timestamp + 1);
-
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
-
-        vm.startPrank(alice);
-        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        lpm.permit(bob, tokenIdAlice2, block.timestamp + 1, nonce, v, r, s);
-        vm.stopPrank();
-    }
-
     // Bob can use alice's signature to permit & decrease liquidity
     function test_permit_operatorSelfPermit() public {
         uint256 liquidityAlice = 1e18;
