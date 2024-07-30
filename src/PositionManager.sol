@@ -48,8 +48,6 @@ contract PositionManager is
 
     IAllowanceTransfer public immutable permit2;
 
-    uint256 public constant FULL_DELTA = 0;
-
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
         ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
@@ -157,16 +155,13 @@ contract PositionManager is
         }
     }
 
-    /// @param params is an encoding of Currency, uint256 amount
-    /// @dev if amount == FULL_DELTA, it settles the full negative delta
+    /// @param params is an encoding of Currency
     /// @dev uses this addresses balance to settle a negative delta
     function _settleWithBalance(bytes memory params) internal {
-        (Currency currency, uint256 amount) = abi.decode(params, (Currency, uint256));
-
-        amount = amount == FULL_DELTA ? _getFullSettleAmount(currency) : amount;
+        Currency currency = abi.decode(params, (Currency));
 
         // set the payer to this address, performs a transfer.
-        _settle(currency, address(this), amount);
+        _settle(currency, address(this), _getFullSettleAmount(currency));
     }
 
     /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, bytes hookData

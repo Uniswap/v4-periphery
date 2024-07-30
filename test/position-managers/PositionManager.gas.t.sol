@@ -478,8 +478,8 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         Plan memory planner = Planner.init();
         planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0, 0));
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1, 0));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
         planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
 
