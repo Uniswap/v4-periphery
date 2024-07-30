@@ -50,7 +50,7 @@ contract PositionManager is
 
     IAllowanceTransfer public immutable permit2;
 
-    uint256 public constant FULL_DELTA = type(uint256).max;
+    uint256 public constant FULL_DELTA = 0;
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
@@ -237,12 +237,5 @@ contract PositionManager is
         // If the amount is positive, it should be taken not settled for.
         if (_amount > 0) revert IncorrectUseOfSettle();
         amount = uint256(-_amount);
-    }
-
-    function _getFullTakeAmount(Currency currency) private view returns (uint256 amount) {
-        int256 _amount = poolManager.currencyDelta(address(this), currency);
-        // If the amount is negative, it should be settled not taken.
-        if (_amount < 0) revert IncorrectUseOfTake();
-        amount = uint256(_amount);
     }
 }
