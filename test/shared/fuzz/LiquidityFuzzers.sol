@@ -7,12 +7,13 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
-import {IPositionManager, Actions} from "../../../src/interfaces/IPositionManager.sol";
+import {IPositionManager} from "../../../src/interfaces/IPositionManager.sol";
+import {Actions} from "../../../src/libraries/Actions.sol";
 import {PositionConfig} from "../../../src/libraries/PositionConfig.sol";
-import {Planner} from "../../shared/Planner.sol";
+import {Planner, Plan} from "../../shared/Planner.sol";
 
 contract LiquidityFuzzers is Fuzzers {
-    using Planner for Planner.Plan;
+    using Planner for Plan;
 
     function addFuzzyLiquidity(
         IPositionManager lpm,
@@ -26,10 +27,11 @@ contract LiquidityFuzzers is Fuzzers {
         PositionConfig memory config =
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.MINT, abi.encode(config, uint256(params.liquidityDelta), recipient, hookData));
+        Plan memory planner = Planner.init().add(
+            Actions.MINT_POSITION, abi.encode(config, uint256(params.liquidityDelta), recipient, hookData)
+        );
 
-        bytes memory calls = planner.finalize(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         lpm.modifyLiquidities(calls, block.timestamp + 1);
 
         uint256 tokenId = lpm.nextTokenId() - 1;

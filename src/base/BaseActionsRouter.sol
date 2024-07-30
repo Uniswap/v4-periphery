@@ -20,8 +20,8 @@ abstract contract BaseActionsRouter is SafeCallback {
 
     /// @notice internal function that triggers the execution of a set of actions on v4
     /// @dev inheriting contracts should call this function to trigger execution
-    function _executeActions(bytes calldata params) internal {
-        poolManager.unlock(params);
+    function _executeActions(bytes calldata unlockData) internal {
+        poolManager.unlock(unlockData);
     }
 
     /// @notice function that is called by the PoolManager through the SafeCallback.unlockCallback
@@ -38,7 +38,6 @@ abstract contract BaseActionsRouter is SafeCallback {
             _handleAction(action, params[actionIndex]);
         }
 
-        // TODO do we want to return anything?
         return "";
     }
 

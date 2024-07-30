@@ -82,6 +82,7 @@ contract ERC721PermitTest is Test {
 
     /// @dev spender uses alice's signature to approve itself
     function test_erc721permit_spender(address spender) public {
+        vm.assume(spender != alice);
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
 
@@ -114,6 +115,7 @@ contract ERC721PermitTest is Test {
 
     /// @dev a third party caller uses alice's signature to give `spender` the approval
     function test_erc721permit_caller(address caller, address spender) public {
+        vm.assume(spender != alice);
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
 
