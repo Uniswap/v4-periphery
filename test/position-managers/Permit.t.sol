@@ -17,6 +17,7 @@ import {ERC721Permit} from "../../src/base/ERC721Permit.sol";
 import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
 
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {SignatureVerification} from "../../src/libraries/SignatureVerification.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
@@ -174,7 +175,7 @@ contract PermitTest is Test, PosmTestSetup {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPK, digest);
 
         vm.startPrank(bob);
-        vm.expectRevert(IERC721Permit.Unauthorized.selector);
+        vm.expectRevert(SignatureVerification.InvalidSigner.selector);
         lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
         vm.stopPrank();
     }

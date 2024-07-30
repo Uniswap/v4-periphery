@@ -2,9 +2,10 @@
 pragma solidity ^0.8.24;
 
 import {ERC721} from "solmate/src/tokens/ERC721.sol";
-import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import {ERC721PermitHashLibrary} from "../libraries/ERC721PermitHash.sol";
+import {SignatureVerification} from "../libraries/SignatureVerification.sol";
 
 import {IERC721Permit} from "../interfaces/IERC721Permit.sol";
 import {UnorderedNonce} from "./UnorderedNonce.sol";
@@ -14,8 +15,7 @@ import {UnorderedNonce} from "./UnorderedNonce.sol";
 abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce {
     /// @inheritdoc IERC721Permit
     /// @dev Value is equal to keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)");
-    bytes32 public constant override PERMIT_TYPEHASH =
-        0x49ecf333e5b8c95c40fdafc95c1ad136e8914a8fb55e9dc8bb01eaa83a2df9ad;
+    bytes32 public constant override PERMIT_TYPEHASH = ERC721PermitHashLibrary.PERMIT_TYPEHASH;
 
     /// @notice Computes the nameHash and versionHash
     constructor(string memory name_, string memory symbol_, string memory version_)
@@ -39,20 +39,8 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce 
         address owner = ownerOf(tokenId);
         if (spender == owner) revert NoSelfPermit();
 
-        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(PERMIT_TYPEHASH, spender, tokenId, nonce, deadline)));
-
-        if (owner.code.length != 0) {
-            if (
-                IERC1271(owner).isValidSignature(digest, abi.encodePacked(r, s, v))
-                    != IERC1271.isValidSignature.selector
-            ) {
-                revert Unauthorized();
-            }
-        } else {
-            address recoveredAddress = ecrecover(digest, v, r, s);
-            if (recoveredAddress == address(0)) revert InvalidSignature();
-            if (recoveredAddress != owner) revert Unauthorized();
-        }
+        bytes32 hash = ERC721PermitHashLibrary.hash(spender, tokenId, nonce, deadline);
+        SignatureVerification.verify(v, r, s, _hashTypedDataV4(hash), owner);
 
         _useUnorderedNonce(owner, nonce);
         _approve(owner, spender, tokenId);

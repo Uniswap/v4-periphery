@@ -6,6 +6,7 @@ import {MockERC721Permit} from "./mocks/MockERC721Permit.sol";
 import {IERC721Permit} from "../src/interfaces/IERC721Permit.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {UnorderedNonce} from "../src/base/UnorderedNonce.sol";
+import {SignatureVerification} from "../src/libraries/SignatureVerification.sol";
 
 contract ERC721PermitTest is Test {
     MockERC721Permit erc721Permit;
@@ -203,7 +204,7 @@ contract ERC721PermitTest is Test {
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
 
         vm.startPrank(bob);
-        vm.expectRevert(IERC721Permit.Unauthorized.selector);
+        vm.expectRevert(SignatureVerification.InvalidSigner.selector);
         erc721Permit.permit(bob, tokenId, block.timestamp, nonce, v, r, s);
         vm.stopPrank();
 
