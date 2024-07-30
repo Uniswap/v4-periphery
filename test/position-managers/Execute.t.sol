@@ -17,19 +17,20 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
-import {Planner} from "../shared/Planner.sol";
+import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
 contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
-    using Planner for Planner.Plan;
+    using Planner for Plan;
     using StateLibrary for IPoolManager;
 
     PoolId poolId;
@@ -42,7 +43,10 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        // This is needed to receive return deltas from modifyLiquidity calls.
+        deployPosmHookSavesDelta();
+
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(hook)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
@@ -85,12 +89,12 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, initialLiquidity, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner = Planner.init();
+        Plan memory planner = Planner.init();
 
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd2, ZERO_BYTES));
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd2, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
@@ -107,12 +111,12 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         uint256 tokenId = lpm.nextTokenId(); // assume that the .mint() produces tokenId=1, to be used in increaseLiquidity
 
-        Planner.Plan memory planner = Planner.init();
+        Plan memory planner = Planner.init();
 
-        planner = planner.add(Actions.MINT, abi.encode(config, initialLiquidity, address(this), ZERO_BYTES));
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
+        planner.add(Actions.MINT_POSITION, abi.encode(config, initialLiquidity, address(this), ZERO_BYTES));
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
@@ -128,7 +132,8 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // mint a position on range [-300, 300]
         uint256 tokenId = lpm.nextTokenId();
-        BalanceDelta delta = mint(config, initialLiquidity, address(this), ZERO_BYTES);
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
 
         // we'll burn and mint a new position on [-60, 60]; calculate the liquidity units for the new range
         PositionConfig memory newConfig = PositionConfig({poolKey: config.poolKey, tickLower: -60, tickUpper: 60});
@@ -143,22 +148,21 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
 
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.BURN, abi.encode(tokenId, config, ZERO_BYTES));
-        planner = planner.add(Actions.MINT, abi.encode(newConfig, newLiquidity, address(this), ZERO_BYTES));
-        bytes memory calls = planner.finalize(config.poolKey);
+        Plan memory planner = Planner.init();
+        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, ZERO_BYTES));
+        planner.add(Actions.MINT_POSITION, abi.encode(newConfig, newLiquidity, address(this), ZERO_BYTES));
+        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
 
-        bytes[] memory data = lpm.modifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         {
-            int256 delta0 = abi.decode(data[data.length - 2], (int256));
-            int256 delta1 = abi.decode(data[data.length - 1], (int256));
+            BalanceDelta delta = getLastDelta();
 
             uint256 balance0After = currency0.balanceOfSelf();
             uint256 balance1After = currency1.balanceOfSelf();
 
             // TODO: use clear so user does not pay 1 wei
-            assertEq(delta0, -1 wei);
-            assertEq(delta1, -1 wei);
+            assertEq(delta.amount0(), -1 wei);
+            assertEq(delta.amount1(), -1 wei);
             assertApproxEqAbs(balance0Before - balance0After, 0, 1 wei);
             assertApproxEqAbs(balance1Before - balance1After, 0, 1 wei);
         }

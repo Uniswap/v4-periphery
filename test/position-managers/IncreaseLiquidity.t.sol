@@ -21,8 +21,9 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {Actions, IPositionManager} from "../../src/interfaces/IPositionManager.sol";
-import {Planner} from "../shared/Planner.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
+import {Planner, Plan} from "../shared/Planner.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
@@ -30,7 +31,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
-    using Planner for Planner.Plan;
+    using Planner for Plan;
     using FeeMath for IPositionManager;
 
     PoolId poolId;
@@ -49,7 +50,10 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        // This is needed to receive return deltas from modifyLiquidity calls.
+        deployPosmHookSavesDelta();
+
+        (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
@@ -109,9 +113,9 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
         // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
-        bytes memory calls = planner.finalize(config.poolKey);
+        Plan memory planner = Planner.init();
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.startPrank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         vm.stopPrank();
