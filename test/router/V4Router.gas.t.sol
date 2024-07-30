@@ -280,6 +280,19 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         snapLastCall("V4Router_ExactOutputSingle_nativeIn_sweepETH");
     }
 
+    function test_gas_nativeOut_swapExactOutputSingle() public {
+        uint256 amountOut = 1 ether;
+
+        IV4Router.ExactOutputSingleParams memory params =
+            IV4Router.ExactOutputSingleParams(nativeKey, false, uint128(amountOut), 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(nativeKey.currency1, nativeKey.currency0, address(this));
+
+        router.executeActionsAndSweepExcessETH(data);
+        snapLastCall("V4Router_ExactOutputSingle_nativeOut");
+    }
+
     function test_gas_nativeIn_swapExactOut_1Hop_sweepExcessETH() public {
         uint256 amountOut = 1 ether;
 
@@ -320,7 +333,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.finalizeSwap(CurrencyLibrary.NATIVE, currency1, address(this));
 
         router.executeActionsAndSweepExcessETH{value: 2 ether}(data);
-        snapLastCall("V4Router_ExactOut2Hops_nativeOut");
+        snapLastCall("V4Router_ExactOut2Hops_nativeIn");
     }
 
     function test_gas_nativeIn_swapExactOut_3Hops_sweepExcessETH() public {
@@ -336,6 +349,23 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         bytes memory data = plan.finalizeSwap(CurrencyLibrary.NATIVE, currency2, address(this));
 
         router.executeActionsAndSweepExcessETH{value: 2 ether}(data);
+        snapLastCall("V4Router_ExactOut3Hops_nativeIn");
+    }
+
+    function test_gas_nativeOut_swapExactOut_3Hops() public {
+        uint256 amountOut = 1 ether;
+
+        tokenPath.push(currency2);
+        tokenPath.push(currency1);
+        tokenPath.push(currency0);
+        tokenPath.push(CurrencyLibrary.NATIVE);
+
+        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(currency2, CurrencyLibrary.NATIVE, address(this));
+
+        router.executeActions(data);
         snapLastCall("V4Router_ExactOut3Hops_nativeOut");
     }
 }

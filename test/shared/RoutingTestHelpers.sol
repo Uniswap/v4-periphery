@@ -123,45 +123,52 @@ contract RoutingTestHelpers is Test, Deployers {
         params.amountInMaximum = type(uint128).max;
     }
 
-    function _finalizeExecuteAndCheckSwap(
-        Currency inputCurrency,
-        Currency outputCurrency,
-        uint256 amountIn,
-        uint256 amountOut
-    ) internal {
-        _finalizeExecuteAndCheckSwap(inputCurrency, outputCurrency, amountIn, amountOut, false);
-    }
-
-    function _finalizeExecuteAndCheckSwap(
-        Currency inputCurrency,
-        Currency outputCurrency,
-        uint256 amountIn,
-        uint256 amountOut,
-        bool ethInputExactOutput
-    ) internal {
-        uint256 prevBalanceIn = inputCurrency.balanceOfSelf();
-        uint256 prevBalanceOut = outputCurrency.balanceOfSelf();
+    function _finalizeAndExecuteSwap(Currency inputCurrency, Currency outputCurrency, uint256 amountIn)
+        internal
+        returns (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        )
+    {
+        inputBalanceBefore = inputCurrency.balanceOfSelf();
+        outputBalanceBefore = outputCurrency.balanceOfSelf();
 
         bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, address(this));
 
         uint256 value = (inputCurrency.isNative()) ? amountIn : 0;
 
-        if (ethInputExactOutput) {
-            // send too much ETH to mimic slippage
-            // then make sure the router can sweep back excess input
-            value += 0.1 ether;
-            router.executeActionsAndSweepExcessETH{value: value}(data);
-        } else {
-            // otherwise just execute as normal
-            router.executeActions{value: value}(data);
-        }
+        // otherwise just execute as normal
+        router.executeActions{value: value}(data);
 
-        uint256 newBalanceIn = inputCurrency.balanceOfSelf();
-        uint256 newBalanceOut = outputCurrency.balanceOfSelf();
+        inputBalanceAfter = inputCurrency.balanceOfSelf();
+        outputBalanceAfter = outputCurrency.balanceOfSelf();
+    }
 
-        assertEq(prevBalanceIn - newBalanceIn, amountIn);
-        assertEq(newBalanceOut - prevBalanceOut, amountOut);
-        assertEq(inputCurrency.balanceOf(address(router)), 0);
-        assertEq(outputCurrency.balanceOf(address(router)), 0);
+    function _finalizeAndExecuteNativeInputExactOutputSwap(
+        Currency inputCurrency,
+        Currency outputCurrency,
+        uint256 expectedAmountIn
+    )
+        internal
+        returns (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        )
+    {
+        inputBalanceBefore = inputCurrency.balanceOfSelf();
+        outputBalanceBefore = outputCurrency.balanceOfSelf();
+
+        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, address(this));
+
+        // send too much ETH to mimic slippage
+        uint256 value = expectedAmountIn + 0.1 ether;
+        router.executeActionsAndSweepExcessETH{value: value}(data);
+
+        inputBalanceAfter = inputCurrency.balanceOfSelf();
+        outputBalanceAfter = outputCurrency.balanceOfSelf();
     }
 }
