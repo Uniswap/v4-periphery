@@ -37,7 +37,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     function deployPosm(IPoolManager poolManager) internal {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
-        lpm = new PositionManager(poolManager, permit2);
+        lpm = new PositionManager(poolManager, permit2, 200_000);
     }
 
     function seedBalance(address to) internal {

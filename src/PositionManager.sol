@@ -22,6 +22,7 @@ import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
+import {StakingNotifier, StakingConfig} from "./base/StakingNotifier.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -30,7 +31,8 @@ contract PositionManager is
     Multicall,
     DeltaResolver,
     ReentrancyLock,
-    BaseActionsRouter
+    BaseActionsRouter,
+    StakingNotifier
 {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
@@ -48,8 +50,9 @@ contract PositionManager is
 
     IAllowanceTransfer public immutable permit2;
 
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2, uint256 _stakingGasLimit)
         BaseActionsRouter(_poolManager)
+        StakingNotifier(_stakingGasLimit)
         ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
     {
         permit2 = _permit2;
@@ -189,6 +192,14 @@ contract PositionManager is
             }),
             hookData
         );
+
+        _notifyModifyLiquidity(uint256(salt), liquidityChange, config);
+    }
+
+    function stake(uint256 tokenId, StakingConfig memory stakingConfig, PositionConfig memory config) external {
+        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
+        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+        _notifyStake(tokenId, stakingConfig, config);
     }
 
     function _getPositionLiquidity(PositionConfig memory config, uint256 tokenId)
