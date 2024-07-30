@@ -95,11 +95,12 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 nonce = 1;
         bytes32 digest = getDigest(bob, tokenId, nonce, block.timestamp + 1);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         // bob gives himself permission and decreases liquidity
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(
-            PositionManager(lpm).permit.selector, bob, tokenId, block.timestamp + 1, nonce, v, r, s
+            PositionManager(lpm).permit.selector, bob, tokenId, block.timestamp + 1, nonce, signature
         );
         uint256 liquidityToRemove = 0.4444e18;
         bytes memory actions = getDecreaseEncoded(tokenId, config, liquidityToRemove, ZERO_BYTES);

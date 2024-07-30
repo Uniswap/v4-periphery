@@ -173,10 +173,11 @@ contract PermitTest is Test, PosmTestSetup {
         bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.startPrank(bob);
         vm.expectRevert(SignatureVerification.InvalidSigner.selector);
-        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, v, r, s);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
         vm.stopPrank();
     }
 
@@ -232,10 +233,11 @@ contract PermitTest is Test, PosmTestSetup {
         uint256 nonce = 1;
         bytes32 digest = getDigest(bob, tokenId, nonce, block.timestamp + 1);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         // bob gives himself permission
         vm.prank(bob);
-        lpm.permit(bob, tokenId, block.timestamp + 1, nonce, v, r, s);
+        lpm.permit(bob, tokenId, block.timestamp + 1, nonce, signature);
 
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
@@ -261,11 +263,12 @@ contract PermitTest is Test, PosmTestSetup {
         uint256 nonce = 1;
         bytes32 digest = getDigest(bob, tokenId, nonce, block.timestamp + 1);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         // charlie gives Bob permission to operate on alice's token
         address charlie = makeAddr("CHARLIE");
         vm.prank(charlie);
-        lpm.permit(bob, tokenId, block.timestamp + 1, nonce, v, r, s);
+        lpm.permit(bob, tokenId, block.timestamp + 1, nonce, signature);
 
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;

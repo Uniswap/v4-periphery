@@ -69,9 +69,10 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         bytes32 digest = getDigest(operator, tokenId, 1, block.timestamp + 1);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.prank(operator);
-        lpm.permit(operator, tokenId, block.timestamp + 1, nonce, v, r, s);
+        lpm.permit(operator, tokenId, block.timestamp + 1, nonce, signature);
     }
 
     function getDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)

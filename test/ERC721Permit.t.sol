@@ -89,6 +89,7 @@ contract ERC721PermitTest is Test {
         uint256 nonce = 1;
         bytes32 digest = _getDigest(spender, tokenId, nonce, block.timestamp);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         // no approvals existed
         assertEq(erc721Permit.getApproved(tokenId), address(0));
@@ -102,7 +103,7 @@ contract ERC721PermitTest is Test {
         vm.startPrank(spender);
         vm.expectEmit(true, true, true, true, address(erc721Permit));
         emit IERC721.Approval(alice, spender, tokenId);
-        erc721Permit.permit(spender, tokenId, block.timestamp, nonce, v, r, s);
+        erc721Permit.permit(spender, tokenId, block.timestamp, nonce, signature);
         vm.stopPrank();
 
         // approvals set
@@ -122,6 +123,7 @@ contract ERC721PermitTest is Test {
         uint256 nonce = 1;
         bytes32 digest = _getDigest(spender, tokenId, nonce, block.timestamp);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         // no approvals existed
         assertEq(erc721Permit.getApproved(tokenId), address(0));
@@ -135,7 +137,7 @@ contract ERC721PermitTest is Test {
         vm.startPrank(caller);
         vm.expectEmit(true, true, true, true, address(erc721Permit));
         emit IERC721.Approval(alice, spender, tokenId);
-        erc721Permit.permit(spender, tokenId, block.timestamp, nonce, v, r, s);
+        erc721Permit.permit(spender, tokenId, block.timestamp, nonce, signature);
         vm.stopPrank();
 
         // approvals set
@@ -158,10 +160,11 @@ contract ERC721PermitTest is Test {
         bytes32 digest = _getDigest(bob, tokenIdAlice, nonce, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.startPrank(alice);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        erc721Permit.permit(bob, tokenIdAlice, block.timestamp, nonce, v, r, s);
+        erc721Permit.permit(bob, tokenIdAlice, block.timestamp, nonce, signature);
         vm.stopPrank();
     }
 
@@ -180,10 +183,11 @@ contract ERC721PermitTest is Test {
         bytes32 digest = _getDigest(bob, tokenIdAlice2, nonce, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.startPrank(alice);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        erc721Permit.permit(bob, tokenIdAlice2, block.timestamp, nonce, v, r, s);
+        erc721Permit.permit(bob, tokenIdAlice2, block.timestamp, nonce, signature);
         vm.stopPrank();
     }
 
@@ -196,6 +200,7 @@ contract ERC721PermitTest is Test {
 
         // bob attempts signing an approval for himself
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         // approvals unset
         assertEq(erc721Permit.getApproved(tokenId), address(0));
@@ -207,7 +212,7 @@ contract ERC721PermitTest is Test {
 
         vm.startPrank(bob);
         vm.expectRevert(SignatureVerification.InvalidSigner.selector);
-        erc721Permit.permit(bob, tokenId, block.timestamp, nonce, v, r, s);
+        erc721Permit.permit(bob, tokenId, block.timestamp, nonce, signature);
         vm.stopPrank();
 
         // approvals unset
@@ -226,6 +231,7 @@ contract ERC721PermitTest is Test {
         uint256 deadline = block.timestamp;
         bytes32 digest = _getDigest(spender, tokenId, nonce, deadline);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         // no approvals existed
         assertEq(erc721Permit.getApproved(tokenId), address(0));
@@ -241,7 +247,7 @@ contract ERC721PermitTest is Test {
         // -- Permit but deadline expired -- //
         vm.startPrank(spender);
         vm.expectRevert(IERC721Permit.DeadlineExpired.selector);
-        erc721Permit.permit(spender, tokenId, deadline, nonce, v, r, s);
+        erc721Permit.permit(spender, tokenId, deadline, nonce, signature);
         vm.stopPrank();
 
         // approvals unset
@@ -257,9 +263,10 @@ contract ERC721PermitTest is Test {
         bytes32 digest = _getDigest(operator, tokenId, 1, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.prank(operator);
-        erc721Permit.permit(operator, tokenId, block.timestamp, nonce, v, r, s);
+        erc721Permit.permit(operator, tokenId, block.timestamp, nonce, signature);
     }
 
     function _getDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)

@@ -5,7 +5,7 @@ import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ERC721PermitHashLibrary} from "../libraries/ERC721PermitHash.sol";
-import {SignatureVerification} from "../libraries/SignatureVerification.sol";
+import {SignatureVerification} from "permit2/src/libraries/SignatureVerification.sol";
 
 import {IERC721Permit} from "../interfaces/IERC721Permit.sol";
 import {UnorderedNonce} from "./UnorderedNonce.sol";
@@ -13,8 +13,10 @@ import {UnorderedNonce} from "./UnorderedNonce.sol";
 /// @title ERC721 with permit
 /// @notice Nonfungible tokens that support an approve via signature, i.e. permit
 abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce {
+    using SignatureVerification for bytes;
     /// @inheritdoc IERC721Permit
     /// @dev Value is equal to keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)");
+
     bytes32 public constant override PERMIT_TYPEHASH = ERC721PermitHashLibrary.PERMIT_TYPEHASH;
 
     /// @notice Computes the nameHash and versionHash
@@ -29,10 +31,9 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce 
     }
 
     /// @inheritdoc IERC721Permit
-    function permit(address spender, uint256 tokenId, uint256 deadline, uint256 nonce, uint8 v, bytes32 r, bytes32 s)
+    function permit(address spender, uint256 tokenId, uint256 deadline, uint256 nonce, bytes calldata signature)
         external
         payable
-        override
     {
         if (block.timestamp > deadline) revert DeadlineExpired();
 
@@ -40,7 +41,7 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce 
         if (spender == owner) revert NoSelfPermit();
 
         bytes32 hash = ERC721PermitHashLibrary.hash(spender, tokenId, nonce, deadline);
-        SignatureVerification.verify(v, r, s, _hashTypedDataV4(hash), owner);
+        signature.verify(_hashTypedDataV4(hash), owner);
 
         _useUnorderedNonce(owner, nonce);
         _approve(owner, spender, tokenId);
