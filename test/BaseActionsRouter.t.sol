@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {MockBaseActionsRouter} from "./mocks/MockBaseActionsRouter.sol";
-import {ActionsRouterPlanner, Plan} from "./shared/ActionsRouterPlanner.sol";
+import {Planner, Plan} from "./shared/Planner.sol";
 import {Actions} from "../src/libraries/Actions.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Test} from "forge-std/Test.sol";
@@ -10,7 +10,7 @@ import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 
 contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
-    using ActionsRouterPlanner for Plan;
+    using Planner for Plan;
 
     MockBaseActionsRouter router;
 
@@ -20,22 +20,22 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
     }
 
     function test_swap_suceeds() public {
-        Plan memory plan = ActionsRouterPlanner.init();
+        Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
-            plan.add(Actions.SWAP, "");
+            plan.add(Actions.SWAP_EXACT_IN, "");
         }
 
         bytes memory data = plan.encode();
 
         assertEq(router.swapCount(), 0);
 
-        router.executeAction(data);
+        router.executeActions(data);
         snapLastCall("BaseActionsRouter_mock10commands");
         assertEq(router.swapCount(), 10);
     }
 
     function test_increaseLiquidity_suceeds() public {
-        Plan memory plan = ActionsRouterPlanner.init();
+        Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
             plan.add(Actions.INCREASE_LIQUIDITY, "");
         }
@@ -43,12 +43,12 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.increaseLiqCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.increaseLiqCount(), 10);
     }
 
     function test_decreaseLiquidity_suceeds() public {
-        Plan memory plan = ActionsRouterPlanner.init();
+        Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
             plan.add(Actions.DECREASE_LIQUIDITY, "");
         }
@@ -56,12 +56,12 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.decreaseLiqCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.decreaseLiqCount(), 10);
     }
 
     function test_donate_suceeds() public {
-        Plan memory plan = ActionsRouterPlanner.init();
+        Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
             plan.add(Actions.DONATE, "");
         }
@@ -69,12 +69,12 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.donateCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.donateCount(), 10);
     }
 
     function test_clear_suceeds() public {
-        Plan memory plan = ActionsRouterPlanner.init();
+        Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
             plan.add(Actions.CLEAR, "");
         }
@@ -82,12 +82,12 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.clearCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.clearCount(), 10);
     }
 
     function test_settle_suceeds() public {
-        Plan memory plan = ActionsRouterPlanner.init();
+        Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
             plan.add(Actions.SETTLE, "");
         }
@@ -95,12 +95,12 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.settleCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.settleCount(), 10);
     }
 
     function test_take_suceeds() public {
-        Plan memory plan = ActionsRouterPlanner.init();
+        Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
             plan.add(Actions.TAKE, "");
         }
@@ -108,12 +108,12 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.takeCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.takeCount(), 10);
     }
 
     function test_mint_suceeds() public {
-        Plan memory plan = ActionsRouterPlanner.init();
+        Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
             plan.add(Actions.MINT_6909, "");
         }
@@ -121,12 +121,12 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.mintCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.mintCount(), 10);
     }
 
     function test_burn_suceeds() public {
-        Plan memory plan = ActionsRouterPlanner.init();
+        Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
             plan.add(Actions.BURN_6909, "");
         }
@@ -134,7 +134,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.burnCount(), 0);
 
         bytes memory data = plan.encode();
-        router.executeAction(data);
+        router.executeActions(data);
         assertEq(router.burnCount(), 10);
     }
 }
