@@ -112,7 +112,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
         Plan memory planner = Planner.init();
         planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
-        bytes memory calls = planner.finalize(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.startPrank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         vm.stopPrank();
@@ -365,7 +365,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
         uint256 amount0 = uint128(-delta.amount0());
         uint256 amount1 = uint128(-delta.amount1());
 

@@ -38,7 +38,7 @@ library Planner {
         return plan;
     }
 
-    function finalize(Plan memory plan, PoolKey memory poolKey) internal pure returns (bytes memory) {
+    function finalizeModifyLiquidity(Plan memory plan, PoolKey memory poolKey) internal pure returns (bytes memory) {
         plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency0));
         plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency1));
         return plan.encode();

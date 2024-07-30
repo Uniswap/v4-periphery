@@ -84,7 +84,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
         // add extra wei because modifyLiquidities may be rounding up, LiquidityAmounts is imprecise?
         lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -128,7 +128,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // Mint with excess native tokens
         lpm.modifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -166,12 +166,12 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
         decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
-        BalanceDelta deltaDecrease = snapLastDelta();
+        BalanceDelta deltaDecrease = getLastDelta();
 
-        uint256 deltasSnapsLength = hook.getDeltasLength();
+        uint256 numDeltas = hook.numberDeltasReturned();
         burn(tokenId, config, ZERO_BYTES);
-        // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array with be the same length.
-        assertEq(deltasSnapsLength, hook.getDeltasLength());
+        // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array will be the same length.
+        assertEq(numDeltas, hook.numberDeltasReturned());
 
         (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, 0);
@@ -219,7 +219,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
         burn(tokenId, config, ZERO_BYTES);
-        BalanceDelta deltaBurn = snapLastDelta();
+        BalanceDelta deltaBurn = getLastDelta();
 
         (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, 0);
@@ -269,7 +269,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, ZERO_BYTES); // double the liquidity
         lpm.modifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
 
         // verify position liquidity increased
         bytes32 positionId =
@@ -318,7 +318,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = planner.encode();
 
         lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
 
         // verify position liquidity increased
         bytes32 positionId =
@@ -358,7 +358,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             uint128(decreaseLiquidityDelta)
         );
         decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -390,7 +390,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0Before = address(this).balance;
         uint256 balance1Before = currency1.balanceOfSelf();
         collect(tokenId, config, ZERO_BYTES);
-        BalanceDelta delta = snapLastDelta();
+        BalanceDelta delta = getLastDelta();
 
         assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, feeRevenue0, 1 wei); // TODO: fuzzer off by 1 wei
         assertEq(currency0.balanceOfSelf() - balance0Before, uint128(delta.amount0()));

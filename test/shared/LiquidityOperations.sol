@@ -20,8 +20,6 @@ abstract contract LiquidityOperations is CommonBase {
 
     PositionManager lpm;
 
-    HookSavesDelta hook;
-
     uint256 _deadline = block.timestamp + 1;
 
     function mint(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData) internal {
@@ -89,7 +87,7 @@ abstract contract LiquidityOperations is CommonBase {
         Plan memory planner = Planner.init();
         planner.add(Actions.MINT_POSITION, abi.encode(config, liquidity, recipient, hookData));
 
-        return planner.finalize(config.poolKey);
+        return planner.finalizeModifyLiquidity(config.poolKey);
     }
 
     function getIncreaseEncoded(
@@ -100,7 +98,7 @@ abstract contract LiquidityOperations is CommonBase {
     ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
         planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, hookData));
-        return planner.finalize(config.poolKey);
+        return planner.finalizeModifyLiquidity(config.poolKey);
     }
 
     function getDecreaseEncoded(
@@ -111,7 +109,7 @@ abstract contract LiquidityOperations is CommonBase {
     ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
         planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToRemove, hookData));
-        return planner.finalize(config.poolKey);
+        return planner.finalizeModifyLiquidity(config.poolKey);
     }
 
     function getCollectEncoded(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
@@ -121,7 +119,7 @@ abstract contract LiquidityOperations is CommonBase {
     {
         Plan memory planner = Planner.init();
         planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, hookData));
-        return planner.finalize(config.poolKey);
+        return planner.finalizeModifyLiquidity(config.poolKey);
     }
 
     function getBurnEncoded(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
@@ -132,10 +130,6 @@ abstract contract LiquidityOperations is CommonBase {
         Plan memory planner = Planner.init();
         planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, hookData));
         // Close needed on burn in case there is liquidity left in the position.
-        return planner.finalize(config.poolKey);
-    }
-
-    function snapLastDelta() internal view returns (BalanceDelta delta) {
-        delta = hook.deltas(hook.getDeltasLength() - 1); // just want the most recetly written to delta
+        return planner.finalizeModifyLiquidity(config.poolKey);
     }
 }

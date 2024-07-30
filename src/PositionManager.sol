@@ -16,7 +16,6 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {ERC721Permit} from "./base/ERC721Permit.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
-import {SafeCallback} from "./base/SafeCallback.sol";
 import {Multicall} from "./base/Multicall.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
@@ -29,7 +28,6 @@ contract PositionManager is
     ERC721Permit,
     PoolInitializer,
     Multicall,
-    SafeCallback,
     DeltaResolver,
     ReentrancyLock,
     BaseActionsRouter
@@ -65,6 +63,7 @@ contract PositionManager is
     }
 
     /// @param unlockData is an encoding of actions, params, and currencies
+    /// @param deadline is the timestamp at which the unlockData will no longer be valid
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
         external
         payable
@@ -107,7 +106,7 @@ contract PositionManager is
 
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
-        _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+        BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
     }
 
     /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes hookData
@@ -120,7 +119,7 @@ contract PositionManager is
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
 
         // Note: the tokenId is used as the salt.
-        _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+        BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
     }
 
     /// @param params is an encoding of PositionConfig memory config, uint256 liquidity, address recipient, bytes hookData where recipient is the receiver / owner of the ERC721
@@ -137,7 +136,7 @@ contract PositionManager is
         _mint(owner, tokenId);
 
         // _beforeModify is not called here because the tokenId is newly minted
-        _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+        BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
 
         positionConfigs[tokenId] = config.toId();
     }
@@ -180,8 +179,11 @@ contract PositionManager is
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
 
+        BalanceDelta liquidityDelta;
         // Can only call modify if there is non zero liquidity.
-        if (liquidity > 0) _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+        if (liquidity > 0) {
+            liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+        }
 
         delete positionConfigs[tokenId];
         // Burn the token.
@@ -190,8 +192,9 @@ contract PositionManager is
 
     function _modifyLiquidity(PositionConfig memory config, int256 liquidityChange, bytes32 salt, bytes memory hookData)
         internal
+        returns (BalanceDelta liquidityDelta)
     {
-        poolManager.modifyLiquidity(
+        (liquidityDelta,) = poolManager.modifyLiquidity(
             config.poolKey,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: config.tickLower,
