@@ -86,7 +86,7 @@ contract PermitTest is Test, PosmTestSetup {
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
-        permit(alice, alicePK, tokenIdAlice, bob, 1);
+        permit(alicePK, tokenIdAlice, bob, 1);
 
         // bob can increase liquidity on alice's token
         uint256 newLiquidity = 2e18;
@@ -114,7 +114,7 @@ contract PermitTest is Test, PosmTestSetup {
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
         // alice gives bob operator permissions
-        permit(alice, alicePK, tokenIdAlice, bob, 1);
+        permit(alicePK, tokenIdAlice, bob, 1);
 
         // bob can decrease liquidity on alice's token
         uint256 liquidityToRemove = 0.4444e18;
@@ -142,7 +142,7 @@ contract PermitTest is Test, PosmTestSetup {
         donateRouter.donate(key, currency0Revenue, currency1Revenue, ZERO_BYTES);
 
         // alice gives bob operator permissions
-        permit(alice, alicePK, tokenIdAlice, bob, 1);
+        permit(alicePK, tokenIdAlice, bob, 1);
 
         // TODO: test collection to recipient with a permissioned operator
 

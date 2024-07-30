@@ -53,4 +53,27 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         approvePosm();
         vm.stopPrank();
     }
+
+    function permit(uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {
+        bytes32 digest = getDigest(operator, tokenId, 1, block.timestamp + 1);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+
+        vm.prank(operator);
+        lpm.permit(operator, tokenId, block.timestamp + 1, nonce, v, r, s);
+    }
+
+    function getDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)
+        internal
+        view
+        returns (bytes32 digest)
+    {
+        digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                lpm.DOMAIN_SEPARATOR(),
+                keccak256(abi.encode(lpm.PERMIT_TYPEHASH(), spender, tokenId, nonce, deadline))
+            )
+        );
+    }
 }

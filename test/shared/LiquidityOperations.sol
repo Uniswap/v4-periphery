@@ -93,31 +93,6 @@ abstract contract LiquidityOperations is CommonBase {
         return abi.decode(result[0], (BalanceDelta));
     }
 
-    // TODO: organize somewhere else, or rename this file to NFTLiquidityHelpers?
-    function permit(address signer, uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {
-        bytes32 digest = getDigest(operator, tokenId, 1, block.timestamp + 1);
-
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
-
-        vm.prank(signer);
-        lpm.permit(operator, tokenId, block.timestamp + 1, nonce, v, r, s);
-    }
-
-    // TODO: also organize with permit helper
-    function getDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)
-        internal
-        view
-        returns (bytes32 digest)
-    {
-        digest = keccak256(
-            abi.encodePacked(
-                "\x19\x01",
-                lpm.DOMAIN_SEPARATOR(),
-                keccak256(abi.encode(lpm.PERMIT_TYPEHASH(), spender, tokenId, nonce, deadline))
-            )
-        );
-    }
-
     // Helper functions for getting encoded calldata for .modifyLiquidities
     function getMintEncoded(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData)
         internal
