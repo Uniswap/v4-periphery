@@ -12,8 +12,11 @@ struct PositionConfig {
 
 /// @notice Library for computing the configId given a PositionConfig
 library PositionConfigLibrary {
-    function toId(PositionConfig memory config) internal pure returns (bytes32 id) {
-        PoolKey memory poolKey = config.poolKey;
+    function toId(PositionConfig calldata config) internal pure returns (bytes32 id) {
+        PoolKey calldata poolKey;
+        assembly ("memory-safe") {
+            poolKey := config
+        }
         return keccak256(
             abi.encodePacked(
                 poolKey.currency0,

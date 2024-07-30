@@ -22,6 +22,7 @@ import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
+import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -39,6 +40,7 @@ contract PositionManager is
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
+    using CalldataDecoder for bytes;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
@@ -92,22 +94,22 @@ contract PositionManager is
         return _getLocker();
     }
 
-    /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes hookData
+    /// @param params is an encoding of uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes hookData
     /// @dev Calling increase with 0 liquidity will credit the caller with any underlying fees of the position
-    function _increase(bytes memory params) internal {
-        (uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes memory hookData) =
-            abi.decode(params, (uint256, PositionConfig, uint256, bytes));
+    function _increase(bytes calldata params) internal {
+        (uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData) =
+            params.decodeModifyLiquidityParams();
 
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
     }
 
-    /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes hookData
+    /// @param params is an encoding of uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes hookData
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
-    function _decrease(bytes memory params) internal {
-        (uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes memory hookData) =
-            abi.decode(params, (uint256, PositionConfig, uint256, bytes));
+    function _decrease(bytes calldata params) internal {
+        (uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData) =
+            params.decodeModifyLiquidityParams();
 
         if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
@@ -116,10 +118,10 @@ contract PositionManager is
         BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
     }
 
-    /// @param params is an encoding of PositionConfig memory config, uint256 liquidity, address recipient, bytes hookData where recipient is the receiver / owner of the ERC721
-    function _mint(bytes memory params) internal {
-        (PositionConfig memory config, uint256 liquidity, address owner, bytes memory hookData) =
-            abi.decode(params, (PositionConfig, uint256, address, bytes));
+    /// @param params is an encoding of PositionConfig calldata config, uint256 liquidity, address recipient, bytes hookData where recipient is the receiver / owner of the ERC721
+    function _mint(bytes calldata params) internal {
+        (PositionConfig calldata config, uint256 liquidity, address owner, bytes calldata hookData) =
+            params.decodeMintParams();
 
         // mint receipt token
         uint256 tokenId;
@@ -136,8 +138,11 @@ contract PositionManager is
     }
 
     /// @param params is an encoding of the Currency to close
-    function _close(bytes memory params) internal {
-        (Currency currency) = abi.decode(params, (Currency));
+    function _close(bytes calldata params) internal {
+        Currency currency;
+        assembly ("memory-safe") {
+            currency := calldataload(params.offset)
+        }
         // this address has applied all deltas on behalf of the user/owner
         // it is safe to close this entire delta because of slippage checks throughout the batched calls.
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
@@ -154,11 +159,10 @@ contract PositionManager is
         }
     }
 
-    /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, bytes hookData
+    /// @param params is an encoding of uint256 tokenId, PositionConfig calldata config, bytes hookData
     /// @dev this is overloaded with ERC721Permit._burn
-    function _burn(bytes memory params) internal {
-        (uint256 tokenId, PositionConfig memory config, bytes memory hookData) =
-            abi.decode(params, (uint256, PositionConfig, bytes));
+    function _burn(bytes calldata params) internal {
+        (uint256 tokenId, PositionConfig calldata config, bytes calldata hookData) = params.decodeBurnParams();
 
         if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
@@ -175,10 +179,12 @@ contract PositionManager is
         _burn(tokenId);
     }
 
-    function _modifyLiquidity(PositionConfig memory config, int256 liquidityChange, bytes32 salt, bytes memory hookData)
-        internal
-        returns (BalanceDelta liquidityDelta)
-    {
+    function _modifyLiquidity(
+        PositionConfig calldata config,
+        int256 liquidityChange,
+        bytes32 salt,
+        bytes calldata hookData
+    ) internal returns (BalanceDelta liquidityDelta) {
         (liquidityDelta,) = poolManager.modifyLiquidity(
             config.poolKey,
             IPoolManager.ModifyLiquidityParams({
@@ -191,7 +197,7 @@ contract PositionManager is
         );
     }
 
-    function _getPositionLiquidity(PositionConfig memory config, uint256 tokenId)
+    function _getPositionLiquidity(PositionConfig calldata config, uint256 tokenId)
         internal
         view
         returns (uint128 liquidity)
