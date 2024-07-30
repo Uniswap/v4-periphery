@@ -66,6 +66,6 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     }
 
     function getLastDelta() internal view returns (BalanceDelta delta) {
-        delta = hook.deltas(hook.numberDeltasReturned() - 1); // just want the most recetly written to delta
+        delta = hook.deltas(hook.numberDeltasReturned() - 1); // just want the most recently written delta
     }
 }
