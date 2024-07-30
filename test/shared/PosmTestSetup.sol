@@ -9,30 +9,48 @@ import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LiquidityOperations} from "./LiquidityOperations.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
-contract PosmTestSetup is Test, Deployers, LiquidityOperations {
+contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
+    IAllowanceTransfer permit2;
+
     function deployAndApprovePosm(IPoolManager poolManager) public {
-        lpm = new PositionManager(poolManager);
+        deployPosm(poolManager);
         approvePosm();
     }
 
-    function seedBalance(address to) public {
+    function deployPosm(IPoolManager poolManager) internal {
+        // We use deployPermit2() to prevent having to use via-ir in this repository.
+        permit2 = IAllowanceTransfer(deployPermit2());
+        lpm = new PositionManager(poolManager, permit2);
+    }
+
+    function seedBalance(address to) internal {
         IERC20(Currency.unwrap(currency0)).transfer(to, STARTING_USER_BALANCE);
         IERC20(Currency.unwrap(currency1)).transfer(to, STARTING_USER_BALANCE);
     }
 
-    function approvePosm() public {
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+    function approvePosm() internal {
+        approvePosmCurrency(currency0);
+        approvePosmCurrency(currency1);
     }
 
-    function approvePosmFor(address addr) public {
+    function approvePosmCurrency(Currency currency) internal {
+        // Because POSM uses permit2, we must execute 2 permits/approvals.
+        // 1. First, the caller must approve permit2 on the token.
+        IERC20(Currency.unwrap(currency)).approve(address(permit2), type(uint256).max);
+        // 2. Then, the caller must approve POSM as a spender of permit2. TODO: This could also be a signature.
+        permit2.approve(Currency.unwrap(currency), address(lpm), type(uint160).max, type(uint48).max);
+    }
+
+    // Does the same approvals as approvePosm, but for a specific address.
+    function approvePosmFor(address addr) internal {
         vm.startPrank(addr);
-        IERC20(Currency.unwrap(currency0)).approve(address(lpm), type(uint256).max);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        approvePosm();
         vm.stopPrank();
     }
 }

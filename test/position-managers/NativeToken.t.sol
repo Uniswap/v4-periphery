@@ -18,6 +18,7 @@ import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -49,8 +50,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         currency0 = CurrencyLibrary.NATIVE;
         (nativeKey, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        lpm = new PositionManager(manager);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        deployPosm(manager);
+        // currency0 is the native token so only execute approvals for currency1.
+        approvePosmCurrency(currency1);
 
         vm.deal(address(this), type(uint256).max);
     }
@@ -81,7 +83,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
@@ -117,7 +119,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, uint256(params.liquidityDelta));
 
@@ -143,7 +145,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, address(this), ZERO_BYTES);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, uint256(params.liquidityDelta));
 
@@ -193,7 +195,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, address(this), ZERO_BYTES);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, uint256(params.liquidityDelta));
 
@@ -255,7 +257,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // verify position liquidity increased
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, liquidityToAdd + liquidityToAdd); // liquidity was doubled
 
@@ -297,7 +299,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // verify position liquidity increased
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, liquidityToAdd + liquidityToAdd); // liquidity was doubled
 
@@ -335,7 +337,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         BalanceDelta delta = decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 

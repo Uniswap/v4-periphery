@@ -13,6 +13,8 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -59,10 +61,13 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     function test_modifyLiquidities_reverts_reentrancy() public {
         // Create a reentrant token and initialize the pool
-        ReentrantToken reentrantToken = new ReentrantToken(lpm);
-        (currency0, currency1) = (address(reentrantToken) < Currency.unwrap(currency1))
-            ? (Currency.wrap(address(reentrantToken)), currency1)
-            : (currency1, Currency.wrap(address(reentrantToken)));
+        Currency reentrantToken = Currency.wrap(address(new ReentrantToken(lpm)));
+        (currency0, currency1) = (Currency.unwrap(reentrantToken) < Currency.unwrap(currency1))
+            ? (reentrantToken, currency1)
+            : (currency1, reentrantToken);
+
+        // Set up approvals for the reentrant token
+        approvePosmCurrency(reentrantToken);
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
@@ -70,7 +75,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: 0, tickUpper: 60});
         bytes memory calls = getMintEncoded(config, 1e18, address(this), "");
 
-        // SafeTransferLib does not bubble the ContractLocked error and instead reverts with its own error
+        // Permit2.transferFrom does not bubble the ContractLocked error and instead reverts with its own error
         vm.expectRevert("TRANSFER_FROM_FAILED");
         lpm.modifyLiquidities(calls, block.timestamp + 1);
     }
@@ -97,7 +102,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(lpm.ownerOf(tokenId), address(this));
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
@@ -176,7 +181,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(lpm.ownerOf(1), address(this));
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
@@ -221,7 +226,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(lpm.ownerOf(1), address(this));
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
@@ -273,7 +278,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
@@ -302,7 +307,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         BalanceDelta delta = decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);

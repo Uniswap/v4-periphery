@@ -11,6 +11,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
@@ -162,6 +163,31 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         // TODO: Use clear.
         assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
         assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
+    }
+
+    function test_increaseLiquidity_withUnapprovedCaller() public {
+        // Alice provides liquidity
+        // Bob increases Alice's liquidity without being approved
+        uint256 liquidityAlice = 3_000e18;
+
+        // alice provides liquidity
+        vm.prank(alice);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        bytes32 positionId =
+            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice)));
+        uint128 oldLiquidity = StateLibrary.getPositionLiquidity(manager, config.poolKey.toId(), positionId);
+
+        // bob can increase liquidity for alice even though he is not the owner / not approved
+        vm.startPrank(bob);
+        increaseLiquidity(tokenIdAlice, config, 100e18, ZERO_BYTES);
+        vm.stopPrank();
+
+        uint128 newLiquidity = StateLibrary.getPositionLiquidity(manager, config.poolKey.toId(), positionId);
+
+        // assert liqudity increased by the correct amount
+        assertEq(newLiquidity, oldLiquidity + uint128(100e18));
     }
 
     function test_increaseLiquidity_sameRange_withExcessFees() public {

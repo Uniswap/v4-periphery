@@ -11,6 +11,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -65,7 +66,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
@@ -91,7 +92,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd + liquidityToAdd2);
@@ -113,7 +114,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd);

@@ -23,7 +23,7 @@ import {IMulticall} from "../../src/interfaces/IMulticall.sol";
 import {Planner} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
-contract GasTest is Test, PosmTestSetup, GasSnapshot {
+contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
