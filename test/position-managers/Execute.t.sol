@@ -15,19 +15,20 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
-import {Planner} from "../shared/Planner.sol";
+import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
 contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
-    using Planner for Planner.Plan;
+    using Planner for Plan;
     using StateLibrary for IPoolManager;
 
     PoolId poolId;
@@ -83,12 +84,12 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         mint(config, initialLiquidity, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        Planner.Plan memory planner = Planner.init();
+        Plan memory planner = Planner.init();
 
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd2, ZERO_BYTES));
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd2, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
@@ -105,12 +106,12 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         uint256 tokenId = lpm.nextTokenId(); // assume that the .mint() produces tokenId=1, to be used in increaseLiquidity
 
-        Planner.Plan memory planner = Planner.init();
+        Plan memory planner = Planner.init();
 
-        planner = planner.add(Actions.MINT, abi.encode(config, initialLiquidity, address(this), ZERO_BYTES));
-        planner = planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
+        planner.add(Actions.MINT_POSITION, abi.encode(config, initialLiquidity, address(this), ZERO_BYTES));
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
 
-        bytes memory calls = planner.finalize(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =

@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {V4RouterImplementation} from "../shared/implementation/V4RouterImplementation.sol";
-import {Plan, ActionsRouterPlanner} from "../shared/ActionsRouterPlanner.sol";
+import {Plan, Planner} from "../shared/Planner.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PathKey} from "../../src/libraries/PathKey.sol";
@@ -21,7 +21,7 @@ import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the router.
 contract RoutingTestHelpers is Test, Deployers {
-    using ActionsRouterPlanner for Plan;
+    using Planner for Plan;
 
     PoolModifyLiquidityTest positionManager;
     V4RouterImplementation router;
