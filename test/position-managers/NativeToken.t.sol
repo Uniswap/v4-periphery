@@ -48,11 +48,15 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        currency0 = CurrencyLibrary.NATIVE;
-        (nativeKey, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        // This is needed to receive return deltas from modifyLiquidity calls.
+        deployPosmHookSavesDelta();
 
-        lpm = new PositionManager(manager);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        currency0 = CurrencyLibrary.NATIVE;
+        (nativeKey, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        deployPosm(manager);
+        // currency0 is the native token so only execute approvals for currency1.
+        approvePosmCurrency(currency1);
 
         vm.deal(address(this), type(uint256).max);
     }
@@ -79,8 +83,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             liquidityToAdd.toUint128()
         );
         // add extra wei because modifyLiquidities may be rounding up, LiquidityAmounts is imprecise?
-        bytes[] memory result = lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
-        BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
+        BalanceDelta delta = snapLastDelta();
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -123,8 +127,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         // Mint with excess native tokens
-        bytes[] memory result = lpm.modifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
-        BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
+        BalanceDelta delta = snapLastDelta();
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -161,10 +165,13 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
-        BalanceDelta deltaDecrease = decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
-        BalanceDelta deltaBurn = burn(tokenId, config, ZERO_BYTES);
-        assertEq(deltaBurn.amount0(), 0);
-        assertEq(deltaBurn.amount1(), 0);
+        decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+        BalanceDelta deltaDecrease = snapLastDelta();
+
+        uint256 deltasSnapsLength = hook.getDeltasLength();
+        burn(tokenId, config, ZERO_BYTES);
+        // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array with be the same length.
+        assertEq(deltasSnapsLength, hook.getDeltasLength());
 
         (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, 0);
@@ -211,7 +218,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
-        BalanceDelta deltaBurn = burn(tokenId, config, ZERO_BYTES);
+        burn(tokenId, config, ZERO_BYTES);
+        BalanceDelta deltaBurn = snapLastDelta();
 
         (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, 0);
@@ -260,8 +268,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, ZERO_BYTES); // double the liquidity
-        bytes[] memory result = lpm.modifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
-        BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
+        BalanceDelta delta = snapLastDelta();
 
         // verify position liquidity increased
         bytes32 positionId =
@@ -309,8 +317,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
         bytes memory calls = planner.encode();
 
-        bytes[] memory result = lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
-        BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
+        BalanceDelta delta = snapLastDelta();
 
         // verify position liquidity increased
         bytes32 positionId =
@@ -349,7 +357,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             TickMath.getSqrtPriceAtTick(params.tickUpper),
             uint128(decreaseLiquidityDelta)
         );
-        BalanceDelta delta = decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
+        decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
+        BalanceDelta delta = snapLastDelta();
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -380,7 +389,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         uint256 balance0Before = address(this).balance;
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = collect(tokenId, config, ZERO_BYTES);
+        collect(tokenId, config, ZERO_BYTES);
+        BalanceDelta delta = snapLastDelta();
 
         assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, feeRevenue0, 1 wei); // TODO: fuzzer off by 1 wei
         assertEq(currency0.balanceOfSelf() - balance0Before, uint128(delta.amount0()));

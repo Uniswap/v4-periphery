@@ -24,7 +24,7 @@ import {IMulticall} from "../../src/interfaces/IMulticall.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
-contract GasTest is Test, PosmTestSetup, GasSnapshot {
+contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -50,7 +50,7 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         deployMintAndApprove2Currencies();
 
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
-        (nativeKey,) = initPool(CurrencyLibrary.NATIVE, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (nativeKey,) = initPool(CurrencyLibrary.NATIVE, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.

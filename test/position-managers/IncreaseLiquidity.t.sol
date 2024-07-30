@@ -49,7 +49,10 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        // This is needed to receive return deltas from modifyLiquidity calls.
+        deployPosmHookSavesDelta();
+
+        (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
@@ -361,9 +364,10 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
-        bytes[] memory results = lpm.modifyLiquidities(calls, _deadline);
-        uint256 amount0 = abi.decode(results[1], (uint256));
-        uint256 amount1 = abi.decode(results[2], (uint256));
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = snapLastDelta();
+        uint256 amount0 = uint128(-delta.amount0());
+        uint256 amount1 = uint128(-delta.amount1());
 
         // The balances were swept back to this address.
         assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 0);

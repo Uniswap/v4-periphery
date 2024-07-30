@@ -19,8 +19,7 @@ interface IPositionManager {
     /// @notice Batches many liquidity modification calls to pool manager
     /// @param payload is an encoding of actions, and parameters for those actions
     /// @param deadline is the deadline for the batched actions to be executed
-    /// @return returnData is the endocing of each actions return information
-    function modifyLiquidities(bytes calldata payload, uint256 deadline) external payable returns (bytes[] memory);
+    function modifyLiquidities(bytes calldata payload, uint256 deadline) external payable;
 
     function nextTokenId() external view returns (uint256);
 }
