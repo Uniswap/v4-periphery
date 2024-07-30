@@ -63,6 +63,7 @@ contract PositionManager is
     }
 
     /// @param unlockData is an encoding of actions, params, and currencies
+    /// @param deadline is the timestamp at which the unlockData will no longer be valid
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
         external
         payable

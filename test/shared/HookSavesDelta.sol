@@ -37,7 +37,7 @@ contract HookSavesDelta is BaseTestHooks {
         deltas.push(delta);
     }
 
-    function getDeltasLength() external view returns (uint256) {
+    function numberDeltasReturned() external view returns (uint256) {
         return deltas.length;
     }
 }

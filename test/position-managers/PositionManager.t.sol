@@ -200,10 +200,10 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
         BalanceDelta deltaDecrease = getLastDelta();
-        uint256 deltasSnapsLength = hook.getDeltasLength();
+        uint256 deltasSnapsLength = hook.numberDeltasReturned();
         // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array with be the same length.
         burn(tokenId, config, ZERO_BYTES);
-        assertEq(deltasSnapsLength, hook.getDeltasLength());
+        assertEq(deltasSnapsLength, hook.numberDeltasReturned());
 
         (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
