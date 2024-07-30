@@ -162,7 +162,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         uint256 deltasSnapsLength = hook.numberDeltasReturned();
         burn(tokenId, config, ZERO_BYTES);
-        // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array with be the same length.
+        // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array will be the same length.
         assertEq(deltasSnapsLength, hook.numberDeltasReturned());
 
         (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
