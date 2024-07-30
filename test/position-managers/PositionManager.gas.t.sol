@@ -472,4 +472,24 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decrease_burnEmpty_native");
     }
+
+    function test_gas_mint_settleWithBalance_sweep() public {
+        uint256 liquidityAlice = 3_000e18;
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0, type(uint256).max));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1, type(uint256).max));
+        planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
+        planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
+
+        currency0.transfer(address(lpm), 100e18);
+        currency1.transfer(address(lpm), 100e18);
+
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_mint_settleWithBalance_sweep");
+    }
 }
