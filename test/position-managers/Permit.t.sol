@@ -64,6 +64,21 @@ contract PermitTest is Test, PosmTestSetup {
         );
     }
 
+    function test_domainSeparator() public view {
+        assertEq(
+            IERC721Permit(address(lpm)).DOMAIN_SEPARATOR(),
+            keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256("Uniswap V4 Positions NFT"), // storage is private on EIP712.sol so we need to hardcode these
+                    keccak256("1"),
+                    block.chainid,
+                    address(lpm)
+                )
+            )
+        );
+    }
+
     function test_permit_increaseLiquidity() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);

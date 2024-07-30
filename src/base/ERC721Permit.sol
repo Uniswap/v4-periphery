@@ -58,9 +58,14 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce 
         _approve(owner, spender, tokenId);
     }
 
+    /// @notice Change or reaffirm the approved address for an NFT
+    /// @dev override Solmate's ERC721 approve so approve() and permit() share the _approve method
+    /// The zero address indicates there is no approved address
+    /// Throws error unless `msg.sender` is the current NFT owner,
+    /// or an authorized operator of the current owner.
+    /// @param spender The new approved NFT controller
+    /// @param id The tokenId of the NFT to approve
     function approve(address spender, uint256 id) public override {
-        // override Solmate's ERC721 approve so approve() and permit() share the same code paths
-
         address owner = _ownerOf[id];
 
         if (msg.sender != owner && !isApprovedForAll[owner][msg.sender]) revert Unauthorized();
