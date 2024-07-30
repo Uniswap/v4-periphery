@@ -339,6 +339,64 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
     }
 
+    function test_decreaseLiquidity_slippage_revertAmount0() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        BalanceDelta delta = mint(config, 1e18, address(this), ZERO_BYTES);
+
+        bytes memory calls = getDecreaseEncoded(
+            tokenId, config, 1e18, uint128(-delta.amount0()) + 1 wei, MIN_SLIPPAGE_DECREASE, ZERO_BYTES
+        );
+        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_decreaseLiquidity_slippage_revertAmount1() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        BalanceDelta delta = mint(config, 1e18, address(this), ZERO_BYTES);
+
+        bytes memory calls = getDecreaseEncoded(
+            tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, uint128(-delta.amount1()) + 1 wei, ZERO_BYTES
+        );
+        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_decreaseLiquidity_slippage_exactDoesNotRevert() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        BalanceDelta delta = mint(config, 1e18, address(this), ZERO_BYTES);
+
+        // TODO: why does decreasing a newly minted position return original delta - 1 wei?
+        bytes memory calls = getDecreaseEncoded(
+            tokenId, config, 1e18, uint128(-delta.amount0()) - 1 wei, uint128(-delta.amount1()) - 1 wei, ZERO_BYTES
+        );
+        bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta decreaseDelta = abi.decode(result[0], (BalanceDelta));
+
+        // TODO: why does decreasing a newly minted position return original delta - 1 wei?
+        assertApproxEqAbs(-delta.amount0(), decreaseDelta.amount0(), 1 wei);
+        assertApproxEqAbs(-delta.amount1(), decreaseDelta.amount1(), 1 wei);
+    }
+
+    function test_decreaseLiquidity_slippage_revert_swap() public {
+        // swapping will cause a slippage revert
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        BalanceDelta delta = mint(config, 1e18, address(this), ZERO_BYTES);
+
+        bytes memory calls = getDecreaseEncoded(
+            tokenId, config, 1e18, uint128(-delta.amount0()) - 1 wei, uint128(-delta.amount1()) - 1 wei, ZERO_BYTES
+        );
+
+        // swap to move the price and cause a slippage revert
+        swap(key, true, -1e18, ZERO_BYTES);
+
+        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
     function test_fuzz_decreaseLiquidity_assertCollectedBalance(
         IPoolManager.ModifyLiquidityParams memory params,
         uint256 decreaseLiquidityDelta

@@ -123,14 +123,21 @@ contract PositionManager is
     /// @return returns an encoding of the BalanceDelta applied by this increase call, including credited fees.
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
     function _decrease(bytes memory params) internal returns (bytes memory) {
-        (uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes memory hookData) =
-            abi.decode(params, (uint256, PositionConfig, uint256, bytes));
+        (
+            uint256 tokenId,
+            PositionConfig memory config,
+            uint256 liquidity,
+            uint128 amount0Min,
+            uint128 amount1Min,
+            bytes memory hookData
+        ) = abi.decode(params, (uint256, PositionConfig, uint256, uint128, uint128, bytes));
 
         if (!_isApprovedOrOwner(_getLocker(), tokenId)) revert NotApproved(_getLocker());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
 
         // Note: the tokenId is used as the salt.
         BalanceDelta delta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+        if (uint128(delta.amount0()) < amount0Min || uint128(delta.amount1()) < amount1Min) revert SlippageExceeded();
         return abi.encode(delta);
     }
 

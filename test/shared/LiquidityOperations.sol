@@ -22,6 +22,7 @@ abstract contract LiquidityOperations is CommonBase {
     uint256 _deadline = block.timestamp + 1;
 
     uint128 constant MAX_SLIPPAGE_INCREASE = type(uint128).max;
+    uint128 constant MIN_SLIPPAGE_DECREASE = 0 wei;
 
     function mint(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData)
         internal
@@ -148,8 +149,23 @@ abstract contract LiquidityOperations is CommonBase {
         uint256 liquidityToRemove,
         bytes memory hookData
     ) internal pure returns (bytes memory) {
+        return getDecreaseEncoded(
+            tokenId, config, liquidityToRemove, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, hookData
+        );
+    }
+
+    function getDecreaseEncoded(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint256 liquidityToRemove,
+        uint128 amount0Min,
+        uint128 amount1Min,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, config, liquidityToRemove, hookData));
+        planner = planner.add(
+            Actions.DECREASE, abi.encode(tokenId, config, liquidityToRemove, amount0Min, amount1Min, hookData)
+        );
         return planner.finalize(config.poolKey);
     }
 
@@ -158,8 +174,18 @@ abstract contract LiquidityOperations is CommonBase {
         pure
         returns (bytes memory)
     {
+        return getCollectEncoded(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, hookData);
+    }
+
+    function getCollectEncoded(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint128 amount0Min,
+        uint128 amount1Min,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, config, 0, hookData));
+        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, config, 0, amount0Min, amount1Min, hookData));
         return planner.finalize(config.poolKey);
     }
 

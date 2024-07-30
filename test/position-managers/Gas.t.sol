@@ -234,8 +234,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.DECREASE,
+            abi.encode(tokenId, config, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -276,7 +278,9 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
         // Collect by calling decrease with 0.
-        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 0, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.DECREASE, abi.encode(tokenId, config, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -306,8 +310,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
         uint256 tokenId = lpm.nextTokenId() - 1;
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.DECREASE,
+            abi.encode(tokenId, config, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -326,7 +332,9 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         // donate to create fee revenue
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
-        Planner.Plan memory planner = Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 0, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.DECREASE, abi.encode(tokenId, config, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
 
         bytes memory calls = planner.finalize(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -363,8 +371,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.DECREASE,
+            abi.encode(tokenId, config, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
         planner = planner.add(Actions.BURN, abi.encode(tokenId, config, ZERO_BYTES));
 
         // We must include CLOSE commands.
@@ -475,8 +485,10 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 tokenId = lpm.nextTokenId();
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner =
-            Planner.init().add(Actions.DECREASE, abi.encode(tokenId, configNative, 10_000 ether, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.DECREASE,
+            abi.encode(tokenId, configNative, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
         planner = planner.add(Actions.BURN, abi.encode(tokenId, configNative, ZERO_BYTES));
 
         // We must include CLOSE commands.
