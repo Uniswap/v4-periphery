@@ -164,21 +164,9 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
     }
 
-    function test_noPermit_increaseLiquidityRevert() public {
-        // increaseLiquidity fails if the owner did not permit
-        uint256 liquidityAlice = 1e18;
-        vm.prank(alice);
-        mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
-
-        // bob cannot increase liquidity on alice's token
-        uint256 newLiquidity = 2e18;
-        bytes memory increase = getIncreaseEncoded(tokenIdAlice, config, newLiquidity, ZERO_BYTES);
-        vm.startPrank(bob);
-        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
-        lpm.modifyLiquidities(increase, _deadline);
-        vm.stopPrank();
-    }
+    // unapproved callers can increase others' positions
+    // see `test_increaseLiquidity_withUnapprovedCaller()`
+    // function test_noPermit_increaseLiquidityRevert() public {}
 
     function test_noPermit_decreaseLiquidityRevert() public {
         // decreaseLiquidity fails if the owner did not permit
