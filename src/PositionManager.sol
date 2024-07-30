@@ -50,7 +50,7 @@ contract PositionManager is
 
     IAllowanceTransfer public immutable permit2;
 
-    uint256 public constant FULL_DELTA = type(uint256).max;
+    uint256 public constant FULL_DELTA = 0;
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)

@@ -344,8 +344,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         Plan memory planner = Planner.init();
         planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0, type(uint256).max));
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1, type(uint256).max));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0, 0));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1, 0));
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
         planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
 
