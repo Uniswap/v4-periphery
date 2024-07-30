@@ -148,6 +148,8 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
 
+        hook.clearDeltas(); // clear the delta so that we can check the net delta for BURN & MINT
+
         Plan memory planner = Planner.init();
         planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, ZERO_BYTES));
         planner.add(Actions.MINT_POSITION, abi.encode(newConfig, newLiquidity, address(this), ZERO_BYTES));
@@ -155,14 +157,14 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         lpm.modifyLiquidities(calls, _deadline);
         {
-            BalanceDelta delta = getLastDelta();
+            BalanceDelta netDelta = getNetDelta();
 
             uint256 balance0After = currency0.balanceOfSelf();
             uint256 balance1After = currency1.balanceOfSelf();
 
             // TODO: use clear so user does not pay 1 wei
-            assertEq(delta.amount0(), -1 wei);
-            assertEq(delta.amount1(), -1 wei);
+            assertEq(netDelta.amount0(), -1 wei);
+            assertEq(netDelta.amount1(), -1 wei);
             assertApproxEqAbs(balance0Before - balance0After, 0, 1 wei);
             assertApproxEqAbs(balance1Before - balance1After, 0, 1 wei);
         }
