@@ -345,7 +345,9 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, config, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.BURN, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
         bytes memory calls = planner.finalize(config.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
@@ -357,7 +359,9 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
         decreaseLiquidity(tokenId, config, 10_000 ether, ZERO_BYTES);
-        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, config, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.BURN, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
 
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
@@ -375,7 +379,9 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
             Actions.DECREASE,
             abi.encode(tokenId, config, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
-        planner = planner.add(Actions.BURN, abi.encode(tokenId, config, ZERO_BYTES));
+        planner = planner.add(
+            Actions.BURN, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
 
         // We must include CLOSE commands.
         bytes memory calls = planner.finalize(config.poolKey);
@@ -459,7 +465,9 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 tokenId = lpm.nextTokenId();
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
-        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, configNative, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.BURN, abi.encode(tokenId, configNative, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
         bytes memory calls = planner.finalize(configNative.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
@@ -471,7 +479,9 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
 
         decreaseLiquidity(tokenId, configNative, 10_000 ether, ZERO_BYTES);
-        Planner.Plan memory planner = Planner.init().add(Actions.BURN, abi.encode(tokenId, configNative, ZERO_BYTES));
+        Planner.Plan memory planner = Planner.init().add(
+            Actions.BURN, abi.encode(tokenId, configNative, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
 
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
@@ -489,7 +499,9 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
             Actions.DECREASE,
             abi.encode(tokenId, configNative, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
-        planner = planner.add(Actions.BURN, abi.encode(tokenId, configNative, ZERO_BYTES));
+        planner = planner.add(
+            Actions.BURN, abi.encode(tokenId, configNative, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
 
         // We must include CLOSE commands.
         bytes memory calls = planner.finalize(configNative.poolKey);

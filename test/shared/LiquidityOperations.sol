@@ -194,9 +194,18 @@ abstract contract LiquidityOperations is CommonBase {
         pure
         returns (bytes memory)
     {
+        return getBurnEncoded(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, hookData);
+    }
+
+    function getBurnEncoded(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint128 amount0Min,
+        uint128 amount1Min,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
         Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.BURN, abi.encode(tokenId, config, hookData));
-        // Close needed on burn in case there is liquidity left in the position.
+        planner = planner.add(Actions.BURN, abi.encode(tokenId, config, amount0Min, amount1Min, hookData));
         return planner.finalize(config.poolKey);
     }
 }

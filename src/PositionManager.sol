@@ -196,8 +196,8 @@ contract PositionManager is
     /// @param params is an encoding of uint256 tokenId, PositionConfig memory config, bytes hookData
     /// @dev this is overloaded with ERC721Permit._burn
     function _burn(bytes memory params) internal returns (bytes memory) {
-        (uint256 tokenId, PositionConfig memory config, bytes memory hookData) =
-            abi.decode(params, (uint256, PositionConfig, bytes));
+        (uint256 tokenId, PositionConfig memory config, uint128 amount0Min, uint128 amount1Min, bytes memory hookData) =
+            abi.decode(params, (uint256, PositionConfig, uint128, uint128, bytes));
 
         if (!_isApprovedOrOwner(_getLocker(), tokenId)) revert NotApproved(_getLocker());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
@@ -206,7 +206,12 @@ contract PositionManager is
         // Can only call modify if there is non zero liquidity.
         BalanceDelta delta;
 
-        if (liquidity > 0) delta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+        if (liquidity > 0) {
+            delta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+            if (uint128(delta.amount0()) < amount0Min || uint128(delta.amount1()) < amount1Min) {
+                revert SlippageExceeded();
+            }
+        }
 
         delete positionConfigs[tokenId];
         // Burn the token.
