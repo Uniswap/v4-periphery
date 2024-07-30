@@ -85,8 +85,8 @@ contract PositionManager is
             return _burn(params);
         } else if (action == Actions.SETTLE_WITH_BALANCE) {
             return _settleWithBalance(params);
-        } else if (action == Actions.SWEEP_ERC20_TO) {
-            _sweepERC20To(params);
+        } else if (action == Actions.SWEEP) {
+            _sweep(params);
         } else {
             revert UnsupportedAction(action);
         }
@@ -158,9 +158,6 @@ contract PositionManager is
         address caller = _msgSender();
         if (currencyDelta < 0) {
             _settle(currency, caller, uint256(-currencyDelta));
-
-            // if there are native tokens left over after settling, return to locker
-            if (currency.isNative()) _sweepNativeToken(caller);
         } else if (currencyDelta > 0) {
             _take(currency, caller, uint256(currencyDelta));
         }
@@ -171,7 +168,6 @@ contract PositionManager is
     /// @param params is an encoding of Currency, uint256 amount
     /// @dev if amount == FULL_DELTA, it settles the full negative delta
     /// @dev uses this addresses balance to settle a negative delta
-    /// @dev Should not be called for NATIVE settling bc does not sweep.
     function _settleWithBalance(bytes memory params) internal returns (bytes memory) {
         (Currency currency, uint256 amount) = abi.decode(params, (Currency, uint256));
 
@@ -230,18 +226,12 @@ contract PositionManager is
         liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
     }
 
-    /// @dev Send excess native tokens back to the recipient (locker)
-    /// @param recipient the receiver of the excess native tokens. Should be the caller, the one that sent the native tokens
-    function _sweepNativeToken(address recipient) internal {
-        uint256 nativeBalance = address(this).balance;
-        if (nativeBalance > 0) recipient.safeTransferETH(nativeBalance);
-    }
-
+    /// @notice Sweeps the entire contract balance of specified currency to the recipient
     /// @param params an encoding of Currency, address
-    function _sweepERC20To(bytes calldata params) internal {
+    function _sweep(bytes calldata params) internal {
         (Currency currency, address to) = abi.decode(params, (Currency, address));
-        uint256 tokenBalance = ERC20(Currency.unwrap(currency)).balanceOf(address(this));
-        if (tokenBalance > 0) currency.transfer(to, tokenBalance);
+        uint256 balance = currency.balanceOfSelf();
+        if (balance > 0) currency.transfer(to, balance);
     }
 
     // implementation of abstract function DeltaResolver._pay

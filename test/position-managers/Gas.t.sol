@@ -376,7 +376,13 @@ contract GasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_mint_native_excess() public {
         uint256 liquidityToAdd = 10_000 ether;
-        bytes memory calls = getMintEncoded(configNative, liquidityToAdd, address(this), ZERO_BYTES);
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode(configNative, liquidityToAdd, address(this), ZERO_BYTES));
+        planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency0));
+        planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency1));
+        planner.add(Actions.SWEEP, abi.encode(CurrencyLibrary.NATIVE, address(this)));
+        bytes memory calls = planner.encode();
 
         (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
             SQRT_PRICE_1_1,

@@ -105,7 +105,15 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        bytes memory calls = getMintEncoded(config, liquidityToAdd, address(this), ZERO_BYTES);
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityToAdd, address(this), ZERO_BYTES));
+        planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency0));
+        planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency1));
+        // sweep the excess eth
+        planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
+
+        bytes memory calls = planner.encode();
 
         (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
             SQRT_PRICE_1_1,
@@ -293,7 +301,14 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             uint128(liquidityToAdd)
         );
 
-        bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, ZERO_BYTES); // double the liquidity
+        Plan memory planner = Planner.init();
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
+        planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency0));
+        planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency1));
+        // sweep the excess eth
+        planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
+        bytes memory calls = planner.encode();
+
         bytes[] memory result = lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
         BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
 

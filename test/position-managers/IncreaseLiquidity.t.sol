@@ -343,8 +343,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0, type(uint256).max));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1, type(uint256).max));
-        planner.add(Actions.SWEEP_ERC20_TO, abi.encode(currency0, address(this)));
-        planner.add(Actions.SWEEP_ERC20_TO, abi.encode(currency1, address(this)));
+        planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
+        planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
 
         uint256 balanceBefore0 = currency0.balanceOf(address(this));
         uint256 balanceBefore1 = currency1.balanceOf(address(this));
@@ -370,6 +370,6 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 0);
 
         assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amount0);
-        assertEq(currency1.balanceOf(address(this)), balanceBefore0 - amount0);
+        assertEq(currency1.balanceOf(address(this)), balanceBefore1 - amount1);
     }
 }
