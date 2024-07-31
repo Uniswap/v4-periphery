@@ -432,7 +432,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
         modifyLiquidityRouter.modifyLiquidity(key, IPoolManager.ModifyLiquidityParams(-60, 60, 0, 0), ZERO_BYTES);
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(modifyLiquidityRouter), int24(-60), int24(60), bytes32(0)));
+            Position.calculatePositionKey(address(modifyLiquidityRouter), int24(-60), int24(60), bytes32(0));
 
         (, uint256 feeGrowthInside0X128_, uint256 feeGrowthInside1X128_) = state.getPositionInfo(poolId, positionId);
 
@@ -480,7 +480,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
         );
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(modifyLiquidityRouter), int24(-60), int24(60), bytes32(0)));
+            Position.calculatePositionKey(address(modifyLiquidityRouter), int24(-60), int24(60), bytes32(0));
 
         uint128 liquidity = state.getPositionLiquidity(poolId, positionId);
         snapLastCall("StateView_extsload_getPositionLiquidity");
