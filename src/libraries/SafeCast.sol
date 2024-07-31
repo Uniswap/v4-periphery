@@ -5,7 +5,8 @@ import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 /// @title Safe casting methods
 /// @notice Contains methods for safely casting between types
-library SafeCast {
+/// TODO after audits move this function to core's SafeCast.sol!
+library SafeCastTemp {
     using CustomRevert for bytes4;
 
     error SafeCastOverflow();

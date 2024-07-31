@@ -13,8 +13,8 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
+import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -32,6 +32,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     using PoolIdLibrary for PoolKey;
     using Planner for Plan;
     using FeeMath for IPositionManager;
+    using StateLibrary for IPoolManager;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -78,13 +79,15 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 liquidityBob = 1_000e18;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
         mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -132,13 +135,15 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 liquidityBob = 1_000e18;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
         mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
 
         // donate to create fees
         uint256 amountDonate = 0.2e18;
@@ -175,12 +180,13 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 liquidityAlice = 3_000e18;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice));
         uint128 oldLiquidity = StateLibrary.getPositionLiquidity(manager, config.poolKey.toId(), positionId);
 
         // bob can increase liquidity for alice even though he is not the owner / not approved
@@ -203,24 +209,26 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
         vm.prank(bob);
+        uint256 tokenIdBob = lpm.nextTokenId();
         mint(config, liquidityBob, bob, ZERO_BYTES);
-        uint256 tokenIdBob = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
         swap(key, true, -int256(swapAmount), ZERO_BYTES);
         swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
 
-        // alice will use half of her fees to increase liquidity
-        BalanceDelta aliceFeesOwed = IPositionManager(lpm).getFeesOwed(manager, config, tokenIdAlice);
-
         {
+            // alice will use half of her fees to increase liquidity
+            BalanceDelta aliceFeesOwed = IPositionManager(lpm).getFeesOwed(manager, config, tokenIdAlice);
+
             (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
@@ -231,7 +239,6 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             );
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
-
             vm.startPrank(alice);
             increaseLiquidity(tokenIdAlice, config, liquidityDelta, ZERO_BYTES);
             vm.stopPrank();
@@ -245,6 +252,14 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
                 currency1.balanceOf(alice) - balance1BeforeAlice,
                 swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, totalLiquidity) / 2,
                 tolerance
+            );
+
+            assertApproxEqAbs(
+                currency0.balanceOf(alice) - balance0BeforeAlice, uint128(aliceFeesOwed.amount0()) / 2, tolerance
+            );
+
+            assertApproxEqAbs(
+                currency1.balanceOf(alice) - balance1BeforeAlice, uint128(aliceFeesOwed.amount1()) / 2, tolerance
             );
         }
 
@@ -266,6 +281,19 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
                 swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
                 tolerance
             );
+
+            uint256 balance0AfterBob = currency0.balanceOf(bob);
+            uint256 balance1AfterBob = currency1.balanceOf(bob);
+            assertApproxEqAbs(
+                balance0AfterBob - balance0BeforeBob,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
+                1 wei
+            );
+            assertApproxEqAbs(
+                balance1AfterBob - balance1BeforeBob,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
+                1 wei
+            );
         }
     }
 
@@ -277,14 +305,16 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
+        uint256 tokenIdBob = lpm.nextTokenId();
         mint(config, liquidityBob, bob, ZERO_BYTES);
-        uint256 tokenIdBob = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -337,5 +367,95 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
                 tolerance
             );
         }
+    }
+
+    function test_mint_settleWithBalance() public {
+        uint256 liquidityAlice = 3_000e18;
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
+        planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
+        planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
+
+        uint256 balanceBefore0 = currency0.balanceOf(address(this));
+        uint256 balanceBefore1 = currency1.balanceOf(address(this));
+
+        assertEq(currency0.balanceOf(address(lpm)), 0);
+        assertEq(currency0.balanceOf(address(lpm)), 0);
+
+        currency0.transfer(address(lpm), 100e18);
+        currency1.transfer(address(lpm), 100e18);
+
+        assertEq(currency0.balanceOf(address(lpm)), 100e18);
+        assertEq(currency0.balanceOf(address(lpm)), 100e18);
+
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+        uint256 amount0 = uint128(-delta.amount0());
+        uint256 amount1 = uint128(-delta.amount1());
+
+        // The balances were swept back to this address.
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 0);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 0);
+
+        assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amount0);
+        assertEq(currency1.balanceOf(address(this)), balanceBefore1 - amount1);
+    }
+
+    function test_increaseLiquidity_settleWithBalance() public {
+        uint256 liquidityAlice = 3_000e18;
+
+        // alice provides liquidity
+        vm.prank(alice);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        assertEq(liquidity, liquidityAlice);
+
+        // alice increases with the balance in the position manager
+        Plan memory planner = Planner.init();
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityAlice, ZERO_BYTES));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
+        planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
+        planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
+
+        uint256 balanceBefore0 = currency0.balanceOf(address(this));
+        uint256 balanceBefore1 = currency1.balanceOf(address(this));
+
+        assertEq(currency0.balanceOf(address(lpm)), 0);
+        assertEq(currency0.balanceOf(address(lpm)), 0);
+
+        currency0.transfer(address(lpm), 100e18);
+        currency1.transfer(address(lpm), 100e18);
+
+        assertEq(currency0.balanceOf(address(lpm)), 100e18);
+        assertEq(currency0.balanceOf(address(lpm)), 100e18);
+
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+        uint256 amount0 = uint128(-delta.amount0());
+        uint256 amount1 = uint128(-delta.amount1());
+
+        (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        assertEq(liquidity, 2 * liquidityAlice);
+
+        // The balances were swept back to this address.
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 0);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 0);
+
+        assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amount0);
+        assertEq(currency1.balanceOf(address(this)), balanceBefore1 - amount1);
     }
 }
