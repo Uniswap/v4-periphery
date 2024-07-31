@@ -27,7 +27,11 @@ contract V4RouterImplementation is V4Router, ReentrancyLock {
     }
 
     function _pay(Currency token, address payer, uint256 amount) internal override {
-        ERC20(Currency.unwrap(token)).safeTransferFrom(payer, address(poolManager), amount);
+        if (payer == address(this)) {
+            ERC20(Currency.unwrap(token)).safeTransfer(address(poolManager), amount);
+        } else {
+            ERC20(Currency.unwrap(token)).safeTransferFrom(payer, address(poolManager), amount);
+        }
     }
 
     function _msgSender() internal view override returns (address) {
