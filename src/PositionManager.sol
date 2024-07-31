@@ -76,20 +76,30 @@ contract PositionManager is
 
     function _handleAction(uint256 action, bytes calldata params) internal override {
         if (action == Actions.INCREASE_LIQUIDITY) {
-            _increase(params);
+            (uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData) =
+                params.decodeModifyLiquidityParams();
+            _increase(tokenId, config, liquidity, hookData);
         } else if (action == Actions.DECREASE_LIQUIDITY) {
-            _decrease(params);
+            (uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData) =
+                params.decodeModifyLiquidityParams();
+            _decrease(tokenId, config, liquidity, hookData);
         } else if (action == Actions.MINT_POSITION) {
-            _mint(params);
+            (PositionConfig calldata config, uint256 liquidity, address owner, bytes calldata hookData) =
+                params.decodeMintParams();
+            _mint(config, liquidity, owner, hookData);
         } else if (action == Actions.CLOSE_CURRENCY) {
-            _close(params);
+            Currency currency = params.decodeCurrency();
+            _close(currency);
         } else if (action == Actions.BURN_POSITION) {
             // Will automatically decrease liquidity to 0 if the position is not already empty.
-            _burn(params);
+            (uint256 tokenId, PositionConfig calldata config, bytes calldata hookData) = params.decodeBurnParams();
+            _burn(tokenId, config, hookData);
         } else if (action == Actions.SETTLE_WITH_BALANCE) {
-            _settleWithBalance(params);
+            Currency currency = params.decodeCurrency();
+            _settleWithBalance(currency);
         } else if (action == Actions.SWEEP) {
-            _sweep(params);
+            (Currency currency, address to) = params.decodeCurrencyAndAddress();
+            _sweep(currency, to);
         } else {
             revert UnsupportedAction(action);
         }
@@ -99,23 +109,19 @@ contract PositionManager is
         return _getLocker();
     }
 
-    /// @param params is an encoding of uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes hookData
     /// @dev Calling increase with 0 liquidity will credit the caller with any underlying fees of the position
-    function _increase(bytes calldata params) internal {
-        (uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData) =
-            params.decodeModifyLiquidityParams();
-
+    function _increase(uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData)
+        internal
+    {
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
     }
 
-    /// @param params is an encoding of uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes hookData
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
-    function _decrease(bytes calldata params) internal {
-        (uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData) =
-            params.decodeModifyLiquidityParams();
-
+    function _decrease(uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData)
+        internal
+    {
         if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
 
@@ -123,11 +129,9 @@ contract PositionManager is
         BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
     }
 
-    /// @param params is an encoding of PositionConfig calldata config, uint256 liquidity, address recipient, bytes hookData where recipient is the receiver / owner of the ERC721
-    function _mint(bytes calldata params) internal {
-        (PositionConfig calldata config, uint256 liquidity, address owner, bytes calldata hookData) =
-            params.decodeMintParams();
-
+    function _mint(PositionConfig calldata config, uint256 liquidity, address owner, bytes calldata hookData)
+        internal
+    {
         // mint receipt token
         uint256 tokenId;
         // tokenId is assigned to current nextTokenId before incrementing it
@@ -142,10 +146,7 @@ contract PositionManager is
         positionConfigs[tokenId] = config.toId();
     }
 
-    /// @param params is an encoding of the Currency to close
-    function _close(bytes calldata params) internal {
-        Currency currency = params.decodeCurrency();
-
+    function _close(Currency currency) internal {
         // this address has applied all deltas on behalf of the user/owner
         // it is safe to close this entire delta because of slippage checks throughout the batched calls.
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
@@ -159,20 +160,14 @@ contract PositionManager is
         }
     }
 
-    /// @param params is an encoding of Currency
     /// @dev uses this addresses balance to settle a negative delta
-    function _settleWithBalance(bytes calldata params) internal {
-        Currency currency = params.decodeCurrency();
-
+    function _settleWithBalance(Currency currency) internal {
         // set the payer to this address, performs a transfer.
         _settle(currency, address(this), _getFullSettleAmount(currency));
     }
 
-    /// @param params is an encoding of uint256 tokenId, PositionConfig calldata config, bytes hookData
     /// @dev this is overloaded with ERC721Permit._burn
-    function _burn(bytes calldata params) internal {
-        (uint256 tokenId, PositionConfig calldata config, bytes calldata hookData) = params.decodeBurnParams();
-
+    function _burn(uint256 tokenId, PositionConfig calldata config, bytes calldata hookData) internal {
         if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
@@ -217,10 +212,7 @@ contract PositionManager is
     }
 
     /// @notice Sweeps the entire contract balance of specified currency to the recipient
-    /// @param params an encoding of Currency, address
-    function _sweep(bytes calldata params) internal {
-        (Currency currency, address to) = params.decodeCurrencyAndAddress();
-
+    function _sweep(Currency currency, address to) internal {
         uint256 balance = currency.balanceOfSelf();
         if (balance > 0) currency.transfer(to, balance);
     }
