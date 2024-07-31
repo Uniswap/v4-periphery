@@ -9,7 +9,6 @@ import {IERC721Permit} from "../src/interfaces/IERC721Permit.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {UnorderedNonce} from "../src/base/UnorderedNonce.sol";
 
-
 contract ERC721PermitTest is Test {
     MockERC721Permit erc721Permit;
     address alice;

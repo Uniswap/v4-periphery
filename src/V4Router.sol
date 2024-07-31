@@ -6,7 +6,6 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 
 import {PathKey, PathKeyLib} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
@@ -24,7 +23,6 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using SafeCastTemp for *;
     using PathKeyLib for PathKey;
     using CalldataDecoder for bytes;
-    using TransientStateLibrary for IPoolManager;
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
@@ -45,33 +43,19 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             }
         } else {
             if (action == Actions.SETTLE_ALL) {
-                // equivalent: abi.decode(params, (Currency))
-                Currency currency;
-                assembly ("memory-safe") {
-                    currency := calldataload(params.offset)
-                }
-
-                int256 delta = poolManager.currencyDelta(address(this), currency);
-                if (delta > 0) revert InvalidDeltaForAction();
+                Currency currency = params.decodeCurrency();
+                uint256 amount = _getFullSettleAmount(currency);
 
                 // TODO support address(this) paying too
                 // TODO should it have a maxAmountOut added slippage protection?
-                _settle(currency, _msgSender(), uint256(-delta));
+                _settle(currency, _msgSender(), amount);
             } else if (action == Actions.TAKE_ALL) {
-                // equivalent: abi.decode(params, (Currency, address))
-                Currency currency;
-                address recipient;
-                assembly ("memory-safe") {
-                    currency := calldataload(params.offset)
-                    recipient := calldataload(add(params.offset, 0x20))
-                }
-
-                int256 delta = poolManager.currencyDelta(address(this), currency);
-                if (delta < 0) revert InvalidDeltaForAction();
+                (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
+                uint256 amount = _getFullTakeAmount(currency);
 
                 // TODO should _take have a minAmountOut added slippage check?
                 // TODO recipient mapping
-                _take(currency, recipient, uint256(delta));
+                _take(currency, recipient, amount);
             } else {
                 revert UnsupportedAction(action);
             }
