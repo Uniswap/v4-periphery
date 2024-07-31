@@ -11,7 +11,9 @@ interface IPositionManager {
     /// @notice Maps the ERC721 tokenId to a configId, which is a keccak256 hash of the position's pool key, and range (tickLower, tickUpper)
     /// Enforces that a minted ERC721 token is tied to one range on one pool.
     /// @param tokenId the ERC721 tokenId, assigned at mint
-    /// @return configId the hash of the position's poolkey, tickLower, and tickUpper
+    /// @return configId a truncated hash of the position's poolkey, tickLower, and tickUpper and a reserved upper bit for the isSubscribed flag
+    /// @dev the highest bit of the configId is used to signal if the position is subscribed
+    /// and the lower bits contain the truncated hash of the PositionConfig
     function positionConfigs(uint256 tokenId) external view returns (bytes32 configId);
 
     /// @notice Batches many liquidity modification calls to pool manager

@@ -24,7 +24,7 @@ import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
-import {StakingNotifier, StakingConfig} from "./base/StakingNotifier.sol";
+import {Notifier} from "./base/Notifier.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 
 contract PositionManager is
@@ -35,12 +35,12 @@ contract PositionManager is
     DeltaResolver,
     ReentrancyLock,
     BaseActionsRouter,
-    StakingNotifier
+    Notifier
 {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
-    using PositionConfigLibrary for PositionConfig;
+    using PositionConfigLibrary for *;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
@@ -50,13 +50,13 @@ contract PositionManager is
     uint256 public nextTokenId = 1;
 
     /// @inheritdoc IPositionManager
-    mapping(uint256 tokenId => bytes32 configId) public positionConfigs;
+    mapping(uint256 tokenId => bytes32 config) public positionConfigs;
 
     IAllowanceTransfer public immutable permit2;
 
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2, uint256 _stakingGasLimit)
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2, uint256 _subscriberGasLimit)
         BaseActionsRouter(_poolManager)
-        StakingNotifier(_stakingGasLimit)
+        Notifier(_subscriberGasLimit)
         ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
     {
         permit2 = _permit2;
@@ -64,6 +64,16 @@ contract PositionManager is
 
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed();
+        _;
+    }
+
+    modifier onlyIfApproved(address sender, uint256 tokenId) {
+        if (!_isApprovedOrOwner(sender, tokenId)) revert NotApproved(sender);
+        _;
+    }
+
+    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) {
+        if (positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         _;
     }
 
@@ -76,6 +86,25 @@ contract PositionManager is
         checkDeadline(deadline)
     {
         _executeActions(unlockData);
+    }
+
+    function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber)
+        external
+        onlyIfApproved(msg.sender, tokenId)
+        onlyValidConfig(tokenId, config)
+    {
+        if (positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+        _subscribe(tokenId, config, subscriber);
+        positionConfigs.setSubscribe(tokenId);
+    }
+
+    function unsubscribe(uint256 tokenId, PositionConfig calldata config)
+        external
+        onlyIfApproved(msg.sender, tokenId)
+    {
+        if (positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+        _unsubscribe(tokenId, config);
+        positionConfigs.setUnsubscribe(tokenId);
     }
 
     function _handleAction(uint256 action, bytes calldata params) internal override {
@@ -116,8 +145,8 @@ contract PositionManager is
     /// @dev Calling increase with 0 liquidity will credit the caller with any underlying fees of the position
     function _increase(uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData)
         internal
+        onlyValidConfig(tokenId, config)
     {
-        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
     }
@@ -125,10 +154,9 @@ contract PositionManager is
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
     function _decrease(uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData)
         internal
+        onlyIfApproved(_msgSender(), tokenId)
+        onlyValidConfig(tokenId, config)
     {
-        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
-        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
-
         // Note: the tokenId is used as the salt.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
     }
@@ -171,9 +199,11 @@ contract PositionManager is
     }
 
     /// @dev this is overloaded with ERC721Permit._burn
-    function _burn(uint256 tokenId, PositionConfig calldata config, bytes calldata hookData) internal {
-        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
-        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+    function _burn(uint256 tokenId, PositionConfig calldata config, bytes calldata hookData)
+        internal
+        onlyIfApproved(_msgSender(), tokenId)
+        onlyValidConfig(tokenId, config)
+    {
         uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
 
         BalanceDelta liquidityDelta;
@@ -204,13 +234,9 @@ contract PositionManager is
             hookData
         );
 
-        _notifyModifyLiquidity(uint256(salt), liquidityChange, config);
-    }
-
-    function stake(uint256 tokenId, StakingConfig calldata stakingConfig, PositionConfig calldata config) external {
-        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
-        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
-        _notifyStake(tokenId, stakingConfig, config);
+        if (positionConfigs.getSubscribed(uint256(salt))) {
+            _notifyModifyLiquidity(uint256(salt), config, liquidityChange);
+        }
     }
 
     function _getPositionLiquidity(PositionConfig calldata config, uint256 tokenId)

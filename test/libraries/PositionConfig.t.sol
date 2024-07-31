@@ -19,6 +19,8 @@ contract PositionConfigTest is Test {
                 config.tickUpper
             )
         );
+        // the id is shifted over 1
+        expectedId = expectedId >> 1;
         assertEq(expectedId, config.toId());
     }
 }
