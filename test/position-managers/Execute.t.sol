@@ -90,7 +90,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd2, ZERO_BYTES));
 
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -112,7 +112,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
 
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));

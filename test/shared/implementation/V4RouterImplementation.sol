@@ -14,11 +14,11 @@ contract V4RouterImplementation is V4Router, ReentrancyLock {
     constructor(IPoolManager _poolManager) V4Router(_poolManager) {}
 
     function executeActions(bytes calldata params) external payable isNotLocked {
-        _executeActions(params);
+        _unlockAndExecuteActions(params);
     }
 
     function executeActionsAndSweepExcessETH(bytes calldata params) external payable isNotLocked {
-        _executeActions(params);
+        _unlockAndExecuteActions(params);
 
         uint256 balance = address(this).balance;
         if (balance > 0) {

@@ -61,7 +61,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes[] memory badParams = new bytes[](1);
 
         vm.expectRevert(BaseActionsRouter.InputLengthMismatch.selector);
-        lpm.modifyLiquidities(abi.encode(planner.actions, badParams), block.timestamp + 1);
+        lpm.unlockAndModifyLiquidities(abi.encode(planner.actions, badParams), block.timestamp + 1);
     }
 
     function test_modifyLiquidities_reverts_reentrancy() public {
@@ -82,7 +82,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // Permit2.transferFrom does not bubble the ContractLocked error and instead reverts with its own error
         vm.expectRevert("TRANSFER_FROM_FAILED");
-        lpm.modifyLiquidities(calls, block.timestamp + 1);
+        lpm.unlockAndModifyLiquidities(calls, block.timestamp + 1);
     }
 
     function test_fuzz_mint_withLiquidityDelta(IPoolManager.ModifyLiquidityParams memory params, uint160 sqrtPriceX96)

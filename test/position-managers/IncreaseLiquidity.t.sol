@@ -115,7 +115,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.startPrank(alice);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         vm.stopPrank();
 
         // alice barely spent any tokens
@@ -365,7 +365,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
         uint256 amount0 = uint128(-delta.amount0());
         uint256 amount1 = uint128(-delta.amount1());
@@ -414,7 +414,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
         uint256 amount0 = uint128(-delta.amount0());
         uint256 amount1 = uint128(-delta.amount1());

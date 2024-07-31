@@ -73,7 +73,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner =
             Planner.init().add(Actions.MINT_POSITION, abi.encode(config, 10_000 ether, address(this), ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint");
     }
 
@@ -88,7 +88,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Planner.init().add(Actions.MINT_POSITION, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.prank(alice);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint_warmedPool_differentRange");
     }
 
@@ -103,7 +103,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Planner.init().add(Actions.MINT_POSITION, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.prank(alice);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint_onSameTickLower");
     }
 
@@ -118,7 +118,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Planner.init().add(Actions.MINT_POSITION, abi.encode(config, 10_000 ether, address(alice), ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.prank(alice);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint_onSameTickUpper");
     }
 
@@ -130,7 +130,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Planner.init().add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
 
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_increaseLiquidity_erc20");
     }
 
@@ -171,7 +171,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.prank(alice);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_increase_autocompoundExactUnclaimedFees");
     }
 
@@ -213,7 +213,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
 
         vm.prank(alice);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_increase_autocompoundExcessFeesCredit");
     }
 
@@ -225,7 +225,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
 
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decreaseLiquidity");
     }
 
@@ -246,7 +246,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         planner.add(Actions.MINT_POSITION, abi.encode(config, 100e18, address(this), ZERO_BYTES));
         bytes memory actions = planner.finalizeModifyLiquidity(config.poolKey);
 
-        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
+        calls[1] = abi.encodeWithSelector(IPositionManager.unlockAndModifyLiquidities.selector, actions, _deadline);
 
         IMulticall(lpm).multicall(calls);
         snapLastCall("PositionManager_multicall_initialize_mint");
@@ -263,7 +263,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, ZERO_BYTES));
 
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_collect");
     }
 
@@ -275,7 +275,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Planner.init().add(Actions.MINT_POSITION, abi.encode(config, 10_001 ether, address(alice), ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.prank(alice);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint_sameRange");
     }
 
@@ -292,7 +292,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 10_000 ether, ZERO_BYTES));
 
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decrease_sameRange_allLiquidity");
     }
 
@@ -311,7 +311,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init().add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, ZERO_BYTES));
 
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_collect_sameRange");
     }
 
@@ -322,7 +322,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init().add(Actions.BURN_POSITION, abi.encode(tokenId, config, ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
 
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_burn_nonEmpty");
     }
 
@@ -335,7 +335,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_burn_empty");
     }
 
@@ -351,7 +351,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         // We must include CLOSE commands.
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decrease_burnEmpty");
     }
 
@@ -370,7 +370,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             TickMath.getSqrtPriceAtTick(configNative.tickUpper),
             uint128(liquidityToAdd)
         );
-        lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
+        lpm.unlockAndModifyLiquidities{value: amount0 + 1}(calls, _deadline);
         snapLastCall("PositionManager_mint_native");
     }
 
@@ -391,7 +391,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             uint128(liquidityToAdd)
         );
         // overpay on the native token
-        lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline);
+        lpm.unlockAndModifyLiquidities{value: amount0 * 2}(calls, _deadline);
         snapLastCall("PositionManager_mint_nativeWithSweep");
     }
 
@@ -407,7 +407,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             TickMath.getSqrtPriceAtTick(configNative.tickUpper),
             uint128(liquidityToAdd)
         );
-        lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
+        lpm.unlockAndModifyLiquidities{value: amount0 + 1}(calls, _deadline);
         snapLastCall("PositionManager_increaseLiquidity_native");
     }
 
@@ -417,7 +417,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         uint256 liquidityToRemove = 10_000 ether;
         bytes memory calls = getDecreaseEncoded(tokenId, configNative, liquidityToRemove, ZERO_BYTES);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decreaseLiquidity_native");
     }
 
@@ -429,7 +429,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         donateRouter.donate{value: 0.2e18}(configNative.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
         bytes memory calls = getCollectEncoded(tokenId, configNative, ZERO_BYTES);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_collect_native");
     }
 
@@ -440,7 +440,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init().add(Actions.BURN_POSITION, abi.encode(tokenId, configNative, ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidity(configNative.poolKey);
 
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_burn_nonEmpty_native");
     }
 
@@ -453,7 +453,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_burn_empty_native");
     }
 
@@ -469,7 +469,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         // We must include CLOSE commands.
         bytes memory calls = planner.finalizeModifyLiquidity(configNative.poolKey);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decrease_burnEmpty_native");
     }
 
@@ -489,7 +489,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
-        lpm.modifyLiquidities(calls, _deadline);
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint_settleWithBalance_sweep");
     }
 }

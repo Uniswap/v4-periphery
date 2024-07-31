@@ -20,7 +20,7 @@ abstract contract BaseActionsRouter is SafeCallback {
 
     /// @notice internal function that triggers the execution of a set of actions on v4
     /// @dev inheriting contracts should call this function to trigger execution
-    function _executeActions(bytes calldata unlockData) internal {
+    function _unlockAndExecuteActions(bytes calldata unlockData) internal {
         poolManager.unlock(unlockData);
     }
 
@@ -28,7 +28,11 @@ abstract contract BaseActionsRouter is SafeCallback {
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         // abi.decode(data, (uint256[], bytes[]));
         (uint256[] calldata actions, bytes[] calldata params) = data.decodeActionsRouterParams();
+        _executeActions(actions, params);
+        return "";
+    }
 
+    function _executeActions(uint256[] calldata actions, bytes[] calldata params) internal {
         uint256 numActions = actions.length;
         if (numActions != params.length) revert InputLengthMismatch();
 
@@ -37,8 +41,6 @@ abstract contract BaseActionsRouter is SafeCallback {
 
             _handleAction(action, params[actionIndex]);
         }
-
-        return "";
     }
 
     /// @notice function to handle the parsing and execution of an action and its parameters

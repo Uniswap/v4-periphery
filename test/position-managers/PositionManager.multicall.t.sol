@@ -58,7 +58,7 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(Actions.MINT_POSITION, abi.encode(config, 100e18, address(this), ZERO_BYTES));
         bytes memory actions = planner.finalizeModifyLiquidity(config.poolKey);
 
-        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
+        calls[1] = abi.encodeWithSelector(IPositionManager.unlockAndModifyLiquidities.selector, actions, _deadline);
 
         IMulticall(address(lpm)).multicall(calls);
 

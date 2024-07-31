@@ -83,7 +83,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             liquidityToAdd.toUint128()
         );
         // add extra wei because modifyLiquidities may be rounding up, LiquidityAmounts is imprecise?
-        lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
+        lpm.unlockAndModifyLiquidities{value: amount0 + 1}(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
@@ -127,7 +127,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         // Mint with excess native tokens
-        lpm.modifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
+        lpm.unlockAndModifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
@@ -268,7 +268,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, ZERO_BYTES); // double the liquidity
-        lpm.modifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
+        lpm.unlockAndModifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
         BalanceDelta delta = getLastDelta();
 
         // verify position liquidity increased
@@ -317,7 +317,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
         bytes memory calls = planner.encode();
 
-        lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
+        lpm.unlockAndModifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
         BalanceDelta delta = getLastDelta();
 
         // verify position liquidity increased
