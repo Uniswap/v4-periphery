@@ -291,8 +291,9 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, true, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            key0, true, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
@@ -310,8 +311,9 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, false, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            key0, false, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
@@ -422,8 +424,9 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(nativeKey, true, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            nativeKey, true, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
@@ -441,8 +444,9 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(nativeKey, false, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            nativeKey, false, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
