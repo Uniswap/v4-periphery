@@ -417,7 +417,12 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 liquidityToAdd = 10_000 ether;
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.MINT_POSITION, abi.encode(configNative, liquidityToAdd, address(this), ZERO_BYTES));
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(
+                configNative, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES
+            )
+        );
         planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency0));
         planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency1));
         planner.add(Actions.SWEEP, abi.encode(CurrencyLibrary.NATIVE, address(this)));
@@ -524,7 +529,10 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 liquidityAlice = 3_000e18;
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
+        );
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));

@@ -710,7 +710,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_initialize(uint160 sqrtPrice, uint24 fee) public {
-        sqrtPrice = uint160(bound(sqrtPrice, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE));
+        sqrtPrice =
+            uint160(bound(sqrtPrice, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE_MINUS_MIN_SQRT_PRICE_MINUS_ONE));
         fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
         key =
             PoolKey({currency0: currency0, currency1: currency1, fee: fee, tickSpacing: 10, hooks: IHooks(address(0))});

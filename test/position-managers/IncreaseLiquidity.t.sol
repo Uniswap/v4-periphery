@@ -445,7 +445,10 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 liquidityAlice = 3_000e18;
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
+        );
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
@@ -494,7 +497,10 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // alice increases with the balance in the position manager
         Plan memory planner = Planner.init();
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityAlice, ZERO_BYTES));
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenIdAlice, config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
