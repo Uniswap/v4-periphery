@@ -7,7 +7,7 @@ import {PositionConfig, PositionConfigLibrary} from "../../src/libraries/Positio
 contract PositionConfigTest is Test {
     using PositionConfigLibrary for PositionConfig;
 
-    function test_fuzz_toId(PositionConfig calldata config) public {
+    function test_fuzz_toId(PositionConfig calldata config) public pure {
         bytes32 expectedId = keccak256(
             abi.encodePacked(
                 config.poolKey.currency0,
