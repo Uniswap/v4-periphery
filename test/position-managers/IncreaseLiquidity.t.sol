@@ -79,13 +79,15 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 liquidityBob = 1_000e18;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
         mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
@@ -133,13 +135,15 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 liquidityBob = 1_000e18;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
         mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
 
         // donate to create fees
         uint256 amountDonate = 0.2e18;
@@ -176,12 +180,13 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 liquidityAlice = 3_000e18;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice)));
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice));
         uint128 oldLiquidity = StateLibrary.getPositionLiquidity(manager, config.poolKey.toId(), positionId);
 
         // bob can increase liquidity for alice even though he is not the owner / not approved
@@ -204,24 +209,26 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
         vm.prank(bob);
+        uint256 tokenIdBob = lpm.nextTokenId();
         mint(config, liquidityBob, bob, ZERO_BYTES);
-        uint256 tokenIdBob = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
         swap(key, true, -int256(swapAmount), ZERO_BYTES);
         swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
 
-        // alice will use half of her fees to increase liquidity
-        BalanceDelta aliceFeesOwed = IPositionManager(lpm).getFeesOwed(manager, config, tokenIdAlice);
-
         {
+            // alice will use half of her fees to increase liquidity
+            BalanceDelta aliceFeesOwed = IPositionManager(lpm).getFeesOwed(manager, config, tokenIdAlice);
+
             (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
             uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
                 sqrtPriceX96,
@@ -232,7 +239,6 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             );
             uint256 balance0BeforeAlice = currency0.balanceOf(alice);
             uint256 balance1BeforeAlice = currency1.balanceOf(alice);
-
             vm.startPrank(alice);
             increaseLiquidity(tokenIdAlice, config, liquidityDelta, ZERO_BYTES);
             vm.stopPrank();
@@ -246,6 +252,14 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
                 currency1.balanceOf(alice) - balance1BeforeAlice,
                 swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, totalLiquidity) / 2,
                 tolerance
+            );
+
+            assertApproxEqAbs(
+                currency0.balanceOf(alice) - balance0BeforeAlice, uint128(aliceFeesOwed.amount0()) / 2, tolerance
+            );
+
+            assertApproxEqAbs(
+                currency1.balanceOf(alice) - balance1BeforeAlice, uint128(aliceFeesOwed.amount1()) / 2, tolerance
             );
         }
 
@@ -267,6 +281,19 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
                 swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
                 tolerance
             );
+
+            uint256 balance0AfterBob = currency0.balanceOf(bob);
+            uint256 balance1AfterBob = currency1.balanceOf(bob);
+            assertApproxEqAbs(
+                balance0AfterBob - balance0BeforeBob,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
+                1 wei
+            );
+            assertApproxEqAbs(
+                balance1AfterBob - balance1BeforeBob,
+                swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityBob, totalLiquidity),
+                1 wei
+            );
         }
     }
 
@@ -278,14 +305,16 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 totalLiquidity = liquidityAlice + liquidityBob;
 
         // alice provides liquidity
-        vm.prank(alice);
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
         mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // bob provides liquidity
-        vm.prank(bob);
+        vm.startPrank(bob);
+        uint256 tokenIdBob = lpm.nextTokenId();
         mint(config, liquidityBob, bob, ZERO_BYTES);
-        uint256 tokenIdBob = lpm.nextTokenId() - 1;
+        vm.stopPrank();
 
         // swap to create fees
         uint256 swapAmount = 0.001e18;
