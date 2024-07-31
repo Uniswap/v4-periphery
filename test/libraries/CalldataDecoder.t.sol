@@ -18,7 +18,7 @@ contract CalldataDecoderTest is Test {
         PositionConfig calldata _config,
         uint256 _liquidity,
         bytes calldata _hookData
-    ) public {
+    ) public view {
         bytes memory params = abi.encode(_tokenId, _config, _liquidity, _hookData);
         (uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes memory hookData) =
             decoder.decodeModifyLiquidityParams(params);
@@ -31,6 +31,7 @@ contract CalldataDecoderTest is Test {
 
     function test_fuzz_decodeBurnParams(uint256 _tokenId, PositionConfig calldata _config, bytes calldata _hookData)
         public
+        view
     {
         bytes memory params = abi.encode(_tokenId, _config, _hookData);
         (uint256 tokenId, PositionConfig memory config, bytes memory hookData) = decoder.decodeBurnParams(params);
@@ -45,7 +46,7 @@ contract CalldataDecoderTest is Test {
         uint256 _liquidity,
         address _owner,
         bytes calldata _hookData
-    ) public {
+    ) public view {
         bytes memory params = abi.encode(_config, _liquidity, _owner, _hookData);
         (PositionConfig memory config, uint256 liquidity, address owner, bytes memory hookData) =
             decoder.decodeMintParams(params);
@@ -56,7 +57,7 @@ contract CalldataDecoderTest is Test {
         _assertEq(_config, config);
     }
 
-    function test_fuzz_decodeCurrencyAndAddress(Currency _currency, address __address) public {
+    function test_fuzz_decodeCurrencyAndAddress(Currency _currency, address __address) public view {
         bytes memory params = abi.encode(_currency, __address);
         (Currency currency, address _address) = decoder.decodeCurrencyAndAddress(params);
 
@@ -64,14 +65,14 @@ contract CalldataDecoderTest is Test {
         assertEq(_address, __address);
     }
 
-    function test_fuzz_decodeCurrency(Currency _currency) public {
+    function test_fuzz_decodeCurrency(Currency _currency) public view {
         bytes memory params = abi.encode(_currency);
         (Currency currency) = decoder.decodeCurrency(params);
 
         assertEq(Currency.unwrap(currency), Currency.unwrap(_currency));
     }
 
-    function _assertEq(PositionConfig memory config1, PositionConfig memory config2) internal {
+    function _assertEq(PositionConfig memory config1, PositionConfig memory config2) internal pure {
         assertEq(Currency.unwrap(config1.poolKey.currency0), Currency.unwrap(config2.poolKey.currency0));
         assertEq(Currency.unwrap(config1.poolKey.currency1), Currency.unwrap(config2.poolKey.currency1));
         assertEq(config1.poolKey.fee, config2.poolKey.fee);
