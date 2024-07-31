@@ -2,13 +2,19 @@
 pragma solidity ^0.8.24;
 
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "./ImmutableState.sol";
 
 /// @notice Abstract contract used to sync, send, and settle funds to the pool manager
 /// @dev Note that sync() is called before any erc-20 transfer in `settle`.
 abstract contract DeltaResolver is ImmutableState {
-    /// @notice Emitted trying to settle a positive delta, or take a negative delta
-    error InvalidDeltaForAction();
+    using TransientStateLibrary for IPoolManager;
+
+    /// @notice Emitted trying to settle a positive delta.
+    error IncorrectUseOfSettle();
+    /// @notice Emitted trying to take a negative delta.
+    error IncorrectUseOfTake();
 
     /// @notice Take an amount of currency out of the PoolManager
     /// @param currency Currency to take
@@ -39,4 +45,18 @@ abstract contract DeltaResolver is ImmutableState {
     /// @param payer The address who should pay tokens
     /// @param amount The number of tokens to send
     function _pay(Currency token, address payer, uint256 amount) internal virtual;
+
+    function _getFullSettleAmount(Currency currency) internal view returns (uint256 amount) {
+        int256 _amount = poolManager.currencyDelta(address(this), currency);
+        // If the amount is positive, it should be taken not settled for.
+        if (_amount > 0) revert IncorrectUseOfSettle();
+        amount = uint256(-_amount);
+    }
+
+    function _getFullTakeAmount(Currency currency) internal view returns (uint256 amount) {
+        int256 _amount = poolManager.currencyDelta(address(this), currency);
+        // If the amount is negative, it should be settled not taken.
+        if (_amount < 0) revert IncorrectUseOfTake();
+        amount = uint256(_amount);
+    }
 }
