@@ -13,10 +13,7 @@ library CalldataDecoder {
     /// @notice equivalent to SliceOutOfBounds.selector
     bytes4 constant SLICE_ERROR_SELECTOR = 0x3b99b53d;
 
-    /// @notice Performs the equivalent of `abi.decode(data, (uint256[], bytes[]))` in calldata
-    /// @param _bytes The input bytes string to extract input arrays from
-    /// @return actions The uint256 calldata array of actions
-    /// @return params The bytes calldata array of parameters
+    /// @dev equivalent to: abi.decode(params, (uint256[], bytes[])) in calldata
     function decodeActionsRouterParams(bytes calldata _bytes)
         internal
         pure
@@ -46,7 +43,7 @@ library CalldataDecoder {
         }
     }
 
-    /// @param params The input bytes string to extract input arrays from
+    /// @dev equivalent to: abi.decode(params, (uint256, PositionConfig, uint256, bytes)) in calldata
     function decodeModifyLiquidityParams(bytes calldata params)
         internal
         pure
@@ -60,7 +57,7 @@ library CalldataDecoder {
         hookData = params.toBytes(9);
     }
 
-    /// @param params The input bytes string to extract input arrays from
+    /// @dev equivalent to: abi.decode(params, (PositionConfig, uint256, address, bytes)) in calldata
     function decodeMintParams(bytes calldata params)
         internal
         pure
@@ -74,7 +71,7 @@ library CalldataDecoder {
         hookData = params.toBytes(9);
     }
 
-    /// @param params The input bytes string to extract input arrays from
+    /// @dev equivalent to: abi.decode(params, (uint256, PositionConfig, bytes)) in calldata
     function decodeBurnParams(bytes calldata params)
         internal
         pure
@@ -87,14 +84,14 @@ library CalldataDecoder {
         hookData = params.toBytes(8);
     }
 
-    /// @param params The input bytes string to extract input arrays from
+    /// @dev equivalent to: abi.decode(params, (Currency)) in calldata
     function decodeCurrency(bytes calldata params) internal pure returns (Currency currency) {
         assembly ("memory-safe") {
             currency := calldataload(params.offset)
         }
     }
 
-    /// @param params The input bytes string to extract input arrays from
+    /// @dev equivalent to: abi.decode(params, (Currency, address)) in calldata
     function decodeCurrencyAndAddress(bytes calldata params)
         internal
         pure
