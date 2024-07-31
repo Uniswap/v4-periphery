@@ -43,26 +43,14 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             }
         } else {
             if (action == Actions.SETTLE_ALL) {
-                // equivalent: abi.decode(params, (Currency))
-                Currency currency;
-                assembly ("memory-safe") {
-                    currency := calldataload(params.offset)
-                }
-
+                Currency currency = params.decodeCurrency();
                 uint256 amount = _getFullSettleAmount(currency);
 
                 // TODO support address(this) paying too
                 // TODO should it have a maxAmountOut added slippage protection?
                 _settle(currency, _msgSender(), amount);
             } else if (action == Actions.TAKE_ALL) {
-                // equivalent: abi.decode(params, (Currency, address))
-                Currency currency;
-                address recipient;
-                assembly ("memory-safe") {
-                    currency := calldataload(params.offset)
-                    recipient := calldataload(add(params.offset, 0x20))
-                }
-
+                (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
                 uint256 amount = _getFullTakeAmount(currency);
 
                 // TODO should _take have a minAmountOut added slippage check?
