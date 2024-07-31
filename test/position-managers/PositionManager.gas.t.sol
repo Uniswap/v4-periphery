@@ -386,7 +386,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Actions.DECREASE_LIQUIDITY,
             abi.encode(tokenId, config, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
-        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, 0 wei, 0 wei, ZERO_BYTES));
+        planner.add(
+            Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
 
         // We must include CLOSE commands.
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);

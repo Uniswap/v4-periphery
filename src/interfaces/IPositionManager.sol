@@ -5,7 +5,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 interface IPositionManager {
     error NotApproved(address caller);
-    error SlippageExceeded();
     error DeadlinePassed();
     error IncorrectPositionConfigForTokenId(uint256 tokenId);
 

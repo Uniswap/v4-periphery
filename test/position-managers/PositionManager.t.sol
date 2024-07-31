@@ -23,6 +23,7 @@ import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {SlippageCheckLibrary} from "../../src/libraries/SlippageCheck.sol";
 import {BaseActionsRouter} from "../../src/base/BaseActionsRouter.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
@@ -184,7 +185,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
 
         bytes memory calls = getMintEncoded(config, 1e18, 1 wei, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES);
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -192,7 +193,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
 
         bytes memory calls = getMintEncoded(config, 1e18, MAX_SLIPPAGE_INCREASE, 1 wei, address(this), ZERO_BYTES);
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -235,7 +236,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // swap to move the price and cause a slippage revert
         swap(key, true, -1e18, ZERO_BYTES);
 
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -346,7 +347,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         bytes memory calls =
             getBurnEncoded(tokenId, config, uint128(-delta.amount0()) + 1 wei, MIN_SLIPPAGE_DECREASE, ZERO_BYTES);
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -358,7 +359,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         bytes memory calls =
             getBurnEncoded(tokenId, config, MIN_SLIPPAGE_DECREASE, uint128(-delta.amount1()) + 1 wei, ZERO_BYTES);
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -393,7 +394,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // swap to move the price and cause a slippage revert
         swap(key, true, -1e18, ZERO_BYTES);
 
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -470,7 +471,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = getDecreaseEncoded(
             tokenId, config, 1e18, uint128(-delta.amount0()) + 1 wei, MIN_SLIPPAGE_DECREASE, ZERO_BYTES
         );
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -483,7 +484,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = getDecreaseEncoded(
             tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, uint128(-delta.amount1()) + 1 wei, ZERO_BYTES
         );
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -519,7 +520,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // swap to move the price and cause a slippage revert
         swap(key, true, -1e18, ZERO_BYTES);
 
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 

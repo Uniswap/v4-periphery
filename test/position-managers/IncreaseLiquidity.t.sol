@@ -20,6 +20,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {SlippageCheckLibrary} from "../../src/libraries/SlippageCheck.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
@@ -378,7 +379,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // revert since amount0Max is too low
         bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, 1 wei, type(uint128).max, ZERO_BYTES);
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -389,7 +390,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // revert since amount1Max is too low
         bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, type(uint128).max, 1 wei, ZERO_BYTES);
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -437,7 +438,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         swap(key, true, -10e18, ZERO_BYTES);
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, slippage, slippage, ZERO_BYTES);
-        vm.expectRevert(IPositionManager.SlippageExceeded.selector);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 

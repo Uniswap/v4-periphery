@@ -25,6 +25,7 @@ import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
+import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -43,6 +44,7 @@ contract PositionManager is
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
     using CalldataDecoder for bytes;
+    using SlippageCheckLibrary for BalanceDelta;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
@@ -146,8 +148,7 @@ contract PositionManager is
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        if (liquidityDelta.amount0() < 0 && amount0Max < uint128(-liquidityDelta.amount0())) revert SlippageExceeded();
-        if (liquidityDelta.amount1() < 0 && amount1Max < uint128(-liquidityDelta.amount1())) revert SlippageExceeded();
+        liquidityDelta.validateMaximumIncreaseSlippage(amount0Max, amount1Max);
     }
 
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
@@ -164,9 +165,7 @@ contract PositionManager is
 
         // Note: the tokenId is used as the salt.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-        if (uint128(liquidityDelta.amount0()) < amount0Min || uint128(liquidityDelta.amount1()) < amount1Min) {
-            revert SlippageExceeded();
-        }
+        liquidityDelta.validateMinimumOut(amount0Min, amount1Min);
     }
 
     function _mint(
@@ -187,8 +186,7 @@ contract PositionManager is
 
         // _beforeModify is not called here because the tokenId is newly minted
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        if (amount0Max < uint128(-liquidityDelta.amount0())) revert SlippageExceeded();
-        if (amount1Max < uint128(-liquidityDelta.amount1())) revert SlippageExceeded();
+        liquidityDelta.validateMaximumIn(amount0Max, amount1Max);
         positionConfigs[tokenId] = config.toId();
     }
 
@@ -228,9 +226,7 @@ contract PositionManager is
         // Can only call modify if there is non zero liquidity.
         if (liquidity > 0) {
             liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-            if (uint128(liquidityDelta.amount0()) < amount0Min || uint128(liquidityDelta.amount1()) < amount1Min) {
-                revert SlippageExceeded();
-            }
+            liquidityDelta.validateMinimumOut(amount0Min, amount1Min);
         }
 
         delete positionConfigs[tokenId];
