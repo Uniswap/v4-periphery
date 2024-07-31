@@ -7,6 +7,7 @@ import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
@@ -202,9 +203,8 @@ contract PositionManager is
         view
         returns (uint128 liquidity)
     {
-        // TODO: Calculate positionId with Position.calculatePositionKey in v4-core.
         bytes32 positionId =
-            keccak256(abi.encodePacked(address(this), config.tickLower, config.tickUpper, bytes32(tokenId)));
+            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
         liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
     }
 
