@@ -18,31 +18,42 @@ contract MiddlewareRemove is BaseRemove {
     using Hooks for IHooks;
     using TransientStateLibrary for IPoolManager;
 
-    error HookModifiedDeltasBeforeRemove();
-    error HookTookTooMuchFee();
-    error HookInvalidDeltasAfterRemove();
+    /// @notice Thrown when the implementation takes more fees than the max fee
+    error TookTooMuchFee();
+
+    /// @notice Thrown when the implementation returns different deltas than it modified
+    error DeltasReturnMismatch();
+
+    /// @notice Thrown when the implementation modifies deltas not of the hook or caller
+    error InvalidDeltasOwner();
+
+    /// @notice Thrown when maxFeeBips is set to a value greater than 10,000
     error MaxFeeBipsTooHigh();
 
+    /// @param _manager The address of the pool manager
+    /// @param _impl The address of the implementation contract
     constructor(IPoolManager _manager, address _impl, uint256 _maxFeeBips) BaseRemove(_manager, _impl) {
         if (_maxFeeBips > MAX_BIPS) revert MaxFeeBipsTooHigh();
         maxFeeBips = _maxFeeBips;
     }
 
+    /// @notice The hook called after liquidity is removed. Ensures valid deltas
+    /// @inheritdoc BaseRemove
     function afterRemoveLiquidity(
         address sender,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params,
         BalanceDelta delta,
         bytes calldata hookData
-    ) external returns (bytes4, BalanceDelta) {
+    ) external override returns (bytes4, BalanceDelta) {
         if (bytes32(hookData) == OVERRIDE_BYTES) {
-            (, bytes memory returnData) = address(implementation).delegatecall(
+            (, bytes memory implReturnData) = address(implementation).delegatecall(
                 abi.encodeWithSelector(this.afterRemoveLiquidity.selector, sender, key, params, delta, hookData[32:])
             );
-            return abi.decode(returnData, (bytes4, BalanceDelta));
+            return abi.decode(implReturnData, (bytes4, BalanceDelta));
         }
         (bool success, bytes memory returnData) = address(this).delegatecall{gas: GAS_LIMIT}(
-            abi.encodeWithSelector(this._callAndEnsureValidDeltas.selector, sender, key, params, delta, hookData)
+            abi.encodeWithSelector(this._afterRemoveLiquidity.selector, sender, key, params, delta, hookData)
         );
         if (success) {
             return (BaseHook.afterRemoveLiquidity.selector, abi.decode(returnData, (BalanceDelta)));
@@ -51,7 +62,13 @@ contract MiddlewareRemove is BaseRemove {
         }
     }
 
-    function _callAndEnsureValidDeltas(
+    /// @notice Middleware function that reverts if the implementation modified deltas incorrectly
+    /// @param sender The same sender from afterRemoveLiquidity
+    /// @param key The same key from afterRemoveLiquidity
+    /// @param params The same params from afterRemoveLiquidity
+    /// @param delta The same delta from afterRemoveLiquidity
+    /// @param hookData The same hookData from afterRemoveLiquidity
+    function _afterRemoveLiquidity(
         address sender,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params,
@@ -76,15 +93,14 @@ contract MiddlewareRemove is BaseRemove {
             returnDelta.amount0() > int256(uint256(int256(delta.amount0())) * maxFeeBips / MAX_BIPS)
                 || returnDelta.amount1() > int256(uint256(int256(delta.amount1())) * maxFeeBips / MAX_BIPS)
         ) {
-            revert HookTookTooMuchFee();
+            revert TookTooMuchFee();
         }
-        // error on overflow
-        returnDelta - delta;
+        returnDelta - delta; // revert on overflow
         uint256 nonzeroHookDeltaCount;
         int256 hookDelta = manager.currencyDelta(address(this), key.currency0);
         if (hookDelta != 0) {
             if (-hookDelta != returnDelta.amount0()) {
-                revert HookInvalidDeltasAfterRemove();
+                revert DeltasReturnMismatch();
             }
             nonzeroHookDeltaCount++;
             if (nonzeroHookDeltaCount == nonzeroDeltaCount) {
@@ -94,7 +110,7 @@ contract MiddlewareRemove is BaseRemove {
         hookDelta = manager.currencyDelta(address(this), key.currency1);
         if (hookDelta != 0) {
             if (-hookDelta != returnDelta.amount1()) {
-                revert HookInvalidDeltasAfterRemove();
+                revert DeltasReturnMismatch();
             }
             nonzeroHookDeltaCount++;
             if (nonzeroHookDeltaCount == nonzeroDeltaCount) {
@@ -102,25 +118,21 @@ contract MiddlewareRemove is BaseRemove {
             }
         }
 
-        // weird edge case in case the hook settled the caller's deltas
-        // can prob delete this
-        // if (manager.currencyDelta(sender, key.currency0) != 0) {
-        //     nonzeroHookDeltaCount++;
-        // }
-        // if (manager.currencyDelta(sender, key.currency1) != 0) {
-        //     nonzeroHookDeltaCount++;
-        // }
-        // if (nonzeroHookDeltaCount == nonzeroDeltaCount) {
-        //     return returnDelta;
-        // }
+        // if the hook settled the caller's deltas
+        if (manager.currencyDelta(sender, key.currency0) != 0) {
+            nonzeroHookDeltaCount++;
+        }
+        if (manager.currencyDelta(sender, key.currency1) != 0) {
+            nonzeroHookDeltaCount++;
+        }
+        if (nonzeroHookDeltaCount == nonzeroDeltaCount) {
+            return returnDelta;
+        }
 
-        revert HookInvalidDeltasAfterRemove();
+        revert InvalidDeltasOwner();
     }
 
-    function _ensureValidFlags(address _impl) internal view virtual override {
-        if (uint160(address(this)) & Hooks.ALL_HOOK_MASK != uint160(_impl) & Hooks.ALL_HOOK_MASK) {
-            revert FlagsMismatch();
-        }
+    function _ensureValidFlags() internal view virtual override {
         if (!IHooks(address(this)).hasPermission(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG)) {
             HookPermissionForbidden.selector.revertWith(address(this));
         }

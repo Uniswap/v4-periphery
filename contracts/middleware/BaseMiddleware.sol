@@ -20,7 +20,6 @@ abstract contract BaseMiddleware is Proxy {
     error FlagsMismatch();
 
     constructor(IPoolManager _manager, address _impl) {
-        _ensureValidFlags(_impl);
         manager = _manager;
         implementation = _impl;
     }
@@ -29,11 +28,5 @@ abstract contract BaseMiddleware is Proxy {
         return implementation;
     }
 
-    /// @notice Ensure that the implementation contract has the correct hook flags.
-    /// @dev Override to enforce hook flags.
-    function _ensureValidFlags(address _impl) internal view virtual {
-        if (uint160(address(this)) & Hooks.ALL_HOOK_MASK != uint160(_impl) & Hooks.ALL_HOOK_MASK) {
-            revert FlagsMismatch();
-        }
-    }
+    receive() external payable {}
 }

@@ -18,15 +18,19 @@ contract MiddlewareRemoveNoDeltas is BaseRemove {
     using Hooks for IHooks;
     using TransientStateLibrary for IPoolManager;
 
+    /// @param _manager The address of the pool manager
+    /// @param _impl The address of the implementation contract
     constructor(IPoolManager _manager, address _impl) BaseRemove(_manager, _impl) {}
 
+    /// @notice The hook called after liquidity is removed. Ensures zero nonzeroDeltas
+    /// @inheritdoc BaseRemove
     function afterRemoveLiquidity(
         address sender,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params,
         BalanceDelta delta,
         bytes calldata hookData
-    ) external returns (bytes4, BalanceDelta) {
+    ) external override returns (bytes4, BalanceDelta) {
         if (bytes32(hookData) == OVERRIDE_BYTES) {
             (, bytes memory returnData) = address(implementation).delegatecall(
                 abi.encodeWithSelector(this.afterRemoveLiquidity.selector, sender, key, params, delta, hookData[32:])
@@ -39,6 +43,8 @@ contract MiddlewareRemoveNoDeltas is BaseRemove {
         return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
+    /// @notice Middleware function that reverts if the implementation modified deltas
+    /// @param data The calldata from afterRemoveLiquidity
     function _afterRemoveLiquidity(bytes calldata data) external {
         (bool success, bytes memory returnData) = address(implementation).delegatecall(data);
         if (!success) {
@@ -49,14 +55,11 @@ contract MiddlewareRemoveNoDeltas is BaseRemove {
             revert Hooks.InvalidHookResponse();
         }
         if (manager.getNonzeroDeltaCount() != 0 || returnDelta != BalanceDeltaLibrary.ZERO_DELTA) {
-            revert HookModifiedDeltas();
+            revert ImplementationModifiedDeltas();
         }
     }
 
-    function _ensureValidFlags(address _impl) internal view virtual override {
-        if (uint160(address(this)) & Hooks.ALL_HOOK_MASK != uint160(_impl) & Hooks.ALL_HOOK_MASK) {
-            revert FlagsMismatch();
-        }
+    function _ensureValidFlags() internal view virtual override {
         if (IHooks(address(this)).hasPermission(Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG)) {
             HookPermissionForbidden.selector.revertWith(address(this));
         }

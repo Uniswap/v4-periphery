@@ -10,9 +10,6 @@ library MiddlewareMiner {
     // mask to slice out the bottom 14 bit of the address
     uint160 constant FLAG_MASK = 0x3FFF;
 
-    // Maximum number of iterations to find a salt, avoid infinite loops
-    uint256 constant MAX_LOOP = 1_000_000;
-
     /// @notice Find a salt that produces a hook address with the desired `flags`
     /// @param factory The factory address that will deploy the hook.
     /// @param flags The desired flags for the hook address
@@ -35,11 +32,14 @@ library MiddlewareMiner {
         }
         address hookAddress;
 
-        uint256 salt;
-        for (salt; salt < MAX_LOOP; salt++) {
+        uint256 salt = uint256(keccak256(abi.encode(implementation)));
+        while (true) {
             hookAddress = computeAddress(factory, salt, creationCodeWithArgs);
             if (uint160(hookAddress) & FLAG_MASK == flags && hookAddress.code.length == 0) {
                 return (hookAddress, bytes32(salt));
+            }
+            unchecked {
+                ++salt;
             }
         }
         revert("HookMiner: could not find salt");

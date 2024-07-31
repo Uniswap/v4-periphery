@@ -281,25 +281,6 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         factory.createMiddleware(address(hookscounter), 0, salt);
     }
 
-    function testRevertOnIncorrectFlags() public {
-        HooksCounter counter2 = HooksCounter(address(COUNTER_FLAGS));
-        vm.etch(address(hookscounter), address(new HooksCounter(manager)).code);
-        uint160 incorrectFlags = uint160(Hooks.BEFORE_INITIALIZE_FLAG);
-        (, bytes32 salt) =
-            MiddlewareMiner.find(address(factory), incorrectFlags, address(manager), address(counter2), 0);
-        address implementation = address(counter2);
-        vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
-        factory.createMiddleware(implementation, 0, salt);
-    }
-
-    function testRevertOnIncorrectFlagsMined() public {
-        HooksCounter counter2 = HooksCounter(address(COUNTER_FLAGS));
-        vm.etch(address(hookscounter), address(new HooksCounter(manager)).code);
-        address implementation = address(counter2);
-        vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
-        factory.createMiddleware(implementation, 0, bytes32("who needs to mine a salt?"));
-    }
-
     function testRevertOnIncorrectCaller() public {
         vm.expectRevert(SafeCallback.NotManager.selector);
         hookscounter.afterDonate(address(this), key, 0, 0, ZERO_BYTES);
