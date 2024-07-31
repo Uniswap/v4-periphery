@@ -27,13 +27,13 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// @notice function that is called by the PoolManager through the SafeCallback.unlockCallback
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         // abi.decode(data, (uint256[], bytes[]));
-        (uint256[] calldata actions, bytes[] calldata params) = data.decodeActionsRouterParams();
+        (bytes calldata actions, bytes[] calldata params) = data.decodeActionsRouterParams();
 
         uint256 numActions = actions.length;
         if (numActions != params.length) revert InputLengthMismatch();
 
         for (uint256 actionIndex = 0; actionIndex < numActions; actionIndex++) {
-            uint256 action = actions[actionIndex];
+            uint256 action = uint256(uint8(actions[actionIndex]));
 
             _handleAction(action, params[actionIndex]);
         }
