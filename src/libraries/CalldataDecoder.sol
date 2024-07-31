@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {PositionConfig} from "./PositionConfig.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 /// @title Library for abi decoding in calldata
 library CalldataDecoder {
@@ -84,6 +85,25 @@ library CalldataDecoder {
             config := add(params.offset, 0x20)
         }
         hookData = params.toBytes(8);
+    }
+
+    /// @param params The input bytes string to extract input arrays from
+    function decodeCurrency(bytes calldata params) internal pure returns (Currency currency) {
+        assembly ("memory-safe") {
+            currency := calldataload(params.offset)
+        }
+    }
+
+    /// @param params The input bytes string to extract input arrays from
+    function decodeCurrencyAndAddress(bytes calldata params)
+        internal
+        pure
+        returns (Currency currency, address _address)
+    {
+        assembly ("memory-safe") {
+            currency := calldataload(params.offset)
+            _address := calldataload(add(params.offset, 0x20))
+        }
     }
 
     /// @notice Decode the `_arg`-th element in `_bytes` as a dynamic array

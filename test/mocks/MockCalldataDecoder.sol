@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {CalldataDecoder} from "../../src/libraries/CalldataDecoder.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 // we need to use a mock contract to make the calls happen in calldata not memory
 contract MockCalldataDecoder {
@@ -30,5 +31,17 @@ contract MockCalldataDecoder {
         returns (PositionConfig calldata config, uint256 liquidity, address owner, bytes calldata hookData)
     {
         return params.decodeMintParams();
+    }
+
+    function decodeCurrencyAndAddress(bytes calldata params)
+        external
+        pure
+        returns (Currency currency, address _address)
+    {
+        return params.decodeCurrencyAndAddress();
+    }
+
+    function decodeCurrency(bytes calldata params) external pure returns (Currency currency) {
+        return params.decodeCurrency();
     }
 }

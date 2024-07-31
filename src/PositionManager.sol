@@ -144,10 +144,8 @@ contract PositionManager is
 
     /// @param params is an encoding of the Currency to close
     function _close(bytes calldata params) internal {
-        Currency currency;
-        assembly ("memory-safe") {
-            currency := calldataload(params.offset)
-        }
+        Currency currency = params.decodeCurrency();
+
         // this address has applied all deltas on behalf of the user/owner
         // it is safe to close this entire delta because of slippage checks throughout the batched calls.
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
@@ -164,10 +162,7 @@ contract PositionManager is
     /// @param params is an encoding of Currency
     /// @dev uses this addresses balance to settle a negative delta
     function _settleWithBalance(bytes calldata params) internal {
-        Currency currency;
-        assembly ("memory-safe") {
-            currency := calldataload(params.offset)
-        }
+        Currency currency = params.decodeCurrency();
 
         // set the payer to this address, performs a transfer.
         _settle(currency, address(this), _getFullSettleAmount(currency));
@@ -224,12 +219,8 @@ contract PositionManager is
     /// @notice Sweeps the entire contract balance of specified currency to the recipient
     /// @param params an encoding of Currency, address
     function _sweep(bytes calldata params) internal {
-        Currency currency;
-        address to;
-        assembly ("memory-safe") {
-            currency := calldataload(params.offset)
-            to := calldataload(add(params.offset, 0x20))
-        }
+        (Currency currency, address to) = params.decodeCurrencyAndAddress();
+
         uint256 balance = currency.balanceOfSelf();
         if (balance > 0) currency.transfer(to, balance);
     }
