@@ -13,6 +13,7 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
@@ -51,6 +52,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
+
+        seedBalance(alice);
+        approvePosmFor(alice);
     }
 
     function test_modifyLiquidities_reverts_mismatchedLengths() public {
@@ -286,6 +290,39 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         PositionConfig memory config =
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+        decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
+
+        assertEq(currency0.balanceOfSelf(), balance0Before + uint256(uint128(delta.amount0())));
+        assertEq(currency1.balanceOfSelf(), balance1Before + uint256(uint128(delta.amount1())));
+    }
+
+    function test_decreaseLiquidity_collectFees(
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 decreaseLiquidityDelta
+    ) public {
+        uint256 tokenId;
+        (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
+        decreaseLiquidityDelta = bound(decreaseLiquidityDelta, 1, uint256(params.liquidityDelta));
+
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        // donate to generate fee revenue
+        uint256 feeRevenue0 = 1e18;
+        uint256 feeRevenue1 = 0.1e18;
+        donateRouter.donate(key, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
         decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
 
         bytes32 positionId =
@@ -293,6 +330,17 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
+
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(decreaseLiquidityDelta)
+        );
+
+        // claimed both principal liquidity and fee revenue
+        assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, amount0 + feeRevenue0, 1 wei);
+        assertApproxEqAbs(currency1.balanceOfSelf() - balance1Before, amount1 + feeRevenue1, 1 wei);
     }
 
     function test_fuzz_decreaseLiquidity_assertCollectedBalance(
@@ -329,6 +377,146 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOfSelf() - balance1Before, uint256(int256(delta.amount1())));
     }
 
+    function test_mintTransferBurn() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
+        uint256 liquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidity, address(this), ZERO_BYTES);
+        BalanceDelta mintDelta = getLastDelta();
+
+        // transfer to alice
+        lpm.transferFrom(address(this), alice, tokenId);
+
+        // alice can burn the position
+        bytes memory calls = getBurnEncoded(tokenId, config, ZERO_BYTES);
+
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency0.balanceOf(alice);
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+
+        // token was burned and does not exist anymore
+        vm.expectRevert();
+        lpm.ownerOf(tokenId);
+
+        // alice received the principal liquidity
+        assertApproxEqAbs(currency0.balanceOf(alice) - balance0BeforeAlice, uint128(-mintDelta.amount0()), 1 wei);
+        assertApproxEqAbs(currency1.balanceOf(alice) - balance1BeforeAlice, uint128(-mintDelta.amount1()), 1 wei);
+    }
+
+    function test_mintTransferCollect() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
+        uint256 liquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidity, address(this), ZERO_BYTES);
+
+        // donate to generate fee revenue
+        uint256 feeRevenue0 = 1e18;
+        uint256 feeRevenue1 = 0.1e18;
+        donateRouter.donate(key, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        // transfer to alice
+        lpm.transferFrom(address(this), alice, tokenId);
+
+        // alice can collect the fees
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+        vm.startPrank(alice);
+        collect(tokenId, config, ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+        vm.stopPrank();
+
+        // alice received the fee revenue
+        assertApproxEqAbs(currency0.balanceOf(alice) - balance0BeforeAlice, feeRevenue0, 1 wei);
+        assertApproxEqAbs(currency1.balanceOf(alice) - balance1BeforeAlice, feeRevenue1, 1 wei);
+        assertApproxEqAbs(uint128(delta.amount0()), feeRevenue0, 1 wei);
+        assertApproxEqAbs(uint128(delta.amount1()), feeRevenue1, 1 wei);
+    }
+
+    function test_mintTransferIncrease() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
+        uint256 liquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidity, address(this), ZERO_BYTES);
+
+        // transfer to alice
+        lpm.transferFrom(address(this), alice, tokenId);
+
+        // alice increases liquidity and is the payer
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+        vm.startPrank(alice);
+        uint256 liquidityToAdd = 10e18;
+        increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+        vm.stopPrank();
+
+        // position liquidity increased
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 newLiq,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        assertEq(newLiq, liquidity + liquidityToAdd);
+
+        // alice paid the tokens
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(liquidityToAdd)
+        );
+        assertApproxEqAbs(balance0BeforeAlice - currency0.balanceOf(alice), amount0, 1 wei);
+        assertApproxEqAbs(balance1BeforeAlice - currency1.balanceOf(alice), amount1, 1 wei);
+        assertApproxEqAbs(uint128(-delta.amount0()), amount0, 1 wei);
+        assertApproxEqAbs(uint128(-delta.amount1()), amount1, 1 wei);
+    }
+
+    function test_mintTransferDecrease() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
+        uint256 liquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidity, address(this), ZERO_BYTES);
+
+        // donate to generate fee revenue
+        uint256 feeRevenue0 = 1e18;
+        uint256 feeRevenue1 = 0.1e18;
+        donateRouter.donate(key, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        // transfer to alice
+        lpm.transferFrom(address(this), alice, tokenId);
+
+        {
+            // alice decreases liquidity and is the recipient
+            uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+            uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+            vm.startPrank(alice);
+            uint256 liquidityToRemove = 10e18;
+            decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
+            BalanceDelta delta = getLastDelta();
+            vm.stopPrank();
+
+            {
+                // position liquidity decreased
+                bytes32 positionId =
+                    Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+                (uint256 newLiq,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+                assertEq(newLiq, liquidity - liquidityToRemove);
+            }
+
+            // alice received the principal + fees
+            (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+                SQRT_PRICE_1_1,
+                TickMath.getSqrtPriceAtTick(config.tickLower),
+                TickMath.getSqrtPriceAtTick(config.tickUpper),
+                uint128(liquidityToRemove)
+            );
+            assertApproxEqAbs(currency0.balanceOf(alice) - balance0BeforeAlice, amount0 + feeRevenue0, 1 wei);
+            assertApproxEqAbs(currency1.balanceOf(alice) - balance1BeforeAlice, amount1 + feeRevenue1, 1 wei);
+            assertApproxEqAbs(uint128(delta.amount0()), amount0 + feeRevenue0, 1 wei);
+            assertApproxEqAbs(uint128(delta.amount1()), amount1 + feeRevenue1, 1 wei);
+        }
+    }
+
     function test_initialize() public {
         // initialize a new pool and add liquidity
         key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
@@ -341,10 +529,19 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(lpFee, key.fee);
     }
 
-    function test_initialize_fuzz() public {}
-    function test_mintTransferBurn() public {}
-    function test_mintTransferCollect() public {}
-    function test_mintTransferIncrease() public {}
-    function test_mintTransferDecrease() public {}
+    function test_fuzz_initialize(uint160 sqrtPrice, uint24 fee) public {
+        sqrtPrice = uint160(bound(sqrtPrice, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE));
+        fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
+        key =
+            PoolKey({currency0: currency0, currency1: currency1, fee: fee, tickSpacing: 10, hooks: IHooks(address(0))});
+        lpm.initializePool(key, sqrtPrice, ZERO_BYTES);
+
+        (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee) = manager.getSlot0(key.toId());
+        assertEq(sqrtPriceX96, sqrtPrice);
+        assertEq(tick, TickMath.getTickAtSqrtPrice(sqrtPrice));
+        assertEq(protocolFee, 0);
+        assertEq(lpFee, fee);
+    }
+
     function test_mint_slippageRevert() public {}
 }
