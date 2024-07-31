@@ -86,6 +86,10 @@ contract PositionManager is
         } else if (action == Actions.BURN_POSITION) {
             // Will automatically decrease liquidity to 0 if the position is not already empty.
             _burn(params);
+        } else if (action == Actions.SETTLE_WITH_BALANCE) {
+            _settleWithBalance(params);
+        } else if (action == Actions.SWEEP) {
+            _sweep(params);
         } else {
             revert UnsupportedAction(action);
         }
@@ -152,12 +156,21 @@ contract PositionManager is
         address caller = _msgSender();
         if (currencyDelta < 0) {
             _settle(currency, caller, uint256(-currencyDelta));
-
-            // if there are native tokens left over after settling, return to locker
-            if (currency.isNative()) _sweepNativeToken(caller);
         } else if (currencyDelta > 0) {
             _take(currency, caller, uint256(currencyDelta));
         }
+    }
+
+    /// @param params is an encoding of Currency
+    /// @dev uses this addresses balance to settle a negative delta
+    function _settleWithBalance(bytes calldata params) internal {
+        Currency currency;
+        assembly ("memory-safe") {
+            currency := calldataload(params.offset)
+        }
+
+        // set the payer to this address, performs a transfer.
+        _settle(currency, address(this), _getFullSettleAmount(currency));
     }
 
     /// @param params is an encoding of uint256 tokenId, PositionConfig calldata config, bytes hookData
@@ -208,16 +221,26 @@ contract PositionManager is
         liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
     }
 
-    /// @dev Send excess native tokens back to the recipient (locker)
-    /// @param recipient the receiver of the excess native tokens. Should be the caller, the one that sent the native tokens
-    function _sweepNativeToken(address recipient) internal {
-        uint256 nativeBalance = address(this).balance;
-        if (nativeBalance > 0) recipient.safeTransferETH(nativeBalance);
+    /// @notice Sweeps the entire contract balance of specified currency to the recipient
+    /// @param params an encoding of Currency, address
+    function _sweep(bytes calldata params) internal {
+        Currency currency;
+        address to;
+        assembly ("memory-safe") {
+            currency := calldataload(params.offset)
+            to := calldataload(add(params.offset, 0x20))
+        }
+        uint256 balance = currency.balanceOfSelf();
+        if (balance > 0) currency.transfer(to, balance);
     }
 
     // implementation of abstract function DeltaResolver._pay
-    function _pay(Currency token, address payer, uint256 amount) internal override {
-        // TODO: Should we also support direct transfer?
-        permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(token));
+    function _pay(Currency currency, address payer, uint256 amount) internal override {
+        if (payer == address(this)) {
+            // TODO: currency is guaranteed to not be eth so the native check in transfer is not optimal.
+            currency.transfer(address(poolManager), amount);
+        } else {
+            permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
+        }
     }
 }

@@ -13,8 +13,8 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
+import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -32,6 +32,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     using PoolIdLibrary for PoolKey;
     using Planner for Plan;
     using FeeMath for IPositionManager;
+    using StateLibrary for IPoolManager;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -337,5 +338,95 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
                 tolerance
             );
         }
+    }
+
+    function test_mint_settleWithBalance() public {
+        uint256 liquidityAlice = 3_000e18;
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
+        planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
+        planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
+
+        uint256 balanceBefore0 = currency0.balanceOf(address(this));
+        uint256 balanceBefore1 = currency1.balanceOf(address(this));
+
+        assertEq(currency0.balanceOf(address(lpm)), 0);
+        assertEq(currency0.balanceOf(address(lpm)), 0);
+
+        currency0.transfer(address(lpm), 100e18);
+        currency1.transfer(address(lpm), 100e18);
+
+        assertEq(currency0.balanceOf(address(lpm)), 100e18);
+        assertEq(currency0.balanceOf(address(lpm)), 100e18);
+
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+        uint256 amount0 = uint128(-delta.amount0());
+        uint256 amount1 = uint128(-delta.amount1());
+
+        // The balances were swept back to this address.
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 0);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 0);
+
+        assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amount0);
+        assertEq(currency1.balanceOf(address(this)), balanceBefore1 - amount1);
+    }
+
+    function test_increaseLiquidity_settleWithBalance() public {
+        uint256 liquidityAlice = 3_000e18;
+
+        // alice provides liquidity
+        vm.prank(alice);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        assertEq(liquidity, liquidityAlice);
+
+        // alice increases with the balance in the position manager
+        Plan memory planner = Planner.init();
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityAlice, ZERO_BYTES));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
+        planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
+        planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
+
+        uint256 balanceBefore0 = currency0.balanceOf(address(this));
+        uint256 balanceBefore1 = currency1.balanceOf(address(this));
+
+        assertEq(currency0.balanceOf(address(lpm)), 0);
+        assertEq(currency0.balanceOf(address(lpm)), 0);
+
+        currency0.transfer(address(lpm), 100e18);
+        currency1.transfer(address(lpm), 100e18);
+
+        assertEq(currency0.balanceOf(address(lpm)), 100e18);
+        assertEq(currency0.balanceOf(address(lpm)), 100e18);
+
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+        uint256 amount0 = uint128(-delta.amount0());
+        uint256 amount1 = uint128(-delta.amount1());
+
+        (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        assertEq(liquidity, 2 * liquidityAlice);
+
+        // The balances were swept back to this address.
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(address(lpm)), 0);
+        assertEq(IERC20(Currency.unwrap(currency1)).balanceOf(address(lpm)), 0);
+
+        assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amount0);
+        assertEq(currency1.balanceOf(address(this)), balanceBefore1 - amount1);
     }
 }
