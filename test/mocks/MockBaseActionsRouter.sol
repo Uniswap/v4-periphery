@@ -6,7 +6,6 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BaseActionsRouter} from "../../src/base/BaseActionsRouter.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
-import {Locker} from "../../src/libraries/Locker.sol";
 
 contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
     uint256 public swapCount;
@@ -21,13 +20,13 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
-    function executeAction(bytes calldata params) external isNotLocked {
+    function executeActions(bytes calldata params) external isNotLocked {
         _executeActions(params);
     }
 
     function _handleAction(uint256 action, bytes calldata params) internal override {
         if (action < Actions.SETTLE) {
-            if (action == Actions.SWAP) _swap(params);
+            if (action == Actions.SWAP_EXACT_IN) _swap(params);
             else if (action == Actions.INCREASE_LIQUIDITY) _increaseLiquidity(params);
             else if (action == Actions.DECREASE_LIQUIDITY) _decreaseLiquidity(params);
             else if (action == Actions.DONATE) _donate(params);
@@ -43,7 +42,7 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
     }
 
     function _msgSender() internal view override returns (address) {
-        return Locker.get();
+        return _getLocker();
     }
 
     function _settle(bytes calldata /* params **/ ) internal {

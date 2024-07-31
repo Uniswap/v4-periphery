@@ -24,19 +24,20 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 
-import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
-import {Planner} from "../shared/Planner.sol";
+import {Planner, Plan} from "../shared/Planner.sol";
 import {PositionConfig, PositionConfigLibrary} from "../../src/libraries/PositionConfig.sol";
 
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PositionConfigLibrary for PositionConfig;
-    using Planner for Planner.Plan;
+    using Planner for Plan;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using SafeCast for *;
@@ -47,11 +48,15 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        currency0 = CurrencyLibrary.NATIVE;
-        (nativeKey, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        // This is needed to receive return deltas from modifyLiquidity calls.
+        deployPosmHookSavesDelta();
 
-        lpm = new PositionManager(manager);
-        IERC20(Currency.unwrap(currency1)).approve(address(lpm), type(uint256).max);
+        currency0 = CurrencyLibrary.NATIVE;
+        (nativeKey, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        deployPosm(manager);
+        // currency0 is the native token so only execute approvals for currency1.
+        approvePosmCurrency(currency1);
 
         vm.deal(address(this), type(uint256).max);
     }
@@ -78,8 +83,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             liquidityToAdd.toUint128()
         );
         // add extra wei because modifyLiquidities may be rounding up, LiquidityAmounts is imprecise?
-        bytes[] memory result = lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
-        BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -114,8 +119,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         // Mint with excess native tokens
-        bytes[] memory result = lpm.modifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
-        BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -152,10 +157,13 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
-        BalanceDelta deltaDecrease = decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
-        BalanceDelta deltaBurn = burn(tokenId, config, ZERO_BYTES);
-        assertEq(deltaBurn.amount0(), 0);
-        assertEq(deltaBurn.amount1(), 0);
+        decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+        BalanceDelta deltaDecrease = getLastDelta();
+
+        uint256 numDeltas = hook.numberDeltasReturned();
+        burn(tokenId, config, ZERO_BYTES);
+        // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array will be the same length.
+        assertEq(numDeltas, hook.numberDeltasReturned());
 
         (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, 0);
@@ -202,7 +210,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
 
-        BalanceDelta deltaBurn = burn(tokenId, config, ZERO_BYTES);
+        burn(tokenId, config, ZERO_BYTES);
+        BalanceDelta deltaBurn = getLastDelta();
 
         (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
         assertEq(liquidity, 0);
@@ -251,8 +260,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, ZERO_BYTES); // double the liquidity
-        bytes[] memory result = lpm.modifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
-        BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
+        BalanceDelta delta = getLastDelta();
 
         // verify position liquidity increased
         bytes32 positionId =
@@ -293,8 +302,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, ZERO_BYTES); // double the liquidity
-        bytes[] memory result = lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
-        BalanceDelta delta = abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
+        BalanceDelta delta = getLastDelta();
 
         // verify position liquidity increased
         bytes32 positionId =
@@ -333,7 +342,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             TickMath.getSqrtPriceAtTick(params.tickUpper),
             uint128(decreaseLiquidityDelta)
         );
-        BalanceDelta delta = decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
+        decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -364,7 +374,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         uint256 balance0Before = address(this).balance;
         uint256 balance1Before = currency1.balanceOfSelf();
-        BalanceDelta delta = collect(tokenId, config, ZERO_BYTES);
+        collect(tokenId, config, ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
 
         assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, feeRevenue0, 1 wei); // TODO: fuzzer off by 1 wei
         assertEq(currency0.balanceOfSelf() - balance0Before, uint128(delta.amount0()));

@@ -14,18 +14,19 @@ import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {IPositionManager, Actions} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {IMulticall} from "../../src/interfaces/IMulticall.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
-import {Planner} from "../shared/Planner.sol";
+import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
 contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
-    using Planner for Planner.Plan;
+    using Planner for Plan;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -53,12 +54,12 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
             tickUpper: TickMath.maxUsableTick(key.tickSpacing)
         });
 
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(
-            Actions.MINT,
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.MINT_POSITION,
             abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
         );
-        bytes memory actions = planner.finalize(config.poolKey);
+        bytes memory actions = planner.finalizeModifyLiquidity(config.poolKey);
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 

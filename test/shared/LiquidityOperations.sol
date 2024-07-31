@@ -11,10 +11,11 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {PositionManager, Actions} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {Planner} from "../shared/Planner.sol";
+import {Planner, Plan} from "../shared/Planner.sol";
+import {HookSavesDelta} from "./HookSavesDelta.sol";
 
 abstract contract LiquidityOperations is CommonBase {
-    using Planner for Planner.Plan;
+    using Planner for Plan;
     using SafeCast for *;
 
     PositionManager lpm;
@@ -24,13 +25,9 @@ abstract contract LiquidityOperations is CommonBase {
     uint128 constant MAX_SLIPPAGE_INCREASE = type(uint128).max;
     uint128 constant MIN_SLIPPAGE_DECREASE = 0 wei;
 
-    function mint(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData)
-        internal
-        returns (BalanceDelta)
-    {
+    function mint(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData) internal {
         bytes memory calls = getMintEncoded(config, liquidity, recipient, hookData);
-        bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
-        return abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     function mintWithNative(
@@ -39,7 +36,7 @@ abstract contract LiquidityOperations is CommonBase {
         uint256 liquidity,
         address recipient,
         bytes memory hookData
-    ) internal returns (BalanceDelta) {
+    ) internal {
         // determine the amount of ETH to send on-mint
         (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
             sqrtPriceX96,
@@ -49,9 +46,7 @@ abstract contract LiquidityOperations is CommonBase {
         );
         bytes memory calls = getMintEncoded(config, liquidity, recipient, hookData);
         // add extra wei because modifyLiquidities may be rounding up, LiquidityAmounts is imprecise?
-        bytes[] memory result = lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
-
-        return abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
     }
 
     function increaseLiquidity(
@@ -59,10 +54,9 @@ abstract contract LiquidityOperations is CommonBase {
         PositionConfig memory config,
         uint256 liquidityToAdd,
         bytes memory hookData
-    ) internal returns (BalanceDelta) {
+    ) internal {
         bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, hookData);
-        bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
-        return abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     // do not make external call before unlockAndExecute, allows us to test reverts
@@ -71,29 +65,20 @@ abstract contract LiquidityOperations is CommonBase {
         PositionConfig memory config,
         uint256 liquidityToRemove,
         bytes memory hookData
-    ) internal returns (BalanceDelta) {
+    ) internal {
         bytes memory calls = getDecreaseEncoded(tokenId, config, liquidityToRemove, hookData);
-        bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
-        return abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
-    function collect(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
-        internal
-        returns (BalanceDelta)
-    {
+    function collect(uint256 tokenId, PositionConfig memory config, bytes memory hookData) internal {
         bytes memory calls = getCollectEncoded(tokenId, config, hookData);
-        bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
-        return abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     // This is encoded with close calls. Not all burns need to be encoded with closes if there is no liquidity in the position.
-    function burn(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
-        internal
-        returns (BalanceDelta)
-    {
+    function burn(uint256 tokenId, PositionConfig memory config, bytes memory hookData) internal {
         bytes memory calls = getBurnEncoded(tokenId, config, hookData);
-        bytes[] memory result = lpm.modifyLiquidities(calls, _deadline);
-        return abi.decode(result[0], (BalanceDelta));
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     // Helper functions for getting encoded calldata for .modifyLiquidities
@@ -113,9 +98,10 @@ abstract contract LiquidityOperations is CommonBase {
         address recipient,
         bytes memory hookData
     ) internal pure returns (bytes memory) {
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.MINT, abi.encode(config, liquidity, amount0Max, amount1Max, recipient, hookData));
-        return planner.finalize(config.poolKey);
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidity, amount0Max, amount1Max, recipient, hookData));
+
+        return planner.finalizeModifyLiquidity(config.poolKey);
     }
 
     function getIncreaseEncoded(
@@ -137,10 +123,11 @@ abstract contract LiquidityOperations is CommonBase {
         uint128 amount1Max,
         bytes memory hookData
     ) internal pure returns (bytes memory) {
-        Planner.Plan memory planner = Planner.init();
-        planner =
-            planner.add(Actions.INCREASE, abi.encode(tokenId, config, liquidityToAdd, amount0Max, amount1Max, hookData));
-        return planner.finalize(config.poolKey);
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, amount0Max, amount1Max, hookData)
+        );
+        return planner.finalizeModifyLiquidity(config.poolKey);
     }
 
     function getDecreaseEncoded(
@@ -162,11 +149,11 @@ abstract contract LiquidityOperations is CommonBase {
         uint128 amount1Min,
         bytes memory hookData
     ) internal pure returns (bytes memory) {
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(
-            Actions.DECREASE, abi.encode(tokenId, config, liquidityToRemove, amount0Min, amount1Min, hookData)
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToRemove, amount0Min, amount1Min, hookData)
         );
-        return planner.finalize(config.poolKey);
+        return planner.finalizeModifyLiquidity(config.poolKey);
     }
 
     function getCollectEncoded(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
@@ -184,9 +171,9 @@ abstract contract LiquidityOperations is CommonBase {
         uint128 amount1Min,
         bytes memory hookData
     ) internal pure returns (bytes memory) {
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.DECREASE, abi.encode(tokenId, config, 0, amount0Min, amount1Min, hookData));
-        return planner.finalize(config.poolKey);
+        Plan memory planner = Planner.init();
+        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, amount0Min, amount1Min, hookData));
+        return planner.finalizeModifyLiquidity(config.poolKey);
     }
 
     function getBurnEncoded(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
@@ -204,8 +191,9 @@ abstract contract LiquidityOperations is CommonBase {
         uint128 amount1Min,
         bytes memory hookData
     ) internal pure returns (bytes memory) {
-        Planner.Plan memory planner = Planner.init();
-        planner = planner.add(Actions.BURN, abi.encode(tokenId, config, amount0Min, amount1Min, hookData));
-        return planner.finalize(config.poolKey);
+        Plan memory planner = Planner.init();
+        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, amount0Min, amount1Min, hookData));
+        // Close needed on burn in case there is liquidity left in the position.
+        return planner.finalizeModifyLiquidity(config.poolKey);
     }
 }
