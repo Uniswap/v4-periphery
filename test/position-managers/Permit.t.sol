@@ -10,6 +10,7 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {SignatureVerification} from "permit2/src/libraries/SignatureVerification.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IERC721Permit} from "../../src/interfaces/IERC721Permit.sol";
@@ -17,7 +18,6 @@ import {ERC721Permit} from "../../src/base/ERC721Permit.sol";
 import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
 
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {SignatureVerification} from "../../src/libraries/SignatureVerification.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";

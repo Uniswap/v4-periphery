@@ -2,11 +2,13 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
+import {SignatureVerification} from "permit2/src/libraries/SignatureVerification.sol";
+
 import {MockERC721Permit} from "./mocks/MockERC721Permit.sol";
 import {IERC721Permit} from "../src/interfaces/IERC721Permit.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {UnorderedNonce} from "../src/base/UnorderedNonce.sol";
-import {SignatureVerification} from "../src/libraries/SignatureVerification.sol";
+
 
 contract ERC721PermitTest is Test {
     MockERC721Permit erc721Permit;
