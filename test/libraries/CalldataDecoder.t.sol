@@ -39,10 +39,13 @@ contract CalldataDecoderTest is Test {
         _assertEq(_config, config);
     }
 
-    function test_fuzz_decodeBurnParams(uint256 _tokenId, PositionConfig calldata _config, uint128 _amount0Min, uint128 _amount1Min, bytes calldata _hookData)
-        public
-        view
-    {
+    function test_fuzz_decodeBurnParams(
+        uint256 _tokenId,
+        PositionConfig calldata _config,
+        uint128 _amount0Min,
+        uint128 _amount1Min,
+        bytes calldata _hookData
+    ) public view {
         bytes memory params = abi.encode(_tokenId, _config, _amount0Min, _amount1Min, _hookData);
         (uint256 tokenId, PositionConfig memory config, uint128 amount0Min, uint128 amount1Min, bytes memory hookData) =
             decoder.decodeBurnParams(params);
