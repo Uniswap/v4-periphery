@@ -15,6 +15,10 @@ contract SafeCallbackTest is Test, Deployers {
         safeCallback = new MockSafeCallback(manager);
     }
 
+    function test_poolManagerAddress() public view {
+        assertEq(address(safeCallback.poolManager()), address(manager));
+    }
+
     function test_unlock(uint256 num) public {
         bytes memory result = safeCallback.unlockManager(num);
         assertEq(num, abi.decode(result, (uint256)));
