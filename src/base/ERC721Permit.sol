@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
 
+import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {ERC721PermitHashLibrary} from "../libraries/ERC721PermitHash.sol";
 import {SignatureVerification} from "permit2/src/libraries/SignatureVerification.sol";
 
@@ -14,9 +14,9 @@ import {UnorderedNonce} from "./UnorderedNonce.sol";
 /// @notice Nonfungible tokens that support an approve via signature, i.e. permit
 abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce {
     using SignatureVerification for bytes;
+
     /// @inheritdoc IERC721Permit
     /// @dev Value is equal to keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)");
-
     bytes32 public constant override PERMIT_TYPEHASH = ERC721PermitHashLibrary.PERMIT_TYPEHASH;
 
     /// @notice Computes the nameHash and versionHash
