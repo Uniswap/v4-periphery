@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {CalldataDecoder} from "../../src/libraries/CalldataDecoder.sol";
+
+// we need to use a mock contract to make the calls happen in calldata not memory
+contract MockCalldataDecoder {
+    using CalldataDecoder for bytes;
+
+    function decodeModifyLiquidityParams(bytes calldata params)
+        external
+        pure
+        returns (uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData)
+    {
+        return params.decodeModifyLiquidityParams();
+    }
+
+    function decodeBurnParams(bytes calldata params)
+        external
+        pure
+        returns (uint256 tokenId, PositionConfig calldata config, bytes calldata hookData)
+    {
+        return params.decodeBurnParams();
+    }
+
+    function decodeMintParams(bytes calldata params)
+        external
+        pure
+        returns (PositionConfig calldata config, uint256 liquidity, address owner, bytes calldata hookData)
+    {
+        return params.decodeMintParams();
+    }
+}
