@@ -18,8 +18,9 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
         plan = Planner.init();
     }
 
-    function test_gas_swap_settleFromCaller_takeAll() public {
+    function test_settleFromCaller_takeAll() public {
         uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
@@ -27,18 +28,41 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
         plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0));
         plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
 
+        uint256 inputBalanceBefore = key0.currency0.balanceOfSelf();
+        uint256 outputBalanceBefore = key0.currency1.balanceOfSelf();
+        // router is empty before
+        assertEq(currency0.balanceOf(address(router)), 0);
+        assertEq(currency1.balanceOf(address(router)), 0);
+
         bytes memory data = plan.encode();
         router.executeActions(data);
-        snapLastCall("Payments_swap_settleFromCaller_takeAll");
+
+        uint256 inputBalanceAfter = key0.currency0.balanceOfSelf();
+        uint256 outputBalanceAfter = key0.currency1.balanceOfSelf();
+
+        // router is empty
+        assertEq(currency0.balanceOf(address(router)), 0);
+        assertEq(currency1.balanceOf(address(router)), 0);
+        // caller's balance changed by input and output amounts
+        assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
+        assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
     }
 
-    function test_gas_swap_settleFromRouter_takeAll() public {
+    function test_settleFromRouter_takeAll() public {
         uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         // seed the router with tokens
         key0.currency0.transfer(address(router), amountIn);
+
+        uint256 inputBalanceBefore = key0.currency0.balanceOfSelf();
+        uint256 outputBalanceBefore = key0.currency1.balanceOfSelf();
+
+        // seeded tokens are in the router
+        assertEq(currency0.balanceOf(address(router)), amountIn);
+        assertEq(currency1.balanceOf(address(router)), 0);
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE_WITH_BALANCE, abi.encode(key0.currency0));
@@ -46,6 +70,15 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
 
         bytes memory data = plan.encode();
         router.executeActions(data);
-        snapLastCall("Payments_swap_settleFromRouter_takeAll");
+
+        uint256 inputBalanceAfter = key0.currency0.balanceOfSelf();
+        uint256 outputBalanceAfter = key0.currency1.balanceOfSelf();
+
+        // router is empty
+        assertEq(currency0.balanceOf(address(router)), 0);
+        assertEq(currency1.balanceOf(address(router)), 0);
+        // callers input balance didnt change, but output balance did
+        assertEq(inputBalanceBefore, inputBalanceAfter);
+        assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
     }
 }
