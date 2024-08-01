@@ -103,7 +103,7 @@ abstract contract BaseRemove is BaseMiddleware {
         IPoolManager.ModifyLiquidityParams calldata params,
         BalanceDelta delta,
         bytes calldata hookData
-    ) external virtual returns (bytes4, BalanceDelta) {}
+    ) external virtual returns (bytes4, BalanceDelta);
 
     /// @notice Ensure that the implementation contract has the correct hook flags
     /// @dev Override to enforce hook flags
