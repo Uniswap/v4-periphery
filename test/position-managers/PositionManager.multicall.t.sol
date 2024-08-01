@@ -91,11 +91,7 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         address charlie = makeAddr("CHARLIE");
         vm.startPrank(charlie);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IMulticall.CallFailed.selector, abi.encodeWithSelector(IPositionManager.NotApproved.selector, charlie)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, charlie));
         lpm.multicall(calls);
         vm.stopPrank();
     }

@@ -19,18 +19,10 @@ abstract contract Multicall is IMulticall {
             (bool success, bytes memory result) = address(this).delegatecall(data[i]);
 
             if (!success) {
-                // handle custom errors
-                if (result.length == 4) {
-                    assembly {
-                        revert(add(result, 0x20), mload(result))
-                    }
-                }
-                // Next 5 lines from https://ethereum.stackexchange.com/a/83577
-                if (result.length < 68) CallFailed.selector.bubbleUpAndRevertWith();
+                // bubble up the revert reason
                 assembly {
-                    result := add(result, 0x04)
+                    revert(add(result, 0x20), mload(result))
                 }
-                revert(abi.decode(result, (string)));
             }
 
             results[i] = result;
