@@ -45,10 +45,7 @@ contract Notifier {
 
         bytes memory data = abi.encodeWithSelector(ISubscriber.notifyUnsubscribe.selector, tokenId, config);
 
-        //try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config) {} catch {}
-        assembly ("memory-safe") {
-            pop(call(subscriberGasLimit, _subscriber, 0, add(data, 0x20), mload(data), 0, 0))
-        }
+        try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config) {} catch {}
 
         delete subscriber[tokenId];
         emit Unsubscribed(tokenId, address(_subscriber));
