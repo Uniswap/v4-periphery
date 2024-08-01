@@ -8,7 +8,7 @@ import {Actions} from "../../src/libraries/Actions.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 struct Plan {
-    uint256[] actions;
+    bytes actions;
     bytes[] params;
 }
 
@@ -16,21 +16,20 @@ library Planner {
     using Planner for Plan;
 
     function init() internal pure returns (Plan memory plan) {
-        return Plan({actions: new uint256[](0), params: new bytes[](0)});
+        return Plan({actions: bytes(""), params: new bytes[](0)});
     }
 
     function add(Plan memory plan, uint256 action, bytes memory param) internal pure returns (Plan memory) {
-        uint256[] memory actions = new uint256[](plan.actions.length + 1);
+        bytes memory actions = new bytes(plan.params.length + 1);
         bytes[] memory params = new bytes[](plan.params.length + 1);
 
-        for (uint256 i; i < actions.length - 1; i++) {
+        for (uint256 i; i < params.length - 1; i++) {
             // Copy from plan.
-            actions[i] = plan.actions[i];
             params[i] = plan.params[i];
+            actions[i] = plan.actions[i];
         }
-
-        actions[actions.length - 1] = action;
         params[params.length - 1] = param;
+        actions[params.length - 1] = bytes1(uint8(action));
 
         plan.actions = actions;
         plan.params = params;

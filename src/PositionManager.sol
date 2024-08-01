@@ -107,7 +107,7 @@ contract PositionManager is
         positionConfigs.setUnsubscribe(tokenId);
     }
 
-    function _handleAction(uint256 action, bytes calldata params) internal override {
+    function _handleAction(uint256 action, bytes calldata params) internal virtual override {
         if (action == Actions.INCREASE_LIQUIDITY) {
             (uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData) =
                 params.decodeModifyLiquidityParams();
