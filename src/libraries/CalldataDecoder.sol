@@ -17,7 +17,7 @@ library CalldataDecoder {
     function decodeActionsRouterParams(bytes calldata _bytes)
         internal
         pure
-        returns (uint256[] calldata actions, bytes[] calldata params)
+        returns (bytes calldata actions, bytes[] calldata params)
     {
         assembly ("memory-safe") {
             // The offset of the 0th element is 0, which stores the offset of the length pointer of actions array.
