@@ -11,13 +11,13 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {console} from "../../../lib/forge-std/src/console.sol";
+import {console} from "../../../lib/v4-core/lib/forge-std/src/console.sol";
 import {BaseMiddleware} from "./../contracts/middleware/BaseMiddleware.sol";
 import {BaseMiddlewareImplementation} from "./middleware/BaseMiddlewareImplemenation.sol";
 import {BaseMiddlewareFactoryImplementation} from "./middleware/BaseMiddlewareFactoryImplementation.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
 import {HooksCounter} from "./middleware/HooksCounter.sol";
-import {SafeCallback} from "./../contracts/base/SafeCallback.sol";
+import {SafeCallback} from "./../src/base/SafeCallback.sol";
 
 contract BaseMiddlewareFactoryTest is Test, Deployers {
     HookEnabledSwapRouter router;
@@ -73,7 +73,7 @@ contract BaseMiddlewareFactoryTest is Test, Deployers {
     }
 
     function testRevertOnIncorrectCaller() public {
-        vm.expectRevert(SafeCallback.NotManager.selector);
+        vm.expectRevert(SafeCallback.NotPoolManager.selector);
         hookscounter.afterDonate(address(this), key, 0, 0, ZERO_BYTES);
     }
 

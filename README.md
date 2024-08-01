@@ -26,7 +26,7 @@ contract CoolHook is BaseHook {
         address,
         IPoolManager.PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params
-    ) external override onlyByManager returns (bytes4) {
+    ) external override onlyByPoolManager returns (bytes4) {
         // hook logic
         return BaseHook.beforeAddLiquidity.selector;
     }

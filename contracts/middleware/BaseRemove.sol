@@ -6,7 +6,7 @@ import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/Bala
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
 import {BaseMiddleware} from "./BaseMiddleware.sol";
-import {BaseHook} from "../BaseHook.sol";
+import {BaseHook} from "../../src/base/hooks/BaseHook.sol";
 import {BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";

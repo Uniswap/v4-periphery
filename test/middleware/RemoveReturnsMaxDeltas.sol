@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {BaseHook} from "./../../contracts/BaseHook.sol";
+import {BaseHook} from "./../../src/base/hooks/BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -41,10 +41,12 @@ contract RemoveReturnsMaxDeltas is BaseHook {
         bytes calldata
     ) external override returns (bytes4, BalanceDelta) {
         int128 max = type(int128).max;
-        key.currency0.transfer(address(manager), uint128(max));
-        key.currency1.transfer(address(manager), uint128(max));
-        manager.settle(key.currency0);
-        manager.settle(key.currency1);
+        key.currency0.transfer(address(poolManager), uint128(max));
+        key.currency1.transfer(address(poolManager), uint128(max));
+        poolManager.sync(key.currency0);
+        poolManager.settle();
+        poolManager.sync(key.currency1);
+        poolManager.settle();
         return (BaseHook.afterRemoveLiquidity.selector, toBalanceDelta(-max, -max));
     }
 }
