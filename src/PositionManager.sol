@@ -54,9 +54,8 @@ contract PositionManager is
 
     IAllowanceTransfer public immutable permit2;
 
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2, uint256 _subscriberGasLimit)
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
-        Notifier(_subscriberGasLimit)
         ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
     {
         permit2 = _permit2;
