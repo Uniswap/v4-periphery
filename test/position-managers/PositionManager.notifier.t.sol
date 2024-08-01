@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
@@ -10,11 +11,13 @@ import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
+import {MockReturnDataSubscriber} from "../mocks/MockBadSubscribers.sol";
 
-contract PositionManagerNotifierTest is Test, PosmTestSetup {
+contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
     using Planner for Plan;
 
     MockSubscriber sub;
+    MockReturnDataSubscriber badSubscriber;
     PositionConfig config;
 
     address alice = makeAddr("ALICE");
@@ -30,6 +33,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup {
         deployAndApprovePosm(manager);
 
         sub = new MockSubscriber(lpm);
+        badSubscriber = new MockReturnDataSubscriber(lpm);
         config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
 
         // TODO: Test NATIVE poolKey
@@ -77,7 +81,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup {
 
         lpm.subscribe(tokenId, config, address(sub));
 
-        assertEq(_getSubscribed(lpm.positionConfigs(tokenId)), true);
+        assertEq(_hasSubscriber(lpm.positionConfigs(tokenId)), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
         assertEq(sub.notifySubscribeCount(), 1);
     }
@@ -121,7 +125,25 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup {
         assertEq(sub.notifyTransferCount(), 1);
     }
 
-    function _getSubscribed(bytes32 _config) internal pure returns (bool subscribed) {
+    function test_unsubscribe_isSuccessfulWithBadSubscriber() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(badSubscriber));
+
+        MockReturnDataSubscriber(badSubscriber).setReturnDataSize(0x600000);
+        lpm.unsubscribe(tokenId, config);
+
+        // the subscriber contract call failed bc it used too much gas
+        assertEq(MockReturnDataSubscriber(badSubscriber).notifyUnsubscribeCount(), 0);
+    }
+
+    function _hasSubscriber(bytes32 _config) internal pure returns (bool subscribed) {
         assembly {
             subscribed := shr(255, _config)
         }

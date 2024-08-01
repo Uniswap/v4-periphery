@@ -42,7 +42,7 @@ library PositionConfigLibrary {
         positionConfigs[tokenId] &= MASK_UPPER_BIT;
     }
 
-    function getSubscribed(mapping(uint256 => bytes32) storage positionConfigs, uint256 tokenId)
+    function hasSubscriber(mapping(uint256 => bytes32) storage positionConfigs, uint256 tokenId)
         internal
         view
         returns (bool subscribed)

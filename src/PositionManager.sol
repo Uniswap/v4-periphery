@@ -92,18 +92,17 @@ contract PositionManager is
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
-        if (positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
-        _subscribe(tokenId, config, subscriber);
         positionConfigs.setSubscribe(tokenId);
+        _subscribe(tokenId, config, subscriber);
     }
 
     function unsubscribe(uint256 tokenId, PositionConfig calldata config)
         external
         onlyIfApproved(msg.sender, tokenId)
+        onlyValidConfig(tokenId, config)
     {
-        if (positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
-        _unsubscribe(tokenId, config);
         positionConfigs.setUnsubscribe(tokenId);
+        _unsubscribe(tokenId, config);
     }
 
     function _handleAction(uint256 action, bytes calldata params) internal virtual override {
@@ -233,7 +232,7 @@ contract PositionManager is
             hookData
         );
 
-        if (positionConfigs.getSubscribed(uint256(salt))) {
+        if (positionConfigs.hasSubscriber(uint256(salt))) {
             _notifyModifyLiquidity(uint256(salt), config, liquidityChange);
         }
     }
@@ -267,6 +266,6 @@ contract PositionManager is
     /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
     function transferFrom(address from, address to, uint256 id) public override {
         super.transferFrom(from, to, id);
-        if (positionConfigs.getSubscribed(id)) _notifyTransfer(id, from, to);
+        if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
     }
 }

@@ -77,11 +77,11 @@ contract PositionConfigTest is Test {
         assertEq(_config, 0);
     }
 
-    function test_getSubscribed(uint256 tokenId) public {
+    function test_hasSubscriber(uint256 tokenId) public {
         testConfigs.setSubscribe(tokenId);
-        assert(testConfigs.getSubscribed(tokenId));
+        assert(testConfigs.hasSubscriber(tokenId));
         testConfigs.setUnsubscribe(tokenId);
-        assert(!testConfigs.getSubscribed(tokenId));
+        assert(!testConfigs.hasSubscriber(tokenId));
     }
 
     function test_fuzz_setConfigId_setSubscribe_setUnsubscribe_getConfigId(
@@ -95,11 +95,11 @@ contract PositionConfigTest is Test {
 
         testConfigs.setSubscribe(tokenId);
         assertEq(testConfigs.getConfigId(tokenId), config.toId());
-        assertEq(testConfigs.getSubscribed(tokenId), true);
+        assertEq(testConfigs.hasSubscriber(tokenId), true);
 
         testConfigs.setUnsubscribe(tokenId);
         assertEq(testConfigs.getConfigId(tokenId), config.toId());
-        assertEq(testConfigs.getSubscribed(tokenId), false);
+        assertEq(testConfigs.hasSubscriber(tokenId), false);
     }
 
     function _calculateExpectedId(PositionConfig calldata config) internal pure returns (bytes32 expectedId) {
