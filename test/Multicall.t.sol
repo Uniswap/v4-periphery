@@ -30,7 +30,7 @@ contract MulticallTest is Test {
     function test_multicall_firstRevert() public {
         bytes[] memory calls = new bytes[](2);
         calls[0] =
-            abi.encodeWithSelector(MockMulticall(multicall).functionThatRevertsWithError.selector, "First call failed");
+            abi.encodeWithSelector(MockMulticall(multicall).functionThatRevertsWithString.selector, "First call failed");
         calls[1] = abi.encodeWithSelector(MockMulticall(multicall).functionThatReturnsTuple.selector, 1, 2);
 
         vm.expectRevert("First call failed");
@@ -40,8 +40,9 @@ contract MulticallTest is Test {
     function test_multicall_secondRevert() public {
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(MockMulticall(multicall).functionThatReturnsTuple.selector, 1, 2);
-        calls[1] =
-            abi.encodeWithSelector(MockMulticall(multicall).functionThatRevertsWithError.selector, "Second call failed");
+        calls[1] = abi.encodeWithSelector(
+            MockMulticall(multicall).functionThatRevertsWithString.selector, "Second call failed"
+        );
 
         vm.expectRevert("Second call failed");
         multicall.multicall(calls);
@@ -105,5 +106,32 @@ contract MulticallTest is Test {
         assertEq(address(multicall).balance, 100);
         assertEq(multicall.msgValue(), 100);
         assertEq(multicall.msgValueDouble(), 200);
+    }
+
+    // revert bubbling
+    function test_multicall_bubbleRevert_string() public {
+        bytes[] memory calls = new bytes[](1);
+        calls[0] =
+            abi.encodeWithSelector(MockMulticall(multicall).functionThatRevertsWithString.selector, "errorString");
+
+        vm.expectRevert("errorString");
+        multicall.multicall(calls);
+    }
+
+    function test_multicall_bubbleRevert_simpleError() public {
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(MockMulticall(multicall).functionThatRevertsWithSimpleError.selector);
+
+        vm.expectRevert(MockMulticall.SimpleError.selector);
+        multicall.multicall(calls);
+    }
+
+    function test_multicall_bubbleRevert_errorWithParams(uint256 a, uint256 b) public {
+        bytes[] memory calls = new bytes[](1);
+        calls[0] =
+            abi.encodeWithSelector(MockMulticall(multicall).functionThatRevertsWithErrorWithParams.selector, a, b);
+
+        vm.expectRevert(abi.encodeWithSelector(MockMulticall.ErrorWithParams.selector, a, b));
+        multicall.multicall(calls);
     }
 }

@@ -4,6 +4,9 @@ pragma solidity ^0.8.20;
 import "../../src/base/Multicall.sol";
 
 contract MockMulticall is Multicall {
+    error SimpleError();
+    error ErrorWithParams(uint256 a, uint256 b);
+
     struct Tuple {
         uint256 a;
         uint256 b;
@@ -12,8 +15,16 @@ contract MockMulticall is Multicall {
     uint256 public msgValue;
     uint256 public msgValueDouble;
 
-    function functionThatRevertsWithError(string memory error) external pure {
+    function functionThatRevertsWithString(string memory error) external pure {
         revert(error);
+    }
+
+    function functionThatRevertsWithSimpleError() external pure {
+        revert SimpleError();
+    }
+
+    function functionThatRevertsWithErrorWithParams(uint256 a, uint256 b) external pure {
+        revert ErrorWithParams(a, b);
     }
 
     function functionThatReturnsTuple(uint256 a, uint256 b) external pure returns (Tuple memory tuple) {
