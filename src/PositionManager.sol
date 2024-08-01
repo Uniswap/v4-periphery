@@ -25,6 +25,7 @@ import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
+import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -33,7 +34,8 @@ contract PositionManager is
     Multicall,
     DeltaResolver,
     ReentrancyLock,
-    BaseActionsRouter
+    BaseActionsRouter,
+    Permit2Forwarder
 {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
@@ -50,14 +52,11 @@ contract PositionManager is
     /// @inheritdoc IPositionManager
     mapping(uint256 tokenId => bytes32 configId) public positionConfigs;
 
-    IAllowanceTransfer public immutable permit2;
-
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
+        Permit2Forwarder(_permit2)
         ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
-    {
-        permit2 = _permit2;
-    }
+    {}
 
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed();
