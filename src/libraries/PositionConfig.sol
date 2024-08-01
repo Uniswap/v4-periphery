@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-// A PositionConfig is the input for creating and modifying a Position in core, whos truncated hash is set per tokenId
+// A PositionConfig is the input for creating and modifying a Position in core, whose truncated hash is set per tokenId
 struct PositionConfig {
     PoolKey poolKey;
     int24 tickLower;
@@ -65,7 +65,7 @@ library PositionConfigLibrary {
             mstore(add(fmp, 0x14), calldataload(add(config, 0x20))) // currency1: [0x20, 0x34)
             mstore(fmp, calldataload(config)) // currency0: [0x0c, 0x20)
 
-            id := shr(1, keccak256(add(fmp, 0x0c), 0x48)) // len is 72 bytes, truncate upper bit of the hash
+            id := shr(1, keccak256(add(fmp, 0x0c), 0x48)) // len is 72 bytes, truncate lower bit of the hash
 
             // now clean the memory we used
             mstore(add(fmp, 0x40), 0) // fmp+0x40 held hooks (14 bytes), tickLower, tickUpper
