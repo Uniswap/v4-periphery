@@ -24,7 +24,7 @@ import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
-import {PosmStateLibrary} from "./libraries/PosmStateLibrary.sol";
+import {PosmLiquidityLibrary} from "./libraries/PosmLiquidityLibrary.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -39,7 +39,7 @@ contract PositionManager is
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using PositionConfigLibrary for PositionConfig;
-    using PosmStateLibrary for IPoolManager;
+    using PosmLiquidityLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
     using CalldataDecoder for bytes;

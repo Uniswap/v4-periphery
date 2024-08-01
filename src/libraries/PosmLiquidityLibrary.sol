@@ -9,12 +9,12 @@ import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 import {PositionConfig} from "./PositionConfig.sol";
 
-/// @notice A library for reading POSM specific information from core, wraps core's StateLibrary
-library PosmStateLibrary {
+/// @notice A library for reading posm liquidity balances from core, wraps core's StateLibrary
+library PosmLiquidityLibrary {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
 
-    function getPositionLiquidity(IPoolManager poolManager, uint256 tokenId, PositionConfig memory config)
+    function getPositionLiquidity(IPoolManager poolManager, uint256 tokenId, PositionConfig calldata config)
         internal
         view
         returns (uint128 liquidity)
