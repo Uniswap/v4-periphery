@@ -16,9 +16,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -39,7 +37,6 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using PositionConfigLibrary for PositionConfig;
     using Planner for Plan;
     using PoolIdLibrary for PoolKey;
-    using StateLibrary for IPoolManager;
     using SafeCast for *;
 
     PoolId poolId;
@@ -86,9 +83,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = _getPositionLiquidity(tokenId, config);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
         assertEq(balance0Before - currency0.balanceOfSelf(), uint256(int256(-delta.amount0())), "incorrect amount0");
@@ -130,9 +125,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         lpm.modifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = _getPositionLiquidity(tokenId, config);
         assertEq(liquidity, uint256(params.liquidityDelta));
 
         // only paid the delta amount, with excess tokens returned to caller
@@ -156,9 +149,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, address(this), ZERO_BYTES);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = _getPositionLiquidity(tokenId, config);
         assertEq(liquidity, uint256(params.liquidityDelta));
 
         // burn liquidity
@@ -173,7 +164,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array will be the same length.
         assertEq(numDeltas, hook.numberDeltasReturned());
 
-        (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        liquidity = _getPositionLiquidity(tokenId, config);
         assertEq(liquidity, 0);
 
         // TODO: slightly off by 1 bip (0.0001%)
@@ -209,9 +200,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, address(this), ZERO_BYTES);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = _getPositionLiquidity(tokenId, config);
         assertEq(liquidity, uint256(params.liquidityDelta));
 
         // burn liquidity
@@ -221,7 +210,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         burn(tokenId, config, ZERO_BYTES);
         BalanceDelta deltaBurn = getLastDelta();
 
-        (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        liquidity = _getPositionLiquidity(tokenId, config);
         assertEq(liquidity, 0);
 
         // TODO: slightly off by 1 bip (0.0001%)
@@ -272,9 +261,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         BalanceDelta delta = getLastDelta();
 
         // verify position liquidity increased
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = _getPositionLiquidity(tokenId, config);
         assertEq(liquidity, liquidityToAdd + liquidityToAdd); // liquidity was doubled
 
         // verify native token balances changed as expected
@@ -321,9 +308,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         BalanceDelta delta = getLastDelta();
 
         // verify position liquidity increased
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = _getPositionLiquidity(tokenId, config);
         assertEq(liquidity, liquidityToAdd + liquidityToAdd); // liquidity was doubled
 
         // verify native token balances changed as expected, with overpaid tokens returned
@@ -360,9 +345,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = _getPositionLiquidity(tokenId, config);
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
         // verify native token balances changed as expected

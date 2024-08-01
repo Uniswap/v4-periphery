@@ -185,16 +185,14 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         mint(config, liquidityAlice, alice, ZERO_BYTES);
         vm.stopPrank();
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice));
-        uint128 oldLiquidity = StateLibrary.getPositionLiquidity(manager, config.poolKey.toId(), positionId);
+        uint256 oldLiquidity = _getPositionLiquidity(tokenIdAlice, config);
 
         // bob can increase liquidity for alice even though he is not the owner / not approved
         vm.startPrank(bob);
         increaseLiquidity(tokenIdAlice, config, 100e18, ZERO_BYTES);
         vm.stopPrank();
 
-        uint128 newLiquidity = StateLibrary.getPositionLiquidity(manager, config.poolKey.toId(), positionId);
+        uint128 newLiquidity = _getPositionLiquidity(tokenIdAlice, config);
 
         // assert liqudity increased by the correct amount
         assertEq(newLiquidity, oldLiquidity + uint128(100e18));
@@ -415,9 +413,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = _getPositionLiquidity(tokenIdAlice, config);
         assertEq(liquidity, liquidityAlice);
 
         // alice increases with the balance in the position manager
@@ -448,7 +444,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 amount0 = uint128(-delta.amount0());
         uint256 amount1 = uint128(-delta.amount1());
 
-        (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        liquidity = _getPositionLiquidity(tokenIdAlice, config);
         assertEq(liquidity, 2 * liquidityAlice);
 
         // The balances were swept back to this address.

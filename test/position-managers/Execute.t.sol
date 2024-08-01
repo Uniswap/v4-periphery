@@ -10,7 +10,6 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
@@ -31,7 +30,6 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using Planner for Plan;
-    using StateLibrary for IPoolManager;
 
     PoolId poolId;
     address alice = makeAddr("ALICE");
@@ -71,9 +69,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = _getPositionLiquidity(tokenId, config);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
@@ -97,9 +93,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = _getPositionLiquidity(tokenId, config);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd + liquidityToAdd2);
     }
@@ -119,9 +113,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = _getPositionLiquidity(tokenId, config);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
@@ -175,9 +167,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         {
             // old position has no liquidity
-            bytes32 positionId =
-                Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-            uint128 liquidity = manager.getPositionLiquidity(config.poolKey.toId(), positionId);
+            uint128 liquidity = _getPositionLiquidity(tokenId, config);
             assertEq(liquidity, 0);
 
             // new token was minted
@@ -185,10 +175,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
             assertEq(lpm.ownerOf(newTokenId), address(this));
 
             // new token has expected liquidity
-            positionId = Position.calculatePositionKey(
-                address(lpm), newConfig.tickLower, newConfig.tickUpper, bytes32(newTokenId)
-            );
-            liquidity = manager.getPositionLiquidity(config.poolKey.toId(), positionId);
+            liquidity = _getPositionLiquidity(newTokenId, newConfig);
             assertEq(liquidity, newLiquidity);
         }
     }

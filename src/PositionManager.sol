@@ -8,7 +8,6 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
@@ -25,6 +24,7 @@ import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
+import {PosmStateLibrary} from "./libraries/PosmStateLibrary.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -39,7 +39,7 @@ contract PositionManager is
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using PositionConfigLibrary for PositionConfig;
-    using StateLibrary for IPoolManager;
+    using PosmStateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
     using CalldataDecoder for bytes;
@@ -171,7 +171,7 @@ contract PositionManager is
     function _burn(uint256 tokenId, PositionConfig calldata config, bytes calldata hookData) internal {
         if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
-        uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
+        uint256 liquidity = poolManager.getPositionLiquidity(tokenId, config);
 
         BalanceDelta liquidityDelta;
         // Can only call modify if there is non zero liquidity.
@@ -200,16 +200,6 @@ contract PositionManager is
             }),
             hookData
         );
-    }
-
-    function _getPositionLiquidity(PositionConfig calldata config, uint256 tokenId)
-        internal
-        view
-        returns (uint128 liquidity)
-    {
-        bytes32 positionId =
-            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
-        liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
     }
 
     /// @notice Sweeps the entire contract balance of specified currency to the recipient
