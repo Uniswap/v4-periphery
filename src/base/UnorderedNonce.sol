@@ -12,21 +12,42 @@ contract UnorderedNonce {
     /// @param owner address, the owner/signer of the nonce
     /// @param nonce uint256, the nonce to consume
     function _useUnorderedNonce(address owner, uint256 nonce) internal {
-        (uint256 wordPos, uint256 bitPos) = bitmapPositions(nonce);
-        uint256 bit = 1 << bitPos;
-        uint256 flipped = nonces[owner][wordPos] ^= bit;
-
-        if (flipped & bit == 0) revert NonceAlreadyUsed();
+        // consume the bit by flipping it in storage
+        // reverts if the bit was already spent
+        _flipBit(nonces[owner], nonce);
     }
 
-    /// @notice Returns the index of the bitmap and the bit position within the bitmap. Used for unordered nonces
-    /// @param nonce The nonce to get the associated word and bit positions
-    /// @return wordPos The word position or index into the nonceBitmap
-    /// @return bitPos The bit position
-    /// @dev The first 248 bits of the nonce value is the index of the desired bitmap
-    /// @dev The last 8 bits of the nonce value is the position of the bit in the bitmap
-    function bitmapPositions(uint256 nonce) private pure returns (uint256 wordPos, uint256 bitPos) {
-        wordPos = uint248(nonce >> 8);
-        bitPos = uint8(nonce);
+    function _flipBit(mapping(uint256 => uint256) storage bitmap, uint256 nonce) private {
+        // equivalent to:
+        //   uint256 wordPos = uint248(nonce >> 8);
+        //   uint256 bitPos = uint8(nonce);
+        //   uint256 bit = 1 << bitPos;
+        //   uint256 flipped = nonces[owner][wordPos] ^= bit;
+        //   if (flipped & bit == 0) revert NonceAlreadyUsed();
+
+        assembly ("memory-safe") {
+            // wordPos = uint248(nonce >> 8)
+            let wordPos := shr(8, nonce)
+
+            // bit = 1 << uint8(nonce)
+            let bit := shl(and(nonce, 0xFF), 1)
+
+            // slot of bitmap[wordPos] is keccak256(abi.encode(wordPos, bitmap.slot))
+            mstore(0, wordPos)
+            mstore(0x20, bitmap.slot)
+            let slot := keccak256(0, 0x40)
+
+            // uint256 previousBits = bitmap[wordPos]
+            let previousBits := sload(slot)
+
+            // revert if it's already been used
+            if eq(and(previousBits, bit), bit) {
+                mstore(0, 0x1fb09b80) // 4 bytes of NonceAlreadyUsed.selector
+                revert(0x1c, 0x04)
+            }
+
+            // bitmap[wordPos] = (previousBits | bit)
+            sstore(slot, or(previousBits, bit))
+        }
     }
 }
