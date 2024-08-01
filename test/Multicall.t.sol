@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import {MockMulticall} from "./mocks/MockMulticall.sol";
+import {MockMulticall, RevertContract} from "./mocks/MockMulticall.sol";
 
 contract MulticallTest is Test {
     MockMulticall multicall;
@@ -132,6 +132,30 @@ contract MulticallTest is Test {
             abi.encodeWithSelector(MockMulticall(multicall).functionThatRevertsWithErrorWithParams.selector, a, b);
 
         vm.expectRevert(abi.encodeWithSelector(MockMulticall.ErrorWithParams.selector, a, b));
+        multicall.multicall(calls);
+    }
+
+    function test_multicall_bubbleRevert_externalRevertString() public {
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(MockMulticall(multicall).externalRevertString.selector, "errorString");
+
+        vm.expectRevert("errorString");
+        multicall.multicall(calls);
+    }
+
+    function test_multicall_bubbleRevert_externalRevertSimple() public {
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(MockMulticall(multicall).externalRevertError1.selector);
+
+        vm.expectRevert(RevertContract.Error1.selector);
+        multicall.multicall(calls);
+    }
+
+    function test_multicall_bubbleRevert_externalRevertWithParams(uint256 a, uint256 b) public {
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(MockMulticall(multicall).externalRevertError2.selector, a, b);
+
+        vm.expectRevert(abi.encodeWithSelector(RevertContract.Error2.selector, a, b));
         multicall.multicall(calls);
     }
 }
