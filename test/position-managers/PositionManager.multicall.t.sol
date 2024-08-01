@@ -68,4 +68,35 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(result.amount0(), amountSpecified);
         assertGt(result.amount1(), 0);
     }
+
+    function test_multicall_bubbleRevert() public {
+        // charlie will attempt to decrease liquidity without approval
+        // posm's NotApproved(charlie) should bubble up through Multicall
+
+        PositionConfig memory config = PositionConfig({
+            poolKey: key,
+            tickLower: TickMath.minUsableTick(key.tickSpacing),
+            tickUpper: TickMath.maxUsableTick(key.tickSpacing)
+        });
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 100e18, ZERO_BYTES));
+        bytes memory actions = planner.finalizeModifyLiquidity(config.poolKey);
+
+        // Use multicall to decrease liquidity
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
+
+        address charlie = makeAddr("CHARLIE");
+        vm.startPrank(charlie);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMulticall.CallFailed.selector, abi.encodeWithSelector(IPositionManager.NotApproved.selector, charlie)
+            )
+        );
+        lpm.multicall(calls);
+        vm.stopPrank();
+    }
 }
