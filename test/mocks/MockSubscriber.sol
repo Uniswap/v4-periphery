@@ -5,9 +5,14 @@ import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 
-/// @notice A staking subscriber contract that ingests updates from the v4 position manager
-contract StakingSubscriber is ISubscriber {
+/// @notice A subscriber contract that ingests updates from the v4 position manager
+contract MockSubscriber is ISubscriber {
     PositionManager posm;
+
+    uint256 public notifySubscribeCount;
+    uint256 public notifyUnsubscribeCount;
+    uint256 public notifyModifyLiquidityCount;
+    uint256 public notifyTransferCount;
 
     error NotAuthorizedNotifer(address sender);
 
@@ -22,27 +27,22 @@ contract StakingSubscriber is ISubscriber {
         _;
     }
 
-    function notifySubscribe(uint256 tokenId, PositionConfig memory config) external view onlyByPosm {
-        revert NotImplemented();
+    function notifySubscribe(uint256 tokenId, PositionConfig memory config) external onlyByPosm {
+        notifySubscribeCount++;
     }
 
-    function notifyUnsubscribe(uint256 tokenId, PositionConfig memory config) external view onlyByPosm {
-        revert NotImplemented();
+    function notifyUnsubscribe(uint256 tokenId, PositionConfig memory config) external onlyByPosm {
+        notifyUnsubscribeCount++;
     }
 
     function notifyModifyLiquidity(uint256 tokenId, PositionConfig memory config, int256 liquidityChange)
         external
-        view
         onlyByPosm
     {
-        revert NotImplemented();
+        notifyModifyLiquidityCount++;
     }
 
-    function notifyTransfer(uint256 tokenId, PositionConfig memory config, address previousOwner, address newOwner)
-        external
-        view
-        onlyByPosm
-    {
-        revert NotImplemented();
+    function notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) external onlyByPosm {
+        notifyTransferCount++;
     }
 }

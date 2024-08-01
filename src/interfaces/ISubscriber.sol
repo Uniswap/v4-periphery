@@ -7,6 +7,5 @@ interface ISubscriber {
     function notifySubscribe(uint256 tokenId, PositionConfig memory config) external;
     function notifyUnsubscribe(uint256 tokenId, PositionConfig memory config) external;
     function notifyModifyLiquidity(uint256 tokenId, PositionConfig memory config, int256 liquidityChange) external;
-    function notifyTransfer(uint256 tokenId, PositionConfig memory config, address previousOwner, address newOwner)
-        external;
+    function notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) external;
 }

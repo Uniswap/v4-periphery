@@ -264,4 +264,10 @@ contract PositionManager is
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
         }
     }
+
+    /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
+    function transferFrom(address from, address to, uint256 id) public override {
+        super.transferFrom(from, to, id);
+        if (positionConfigs.getSubscribed(id)) _notifyTransfer(id, from, to);
+    }
 }

@@ -45,9 +45,7 @@ contract Notifier {
         subscriber[tokenId].notifyModifyLiquidity(tokenId, config, liquidityChange);
     }
 
-    function _notifyTransfer(uint256 tokenId, PositionConfig memory config, address previousOwner, address newOwner)
-        internal
-    {
-        subscriber[tokenId].notifyTransfer(tokenId, config, previousOwner, newOwner);
+    function _notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) internal {
+        subscriber[tokenId].notifyTransfer(tokenId, previousOwner, newOwner);
     }
 }
