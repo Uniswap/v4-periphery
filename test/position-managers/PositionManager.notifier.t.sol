@@ -121,9 +121,9 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup {
         assertEq(sub.notifyTransferCount(), 1);
     }
 
-    function _getSubscribed(bytes32 config) internal pure returns (bool subscribed) {
+    function _getSubscribed(bytes32 _config) internal pure returns (bool subscribed) {
         assembly {
-            subscribed := shr(255, config)
+            subscribed := shr(255, _config)
         }
     }
 }

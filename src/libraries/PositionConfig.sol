@@ -23,8 +23,7 @@ library PositionConfigLibrary {
         view
         returns (bytes32 configId)
     {
-        bytes32 _config = positionConfigs[tokenId];
-        configId = _config & MASK_UPPER_BIT;
+        configId = positionConfigs[tokenId] & MASK_UPPER_BIT;
     }
 
     function setConfigId(
@@ -36,13 +35,11 @@ library PositionConfigLibrary {
     }
 
     function setSubscribe(mapping(uint256 => bytes32) storage positionConfigs, uint256 tokenId) internal {
-        bytes32 _config = positionConfigs[tokenId];
-        positionConfigs[tokenId] = _config | DIRTY_UPPER_BIT;
+        positionConfigs[tokenId] |= DIRTY_UPPER_BIT;
     }
 
     function setUnsubscribe(mapping(uint256 => bytes32) storage positionConfigs, uint256 tokenId) internal {
-        bytes32 _config = positionConfigs[tokenId];
-        positionConfigs[tokenId] = _config & MASK_UPPER_BIT;
+        positionConfigs[tokenId] &= MASK_UPPER_BIT;
     }
 
     function getSubscribed(mapping(uint256 => bytes32) storage positionConfigs, uint256 tokenId)
