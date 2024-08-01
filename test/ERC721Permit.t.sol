@@ -28,7 +28,7 @@ contract ERC721PermitTest is Test {
     }
 
     // --- Test the overriden approval ---
-    function test_approve(address spender) public {
+    function test_fuzz_approve(address spender) public {
         uint256 tokenId = erc721Permit.mint();
         assertEq(erc721Permit.getApproved(tokenId), address(0));
         vm.expectEmit(true, true, true, true, address(erc721Permit));
@@ -37,7 +37,7 @@ contract ERC721PermitTest is Test {
         assertEq(erc721Permit.getApproved(tokenId), spender);
     }
 
-    function test_approvedOperator_reapproves(address operator, address spender) public {
+    function test_fuzz_approvedOperator_reapproves(address operator, address spender) public {
         uint256 tokenId = erc721Permit.mint();
         erc721Permit.setApprovalForAll(operator, true);
         assertEq(erc721Permit.isApprovedForAll(address(this), operator), true);
@@ -51,7 +51,7 @@ contract ERC721PermitTest is Test {
         assertEq(erc721Permit.getApproved(tokenId), spender);
     }
 
-    function test_approve_unauthorizedRevert(address caller) public {
+    function test_fuzz_approve_unauthorizedRevert(address caller) public {
         uint256 tokenId = erc721Permit.mint();
         vm.prank(caller);
         if (caller != address(this)) vm.expectRevert(IERC721Permit.Unauthorized.selector);
@@ -82,7 +82,7 @@ contract ERC721PermitTest is Test {
     }
 
     /// @dev spender uses alice's signature to approve itself
-    function test_erc721permit_spender(address spender) public {
+    function test_fuzz_erc721permit_spender(address spender) public {
         vm.assume(spender != alice);
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
@@ -116,7 +116,7 @@ contract ERC721PermitTest is Test {
     }
 
     /// @dev a third party caller uses alice's signature to give `spender` the approval
-    function test_erc721permit_caller(address caller, address spender) public {
+    function test_fuzz_erc721permit_caller(address caller, address spender) public {
         vm.assume(spender != alice);
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
@@ -149,7 +149,7 @@ contract ERC721PermitTest is Test {
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 2); // 2 = 0010
     }
 
-    function test_erc721permit_nonceAlreadyUsed() public {
+    function test_fuzz_erc721permit_nonceAlreadyUsed() public {
         vm.prank(alice);
         uint256 tokenIdAlice = erc721Permit.mint();
 
@@ -169,7 +169,7 @@ contract ERC721PermitTest is Test {
         vm.stopPrank();
     }
 
-    function test_erc721permit_nonceAlreadyUsed_twoPositions() public {
+    function test_fuzz_erc721permit_nonceAlreadyUsed_twoPositions() public {
         vm.prank(alice);
         uint256 tokenIdAlice = erc721Permit.mint();
 
@@ -192,7 +192,7 @@ contract ERC721PermitTest is Test {
         vm.stopPrank();
     }
 
-    function test_erc721permit_unauthorized() public {
+    function test_fuzz_erc721permit_unauthorized() public {
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
 
@@ -224,7 +224,7 @@ contract ERC721PermitTest is Test {
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
     }
 
-    function test_erc721Permit_deadlineExpired(address spender) public {
+    function test_fuzz_erc721Permit_deadlineExpired(address spender) public {
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
 

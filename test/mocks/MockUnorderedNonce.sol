@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
 
 contract MockUnorderedNonce is UnorderedNonce {
-    function spendNonce(address owner, uint256 nonce) external {
+    function batchSpendNonces(address owner, uint256 nonce) external {
         _useUnorderedNonce(owner, nonce);
     }
 
