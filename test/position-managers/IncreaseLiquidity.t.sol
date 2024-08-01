@@ -112,18 +112,19 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
-        // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
         Plan memory planner = Planner.init();
         planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
-        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
-        vm.startPrank(alice);
-        lpm.modifyLiquidities(calls, _deadline);
-        vm.stopPrank();
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, 18 wei)); // alice is willing to forfeit 18 wei
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, 18 wei));
+        bytes memory calls = planner.encode();
 
-        // alice barely spent any tokens
-        // TODO: Use clear.
-        assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
-        assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+
+        // alice did not spend or receive tokens
+        // (alice forfeited a small amount of tokens to the pool with CLEAR)
+        assertEq(currency0.balanceOf(alice), balance0BeforeAlice);
+        assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
 
     // uses donate to simulate fee revenue
@@ -164,14 +165,19 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
-        vm.startPrank(alice);
-        increaseLiquidity(tokenIdAlice, config, liquidityDelta, ZERO_BYTES);
-        vm.stopPrank();
+        Plan memory planner = Planner.init();
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, 1 wei)); // alice is willing to forfeit 1 wei
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, 1 wei));
+        bytes memory calls = planner.encode();
 
-        // alice barely spent any tokens
-        // TODO: Use clear.
-        assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
-        assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+
+        // alice did not spend or receive tokens
+        // (alice forfeited a small amount of tokens to the pool with CLEAR)
+        assertEq(currency0.balanceOf(alice), balance0BeforeAlice);
+        assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
 
     function test_increaseLiquidity_withUnapprovedCaller() public {
@@ -457,5 +463,41 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amount0);
         assertEq(currency1.balanceOf(address(this)), balanceBefore1 - amount1);
+    }
+
+    function test_increaseLiquidity_clearRevert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1000e18, address(this), ZERO_BYTES);
+
+        // donate to create fee revenue
+        uint256 amountToDonate = 0.2e18;
+        donateRouter.donate(key, amountToDonate, amountToDonate, ZERO_BYTES);
+
+        // calculate the amount of liquidity to add, using half of the proceeds
+        uint256 amountToReinvest = amountToDonate / 2;
+        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            amountToReinvest,
+            amountToReinvest
+        );
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityDelta, ZERO_BYTES));
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, amountToReinvest - 2 wei));
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, amountToReinvest - 2 wei));
+        bytes memory calls = planner.encode();
+
+        // revert since we're forfeiting beyond the max tolerance
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPositionManager.ClearExceedsMaxAmount.selector,
+                config.poolKey.currency0,
+                int256(amountToReinvest - 1 wei), // imprecision, PM expects us to collect half of the fees (minus 1 wei)
+                uint256(amountToReinvest - 2 wei) // the maximum amount we were willing to forfeit
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
     }
 }
