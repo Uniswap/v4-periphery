@@ -517,6 +517,48 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         }
     }
 
+    function test_revert_wrapCurrencyNotSettled() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
+        uint256 liquidity = 100e18;
+
+        // mint without settling
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidity, address(this), ZERO_BYTES));
+        bytes memory calls = planner.encode();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                BaseActionsRouter.Wrap__CurrencyNotSettled.selector,
+                address(manager),
+                abi.encodeWithSelector(IPoolManager.CurrencyNotSettled.selector)
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    /// @dev Test out SubcontextReverted on PoolNotInitialized
+    function test_revert_wrapSubcontextReverted() public {
+        // this pool was not initialized
+        key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
+        uint256 liquidity = 100e18;
+
+        // minting on a pool that doesnt exist
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidity, address(this), ZERO_BYTES));
+        bytes memory calls = planner.encode();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                BaseActionsRouter.Wrap__SubcontextReverted.selector,
+                address(manager),
+                abi.encodeWithSelector(IPoolManager.PoolNotInitialized.selector)
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
     function test_initialize() public {
         // initialize a new pool and add liquidity
         key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});

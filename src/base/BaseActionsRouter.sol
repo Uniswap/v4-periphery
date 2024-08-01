@@ -16,12 +16,22 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// @notice emitted when an inheriting contract does not support an action
     error UnsupportedAction(uint256 action);
 
+    error Wrap__SubcontextReverted(address subcontext, bytes reason);
+    error Wrap__CurrencyNotSettled(address subcontext, bytes reason);
+
     constructor(IPoolManager _poolManager) SafeCallback(_poolManager) {}
 
     /// @notice internal function that triggers the execution of a set of actions on v4
     /// @dev inheriting contracts should call this function to trigger execution
     function _executeActions(bytes calldata unlockData) internal {
-        poolManager.unlock(unlockData);
+        try poolManager.unlock(unlockData) {}
+        catch (bytes memory error) {
+            if (bytes4(error) == IPoolManager.CurrencyNotSettled.selector) {
+                revert Wrap__CurrencyNotSettled(address(poolManager), error);
+            } else {
+                revert Wrap__SubcontextReverted(address(poolManager), error);
+            }
+        }
     }
 
     /// @notice function that is called by the PoolManager through the SafeCallback.unlockCallback
