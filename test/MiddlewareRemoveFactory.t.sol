@@ -26,8 +26,10 @@ import {FrontrunRemove} from "./middleware/FrontrunRemove.sol";
 import {RemoveGriefs} from "./middleware/RemoveGriefs.sol";
 import {RemoveReturnsMaxDeltas} from "./middleware/RemoveReturnsMaxDeltas.sol";
 import {BaseRemove} from "./../contracts/middleware/BaseRemove.sol";
+import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
+import {BlankRemoveHooks} from "./middleware/BlankRemoveHooks.sol";
 
-contract MiddlewareRemoveFactoryTest is Test, Deployers {
+contract MiddlewareRemoveFactoryTest is Test, Deployers, GasSnapshot {
     HookEnabledSwapRouter router;
     TestERC20 token0;
     TestERC20 token1;
@@ -81,8 +83,8 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
         uint256 outFrontrun0 = token0.balanceOf(address(this)) - initialBalance0;
         uint256 outFrontrun1 = token1.balanceOf(address(this)) - initialBalance1;
 
-        IHooks noHooks = IHooks(address(0));
-        (key,) = initPoolAndAddLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        IHooks blankRemoveHooks = IHooks(address(0));
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, blankRemoveHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         initialBalance0 = token0.balanceOf(address(this));
         initialBalance1 = token1.balanceOf(address(this));
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
@@ -149,8 +151,8 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
     }
 
     function getNormal() internal returns (uint256 outNormal0, uint256 outNormal1) {
-        IHooks noHooks = IHooks(address(0));
-        (key,) = initPoolAndAddLiquidity(currency0, currency1, noHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        IHooks blankRemoveHooks = IHooks(address(0));
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, blankRemoveHooks, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         uint256 initialBalance0 = token0.balanceOf(address(this));
         uint256 initialBalance1 = token1.balanceOf(address(this));
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
@@ -342,5 +344,41 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers {
             key, REMOVE_LIQUIDITY_PARAMS, hex"23b70c8dec38c3dec67a5596870027b04c4058cb3ac57b4e589bf628ac6669e7AAAA"
         );
         assertEq(counterProxy.lastHookData(), hex"AAAA");
+    }
+
+    function testMiddlewareRemoveGas() public {
+        uint160 flags = Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG;
+        BlankRemoveHooks blankRemoveHooks = BlankRemoveHooks(address(flags));
+        vm.etch(address(blankRemoveHooks), address(new BlankRemoveHooks(manager)).code);
+        (key,) = initPoolAndAddLiquidity(
+            currency0, currency1, IHooks(address(blankRemoveHooks)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
+        );
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
+        snapLastCall("MIDDLEWARE_REMOVE-vanilla");
+
+        uint160 maxFeeBips = 0;
+        (, bytes32 salt) =
+            MiddlewareMiner.find(address(factory), flags, address(manager), address(blankRemoveHooks), maxFeeBips);
+        address hookAddress = factory.createMiddleware(address(blankRemoveHooks), maxFeeBips, salt);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
+        snapLastCall("MIDDLEWARE_REMOVE-protected");
+
+        flags = flags | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG;
+        blankRemoveHooks = BlankRemoveHooks(address(flags));
+        vm.etch(address(blankRemoveHooks), address(new BlankRemoveHooks(manager)).code);
+        (key,) = initPoolAndAddLiquidity(
+            currency0, currency1, IHooks(address(blankRemoveHooks)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
+        );
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
+        snapLastCall("MIDDLEWARE_REMOVE-deltas-vanilla");
+
+        maxFeeBips = 100;
+        (, salt) =
+            MiddlewareMiner.find(address(factory), flags, address(manager), address(blankRemoveHooks), maxFeeBips);
+        hookAddress = factory.createMiddleware(address(blankRemoveHooks), maxFeeBips, salt);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
+        snapLastCall("MIDDLEWARE_REMOVE-deltas-protected");
     }
 }

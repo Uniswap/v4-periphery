@@ -18,9 +18,9 @@ contract MiddlewareRemoveNoDeltas is BaseRemove {
     using Hooks for IHooks;
     using TransientStateLibrary for IPoolManager;
 
-    /// @param _manager The address of the pool manager
+    /// @param _poolManager The address of the pool manager
     /// @param _impl The address of the implementation contract
-    constructor(IPoolManager _manager, address _impl) BaseRemove(_manager, _impl) {}
+    constructor(IPoolManager _poolManager, address _impl) BaseRemove(_poolManager, _impl) {}
 
     /// @notice The hook called after liquidity is removed. Ensures zero nonzeroDeltas
     /// @inheritdoc BaseRemove
@@ -54,7 +54,7 @@ contract MiddlewareRemoveNoDeltas is BaseRemove {
         if (selector != BaseHook.afterRemoveLiquidity.selector) {
             revert Hooks.InvalidHookResponse();
         }
-        if (manager.getNonzeroDeltaCount() != 0 || returnDelta != BalanceDeltaLibrary.ZERO_DELTA) {
+        if (poolManager.getNonzeroDeltaCount() != 0 || returnDelta != BalanceDeltaLibrary.ZERO_DELTA) {
             revert ImplementationModifiedDeltas();
         }
     }

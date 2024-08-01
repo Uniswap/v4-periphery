@@ -12,15 +12,15 @@ import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
 abstract contract BaseMiddleware is Proxy {
     /// @notice The address of the pool manager
     /// @dev Use in middleware implementations to access the pool manager
-    IPoolManager public immutable manager;
+    IPoolManager public immutable poolManager;
 
     /// @notice The address of the implementation contract. All calls to this contract will be forwarded to implementation.
     address public immutable implementation;
 
     error FlagsMismatch();
 
-    constructor(IPoolManager _manager, address _impl) {
-        manager = _manager;
+    constructor(IPoolManager _poolManager, address _impl) {
+        poolManager = _poolManager;
         implementation = _impl;
     }
 
@@ -28,5 +28,6 @@ abstract contract BaseMiddleware is Proxy {
         return implementation;
     }
 
+    // DELETE THIS
     receive() external payable {}
 }

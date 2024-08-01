@@ -6,9 +6,9 @@ import {BaseMiddlewareFactory} from "./../../contracts/middleware/BaseMiddleware
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 contract BaseMiddlewareFactoryImplementation is BaseMiddlewareFactory {
-    constructor(IPoolManager _manager) BaseMiddlewareFactory(_manager) {}
+    constructor(IPoolManager _poolManager) BaseMiddlewareFactory(_poolManager) {}
 
     function _deployMiddleware(address implementation, bytes32 salt) internal override returns (address middleware) {
-        middleware = address(new BaseMiddlewareImplementation{salt: salt}(manager, implementation));
+        middleware = address(new BaseMiddlewareImplementation{salt: salt}(poolManager, implementation));
     }
 }

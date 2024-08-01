@@ -38,9 +38,9 @@ abstract contract BaseRemove is BaseMiddleware {
 
     uint256 public immutable maxFeeBips;
 
-    /// @param _manager The address of the pool manager
+    /// @param _poolManager The address of the pool manager
     /// @param _impl The address of the implementation contract
-    constructor(IPoolManager _manager, address _impl) BaseMiddleware(_manager, _impl) {
+    constructor(IPoolManager _poolManager, address _impl) BaseMiddleware(_poolManager, _impl) {
         _ensureValidFlags();
     }
 
@@ -63,7 +63,7 @@ abstract contract BaseRemove is BaseMiddleware {
             );
             return abi.decode(returnData, (bytes4));
         }
-        if (manager.getNonzeroDeltaCount() != 0) {
+        if (poolManager.getNonzeroDeltaCount() != 0) {
             revert MustResolveDeltasBeforeRemove();
         }
         address(this).delegatecall{gas: GAS_LIMIT}(
@@ -83,7 +83,7 @@ abstract contract BaseRemove is BaseMiddleware {
         if (selector != BaseHook.beforeRemoveLiquidity.selector) {
             revert Hooks.InvalidHookResponse();
         }
-        if (manager.getNonzeroDeltaCount() != 0) {
+        if (poolManager.getNonzeroDeltaCount() != 0) {
             revert ImplementationModifiedDeltas();
         }
     }

@@ -30,9 +30,9 @@ contract MiddlewareRemove is BaseRemove {
     /// @notice Thrown when maxFeeBips is set to a value greater than 10,000
     error MaxFeeBipsTooHigh();
 
-    /// @param _manager The address of the pool manager
+    /// @param _poolManager The address of the pool manager
     /// @param _impl The address of the implementation contract
-    constructor(IPoolManager _manager, address _impl, uint256 _maxFeeBips) BaseRemove(_manager, _impl) {
+    constructor(IPoolManager _poolManager, address _impl, uint256 _maxFeeBips) BaseRemove(_poolManager, _impl) {
         if (_maxFeeBips > MAX_BIPS) revert MaxFeeBipsTooHigh();
         maxFeeBips = _maxFeeBips;
     }
@@ -85,7 +85,7 @@ contract MiddlewareRemove is BaseRemove {
         if (selector != BaseHook.afterRemoveLiquidity.selector) {
             revert Hooks.InvalidHookResponse();
         }
-        uint256 nonzeroDeltaCount = manager.getNonzeroDeltaCount();
+        uint256 nonzeroDeltaCount = poolManager.getNonzeroDeltaCount();
         if (nonzeroDeltaCount == 0 && returnDelta == BalanceDeltaLibrary.ZERO_DELTA) {
             return returnDelta;
         }
@@ -97,32 +97,29 @@ contract MiddlewareRemove is BaseRemove {
         }
         returnDelta - delta; // revert on overflow
         uint256 nonzeroHookDeltaCount;
-        int256 hookDelta = manager.currencyDelta(address(this), key.currency0);
-        if (hookDelta != 0) {
-            if (-hookDelta != returnDelta.amount0()) {
-                revert DeltasReturnMismatch();
-            }
-            nonzeroHookDeltaCount++;
-            if (nonzeroHookDeltaCount == nonzeroDeltaCount) {
-                return returnDelta;
-            }
+        int256 hookDelta = poolManager.currencyDelta(address(this), key.currency0);
+        if (-hookDelta != returnDelta.amount0()) {
+            revert DeltasReturnMismatch();
         }
-        hookDelta = manager.currencyDelta(address(this), key.currency1);
         if (hookDelta != 0) {
-            if (-hookDelta != returnDelta.amount1()) {
-                revert DeltasReturnMismatch();
-            }
             nonzeroHookDeltaCount++;
-            if (nonzeroHookDeltaCount == nonzeroDeltaCount) {
-                return returnDelta;
-            }
+        }
+        hookDelta = poolManager.currencyDelta(address(this), key.currency1);
+        if (-hookDelta != returnDelta.amount1()) {
+            revert DeltasReturnMismatch();
+        }
+        if (hookDelta != 0) {
+            nonzeroHookDeltaCount++;
+        }
+        if (nonzeroHookDeltaCount == nonzeroDeltaCount) {
+            return returnDelta;
         }
 
         // if the hook settled the caller's deltas
-        if (manager.currencyDelta(sender, key.currency0) != 0) {
+        if (poolManager.currencyDelta(sender, key.currency0) != 0) {
             nonzeroHookDeltaCount++;
         }
-        if (manager.currencyDelta(sender, key.currency1) != 0) {
+        if (poolManager.currencyDelta(sender, key.currency1) != 0) {
             nonzeroHookDeltaCount++;
         }
         if (nonzeroHookDeltaCount == nonzeroDeltaCount) {

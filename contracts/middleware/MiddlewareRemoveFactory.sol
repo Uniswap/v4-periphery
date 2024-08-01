@@ -10,10 +10,10 @@ contract MiddlewareRemoveFactory {
 
     mapping(address => address) private _implementations;
 
-    IPoolManager public immutable manager;
+    IPoolManager public immutable poolManager;
 
-    constructor(IPoolManager _manager) {
-        manager = _manager;
+    constructor(IPoolManager _poolManager) {
+        poolManager = _poolManager;
     }
 
     /**
@@ -37,9 +37,9 @@ contract MiddlewareRemoveFactory {
         returns (address middleware)
     {
         if (maxFeeBips == 0) {
-            middleware = address(new MiddlewareRemoveNoDeltas{salt: salt}(manager, implementation));
+            middleware = address(new MiddlewareRemoveNoDeltas{salt: salt}(poolManager, implementation));
         } else {
-            middleware = address(new MiddlewareRemove{salt: salt}(manager, implementation, maxFeeBips));
+            middleware = address(new MiddlewareRemove{salt: salt}(poolManager, implementation, maxFeeBips));
         }
         _implementations[middleware] = implementation;
         emit MiddlewareCreated(implementation, middleware, maxFeeBips);
