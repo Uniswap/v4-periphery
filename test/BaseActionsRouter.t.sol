@@ -138,7 +138,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.burnCount(), 10);
     }
 
-    function test_fuzz_map(address recipient) public {
+    function test_fuzz_map(address recipient) public view {
         address mappedRecipient = router.map(recipient);
         if (recipient == Actions.MSG_SENDER) {
             assertEq(mappedRecipient, address(0xdeadbeef));

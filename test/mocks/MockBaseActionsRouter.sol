@@ -41,7 +41,7 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
         }
     }
 
-    function _msgSender() internal view override returns (address) {
+    function _msgSender() internal pure override returns (address) {
         return address(0xdeadbeef);
     }
 
@@ -81,7 +81,7 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
         clearCount++;
     }
 
-    function map(address recipient) external returns (address) {
+    function map(address recipient) external view returns (address) {
         return _map(recipient);
     }
 }
