@@ -34,7 +34,7 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
         } else {
             if (action == Actions.SETTLE) _settle(params);
             else if (action == Actions.TAKE) _take(params);
-            else if (action == Actions.CLEAR) _clear(params);
+            else if (action == Actions.CLEAR_OR_TAKE) _clear(params);
             else if (action == Actions.MINT_6909) _mint6909(params);
             else if (action == Actions.BURN_6909) _burn6909(params);
             else revert UnsupportedAction(action);
