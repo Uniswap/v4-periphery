@@ -166,6 +166,14 @@ library CalldataDecoder {
         }
     }
 
+    /// @dev equivalent to: abi.decode(params, (Currency, Currency)) in calldata
+    function decodeCurrencyPair(bytes calldata params) internal pure returns (Currency currency0, Currency currency1) {
+        assembly ("memory-safe") {
+            currency0 := calldataload(params.offset)
+            currency1 := calldataload(add(params.offset, 0x20))
+        }
+    }
+
     /// @dev equivalent to: abi.decode(params, (Currency, address)) in calldata
     function decodeCurrencyAndAddress(bytes calldata params)
         internal
