@@ -60,13 +60,13 @@ library Planner {
         return abi.encode(plan.actions, plan.params);
     }
 
-    function finalizeSwap(Plan memory plan, Currency inputCurrency, Currency outputCurrency, address recipient)
+    function finalizeSwap(Plan memory plan, Currency inputCurrency, Currency outputCurrency, address takeRecipient)
         internal
         pure
         returns (bytes memory)
     {
         plan = plan.add(Actions.SETTLE_ALL, abi.encode(inputCurrency));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(outputCurrency, recipient));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(outputCurrency, takeRecipient));
         return plan.encode();
     }
 }
