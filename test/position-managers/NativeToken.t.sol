@@ -334,7 +334,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     // overpaying native tokens on increase liquidity is returned to caller
-    function test_fuzz_increaseLiquidity_native_excess_withClose(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_increaseLiquidity_native_excess_withClose(IPoolManager.ModifyLiquidityParams memory params)
+        public
+    {
         // fuzz for the range
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
@@ -385,7 +387,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
     }
 
-    function test_fuzz_increaseLiquidity_native_excess_withSettlePair(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_increaseLiquidity_native_excess_withSettlePair(IPoolManager.ModifyLiquidityParams memory params)
+        public
+    {
         // fuzz for the range
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity

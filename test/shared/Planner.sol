@@ -37,13 +37,21 @@ library Planner {
         return plan;
     }
 
-    function finalizeModifyLiquidityWithClose(Plan memory plan, PoolKey memory poolKey) internal pure returns (bytes memory) {
+    function finalizeModifyLiquidityWithClose(Plan memory plan, PoolKey memory poolKey)
+        internal
+        pure
+        returns (bytes memory)
+    {
         plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency0));
         plan.add(Actions.CLOSE_CURRENCY, abi.encode(poolKey.currency1));
         return plan.encode();
     }
 
-    function finalizeModifyLiquidityWithSettlePair(Plan memory plan, PoolKey memory poolKey) internal pure returns (bytes memory) {
+    function finalizeModifyLiquidityWithSettlePair(Plan memory plan, PoolKey memory poolKey)
+        internal
+        pure
+        returns (bytes memory)
+    {
         plan.add(Actions.SETTLE_PAIR, abi.encode(poolKey.currency0, poolKey.currency1));
         return plan.encode();
     }
