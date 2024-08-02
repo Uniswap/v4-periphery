@@ -50,7 +50,7 @@ contract CurrencyDeltasTest is Test, Deployers {
 
         bytes[] memory calls = new bytes[](depth);
         for (uint256 i = 0; i < depth; i++) {
-            uint256 _seed = i % seed;
+            uint256 _seed = seed % (i + 1);
             if (_seed % 8 == 0) {
                 calls[i] = abi.encodeWithSelector(MockCurrencyDeltaReader.settle.selector, currency0, amount0);
                 delta0Expected += int128(amount0);
