@@ -182,11 +182,61 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Actions.INCREASE_LIQUIDITY,
             abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
+        // because its a perfect autocompound, the delta is exactly 0 and we dont need to "close" deltas
+        bytes memory calls = planner.encode();
 
-        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_increase_autocompoundExactUnclaimedFees");
+    }
+
+    function test_gas_autocompound_clearExcess() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her exact fees to increase liquidity (compounding)
+
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+
+        // alice provides liquidity
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // bob provides liquidity
+        vm.startPrank(bob);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
+
+        // donate to create fees
+        uint256 amountDonate = 0.2e18;
+        donateRouter.donate(key, amountDonate, amountDonate, ZERO_BYTES);
+
+        // alice will use half of her fees to increase liquidity
+        uint256 halfTokensOwedAlice = (amountDonate.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob) - 1) / 2;
+
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
+        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            halfTokensOwedAlice,
+            halfTokensOwedAlice
+        );
+
+        // Alice elects to forfeit unclaimed tokens
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, halfTokensOwedAlice + 1 wei));
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, halfTokensOwedAlice + 1 wei));
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_increase_autocompound_clearExcess");
     }
 
     // Autocompounding but the excess fees are taken to the user

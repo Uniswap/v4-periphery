@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
-import {V4RouterImplementation} from "../shared/implementation/V4RouterImplementation.sol";
+import {MockV4Router} from "../mocks/MockV4Router.sol";
 import {Plan, Planner} from "../shared/Planner.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -24,7 +24,7 @@ contract RoutingTestHelpers is Test, Deployers {
     using Planner for Plan;
 
     PoolModifyLiquidityTest positionManager;
-    V4RouterImplementation router;
+    MockV4Router router;
 
     // nativeKey is already defined in Deployers.sol
     PoolKey key0;
@@ -41,7 +41,7 @@ contract RoutingTestHelpers is Test, Deployers {
     function setupRouterCurrenciesAndPoolsWithLiquidity() public {
         deployFreshManager();
 
-        router = new V4RouterImplementation(manager);
+        router = new MockV4Router(manager);
         positionManager = new PoolModifyLiquidityTest(manager);
 
         MockERC20[] memory tokens = deployTokensMintAndApprove(4);
