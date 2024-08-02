@@ -127,6 +127,9 @@ contract PositionManager is
         } else if (action == Actions.SETTLE_WITH_BALANCE) {
             Currency currency = params.decodeCurrency();
             _settleWithBalance(currency);
+        } else if (action == Actions.SETTLE_PAIR) {
+            (Currency currency0, Currency currency1) = params.decodeCurrencyPair();
+            _settlePair(currency0, currency1);
         } else if (action == Actions.SWEEP) {
             (Currency currency, address to) = params.decodeCurrencyAndAddress();
             _sweep(currency, to);
@@ -219,6 +222,13 @@ contract PositionManager is
     function _settleWithBalance(Currency currency) internal {
         // set the payer to this address, performs a transfer.
         _settle(currency, address(this), _getFullSettleAmount(currency));
+    }
+
+    function _settlePair(Currency currency0, Currency currency1) internal {
+        // the locker is the payer when settling
+        address caller = _msgSender();
+        _settle(currency0, caller, _getFullSettleAmount(currency0));
+        _settle(currency1, caller, _getFullSettleAmount(currency1));
     }
 
     /// @dev this is overloaded with ERC721Permit._burn
