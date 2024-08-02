@@ -338,10 +338,12 @@ contract PositionManager is
         if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
     }
 
+    /// @inheritdoc IPositionManager
     function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
         return positionConfigs.getConfigId(tokenId);
     }
 
+    /// @inheritdoc INotifier
     function hasSubscriber(uint256 tokenId) external view returns (bool) {
         return positionConfigs.hasSubscriber(tokenId);
     }
