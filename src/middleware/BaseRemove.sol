@@ -30,13 +30,10 @@ abstract contract BaseRemove is BaseMiddleware {
 
     bytes internal constant ZERO_BYTES = bytes("");
     uint256 public constant GAS_LIMIT = 5_000_000;
-    uint256 public constant MAX_BIPS = 10_000;
 
     /// @notice Value is keccak256("override") - 1
     /// @dev Use this hookData to override checks and save gas
     bytes32 constant OVERRIDE_BYTES = 0x23b70c8dec38c3dec67a5596870027b04c4058cb3ac57b4e589bf628ac6669e7;
-
-    uint256 public immutable maxFeeBips;
 
     /// @param _poolManager The address of the pool manager
     /// @param _impl The address of the implementation contract
