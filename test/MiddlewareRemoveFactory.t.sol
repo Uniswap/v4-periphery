@@ -242,6 +242,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers, GasSnapshot {
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         console.log("A", gasLeft - gasleft());
         assertEq(factory.getImplementation(hookAddress), implementation);
+        assertEq(factory.getMaxFeeBips(hookAddress), maxFeeBips);
 
         flags = flags | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG;
         address implementationWithReturnsDelta = address(flags);
@@ -256,6 +257,7 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers, GasSnapshot {
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         console.log("B", gasLeft - gasleft());
         assertEq(factory.getImplementation(hookAddress), implementationWithReturnsDelta);
+        assertEq(factory.getMaxFeeBips(hookAddress), maxFeeBips);
     }
 
     function testRevertOnDeltaFlags() public {
