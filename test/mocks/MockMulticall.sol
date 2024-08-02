@@ -22,9 +22,6 @@ contract RevertContract {
 }
 
 contract MockMulticall is Multicall {
-    error SimpleError();
-    error ErrorWithParams(uint256 a, uint256 b);
-    
     error Error4Bytes(); // 4 bytes of selector
     error Error36Bytes(uint8 a); // 32 bytes + 4 bytes of selector
     error Error68Bytes(uint256 a, uint256 b); // 64 bytes + 4 bytes of selector
@@ -42,14 +39,6 @@ contract MockMulticall is Multicall {
 
     function functionThatRevertsWithString(string memory error) external pure {
         revert(error);
-    }
-
-    function functionThatRevertsWithSimpleError() external pure {
-        revert SimpleError();
-    }
-
-    function functionThatRevertsWithErrorWithParams(uint256 a, uint256 b) external pure {
-        revert ErrorWithParams(a, b);
     }
 
     function functionThatReturnsTuple(uint256 a, uint256 b) external pure returns (Tuple memory tuple) {

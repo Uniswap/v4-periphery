@@ -118,73 +118,53 @@ contract MulticallTest is Test {
         multicall.multicall(calls);
     }
 
-    function test_multicall_bubbleRevert_simpleError() public {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(MockMulticall(multicall).functionThatRevertsWithSimpleError.selector);
-
-        vm.expectRevert(MockMulticall.SimpleError.selector);
-        multicall.multicall(calls);
-    }
-
-    function test_multicall_bubbleRevert_errorWithParams(uint256 a, uint256 b) public {
-        bytes[] memory calls = new bytes[](1);
-        calls[0] =
-            abi.encodeWithSelector(MockMulticall(multicall).functionThatRevertsWithErrorWithParams.selector, a, b);
-
-        vm.expectRevert(abi.encodeWithSelector(MockMulticall.ErrorWithParams.selector, a, b));
-        multicall.multicall(calls);
-    }
-
-    function test_multicall_bubbleRevert_externalRevertString() public {
-        bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(MockMulticall(multicall).externalRevertString.selector, "errorString");
-
-        vm.expectRevert("errorString");
-        multicall.multicall(calls);
-    }
-
     function test_multicall_bubbleRevert_4bytes() public {
         bytes[] memory calls = new bytes[](1);
         calls[0] = abi.encodeWithSelector(MockMulticall(multicall).revertWith4Bytes.selector);
 
+        // revert is caught
         vm.expectRevert(MockMulticall.Error4Bytes.selector);
         multicall.multicall(calls);
 
-        try multicall.revertWith4Bytes() {} catch (bytes memory reason) {
+        // confirm expected length of the revert
+        try multicall.revertWith4Bytes() {}
+        catch (bytes memory reason) {
             assertEq(reason.length, 4);
         }
     }
 
-    function test_multicall_bubbleRevert_36bytes() public {
-        uint8 num = 10;
+    function test_fuzz_multicall_bubbleRevert_36bytes(uint8 num) public {
         bytes[] memory calls = new bytes[](1);
         calls[0] = abi.encodeWithSelector(MockMulticall(multicall).revertWith36Bytes.selector, num);
 
+        // revert is caught
         vm.expectRevert(abi.encodeWithSelector(MockMulticall.Error36Bytes.selector, num));
         multicall.multicall(calls);
 
-        try multicall.revertWith36Bytes(num) {} catch (bytes memory reason) {
+        // confirm expected length of the revert
+        try multicall.revertWith36Bytes(num) {}
+        catch (bytes memory reason) {
             assertEq(reason.length, 36);
         }
     }
 
-    function test_multicall_bubbleRevert_68bytes() public {
-        uint256 a = 10;
-        uint256 b = 20;
+    function test_fuzz_multicall_bubbleRevert_68bytes(uint256 a, uint256 b) public {
         bytes[] memory calls = new bytes[](1);
         calls[0] = abi.encodeWithSelector(MockMulticall(multicall).revertWith68Bytes.selector, a, b);
 
+        // revert is caught
         vm.expectRevert(abi.encodeWithSelector(MockMulticall.Error68Bytes.selector, a, b));
         multicall.multicall(calls);
 
-        try multicall.revertWith68Bytes(a, b) {} catch (bytes memory reason) {
+        // confirm expected length of the revert
+        try multicall.revertWith68Bytes(a, b) {}
+        catch (bytes memory reason) {
             assertEq(reason.length, 68);
         }
     }
 
     function test_fuzz_multicall_bubbleRevert_arbitraryBytes(uint16 length) public {
-        length = 1;
-        // length = uint16(bound(length, 0, 4096));
+        length = uint16(bound(length, 0, 4096));
         bytes memory data = new bytes(length);
         for (uint256 i = 0; i < data.length; i++) {
             data[i] = bytes1(uint8(i));
@@ -193,21 +173,31 @@ contract MulticallTest is Test {
         bytes[] memory calls = new bytes[](1);
         calls[0] = abi.encodeWithSelector(MockMulticall(multicall).revertWithBytes.selector, data);
 
+        // revert is caught
         vm.expectRevert(abi.encodeWithSelector(MockMulticall.ErrorBytes.selector, data));
         multicall.multicall(calls);
 
-        try multicall.revertWithBytes(data) {} catch (bytes memory reason) {
+        // confirm expected length of the revert
+        try multicall.revertWithBytes(data) {}
+        catch (bytes memory reason) {
             // errors with 0 bytes are by default 64 bytes of data (length & pointer?) + 4 bytes of selector
-            if (length == 0) { 
+            if (length == 0) {
                 assertEq(reason.length, 68);
-            }
-            else {
+            } else {
                 uint256 expectedLength = 64 + 4; // default length + selector
-                // for every 32 bytes of data, 
+                // for every 32 bytes of data,
                 expectedLength += (((data.length - 1) / 32) + 1) * 32;
                 assertEq(reason.length, expectedLength);
             }
         }
+    }
+
+    function test_multicall_bubbleRevert_externalRevertString() public {
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(MockMulticall(multicall).externalRevertString.selector, "errorString");
+
+        vm.expectRevert("errorString");
+        multicall.multicall(calls);
     }
 
     function test_multicall_bubbleRevert_externalRevertSimple() public {
