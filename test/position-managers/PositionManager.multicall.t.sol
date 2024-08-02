@@ -15,6 +15,7 @@ import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {PoolInitializer} from "../../src/base/PoolInitializer.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
@@ -100,5 +101,53 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, charlie));
         lpm.multicall(calls);
         vm.stopPrank();
+    }
+
+    function test_multicall_bubbleRevert_core() public {
+        // decrease liquidity but forget to close
+        // core's CurrencyNotSettled should bubble up through Multicall
+
+        PositionConfig memory config = PositionConfig({
+            poolKey: key,
+            tickLower: TickMath.minUsableTick(key.tickSpacing),
+            tickUpper: TickMath.maxUsableTick(key.tickSpacing)
+        });
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // do not close deltas to throw CurrencyNotSettled in core
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, config, 100e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+        bytes memory actions = planner.encode();
+
+        // Use multicall to decrease liquidity
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
+
+        vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
+        lpm.multicall(calls);
+    }
+
+    function test_multicall_bubbleRevert_core_args() public {
+        // create a pool where tickSpacing is negative
+        // core's TickSpacingTooSmall(int24) should bubble up through Multicall
+        int24 tickSpacing = -10;
+        key = PoolKey({
+            currency0: currency0,
+            currency1: currency1,
+            fee: 0,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(0))
+        });
+
+        // Use multicall to initialize a pool
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeWithSelector(PoolInitializer.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        vm.expectRevert(abi.encodeWithSelector(IPoolManager.TickSpacingTooSmall.selector, tickSpacing));
+        lpm.multicall(calls);
     }
 }
