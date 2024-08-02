@@ -28,6 +28,7 @@ import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {Constants} from "../../src/libraries/Constants.sol";
 
+import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
@@ -44,6 +45,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
     PoolId poolId;
 
+    MockSubscriber sub;
+
     function setUp() public {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
@@ -57,6 +60,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         deployPosm(manager);
         // currency0 is the native token so only execute approvals for currency1.
         approvePosmCurrency(currency1);
+
+        sub = new MockSubscriber(lpm);
 
         vm.deal(address(this), type(uint256).max);
     }
@@ -700,5 +705,36 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, feeRevenue0, 1 wei); // TODO: fuzzer off by 1 wei
         assertEq(currency0.balanceOfSelf() - balance0Before, uint128(delta.amount0()));
         assertEq(currency1.balanceOfSelf() - balance1Before, uint128(delta.amount1()));
+    }
+
+    // this test fails unless subscribe is payable
+    function test_multicall_mint_subscribe_native() public {
+        uint256 tokenId = lpm.nextTokenId();
+
+        PositionConfig memory config = PositionConfig({poolKey: nativeKey, tickLower: -60, tickUpper: 60});
+
+        Plan memory plan = Planner.init();
+        plan.add(
+            Actions.MINT_POSITION,
+            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+        );
+        plan.add(Actions.CLOSE_CURRENCY, abi.encode(config.poolKey.currency0));
+        plan.add(Actions.CLOSE_CURRENCY, abi.encode(config.poolKey.currency1));
+        plan.add(Actions.SWEEP, abi.encode(CurrencyLibrary.NATIVE, address(this)));
+        bytes memory actions = plan.encode();
+
+        bytes[] memory calls = new bytes[](2);
+
+        calls[0] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions, _deadline);
+        calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub);
+
+        lpm.multicall{value: 10e18}(calls);
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+
+        assertEq(liquidity, 100e18);
+        assertEq(sub.notifySubscribeCount(), 1);
     }
 }

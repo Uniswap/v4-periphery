@@ -24,7 +24,9 @@ import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
+import {Notifier} from "./base/Notifier.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
+import {INotifier} from "./interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 
@@ -36,12 +38,13 @@ contract PositionManager is
     DeltaResolver,
     ReentrancyLock,
     BaseActionsRouter,
+    Notifier,
     Permit2Forwarder
 {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
-    using PositionConfigLibrary for PositionConfig;
+    using PositionConfigLibrary for *;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
@@ -51,8 +54,7 @@ contract PositionManager is
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
-    /// @inheritdoc IPositionManager
-    mapping(uint256 tokenId => bytes32 configId) public positionConfigs;
+    mapping(uint256 tokenId => bytes32 config) private positionConfigs;
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
@@ -60,8 +62,28 @@ contract PositionManager is
         ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
     {}
 
+    /// @notice Reverts if the deadline has passed
+    /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed();
+        _;
+    }
+
+    /// @notice Reverts if the caller is not the owner or approved for the ERC721 token
+    /// @param caller The address of the caller
+    /// @param tokenId the unique identifier of the ERC721 token
+    /// @dev either msg.sender or _msgSender() is passed in as the caller
+    /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
+    modifier onlyIfApproved(address caller, uint256 tokenId) {
+        if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
+        _;
+    }
+
+    /// @notice Reverts if the hash of the config does not equal the saved hash
+    /// @param tokenId the unique identifier of the ERC721 token
+    /// @param config the PositionConfig to check against
+    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) {
+        if (positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         _;
     }
 
@@ -74,6 +96,29 @@ contract PositionManager is
         checkDeadline(deadline)
     {
         _executeActions(unlockData);
+    }
+
+    /// @inheritdoc INotifier
+    function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber)
+        external
+        payable
+        onlyIfApproved(msg.sender, tokenId)
+        onlyValidConfig(tokenId, config)
+    {
+        // call to _subscribe will revert if the user already has a sub
+        positionConfigs.setSubscribe(tokenId);
+        _subscribe(tokenId, config, subscriber);
+    }
+
+    /// @inheritdoc INotifier
+    function unsubscribe(uint256 tokenId, PositionConfig calldata config)
+        external
+        payable
+        onlyIfApproved(msg.sender, tokenId)
+        onlyValidConfig(tokenId, config)
+    {
+        positionConfigs.setUnsubscribe(tokenId);
+        _unsubscribe(tokenId, config);
     }
 
     function _handleAction(uint256 action, bytes calldata params) internal virtual override {
@@ -140,7 +185,7 @@ contract PositionManager is
         }
     }
 
-    function _msgSender() internal view override returns (address) {
+    function msgSender() public view override returns (address) {
         return _getLocker();
     }
 
@@ -152,8 +197,7 @@ contract PositionManager is
         uint128 amount0Max,
         uint128 amount1Max,
         bytes calldata hookData
-    ) internal {
-        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+    ) internal onlyValidConfig(tokenId, config) {
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         liquidityDelta.validateMaxInNegative(amount0Max, amount1Max);
@@ -167,10 +211,7 @@ contract PositionManager is
         uint128 amount0Min,
         uint128 amount1Min,
         bytes calldata hookData
-    ) internal {
-        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
-        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
-
+    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         // Note: the tokenId is used as the salt.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
         liquidityDelta.validateMinOut(amount0Min, amount1Min);
@@ -195,7 +236,7 @@ contract PositionManager is
         // _beforeModify is not called here because the tokenId is newly minted
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         liquidityDelta.validateMaxIn(amount0Max, amount1Max);
-        positionConfigs[tokenId] = config.toId();
+        positionConfigs.setConfigId(tokenId, config);
     }
 
     function _close(Currency currency) internal {
@@ -204,7 +245,7 @@ contract PositionManager is
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
 
         // the locker is the payer or receiver
-        address caller = _msgSender();
+        address caller = msgSender();
         if (currencyDelta < 0) {
             _settle(currency, caller, uint256(-currencyDelta));
         } else if (currencyDelta > 0) {
@@ -222,14 +263,14 @@ contract PositionManager is
 
     function _settlePair(Currency currency0, Currency currency1) internal {
         // the locker is the payer when settling
-        address caller = _msgSender();
+        address caller = msgSender();
         _settle(currency0, caller, _getFullSettleAmount(currency0));
         _settle(currency1, caller, _getFullSettleAmount(currency1));
     }
 
     function _takePair(Currency currency0, Currency currency1) internal {
         // the locker is the receiver when taking
-        address caller = _msgSender();
+        address caller = msgSender();
         _take(currency0, caller, _getFullTakeAmount(currency0));
         _take(currency1, caller, _getFullTakeAmount(currency1));
     }
@@ -241,9 +282,7 @@ contract PositionManager is
         uint128 amount0Min,
         uint128 amount1Min,
         bytes calldata hookData
-    ) internal {
-        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
-        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
 
         BalanceDelta liquidityDelta;
@@ -274,6 +313,10 @@ contract PositionManager is
             }),
             hookData
         );
+
+        if (positionConfigs.hasSubscriber(uint256(salt))) {
+            _notifyModifyLiquidity(uint256(salt), config, liquidityChange);
+        }
     }
 
     function _getPositionLiquidity(PositionConfig calldata config, uint256 tokenId)
@@ -300,5 +343,21 @@ contract PositionManager is
         } else {
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
         }
+    }
+
+    /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
+    function transferFrom(address from, address to, uint256 id) public override {
+        super.transferFrom(from, to, id);
+        if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
+    }
+
+    /// @inheritdoc IPositionManager
+    function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
+        return positionConfigs.getConfigId(tokenId);
+    }
+
+    /// @inheritdoc INotifier
+    function hasSubscriber(uint256 tokenId) external view returns (bool) {
+        return positionConfigs.hasSubscriber(tokenId);
     }
 }
