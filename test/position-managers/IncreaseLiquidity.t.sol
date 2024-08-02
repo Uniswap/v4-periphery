@@ -15,6 +15,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -71,7 +72,62 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
-    function test_increaseLiquidity_withExactFees() public {
+    /// @notice Increase liquidity with exact fees, taking dust
+    function test_increaseLiquidity_withExactFees_take() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her exact fees to increase liquidity (compounding)
+
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+
+        // alice provides liquidity
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // bob provides liquidity
+        vm.startPrank(bob);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
+
+        // swap to create fees
+        uint256 swapAmount = 0.001e18;
+        swap(key, true, -int256(swapAmount), ZERO_BYTES);
+        swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
+
+        // alice uses her exact fees to increase liquidity
+        // Slight error in this calculation vs. actual fees.. TODO: Fix this.
+        BalanceDelta feesOwedAlice = IPositionManager(lpm).getFeesOwed(manager, config, tokenIdAlice);
+        // Note: You can alternatively calculate Alice's fees owed from the swap amount, fee on the pool, and total liquidity in that range.
+        // swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob);
+
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
+        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint256(int256(feesOwedAlice.amount0())),
+            uint256(int256(feesOwedAlice.amount1()))
+        );
+
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
+        vm.startPrank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+        vm.stopPrank();
+
+        // alice barely spent any tokens
+        assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
+        assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
+    }
+
+    /// @dev Increase liquidity with exact fees, clearing dust
+    function test_increaseLiquidity_withExactFees_clear() public {
         // Alice and Bob provide liquidity on the range
         // Alice uses her exact fees to increase liquidity (compounding)
 
@@ -127,8 +183,55 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
 
-    // uses donate to simulate fee revenue
-    function test_increaseLiquidity_withExactFees_donate() public {
+    // uses donate to simulate fee revenue, taking dust
+    function test_increaseLiquidity_withExactFees_take_donate() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her exact fees to increase liquidity (compounding)
+
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+
+        // alice provides liquidity
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // bob provides liquidity
+        vm.startPrank(bob);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
+
+        // donate to create fees
+        uint256 amountDonate = 0.2e18;
+        donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        // subtract 1 cause we'd rather take than pay
+        uint256 feesAmount = amountDonate.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob) - 1;
+
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
+        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            feesAmount,
+            feesAmount
+        );
+
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+
+        vm.startPrank(alice);
+        increaseLiquidity(tokenIdAlice, config, liquidityDelta, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice barely spent any tokens
+        assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), 1 wei);
+        assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), 1 wei);
+    }
+
+    // uses donate to simulate fee revenue, clearing dust
+    function test_increaseLiquidity_withExactFees_clear_donate() public {
         // Alice and Bob provide liquidity on the range
         // Alice uses her exact fees to increase liquidity (compounding)
 
@@ -465,7 +568,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         assertEq(currency1.balanceOf(address(this)), balanceBefore1 - amount1);
     }
 
-    function test_increaseLiquidity_clearRevert() public {
+    function test_increaseLiquidity_clearExceeds_revert() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 1000e18, address(this), ZERO_BYTES);
 
@@ -497,6 +600,25 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
                 int256(amountToReinvest - 1 wei), // imprecision, PM expects us to collect half of the fees (minus 1 wei)
                 uint256(amountToReinvest - 2 wei) // the maximum amount we were willing to forfeit
             )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    /// @dev clearing a negative delta reverts in core with SafeCastOverflow
+    function test_increaseLiquidity_clearNegative_revert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1000e18, address(this), ZERO_BYTES);
+
+        // increase liquidity with new tokens but try clearing the negative delta
+        Plan memory planner = Planner.init();
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, 100e18, ZERO_BYTES));
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, type(uint256).max));
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, type(uint256).max));
+        bytes memory calls = planner.encode();
+
+        // revert since we're forfeiting beyond the max tolerance
+        vm.expectRevert(
+            SafeCast.SafeCastOverflow.selector
         );
         lpm.modifyLiquidities(calls, _deadline);
     }

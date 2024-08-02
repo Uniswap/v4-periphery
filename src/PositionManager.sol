@@ -168,7 +168,7 @@ contract PositionManager is
     /// provide a safety check that amount-to-clear is less than a user-provided maximum
     function _clear(Currency currency, uint256 amountMax) internal {
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
-        if (amountMax < uint256(currencyDelta)) revert ClearExceedsMaxAmount(currency, currencyDelta, amountMax);
+        if (uint256(currencyDelta) > amountMax) revert ClearExceedsMaxAmount(currency, currencyDelta, amountMax);
         poolManager.clear(currency, uint256(currencyDelta));
     }
 
