@@ -8,7 +8,6 @@ interface IPositionManager {
     error NotApproved(address caller);
     error DeadlinePassed();
     error IncorrectPositionConfigForTokenId(uint256 tokenId);
-    error CannotClearNegativeDelta(Currency currency);
 
     /// @notice Maps the ERC721 tokenId to a configId, which is a keccak256 hash of the position's pool key, and range (tickLower, tickUpper)
     /// Enforces that a minted ERC721 token is tied to one range on one pool.

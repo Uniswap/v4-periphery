@@ -23,6 +23,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
+import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {SlippageCheckLibrary} from "../../src/libraries/SlippageCheck.sol";
 import {BaseActionsRouter} from "../../src/base/BaseActionsRouter.sol";
@@ -241,9 +242,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             negativeDeltaCurrency = currency1;
         }
 
-        vm.expectRevert(
-            abi.encodeWithSelector(IPositionManager.CannotClearNegativeDelta.selector, negativeDeltaCurrency)
-        );
+        vm.expectRevert(abi.encodeWithSelector(DeltaResolver.DeltaNotNegative.selector, negativeDeltaCurrency));
         lpm.modifyLiquidities(calls, _deadline);
     }
 

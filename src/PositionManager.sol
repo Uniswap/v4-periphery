@@ -210,9 +210,7 @@ contract PositionManager is
     /// @dev integrators may elect to forfeit positive deltas with clear
     /// if the forfeit amount exceeds the user-specified max, the amount is taken instead
     function _clearOrTake(Currency currency, uint256 amountMax) internal {
-        int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
-        if (currencyDelta < 0) revert CannotClearNegativeDelta(currency);
-        uint256 delta = uint256(currencyDelta); // safe since we know its positive
+        uint256 delta = _getFullNegativeDelta(currency);
 
         // forfeit the delta if its less than or equal to the user-specified limit
         if (delta <= amountMax) {
@@ -225,7 +223,7 @@ contract PositionManager is
     /// @dev uses this addresses balance to settle a negative delta
     function _settleWithBalance(Currency currency) internal {
         // set the payer to this address, performs a transfer.
-        _settle(currency, address(this), _getFullSettleAmount(currency));
+        _settle(currency, address(this), _getFullPositiveDelta(currency));
     }
 
     /// @dev this is overloaded with ERC721Permit._burn

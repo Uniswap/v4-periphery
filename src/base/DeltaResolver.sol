@@ -12,9 +12,9 @@ abstract contract DeltaResolver is ImmutableState {
     using TransientStateLibrary for IPoolManager;
 
     /// @notice Emitted trying to settle a positive delta.
-    error IncorrectUseOfSettle();
+    error DeltaNotPositive(Currency currency);
     /// @notice Emitted trying to take a negative delta.
-    error IncorrectUseOfTake();
+    error DeltaNotNegative(Currency currency);
 
     /// @notice Take an amount of currency out of the PoolManager
     /// @param currency Currency to take
@@ -46,17 +46,17 @@ abstract contract DeltaResolver is ImmutableState {
     /// @param amount The number of tokens to send
     function _pay(Currency token, address payer, uint256 amount) internal virtual;
 
-    function _getFullSettleAmount(Currency currency) internal view returns (uint256 amount) {
+    function _getFullPositiveDelta(Currency currency) internal view returns (uint256 amount) {
         int256 _amount = poolManager.currencyDelta(address(this), currency);
         // If the amount is positive, it should be taken not settled for.
-        if (_amount > 0) revert IncorrectUseOfSettle();
+        if (_amount > 0) revert DeltaNotPositive(currency);
         amount = uint256(-_amount);
     }
 
-    function _getFullTakeAmount(Currency currency) internal view returns (uint256 amount) {
+    function _getFullNegativeDelta(Currency currency) internal view returns (uint256 amount) {
         int256 _amount = poolManager.currencyDelta(address(this), currency);
         // If the amount is negative, it should be settled not taken.
-        if (_amount < 0) revert IncorrectUseOfTake();
+        if (_amount < 0) revert DeltaNotNegative(currency);
         amount = uint256(_amount);
     }
 }

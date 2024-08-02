@@ -51,19 +51,19 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             if (action == Actions.SETTLE_ALL) {
                 Currency currency = params.decodeCurrency();
                 // TODO should it have a maxAmountOut added slippage protection?
-                _settle(currency, _msgSender(), _getFullSettleAmount(currency));
+                _settle(currency, _msgSender(), _getFullPositiveDelta(currency));
             } else if (action == Actions.SETTLE_WITH_BALANCE) {
                 Currency currency = params.decodeCurrency();
-                _settle(currency, address(this), _getFullSettleAmount(currency));
+                _settle(currency, address(this), _getFullPositiveDelta(currency));
             } else if (action == Actions.TAKE_ALL) {
                 (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
-                uint256 amount = _getFullTakeAmount(currency);
+                uint256 amount = _getFullNegativeDelta(currency);
 
                 // TODO should _take have a minAmountOut added slippage check?
                 _take(currency, _map(recipient), amount);
             } else if (action == Actions.TAKE_PORTION) {
                 (Currency currency, address recipient, uint256 bips) = params.decodeCurrencyAddressAndUint256();
-                _take(currency, _map(recipient), _getFullTakeAmount(currency).calculatePortion(bips));
+                _take(currency, _map(recipient), _getFullNegativeDelta(currency).calculatePortion(bips));
             } else {
                 revert UnsupportedAction(action);
             }

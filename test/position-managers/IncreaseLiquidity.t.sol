@@ -20,6 +20,7 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
+import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {SlippageCheckLibrary} from "../../src/libraries/SlippageCheck.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
@@ -753,7 +754,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         bytes memory calls = planner.encode();
 
         // revert since we're trying to clear a negative delta
-        vm.expectRevert(abi.encodeWithSelector(IPositionManager.CannotClearNegativeDelta.selector, currency0));
+        vm.expectRevert(abi.encodeWithSelector(DeltaResolver.DeltaNotNegative.selector, currency0));
         lpm.modifyLiquidities(calls, _deadline);
     }
 }
