@@ -70,41 +70,10 @@ contract BaseMiddlewareFactoryTest is Test, Deployers {
         // second deployment should revert
         vm.expectRevert(ZERO_BYTES);
         factory.createMiddleware(address(hookscounter), salt);
-<<<<<<< HEAD
     }
 
     function testRevertOnIncorrectCaller() public {
         vm.expectRevert(SafeCallback.NotPoolManager.selector);
-=======
-    }
-
-    function testRevertOnIncorrectFlags() public {
-        HooksCounter hookscounter2 = HooksCounter(address(HOOKSCOUNTER_FLAGS));
-        vm.etch(address(hookscounter), address(new HooksCounter(manager)).code);
-        uint160 incorrectFlags = uint160(Hooks.BEFORE_INITIALIZE_FLAG);
-
-        (address hookAddress, bytes32 salt) = HookMiner.find(
-            address(factory),
-            incorrectFlags,
-            type(BaseMiddlewareImplementation).creationCode,
-            abi.encode(address(manager), address(hookscounter2))
-        );
-        address implementation = address(hookscounter2);
-        vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
-        factory.createMiddleware(implementation, salt);
-    }
-
-    function testRevertOnIncorrectFlagsMined() public {
-        HooksCounter hookscounter2 = HooksCounter(address(HOOKSCOUNTER_FLAGS));
-        vm.etch(address(hookscounter), address(new HooksCounter(manager)).code);
-        address implementation = address(hookscounter2);
-        vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
-        factory.createMiddleware(implementation, bytes32("who needs to mine a salt?"));
-    }
-
-    function testRevertOnIncorrectCaller() public {
-        vm.expectRevert(SafeCallback.NotManager.selector);
->>>>>>> origin/base-middleware
         hookscounter.afterDonate(address(this), key, 0, 0, ZERO_BYTES);
     }
 
