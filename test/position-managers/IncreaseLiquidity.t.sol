@@ -172,7 +172,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES));
         planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, 18 wei)); // alice is willing to forfeit 18 wei
         planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, 18 wei));
         bytes memory calls = planner.encode();
@@ -272,7 +272,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES));
         planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, 1 wei)); // alice is willing to forfeit 1 wei
         planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, 1 wei));
         bytes memory calls = planner.encode();
@@ -666,7 +666,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         );
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityDelta, ZERO_BYTES));
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES));
         planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, amountToReinvest - 2 wei));
         planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, amountToReinvest - 2 wei));
         bytes memory calls = planner.encode();
@@ -690,7 +690,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // increase liquidity with new tokens but try clearing the negative delta
         Plan memory planner = Planner.init();
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, 100e18, ZERO_BYTES));
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES));
         planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, type(uint256).max));
         planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, type(uint256).max));
         bytes memory calls = planner.encode();

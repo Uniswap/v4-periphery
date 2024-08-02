@@ -192,7 +192,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityToAdd, address(this), ZERO_BYTES));
+        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES));
         planner.add(Actions.CLEAR, abi.encode(key.currency0, type(uint256).max));
         planner.add(Actions.CLEAR, abi.encode(key.currency1, type(uint256).max));
         bytes memory calls = planner.encode();
@@ -460,7 +460,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // Clearing is allowed on decrease liquidity
         Plan memory planner = Planner.init();
-        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES));
+        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, decreaseLiquidityDelta, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES));
         planner.add(Actions.CLEAR, abi.encode(key.currency0, type(uint256).max));
         planner.add(Actions.CLEAR, abi.encode(key.currency1, type(uint256).max));
         bytes memory calls = planner.encode();
@@ -499,7 +499,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToRemove, ZERO_BYTES));
+        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToRemove, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES));
         planner.add(Actions.CLEAR, abi.encode(key.currency0, amount0 - 1 wei));
         planner.add(Actions.CLEAR, abi.encode(key.currency1, amount1 - 1 wei));
         bytes memory calls = planner.encode();
