@@ -7,7 +7,7 @@ library Constants {
     uint128 internal constant CONTRACT_BALANCE = 0;
     uint128 internal constant OPEN_DELTA = 1;
 
-    /// @notice used to signal that the recipient of an action should be the _msgSender of address(this)
+    /// @notice used to signal that the recipient of an action should be the msgSender of address(this)
     address internal constant MSG_SENDER = address(1);
     address internal constant ADDRESS_THIS = address(2);
 }

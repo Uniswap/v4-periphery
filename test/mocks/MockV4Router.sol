@@ -35,7 +35,7 @@ contract MockV4Router is V4Router, ReentrancyLock {
         }
     }
 
-    function _msgSender() internal view override returns (address) {
+    function msgSender() public view override returns (address) {
         return _getLocker();
     }
 

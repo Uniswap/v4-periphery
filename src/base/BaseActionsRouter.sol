@@ -53,12 +53,12 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// In many contracts this will be the address that calls the initial entry point that calls `_executeActions`
     /// `msg.sender` shouldnt be used, as this will be the v4 pool manager contract that calls `unlockCallback`
     /// If using ReentrancyLock.sol, this function can return _getLocker()
-    function _msgSender() internal view virtual returns (address);
+    function msgSender() public view virtual returns (address);
 
     /// @notice Calculates the address for a action
     function _mapRecipient(address recipient) internal view returns (address) {
         if (recipient == Constants.MSG_SENDER) {
-            return _msgSender();
+            return msgSender();
         } else if (recipient == Constants.ADDRESS_THIS) {
             return address(this);
         } else {
@@ -68,6 +68,6 @@ abstract contract BaseActionsRouter is SafeCallback {
 
     /// @notice Calculates the payer for an action
     function _mapPayer(bool payerIsUser) internal view returns (address) {
-        return payerIsUser ? _msgSender() : address(this);
+        return payerIsUser ? msgSender() : address(this);
     }
 }

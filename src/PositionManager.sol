@@ -134,7 +134,7 @@ contract PositionManager is
         }
     }
 
-    function _msgSender() internal view override returns (address) {
+    function msgSender() public view override returns (address) {
         return _getLocker();
     }
 
@@ -162,7 +162,7 @@ contract PositionManager is
         uint128 amount1Min,
         bytes calldata hookData
     ) internal {
-        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
+        if (!_isApprovedOrOwner(msgSender(), tokenId)) revert NotApproved(msgSender());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
 
         // Note: the tokenId is used as the salt.
@@ -198,7 +198,7 @@ contract PositionManager is
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
 
         // the locker is the payer or receiver
-        address caller = _msgSender();
+        address caller = msgSender();
         if (currencyDelta < 0) {
             _settle(currency, caller, uint256(-currencyDelta));
         } else if (currencyDelta > 0) {
@@ -222,7 +222,7 @@ contract PositionManager is
         uint128 amount1Min,
         bytes calldata hookData
     ) internal {
-        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
+        if (!_isApprovedOrOwner(msgSender(), tokenId)) revert NotApproved(msgSender());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
 
