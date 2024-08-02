@@ -62,7 +62,7 @@ abstract contract DeltaResolver is ImmutableState {
     /// @notice Obtain the full amount owed by this contract (negative delta)
     /// @param currency Currency to get the delta for
     /// @return amount The amount owed by this contract as a uint256
-    function _getFullDebit(Currency currency) internal view returns (uint256 amount) {
+    function _getFullDebt(Currency currency) internal view returns (uint256 amount) {
         int256 _amount = poolManager.currencyDelta(address(this), currency);
         // If the amount is negative, it should be settled not taken.
         if (_amount > 0) revert DeltaNotNegative(currency);
@@ -74,7 +74,7 @@ abstract contract DeltaResolver is ImmutableState {
         if (amount == Constants.CONTRACT_BALANCE) {
             return currency.balanceOfSelf();
         } else if (amount == Constants.OPEN_DELTA) {
-            return _getFullDebit(currency);
+            return _getFullDebt(currency);
         }
         return amount;
     }

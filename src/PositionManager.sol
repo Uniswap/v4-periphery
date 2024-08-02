@@ -264,17 +264,11 @@ contract PositionManager is
         }
     }
 
-    /// @dev uses this addresses balance to settle a negative delta
-    function _settleWithBalance(Currency currency) internal {
-        // set the payer to this address, performs a transfer.
-        _settle(currency, address(this), _getFullDebit(currency));
-    }
-
     function _settlePair(Currency currency0, Currency currency1) internal {
         // the locker is the payer when settling
         address caller = msgSender();
-        _settle(currency0, caller, _getFullDebit(currency0));
-        _settle(currency1, caller, _getFullDebit(currency1));
+        _settle(currency0, caller, _getFullDebt(currency0));
+        _settle(currency1, caller, _getFullDebt(currency1));
     }
 
     /// @dev this is overloaded with ERC721Permit._burn
