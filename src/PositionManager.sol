@@ -52,8 +52,7 @@ contract PositionManager is
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
-    /// @inheritdoc IPositionManager
-    mapping(uint256 tokenId => bytes32 config) public positionConfigs;
+    mapping(uint256 tokenId => bytes32 config) private positionConfigs;
 
     IAllowanceTransfer public immutable permit2;
 
@@ -74,7 +73,7 @@ contract PositionManager is
     /// @notice Reverts if the caller is not the owner or approved for the ERC721 token
     /// @param caller The address of the caller
     /// @param tokenId the unique identifier of the ERC721 token
-    /// @dev either msg.sender or _msgSender() is passed in as the sender
+    /// @dev either msg.sender or _msgSender() is passed in as the caller
     /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
     modifier onlyIfApproved(address caller, uint256 tokenId) {
         if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
@@ -232,7 +231,7 @@ contract PositionManager is
         // _beforeModify is not called here because the tokenId is newly minted
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         liquidityDelta.validateMaxIn(amount0Max, amount1Max);
-        positionConfigs[tokenId] = config.toId();
+        positionConfigs.setConfigId(tokenId, config);
     }
 
     function _close(Currency currency) internal {
@@ -337,5 +336,13 @@ contract PositionManager is
     function transferFrom(address from, address to, uint256 id) public override {
         super.transferFrom(from, to, id);
         if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
+    }
+
+    function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
+        return positionConfigs.getConfigId(tokenId);
+    }
+
+    function hasSubscriber(uint256 tokenId) external view returns (bool) {
+        return positionConfigs.hasSubscriber(tokenId);
     }
 }

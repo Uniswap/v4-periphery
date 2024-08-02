@@ -10,12 +10,17 @@ interface INotifier {
     /// @param config the corresponding PositionConfig for the tokenId
     /// @param subscriber the address to notify
     /// @dev Calling subscribe when a position is already subscribed will revert
-    /// @dev payable so it can be multicalled with NATIVE related acitons
+    /// @dev payable so it can be multicalled with NATIVE related actions
     function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber) external payable;
 
     /// @notice Removes the subscriber from receiving notifications for a respective position
     /// @param tokenId the ERC721 tokenId
     /// @param config the corresponding PositionConfig for the tokenId
-    /// @dev payable so it can be multicalled with NATIVE related acitons
+    /// @dev payable so it can be multicalled with NATIVE related actions
     function unsubscribe(uint256 tokenId, PositionConfig calldata config) external payable;
+
+    /// @notice Returns whether a a position should call out to notify a subscribing contract on modification or transfer
+    /// @param tokenId the ERC721 tokenId
+    /// @return bool whether or not the position has a subscriber
+    function hasSubscriber(uint256 tokenId) external view returns (bool);
 }

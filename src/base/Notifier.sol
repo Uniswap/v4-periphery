@@ -11,7 +11,6 @@ import "../interfaces/INotifier.sol";
 abstract contract Notifier is INotifier {
     using GasLimitCalculator for uint256;
 
-    error SubscriberCannotBeNotified();
     error AlreadySubscribed(address subscriber);
 
     event Subscribed(uint256 tokenId, address subscriber);

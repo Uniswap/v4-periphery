@@ -409,7 +409,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     // this test fails unless subscribe is payable
-    function test_mutlicall_mint_subscribe_native() public {
+    function test_multicall_mint_subscribe_native() public {
         uint256 tokenId = lpm.nextTokenId();
 
         PositionConfig memory config = PositionConfig({poolKey: nativeKey, tickLower: -60, tickUpper: 60});

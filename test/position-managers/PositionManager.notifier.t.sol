@@ -88,7 +88,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.subscribe(tokenId, config, address(sub));
 
-        assertEq(_hasSubscriber(lpm.positionConfigs(tokenId)), true);
+        assertEq(lpm.hasSubscriber(tokenId), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
         assertEq(sub.notifySubscribeCount(), 1);
     }
@@ -103,6 +103,9 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         vm.stopPrank();
 
         lpm.subscribe(tokenId, config, address(sub));
+
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
 
         Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
@@ -130,6 +133,9 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.subscribe(tokenId, config, address(sub));
 
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
+
         lpm.transferFrom(alice, bob, tokenId);
 
         assertEq(sub.notifyTransferCount(), 1);
@@ -146,6 +152,9 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.subscribe(tokenId, config, address(sub));
 
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
+
         lpm.safeTransferFrom(alice, bob, tokenId);
 
         assertEq(sub.notifyTransferCount(), 1);
@@ -161,6 +170,9 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         vm.stopPrank();
 
         lpm.subscribe(tokenId, config, address(sub));
+
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
 
         lpm.safeTransferFrom(alice, bob, tokenId, "");
 
@@ -181,6 +193,8 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.unsubscribe(tokenId, config);
 
         assertEq(sub.notifyUnsubscribeCount(), 1);
+        assertEq(lpm.hasSubscriber(tokenId), false);
+        assertEq(address(lpm.subscriber(tokenId)), address(0));
     }
 
     function test_unsubscribe_isSuccessfulWithBadSubscriber() public {
@@ -199,6 +213,8 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // the subscriber contract call failed bc it used too much gas
         assertEq(MockReturnDataSubscriber(badSubscriber).notifyUnsubscribeCount(), 0);
+        assertEq(lpm.hasSubscriber(tokenId), false);
+        assertEq(address(lpm.subscriber(tokenId)), address(0));
     }
 
     function test_multicall_mint_subscribe() public {
@@ -224,6 +240,9 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         assertEq(liquidity, 100e18);
         assertEq(sub.notifySubscribeCount(), 1);
+
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
     }
 
     function test_multicall_mint_subscribe_increase() public {
@@ -260,6 +279,8 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(liquidity, 110e18);
         assertEq(sub.notifySubscribeCount(), 1);
         assertEq(sub.notifyModifyLiquidityCount(), 1);
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
     }
 
     function test_unsubscribe_revertsWhenNotSubscribed() public {
@@ -273,11 +294,5 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.expectRevert();
         lpm.unsubscribe(tokenId, config);
-    }
-
-    function _hasSubscriber(bytes32 _config) internal pure returns (bool subscribed) {
-        assembly {
-            subscribed := shr(255, _config)
-        }
     }
 }
