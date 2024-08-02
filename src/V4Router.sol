@@ -60,11 +60,10 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 uint256 amount = _getFullTakeAmount(currency);
 
                 // TODO should _take have a minAmountOut added slippage check?
-                // TODO recipient mapping
-                _take(currency, recipient, amount);
+                _take(currency, _map(recipient), amount);
             } else if (action == Actions.TAKE_PORTION) {
                 (Currency currency, address recipient, uint256 bips) = params.decodeCurrencyAddressAndUint256();
-                _take(currency, recipient, _getFullTakeAmount(currency).calculatePortion(bips));
+                _take(currency, _map(recipient), _getFullTakeAmount(currency).calculatePortion(bips));
             } else {
                 revert UnsupportedAction(action);
             }
