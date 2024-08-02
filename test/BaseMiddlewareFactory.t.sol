@@ -12,7 +12,7 @@ import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {console} from "../../../lib/v4-core/lib/forge-std/src/console.sol";
-import {BaseMiddleware} from "./../contracts/middleware/BaseMiddleware.sol";
+import {BaseMiddleware} from "./../src/middleware/BaseMiddleware.sol";
 import {BaseMiddlewareImplementation} from "./middleware/BaseMiddlewareImplemenation.sol";
 import {BaseMiddlewareFactoryImplementation} from "./middleware/BaseMiddlewareFactoryImplementation.sol";
 import {HookMiner} from "./utils/HookMiner.sol";

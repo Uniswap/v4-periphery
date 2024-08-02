@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {BaseMiddlewareImplementation} from "./BaseMiddlewareImplemenation.sol";
-import {BaseMiddlewareFactory} from "./../../contracts/middleware/BaseMiddlewareFactory.sol";
+import {BaseMiddlewareFactory} from "./../../src/middleware/BaseMiddlewareFactory.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
 contract BaseMiddlewareFactoryImplementation is BaseMiddlewareFactory {

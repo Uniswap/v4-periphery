@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
 
-import {MiddlewareRemove} from "../../contracts/middleware/MiddlewareRemove.sol";
-import {MiddlewareRemoveNoDeltas} from "../../contracts/middleware/MiddlewareRemoveNoDeltas.sol";
+import {MiddlewareRemove} from "../../src/middleware/MiddlewareRemove.sol";
+import {MiddlewareRemoveNoDeltas} from "../../src/middleware/MiddlewareRemoveNoDeltas.sol";
 
 /// @title MiddlewareMiner - a library for mining middleware addresses
 /// @dev This library is intended for `forge test` environments. There may be gotchas when using salts in `forge script` or `forge create`
