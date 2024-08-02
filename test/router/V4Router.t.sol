@@ -32,7 +32,7 @@ contract V4RouterTest is RoutingTestHelpers {
         );
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Actions.MSG_SENDER);
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, MSG_SENDER);
 
         vm.expectRevert(IV4Router.TooLittleReceived.selector);
         router.executeActions(data);
@@ -99,7 +99,7 @@ contract V4RouterTest is RoutingTestHelpers {
 
         // swap with the router as the take recipient
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn, Actions.ADDRESS_THIS);
+        = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn, ADDRESS_THIS);
 
         // the output tokens have been left in the router
         assertEq(currency0.balanceOf(address(router)), 0);
@@ -138,7 +138,7 @@ contract V4RouterTest is RoutingTestHelpers {
         params.amountOutMinimum = uint128(expectedAmountOut + 1);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Actions.MSG_SENDER);
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, MSG_SENDER);
 
         vm.expectRevert(IV4Router.TooLittleReceived.selector);
         router.executeActions(data);
@@ -446,7 +446,7 @@ contract V4RouterTest is RoutingTestHelpers {
         );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Actions.MSG_SENDER);
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, MSG_SENDER);
 
         vm.expectRevert(IV4Router.TooMuchRequested.selector);
         router.executeActions(data);
@@ -502,7 +502,7 @@ contract V4RouterTest is RoutingTestHelpers {
         params.amountInMaximum = uint128(expectedAmountIn - 1);
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Actions.MSG_SENDER);
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, MSG_SENDER);
 
         vm.expectRevert(IV4Router.TooMuchRequested.selector);
         router.executeActions(data);

@@ -67,7 +67,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, initialLiquidity, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, initialLiquidity, MSG_SENDER, ZERO_BYTES);
 
         increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
 
@@ -87,7 +87,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
         liquidityToAdd2 = bound(liquidityToAdd2, 1e18, 1000e18);
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, initialLiquidity, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, initialLiquidity, MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init();
 
@@ -121,9 +121,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(
-                config, initialLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES
-            )
+            abi.encode(config, initialLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, MSG_SENDER, ZERO_BYTES)
         );
         planner.add(
             Actions.INCREASE_LIQUIDITY,
@@ -146,7 +144,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // mint a position on range [-300, 300]
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, initialLiquidity, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, initialLiquidity, MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         // we'll burn and mint a new position on [-60, 60]; calculate the liquidity units for the new range
@@ -173,9 +171,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(
-                newConfig, newLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES
-            )
+            abi.encode(newConfig, newLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, MSG_SENDER, ZERO_BYTES)
         );
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
 

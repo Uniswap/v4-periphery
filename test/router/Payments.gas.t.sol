@@ -39,7 +39,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, Actions.MSG_SENDER));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, MSG_SENDER));
 
         bytes memory data = plan.encode();
         router.executeActions(data);
@@ -73,7 +73,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE, abi.encode(currency0, CONTRACT_BALANCE, false));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, Actions.MSG_SENDER));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, MSG_SENDER));
 
         bytes memory data = plan.encode();
         router.executeActions(data);

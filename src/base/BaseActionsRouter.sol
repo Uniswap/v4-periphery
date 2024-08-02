@@ -11,6 +11,10 @@ import {Actions} from "../libraries/Actions.sol";
 abstract contract BaseActionsRouter is SafeCallback {
     using CalldataDecoder for bytes;
 
+    /// @notice used to signal that the recipient of an action should be the _msgSender of address(this)
+    address internal constant MSG_SENDER = address(1);
+    address internal constant ADDRESS_THIS = address(2);
+
     /// @notice emitted when different numbers of parameters and actions are provided
     error InputLengthMismatch();
 
@@ -55,15 +59,18 @@ abstract contract BaseActionsRouter is SafeCallback {
     function _msgSender() internal view virtual returns (address);
 
     /// @notice Calculates the address for a action
-    /// @param recipient The address or address-flag for the action
-    /// @return output The resultant address for the action
-    function _map(address recipient) internal view returns (address) {
-        if (recipient == Actions.MSG_SENDER) {
+    function _mapRecipient(address recipient) internal view returns (address) {
+        if (recipient == MSG_SENDER) {
             return _msgSender();
-        } else if (recipient == Actions.ADDRESS_THIS) {
+        } else if (recipient == ADDRESS_THIS) {
             return address(this);
         } else {
             return recipient;
         }
+    }
+
+    /// @notice Calculates the payer for an action
+    function _mapPayer(bool payerIsUser) internal view returns (address) {
+        return payerIsUser ? _msgSender() : address(this);
     }
 }

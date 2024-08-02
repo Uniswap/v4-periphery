@@ -28,6 +28,8 @@ contract RoutingTestHelpers is Test, Deployers {
 
     uint128 internal constant CONTRACT_BALANCE = 0;
     uint128 internal constant OPEN_DELTA = 1;
+    address internal constant MSG_SENDER = address(1);
+    address internal constant ADDRESS_THIS = address(2);
 
     // nativeKey is already defined in Deployers.sol
     PoolKey key0;
@@ -163,7 +165,7 @@ contract RoutingTestHelpers is Test, Deployers {
             uint256 outputBalanceAfter
         )
     {
-        return _finalizeAndExecuteSwap(inputCurrency, outputCurrency, amountIn, Actions.MSG_SENDER);
+        return _finalizeAndExecuteSwap(inputCurrency, outputCurrency, amountIn, MSG_SENDER);
     }
 
     function _finalizeAndExecuteNativeInputExactOutputSwap(
@@ -182,7 +184,7 @@ contract RoutingTestHelpers is Test, Deployers {
         inputBalanceBefore = inputCurrency.balanceOfSelf();
         outputBalanceBefore = outputCurrency.balanceOfSelf();
 
-        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, Actions.MSG_SENDER);
+        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, MSG_SENDER);
 
         // send too much ETH to mimic slippage
         uint256 value = expectedAmountIn + 0.1 ether;

@@ -54,13 +54,13 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 _settle(currency, _msgSender(), _getFullSettleAmount(currency));
             } else if (action == Actions.SETTLE) {
                 (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
-                _settle(currency, payerIsUser ? _msgSender() : address(this), _mapAmount(amount, currency));
+                _settle(currency, _mapPayer(payerIsUser), _mapAmount(amount, currency));
             } else if (action == Actions.TAKE_ALL) {
                 (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
                 uint256 amount = _getFullTakeAmount(currency);
 
                 // TODO should _take have a minAmountOut added slippage check?
-                _take(currency, _map(recipient), amount);
+                _take(currency, _mapRecipient(recipient), amount);
             } else {
                 revert UnsupportedAction(action);
             }

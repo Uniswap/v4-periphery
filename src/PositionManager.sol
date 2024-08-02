@@ -107,7 +107,7 @@ contract PositionManager is
                 address owner,
                 bytes calldata hookData
             ) = params.decodeMintParams();
-            _mint(config, liquidity, amount0Max, amount1Max, _map(owner), hookData);
+            _mint(config, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
         } else if (action == Actions.CLOSE_CURRENCY) {
             Currency currency = params.decodeCurrency();
             _close(currency);
@@ -126,10 +126,10 @@ contract PositionManager is
             _burn(tokenId, config, amount0Min, amount1Min, hookData);
         } else if (action == Actions.SETTLE) {
             (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
-            _settle(currency, payerIsUser ? _msgSender() : address(this), _mapAmount(amount, currency));
+            _settle(currency, _mapPayer(payerIsUser), _mapAmount(amount, currency));
         } else if (action == Actions.SWEEP) {
             (Currency currency, address to) = params.decodeCurrencyAndAddress();
-            _sweep(currency, _map(to));
+            _sweep(currency, _mapRecipient(to));
         } else {
             revert UnsupportedAction(action);
         }

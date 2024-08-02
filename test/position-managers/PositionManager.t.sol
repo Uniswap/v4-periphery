@@ -84,7 +84,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // Try to add liquidity at that range, but the token reenters posm
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: 0, tickUpper: 60});
-        bytes memory calls = getMintEncoded(config, 1e18, Actions.MSG_SENDER, "");
+        bytes memory calls = getMintEncoded(config, 1e18, MSG_SENDER, "");
 
         // Permit2.transferFrom does not bubble the ContractLocked error and instead reverts with its own error
         vm.expectRevert("TRANSFER_FROM_FAILED");
@@ -106,7 +106,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, liquidityToAdd, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, liquidityToAdd, MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         assertEq(tokenId, 1);
@@ -141,7 +141,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, liquidityToAdd, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, liquidityToAdd, MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         uint256 balance0After = currency0.balanceOfSelf();
@@ -242,7 +242,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mint_slippage_revertAmount0() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
 
-        bytes memory calls = getMintEncoded(config, 1e18, 1 wei, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES);
+        bytes memory calls = getMintEncoded(config, 1e18, 1 wei, MAX_SLIPPAGE_INCREASE, MSG_SENDER, ZERO_BYTES);
         vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
@@ -250,7 +250,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mint_slippage_revertAmount1() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
 
-        bytes memory calls = getMintEncoded(config, 1e18, MAX_SLIPPAGE_INCREASE, 1 wei, Actions.MSG_SENDER, ZERO_BYTES);
+        bytes memory calls = getMintEncoded(config, 1e18, MAX_SLIPPAGE_INCREASE, 1 wei, MSG_SENDER, ZERO_BYTES);
         vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
@@ -268,7 +268,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(amount0, amount1); // symmetric liquidity
         uint128 slippage = uint128(amount0) + 1;
 
-        bytes memory calls = getMintEncoded(config, liquidity, slippage, slippage, Actions.MSG_SENDER, ZERO_BYTES);
+        bytes memory calls = getMintEncoded(config, liquidity, slippage, slippage, MSG_SENDER, ZERO_BYTES);
         lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
         assertEq(uint256(int256(-delta.amount0())), slippage);
@@ -289,7 +289,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(amount0, amount1); // symmetric liquidity
         uint128 slippage = uint128(amount0) + 1;
 
-        bytes memory calls = getMintEncoded(config, liquidity, slippage, slippage, Actions.MSG_SENDER, ZERO_BYTES);
+        bytes memory calls = getMintEncoded(config, liquidity, slippage, slippage, MSG_SENDER, ZERO_BYTES);
 
         // swap to move the price and cause a slippage revert
         swap(key, true, -1e18, ZERO_BYTES);
@@ -304,7 +304,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // create liquidity we can burn
         uint256 tokenId;
-        (tokenId, params) = addFuzzyLiquidity(lpm, Actions.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        (tokenId, params) = addFuzzyLiquidity(lpm, MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         PositionConfig memory config =
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         assertEq(tokenId, 1);
@@ -350,7 +350,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // create liquidity we can burn
         uint256 tokenId;
-        (tokenId, params) = addFuzzyLiquidity(lpm, Actions.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        (tokenId, params) = addFuzzyLiquidity(lpm, MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         PositionConfig memory config =
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         assertEq(tokenId, 1);
@@ -400,7 +400,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_burn_slippage_revertAmount0() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 1e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 1e18, MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         bytes memory calls =
@@ -412,7 +412,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_burn_slippage_revertAmount1() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 1e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 1e18, MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         bytes memory calls =
@@ -424,7 +424,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_burn_slippage_exactDoesNotRevert() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 1e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 1e18, MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         // TODO: why does burning a newly minted position return original delta - 1 wei?
@@ -442,7 +442,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // swapping will cause a slippage revert
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 1e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 1e18, MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         bytes memory calls = getBurnEncoded(
@@ -461,7 +461,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 decreaseLiquidityDelta
     ) public {
         uint256 tokenId;
-        (tokenId, params) = addFuzzyLiquidity(lpm, Actions.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        (tokenId, params) = addFuzzyLiquidity(lpm, MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         decreaseLiquidityDelta = uint256(bound(int256(decreaseLiquidityDelta), 0, params.liquidityDelta));
 
         PositionConfig memory config =
@@ -561,7 +561,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 decreaseLiquidityDelta
     ) public {
         uint256 tokenId;
-        (tokenId, params) = addFuzzyLiquidity(lpm, Actions.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        (tokenId, params) = addFuzzyLiquidity(lpm, MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
         decreaseLiquidityDelta = bound(decreaseLiquidityDelta, 1, uint256(params.liquidityDelta));
 
@@ -598,7 +598,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_decreaseLiquidity_slippage_revertAmount0() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 1e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 1e18, MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         bytes memory calls = getDecreaseEncoded(
@@ -611,7 +611,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_decreaseLiquidity_slippage_revertAmount1() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 1e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 1e18, MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         bytes memory calls = getDecreaseEncoded(
@@ -624,7 +624,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_decreaseLiquidity_slippage_exactDoesNotRevert() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 1e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 1e18, MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         // TODO: why does decreasing a newly minted position return original delta - 1 wei?
@@ -643,7 +643,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // swapping will cause a slippage revert
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 1e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 1e18, MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         bytes memory calls = getDecreaseEncoded(
@@ -662,7 +662,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 decreaseLiquidityDelta
     ) public {
         uint256 tokenId;
-        (tokenId, params) = addFuzzyLiquidity(lpm, Actions.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        (tokenId, params) = addFuzzyLiquidity(lpm, MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
         vm.assume(0 < decreaseLiquidityDelta);
         vm.assume(decreaseLiquidityDelta < uint256(type(int256).max));
@@ -695,7 +695,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, liquidity, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, liquidity, MSG_SENDER, ZERO_BYTES);
         BalanceDelta mintDelta = getLastDelta();
 
         // transfer to alice
@@ -723,7 +723,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, liquidity, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, liquidity, MSG_SENDER, ZERO_BYTES);
 
         // donate to generate fee revenue
         uint256 feeRevenue0 = 1e18;
@@ -752,7 +752,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, liquidity, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, liquidity, MSG_SENDER, ZERO_BYTES);
 
         // transfer to alice
         lpm.transferFrom(address(this), alice, tokenId);
@@ -789,7 +789,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600});
         uint256 liquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, liquidity, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, liquidity, MSG_SENDER, ZERO_BYTES);
 
         // donate to generate fee revenue
         uint256 feeRevenue0 = 1e18;

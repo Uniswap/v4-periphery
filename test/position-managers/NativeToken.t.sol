@@ -74,7 +74,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
 
         uint256 tokenId = lpm.nextTokenId();
-        bytes memory calls = getMintEncoded(config, liquidityToAdd, Actions.MSG_SENDER, ZERO_BYTES);
+        bytes memory calls = getMintEncoded(config, liquidityToAdd, MSG_SENDER, ZERO_BYTES);
 
         (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
             SQRT_PRICE_1_1,
@@ -113,14 +113,12 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(
-                config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES
-            )
+            abi.encode(config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, MSG_SENDER, ZERO_BYTES)
         );
         planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency0));
         planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency1));
         // sweep the excess eth
-        planner.add(Actions.SWEEP, abi.encode(currency0, Actions.MSG_SENDER));
+        planner.add(Actions.SWEEP, abi.encode(currency0, MSG_SENDER));
 
         bytes memory calls = planner.encode();
 
@@ -159,7 +157,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             PositionConfig({poolKey: nativeKey, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, Actions.MSG_SENDER, ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, MSG_SENDER, ZERO_BYTES);
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -212,7 +210,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             PositionConfig({poolKey: nativeKey, tickLower: params.tickLower, tickUpper: params.tickUpper});
 
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, Actions.MSG_SENDER, ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, MSG_SENDER, ZERO_BYTES);
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -259,7 +257,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // mint the position with native token liquidity
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, Actions.MSG_SENDER, ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, MSG_SENDER, ZERO_BYTES);
 
         uint256 balance0Before = address(this).balance;
         uint256 balance1Before = currency1.balanceOfSelf();
@@ -301,7 +299,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // mint the position with native token liquidity
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, Actions.MSG_SENDER, ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, MSG_SENDER, ZERO_BYTES);
 
         uint256 balance0Before = address(this).balance;
         uint256 balance1Before = currency1.balanceOfSelf();
@@ -322,7 +320,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency0));
         planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency1));
         // sweep the excess eth
-        planner.add(Actions.SWEEP, abi.encode(currency0, Actions.MSG_SENDER));
+        planner.add(Actions.SWEEP, abi.encode(currency0, MSG_SENDER));
         bytes memory calls = planner.encode();
 
         lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
@@ -353,7 +351,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // mint the position with native token liquidity
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, config, uint256(params.liquidityDelta), Actions.MSG_SENDER, ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, config, uint256(params.liquidityDelta), MSG_SENDER, ZERO_BYTES);
 
         uint256 balance0Before = address(this).balance;
         uint256 balance1Before = currency1.balanceOfSelf();
@@ -388,7 +386,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // mint the position with native token liquidity
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, config, uint256(params.liquidityDelta), Actions.MSG_SENDER, ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, config, uint256(params.liquidityDelta), MSG_SENDER, ZERO_BYTES);
 
         // donate to generate fee revenue
         uint256 feeRevenue0 = 1e18;
