@@ -26,7 +26,6 @@ interface IQuoter {
     struct QuoteExactSingleParams {
         PoolKey poolKey;
         bool zeroForOne;
-        address recipient;
         uint128 exactAmount;
         uint160 sqrtPriceLimitX96;
         bytes hookData;
@@ -35,7 +34,6 @@ interface IQuoter {
     struct QuoteExactParams {
         Currency exactCurrency;
         PathKey[] path;
-        address recipient;
         uint128 exactAmount;
     }
 
@@ -43,7 +41,6 @@ interface IQuoter {
     /// @param params The params for the quote, encoded as `QuoteExactInputSingleParams`
     /// poolKey The key for identifying a V4 pool
     /// zeroForOne If the swap is from currency0 to currency1
-    /// recipient The intended recipient of the output tokens
     /// exactAmount The desired input amount
     /// sqrtPriceLimitX96 The price limit of the pool that cannot be exceeded by the swap
     /// hookData arbitrary hookData to pass into the associated hooks
@@ -58,7 +55,6 @@ interface IQuoter {
     /// @param params the params for the quote, encoded as 'QuoteExactInputParams'
     /// currencyIn The input currency of the swap
     /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
-    /// recipient The intended recipient of the output tokens
     /// exactAmount The desired input amount
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
@@ -75,7 +71,6 @@ interface IQuoter {
     /// @param params The params for the quote, encoded as `QuoteExactOutputSingleParams`
     /// poolKey The key for identifying a V4 pool
     /// zeroForOne If the swap is from currency0 to currency1
-    /// recipient The intended recipient of the output tokens
     /// exactAmount The desired input amount
     /// sqrtPriceLimitX96 The price limit of the pool that cannot be exceeded by the swap
     /// hookData arbitrary hookData to pass into the associated hooks
@@ -90,7 +85,6 @@ interface IQuoter {
     /// @param params the params for the quote, encoded as 'QuoteExactOutputParams'
     /// currencyOut The output currency of the swap
     /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
-    /// recipient The intended recipient of the output tokens
     /// exactAmount The desired output amount
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path

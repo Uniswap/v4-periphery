@@ -25,6 +25,7 @@ import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
+import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -43,6 +44,7 @@ contract PositionManager is
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
     using CalldataDecoder for bytes;
+    using SlippageCheckLibrary for BalanceDelta;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
@@ -75,26 +77,50 @@ contract PositionManager is
         _executeActions(unlockData);
     }
 
-    function _handleAction(uint256 action, bytes calldata params) internal override {
+    function _handleAction(uint256 action, bytes calldata params) internal virtual override {
         if (action == Actions.INCREASE_LIQUIDITY) {
-            (uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData) =
-                params.decodeModifyLiquidityParams();
-            _increase(tokenId, config, liquidity, hookData);
+            (
+                uint256 tokenId,
+                PositionConfig calldata config,
+                uint256 liquidity,
+                uint128 amount0Max,
+                uint128 amount1Max,
+                bytes calldata hookData
+            ) = params.decodeModifyLiquidityParams();
+            _increase(tokenId, config, liquidity, amount0Max, amount1Max, hookData);
         } else if (action == Actions.DECREASE_LIQUIDITY) {
-            (uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData) =
-                params.decodeModifyLiquidityParams();
-            _decrease(tokenId, config, liquidity, hookData);
+            (
+                uint256 tokenId,
+                PositionConfig calldata config,
+                uint256 liquidity,
+                uint128 amount0Min,
+                uint128 amount1Min,
+                bytes calldata hookData
+            ) = params.decodeModifyLiquidityParams();
+            _decrease(tokenId, config, liquidity, amount0Min, amount1Min, hookData);
         } else if (action == Actions.MINT_POSITION) {
-            (PositionConfig calldata config, uint256 liquidity, address owner, bytes calldata hookData) =
-                params.decodeMintParams();
-            _mint(config, liquidity, owner, hookData);
+            (
+                PositionConfig calldata config,
+                uint256 liquidity,
+                uint128 amount0Max,
+                uint128 amount1Max,
+                address owner,
+                bytes calldata hookData
+            ) = params.decodeMintParams();
+            _mint(config, liquidity, amount0Max, amount1Max, owner, hookData);
         } else if (action == Actions.CLOSE_CURRENCY) {
             Currency currency = params.decodeCurrency();
             _close(currency);
         } else if (action == Actions.BURN_POSITION) {
             // Will automatically decrease liquidity to 0 if the position is not already empty.
-            (uint256 tokenId, PositionConfig calldata config, bytes calldata hookData) = params.decodeBurnParams();
-            _burn(tokenId, config, hookData);
+            (
+                uint256 tokenId,
+                PositionConfig calldata config,
+                uint128 amount0Min,
+                uint128 amount1Min,
+                bytes calldata hookData
+            ) = params.decodeBurnParams();
+            _burn(tokenId, config, amount0Min, amount1Min, hookData);
         } else if (action == Actions.SETTLE_WITH_BALANCE) {
             Currency currency = params.decodeCurrency();
             _settleWithBalance(currency);
@@ -111,28 +137,45 @@ contract PositionManager is
     }
 
     /// @dev Calling increase with 0 liquidity will credit the caller with any underlying fees of the position
-    function _increase(uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData)
-        internal
-    {
+    function _increase(
+        uint256 tokenId,
+        PositionConfig calldata config,
+        uint256 liquidity,
+        uint128 amount0Max,
+        uint128 amount1Max,
+        bytes calldata hookData
+    ) internal {
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+        liquidityDelta.validateMaxInNegative(amount0Max, amount1Max);
     }
 
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
-    function _decrease(uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData)
-        internal
-    {
+    function _decrease(
+        uint256 tokenId,
+        PositionConfig calldata config,
+        uint256 liquidity,
+        uint128 amount0Min,
+        uint128 amount1Min,
+        bytes calldata hookData
+    ) internal {
         if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
 
         // Note: the tokenId is used as the salt.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+        liquidityDelta.validateMinOut(amount0Min, amount1Min);
     }
 
-    function _mint(PositionConfig calldata config, uint256 liquidity, address owner, bytes calldata hookData)
-        internal
-    {
+    function _mint(
+        PositionConfig calldata config,
+        uint256 liquidity,
+        uint128 amount0Max,
+        uint128 amount1Max,
+        address owner,
+        bytes calldata hookData
+    ) internal {
         // mint receipt token
         uint256 tokenId;
         // tokenId is assigned to current nextTokenId before incrementing it
@@ -143,7 +186,7 @@ contract PositionManager is
 
         // _beforeModify is not called here because the tokenId is newly minted
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-
+        liquidityDelta.validateMaxIn(amount0Max, amount1Max);
         positionConfigs[tokenId] = config.toId();
     }
 
@@ -168,7 +211,13 @@ contract PositionManager is
     }
 
     /// @dev this is overloaded with ERC721Permit._burn
-    function _burn(uint256 tokenId, PositionConfig calldata config, bytes calldata hookData) internal {
+    function _burn(
+        uint256 tokenId,
+        PositionConfig calldata config,
+        uint128 amount0Min,
+        uint128 amount1Min,
+        bytes calldata hookData
+    ) internal {
         if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
@@ -177,6 +226,7 @@ contract PositionManager is
         // Can only call modify if there is non zero liquidity.
         if (liquidity > 0) {
             liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+            liquidityDelta.validateMinOut(amount0Min, amount1Min);
         }
 
         delete positionConfigs[tokenId];
