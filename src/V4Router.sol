@@ -54,7 +54,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 _settle(currency, _msgSender(), _getFullSettleAmount(currency));
             } else if (action == Actions.SETTLE) {
                 (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
-                _settle(currency, _mapPayer(payerIsUser), _mapAmount(amount, currency));
+                _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
             } else if (action == Actions.TAKE_ALL) {
                 (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
                 uint256 amount = _getFullTakeAmount(currency);
@@ -68,9 +68,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     }
 
     function _swapExactInputSingle(IV4Router.ExactInputSingleParams calldata params) private {
-        uint128 amountIn = (params.amountIn == OPEN_DELTA)
-            ? _getFullTakeAmount(params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1).toUint128()
-            : params.amountIn;
+        uint128 amountIn =
+            _mapSwapAmount(params.amountIn, params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1);
         uint128 amountOut = _swap(
             params.poolKey, params.zeroForOne, int256(-int128(amountIn)), params.sqrtPriceLimitX96, params.hookData
         ).toUint128();
@@ -83,8 +82,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             uint256 pathLength = params.path.length;
             uint128 amountOut;
             Currency currencyIn = params.currencyIn;
-            uint128 amountIn =
-                (params.amountIn == OPEN_DELTA) ? _getFullTakeAmount(currencyIn).toUint128() : params.amountIn;
+            uint128 amountIn = _mapSwapAmount(params.amountIn, currencyIn);
             PathKey calldata pathKey;
 
             for (uint256 i = 0; i < pathLength; i++) {

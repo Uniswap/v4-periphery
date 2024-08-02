@@ -126,7 +126,7 @@ contract PositionManager is
             _burn(tokenId, config, amount0Min, amount1Min, hookData);
         } else if (action == Actions.SETTLE) {
             (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
-            _settle(currency, _mapPayer(payerIsUser), _mapAmount(amount, currency));
+            _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
         } else if (action == Actions.SWEEP) {
             (Currency currency, address to) = params.decodeCurrencyAndAddress();
             _sweep(currency, _mapRecipient(to));

@@ -5,11 +5,13 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "./ImmutableState.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 /// @notice Abstract contract used to sync, send, and settle funds to the pool manager
 /// @dev Note that sync() is called before any erc-20 transfer in `settle`.
 abstract contract DeltaResolver is ImmutableState {
     using TransientStateLibrary for IPoolManager;
+    using SafeCast for *;
 
     /// @notice used to signal that an action should use the input value of the open delta on the pool manager
     /// or of the balance that the contract holds
@@ -65,12 +67,22 @@ abstract contract DeltaResolver is ImmutableState {
         amount = uint256(_amount);
     }
 
-    /// @notice Calculates the amount for an action
-    function _mapAmount(uint256 amount, Currency currency) internal view returns (uint256) {
+    /// @notice Calculates the amount for a settle action
+    function _mapSettleAmount(uint256 amount, Currency currency) internal view returns (uint256) {
         if (amount == CONTRACT_BALANCE) {
             return currency.balanceOfSelf();
         } else if (amount == OPEN_DELTA) {
             return _getFullSettleAmount(currency);
+        }
+        return amount;
+    }
+
+    /// @notice Calculates the amount for a swap action
+    function _mapSwapAmount(uint128 amount, Currency currency) internal view returns (uint128) {
+        if (amount == CONTRACT_BALANCE) {
+            return currency.balanceOfSelf().toUint128();
+        } else if (amount == OPEN_DELTA) {
+            return _getFullTakeAmount(currency).toUint128();
         }
         return amount;
     }
