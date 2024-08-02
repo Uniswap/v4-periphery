@@ -26,6 +26,7 @@ import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {Notifier} from "./base/Notifier.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
+import {INotifier} from "./interfaces/INotifier.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -61,16 +62,26 @@ contract PositionManager is
         permit2 = _permit2;
     }
 
+    /// @notice Reverts if the deadline has passed
+    /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed();
         _;
     }
 
+    /// @notice Reverts if the caller is not the owner or approved for the ERC721 token
+    /// @param sender The address of the caller
+    /// @param tokenId the unique identifier of the ERC721 token
+    /// @dev either msg.sender or _msgSender() is passed in as the sender
+    /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
     modifier onlyIfApproved(address sender, uint256 tokenId) {
         if (!_isApprovedOrOwner(sender, tokenId)) revert NotApproved(sender);
         _;
     }
 
+    /// @notice Reverts if the hash of the config does not equal the saved hash
+    /// @param tokenId the unique identifier of the ERC721 token
+    /// @param config the PositionConfig to check against
     modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) {
         if (positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         _;
@@ -87,6 +98,7 @@ contract PositionManager is
         _executeActions(unlockData);
     }
 
+    /// @inheritdoc INotifier
     function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber)
         external
         onlyIfApproved(msg.sender, tokenId)
@@ -96,6 +108,7 @@ contract PositionManager is
         _subscribe(tokenId, config, subscriber);
     }
 
+    /// @inheritdoc INotifier
     function unsubscribe(uint256 tokenId, PositionConfig calldata config)
         external
         onlyIfApproved(msg.sender, tokenId)

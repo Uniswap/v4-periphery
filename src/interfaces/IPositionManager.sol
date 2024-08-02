@@ -3,7 +3,9 @@ pragma solidity ^0.8.24;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-interface IPositionManager {
+import {INotifier} from "./INotifier.sol";
+
+interface IPositionManager is INotifier {
     error NotApproved(address caller);
     error DeadlinePassed();
     error IncorrectPositionConfigForTokenId(uint256 tokenId);

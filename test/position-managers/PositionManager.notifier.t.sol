@@ -125,6 +125,54 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(sub.notifyTransferCount(), 1);
     }
 
+    function test_notifyTransfer_withSafeTransferFrom_succeeds() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub));
+
+        lpm.safeTransferFrom(alice, bob, tokenId);
+
+        assertEq(sub.notifyTransferCount(), 1);
+    }
+
+    function test_notifyTransfer_withSafeTransferFromData_succeeds() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub));
+
+        lpm.safeTransferFrom(alice, bob, tokenId, "");
+
+        assertEq(sub.notifyTransferCount(), 1);
+    }
+
+    function test_unsubscribe_succeeds() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub));
+
+        lpm.unsubscribe(tokenId, config);
+
+        assertEq(sub.notifyUnsubscribeCount(), 1);
+    }
+
     function test_unsubscribe_isSuccessfulWithBadSubscriber() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);

@@ -5,9 +5,9 @@ import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {GasLimitCalculator} from "../libraries/GasLimitCalculator.sol";
 
-import "forge-std/console2.sol";
+import "../interfaces/INotifier.sol";
 
-contract Notifier {
+abstract contract Notifier is INotifier {
     using GasLimitCalculator for uint256;
 
     error SubscriberCannotBeNotified();

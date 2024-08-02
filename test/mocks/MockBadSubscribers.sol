@@ -5,9 +5,6 @@ import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 
-/// This file contains a few malicious Subscriber contract
-/// 1. A subscriber contract that returns values, can cause a OOG revert with large return data.
-
 /// @notice A subscriber contract that returns values from the subscriber entrypoints
 contract MockReturnDataSubscriber is ISubscriber {
     PositionManager posm;
