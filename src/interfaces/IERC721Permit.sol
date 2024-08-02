@@ -7,11 +7,6 @@ interface IERC721Permit {
     error DeadlineExpired();
     error NoSelfPermit();
     error Unauthorized();
-    error InvalidSignature();
-
-    /// @notice The permit typehash used in the permit signature
-    /// @return The typehash for the permit
-    function PERMIT_TYPEHASH() external pure returns (bytes32);
 
     /// @notice The domain separator used in the permit signature
     /// @return The domain seperator used in encoding of permit signature

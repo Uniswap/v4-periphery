@@ -58,13 +58,6 @@ contract PermitTest is Test, PosmTestSetup {
         config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
-    function test_permitTypeHash() public view {
-        assertEq(
-            IERC721Permit(address(lpm)).PERMIT_TYPEHASH(),
-            keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)")
-        );
-    }
-
     function test_domainSeparator() public view {
         assertEq(
             IERC721Permit(address(lpm)).DOMAIN_SEPARATOR(),

@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import {SignatureVerification} from "permit2/src/libraries/SignatureVerification.sol";
 
+import {ERC721PermitHashLibrary} from "../src/libraries/ERC721PermitHash.sol";
 import {MockERC721Permit} from "./mocks/MockERC721Permit.sol";
 import {IERC721Permit} from "../src/interfaces/IERC721Permit.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
@@ -61,7 +62,7 @@ contract ERC721PermitTest is Test {
     // --- Test the signature-based approvals (permit) ---
     function test_permitTypeHash() public view {
         assertEq(
-            IERC721Permit(address(erc721Permit)).PERMIT_TYPEHASH(),
+            ERC721PermitHashLibrary.PERMIT_TYPEHASH,
             keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)")
         );
     }
@@ -279,7 +280,7 @@ contract ERC721PermitTest is Test {
             abi.encodePacked(
                 "\x19\x01",
                 erc721Permit.DOMAIN_SEPARATOR(),
-                keccak256(abi.encode(erc721Permit.PERMIT_TYPEHASH(), spender, tokenId, nonce, deadline))
+                keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline))
             )
         );
     }

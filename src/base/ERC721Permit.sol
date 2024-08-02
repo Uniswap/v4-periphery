@@ -15,10 +15,6 @@ import {UnorderedNonce} from "./UnorderedNonce.sol";
 abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce {
     using SignatureVerification for bytes;
 
-    /// @inheritdoc IERC721Permit
-    /// @dev Value is equal to keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)");
-    bytes32 public constant override PERMIT_TYPEHASH = ERC721PermitHashLibrary.PERMIT_TYPEHASH;
-
     /// @notice Computes the nameHash and versionHash
     constructor(string memory name_, string memory symbol_, string memory version_)
         ERC721(name_, symbol_)
