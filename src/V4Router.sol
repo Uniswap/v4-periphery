@@ -6,6 +6,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {PathKey, PathKeyLib} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
@@ -21,8 +22,13 @@ import {SafeCastTemp} from "./libraries/SafeCast.sol";
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
 abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using SafeCastTemp for *;
+    using SafeCast for *;
     using PathKeyLib for PathKey;
     using CalldataDecoder for bytes;
+
+    /// @notice used to signal that an exactIn trade should use the input value of the open delta on the pool manager
+    /// this is useful for Fee On Transfer tokens, as well as multi-protocol multi-hop swaps
+    uint128 internal constant OPEN_DELTA = 0;
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
@@ -63,12 +69,11 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     }
 
     function _swapExactInputSingle(IV4Router.ExactInputSingleParams memory params) private {
+        uint128 amountIn = (params.amountIn == OPEN_DELTA)
+            ? _getFullTakeAmount(params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1).toUint128()
+            : params.amountIn;
         uint128 amountOut = _swap(
-            params.poolKey,
-            params.zeroForOne,
-            int256(-int128(params.amountIn)),
-            params.sqrtPriceLimitX96,
-            params.hookData
+            params.poolKey, params.zeroForOne, int256(-int128(amountIn)), params.sqrtPriceLimitX96, params.hookData
         ).toUint128();
         if (amountOut < params.amountOutMinimum) revert TooLittleReceived();
     }
@@ -78,8 +83,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             // Caching for gas savings
             uint256 pathLength = params.path.length;
             uint128 amountOut;
-            uint128 amountIn = params.amountIn;
             Currency currencyIn = params.currencyIn;
+            uint128 amountIn =
+                (params.amountIn == OPEN_DELTA) ? _getFullTakeAmount(currencyIn).toUint128() : params.amountIn;
             PathKey memory pathKey;
 
             for (uint256 i = 0; i < pathLength; i++) {
