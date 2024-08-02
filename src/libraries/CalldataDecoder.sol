@@ -43,45 +43,71 @@ library CalldataDecoder {
         }
     }
 
-    /// @dev equivalent to: abi.decode(params, (uint256, PositionConfig, uint256, bytes)) in calldata
+    /// @dev equivalent to: abi.decode(params, (uint256, PositionConfig, uint256, uint128, uint128, bytes)) in calldata
     function decodeModifyLiquidityParams(bytes calldata params)
         internal
         pure
-        returns (uint256 tokenId, PositionConfig calldata config, uint256 liquidity, bytes calldata hookData)
+        returns (
+            uint256 tokenId,
+            PositionConfig calldata config,
+            uint256 liquidity,
+            uint128 amount0,
+            uint128 amount1,
+            bytes calldata hookData
+        )
     {
         assembly ("memory-safe") {
             tokenId := calldataload(params.offset)
             config := add(params.offset, 0x20)
             liquidity := calldataload(add(params.offset, 0x100))
+            amount0 := calldataload(add(params.offset, 0x120))
+            amount1 := calldataload(add(params.offset, 0x140))
         }
-        hookData = params.toBytes(9);
+        hookData = params.toBytes(11);
     }
 
-    /// @dev equivalent to: abi.decode(params, (PositionConfig, uint256, address, bytes)) in calldata
+    /// @dev equivalent to: abi.decode(params, (PositionConfig, uint256, uint128, uint128, address, bytes)) in calldata
     function decodeMintParams(bytes calldata params)
         internal
         pure
-        returns (PositionConfig calldata config, uint256 liquidity, address owner, bytes calldata hookData)
+        returns (
+            PositionConfig calldata config,
+            uint256 liquidity,
+            uint128 amount0Max,
+            uint128 amount1Max,
+            address owner,
+            bytes calldata hookData
+        )
     {
         assembly ("memory-safe") {
             config := params.offset
             liquidity := calldataload(add(params.offset, 0xe0))
-            owner := calldataload(add(params.offset, 0x100))
+            amount0Max := calldataload(add(params.offset, 0x100))
+            amount1Max := calldataload(add(params.offset, 0x120))
+            owner := calldataload(add(params.offset, 0x140))
         }
-        hookData = params.toBytes(9);
+        hookData = params.toBytes(11);
     }
 
-    /// @dev equivalent to: abi.decode(params, (uint256, PositionConfig, bytes)) in calldata
+    /// @dev equivalent to: abi.decode(params, (uint256, PositionConfig, uint128, uint128, bytes)) in calldata
     function decodeBurnParams(bytes calldata params)
         internal
         pure
-        returns (uint256 tokenId, PositionConfig calldata config, bytes calldata hookData)
+        returns (
+            uint256 tokenId,
+            PositionConfig calldata config,
+            uint128 amount0Min,
+            uint128 amount1Min,
+            bytes calldata hookData
+        )
     {
         assembly ("memory-safe") {
             tokenId := calldataload(params.offset)
             config := add(params.offset, 0x20)
+            amount0Min := calldataload(add(params.offset, 0x100))
+            amount1Min := calldataload(add(params.offset, 0x120))
         }
-        hookData = params.toBytes(8);
+        hookData = params.toBytes(10);
     }
 
     /// @dev equivalent to: abi.decode(params, (Currency)) in calldata
@@ -100,6 +126,18 @@ library CalldataDecoder {
         assembly ("memory-safe") {
             currency := calldataload(params.offset)
             _address := calldataload(add(params.offset, 0x20))
+        }
+    }
+
+    /// @dev equivalent to: abi.decode(params, (Currency, uint256)) in calldata
+    function decodeCurrencyAndUint256(bytes calldata params)
+        internal
+        pure
+        returns (Currency currency, uint256 amount)
+    {
+        assembly ("memory-safe") {
+            currency := calldataload(params.offset)
+            amount := calldataload(add(params.offset, 0x20))
         }
     }
 

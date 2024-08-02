@@ -55,7 +55,10 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         });
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.MINT_POSITION, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+        );
         bytes memory actions = planner.finalizeModifyLiquidity(config.poolKey);
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
@@ -82,7 +85,10 @@ contract PositionManagerMulticallTest is Test, PosmTestSetup, LiquidityFuzzers {
         mint(config, 100e18, address(this), ZERO_BYTES);
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 100e18, ZERO_BYTES));
+        planner.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, config, 100e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
         bytes memory actions = planner.finalizeModifyLiquidity(config.poolKey);
 
         // Use multicall to decrease liquidity

@@ -17,41 +17,67 @@ contract CalldataDecoderTest is Test {
         uint256 _tokenId,
         PositionConfig calldata _config,
         uint256 _liquidity,
+        uint128 _amount0,
+        uint128 _amount1,
         bytes calldata _hookData
     ) public view {
-        bytes memory params = abi.encode(_tokenId, _config, _liquidity, _hookData);
-        (uint256 tokenId, PositionConfig memory config, uint256 liquidity, bytes memory hookData) =
-            decoder.decodeModifyLiquidityParams(params);
+        bytes memory params = abi.encode(_tokenId, _config, _liquidity, _amount0, _amount1, _hookData);
+        (
+            uint256 tokenId,
+            PositionConfig memory config,
+            uint256 liquidity,
+            uint128 amount0,
+            uint128 amount1,
+            bytes memory hookData
+        ) = decoder.decodeModifyLiquidityParams(params);
 
         assertEq(tokenId, _tokenId);
         assertEq(liquidity, _liquidity);
+        assertEq(amount0, _amount0);
+        assertEq(amount1, _amount1);
         assertEq(hookData, _hookData);
         _assertEq(_config, config);
     }
 
-    function test_fuzz_decodeBurnParams(uint256 _tokenId, PositionConfig calldata _config, bytes calldata _hookData)
-        public
-        view
-    {
-        bytes memory params = abi.encode(_tokenId, _config, _hookData);
-        (uint256 tokenId, PositionConfig memory config, bytes memory hookData) = decoder.decodeBurnParams(params);
+    function test_fuzz_decodeBurnParams(
+        uint256 _tokenId,
+        PositionConfig calldata _config,
+        uint128 _amount0Min,
+        uint128 _amount1Min,
+        bytes calldata _hookData
+    ) public view {
+        bytes memory params = abi.encode(_tokenId, _config, _amount0Min, _amount1Min, _hookData);
+        (uint256 tokenId, PositionConfig memory config, uint128 amount0Min, uint128 amount1Min, bytes memory hookData) =
+            decoder.decodeBurnParams(params);
 
         assertEq(tokenId, _tokenId);
         assertEq(hookData, _hookData);
         _assertEq(_config, config);
+        assertEq(amount0Min, _amount0Min);
+        assertEq(amount1Min, _amount1Min);
     }
 
     function test_fuzz_decodeMintParams(
         PositionConfig calldata _config,
         uint256 _liquidity,
+        uint128 _amount0Max,
+        uint128 _amount1Max,
         address _owner,
         bytes calldata _hookData
     ) public view {
-        bytes memory params = abi.encode(_config, _liquidity, _owner, _hookData);
-        (PositionConfig memory config, uint256 liquidity, address owner, bytes memory hookData) =
-            decoder.decodeMintParams(params);
+        bytes memory params = abi.encode(_config, _liquidity, _amount0Max, _amount1Max, _owner, _hookData);
+        (
+            PositionConfig memory config,
+            uint256 liquidity,
+            uint128 amount0Max,
+            uint128 amount1Max,
+            address owner,
+            bytes memory hookData
+        ) = decoder.decodeMintParams(params);
 
         assertEq(liquidity, _liquidity);
+        assertEq(amount0Max, _amount0Max);
+        assertEq(amount1Max, _amount1Max);
         assertEq(owner, _owner);
         assertEq(hookData, _hookData);
         _assertEq(_config, config);
@@ -70,6 +96,14 @@ contract CalldataDecoderTest is Test {
         (Currency currency) = decoder.decodeCurrency(params);
 
         assertEq(Currency.unwrap(currency), Currency.unwrap(_currency));
+    }
+
+    function test_fuzz_decodeCurrencyAndUint256(Currency _currency, uint256 _amount) public view {
+        bytes memory params = abi.encode(_currency, _amount);
+        (Currency currency, uint256 amount) = decoder.decodeCurrencyAndUint256(params);
+
+        assertEq(Currency.unwrap(currency), Currency.unwrap(_currency));
+        assertEq(amount, _amount);
     }
 
     function _assertEq(PositionConfig memory config1, PositionConfig memory config2) internal pure {
