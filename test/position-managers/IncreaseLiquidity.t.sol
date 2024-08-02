@@ -21,6 +21,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {SlippageCheckLibrary} from "../../src/libraries/SlippageCheck.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
@@ -115,7 +116,9 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        planner.add(
+            Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, 0 wei, 0 wei, ZERO_BYTES)
+        );
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.startPrank(alice);
         lpm.modifyLiquidities(calls, _deadline);
@@ -478,11 +481,84 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         }
     }
 
+    function test_increaseLiquidity_slippage_revertAmount0() public {
+        // increasing liquidity with strict slippage parameters (amount0) will revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // revert since amount0Max is too low
+        bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, 1 wei, type(uint128).max, ZERO_BYTES);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_increaseLiquidity_slippage_revertAmount1() public {
+        // increasing liquidity with strict slippage parameters (amount1) will revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // revert since amount1Max is too low
+        bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, type(uint128).max, 1 wei, ZERO_BYTES);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_increaseLiquidity_slippage_exactDoesNotRevert() public {
+        // increasing liquidity with perfect slippage parameters does not revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        uint128 newLiquidity = 10e18;
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            newLiquidity
+        );
+        assertEq(amount0, amount1); // symmetric liquidity addition
+        uint128 slippage = uint128(amount0) + 1;
+
+        bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, slippage, slippage, ZERO_BYTES);
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+
+        // confirm that delta == slippage tolerance
+        assertEq(-delta.amount0(), int128(slippage));
+        assertEq(-delta.amount1(), int128(slippage));
+    }
+
+    /// price movement from swaps will cause slippage reverts
+    function test_increaseLiquidity_slippage_revert_swap() public {
+        // increasing liquidity with perfect slippage parameters does not revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        uint128 newLiquidity = 10e18;
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            newLiquidity
+        );
+        assertEq(amount0, amount1); // symmetric liquidity addition
+        uint128 slippage = uint128(amount0) + 1;
+
+        // swap to create slippage
+        swap(key, true, -10e18, ZERO_BYTES);
+
+        bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, slippage, slippage, ZERO_BYTES);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
     function test_mint_settleWithBalance() public {
         uint256 liquidityAlice = 3_000e18;
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
+        );
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
@@ -531,7 +607,10 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // alice increases with the balance in the position manager
         Plan memory planner = Planner.init();
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityAlice, ZERO_BYTES));
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenIdAlice, config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
