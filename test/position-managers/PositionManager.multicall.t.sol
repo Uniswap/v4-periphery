@@ -88,7 +88,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         Plan memory planner = Planner.init();
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES)
         );
         bytes memory actions = planner.finalizeModifyLiquidity(config.poolKey);
 

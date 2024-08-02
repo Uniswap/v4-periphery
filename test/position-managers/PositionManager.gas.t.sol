@@ -72,7 +72,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
     function test_gas_mint() public {
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
-            abi.encode(config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+            abi.encode(
+                config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES
+            )
         );
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -88,7 +90,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         // Mint to a diff config, diff user.
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
-            abi.encode(config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(alice), ZERO_BYTES)
+            abi.encode(
+                config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES
+            )
         );
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.prank(alice);
@@ -105,7 +109,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         // Mint to a diff config, diff user.
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
-            abi.encode(config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(alice), ZERO_BYTES)
+            abi.encode(
+                config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES
+            )
         );
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.prank(alice);
@@ -122,7 +128,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         // Mint to a diff config, diff user.
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
-            abi.encode(config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(alice), ZERO_BYTES)
+            abi.encode(
+                config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES
+            )
         );
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.prank(alice);
@@ -132,7 +140,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_increaseLiquidity_erc20() public {
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
             Actions.INCREASE_LIQUIDITY,
@@ -287,7 +295,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_decreaseLiquidity() public {
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
             Actions.DECREASE_LIQUIDITY,
@@ -315,7 +323,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES)
         );
         bytes memory actions = planner.finalizeModifyLiquidity(config.poolKey);
 
@@ -327,7 +335,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_collect() public {
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         // donate to create fee revenue
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
@@ -345,11 +353,13 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     // same-range gas tests
     function test_gas_sameRange_mint() public {
-        mint(config, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
-            abi.encode(config, 10_001 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(alice), ZERO_BYTES)
+            abi.encode(
+                config, 10_001 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES
+            )
         );
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.prank(alice);
@@ -360,11 +370,11 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
     function test_gas_sameRange_decrease() public {
         // two positions of the same config, one of them decreases the entirety of the liquidity
         vm.startPrank(alice);
-        mint(config, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
         vm.stopPrank();
 
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
             Actions.DECREASE_LIQUIDITY,
@@ -379,11 +389,11 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
     function test_gas_sameRange_collect() public {
         // two positions of the same config, one of them collects all their fees
         vm.startPrank(alice);
-        mint(config, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
         vm.stopPrank();
 
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         // donate to create fee revenue
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
@@ -400,7 +410,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_burn_nonEmptyPosition() public {
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
             Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
@@ -413,7 +423,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_burnEmpty() public {
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         decreaseLiquidity(tokenId, config, 10_000 ether, ZERO_BYTES);
         Plan memory planner = Planner.init().add(
@@ -430,7 +440,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         // Will be more expensive than not encoding a decrease and just encoding a burn.
         // ie. check this against PositionManager_burn_nonEmpty
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 10_000 ether, address(this), ZERO_BYTES);
+        mint(config, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
             Actions.DECREASE_LIQUIDITY,
@@ -453,7 +463,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
     // Native Token Gas Tests
     function test_gas_mint_native() public {
         uint256 liquidityToAdd = 10_000 ether;
-        bytes memory calls = getMintEncoded(configNative, liquidityToAdd, address(this), ZERO_BYTES);
+        bytes memory calls = getMintEncoded(configNative, liquidityToAdd, Actions.MSG_SENDER, ZERO_BYTES);
 
         (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
             SQRT_PRICE_1_1,
@@ -472,12 +482,17 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         planner.add(
             Actions.MINT_POSITION,
             abi.encode(
-                configNative, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES
+                configNative,
+                liquidityToAdd,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                Actions.MSG_SENDER,
+                ZERO_BYTES
             )
         );
         planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency0));
         planner.add(Actions.CLOSE_CURRENCY, abi.encode(nativeKey.currency1));
-        planner.add(Actions.SWEEP, abi.encode(CurrencyLibrary.NATIVE, address(this)));
+        planner.add(Actions.SWEEP, abi.encode(CurrencyLibrary.NATIVE, Actions.MSG_SENDER));
         bytes memory calls = planner.encode();
 
         (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
@@ -493,7 +508,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_increase_native() public {
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         uint256 liquidityToAdd = 10_000 ether;
         bytes memory calls = getIncreaseEncoded(tokenId, configNative, liquidityToAdd, ZERO_BYTES);
@@ -509,7 +524,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_decrease_native() public {
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         uint256 liquidityToRemove = 10_000 ether;
         bytes memory calls = getDecreaseEncoded(tokenId, configNative, liquidityToRemove, ZERO_BYTES);
@@ -519,7 +534,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_collect_native() public {
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         // donate to create fee revenue
         donateRouter.donate{value: 0.2e18}(configNative.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
@@ -531,7 +546,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_burn_nonEmptyPosition_native() public {
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
             Actions.BURN_POSITION,
@@ -545,7 +560,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     function test_gas_burnEmpty_native() public {
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         decreaseLiquidity(tokenId, configNative, 10_000 ether, ZERO_BYTES);
         Plan memory planner = Planner.init().add(
@@ -563,7 +578,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         // Will be more expensive than not encoding a decrease and just encoding a burn.
         // ie. check this against PositionManager_burn_nonEmpty
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, address(this), ZERO_BYTES);
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, Actions.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
             Actions.DECREASE_LIQUIDITY,
@@ -587,8 +602,8 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         );
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
-        planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
-        planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
+        planner.add(Actions.SWEEP, abi.encode(currency0, Actions.MSG_SENDER));
+        planner.add(Actions.SWEEP, abi.encode(currency1, Actions.MSG_SENDER));
 
         currency0.transfer(address(lpm), 100e18);
         currency1.transfer(address(lpm), 100e18);
