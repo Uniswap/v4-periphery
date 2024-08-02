@@ -157,6 +157,9 @@ contract PositionManager is
         } else if (action == Actions.CLOSE_CURRENCY) {
             Currency currency = params.decodeCurrency();
             _close(currency);
+        } else if (action == Actions.CLEAR) {
+            (Currency currency, uint256 amountMax) = params.decodeCurrencyAndUint256();
+            _clear(currency, amountMax);
         } else if (action == Actions.BURN_POSITION) {
             // Will automatically decrease liquidity to 0 if the position is not already empty.
             (
@@ -244,6 +247,14 @@ contract PositionManager is
         } else if (currencyDelta > 0) {
             _take(currency, caller, uint256(currencyDelta));
         }
+    }
+
+    /// @dev integrators may elect to forfeit positive deltas with clear
+    /// provides a safety check that amount-to-clear is less than a user-provided maximum
+    function _clear(Currency currency, uint256 amountMax) internal {
+        int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
+        if (uint256(currencyDelta) > amountMax) revert ClearExceedsMaxAmount(currency, currencyDelta, amountMax);
+        poolManager.clear(currency, uint256(currencyDelta));
     }
 
     /// @dev uses this addresses balance to settle a negative delta

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {INotifier} from "./INotifier.sol";
 
@@ -9,6 +10,7 @@ interface IPositionManager is INotifier {
     error NotApproved(address caller);
     error DeadlinePassed();
     error IncorrectPositionConfigForTokenId(uint256 tokenId);
+    error ClearExceedsMaxAmount(Currency currency, int256 amount, uint256 maxAmount);
 
     /// @notice Maps the ERC721 tokenId to a configId, which is a keccak256 hash of the position's pool key, and range (tickLower, tickUpper)
     /// Enforces that a minted ERC721 token is tied to one range on one pool.
