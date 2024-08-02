@@ -59,7 +59,7 @@ contract Permit2ForwarderTest is Test, PosmTestSetup, Permit2SignatureHelpers {
             defaultERC20PermitBatchAllowance(tokens, amount0, expiration, nonce);
         bytes memory sig = getPermitBatchSignature(permit, alicePrivateKey, PERMIT2_DOMAIN_SEPARATOR);
 
-        permit2.permit(alice, permit, sig);
+        permit2Forwarder.permitBatch(alice, permit, sig);
 
         (uint160 _amount, uint48 _expiration, uint48 _nonce) =
             permit2.allowance(alice, Currency.unwrap(currency0), address(this));
