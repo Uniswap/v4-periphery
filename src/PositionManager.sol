@@ -182,7 +182,7 @@ contract PositionManager is
         }
     }
 
-    function _msgSender() internal view override returns (address) {
+    function msgSender() public view override returns (address) {
         return _getLocker();
     }
 
@@ -208,7 +208,7 @@ contract PositionManager is
         uint128 amount0Min,
         uint128 amount1Min,
         bytes calldata hookData
-    ) internal onlyIfApproved(_msgSender(), tokenId) onlyValidConfig(tokenId, config) {
+    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         // Note: the tokenId is used as the salt.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
         liquidityDelta.validateMinOut(amount0Min, amount1Min);
@@ -242,7 +242,7 @@ contract PositionManager is
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
 
         // the locker is the payer or receiver
-        address caller = _msgSender();
+        address caller = msgSender();
         if (currencyDelta < 0) {
             _settle(currency, caller, uint256(-currencyDelta));
         } else if (currencyDelta > 0) {
@@ -260,7 +260,7 @@ contract PositionManager is
 
     function _settlePair(Currency currency0, Currency currency1) internal {
         // the locker is the payer when settling
-        address caller = _msgSender();
+        address caller = msgSender();
         _settle(currency0, caller, _getFullSettleAmount(currency0));
         _settle(currency1, caller, _getFullSettleAmount(currency1));
     }
@@ -272,7 +272,7 @@ contract PositionManager is
         uint128 amount0Min,
         uint128 amount1Min,
         bytes calldata hookData
-    ) internal onlyIfApproved(_msgSender(), tokenId) onlyValidConfig(tokenId, config) {
+    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
 
         BalanceDelta liquidityDelta;

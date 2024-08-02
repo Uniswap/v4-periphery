@@ -53,7 +53,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             if (action == Actions.SETTLE_ALL) {
                 Currency currency = params.decodeCurrency();
                 // TODO should it have a maxAmountOut added slippage protection?
-                _settle(currency, _msgSender(), _getFullSettleAmount(currency));
+                _settle(currency, msgSender(), _getFullSettleAmount(currency));
             } else if (action == Actions.SETTLE) {
                 (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
                 _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
