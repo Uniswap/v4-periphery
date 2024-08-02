@@ -57,7 +57,7 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// @notice Calculates the address for a action
     /// @param recipient The address or address-flag for the action
     /// @return output The resultant address for the action
-    function map(address recipient) internal view returns (address) {
+    function _map(address recipient) internal view returns (address) {
         if (recipient == Actions.MSG_SENDER) {
             return _msgSender();
         } else if (recipient == Actions.ADDRESS_THIS) {

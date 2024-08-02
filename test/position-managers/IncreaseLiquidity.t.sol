@@ -442,7 +442,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         lpm.modifyLiquidities(calls, _deadline);
     }
 
-    function test_mint_settleWithBalance() public {
+    function test_mint_settleWithBalance_andSweepToOtherAddress() public {
         uint256 liquidityAlice = 3_000e18;
 
         Plan memory planner = Planner.init();
@@ -482,6 +482,42 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amount0);
         assertEq(currency1.balanceOf(address(this)), balanceBefore1 - amount1);
+    }
+
+    function test_mint_settleWithBalance_andSweepToMsgSender() public {
+        uint256 liquidityAlice = 3_000e18;
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
+        );
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
+        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
+        planner.add(Actions.SWEEP, abi.encode(currency0, Actions.MSG_SENDER));
+        planner.add(Actions.SWEEP, abi.encode(currency1, Actions.MSG_SENDER));
+
+        uint256 balanceBefore0 = currency0.balanceOf(alice);
+        uint256 balanceBefore1 = currency1.balanceOf(alice);
+
+        uint256 seedAmount = 100e18;
+        currency0.transfer(address(lpm), seedAmount);
+        currency1.transfer(address(lpm), seedAmount);
+
+        assertEq(currency0.balanceOf(address(lpm)), seedAmount);
+        assertEq(currency0.balanceOf(address(lpm)), seedAmount);
+
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+        uint256 amount0 = uint128(-delta.amount0());
+        uint256 amount1 = uint128(-delta.amount1());
+
+        // alice's balance has increased by the seeded funds that werent used to pay for the mint
+        assertEq(currency0.balanceOf(alice), balanceBefore0 + (seedAmount - amount0));
+        assertEq(currency1.balanceOf(alice), balanceBefore1 + (seedAmount - amount1));
     }
 
     function test_increaseLiquidity_settleWithBalance() public {

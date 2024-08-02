@@ -42,7 +42,7 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
     }
 
     function _msgSender() internal view override returns (address) {
-        return _getLocker();
+        return address(0xdeadbeef);
     }
 
     function _settle(bytes calldata /* params **/ ) internal {
@@ -79,5 +79,9 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
 
     function _clear(bytes calldata /* params **/ ) internal {
         clearCount++;
+    }
+
+    function map(address recipient) external returns (address) {
+        return _map(recipient);
     }
 }

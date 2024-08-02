@@ -155,6 +155,41 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
     }
 
+    function test_mint_toRecipient() public {
+        int24 tickLower = -int24(key.tickSpacing);
+        int24 tickUpper = int24(key.tickSpacing);
+        uint256 amount0Desired = 100e18;
+        uint256 amount1Desired = 100e18;
+        uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            amount0Desired,
+            amount1Desired
+        );
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
+
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+
+        uint256 tokenId = lpm.nextTokenId();
+        // mint to specific recipient, not using the recipient constants
+        mint(config, liquidityToAdd, alice, ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+
+        uint256 balance0After = currency0.balanceOfSelf();
+        uint256 balance1After = currency1.balanceOfSelf();
+
+        assertEq(tokenId, 1);
+        assertEq(lpm.ownerOf(1), alice);
+
+        assertEq(uint256(int256(-delta.amount0())), amount0Desired);
+        assertEq(uint256(int256(-delta.amount1())), amount1Desired);
+        assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())));
+        assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
+    }
+
     function test_fuzz_mint_recipient(IPoolManager.ModifyLiquidityParams memory seedParams) public {
         IPoolManager.ModifyLiquidityParams memory params = createFuzzyLiquidityParams(key, seedParams, SQRT_PRICE_1_1);
         uint256 liquidityToAdd =
