@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import {PositionConfig} from "./PositionConfig.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IV4Router} from "../interfaces/IV4Router.sol";
 
 /// @title Library for abi decoding in calldata
 library CalldataDecoder {
@@ -108,6 +109,54 @@ library CalldataDecoder {
             amount1Min := calldataload(add(params.offset, 0x120))
         }
         hookData = params.toBytes(10);
+    }
+
+    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactInputParams))
+    function decodeSwapExactInParams(bytes calldata params)
+        internal
+        pure
+        returns (IV4Router.ExactInputParams calldata swapParams)
+    {
+        // ExactInputParams is a variable length struct so we just have to look up its location
+        assembly ("memory-safe") {
+            swapParams := add(params.offset, calldataload(params.offset))
+        }
+    }
+
+    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactInputSingleParams))
+    function decodeSwapExactInSingleParams(bytes calldata params)
+        internal
+        pure
+        returns (IV4Router.ExactInputSingleParams calldata swapParams)
+    {
+        // ExactInputSingleParams is a variable length struct so we just have to look up its location
+        assembly ("memory-safe") {
+            swapParams := add(params.offset, calldataload(params.offset))
+        }
+    }
+
+    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactOutputParams))
+    function decodeSwapExactOutParams(bytes calldata params)
+        internal
+        pure
+        returns (IV4Router.ExactOutputParams calldata swapParams)
+    {
+        // ExactOutputParams is a variable length struct so we just have to look up its location
+        assembly ("memory-safe") {
+            swapParams := add(params.offset, calldataload(params.offset))
+        }
+    }
+
+    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactInputSingleParams))
+    function decodeSwapExactOutSingleParams(bytes calldata params)
+        internal
+        pure
+        returns (IV4Router.ExactOutputSingleParams calldata swapParams)
+    {
+        // ExactOutputSingleParams is a variable length struct so we just have to look up its location
+        assembly ("memory-safe") {
+            swapParams := add(params.offset, calldataload(params.offset))
+        }
     }
 
     /// @dev equivalent to: abi.decode(params, (Currency)) in calldata
