@@ -617,9 +617,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         bytes memory calls = planner.encode();
 
         // revert since we're forfeiting beyond the max tolerance
-        vm.expectRevert(
-            SafeCast.SafeCastOverflow.selector
-        );
+        vm.expectRevert(SafeCast.SafeCastOverflow.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 }
