@@ -126,7 +126,12 @@ contract RoutingTestHelpers is Test, Deployers {
         params.amountInMaximum = type(uint128).max;
     }
 
-    function _finalizeAndExecuteSwap(Currency inputCurrency, Currency outputCurrency, uint256 amountIn)
+    function _finalizeAndExecuteSwap(
+        Currency inputCurrency,
+        Currency outputCurrency,
+        uint256 amountIn,
+        address takeRecipient
+    )
         internal
         returns (
             uint256 inputBalanceBefore,
@@ -138,7 +143,7 @@ contract RoutingTestHelpers is Test, Deployers {
         inputBalanceBefore = inputCurrency.balanceOfSelf();
         outputBalanceBefore = outputCurrency.balanceOfSelf();
 
-        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, address(this));
+        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, takeRecipient);
 
         uint256 value = (inputCurrency.isNative()) ? amountIn : 0;
 
@@ -147,6 +152,18 @@ contract RoutingTestHelpers is Test, Deployers {
 
         inputBalanceAfter = inputCurrency.balanceOfSelf();
         outputBalanceAfter = outputCurrency.balanceOfSelf();
+    }
+
+    function _finalizeAndExecuteSwap(Currency inputCurrency, Currency outputCurrency, uint256 amountIn)
+        internal
+        returns (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        )
+    {
+        return _finalizeAndExecuteSwap(inputCurrency, outputCurrency, amountIn, Actions.MSG_SENDER);
     }
 
     function _finalizeAndExecuteNativeInputExactOutputSwap(
@@ -165,7 +182,7 @@ contract RoutingTestHelpers is Test, Deployers {
         inputBalanceBefore = inputCurrency.balanceOfSelf();
         outputBalanceBefore = outputCurrency.balanceOfSelf();
 
-        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, address(this));
+        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, Actions.MSG_SENDER);
 
         // send too much ETH to mimic slippage
         uint256 value = expectedAmountIn + 0.1 ether;
