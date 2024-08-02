@@ -230,8 +230,8 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Actions.INCREASE_LIQUIDITY,
             abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, halfTokensOwedAlice + 1 wei));
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, halfTokensOwedAlice + 1 wei));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, halfTokensOwedAlice + 1 wei));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, halfTokensOwedAlice + 1 wei));
         bytes memory calls = planner.encode();
 
         vm.prank(alice);

@@ -176,8 +176,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             Actions.INCREASE_LIQUIDITY,
             abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, 18 wei)); // alice is willing to forfeit 18 wei
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, 18 wei));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, 18 wei)); // alice is willing to forfeit 18 wei
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, 18 wei));
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
@@ -279,8 +279,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             Actions.INCREASE_LIQUIDITY,
             abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, 1 wei)); // alice is willing to forfeit 1 wei
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, 1 wei));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, 1 wei)); // alice is willing to forfeit 1 wei
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, 1 wei));
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
@@ -653,7 +653,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         assertEq(currency1.balanceOf(address(this)), balanceBefore1 - amount1);
     }
 
-    function test_increaseLiquidity_clearExceeds_revert() public {
+    /// @dev if clearing exceeds the max amount, the amount is taken instead
+    function test_increaseLiquidity_clearExceedsThenTake() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 1000e18, address(this), ZERO_BYTES);
 
@@ -663,6 +664,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // calculate the amount of liquidity to add, using half of the proceeds
         uint256 amountToReinvest = amountToDonate / 2;
+        uint256 amountToReclaim = amountToDonate / 2; // expect to reclaim the other half of the fee revenue
         uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
             SQRT_PRICE_1_1,
             TickMath.getSqrtPriceAtTick(config.tickLower),
@@ -671,28 +673,33 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             amountToReinvest
         );
 
+        // set the max-forfeit to less than the amount we expect to claim
+        uint256 maxClear = amountToReclaim - 2 wei;
+
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
             abi.encode(tokenId, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, amountToReinvest - 2 wei));
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, amountToReinvest - 2 wei));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, maxClear));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, maxClear));
         bytes memory calls = planner.encode();
 
-        // revert since we're forfeiting beyond the max tolerance
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IPositionManager.ClearExceedsMaxAmount.selector,
-                config.poolKey.currency0,
-                int256(amountToReinvest - 1 wei), // imprecision, PM expects us to collect half of the fees (minus 1 wei)
-                uint256(amountToReinvest - 2 wei) // the maximum amount we were willing to forfeit
-            )
-        );
+        uint256 balance0Before = currency0.balanceOf(address(this));
+        uint256 balance1Before = currency1.balanceOf(address(this));
+
+        // expect to take the excess, as it exceeds the amount to clear
         lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+
+        assertEq(uint128(delta.amount0()), amountToReclaim - 1 wei); // imprecision
+        assertEq(uint128(delta.amount1()), amountToReclaim - 1 wei);
+
+        assertEq(currency0.balanceOf(address(this)), balance0Before + amountToReclaim - 1 wei);
+        assertEq(currency1.balanceOf(address(this)), balance1Before + amountToReclaim - 1 wei);
     }
 
-    /// @dev clearing a negative delta reverts in core with SafeCastOverflow
+    /// @dev clearing a negative delta reverts
     function test_increaseLiquidity_clearNegative_revert() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 1000e18, address(this), ZERO_BYTES);
@@ -703,12 +710,12 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             Actions.INCREASE_LIQUIDITY,
             abi.encode(tokenId, config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, type(uint256).max));
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, type(uint256).max));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, type(uint256).max));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, type(uint256).max));
         bytes memory calls = planner.encode();
 
         // revert since we're forfeiting beyond the max tolerance
-        vm.expectRevert(SafeCast.SafeCastOverflow.selector);
+        vm.expectRevert(abi.encodeWithSelector(IPositionManager.CannotClearNegativeDelta.selector, currency0));
         lpm.modifyLiquidities(calls, _deadline);
     }
 }

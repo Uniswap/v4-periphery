@@ -43,6 +43,7 @@ contract PositionManager is
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
+    using SafeCast for int256;
     using CalldataDecoder for bytes;
     using SlippageCheckLibrary for BalanceDelta;
 
@@ -111,9 +112,9 @@ contract PositionManager is
         } else if (action == Actions.CLOSE_CURRENCY) {
             Currency currency = params.decodeCurrency();
             _close(currency);
-        } else if (action == Actions.CLEAR) {
+        } else if (action == Actions.CLEAR_OR_TAKE) {
             (Currency currency, uint256 amountMax) = params.decodeCurrencyAndUint256();
-            _clear(currency, amountMax);
+            _clearOrTake(currency, amountMax);
         } else if (action == Actions.BURN_POSITION) {
             // Will automatically decrease liquidity to 0 if the position is not already empty.
             (
@@ -208,11 +209,18 @@ contract PositionManager is
     }
 
     /// @dev integrators may elect to forfeit positive deltas with clear
-    /// provides a safety check that amount-to-clear is less than a user-provided maximum
-    function _clear(Currency currency, uint256 amountMax) internal {
+    /// if the forfeit amount exceeds the user-specified max, the amount is taken instead
+    function _clearOrTake(Currency currency, uint256 amountMax) internal {
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
-        if (uint256(currencyDelta) > amountMax) revert ClearExceedsMaxAmount(currency, currencyDelta, amountMax);
-        poolManager.clear(currency, uint256(currencyDelta));
+        if (currencyDelta < 0) revert CannotClearNegativeDelta(currency);
+        uint256 delta = uint256(currencyDelta); // safe since we know its positive
+
+        // forfeit the delta if its less than or equal to the user-specified limit
+        if (delta <= amountMax) {
+            poolManager.clear(currency, delta);
+        } else {
+            _take(currency, _msgSender(), delta);
+        }
     }
 
     /// @dev uses this addresses balance to settle a negative delta

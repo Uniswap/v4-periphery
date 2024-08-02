@@ -30,7 +30,7 @@ library Actions {
 
     uint256 constant CLOSE_CURRENCY = 0x16;
     uint256 constant CLOSE_PAIR = 0x17;
-    uint256 constant CLEAR = 0x18;
+    uint256 constant CLEAR_OR_TAKE = 0x18;
     uint256 constant SWEEP = 0x19;
 
     // minting/burning 6909s to close deltas
