@@ -417,7 +417,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         Plan memory plan = Planner.init();
         plan.add(
             Actions.MINT_POSITION,
-            abi.encode(config, 10e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
         );
         plan.add(Actions.CLOSE_CURRENCY, abi.encode(config.poolKey.currency0));
         plan.add(Actions.CLOSE_CURRENCY, abi.encode(config.poolKey.currency1));
@@ -435,7 +435,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
         (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
 
-        // assertEq(liquidity, 100e18);
-        // assertEq(sub.notifySubscribeCount(), 1);
+        assertEq(liquidity, 100e18);
+        assertEq(sub.notifySubscribeCount(), 1);
     }
 }

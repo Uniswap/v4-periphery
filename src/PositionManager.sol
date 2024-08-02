@@ -72,12 +72,12 @@ contract PositionManager is
     }
 
     /// @notice Reverts if the caller is not the owner or approved for the ERC721 token
-    /// @param sender The address of the caller
+    /// @param caller The address of the caller
     /// @param tokenId the unique identifier of the ERC721 token
     /// @dev either msg.sender or _msgSender() is passed in as the sender
     /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
-    modifier onlyIfApproved(address sender, uint256 tokenId) {
-        if (!_isApprovedOrOwner(sender, tokenId)) revert NotApproved(sender);
+    modifier onlyIfApproved(address caller, uint256 tokenId) {
+        if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
         _;
     }
 
@@ -107,6 +107,7 @@ contract PositionManager is
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
+        // call to _subscribe will revert if the user already has a sub
         positionConfigs.setSubscribe(tokenId);
         _subscribe(tokenId, config, subscriber);
     }

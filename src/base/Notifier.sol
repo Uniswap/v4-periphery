@@ -7,6 +7,7 @@ import {GasLimitCalculator} from "../libraries/GasLimitCalculator.sol";
 
 import "../interfaces/INotifier.sol";
 
+/// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
     using GasLimitCalculator for uint256;
 
@@ -25,8 +26,6 @@ abstract contract Notifier is INotifier {
 
     mapping(uint256 tokenId => ISubscriber subscriber) public subscriber;
 
-    constructor() {}
-
     function _subscribe(uint256 tokenId, PositionConfig memory config, address newSubscriber) internal {
         ISubscriber _subscriber = subscriber[tokenId];
 
@@ -42,8 +41,6 @@ abstract contract Notifier is INotifier {
         ISubscriber _subscriber = subscriber[tokenId];
 
         uint256 subscriberGasLimit = BLOCK_LIMIT_BPS.toGasLimit();
-
-        bytes memory data = abi.encodeWithSelector(ISubscriber.notifyUnsubscribe.selector, tokenId, config);
 
         try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config) {} catch {}
 

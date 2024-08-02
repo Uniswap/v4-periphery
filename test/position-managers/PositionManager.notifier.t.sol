@@ -262,6 +262,19 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(sub.notifyModifyLiquidityCount(), 1);
     }
 
+    function test_unsubscribe_revertsWhenNotSubscribed() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        vm.expectRevert();
+        lpm.unsubscribe(tokenId, config);
+    }
+
     function _hasSubscriber(bytes32 _config) internal pure returns (bool subscribed) {
         assembly {
             subscribed := shr(255, _config)
