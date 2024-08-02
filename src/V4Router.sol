@@ -9,6 +9,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 import {PathKey, PathKeyLib} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
+import {BipsLibrary} from "./libraries/BipsLibrary.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
@@ -23,6 +24,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using SafeCastTemp for *;
     using PathKeyLib for PathKey;
     using CalldataDecoder for bytes;
+    using BipsLibrary for uint256;
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
@@ -56,6 +58,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 // TODO should _take have a minAmountOut added slippage check?
                 // TODO recipient mapping
                 _take(currency, recipient, amount);
+            } else if (action == Actions.TAKE_PORTION) {
+                (Currency currency, address recipient, uint256 bips) = params.decodeCurrencyAddressAndUint256();
+                _take(currency, recipient, _getFullTakeAmount(currency).calculatePortion(bips));
             } else {
                 revert UnsupportedAction(action);
             }
