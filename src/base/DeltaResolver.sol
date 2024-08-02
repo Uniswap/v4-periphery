@@ -74,7 +74,7 @@ abstract contract DeltaResolver is ImmutableState {
     }
 
     /// @notice Calculates the amount for a swap action
-    function _mapSwapAmount(uint128 amount, Currency currency) internal view returns (uint128) {
+    function _mapInputAmount(uint128 amount, Currency currency) internal view returns (uint128) {
         if (amount == Constants.CONTRACT_BALANCE) {
             return currency.balanceOfSelf().toUint128();
         } else if (amount == Constants.OPEN_DELTA) {
