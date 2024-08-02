@@ -20,6 +20,22 @@ contract V4RouterTest is RoutingTestHelpers {
                         ERC20 -> ERC20 EXACT INPUT
     //////////////////////////////////////////////////////////////*/
 
+    function test_swapExactInputSingle_revertsForAmountOut() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        // min amount out of 1 higher than the actual amount out
+        IV4Router.ExactInputSingleParams memory params = IV4Router.ExactInputSingleParams(
+            key0, true, uint128(amountIn), uint128(expectedAmountOut + 1), 0, bytes("")
+        );
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
+
+        vm.expectRevert(IV4Router.TooLittleReceived.selector);
+        router.executeActions(data);
+    }
+
     function test_swapExactInputSingle_zeroForOne() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
@@ -54,6 +70,22 @@ contract V4RouterTest is RoutingTestHelpers {
 
         assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
+    }
+
+    function test_swapExactInput_revertsForAmountOut() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        tokenPath.push(currency0);
+        tokenPath.push(currency1);
+        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
+        params.amountOutMinimum = uint128(expectedAmountOut + 1);
+
+        plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
+
+        vm.expectRevert(IV4Router.TooLittleReceived.selector);
+        router.executeActions(data);
     }
 
     function test_swapExactIn_1Hop_zeroForOne() public {
@@ -287,12 +319,28 @@ contract V4RouterTest is RoutingTestHelpers {
                         ERC20 -> ERC20 EXACT OUTPUT
     //////////////////////////////////////////////////////////////*/
 
+    function test_swapExactOutputSingle_revertsForAmountIn() public {
+        uint256 amountOut = 1 ether;
+        uint256 expectedAmountIn = 1008049273448486163;
+
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            key0, true, uint128(amountOut), uint128(expectedAmountIn - 1), 0, bytes("")
+        );
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
+
+        vm.expectRevert(IV4Router.TooMuchRequested.selector);
+        router.executeActions(data);
+    }
+
     function test_swapExactOutputSingle_zeroForOne() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, true, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            key0, true, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
@@ -310,8 +358,9 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, false, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            key0, false, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
@@ -323,6 +372,22 @@ contract V4RouterTest is RoutingTestHelpers {
 
         assertEq(inputBalanceBefore - inputBalanceAfter, expectedAmountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, amountOut);
+    }
+
+    function test_swapExactOut_revertsForAmountIn() public {
+        uint256 amountOut = 1 ether;
+        uint256 expectedAmountIn = 1008049273448486163;
+
+        tokenPath.push(currency0);
+        tokenPath.push(currency1);
+        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
+        params.amountInMaximum = uint128(expectedAmountIn - 1);
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
+
+        vm.expectRevert(IV4Router.TooMuchRequested.selector);
+        router.executeActions(data);
     }
 
     function test_swapExactOut_1Hop_zeroForOne() public {
@@ -422,8 +487,9 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(nativeKey, true, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            nativeKey, true, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
@@ -441,8 +507,9 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(nativeKey, false, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            nativeKey, false, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 

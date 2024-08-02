@@ -44,11 +44,11 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         } else {
             if (action == Actions.SETTLE_ALL) {
                 Currency currency = params.decodeCurrency();
-                uint256 amount = _getFullSettleAmount(currency);
-
-                // TODO support address(this) paying too
                 // TODO should it have a maxAmountOut added slippage protection?
-                _settle(currency, _msgSender(), amount);
+                _settle(currency, _msgSender(), _getFullSettleAmount(currency));
+            } else if (action == Actions.SETTLE_WITH_BALANCE) {
+                Currency currency = params.decodeCurrency();
+                _settle(currency, address(this), _getFullSettleAmount(currency));
             } else if (action == Actions.TAKE_ALL) {
                 (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
                 uint256 amount = _getFullTakeAmount(currency);
@@ -63,13 +63,14 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     }
 
     function _swapExactInputSingle(IV4Router.ExactInputSingleParams memory params) private {
-        _swap(
+        uint128 amountOut = _swap(
             params.poolKey,
             params.zeroForOne,
             int256(-int128(params.amountIn)),
             params.sqrtPriceLimitX96,
             params.hookData
-        );
+        ).toUint128();
+        if (amountOut < params.amountOutMinimum) revert TooLittleReceived();
     }
 
     function _swapExactInput(IV4Router.ExactInputParams memory params) private {
@@ -96,13 +97,16 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     }
 
     function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams memory params) private {
-        _swap(
-            params.poolKey,
-            params.zeroForOne,
-            int256(int128(params.amountOut)),
-            params.sqrtPriceLimitX96,
-            params.hookData
-        );
+        uint128 amountIn = (
+            -_swap(
+                params.poolKey,
+                params.zeroForOne,
+                int256(int128(params.amountOut)),
+                params.sqrtPriceLimitX96,
+                params.hookData
+            )
+        ).toUint128();
+        if (amountIn > params.amountInMaximum) revert TooMuchRequested();
     }
 
     function _swapExactOutput(IV4Router.ExactOutputParams memory params) private {
