@@ -9,6 +9,7 @@ import {MockERC721Permit} from "./mocks/MockERC721Permit.sol";
 import {IERC721Permit} from "../src/interfaces/IERC721Permit.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {UnorderedNonce} from "../src/base/UnorderedNonce.sol";
+import {UnorderedNonceLibrary} from "../src/libraries/UnorderedNonceLibrary.sol";
 
 contract ERC721PermitTest is Test {
     MockERC721Permit erc721Permit;
@@ -165,7 +166,7 @@ contract ERC721PermitTest is Test {
         bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.startPrank(alice);
-        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        vm.expectRevert(UnorderedNonceLibrary.NonceAlreadyUsed.selector);
         erc721Permit.permit(bob, tokenIdAlice, block.timestamp, nonce, signature);
         vm.stopPrank();
     }
@@ -188,7 +189,7 @@ contract ERC721PermitTest is Test {
         bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.startPrank(alice);
-        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        vm.expectRevert(UnorderedNonceLibrary.NonceAlreadyUsed.selector);
         erc721Permit.permit(bob, tokenIdAlice2, block.timestamp, nonce, signature);
         vm.stopPrank();
     }
