@@ -41,7 +41,6 @@ contract CurrencyDeltasTest is Test, Deployers {
 
     function test_fuzz_currencyDeltas(uint256 depth, uint256 seed, uint128 amount0, uint128 amount1) public {
         depth = bound(depth, 1, 200);
-        seed = bound(seed, 1, 200);
         amount0 = uint128(bound(amount0, 1, 100e18));
         amount1 = uint128(bound(amount1, 1, 100e18));
 
