@@ -3,6 +3,11 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {MockSubscriber} from "../mocks/MockSubscriber.sol";
@@ -14,6 +19,8 @@ import {Actions} from "../../src/libraries/Actions.sol";
 import {MockReturnDataSubscriber} from "../mocks/MockBadSubscribers.sol";
 
 contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
+    using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
     using Planner for Plan;
 
     MockSubscriber sub;
@@ -189,6 +196,58 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // the subscriber contract call failed bc it used too much gas
         assertEq(MockReturnDataSubscriber(badSubscriber).notifyUnsubscribeCount(), 0);
+    }
+
+    function test_multicall_mint_subscribe() public {
+        uint256 tokenId = lpm.nextTokenId();
+
+        Plan memory plan = Planner.init();
+        plan.add(Actions.MINT_POSITION, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        bytes memory actions = plan.finalizeModifyLiquidity(config.poolKey);
+
+        bytes[] memory calls = new bytes[](2);
+
+        calls[0] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions, _deadline);
+        calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub);
+
+        lpm.multicall(calls);
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+
+        assertEq(liquidity, 100e18);
+        assertEq(sub.notifySubscribeCount(), 1);
+    }
+
+    function test_multicall_mint_subscribe_increase() public {
+        uint256 tokenId = lpm.nextTokenId();
+
+        // Encode mint.
+        Plan memory plan = Planner.init();
+        plan.add(Actions.MINT_POSITION, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        bytes memory actions = plan.finalizeModifyLiquidity(config.poolKey);
+
+        // Encode increase separately.
+        plan = Planner.init();
+        plan.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, 10e18, ZERO_BYTES));
+        bytes memory actions2 = plan.finalizeModifyLiquidity(config.poolKey);
+
+        bytes[] memory calls = new bytes[](3);
+
+        calls[0] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions, _deadline);
+        calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub);
+        calls[2] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions2, _deadline);
+
+        lpm.multicall(calls);
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+
+        assertEq(liquidity, 110e18);
+        assertEq(sub.notifySubscribeCount(), 1);
+        assertEq(sub.notifyModifyLiquidityCount(), 1);
     }
 
     function _hasSubscriber(bytes32 _config) internal pure returns (bool subscribed) {

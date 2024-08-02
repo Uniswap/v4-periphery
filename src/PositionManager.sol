@@ -101,6 +101,7 @@ contract PositionManager is
     /// @inheritdoc INotifier
     function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber)
         external
+        payable
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
@@ -111,6 +112,7 @@ contract PositionManager is
     /// @inheritdoc INotifier
     function unsubscribe(uint256 tokenId, PositionConfig calldata config)
         external
+        payable
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
