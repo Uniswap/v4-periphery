@@ -208,7 +208,7 @@ contract PositionManager is
     }
 
     /// @dev integrators may elect to forfeit positive deltas with clear
-    /// provide a safety check that amount-to-clear is less than a user-provided maximum
+    /// provides a safety check that amount-to-clear is less than a user-provided maximum
     function _clear(Currency currency, uint256 amountMax) internal {
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
         if (uint256(currencyDelta) > amountMax) revert ClearExceedsMaxAmount(currency, currencyDelta, amountMax);
