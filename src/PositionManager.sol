@@ -107,7 +107,7 @@ contract PositionManager is
                 address owner,
                 bytes calldata hookData
             ) = params.decodeMintParams();
-            _mint(config, liquidity, amount0Max, amount1Max, _map(owner), hookData);
+            _mint(config, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
         } else if (action == Actions.CLOSE_CURRENCY) {
             Currency currency = params.decodeCurrency();
             _close(currency);
@@ -124,12 +124,15 @@ contract PositionManager is
                 bytes calldata hookData
             ) = params.decodeBurnParams();
             _burn(tokenId, config, amount0Min, amount1Min, hookData);
-        } else if (action == Actions.SETTLE_WITH_BALANCE) {
-            Currency currency = params.decodeCurrency();
-            _settleWithBalance(currency);
+        } else if (action == Actions.SETTLE) {
+            (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
+            _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
+        } else if (action == Actions.SETTLE_PAIR) {
+            (Currency currency0, Currency currency1) = params.decodeCurrencyPair();
+            _settlePair(currency0, currency1);
         } else if (action == Actions.SWEEP) {
             (Currency currency, address to) = params.decodeCurrencyAndAddress();
-            _sweep(currency, _map(to));
+            _sweep(currency, _mapRecipient(to));
         } else {
             revert UnsupportedAction(action);
         }
@@ -210,7 +213,7 @@ contract PositionManager is
     /// @dev integrators may elect to forfeit positive deltas with clear
     /// if the forfeit amount exceeds the user-specified max, the amount is taken instead
     function _clearOrTake(Currency currency, uint256 amountMax) internal {
-        uint256 delta = _getFullNegativeDelta(currency);
+        uint256 delta = _getFullCredit(currency);
 
         // forfeit the delta if its less than or equal to the user-specified limit
         if (delta <= amountMax) {
@@ -223,7 +226,14 @@ contract PositionManager is
     /// @dev uses this addresses balance to settle a negative delta
     function _settleWithBalance(Currency currency) internal {
         // set the payer to this address, performs a transfer.
-        _settle(currency, address(this), _getFullPositiveDelta(currency));
+        _settle(currency, address(this), _getFullDebit(currency));
+    }
+
+    function _settlePair(Currency currency0, Currency currency1) internal {
+        // the locker is the payer when settling
+        address caller = _msgSender();
+        _settle(currency0, caller, _getFullDebit(currency0));
+        _settle(currency1, caller, _getFullDebit(currency1));
     }
 
     /// @dev this is overloaded with ERC721Permit._burn

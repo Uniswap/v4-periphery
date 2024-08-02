@@ -5,11 +5,14 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "./ImmutableState.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {Constants} from "../libraries/Constants.sol";
 
 /// @notice Abstract contract used to sync, send, and settle funds to the pool manager
 /// @dev Note that sync() is called before any erc-20 transfer in `settle`.
 abstract contract DeltaResolver is ImmutableState {
     using TransientStateLibrary for IPoolManager;
+    using SafeCast for *;
 
     /// @notice Emitted trying to settle a positive delta.
     error DeltaNotPositive(Currency currency);
@@ -46,17 +49,43 @@ abstract contract DeltaResolver is ImmutableState {
     /// @param amount The number of tokens to send
     function _pay(Currency token, address payer, uint256 amount) internal virtual;
 
-    function _getFullPositiveDelta(Currency currency) internal view returns (uint256 amount) {
+    /// @notice Obtain the full credit owed to this contract (positive delta)
+    /// @param currency Currency to get the delta for
+    /// @return amount The amount owed to this contract as a uint256
+    function _getFullCredit(Currency currency) internal view returns (uint256 amount) {
         int256 _amount = poolManager.currencyDelta(address(this), currency);
-        // If the amount is positive, it should be taken not settled for.
-        if (_amount > 0) revert DeltaNotPositive(currency);
+        // If the amount is negative, it should be taken not settled for.
+        if (_amount < 0) revert DeltaNotPositive(currency);
+        amount = uint256(_amount);
+    }
+
+    /// @notice Obtain the full amount owed by this contract (negative delta)
+    /// @param currency Currency to get the delta for
+    /// @return amount The amount owed by this contract as a uint256
+    function _getFullDebit(Currency currency) internal view returns (uint256 amount) {
+        int256 _amount = poolManager.currencyDelta(address(this), currency);
+        // If the amount is negative, it should be settled not taken.
+        if (_amount > 0) revert DeltaNotNegative(currency);
         amount = uint256(-_amount);
     }
 
-    function _getFullNegativeDelta(Currency currency) internal view returns (uint256 amount) {
-        int256 _amount = poolManager.currencyDelta(address(this), currency);
-        // If the amount is negative, it should be settled not taken.
-        if (_amount < 0) revert DeltaNotNegative(currency);
-        amount = uint256(_amount);
+    /// @notice Calculates the amount for a settle action
+    function _mapSettleAmount(uint256 amount, Currency currency) internal view returns (uint256) {
+        if (amount == Constants.CONTRACT_BALANCE) {
+            return currency.balanceOfSelf();
+        } else if (amount == Constants.OPEN_DELTA) {
+            return _getFullDebit(currency);
+        }
+        return amount;
+    }
+
+    /// @notice Calculates the amount for a swap action
+    function _mapInputAmount(uint128 amount, Currency currency) internal view returns (uint128) {
+        if (amount == Constants.CONTRACT_BALANCE) {
+            return currency.balanceOfSelf().toUint128();
+        } else if (amount == Constants.OPEN_DELTA) {
+            return _getFullCredit(currency).toUint128();
+        }
+        return amount;
     }
 }

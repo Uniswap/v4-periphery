@@ -28,6 +28,7 @@ import {Actions} from "../../src/libraries/Actions.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
+import {Constants} from "../../src/libraries/Constants.sol";
 
 contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     using FixedPointMathLib for uint256;
@@ -120,7 +121,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         planner.add(
             Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, 0 wei, 0 wei, ZERO_BYTES)
         );
-        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.startPrank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         vm.stopPrank();
@@ -491,7 +492,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     function test_increaseLiquidity_slippage_revertAmount0() public {
         // increasing liquidity with strict slippage parameters (amount0) will revert
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 100e18, Constants.MSG_SENDER, ZERO_BYTES);
 
         // revert since amount0Max is too low
         bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, 1 wei, type(uint128).max, ZERO_BYTES);
@@ -502,7 +503,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     function test_increaseLiquidity_slippage_revertAmount1() public {
         // increasing liquidity with strict slippage parameters (amount1) will revert
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 100e18, Constants.MSG_SENDER, ZERO_BYTES);
 
         // revert since amount1Max is too low
         bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, type(uint128).max, 1 wei, ZERO_BYTES);
@@ -513,7 +514,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     function test_increaseLiquidity_slippage_exactDoesNotRevert() public {
         // increasing liquidity with perfect slippage parameters does not revert
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 100e18, Constants.MSG_SENDER, ZERO_BYTES);
 
         uint128 newLiquidity = 10e18;
         (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
@@ -538,7 +539,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     function test_increaseLiquidity_slippage_revert_swap() public {
         // increasing liquidity with perfect slippage parameters does not revert
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, Actions.MSG_SENDER, ZERO_BYTES);
+        mint(config, 100e18, Constants.MSG_SENDER, ZERO_BYTES);
 
         uint128 newLiquidity = 10e18;
         (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
@@ -566,8 +567,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             Actions.MINT_POSITION,
             abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
         );
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
+        planner.add(Actions.SETTLE, abi.encode(currency0, Constants.OPEN_DELTA, false));
+        planner.add(Actions.SETTLE, abi.encode(currency1, Constants.OPEN_DELTA, false));
         // this test sweeps to the test contract, even though Alice is the caller of the transaction
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
         planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
@@ -608,10 +609,10 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             Actions.MINT_POSITION,
             abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
         );
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
-        planner.add(Actions.SWEEP, abi.encode(currency0, Actions.MSG_SENDER));
-        planner.add(Actions.SWEEP, abi.encode(currency1, Actions.MSG_SENDER));
+        planner.add(Actions.SETTLE, abi.encode(currency0, Constants.OPEN_DELTA, false));
+        planner.add(Actions.SETTLE, abi.encode(currency1, Constants.OPEN_DELTA, false));
+        planner.add(Actions.SWEEP, abi.encode(currency0, Constants.MSG_SENDER));
+        planner.add(Actions.SWEEP, abi.encode(currency1, Constants.MSG_SENDER));
 
         uint256 balanceBefore0 = currency0.balanceOf(alice);
         uint256 balanceBefore1 = currency1.balanceOf(alice);
@@ -655,8 +656,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
             Actions.INCREASE_LIQUIDITY,
             abi.encode(tokenIdAlice, config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
+        planner.add(Actions.SETTLE, abi.encode(currency0, Constants.OPEN_DELTA, false));
+        planner.add(Actions.SETTLE, abi.encode(currency1, Constants.OPEN_DELTA, false));
         // this test sweeps to the test contract, even though Alice is the caller of the transaction
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
         planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
@@ -754,7 +755,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         bytes memory calls = planner.encode();
 
         // revert since we're trying to clear a negative delta
-        vm.expectRevert(abi.encodeWithSelector(DeltaResolver.DeltaNotNegative.selector, currency0));
+        vm.expectRevert(abi.encodeWithSelector(DeltaResolver.DeltaNotPositive.selector, currency0));
         lpm.modifyLiquidities(calls, _deadline);
     }
 }

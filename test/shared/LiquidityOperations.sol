@@ -101,7 +101,7 @@ abstract contract LiquidityOperations is CommonBase {
         Plan memory planner = Planner.init();
         planner.add(Actions.MINT_POSITION, abi.encode(config, liquidity, amount0Max, amount1Max, recipient, hookData));
 
-        return planner.finalizeModifyLiquidity(config.poolKey);
+        return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 
     function getIncreaseEncoded(
@@ -127,7 +127,7 @@ abstract contract LiquidityOperations is CommonBase {
         planner.add(
             Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, amount0Max, amount1Max, hookData)
         );
-        return planner.finalizeModifyLiquidity(config.poolKey);
+        return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 
     function getDecreaseEncoded(
@@ -153,7 +153,7 @@ abstract contract LiquidityOperations is CommonBase {
         planner.add(
             Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToRemove, amount0Min, amount1Min, hookData)
         );
-        return planner.finalizeModifyLiquidity(config.poolKey);
+        return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 
     function getCollectEncoded(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
@@ -173,7 +173,7 @@ abstract contract LiquidityOperations is CommonBase {
     ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
         planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, amount0Min, amount1Min, hookData));
-        return planner.finalizeModifyLiquidity(config.poolKey);
+        return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 
     function getBurnEncoded(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
@@ -194,6 +194,6 @@ abstract contract LiquidityOperations is CommonBase {
         Plan memory planner = Planner.init();
         planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, amount0Min, amount1Min, hookData));
         // Close needed on burn in case there is liquidity left in the position.
-        return planner.finalizeModifyLiquidity(config.poolKey);
+        return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 }
