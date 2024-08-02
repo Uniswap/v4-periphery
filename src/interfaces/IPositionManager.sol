@@ -10,7 +10,6 @@ interface IPositionManager is INotifier {
     error NotApproved(address caller);
     error DeadlinePassed();
     error IncorrectPositionConfigForTokenId(uint256 tokenId);
-    error ClearExceedsMaxAmount(Currency currency, int256 amount, uint256 maxAmount);
 
     /// @notice Batches many liquidity modification calls to pool manager
     /// @param payload is an encoding of actions, and parameters for those actions
