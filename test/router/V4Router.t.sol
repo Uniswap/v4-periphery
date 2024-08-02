@@ -30,7 +30,7 @@ contract V4RouterTest is RoutingTestHelpers {
         );
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Actions.MSG_SENDER);
 
         vm.expectRevert(IV4Router.TooLittleReceived.selector);
         router.executeActions(data);
@@ -82,7 +82,7 @@ contract V4RouterTest is RoutingTestHelpers {
         params.amountOutMinimum = uint128(expectedAmountOut + 1);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Actions.MSG_SENDER);
 
         vm.expectRevert(IV4Router.TooLittleReceived.selector);
         router.executeActions(data);
@@ -328,7 +328,7 @@ contract V4RouterTest is RoutingTestHelpers {
         );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Actions.MSG_SENDER);
 
         vm.expectRevert(IV4Router.TooMuchRequested.selector);
         router.executeActions(data);
@@ -384,7 +384,7 @@ contract V4RouterTest is RoutingTestHelpers {
         params.amountInMaximum = uint128(expectedAmountIn - 1);
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, address(this));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Actions.MSG_SENDER);
 
         vm.expectRevert(IV4Router.TooMuchRequested.selector);
         router.executeActions(data);

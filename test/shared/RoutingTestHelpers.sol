@@ -135,7 +135,7 @@ contract RoutingTestHelpers is Test, Deployers {
         inputBalanceBefore = inputCurrency.balanceOfSelf();
         outputBalanceBefore = outputCurrency.balanceOfSelf();
 
-        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, address(this));
+        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, Actions.MSG_SENDER);
 
         uint256 value = (inputCurrency.isNative()) ? amountIn : 0;
 
@@ -162,7 +162,7 @@ contract RoutingTestHelpers is Test, Deployers {
         inputBalanceBefore = inputCurrency.balanceOfSelf();
         outputBalanceBefore = outputCurrency.balanceOfSelf();
 
-        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, address(this));
+        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, Actions.MSG_SENDER);
 
         // send too much ETH to mimic slippage
         uint256 value = expectedAmountIn + 0.1 ether;

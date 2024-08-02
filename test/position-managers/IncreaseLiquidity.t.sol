@@ -375,7 +375,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     function test_increaseLiquidity_slippage_revertAmount0() public {
         // increasing liquidity with strict slippage parameters (amount0) will revert
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, address(this), ZERO_BYTES);
+        mint(config, 100e18, Actions.MSG_SENDER, ZERO_BYTES);
 
         // revert since amount0Max is too low
         bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, 1 wei, type(uint128).max, ZERO_BYTES);
@@ -386,7 +386,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     function test_increaseLiquidity_slippage_revertAmount1() public {
         // increasing liquidity with strict slippage parameters (amount1) will revert
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, address(this), ZERO_BYTES);
+        mint(config, 100e18, Actions.MSG_SENDER, ZERO_BYTES);
 
         // revert since amount1Max is too low
         bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, type(uint128).max, 1 wei, ZERO_BYTES);
@@ -397,7 +397,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     function test_increaseLiquidity_slippage_exactDoesNotRevert() public {
         // increasing liquidity with perfect slippage parameters does not revert
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, address(this), ZERO_BYTES);
+        mint(config, 100e18, Actions.MSG_SENDER, ZERO_BYTES);
 
         uint128 newLiquidity = 10e18;
         (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
@@ -422,7 +422,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     function test_increaseLiquidity_slippage_revert_swap() public {
         // increasing liquidity with perfect slippage parameters does not revert
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, address(this), ZERO_BYTES);
+        mint(config, 100e18, Actions.MSG_SENDER, ZERO_BYTES);
 
         uint128 newLiquidity = 10e18;
         (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
@@ -452,6 +452,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         );
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
+        // this test sweeps to the test contract, even though Alice is the caller of the transaction
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
         planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
 
@@ -504,6 +505,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         );
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
+        // this test sweeps to the test contract, even though Alice is the caller of the transaction
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
         planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
 
