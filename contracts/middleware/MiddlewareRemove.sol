@@ -10,8 +10,9 @@ import {BaseHook} from "../../src/base/hooks/BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import {NonZeroDeltaCount} from "@uniswap/v4-core/src/libraries/NonZeroDeltaCount.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {console} from "../../lib/v4-core/lib/forge-std/src/console.sol";
 
 contract MiddlewareRemove is BaseRemove {
     using CustomRevert for bytes4;
@@ -85,8 +86,8 @@ contract MiddlewareRemove is BaseRemove {
         if (selector != BaseHook.afterRemoveLiquidity.selector) {
             revert Hooks.InvalidHookResponse();
         }
-        uint256 nonzeroDeltaCount = poolManager.getNonzeroDeltaCount();
-        if (nonzeroDeltaCount == 0 && returnDelta == BalanceDeltaLibrary.ZERO_DELTA) {
+        uint256 unaccountedNonzeroDeltas = poolManager.getNonzeroDeltaCount();
+        if (unaccountedNonzeroDeltas == 0 && returnDelta == BalanceDeltaLibrary.ZERO_DELTA) {
             return returnDelta;
         }
         if (
@@ -96,37 +97,49 @@ contract MiddlewareRemove is BaseRemove {
             revert TookTooMuchFee();
         }
         returnDelta - delta; // revert on overflow
-        uint256 nonzeroHookDeltaCount;
-        int256 hookDelta = poolManager.currencyDelta(address(this), key.currency0);
-        if (-hookDelta != returnDelta.amount0()) {
-            revert DeltasReturnMismatch();
-        }
-        if (hookDelta != 0) {
-            nonzeroHookDeltaCount++;
-        }
-        hookDelta = poolManager.currencyDelta(address(this), key.currency1);
-        if (-hookDelta != returnDelta.amount1()) {
-            revert DeltasReturnMismatch();
-        }
-        if (hookDelta != 0) {
-            nonzeroHookDeltaCount++;
-        }
-        if (nonzeroHookDeltaCount == nonzeroDeltaCount) {
+
+        unaccountedNonzeroDeltas =
+            validateAndCountDeltas(key.currency0, returnDelta.amount0(), unaccountedNonzeroDeltas);
+        unaccountedNonzeroDeltas =
+            validateAndCountDeltas(key.currency1, returnDelta.amount1(), unaccountedNonzeroDeltas);
+
+        if (unaccountedNonzeroDeltas == 0) {
             return returnDelta;
         }
 
         // if the hook settled the caller's deltas
         if (poolManager.currencyDelta(sender, key.currency0) != 0) {
-            nonzeroHookDeltaCount++;
+            unchecked {
+                unaccountedNonzeroDeltas--;
+            }
         }
         if (poolManager.currencyDelta(sender, key.currency1) != 0) {
-            nonzeroHookDeltaCount++;
+            unchecked {
+                unaccountedNonzeroDeltas--;
+            }
         }
-        if (nonzeroHookDeltaCount == nonzeroDeltaCount) {
+        if (unaccountedNonzeroDeltas == 0) {
             return returnDelta;
         }
-
         revert InvalidDeltasOwner();
+    }
+
+    function validateAndCountDeltas(Currency currency, int128 returnAmount, uint256 unaccountedNonzeroDeltas)
+        internal
+        view
+        returns (uint256)
+    {
+        int256 hookDelta = poolManager.currencyDelta(address(this), currency);
+        unchecked {
+            // unchecked negation is safe because even if hookDelta is int256.min, returnAmount can not be int256.min
+            if (-hookDelta != returnAmount) {
+                revert DeltasReturnMismatch();
+            }
+            if (hookDelta != 0) {
+                unaccountedNonzeroDeltas--;
+            }
+        }
+        return unaccountedNonzeroDeltas;
     }
 
     function _ensureValidFlags() internal view virtual override {

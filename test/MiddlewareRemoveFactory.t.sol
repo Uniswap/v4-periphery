@@ -355,7 +355,6 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers, GasSnapshot {
         );
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         snapLastCall("MIDDLEWARE_REMOVE-vanilla");
-
         uint160 maxFeeBips = 0;
         (, bytes32 salt) =
             MiddlewareMiner.find(address(factory), flags, address(manager), address(blankRemoveHooks), maxFeeBips);
@@ -372,13 +371,27 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers, GasSnapshot {
         );
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         snapLastCall("MIDDLEWARE_REMOVE-deltas-vanilla");
-
-        maxFeeBips = 100;
+        maxFeeBips = 1000;
         (, salt) =
             MiddlewareMiner.find(address(factory), flags, address(manager), address(blankRemoveHooks), maxFeeBips);
         hookAddress = factory.createMiddleware(address(blankRemoveHooks), maxFeeBips, salt);
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         snapLastCall("MIDDLEWARE_REMOVE-deltas-protected");
+
+        maxFeeBips = 1000;
+        flags = Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG;
+        FeeOnRemove feeOnRemove = FeeOnRemove(address(flags));
+        vm.etch(address(feeOnRemove), address(new FeeOnRemove(manager)).code);
+        (key,) = initPoolAndAddLiquidity(
+            currency0, currency1, IHooks(address(feeOnRemove)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
+        );
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
+        snapLastCall("MIDDLEWARE_REMOVE-fee-vanilla");
+        (, salt) = MiddlewareMiner.find(address(factory), flags, address(manager), address(feeOnRemove), maxFeeBips);
+        hookAddress = factory.createMiddleware(address(feeOnRemove), maxFeeBips, salt);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
+        snapLastCall("MIDDLEWARE_REMOVE-fee-protected");
     }
 }
