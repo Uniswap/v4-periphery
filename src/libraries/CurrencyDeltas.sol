@@ -12,12 +12,12 @@ library CurrencyDeltas {
     using SafeCast for int256;
 
     /// @notice Get the current delta for a caller in the two given currencies
-    /// @param caller_ The address of the caller
+    /// @param _caller The address of the caller
     /// @param currency0 The currency to lookup the delta
     /// @param currency1 The other currency to lookup the delta
     /// @return BalanceDelta The delta of the two currencies packed
     /// amount0 corresponding to currency0 and amount1 corresponding to currency1
-    function currencyDeltas(IPoolManager manager, address caller_, Currency currency0, Currency currency1)
+    function currencyDeltas(IPoolManager manager, address _caller, Currency currency0, Currency currency1)
         internal
         view
         returns (BalanceDelta)
@@ -25,11 +25,11 @@ library CurrencyDeltas {
         bytes32 tloadSlot0;
         bytes32 tloadSlot1;
         assembly {
-            mstore(0, caller_)
+            mstore(0, _caller)
             mstore(32, currency0)
             tloadSlot0 := keccak256(0, 64)
 
-            mstore(0, caller_)
+            mstore(0, _caller)
             mstore(32, currency1)
             tloadSlot1 := keccak256(0, 64)
         }

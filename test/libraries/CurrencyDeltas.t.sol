@@ -39,16 +39,14 @@ contract CurrencyDeltasTest is Test, Deployers {
         manager.approve(address(reader), currency1.toId(), type(uint256).max);
     }
 
-    function test_fuzz_currencyDeltas(uint256 depth, uint256 seed, uint128 amount0, uint128 amount1) public {
-        depth = bound(depth, 1, 200);
-        amount0 = uint128(bound(amount0, 1, 100e18));
-        amount1 = uint128(bound(amount1, 1, 100e18));
-
+    function test_fuzz_currencyDeltas(uint8 depth, uint256 seed, uint128 amount0, uint128 amount1) public {
         int128 delta0Expected = 0;
         int128 delta1Expected = 0;
 
         bytes[] memory calls = new bytes[](depth);
         for (uint256 i = 0; i < depth; i++) {
+            amount0 = uint128(bound(amount0, 1, 100e18));
+            amount1 = uint128(bound(amount1, 1, 100e18));
             uint256 _seed = seed % (i + 1);
             if (_seed % 8 == 0) {
                 calls[i] = abi.encodeWithSelector(MockCurrencyDeltaReader.settle.selector, currency0, amount0);
