@@ -10,11 +10,11 @@ contract PositionConfigTest is Test {
 
     function test_fuzz_calculatePortion(uint256 amount, uint256 bips) public {
         amount = bound(amount, 0, uint256(type(uint128).max));
-        if (bips > 10000) {
+        if (bips > BipsLibrary.BIPS_BASE) {
             vm.expectRevert(BipsLibrary.InvalidBips.selector);
             amount.calculatePortion(bips);
         } else {
-            assertEq(amount.calculatePortion(bips), amount * bips / 10000);
+            assertEq(amount.calculatePortion(bips), amount * bips / BipsLibrary.BIPS_BASE);
         }
     }
 }
