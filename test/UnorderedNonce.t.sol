@@ -13,66 +13,66 @@ contract UnorderedNonceTest is Test {
     }
 
     function testLowNonces() public {
-        unorderedNonce.batchSpendNonces(address(this), 5);
-        unorderedNonce.batchSpendNonces(address(this), 0);
-        unorderedNonce.batchSpendNonces(address(this), 1);
+        unorderedNonce.spendNonce(address(this), 5);
+        unorderedNonce.spendNonce(address(this), 0);
+        unorderedNonce.spendNonce(address(this), 1);
 
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 1);
+        unorderedNonce.spendNonce(address(this), 1);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 5);
+        unorderedNonce.spendNonce(address(this), 5);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 0);
-        unorderedNonce.batchSpendNonces(address(this), 4);
+        unorderedNonce.spendNonce(address(this), 0);
+        unorderedNonce.spendNonce(address(this), 4);
     }
 
     function testNonceWordBoundary() public {
-        unorderedNonce.batchSpendNonces(address(this), 255);
-        unorderedNonce.batchSpendNonces(address(this), 256);
+        unorderedNonce.spendNonce(address(this), 255);
+        unorderedNonce.spendNonce(address(this), 256);
 
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 255);
+        unorderedNonce.spendNonce(address(this), 255);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 256);
+        unorderedNonce.spendNonce(address(this), 256);
     }
 
     function testHighNonces() public {
-        unorderedNonce.batchSpendNonces(address(this), 2 ** 240);
-        unorderedNonce.batchSpendNonces(address(this), 2 ** 240 + 1);
+        unorderedNonce.spendNonce(address(this), 2 ** 240);
+        unorderedNonce.spendNonce(address(this), 2 ** 240 + 1);
 
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 2 ** 240);
+        unorderedNonce.spendNonce(address(this), 2 ** 240);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 2 ** 240 + 1);
+        unorderedNonce.spendNonce(address(this), 2 ** 240 + 1);
 
-        unorderedNonce.batchSpendNonces(address(this), 2 ** 240 + 2);
+        unorderedNonce.spendNonce(address(this), 2 ** 240 + 2);
     }
 
     function testInvalidateFullWord() public {
-        unorderedNonce.invalidateUnorderedNonces(0, 2 ** 256 - 1);
+        unorderedNonce.batchSpendNonces(0, 2 ** 256 - 1);
 
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 0);
+        unorderedNonce.spendNonce(address(this), 0);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 1);
+        unorderedNonce.spendNonce(address(this), 1);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 254);
+        unorderedNonce.spendNonce(address(this), 254);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 255);
-        unorderedNonce.batchSpendNonces(address(this), 256);
+        unorderedNonce.spendNonce(address(this), 255);
+        unorderedNonce.spendNonce(address(this), 256);
     }
 
     function testInvalidateNonzeroWord() public {
-        unorderedNonce.invalidateUnorderedNonces(1, 2 ** 256 - 1);
+        unorderedNonce.batchSpendNonces(1, 2 ** 256 - 1);
 
-        unorderedNonce.batchSpendNonces(address(this), 0);
-        unorderedNonce.batchSpendNonces(address(this), 254);
-        unorderedNonce.batchSpendNonces(address(this), 255);
+        unorderedNonce.spendNonce(address(this), 0);
+        unorderedNonce.spendNonce(address(this), 254);
+        unorderedNonce.spendNonce(address(this), 255);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 256);
+        unorderedNonce.spendNonce(address(this), 256);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), 511);
-        unorderedNonce.batchSpendNonces(address(this), 512);
+        unorderedNonce.spendNonce(address(this), 511);
+        unorderedNonce.spendNonce(address(this), 512);
     }
 
     function test_fuzz_InvalidateNonzeroWord(uint256 word, uint256 nonce) public {
@@ -81,7 +81,7 @@ contract UnorderedNonceTest is Test {
         // word = 0, bits [0, 256)
         // word = 1, bits [256, 512)
         // word = 2, bits [512, 768), etc
-        unorderedNonce.invalidateUnorderedNonces(word, 2 ** 256 - 1);
+        unorderedNonce.batchSpendNonces(word, 2 ** 256 - 1);
 
         // bound the nonce to be from 0 to 256 bits after the word
         nonce = bound(nonce, 0, (word + 2) * 256);
@@ -89,22 +89,22 @@ contract UnorderedNonceTest is Test {
         if ((word * 256) <= nonce && nonce < ((word + 1) * 256)) {
             vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
         }
-        unorderedNonce.batchSpendNonces(address(this), nonce);
+        unorderedNonce.spendNonce(address(this), nonce);
     }
 
     function test_fuzz_UsingNonceTwiceFails(uint256 nonce) public {
-        unorderedNonce.batchSpendNonces(address(this), nonce);
+        unorderedNonce.spendNonce(address(this), nonce);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        unorderedNonce.batchSpendNonces(address(this), nonce);
+        unorderedNonce.spendNonce(address(this), nonce);
     }
 
     function test_fuzz_UseTwoRandomNonces(uint256 first, uint256 second) public {
-        unorderedNonce.batchSpendNonces(address(this), first);
+        unorderedNonce.spendNonce(address(this), first);
         if (first == second) {
             vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-            unorderedNonce.batchSpendNonces(address(this), second);
+            unorderedNonce.spendNonce(address(this), second);
         } else {
-            unorderedNonce.batchSpendNonces(address(this), second);
+            unorderedNonce.spendNonce(address(this), second);
         }
     }
 }
