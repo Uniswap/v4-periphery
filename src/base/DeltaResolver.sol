@@ -15,9 +15,9 @@ abstract contract DeltaResolver is ImmutableState {
     using SafeCast for *;
 
     /// @notice Emitted trying to settle a positive delta.
-    error IncorrectUseOfSettle();
+    error DeltaNotPositive(Currency currency);
     /// @notice Emitted trying to take a negative delta.
-    error IncorrectUseOfTake();
+    error DeltaNotNegative(Currency currency);
 
     /// @notice Take an amount of currency out of the PoolManager
     /// @param currency Currency to take
@@ -49,17 +49,23 @@ abstract contract DeltaResolver is ImmutableState {
     /// @param amount The number of tokens to send
     function _pay(Currency token, address payer, uint256 amount) internal virtual;
 
-    function _getFullSettleAmount(Currency currency) internal view returns (uint256 amount) {
+    /// @notice Obtain the full amount owed by this contract (negative delta)
+    /// @param currency Currency to get the delta for
+    /// @return amount The amount owed by this contract as a uint256
+    function _getFullDebt(Currency currency) internal view returns (uint256 amount) {
         int256 _amount = poolManager.currencyDelta(address(this), currency);
-        // If the amount is positive, it should be taken not settled for.
-        if (_amount > 0) revert IncorrectUseOfSettle();
+        // If the amount is negative, it should be settled not taken.
+        if (_amount > 0) revert DeltaNotNegative(currency);
         amount = uint256(-_amount);
     }
 
-    function _getFullTakeAmount(Currency currency) internal view returns (uint256 amount) {
+    /// @notice Obtain the full credit owed to this contract (positive delta)
+    /// @param currency Currency to get the delta for
+    /// @return amount The amount owed to this contract as a uint256
+    function _getFullCredit(Currency currency) internal view returns (uint256 amount) {
         int256 _amount = poolManager.currencyDelta(address(this), currency);
-        // If the amount is negative, it should be settled not taken.
-        if (_amount < 0) revert IncorrectUseOfTake();
+        // If the amount is negative, it should be taken not settled for.
+        if (_amount < 0) revert DeltaNotPositive(currency);
         amount = uint256(_amount);
     }
 
@@ -68,7 +74,7 @@ abstract contract DeltaResolver is ImmutableState {
         if (amount == Constants.CONTRACT_BALANCE) {
             return currency.balanceOfSelf();
         } else if (amount == Constants.OPEN_DELTA) {
-            return _getFullSettleAmount(currency);
+            return _getFullDebt(currency);
         }
         return amount;
     }
@@ -78,7 +84,7 @@ abstract contract DeltaResolver is ImmutableState {
         if (amount == Constants.CONTRACT_BALANCE) {
             return currency.balanceOfSelf().toUint128();
         } else if (amount == Constants.OPEN_DELTA) {
-            return _getFullTakeAmount(currency).toUint128();
+            return _getFullCredit(currency).toUint128();
         }
         return amount;
     }
