@@ -41,7 +41,7 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
         }
     }
 
-    function _msgSender() internal pure override returns (address) {
+    function msgSender() public pure override returns (address) {
         return address(0xdeadbeef);
     }
 
