@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {CalldataDecoder} from "../../src/libraries/CalldataDecoder.sol";
+import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 // we need to use a mock contract to make the calls happen in calldata not memory
@@ -36,6 +37,38 @@ contract MockCalldataDecoder {
         )
     {
         return params.decodeBurnParams();
+    }
+
+    function decodeSwapExactInParams(bytes calldata params)
+        external
+        pure
+        returns (IV4Router.ExactInputParams calldata swapParams)
+    {
+        return params.decodeSwapExactInParams();
+    }
+
+    function decodeSwapExactInSingleParams(bytes calldata params)
+        external
+        pure
+        returns (IV4Router.ExactInputSingleParams calldata swapParams)
+    {
+        return params.decodeSwapExactInSingleParams();
+    }
+
+    function decodeSwapExactOutParams(bytes calldata params)
+        external
+        pure
+        returns (IV4Router.ExactOutputParams calldata swapParams)
+    {
+        return params.decodeSwapExactOutParams();
+    }
+
+    function decodeSwapExactOutSingleParams(bytes calldata params)
+        external
+        pure
+        returns (IV4Router.ExactOutputSingleParams calldata swapParams)
+    {
+        return params.decodeSwapExactOutSingleParams();
     }
 
     function decodeMintParams(bytes calldata params)
