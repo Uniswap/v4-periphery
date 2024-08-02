@@ -28,10 +28,7 @@ library SlippageCheckLibrary {
     /// @notice Revert if one or both deltas exceeds a maximum input
     /// @dev When increasing liquidity, delta can be positive when excess fees need to be collected
     /// in those cases, slippage checks are not required
-    function validateMaxInNegative(BalanceDelta delta, uint128 amount0Max, uint128 amount1Max)
-        internal
-        pure
-    {
+    function validateMaxInNegative(BalanceDelta delta, uint128 amount0Max, uint128 amount1Max) internal pure {
         if (
             delta.amount0() < 0 && amount0Max < uint128(-delta.amount0())
                 || delta.amount1() < 0 && amount1Max < uint128(-delta.amount1())
