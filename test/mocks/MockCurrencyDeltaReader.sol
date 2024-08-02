@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 
@@ -12,6 +12,7 @@ import {CurrencyDeltas} from "../../src/libraries/CurrencyDeltas.sol";
 
 /// @dev A minimal helper strictly for testing
 contract MockCurrencyDeltaReader {
+    using TransientStateLibrary for IPoolManager;
     using CurrencyDeltas for IPoolManager;
     using CurrencySettler for Currency;
 
@@ -36,8 +37,15 @@ contract MockCurrencyDeltaReader {
             if (!success) revert("CurrencyDeltaReader");
         }
 
-        // close deltas
         BalanceDelta delta = poolManager.currencyDeltas(address(this), currency0, currency1);
+        int256 delta0 = poolManager.currencyDelta(address(this), currency0);
+        int256 delta1 = poolManager.currencyDelta(address(this), currency1);
+
+        // confirm agreement between currencyDeltas and single-read currencyDelta
+        require(delta.amount0() == int128(delta0), "CurrencyDeltaReader: delta0");
+        require(delta.amount1() == int128(delta1), "CurrencyDeltaReader: delta1");
+
+        // close deltas
         if (delta.amount0() < 0) currency0.settle(poolManager, sender, uint256(-int256(delta.amount0())), false);
         if (delta.amount1() < 0) currency1.settle(poolManager, sender, uint256(-int256(delta.amount1())), false);
         if (delta.amount0() > 0) currency0.take(poolManager, sender, uint256(int256(delta.amount0())), false);
