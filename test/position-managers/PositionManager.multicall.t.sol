@@ -134,7 +134,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         bytes memory sig = getPermitSignature(permit, bobPrivateKey, PERMIT2_DOMAIN_SEPARATOR);
 
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(Permit2Forwarder(lpm).permit.selector, bob, permit, sig);
+        calls[0] = abi.encodeWithSelector(Permit2Forwarder.permit.selector, bob, permit, sig);
         calls[1] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, mintCall, _deadline);
 
         vm.prank(bob);
@@ -192,7 +192,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         bytes memory sig = getPermitBatchSignature(permit, bobPrivateKey, PERMIT2_DOMAIN_SEPARATOR);
 
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(Permit2Forwarder(lpm).permitBatch.selector, bob, permit, sig);
+        calls[0] = abi.encodeWithSelector(Permit2Forwarder.permitBatch.selector, bob, permit, sig);
         calls[1] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, mintCall, _deadline);
 
         vm.prank(bob);
