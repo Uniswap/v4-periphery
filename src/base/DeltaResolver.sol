@@ -5,10 +5,9 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "./ImmutableState.sol";
-import {console2} from "forge-std/console2.sol";
+
 /// @notice Abstract contract used to sync, send, and settle funds to the pool manager
 /// @dev Note that sync() is called before any erc-20 transfer in `settle`.
-
 abstract contract DeltaResolver is ImmutableState {
     using TransientStateLibrary for IPoolManager;
 
@@ -67,12 +66,9 @@ abstract contract DeltaResolver is ImmutableState {
     }
 
     function _mapAmount(uint256 amount, Currency currency) internal view returns (uint256) {
-        console2.log("amount", amount);
         if (amount == CONTRACT_BALANCE) {
-            console2.log("currency balance");
             return currency.balanceOfSelf();
         } else if (amount == OPEN_DELTA) {
-            console2.log("open delta");
             return _getFullSettleAmount(currency);
         }
         return amount;
