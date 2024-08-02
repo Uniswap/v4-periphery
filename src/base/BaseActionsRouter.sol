@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SafeCallback} from "./SafeCallback.sol";
 import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
+import {Actions} from "../libraries/Actions.sol";
+import {Constants} from "../libraries/Constants.sol";
 
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.
 /// @dev Suggested uint256 action values are defined in Actions.sol, however any definition can be used
@@ -52,4 +54,20 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// `msg.sender` shouldnt be used, as this will be the v4 pool manager contract that calls `unlockCallback`
     /// If using ReentrancyLock.sol, this function can return _getLocker()
     function _msgSender() internal view virtual returns (address);
+
+    /// @notice Calculates the address for a action
+    function _mapRecipient(address recipient) internal view returns (address) {
+        if (recipient == Constants.MSG_SENDER) {
+            return _msgSender();
+        } else if (recipient == Constants.ADDRESS_THIS) {
+            return address(this);
+        } else {
+            return recipient;
+        }
+    }
+
+    /// @notice Calculates the payer for an action
+    function _mapPayer(bool payerIsUser) internal view returns (address) {
+        return payerIsUser ? _msgSender() : address(this);
+    }
 }
