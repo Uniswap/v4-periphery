@@ -9,10 +9,10 @@ abstract contract BaseMiddlewareFactory {
 
     mapping(address => address) private _implementations;
 
-    IPoolManager public immutable poolManager;
+    IPoolManager public immutable manager;
 
-    constructor(IPoolManager _poolManager) {
-        poolManager = _poolManager;
+    constructor(IPoolManager _manager) {
+        manager = _manager;
     }
 
     function getImplementation(address middleware) external view returns (address implementation) {
