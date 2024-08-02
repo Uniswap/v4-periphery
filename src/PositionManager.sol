@@ -126,6 +126,9 @@ contract PositionManager is
         } else if (action == Actions.SETTLE) {
             (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
             _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
+        } else if (action == Actions.SETTLE_PAIR) {
+            (Currency currency0, Currency currency1) = params.decodeCurrencyPair();
+            _settlePair(currency0, currency1);
         } else if (action == Actions.SWEEP) {
             (Currency currency, address to) = params.decodeCurrencyAndAddress();
             _sweep(currency, _mapRecipient(to));
@@ -212,6 +215,13 @@ contract PositionManager is
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
         if (uint256(currencyDelta) > amountMax) revert ClearExceedsMaxAmount(currency, currencyDelta, amountMax);
         poolManager.clear(currency, uint256(currencyDelta));
+    }
+
+    function _settlePair(Currency currency0, Currency currency1) internal {
+        // the locker is the payer when settling
+        address caller = msgSender();
+        _settle(currency0, caller, _getFullSettleAmount(currency0));
+        _settle(currency1, caller, _getFullSettleAmount(currency1));
     }
 
     /// @dev this is overloaded with ERC721Permit._burn
