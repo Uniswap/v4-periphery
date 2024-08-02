@@ -91,8 +91,14 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         Plan memory planner = Planner.init();
 
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd2, ZERO_BYTES));
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenId, config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenId, config, liquidityToAdd2, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
 
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -113,8 +119,16 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         Plan memory planner = Planner.init();
 
-        planner.add(Actions.MINT_POSITION, abi.encode(config, initialLiquidity, address(this), ZERO_BYTES));
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, ZERO_BYTES));
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(
+                config, initialLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES
+            )
+        );
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenId, config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
 
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -151,8 +165,16 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         hook.clearDeltas(); // clear the delta so that we can check the net delta for BURN & MINT
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, ZERO_BYTES));
-        planner.add(Actions.MINT_POSITION, abi.encode(newConfig, newLiquidity, address(this), ZERO_BYTES));
+        planner.add(
+            Actions.BURN_POSITION,
+            abi.encode(
+                tokenId, config, uint128(-delta.amount0()) - 1 wei, uint128(-delta.amount1()) - 1 wei, ZERO_BYTES
+            )
+        );
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(newConfig, newLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+        );
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
