@@ -10,6 +10,7 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {PathKey, PathKeyLib} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
+import {BipsLibrary} from "./libraries/BipsLibrary.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
@@ -25,6 +26,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using SafeCast for *;
     using PathKeyLib for PathKey;
     using CalldataDecoder for bytes;
+    using BipsLibrary for uint256;
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
@@ -58,9 +60,10 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             } else if (action == Actions.TAKE_ALL) {
                 (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
                 uint256 amount = _getFullTakeAmount(currency);
-
-                // TODO should _take have a minAmountOut added slippage check?
                 _take(currency, _mapRecipient(recipient), amount);
+            } else if (action == Actions.TAKE_PORTION) {
+                (Currency currency, address recipient, uint256 bips) = params.decodeCurrencyAddressAndUint256();
+                _take(currency, _mapRecipient(recipient), _getFullTakeAmount(currency).calculatePortion(bips));
             } else {
                 revert UnsupportedAction(action);
             }
