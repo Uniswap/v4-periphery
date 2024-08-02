@@ -24,6 +24,11 @@ contract RevertContract {
 contract MockMulticall is Multicall {
     error SimpleError();
     error ErrorWithParams(uint256 a, uint256 b);
+    
+    error Error4Bytes(); // 4 bytes of selector
+    error Error36Bytes(uint8 a); // 32 bytes + 4 bytes of selector
+    error Error68Bytes(uint256 a, uint256 b); // 64 bytes + 4 bytes of selector
+    error ErrorBytes(bytes data); // arbitrary byte length
 
     struct Tuple {
         uint256 a;
@@ -73,5 +78,21 @@ contract MockMulticall is Multicall {
 
     function externalRevertError2(uint256 a, uint256 b) external view {
         revertContract.revertWithError2(a, b);
+    }
+
+    function revertWith4Bytes() external pure {
+        revert Error4Bytes();
+    }
+
+    function revertWith36Bytes(uint8 a) external pure {
+        revert Error36Bytes(a);
+    }
+
+    function revertWith68Bytes(uint256 a, uint256 b) external pure {
+        revert Error68Bytes(a, b);
+    }
+
+    function revertWithBytes(bytes memory data) external pure {
+        revert ErrorBytes(data);
     }
 }
