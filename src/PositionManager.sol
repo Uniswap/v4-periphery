@@ -148,7 +148,7 @@ contract PositionManager is
         if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        liquidityDelta.validateMaximumIncreaseSlippage(amount0Max, amount1Max);
+        liquidityDelta.validateMaxInNegative(amount0Max, amount1Max);
     }
 
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
@@ -165,7 +165,7 @@ contract PositionManager is
 
         // Note: the tokenId is used as the salt.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-        liquidityDelta.validateMinimumOut(amount0Min, amount1Min);
+        liquidityDelta.validateMinOut(amount0Min, amount1Min);
     }
 
     function _mint(
@@ -186,7 +186,7 @@ contract PositionManager is
 
         // _beforeModify is not called here because the tokenId is newly minted
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        liquidityDelta.validateMaximumIn(amount0Max, amount1Max);
+        liquidityDelta.validateMaxIn(amount0Max, amount1Max);
         positionConfigs[tokenId] = config.toId();
     }
 
@@ -226,7 +226,7 @@ contract PositionManager is
         // Can only call modify if there is non zero liquidity.
         if (liquidity > 0) {
             liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-            liquidityDelta.validateMinimumOut(amount0Min, amount1Min);
+            liquidityDelta.validateMinOut(amount0Min, amount1Min);
         }
 
         delete positionConfigs[tokenId];

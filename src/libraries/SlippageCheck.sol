@@ -11,7 +11,7 @@ library SlippageCheckLibrary {
 
     /// @notice Revert if one or both deltas does not meet a minimum output
     /// @dev to be used when removing liquidity to guarantee a minimum output
-    function validateMinimumOut(BalanceDelta delta, uint128 amount0Min, uint128 amount1Min) internal pure {
+    function validateMinOut(BalanceDelta delta, uint128 amount0Min, uint128 amount1Min) internal pure {
         if (uint128(delta.amount0()) < amount0Min || uint128(delta.amount1()) < amount1Min) {
             revert MinimumAmountInsufficient();
         }
@@ -19,7 +19,7 @@ library SlippageCheckLibrary {
 
     /// @notice Revert if one or both deltas exceeds a maximum input
     /// @dev to be used when minting liquidity to guarantee a maximum input
-    function validateMaximumIn(BalanceDelta delta, uint128 amount0Max, uint128 amount1Max) internal pure {
+    function validateMaxIn(BalanceDelta delta, uint128 amount0Max, uint128 amount1Max) internal pure {
         if (uint128(-delta.amount0()) > amount0Max || uint128(-delta.amount1()) > amount1Max) {
             revert MaximumAmountExceeded();
         }
@@ -28,7 +28,7 @@ library SlippageCheckLibrary {
     /// @notice Revert if one or both deltas exceeds a maximum input
     /// @dev When increasing liquidity, delta can be positive when excess fees need to be collected
     /// in those cases, slippage checks are not required
-    function validateMaximumIncreaseSlippage(BalanceDelta delta, uint128 amount0Max, uint128 amount1Max)
+    function validateMaxInNegative(BalanceDelta delta, uint128 amount0Max, uint128 amount1Max)
         internal
         pure
     {
