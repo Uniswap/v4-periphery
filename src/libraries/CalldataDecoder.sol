@@ -190,6 +190,19 @@ library CalldataDecoder {
         }
     }
 
+    /// @dev equivalent to: abi.decode(params, (Currency, uint256, bool)) in calldata
+    function decodeCurrencyUint256AndBool(bytes calldata params)
+        internal
+        pure
+        returns (Currency currency, uint256 amount, bool boolean)
+    {
+        assembly ("memory-safe") {
+            currency := calldataload(params.offset)
+            amount := calldataload(add(params.offset, 0x20))
+            boolean := calldataload(add(params.offset, 0x40))
+        }
+    }
+
     /// @notice Decode the `_arg`-th element in `_bytes` as a dynamic array
     /// @dev The decoding of `length` and `offset` is universal,
     /// whereas the type declaration of `res` instructs the compiler how to read it.

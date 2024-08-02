@@ -65,7 +65,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
         assertEq(currency1.balanceOf(address(router)), 0);
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.SETTLE_WITH_BALANCE, abi.encode(key0.currency0));
+        plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, CONTRACT_BALANCE, false));
         plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
 
         bytes memory data = plan.encode();

@@ -31,7 +31,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     // TODO native support !!
     function _handleAction(uint256 action, bytes calldata params) internal override {
         // swap actions and payment actions in different blocks for gas efficiency
-        if (action < Actions.SETTLE) {
+        if (action < Actions.SETTLE_ALL) {
             if (action == Actions.SWAP_EXACT_IN) {
                 IV4Router.ExactInputParams calldata swapParams = params.decodeSwapExactInParams();
                 _swapExactInput(swapParams);
@@ -52,9 +52,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 Currency currency = params.decodeCurrency();
                 // TODO should it have a maxAmountOut added slippage protection?
                 _settle(currency, _msgSender(), _getFullSettleAmount(currency));
-            } else if (action == Actions.SETTLE_WITH_BALANCE) {
-                Currency currency = params.decodeCurrency();
-                _settle(currency, address(this), currency.balanceOfSelf());
+            } else if (action == Actions.SETTLE) {
+                (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
+                _settle(currency, payerIsUser ? _msgSender() : address(this), _mapAmount(amount, currency));
             } else if (action == Actions.TAKE_ALL) {
                 (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
                 uint256 amount = _getFullTakeAmount(currency);

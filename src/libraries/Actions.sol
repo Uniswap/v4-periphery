@@ -20,9 +20,8 @@ library Actions {
 
     // closing deltas on the pool manager
     // settling
-    uint256 constant SETTLE = 0x10;
-    uint256 constant SETTLE_ALL = 0x11;
-    uint256 constant SETTLE_WITH_BALANCE = 0x12;
+    uint256 constant SETTLE_ALL = 0x10;
+    uint256 constant SETTLE = 0x11;
     // taking
     uint256 constant TAKE = 0x13;
     uint256 constant TAKE_ALL = 0x14;

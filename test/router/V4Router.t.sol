@@ -11,8 +11,6 @@ contract V4RouterTest is RoutingTestHelpers {
     using CurrencyLibrary for Currency;
     using Planner for Plan;
 
-    uint128 internal constant OPEN_DELTA = 0;
-
     function setUp() public {
         setupRouterCurrenciesAndPoolsWithLiquidity();
         plan = Planner.init();
@@ -190,7 +188,7 @@ contract V4RouterTest is RoutingTestHelpers {
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, OPEN_DELTA, 0, 0, bytes(""));
 
-        plan = plan.add(Actions.SETTLE_WITH_BALANCE, abi.encode(key0.currency0));
+        plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, CONTRACT_BALANCE, false));
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
 
@@ -358,7 +356,7 @@ contract V4RouterTest is RoutingTestHelpers {
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(nativeKey, true, OPEN_DELTA, 0, 0, bytes(""));
 
-        plan = plan.add(Actions.SETTLE_WITH_BALANCE, abi.encode(nativeKey.currency0));
+        plan = plan.add(Actions.SETTLE, abi.encode(nativeKey.currency0, CONTRACT_BALANCE, false));
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.TAKE_ALL, abi.encode(nativeKey.currency1, address(this)));
 

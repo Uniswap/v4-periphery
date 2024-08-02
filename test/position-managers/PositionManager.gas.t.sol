@@ -585,8 +585,8 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Actions.MINT_POSITION,
             abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
         );
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
-        planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
+        planner.add(Actions.SETTLE, abi.encode(currency0, OPEN_DELTA, false));
+        planner.add(Actions.SETTLE, abi.encode(currency1, OPEN_DELTA, false));
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
         planner.add(Actions.SWEEP, abi.encode(currency1, address(this)));
 

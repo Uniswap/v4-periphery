@@ -5,15 +5,17 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "./ImmutableState.sol";
-
+import {console2} from "forge-std/console2.sol";
 /// @notice Abstract contract used to sync, send, and settle funds to the pool manager
 /// @dev Note that sync() is called before any erc-20 transfer in `settle`.
+
 abstract contract DeltaResolver is ImmutableState {
     using TransientStateLibrary for IPoolManager;
 
     /// @notice used to signal that an action should use the input value of the open delta on the pool manager
-    /// this is useful for Fee On Transfer tokens, as well as multi-protocol multi-hop swaps
-    uint128 internal constant OPEN_DELTA = 0;
+    /// or of the balance that the contract holds
+    uint128 internal constant CONTRACT_BALANCE = 0;
+    uint128 internal constant OPEN_DELTA = 1;
 
     /// @notice Emitted trying to settle a positive delta.
     error IncorrectUseOfSettle();
@@ -62,5 +64,17 @@ abstract contract DeltaResolver is ImmutableState {
         // If the amount is negative, it should be settled not taken.
         if (_amount < 0) revert IncorrectUseOfTake();
         amount = uint256(_amount);
+    }
+
+    function _mapAmount(uint256 amount, Currency currency) internal view returns (uint256) {
+        console2.log("amount", amount);
+        if (amount == CONTRACT_BALANCE) {
+            console2.log("currency balance");
+            return currency.balanceOfSelf();
+        } else if (amount == OPEN_DELTA) {
+            console2.log("open delta");
+            return _getFullSettleAmount(currency);
+        }
+        return amount;
     }
 }
