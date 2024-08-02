@@ -11,7 +11,7 @@ library BipsLibrary {
     /// @param amount The total amount to calculate a percentage of
     /// @param bips The percentage to calculate, in bips
     function calculatePortion(uint256 amount, uint256 bips) internal pure returns (uint256) {
-        if (bips == 0 || bips > BIPS_BASE) revert InvalidBips();
+        if (bips > BIPS_BASE) revert InvalidBips();
         return (amount * bips) / BIPS_BASE;
     }
 }

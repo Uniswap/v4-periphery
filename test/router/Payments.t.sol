@@ -8,6 +8,7 @@ import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
 import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
+import {BipsLibrary} from "../../src/libraries/BipsLibrary.sol";
 
 contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
     using CurrencyLibrary for Currency;
@@ -120,5 +121,22 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
         assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut - expectedFee);
         assertEq(bobBalanceAfter - bobBalanceBefore, expectedFee);
+    }
+
+    function test_settle_takePortion_reverts() public {
+        uint256 amountIn = 1 ether;
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0));
+        // bips is larger than maximum bips
+        plan = plan.add(Actions.TAKE_PORTION, abi.encode(key0.currency1, bob, 10001));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
+
+        bytes memory data = plan.encode();
+
+        vm.expectRevert(BipsLibrary.InvalidBips.selector);
+        router.executeActions(data);
     }
 }
