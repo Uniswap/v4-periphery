@@ -79,13 +79,14 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     }
 
     function _swapExactInputSingle(IV4Router.ExactInputSingleParams calldata params) private {
-        _swap(
+        uint128 amountOut = _swap(
             params.poolKey,
             params.zeroForOne,
             int256(-int128(params.amountIn)),
             params.sqrtPriceLimitX96,
             params.hookData
-        );
+        ).toUint128();
+        if (amountOut < params.amountOutMinimum) revert TooLittleReceived();
     }
 
     function _swapExactInput(IV4Router.ExactInputParams calldata params) private {
@@ -112,13 +113,16 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     }
 
     function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams calldata params) private {
-        _swap(
-            params.poolKey,
-            params.zeroForOne,
-            int256(int128(params.amountOut)),
-            params.sqrtPriceLimitX96,
-            params.hookData
-        );
+        uint128 amountIn = (
+            -_swap(
+                params.poolKey,
+                params.zeroForOne,
+                int256(int128(params.amountOut)),
+                params.sqrtPriceLimitX96,
+                params.hookData
+            )
+        ).toUint128();
+        if (amountIn > params.amountInMaximum) revert TooMuchRequested();
     }
 
     function _swapExactOutput(IV4Router.ExactOutputParams calldata params) private {
