@@ -16,6 +16,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -179,6 +180,28 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
         assertEq(currency0.balanceOf(alice), balance0BeforeAlice);
         assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
+    }
+
+    /// @dev test that clear does not work on minting
+    function test_fuzz_mint_clear_revert(IPoolManager.ModifyLiquidityParams memory seedParams) public {
+        IPoolManager.ModifyLiquidityParams memory params = createFuzzyLiquidityParams(key, seedParams, SQRT_PRICE_1_1);
+        uint256 liquidityToAdd =
+            params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
+
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+        );
+        planner.add(Actions.CLEAR, abi.encode(key.currency0, type(uint256).max));
+        planner.add(Actions.CLEAR, abi.encode(key.currency1, type(uint256).max));
+        bytes memory calls = planner.encode();
+
+        vm.expectRevert(SafeCast.SafeCastOverflow.selector);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     function test_mint_slippage_revertAmount0() public {
@@ -421,6 +444,81 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         assertEq(currency0.balanceOfSelf(), balance0Before + uint256(uint128(delta.amount0())));
         assertEq(currency1.balanceOfSelf(), balance1Before + uint256(uint128(delta.amount1())));
+    }
+
+    /// @dev Clearing on decrease liquidity is allowed
+    function test_fuzz_decreaseLiquidity_clear(
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 decreaseLiquidityDelta
+    ) public {
+        uint256 tokenId;
+        (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        decreaseLiquidityDelta = uint256(bound(int256(decreaseLiquidityDelta), 0, params.liquidityDelta));
+
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+
+        // Clearing is allowed on decrease liquidity
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(
+                tokenId, config, decreaseLiquidityDelta, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES
+            )
+        );
+        planner.add(Actions.CLEAR, abi.encode(key.currency0, type(uint256).max));
+        planner.add(Actions.CLEAR, abi.encode(key.currency1, type(uint256).max));
+        bytes memory calls = planner.encode();
+
+        lpm.modifyLiquidities(calls, _deadline);
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
+
+        // did not recieve tokens, as they were forfeited with CLEAR
+        assertEq(currency0.balanceOfSelf(), balance0Before);
+        assertEq(currency1.balanceOfSelf(), balance1Before);
+    }
+
+    /// @dev Clearing on decrease reverts if it exceeds user threshold
+    function test_fuzz_decreaseLiquidity_clearRevert(IPoolManager.ModifyLiquidityParams memory params) public {
+        // use fuzzer for tick range
+        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
+
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        uint256 liquidityToAdd = 1e18;
+        uint256 liquidityToRemove = bound(liquidityToAdd, liquidityToAdd / 1000, liquidityToAdd);
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, address(this), ZERO_BYTES);
+
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(liquidityToRemove)
+        );
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, config, liquidityToRemove, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+        planner.add(Actions.CLEAR, abi.encode(key.currency0, amount0 - 1 wei));
+        planner.add(Actions.CLEAR, abi.encode(key.currency1, amount1 - 1 wei));
+        bytes memory calls = planner.encode();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPositionManager.ClearExceedsMaxAmount.selector, currency0, amount0, amount0 - 1 wei)
+        );
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     function test_decreaseLiquidity_collectFees(
