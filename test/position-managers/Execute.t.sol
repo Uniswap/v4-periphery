@@ -79,7 +79,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
 
-    function test_fuzz_execute_increaseLiquidity_twice(
+    function test_fuzz_execute_increaseLiquidity_twice_withClose(
         uint256 initialLiquidity,
         uint256 liquidityToAdd,
         uint256 liquidityToAdd2
@@ -101,7 +101,39 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
             abi.encode(tokenId, config, liquidityToAdd2, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
 
-        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
+        lpm.modifyLiquidities(calls, _deadline);
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+
+        assertEq(liquidity, initialLiquidity + liquidityToAdd + liquidityToAdd2);
+    }
+
+    function test_fuzz_execute_increaseLiquidity_twice_withSettlePair(
+        uint256 initialLiquidity,
+        uint256 liquidityToAdd,
+        uint256 liquidityToAdd2
+    ) public {
+        initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
+        liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
+        liquidityToAdd2 = bound(liquidityToAdd2, 1e18, 1000e18);
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        Plan memory planner = Planner.init();
+
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenId, config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenId, config, liquidityToAdd2, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+
+        bytes memory calls = planner.finalizeModifyLiquidityWithSettlePair(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
@@ -131,7 +163,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
             abi.encode(tokenId, config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
 
-        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
@@ -178,7 +210,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
                 newConfig, newLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES
             )
         );
-        bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
         {
