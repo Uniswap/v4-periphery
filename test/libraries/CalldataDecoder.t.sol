@@ -98,6 +98,14 @@ contract CalldataDecoderTest is Test {
         assertEq(Currency.unwrap(currency), Currency.unwrap(_currency));
     }
 
+    function test_fuzz_decodeCurrencyAndUint256(Currency _currency, uint256 _amount) public view {
+        bytes memory params = abi.encode(_currency, _amount);
+        (Currency currency, uint256 amount) = decoder.decodeCurrencyAndUint256(params);
+
+        assertEq(Currency.unwrap(currency), Currency.unwrap(_currency));
+        assertEq(amount, _amount);
+    }
+
     function _assertEq(PositionConfig memory config1, PositionConfig memory config2) internal pure {
         assertEq(Currency.unwrap(config1.poolKey.currency0), Currency.unwrap(config2.poolKey.currency0));
         assertEq(Currency.unwrap(config1.poolKey.currency1), Currency.unwrap(config2.poolKey.currency1));
