@@ -714,7 +714,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, type(uint256).max));
         bytes memory calls = planner.encode();
 
-        // revert since we're forfeiting beyond the max tolerance
+        // revert since we're trying to clear a negative delta
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.CannotClearNegativeDelta.selector, currency0));
         lpm.modifyLiquidities(calls, _deadline);
     }
