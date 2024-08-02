@@ -122,7 +122,9 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(config, initialLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES)
+            abi.encode(
+                config, initialLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES
+            )
         );
         planner.add(
             Actions.INCREASE_LIQUIDITY,
@@ -172,7 +174,9 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(newConfig, newLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES)
+            abi.encode(
+                newConfig, newLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES
+            )
         );
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
 

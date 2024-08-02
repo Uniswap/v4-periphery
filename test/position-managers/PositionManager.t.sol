@@ -243,7 +243,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mint_slippage_revertAmount0() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
 
-        bytes memory calls = getMintEncoded(config, 1e18, 1 wei, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES);
+        bytes memory calls =
+            getMintEncoded(config, 1e18, 1 wei, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES);
         vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
@@ -251,7 +252,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mint_slippage_revertAmount1() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
 
-        bytes memory calls = getMintEncoded(config, 1e18, MAX_SLIPPAGE_INCREASE, 1 wei, Constants.MSG_SENDER, ZERO_BYTES);
+        bytes memory calls =
+            getMintEncoded(config, 1e18, MAX_SLIPPAGE_INCREASE, 1 wei, Constants.MSG_SENDER, ZERO_BYTES);
         vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
