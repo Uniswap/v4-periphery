@@ -23,11 +23,6 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     HookSavesDelta hook;
     address hookAddr = address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
 
-    uint128 internal constant CONTRACT_BALANCE = 0;
-    uint128 internal constant OPEN_DELTA = 1;
-    address internal constant MSG_SENDER = address(1);
-    address internal constant ADDRESS_THIS = address(2);
-
     function deployPosmHookSavesDelta() public {
         HookSavesDelta impl = new HookSavesDelta();
         vm.etch(hookAddr, address(impl).code);

@@ -18,14 +18,6 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
     uint256 public mintCount;
     uint256 public burnCount;
 
-    function MSG_SENDER_() external view returns (address) {
-        return MSG_SENDER;
-    }
-
-    function ADDRESS_THIS_() external view returns (address) {
-        return ADDRESS_THIS;
-    }
-
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
     function executeActions(bytes calldata params) external isNotLocked {

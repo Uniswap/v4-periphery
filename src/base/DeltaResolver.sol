@@ -6,17 +6,13 @@ import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientSta
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "./ImmutableState.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {Constants} from "../libraries/Constants.sol";
 
 /// @notice Abstract contract used to sync, send, and settle funds to the pool manager
 /// @dev Note that sync() is called before any erc-20 transfer in `settle`.
 abstract contract DeltaResolver is ImmutableState {
     using TransientStateLibrary for IPoolManager;
     using SafeCast for *;
-
-    /// @notice used to signal that an action should use the input value of the open delta on the pool manager
-    /// or of the balance that the contract holds
-    uint128 internal constant CONTRACT_BALANCE = 0;
-    uint128 internal constant OPEN_DELTA = 1;
 
     /// @notice Emitted trying to settle a positive delta.
     error IncorrectUseOfSettle();
@@ -69,9 +65,9 @@ abstract contract DeltaResolver is ImmutableState {
 
     /// @notice Calculates the amount for a settle action
     function _mapSettleAmount(uint256 amount, Currency currency) internal view returns (uint256) {
-        if (amount == CONTRACT_BALANCE) {
+        if (amount == Constants.CONTRACT_BALANCE) {
             return currency.balanceOfSelf();
-        } else if (amount == OPEN_DELTA) {
+        } else if (amount == Constants.OPEN_DELTA) {
             return _getFullSettleAmount(currency);
         }
         return amount;
@@ -79,9 +75,9 @@ abstract contract DeltaResolver is ImmutableState {
 
     /// @notice Calculates the amount for a swap action
     function _mapSwapAmount(uint128 amount, Currency currency) internal view returns (uint128) {
-        if (amount == CONTRACT_BALANCE) {
+        if (amount == Constants.CONTRACT_BALANCE) {
             return currency.balanceOfSelf().toUint128();
-        } else if (amount == OPEN_DELTA) {
+        } else if (amount == Constants.OPEN_DELTA) {
             return _getFullTakeAmount(currency).toUint128();
         }
         return amount;

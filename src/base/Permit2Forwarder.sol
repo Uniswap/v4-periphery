@@ -23,10 +23,10 @@ contract Permit2Forwarder {
 
     /// @notice allows forwarding batch permits to permit2
     /// @dev this function is payable to allow multicall with NATIVE based actions
-    function permitBatch(address owner, IAllowanceTransfer.PermitBatch calldata permitBatch, bytes calldata signature)
+    function permitBatch(address owner, IAllowanceTransfer.PermitBatch calldata _permitBatch, bytes calldata signature)
         external
         payable
     {
-        permit2.permit(owner, permitBatch, signature);
+        permit2.permit(owner, _permitBatch, signature);
     }
 }
