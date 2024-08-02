@@ -6,7 +6,7 @@ library GasLimitCalculator {
     uint256 constant BPS_DENOMINATOR = 10_000;
 
     /// calculates a gas limit as a percentage of the currenct block's gas limit
-    function toGasLimit(uint256 bps) internal returns (uint256 gasLimit) {
+    function toGasLimit(uint256 bps) internal view returns (uint256 gasLimit) {
         return block.gaslimit * bps / BPS_DENOMINATOR;
     }
 }

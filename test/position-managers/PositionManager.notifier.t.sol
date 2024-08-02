@@ -106,7 +106,10 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
-            plan.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, 10e18, ZERO_BYTES));
+            plan.add(
+                Actions.INCREASE_LIQUIDITY,
+                abi.encode(tokenId, config, 10e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            );
         }
 
         bytes memory calls = plan.finalizeModifyLiquidity(config.poolKey);
@@ -202,7 +205,10 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         uint256 tokenId = lpm.nextTokenId();
 
         Plan memory plan = Planner.init();
-        plan.add(Actions.MINT_POSITION, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        plan.add(
+            Actions.MINT_POSITION,
+            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+        );
         bytes memory actions = plan.finalizeModifyLiquidity(config.poolKey);
 
         bytes[] memory calls = new bytes[](2);
@@ -225,12 +231,18 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // Encode mint.
         Plan memory plan = Planner.init();
-        plan.add(Actions.MINT_POSITION, abi.encode(config, 100e18, address(this), ZERO_BYTES));
+        plan.add(
+            Actions.MINT_POSITION,
+            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+        );
         bytes memory actions = plan.finalizeModifyLiquidity(config.poolKey);
 
         // Encode increase separately.
         plan = Planner.init();
-        plan.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, 10e18, ZERO_BYTES));
+        plan.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenId, config, 10e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
         bytes memory actions2 = plan.finalizeModifyLiquidity(config.poolKey);
 
         bytes[] memory calls = new bytes[](3);
