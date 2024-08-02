@@ -81,7 +81,7 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
         clearCount++;
     }
 
-    function map(address recipient) external view returns (address) {
-        return _map(recipient);
+    function mapRecipient(address recipient) external view returns (address) {
+        return _mapRecipient(recipient);
     }
 }

@@ -27,6 +27,7 @@ import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {Permit2SignatureHelpers} from "../shared/Permit2SignatureHelpers.sol";
 import {Permit2Forwarder} from "../../src/base/Permit2Forwarder.sol";
+import {Constants} from "../../src/libraries/Constants.sol";
 
 contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -79,7 +80,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
 
-        PositionConfig memory config = PositionConfig({
+        config = PositionConfig({
             poolKey: key,
             tickLower: TickMath.minUsableTick(key.tickSpacing),
             tickUpper: TickMath.maxUsableTick(key.tickSpacing)
@@ -88,7 +89,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         Plan memory planner = Planner.init();
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Actions.MSG_SENDER, ZERO_BYTES)
+            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES)
         );
         bytes memory actions = planner.finalizeModifyLiquidity(config.poolKey);
 
@@ -104,7 +105,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
     }
 
     function test_multicall_permit_mint() public {
-        PositionConfig memory config = PositionConfig({
+        config = PositionConfig({
             poolKey: key,
             tickLower: TickMath.minUsableTick(key.tickSpacing),
             tickUpper: TickMath.maxUsableTick(key.tickSpacing)
@@ -152,7 +153,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
     }
 
     function test_multicall_permit_batch_mint() public {
-        PositionConfig memory config = PositionConfig({
+        config = PositionConfig({
             poolKey: key,
             tickLower: TickMath.minUsableTick(key.tickSpacing),
             tickUpper: TickMath.maxUsableTick(key.tickSpacing)

@@ -20,9 +20,8 @@ library Actions {
 
     // closing deltas on the pool manager
     // settling
-    uint256 constant SETTLE = 0x10;
-    uint256 constant SETTLE_ALL = 0x11;
-    uint256 constant SETTLE_WITH_BALANCE = 0x12;
+    uint256 constant SETTLE_ALL = 0x10;
+    uint256 constant SETTLE = 0x11;
     // taking
     uint256 constant TAKE = 0x13;
     uint256 constant TAKE_ALL = 0x14;
@@ -36,11 +35,4 @@ library Actions {
     // minting/burning 6909s to close deltas
     uint256 constant MINT_6909 = 0x20;
     uint256 constant BURN_6909 = 0x21;
-
-    // helper constants to signal certain addresses
-    // Used as a flag for identifying that msg.sender should be used
-    address internal constant MSG_SENDER = address(1);
-
-    // Used as a flag for identifying address(this) should be used
-    address internal constant ADDRESS_THIS = address(2);
 }

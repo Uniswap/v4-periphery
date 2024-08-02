@@ -106,7 +106,7 @@ contract PositionManager is
                 address owner,
                 bytes calldata hookData
             ) = params.decodeMintParams();
-            _mint(config, liquidity, amount0Max, amount1Max, _map(owner), hookData);
+            _mint(config, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
         } else if (action == Actions.CLOSE_CURRENCY) {
             Currency currency = params.decodeCurrency();
             _close(currency);
@@ -123,12 +123,12 @@ contract PositionManager is
                 bytes calldata hookData
             ) = params.decodeBurnParams();
             _burn(tokenId, config, amount0Min, amount1Min, hookData);
-        } else if (action == Actions.SETTLE_WITH_BALANCE) {
-            Currency currency = params.decodeCurrency();
-            _settleWithBalance(currency);
+        } else if (action == Actions.SETTLE) {
+            (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
+            _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
         } else if (action == Actions.SWEEP) {
             (Currency currency, address to) = params.decodeCurrencyAndAddress();
-            _sweep(currency, _map(to));
+            _sweep(currency, _mapRecipient(to));
         } else {
             revert UnsupportedAction(action);
         }
@@ -212,12 +212,6 @@ contract PositionManager is
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
         if (uint256(currencyDelta) > amountMax) revert ClearExceedsMaxAmount(currency, currencyDelta, amountMax);
         poolManager.clear(currency, uint256(currencyDelta));
-    }
-
-    /// @dev uses this addresses balance to settle a negative delta
-    function _settleWithBalance(Currency currency) internal {
-        // set the payer to this address, performs a transfer.
-        _settle(currency, address(this), _getFullSettleAmount(currency));
     }
 
     /// @dev this is overloaded with ERC721Permit._burn
