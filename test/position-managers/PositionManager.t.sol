@@ -569,7 +569,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
-        // clear failed, so we should have the tokens
+        // amount exceeded clear limit, so we should have the tokens
         assertEq(uint128(delta.amount0()), amount0);
         assertEq(uint128(delta.amount1()), amount1);
         assertEq(currency0.balanceOfSelf(), balance0Before + amount0);
