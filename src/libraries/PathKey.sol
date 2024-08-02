@@ -14,7 +14,7 @@ struct PathKey {
 }
 
 library PathKeyLib {
-    function getPoolAndSwapDirection(PathKey memory params, Currency currencyIn)
+    function getPoolAndSwapDirection(PathKey calldata params, Currency currencyIn)
         internal
         pure
         returns (PoolKey memory poolKey, bool zeroForOne)
