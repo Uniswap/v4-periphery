@@ -277,8 +277,8 @@ contract PositionManager is
     function _takePair(Currency currency0, Currency currency1) internal {
         // the locker is the receiver when taking
         address caller = msgSender();
-        _take(currency0, caller, _getFullTakeAmount(currency0));
-        _take(currency1, caller, _getFullTakeAmount(currency1));
+        _take(currency0, caller, _getFullCredit(currency0));
+        _take(currency1, caller, _getFullCredit(currency1));
     }
 
     /// @dev this is overloaded with ERC721Permit._burn
