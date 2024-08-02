@@ -15,11 +15,13 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {SlippageCheckLibrary} from "../../src/libraries/SlippageCheck.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
@@ -71,7 +73,8 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
     }
 
-    function test_increaseLiquidity_withExactFees() public {
+    /// @notice Increase liquidity with exact fees, taking dust
+    function test_increaseLiquidity_withExactFees_take() public {
         // Alice and Bob provide liquidity on the range
         // Alice uses her exact fees to increase liquidity (compounding)
 
@@ -112,22 +115,82 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
-        // TODO: Can we make this easier to re-invest fees, so that you don't need to know the exact collect amount?
         Plan memory planner = Planner.init();
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, ZERO_BYTES));
+        planner.add(
+            Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, 0 wei, 0 wei, ZERO_BYTES)
+        );
         bytes memory calls = planner.finalizeModifyLiquidity(config.poolKey);
         vm.startPrank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         vm.stopPrank();
 
         // alice barely spent any tokens
-        // TODO: Use clear.
         assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
         assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
     }
 
-    // uses donate to simulate fee revenue
-    function test_increaseLiquidity_withExactFees_donate() public {
+    /// @dev Increase liquidity with exact fees, clearing dust
+    function test_increaseLiquidity_withExactFees_clear() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her exact fees to increase liquidity (compounding)
+
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+
+        // alice provides liquidity
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // bob provides liquidity
+        vm.startPrank(bob);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
+
+        // swap to create fees
+        uint256 swapAmount = 0.001e18;
+        swap(key, true, -int256(swapAmount), ZERO_BYTES);
+        swap(key, false, -int256(swapAmount), ZERO_BYTES); // move the price back
+
+        // alice uses her exact fees to increase liquidity
+        // Slight error in this calculation vs. actual fees.. TODO: Fix this.
+        BalanceDelta feesOwedAlice = IPositionManager(lpm).getFeesOwed(manager, config, tokenIdAlice);
+        // Note: You can alternatively calculate Alice's fees owed from the swap amount, fee on the pool, and total liquidity in that range.
+        // swapAmount.mulWadDown(FEE_WAD).mulDivDown(liquidityAlice, liquidityAlice + liquidityBob);
+
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
+        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint256(int256(feesOwedAlice.amount0())),
+            uint256(int256(feesOwedAlice.amount1()))
+        );
+
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, 18 wei)); // alice is willing to forfeit 18 wei
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, 18 wei));
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+
+        // alice did not spend or receive tokens
+        // (alice forfeited a small amount of tokens to the pool with CLEAR)
+        assertEq(currency0.balanceOf(alice), balance0BeforeAlice);
+        assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
+    }
+
+    // uses donate to simulate fee revenue, taking dust
+    function test_increaseLiquidity_withExactFees_take_donate() public {
         // Alice and Bob provide liquidity on the range
         // Alice uses her exact fees to increase liquidity (compounding)
 
@@ -169,9 +232,64 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         vm.stopPrank();
 
         // alice barely spent any tokens
-        // TODO: Use clear.
-        assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), tolerance);
-        assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), tolerance);
+        assertApproxEqAbs(balance0BeforeAlice, currency0.balanceOf(alice), 1 wei);
+        assertApproxEqAbs(balance1BeforeAlice, currency1.balanceOf(alice), 1 wei);
+    }
+
+    // uses donate to simulate fee revenue, clearing dust
+    function test_increaseLiquidity_withExactFees_clear_donate() public {
+        // Alice and Bob provide liquidity on the range
+        // Alice uses her exact fees to increase liquidity (compounding)
+
+        uint256 liquidityAlice = 3_000e18;
+        uint256 liquidityBob = 1_000e18;
+
+        // alice provides liquidity
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // bob provides liquidity
+        vm.startPrank(bob);
+        mint(config, liquidityBob, bob, ZERO_BYTES);
+        vm.stopPrank();
+
+        // donate to create fees
+        uint256 amountDonate = 0.2e18;
+        donateRouter.donate(key, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        // subtract 1 cause we'd rather take than pay
+        uint256 feesAmount = amountDonate.mulDivDown(liquidityAlice, liquidityAlice + liquidityBob) - 1;
+
+        (uint160 sqrtPriceX96,,,) = StateLibrary.getSlot0(manager, config.poolKey.toId());
+        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            feesAmount,
+            feesAmount
+        );
+
+        uint256 balance0BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, 1 wei)); // alice is willing to forfeit 1 wei
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, 1 wei));
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, _deadline);
+
+        // alice did not spend or receive tokens
+        // (alice forfeited a small amount of tokens to the pool with CLEAR)
+        assertEq(currency0.balanceOf(alice), balance0BeforeAlice);
+        assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
 
     function test_increaseLiquidity_withUnapprovedCaller() public {
@@ -369,11 +487,84 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         }
     }
 
+    function test_increaseLiquidity_slippage_revertAmount0() public {
+        // increasing liquidity with strict slippage parameters (amount0) will revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // revert since amount0Max is too low
+        bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, 1 wei, type(uint128).max, ZERO_BYTES);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_increaseLiquidity_slippage_revertAmount1() public {
+        // increasing liquidity with strict slippage parameters (amount1) will revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // revert since amount1Max is too low
+        bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, type(uint128).max, 1 wei, ZERO_BYTES);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_increaseLiquidity_slippage_exactDoesNotRevert() public {
+        // increasing liquidity with perfect slippage parameters does not revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        uint128 newLiquidity = 10e18;
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            newLiquidity
+        );
+        assertEq(amount0, amount1); // symmetric liquidity addition
+        uint128 slippage = uint128(amount0) + 1;
+
+        bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, slippage, slippage, ZERO_BYTES);
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+
+        // confirm that delta == slippage tolerance
+        assertEq(-delta.amount0(), int128(slippage));
+        assertEq(-delta.amount1(), int128(slippage));
+    }
+
+    /// price movement from swaps will cause slippage reverts
+    function test_increaseLiquidity_slippage_revert_swap() public {
+        // increasing liquidity with perfect slippage parameters does not revert
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        uint128 newLiquidity = 10e18;
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            newLiquidity
+        );
+        assertEq(amount0, amount1); // symmetric liquidity addition
+        uint128 slippage = uint128(amount0) + 1;
+
+        // swap to create slippage
+        swap(key, true, -10e18, ZERO_BYTES);
+
+        bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, slippage, slippage, ZERO_BYTES);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
     function test_mint_settleWithBalance() public {
         uint256 liquidityAlice = 3_000e18;
 
         Plan memory planner = Planner.init();
-        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidityAlice, alice, ZERO_BYTES));
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
+        );
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
@@ -422,7 +613,10 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // alice increases with the balance in the position manager
         Plan memory planner = Planner.init();
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityAlice, ZERO_BYTES));
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenIdAlice, config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency0));
         planner.add(Actions.SETTLE_WITH_BALANCE, abi.encode(currency1));
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
@@ -457,5 +651,64 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amount0);
         assertEq(currency1.balanceOf(address(this)), balanceBefore1 - amount1);
+    }
+
+    function test_increaseLiquidity_clearExceeds_revert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1000e18, address(this), ZERO_BYTES);
+
+        // donate to create fee revenue
+        uint256 amountToDonate = 0.2e18;
+        donateRouter.donate(key, amountToDonate, amountToDonate, ZERO_BYTES);
+
+        // calculate the amount of liquidity to add, using half of the proceeds
+        uint256 amountToReinvest = amountToDonate / 2;
+        uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            amountToReinvest,
+            amountToReinvest
+        );
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenId, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, amountToReinvest - 2 wei));
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, amountToReinvest - 2 wei));
+        bytes memory calls = planner.encode();
+
+        // revert since we're forfeiting beyond the max tolerance
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IPositionManager.ClearExceedsMaxAmount.selector,
+                config.poolKey.currency0,
+                int256(amountToReinvest - 1 wei), // imprecision, PM expects us to collect half of the fees (minus 1 wei)
+                uint256(amountToReinvest - 2 wei) // the maximum amount we were willing to forfeit
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    /// @dev clearing a negative delta reverts in core with SafeCastOverflow
+    function test_increaseLiquidity_clearNegative_revert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1000e18, address(this), ZERO_BYTES);
+
+        // increase liquidity with new tokens but try clearing the negative delta
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(tokenId, config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, type(uint256).max));
+        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, type(uint256).max));
+        bytes memory calls = planner.encode();
+
+        // revert since we're forfeiting beyond the max tolerance
+        vm.expectRevert(SafeCast.SafeCastOverflow.selector);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 }

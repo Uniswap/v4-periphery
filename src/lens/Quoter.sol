@@ -155,7 +155,7 @@ contract Quoter is IQuoter, SafeCallback {
     }
 
     /// @dev quote an ExactInput swap along a path of tokens, then revert with the result
-    function _quoteExactInput(QuoteExactParams memory params) public selfOnly returns (bytes memory) {
+    function _quoteExactInput(QuoteExactParams calldata params) public selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
         QuoteResult memory result = QuoteResult({
@@ -198,7 +198,7 @@ contract Quoter is IQuoter, SafeCallback {
     }
 
     /// @dev quote an ExactInput swap on a pool, then revert with the result
-    function _quoteExactInputSingle(QuoteExactSingleParams memory params) public selfOnly returns (bytes memory) {
+    function _quoteExactInputSingle(QuoteExactSingleParams calldata params) public selfOnly returns (bytes memory) {
         (, int24 tickBefore,,) = poolManager.getSlot0(params.poolKey.toId());
 
         (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) = _swap(
@@ -223,7 +223,7 @@ contract Quoter is IQuoter, SafeCallback {
     }
 
     /// @dev quote an ExactOutput swap along a path of tokens, then revert with the result
-    function _quoteExactOutput(QuoteExactParams memory params) public selfOnly returns (bytes memory) {
+    function _quoteExactOutput(QuoteExactParams calldata params) public selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
         QuoteResult memory result = QuoteResult({
@@ -269,7 +269,7 @@ contract Quoter is IQuoter, SafeCallback {
     }
 
     /// @dev quote an ExactOutput swap on a pool, then revert with the result
-    function _quoteExactOutputSingle(QuoteExactSingleParams memory params) public selfOnly returns (bytes memory) {
+    function _quoteExactOutputSingle(QuoteExactSingleParams calldata params) public selfOnly returns (bytes memory) {
         // if no price limit has been specified, cache the output amount for comparison in the swap callback
         if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.exactAmount;
 
@@ -303,7 +303,7 @@ contract Quoter is IQuoter, SafeCallback {
         bool zeroForOne,
         int256 amountSpecified,
         uint160 sqrtPriceLimitX96,
-        bytes memory hookData
+        bytes calldata hookData
     ) private returns (BalanceDelta deltas, uint160 sqrtPriceX96After, int24 tickAfter) {
         deltas = poolManager.swap(
             poolKey,

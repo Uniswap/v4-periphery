@@ -16,6 +16,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -23,6 +24,7 @@ import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {SlippageCheckLibrary} from "../../src/libraries/SlippageCheck.sol";
 import {BaseActionsRouter} from "../../src/base/BaseActionsRouter.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
@@ -180,6 +182,87 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
 
+    /// @dev test that clear does not work on minting
+    function test_fuzz_mint_clear_revert(IPoolManager.ModifyLiquidityParams memory seedParams) public {
+        IPoolManager.ModifyLiquidityParams memory params = createFuzzyLiquidityParams(key, seedParams, SQRT_PRICE_1_1);
+        uint256 liquidityToAdd =
+            params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
+
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+        );
+        planner.add(Actions.CLEAR, abi.encode(key.currency0, type(uint256).max));
+        planner.add(Actions.CLEAR, abi.encode(key.currency1, type(uint256).max));
+        bytes memory calls = planner.encode();
+
+        vm.expectRevert(SafeCast.SafeCastOverflow.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_mint_slippage_revertAmount0() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+
+        bytes memory calls = getMintEncoded(config, 1e18, 1 wei, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_mint_slippage_revertAmount1() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+
+        bytes memory calls = getMintEncoded(config, 1e18, MAX_SLIPPAGE_INCREASE, 1 wei, address(this), ZERO_BYTES);
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_mint_slippage_exactDoesNotRevert() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+
+        uint256 liquidity = 1e18;
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(liquidity)
+        );
+        assertEq(amount0, amount1); // symmetric liquidity
+        uint128 slippage = uint128(amount0) + 1;
+
+        bytes memory calls = getMintEncoded(config, liquidity, slippage, slippage, address(this), ZERO_BYTES);
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+        assertEq(uint256(int256(-delta.amount0())), slippage);
+        assertEq(uint256(int256(-delta.amount1())), slippage);
+    }
+
+    function test_mint_slippage_revert_swap() public {
+        // swapping will cause a slippage revert
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+
+        uint256 liquidity = 100e18;
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(liquidity)
+        );
+        assertEq(amount0, amount1); // symmetric liquidity
+        uint128 slippage = uint128(amount0) + 1;
+
+        bytes memory calls = getMintEncoded(config, liquidity, slippage, slippage, address(this), ZERO_BYTES);
+
+        // swap to move the price and cause a slippage revert
+        swap(key, true, -1e18, ZERO_BYTES);
+
+        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
     function test_fuzz_burn_emptyPosition(IPoolManager.ModifyLiquidityParams memory params) public {
         uint256 balance0Start = currency0.balanceOfSelf();
         uint256 balance1Start = currency1.balanceOfSelf();
@@ -279,6 +362,65 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
     }
 
+    function test_burn_slippage_revertAmount0() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, address(this), ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+
+        bytes memory calls =
+            getBurnEncoded(tokenId, config, uint128(-delta.amount0()) + 1 wei, MIN_SLIPPAGE_DECREASE, ZERO_BYTES);
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_burn_slippage_revertAmount1() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, address(this), ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+
+        bytes memory calls =
+            getBurnEncoded(tokenId, config, MIN_SLIPPAGE_DECREASE, uint128(-delta.amount1()) + 1 wei, ZERO_BYTES);
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_burn_slippage_exactDoesNotRevert() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, address(this), ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+
+        // TODO: why does burning a newly minted position return original delta - 1 wei?
+        bytes memory calls = getBurnEncoded(
+            tokenId, config, uint128(-delta.amount0()) - 1 wei, uint128(-delta.amount1()) - 1 wei, ZERO_BYTES
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta burnDelta = getLastDelta();
+
+        assertApproxEqAbs(-delta.amount0(), burnDelta.amount0(), 1 wei);
+        assertApproxEqAbs(-delta.amount1(), burnDelta.amount1(), 1 wei);
+    }
+
+    function test_burn_slippage_revert_swap() public {
+        // swapping will cause a slippage revert
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, address(this), ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+
+        bytes memory calls = getBurnEncoded(
+            tokenId, config, uint128(-delta.amount0()) - 1 wei, uint128(-delta.amount1()) - 1 wei, ZERO_BYTES
+        );
+
+        // swap to move the price and cause a slippage revert
+        swap(key, true, -1e18, ZERO_BYTES);
+
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
     function test_fuzz_decreaseLiquidity(
         IPoolManager.ModifyLiquidityParams memory params,
         uint256 decreaseLiquidityDelta
@@ -302,6 +444,81 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         assertEq(currency0.balanceOfSelf(), balance0Before + uint256(uint128(delta.amount0())));
         assertEq(currency1.balanceOfSelf(), balance1Before + uint256(uint128(delta.amount1())));
+    }
+
+    /// @dev Clearing on decrease liquidity is allowed
+    function test_fuzz_decreaseLiquidity_clear(
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 decreaseLiquidityDelta
+    ) public {
+        uint256 tokenId;
+        (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
+        decreaseLiquidityDelta = uint256(bound(int256(decreaseLiquidityDelta), 0, params.liquidityDelta));
+
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+
+        // Clearing is allowed on decrease liquidity
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(
+                tokenId, config, decreaseLiquidityDelta, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES
+            )
+        );
+        planner.add(Actions.CLEAR, abi.encode(key.currency0, type(uint256).max));
+        planner.add(Actions.CLEAR, abi.encode(key.currency1, type(uint256).max));
+        bytes memory calls = planner.encode();
+
+        lpm.modifyLiquidities(calls, _deadline);
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
+
+        // did not recieve tokens, as they were forfeited with CLEAR
+        assertEq(currency0.balanceOfSelf(), balance0Before);
+        assertEq(currency1.balanceOfSelf(), balance1Before);
+    }
+
+    /// @dev Clearing on decrease reverts if it exceeds user threshold
+    function test_fuzz_decreaseLiquidity_clearRevert(IPoolManager.ModifyLiquidityParams memory params) public {
+        // use fuzzer for tick range
+        params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
+
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        uint256 liquidityToAdd = 1e18;
+        uint256 liquidityToRemove = bound(liquidityToAdd, liquidityToAdd / 1000, liquidityToAdd);
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, address(this), ZERO_BYTES);
+
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(liquidityToRemove)
+        );
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, config, liquidityToRemove, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+        planner.add(Actions.CLEAR, abi.encode(key.currency0, amount0 - 1 wei));
+        planner.add(Actions.CLEAR, abi.encode(key.currency1, amount1 - 1 wei));
+        bytes memory calls = planner.encode();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IPositionManager.ClearExceedsMaxAmount.selector, currency0, amount0, amount0 - 1 wei)
+        );
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     function test_decreaseLiquidity_collectFees(
@@ -341,6 +558,68 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // claimed both principal liquidity and fee revenue
         assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, amount0 + feeRevenue0, 1 wei);
         assertApproxEqAbs(currency1.balanceOfSelf() - balance1Before, amount1 + feeRevenue1, 1 wei);
+    }
+
+    function test_decreaseLiquidity_slippage_revertAmount0() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, address(this), ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+
+        bytes memory calls = getDecreaseEncoded(
+            tokenId, config, 1e18, uint128(-delta.amount0()) + 1 wei, MIN_SLIPPAGE_DECREASE, ZERO_BYTES
+        );
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_decreaseLiquidity_slippage_revertAmount1() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, address(this), ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+
+        bytes memory calls = getDecreaseEncoded(
+            tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, uint128(-delta.amount1()) + 1 wei, ZERO_BYTES
+        );
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_decreaseLiquidity_slippage_exactDoesNotRevert() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, address(this), ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+
+        // TODO: why does decreasing a newly minted position return original delta - 1 wei?
+        bytes memory calls = getDecreaseEncoded(
+            tokenId, config, 1e18, uint128(-delta.amount0()) - 1 wei, uint128(-delta.amount1()) - 1 wei, ZERO_BYTES
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta decreaseDelta = getLastDelta();
+
+        // TODO: why does decreasing a newly minted position return original delta - 1 wei?
+        assertApproxEqAbs(-delta.amount0(), decreaseDelta.amount0(), 1 wei);
+        assertApproxEqAbs(-delta.amount1(), decreaseDelta.amount1(), 1 wei);
+    }
+
+    function test_decreaseLiquidity_slippage_revert_swap() public {
+        // swapping will cause a slippage revert
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, address(this), ZERO_BYTES);
+        BalanceDelta delta = getLastDelta();
+
+        bytes memory calls = getDecreaseEncoded(
+            tokenId, config, 1e18, uint128(-delta.amount0()) - 1 wei, uint128(-delta.amount1()) - 1 wei, ZERO_BYTES
+        );
+
+        // swap to move the price and cause a slippage revert
+        swap(key, true, -1e18, ZERO_BYTES);
+
+        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     function test_fuzz_decreaseLiquidity_assertCollectedBalance(
@@ -530,7 +809,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_initialize(uint160 sqrtPrice, uint24 fee) public {
-        sqrtPrice = uint160(bound(sqrtPrice, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE));
+        sqrtPrice =
+            uint160(bound(sqrtPrice, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE_MINUS_MIN_SQRT_PRICE_MINUS_ONE));
         fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
         key =
             PoolKey({currency0: currency0, currency1: currency1, fee: fee, tickSpacing: 10, hooks: IHooks(address(0))});
