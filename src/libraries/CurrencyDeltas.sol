@@ -33,10 +33,10 @@ library CurrencyDeltas {
             mstore(32, currency1)
             tloadSlot1 := keccak256(0, 64)
         }
-        bytes32[] memory slots = new bytes32[](2);
-        slots[0] = tloadSlot0;
-        slots[1] = tloadSlot1;
-        bytes32[] memory result = manager.exttload(slots);
-        return toBalanceDelta(int256(uint256(result[0])).toInt128(), int256(uint256(result[1])).toInt128());
+
+        return toBalanceDelta(
+            int256(uint256(manager.exttload(tloadSlot0))).toInt128(),
+            int256(uint256(manager.exttload(tloadSlot1))).toInt128()
+        );
     }
 }

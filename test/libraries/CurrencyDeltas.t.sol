@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
+import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
@@ -11,7 +12,7 @@ import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 
 import {MockCurrencyDeltaReader} from "../mocks/MockCurrencyDeltaReader.sol";
 
-contract CurrencyDeltasTest is Test, Deployers {
+contract CurrencyDeltasTest is Test, Deployers, GasSnapshot {
     using CurrencyLibrary for Currency;
 
     MockCurrencyDeltaReader reader;
@@ -76,6 +77,49 @@ contract CurrencyDeltasTest is Test, Deployers {
         }
 
         BalanceDelta delta = reader.execute(calls, currency0, currency1);
+        assertEq(delta.amount0(), delta0Expected);
+        assertEq(delta.amount1(), delta1Expected);
+    }
+
+    function test_gas_currencyDeltas() public {
+        uint256 seed = 123456789;
+        uint128 amount0 = 1e18;
+        uint128 amount1 = 2e18;
+        int128 delta0Expected = 0;
+        int128 delta1Expected = 0;
+
+        bytes[] memory calls = new bytes[](10);
+        for (uint256 i = 0; i < 10; i++) {
+            seed = seed % (i + 1);
+            if (seed % 8 == 0) {
+                calls[i] = abi.encodeWithSelector(MockCurrencyDeltaReader.settle.selector, currency0, amount0);
+                delta0Expected += int128(amount0);
+            } else if (seed % 8 == 1) {
+                calls[i] = abi.encodeWithSelector(MockCurrencyDeltaReader.settle.selector, currency1, amount1);
+                delta1Expected += int128(amount1);
+            } else if (seed % 8 == 2) {
+                calls[i] = abi.encodeWithSelector(MockCurrencyDeltaReader.burn.selector, currency0, amount0);
+                delta0Expected += int128(amount0);
+            } else if (seed % 8 == 3) {
+                calls[i] = abi.encodeWithSelector(MockCurrencyDeltaReader.burn.selector, currency1, amount1);
+                delta1Expected += int128(amount1);
+            } else if (seed % 8 == 4) {
+                calls[i] = abi.encodeWithSelector(MockCurrencyDeltaReader.take.selector, currency0, amount0);
+                delta0Expected -= int128(amount0);
+            } else if (seed % 8 == 5) {
+                calls[i] = abi.encodeWithSelector(MockCurrencyDeltaReader.take.selector, currency1, amount1);
+                delta1Expected -= int128(amount1);
+            } else if (seed % 8 == 6) {
+                calls[i] = abi.encodeWithSelector(MockCurrencyDeltaReader.mint.selector, currency0, amount0);
+                delta0Expected -= int128(amount0);
+            } else if (seed % 8 == 7) {
+                calls[i] = abi.encodeWithSelector(MockCurrencyDeltaReader.mint.selector, currency1, amount1);
+                delta1Expected -= int128(amount1);
+            }
+        }
+
+        BalanceDelta delta = reader.execute(calls, currency0, currency1);
+        snapLastCall("CurrencyDeltas_10iterations");
         assertEq(delta.amount0(), delta0Expected);
         assertEq(delta.amount1(), delta1Expected);
     }
