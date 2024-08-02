@@ -129,6 +129,7 @@ library CalldataDecoder {
         }
     }
 
+    /// @dev equivalent to: abi.decode(params, (Currency, uint256)) in calldata
     function decodeCurrencyAndUint256(bytes calldata params)
         internal
         pure
