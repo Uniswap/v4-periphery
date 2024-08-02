@@ -166,6 +166,14 @@ library CalldataDecoder {
         }
     }
 
+    /// @dev equivalent to: abi.decode(params, (Currency, Currency)) in calldata
+    function decodeCurrencyPair(bytes calldata params) internal pure returns (Currency currency0, Currency currency1) {
+        assembly ("memory-safe") {
+            currency0 := calldataload(params.offset)
+            currency1 := calldataload(add(params.offset, 0x20))
+        }
+    }
+
     /// @dev equivalent to: abi.decode(params, (Currency, address)) in calldata
     function decodeCurrencyAndAddress(bytes calldata params)
         internal
@@ -178,6 +186,19 @@ library CalldataDecoder {
         }
     }
 
+    /// @dev equivalent to: abi.decode(params, (Currency, address, uint256)) in calldata
+    function decodeCurrencyAddressAndUint256(bytes calldata params)
+        internal
+        pure
+        returns (Currency currency, address _address, uint256 amount)
+    {
+        assembly ("memory-safe") {
+            currency := calldataload(params.offset)
+            _address := calldataload(add(params.offset, 0x20))
+            amount := calldataload(add(params.offset, 0x40))
+        }
+    }
+
     /// @dev equivalent to: abi.decode(params, (Currency, uint256)) in calldata
     function decodeCurrencyAndUint256(bytes calldata params)
         internal
@@ -187,6 +208,19 @@ library CalldataDecoder {
         assembly ("memory-safe") {
             currency := calldataload(params.offset)
             amount := calldataload(add(params.offset, 0x20))
+        }
+    }
+
+    /// @dev equivalent to: abi.decode(params, (Currency, uint256, bool)) in calldata
+    function decodeCurrencyUint256AndBool(bytes calldata params)
+        internal
+        pure
+        returns (Currency currency, uint256 amount, bool boolean)
+    {
+        assembly ("memory-safe") {
+            currency := calldataload(params.offset)
+            amount := calldataload(add(params.offset, 0x20))
+            boolean := calldataload(add(params.offset, 0x40))
         }
     }
 

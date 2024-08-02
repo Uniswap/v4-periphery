@@ -18,6 +18,7 @@ import {PositionManager} from "../../src/PositionManager.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LiquidityOperations} from "./LiquidityOperations.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
+import {Constants} from "../../src/libraries/Constants.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the router.
 contract RoutingTestHelpers is Test, Deployers {
@@ -160,7 +161,7 @@ contract RoutingTestHelpers is Test, Deployers {
             uint256 outputBalanceAfter
         )
     {
-        return _finalizeAndExecuteSwap(inputCurrency, outputCurrency, amountIn, Actions.MSG_SENDER);
+        return _finalizeAndExecuteSwap(inputCurrency, outputCurrency, amountIn, Constants.MSG_SENDER);
     }
 
     function _finalizeAndExecuteNativeInputExactOutputSwap(
@@ -179,7 +180,7 @@ contract RoutingTestHelpers is Test, Deployers {
         inputBalanceBefore = inputCurrency.balanceOfSelf();
         outputBalanceBefore = outputCurrency.balanceOfSelf();
 
-        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, Actions.MSG_SENDER);
+        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, Constants.MSG_SENDER);
 
         // send too much ETH to mimic slippage
         uint256 value = expectedAmountIn + 0.1 ether;

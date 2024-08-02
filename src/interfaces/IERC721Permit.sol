@@ -17,6 +17,7 @@ interface IERC721Permit {
     /// @param tokenId The ID of the token that is being approved for spending
     /// @param deadline The deadline timestamp by which the call must be mined for the approve to work
     /// @param signature Concatenated data from a valid secp256k1 signature from the holder, i.e. abi.encodePacked(r, s, v)
+    /// @dev payable so it can be multicalled with NATIVE related actions
     function permit(address spender, uint256 tokenId, uint256 deadline, uint256 nonce, bytes calldata signature)
         external
         payable;
