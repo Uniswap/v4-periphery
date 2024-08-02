@@ -112,7 +112,7 @@ contract PositionManager is
                 address owner,
                 bytes calldata hookData
             ) = params.decodeMintParams();
-            _mint(config, liquidity, amount0Max, amount1Max, owner, hookData);
+            _mint(config, liquidity, amount0Max, amount1Max, _map(owner), hookData);
         } else if (action == Actions.CLOSE_CURRENCY) {
             Currency currency = params.decodeCurrency();
             _close(currency);
@@ -134,7 +134,7 @@ contract PositionManager is
             _settleWithBalance(currency);
         } else if (action == Actions.SWEEP) {
             (Currency currency, address to) = params.decodeCurrencyAndAddress();
-            _sweep(currency, to);
+            _sweep(currency, _map(to));
         } else {
             revert UnsupportedAction(action);
         }

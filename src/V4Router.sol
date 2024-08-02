@@ -58,8 +58,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 uint256 amount = _getFullTakeAmount(currency);
 
                 // TODO should _take have a minAmountOut added slippage check?
-                // TODO recipient mapping
-                _take(currency, recipient, amount);
+                _take(currency, _map(recipient), amount);
             } else {
                 revert UnsupportedAction(action);
             }
