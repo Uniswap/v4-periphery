@@ -31,28 +31,16 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         // swap actions and payment actions in different blocks for gas efficiency
         if (action < Actions.SETTLE) {
             if (action == Actions.SWAP_EXACT_IN) {
-                IV4Router.ExactInputParams calldata swapParams;
-                assembly ("memory-safe") {
-                    swapParams := add(params.offset, calldataload(params.offset))
-                }
+                IV4Router.ExactInputParams calldata swapParams = params.decodeSwapExactInParams();
                 _swapExactInput(swapParams);
             } else if (action == Actions.SWAP_EXACT_IN_SINGLE) {
-                IV4Router.ExactInputSingleParams calldata swapParams;
-                assembly ("memory-safe") {
-                    swapParams := add(params.offset, calldataload(params.offset))
-                }
+                IV4Router.ExactInputSingleParams calldata swapParams = params.decodeSwapExactInSingleParams();
                 _swapExactInputSingle(swapParams);
             } else if (action == Actions.SWAP_EXACT_OUT) {
-                IV4Router.ExactOutputParams calldata swapParams;
-                assembly ("memory-safe") {
-                    swapParams := add(params.offset, calldataload(params.offset))
-                }
+                IV4Router.ExactOutputParams calldata swapParams = params.decodeSwapExactOutParams();
                 _swapExactOutput(swapParams);
             } else if (action == Actions.SWAP_EXACT_OUT_SINGLE) {
-                IV4Router.ExactOutputSingleParams calldata swapParams;
-                assembly ("memory-safe") {
-                    swapParams := add(params.offset, calldataload(params.offset))
-                }
+                IV4Router.ExactOutputSingleParams calldata swapParams = params.decodeSwapExactOutSingleParams();
                 _swapExactOutputSingle(swapParams);
             } else {
                 revert UnsupportedAction(action);
