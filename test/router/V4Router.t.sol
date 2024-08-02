@@ -11,6 +11,8 @@ contract V4RouterTest is RoutingTestHelpers {
     using CurrencyLibrary for Currency;
     using Planner for Plan;
 
+    uint128 internal constant OPEN_DELTA = 0;
+
     function setUp() public {
         setupRouterCurrenciesAndPoolsWithLiquidity();
         plan = Planner.init();
@@ -178,6 +180,37 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
     }
 
+    function test_swap_settleRouterBalance_swapOpenDelta() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        key0.currency0.transfer(address(router), amountIn);
+
+        // amount in of 0 to show it should use the open delta
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, true, OPEN_DELTA, 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SETTLE_WITH_BALANCE, abi.encode(key0.currency0));
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
+
+        bytes memory data = plan.encode();
+
+        uint256 callerInputBefore = key0.currency0.balanceOfSelf();
+        uint256 routerInputBefore = key0.currency0.balanceOf(address(router));
+        uint256 callerOutputBefore = key0.currency1.balanceOfSelf();
+        router.executeActions(data);
+
+        uint256 callerInputAfter = key0.currency0.balanceOfSelf();
+        uint256 routerInputAfter = key0.currency0.balanceOf(address(router));
+        uint256 callerOutputAfter = key0.currency1.balanceOfSelf();
+
+        // caller didnt pay, router paid, caller received the output
+        assertEq(callerInputBefore, callerInputAfter);
+        assertEq(routerInputBefore - amountIn, routerInputAfter);
+        assertEq(callerOutputBefore + expectedAmountOut, callerOutputAfter);
+    }
+
     /*//////////////////////////////////////////////////////////////
                 ETH -> ERC20 and ERC20 -> ETH EXACT INPUT
     //////////////////////////////////////////////////////////////*/
@@ -313,6 +346,37 @@ contract V4RouterTest is RoutingTestHelpers {
 
         assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
+    }
+
+    function test_swap_nativeIn_settleRouterBalance_swapOpenDelta() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        nativeKey.currency0.transfer(address(router), amountIn);
+
+        // amount in of 0 to show it should use the open delta
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(nativeKey, true, OPEN_DELTA, 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SETTLE_WITH_BALANCE, abi.encode(nativeKey.currency0));
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(nativeKey.currency1, address(this)));
+
+        bytes memory data = plan.encode();
+
+        uint256 callerInputBefore = nativeKey.currency0.balanceOfSelf();
+        uint256 routerInputBefore = nativeKey.currency0.balanceOf(address(router));
+        uint256 callerOutputBefore = nativeKey.currency1.balanceOfSelf();
+        router.executeActions(data);
+
+        uint256 callerInputAfter = nativeKey.currency0.balanceOfSelf();
+        uint256 routerInputAfter = nativeKey.currency0.balanceOf(address(router));
+        uint256 callerOutputAfter = nativeKey.currency1.balanceOfSelf();
+
+        // caller didnt pay, router paid, caller received the output
+        assertEq(callerInputBefore, callerInputAfter);
+        assertEq(routerInputBefore - amountIn, routerInputAfter);
+        assertEq(callerOutputBefore + expectedAmountOut, callerOutputAfter);
     }
 
     /*//////////////////////////////////////////////////////////////å

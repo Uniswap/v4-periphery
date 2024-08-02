@@ -11,6 +11,10 @@ import {ImmutableState} from "./ImmutableState.sol";
 abstract contract DeltaResolver is ImmutableState {
     using TransientStateLibrary for IPoolManager;
 
+    /// @notice used to signal that an action should use the input value of the open delta on the pool manager
+    /// this is useful for Fee On Transfer tokens, as well as multi-protocol multi-hop swaps
+    uint128 internal constant OPEN_DELTA = 0;
+
     /// @notice Emitted trying to settle a positive delta.
     error IncorrectUseOfSettle();
     /// @notice Emitted trying to take a negative delta.

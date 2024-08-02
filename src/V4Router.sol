@@ -26,10 +26,6 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using PathKeyLib for PathKey;
     using CalldataDecoder for bytes;
 
-    /// @notice used to signal that an exactIn trade should use the input value of the open delta on the pool manager
-    /// this is useful for Fee On Transfer tokens, as well as multi-protocol multi-hop swaps
-    uint128 internal constant OPEN_DELTA = 0;
-
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
     // TODO native support !!
@@ -54,7 +50,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 _settle(currency, _msgSender(), _getFullSettleAmount(currency));
             } else if (action == Actions.SETTLE_WITH_BALANCE) {
                 Currency currency = params.decodeCurrency();
-                _settle(currency, address(this), _getFullSettleAmount(currency));
+                _settle(currency, address(this), currency.balanceOfSelf());
             } else if (action == Actions.TAKE_ALL) {
                 (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
                 uint256 amount = _getFullTakeAmount(currency);
