@@ -26,6 +26,7 @@ import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
+import {CurrencyDeltas} from "./libraries/CurrencyDeltas.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -45,6 +46,7 @@ contract PositionManager is
     using SafeCast for uint256;
     using CalldataDecoder for bytes;
     using SlippageCheckLibrary for BalanceDelta;
+    using CurrencyDeltas for IPoolManager;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
@@ -227,8 +229,9 @@ contract PositionManager is
     function _settlePair(Currency currency0, Currency currency1) internal {
         // the locker is the payer when settling
         address caller = _msgSender();
-        _settle(currency0, caller, _getFullSettleAmount(currency0));
-        _settle(currency1, caller, _getFullSettleAmount(currency1));
+        BalanceDelta delta = poolManager.currencyDeltas(address(this), currency0, currency1);
+        _settle(currency0, caller, uint256(int256(-delta.amount0())));
+        _settle(currency1, caller, uint256(int256(-delta.amount1())));
     }
 
     /// @dev this is overloaded with ERC721Permit._burn
