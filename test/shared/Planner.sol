@@ -56,12 +56,12 @@ library Planner {
         return plan.encode();
     }
 
-    function finalizeModifyLiquidityWithTakePair(Plan memory plan, PoolKey memory poolKey)
+    function finalizeModifyLiquidityWithTakePair(Plan memory plan, PoolKey memory poolKey, address takeRecipient)
         internal
         pure
         returns (bytes memory)
     {
-        plan.add(Actions.TAKE_PAIR, abi.encode(poolKey.currency0, poolKey.currency1));
+        plan.add(Actions.TAKE_PAIR, abi.encode(poolKey.currency0, poolKey.currency1, takeRecipient));
         return plan.encode();
     }
 

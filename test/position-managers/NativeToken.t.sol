@@ -285,7 +285,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(
             Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
-        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
         lpm.modifyLiquidities(calls, _deadline);
         // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array will be the same length.
         assertEq(numDeltas, hook.numberDeltasReturned());
@@ -391,7 +391,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(
             Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
-        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
         lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta deltaBurn = getLastDelta();
 
@@ -634,7 +634,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
                 tokenId, config, decreaseLiquidityDelta, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES
             )
         );
-        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
         lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
@@ -698,13 +698,55 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             Actions.DECREASE_LIQUIDITY,
             abi.encode(tokenId, config, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
-        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
         lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, feeRevenue0, 1 wei); // TODO: fuzzer off by 1 wei
         assertEq(currency0.balanceOfSelf() - balance0Before, uint128(delta.amount0()));
         assertEq(currency1.balanceOfSelf() - balance1Before, uint128(delta.amount1()));
+    }
+
+    function test_fuzz_collect_native_withTakePair_recipient(IPoolManager.ModifyLiquidityParams memory params) public {
+        params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
+        vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
+
+        PositionConfig memory config =
+            PositionConfig({poolKey: nativeKey, tickLower: params.tickLower, tickUpper: params.tickUpper});
+
+        // mint the position with native token liquidity
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, config, uint256(params.liquidityDelta), Constants.MSG_SENDER, ZERO_BYTES);
+
+        // donate to generate fee revenue
+        uint256 feeRevenue0 = 1e18;
+        uint256 feeRevenue1 = 0.1e18;
+        donateRouter.donate{value: 1e18}(nativeKey, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        uint256 balance0Before = address(this).balance;
+        uint256 balance1Before = currency1.balanceOfSelf();
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, config, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+
+        address alice = address(0xABCD);
+
+        uint256 aliceBalance0Before = currency0.balanceOf(alice);
+        uint256 aliceBalance1Before = currency1.balanceOf(alice);
+
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, alice);
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+
+        assertEq(currency0.balanceOfSelf() - balance0Before, 0);
+        assertEq(currency1.balanceOfSelf() - balance1Before, 0);
+
+        assertApproxEqAbs(currency0.balanceOf(alice) - aliceBalance0Before, feeRevenue0, 1 wei); // TODO: fuzzer off by 1 wei
+        assertEq(currency0.balanceOf(alice) - aliceBalance0Before, uint128(delta.amount0()));
+        assertEq(currency1.balanceOf(alice) - aliceBalance1Before, uint128(delta.amount1()));
     }
 
     // this test fails unless subscribe is payable

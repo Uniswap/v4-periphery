@@ -341,7 +341,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             abi.encode(tokenId, config, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
 
-        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decreaseLiquidity_withTakePair");
     }
@@ -403,7 +403,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             abi.encode(tokenId, config, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
 
-        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_collect_withTakePair");
     }
@@ -485,7 +485,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init().add(
             Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
-        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
 
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_burn_nonEmpty_withTakePair");
@@ -661,7 +661,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Actions.BURN_POSITION,
             abi.encode(tokenId, configNative, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
-        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(configNative.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(configNative.poolKey, address(this));
 
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_burn_nonEmpty_native_withTakePair");
