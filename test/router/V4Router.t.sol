@@ -111,7 +111,6 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(outputBalanceAfter, outputBalanceBefore);
     }
 
-
     // This is not a real use-case in isolation, but will be used in the UniversalRouter if a v4
     // swap is before another swap on v2/v3
     function test_swapExactInputSingle_zeroForOne_takeToRouter() public {
