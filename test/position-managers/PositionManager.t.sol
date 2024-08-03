@@ -945,6 +945,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             currency1.balanceOfSelf(), balanceBefore1 - uint256(-int256(deltaDecrease.amount1() + deltaMint.amount1()))
         );
         assertEq(lpm.ownerOf(tokenIdMint), address(this));
+        assertLt(currency1.balanceOfSelf(), balanceBefore1); // currency1 was owed
+        assertLt(uint256(int256(deltaDecrease.amount1())), uint256(int256(-deltaMint.amount1()))); // amount1 in the second position was greater than amount1 in the first position
     }
 
     function test_mint_slippageRevert() public {}
