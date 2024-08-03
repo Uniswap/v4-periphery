@@ -6,6 +6,8 @@ pragma solidity ^0.8.24;
 contract UnorderedNonce {
     error NonceAlreadyUsed();
 
+    /// @notice mapping of nonces consumed by each address, where a nonce is a single bit on the 256-bit bitmap
+    /// @dev word is at most type(uint248).max
     mapping(address owner => mapping(uint256 word => uint256 bitmap)) public nonces;
 
     /// @notice Consume a nonce, reverting if its already been used

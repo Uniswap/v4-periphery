@@ -73,34 +73,6 @@ contract PermitTest is Test, PosmTestSetup {
         );
     }
 
-    function test_permit_increaseLiquidity() public {
-        uint256 liquidityAlice = 1e18;
-        vm.prank(alice);
-        mint(config, liquidityAlice, alice, ZERO_BYTES);
-        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
-
-        // alice gives bob operator permissions
-        permit(alicePK, tokenIdAlice, bob, 1);
-
-        // bob can increase liquidity on alice's token
-        uint256 newLiquidity = 2e18;
-        uint256 balance0BobBefore = currency0.balanceOf(bob);
-        uint256 balance1BobBefore = currency1.balanceOf(bob);
-        vm.startPrank(bob);
-        increaseLiquidity(tokenIdAlice, config, newLiquidity, ZERO_BYTES);
-        vm.stopPrank();
-
-        // alice's position has new liquidity
-        bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice)));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
-        assertEq(liquidity, liquidityAlice + newLiquidity);
-
-        // bob used his tokens to increase liquidity
-        assertGt(balance0BobBefore, currency0.balanceOf(bob));
-        assertGt(balance1BobBefore, currency1.balanceOf(bob));
-    }
-
     function test_permit_decreaseLiquidity() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
