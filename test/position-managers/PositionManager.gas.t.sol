@@ -810,7 +810,6 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     // Does not encode a take pair
     function test_gas_decrease_take_take() public {
-        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 1e18, Constants.MSG_SENDER, ZERO_BYTES);
 
