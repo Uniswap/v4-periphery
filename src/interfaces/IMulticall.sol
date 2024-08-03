@@ -4,8 +4,6 @@ pragma solidity ^0.8.19;
 /// @title Multicall interface
 /// @notice Enables calling multiple methods in a single call to the contract
 interface IMulticall {
-    error CallFailed(bytes revertReason);
-
     /// @notice Call multiple functions in the current contract and return the data from all of them if they all succeed
     /// @dev The `msg.value` should not be trusted for any method callable from multicall.
     /// @param data The encoded function data for each of the calls to make to this contract

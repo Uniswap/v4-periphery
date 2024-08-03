@@ -185,7 +185,7 @@ contract MulticallTest is Test {
                 assertEq(reason.length, 68);
             } else {
                 uint256 expectedLength = 64 + 4; // default length + selector
-                // for every 32 bytes of data,
+                // 32 bytes added to the reason for each 32 bytes of data
                 expectedLength += (((data.length - 1) / 32) + 1) * 32;
                 assertEq(reason.length, expectedLength);
             }

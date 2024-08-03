@@ -167,9 +167,9 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         lpm.multicall(calls);
     }
 
+    // create a pool where tickSpacing is negative
+    // core's TickSpacingTooSmall(int24) should bubble up through Multicall
     function test_multicall_bubbleRevert_core_args() public {
-        // create a pool where tickSpacing is negative
-        // core's TickSpacingTooSmall(int24) should bubble up through Multicall
         int24 tickSpacing = -10;
         key = PoolKey({
             currency0: currency0,
