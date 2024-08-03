@@ -16,10 +16,7 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce 
     using SignatureVerification for bytes;
 
     /// @notice Computes the nameHash and versionHash
-    constructor(string memory name_, string memory symbol_, string memory version_)
-        ERC721(name_, symbol_)
-        EIP712(name_, version_)
-    {}
+    constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) EIP712(name_) {}
 
     /// @inheritdoc IERC721Permit
     function permit(address spender, uint256 tokenId, uint256 deadline, uint256 nonce, bytes calldata signature)
