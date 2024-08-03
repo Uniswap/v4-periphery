@@ -12,7 +12,6 @@ contract EIP712 is IEIP712 {
     // corresponds to, in order to invalidate the cached domain separator if the chain id changes.
     bytes32 private immutable _CACHED_DOMAIN_SEPARATOR;
     uint256 private immutable _CACHED_CHAIN_ID;
-    address private immutable _CACHED_THIS;
     bytes32 private immutable _HASHED_NAME;
     bytes32 private immutable _HASHED_VERSION;
 
@@ -25,13 +24,12 @@ contract EIP712 is IEIP712 {
 
         _CACHED_CHAIN_ID = block.chainid;
         _CACHED_DOMAIN_SEPARATOR = _buildDomainSeparator();
-        _CACHED_THIS = address(this);
     }
 
     /// @notice Returns the domain separator for the current chain.
     /// @dev Uses cached version if chainid and address are unchanged from construction.
     function DOMAIN_SEPARATOR() public view override returns (bytes32) {
-        return address(this) == _CACHED_THIS && block.chainid == _CACHED_CHAIN_ID
+        return block.chainid == _CACHED_CHAIN_ID
             ? _CACHED_DOMAIN_SEPARATOR
             : _buildDomainSeparator();
     }
