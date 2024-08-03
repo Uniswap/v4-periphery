@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {ERC721} from "solmate/src/tokens/ERC721.sol";
-import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {EIP712} from "./EIP712.sol";
 import {ERC721PermitHashLibrary} from "../libraries/ERC721PermitHash.sol";
 import {SignatureVerification} from "permit2/src/libraries/SignatureVerification.sol";
 
@@ -22,11 +22,6 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce 
     {}
 
     /// @inheritdoc IERC721Permit
-    function DOMAIN_SEPARATOR() external view returns (bytes32) {
-        return _domainSeparatorV4();
-    }
-
-    /// @inheritdoc IERC721Permit
     function permit(address spender, uint256 tokenId, uint256 deadline, uint256 nonce, bytes calldata signature)
         external
         payable
@@ -37,7 +32,7 @@ abstract contract ERC721Permit is ERC721, IERC721Permit, EIP712, UnorderedNonce 
         if (spender == owner) revert NoSelfPermit();
 
         bytes32 hash = ERC721PermitHashLibrary.hash(spender, tokenId, nonce, deadline);
-        signature.verify(_hashTypedDataV4(hash), owner);
+        signature.verify(_hashTypedData(hash), owner);
 
         _useUnorderedNonce(owner, nonce);
         _approve(owner, spender, tokenId);

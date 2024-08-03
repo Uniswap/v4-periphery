@@ -69,7 +69,7 @@ contract ERC721PermitTest is Test {
 
     function test_domainSeparator() public view {
         assertEq(
-            IERC721Permit(address(erc721Permit)).DOMAIN_SEPARATOR(),
+            erc721Permit.DOMAIN_SEPARATOR(),
             keccak256(
                 abi.encode(
                     keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),

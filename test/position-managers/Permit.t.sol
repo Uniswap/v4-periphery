@@ -60,7 +60,7 @@ contract PermitTest is Test, PosmTestSetup {
 
     function test_domainSeparator() public view {
         assertEq(
-            IERC721Permit(address(lpm)).DOMAIN_SEPARATOR(),
+            ERC721Permit(address(lpm)).DOMAIN_SEPARATOR(),
             keccak256(
                 abi.encode(
                     keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
