@@ -263,8 +263,8 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             Actions.INCREASE_LIQUIDITY,
             abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency0, halfTokensOwedAlice + 1 wei));
-        planner.add(Actions.CLEAR, abi.encode(config.poolKey.currency1, halfTokensOwedAlice + 1 wei));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, halfTokensOwedAlice + 1 wei));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, halfTokensOwedAlice + 1 wei));
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
@@ -318,7 +318,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         snapLastCall("PositionManager_increase_autocompoundExcessFeesCredit");
     }
 
-    function test_gas_decreaseLiquidity() public {
+    function test_gas_decreaseLiquidity_withClose() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, Constants.MSG_SENDER, ZERO_BYTES);
 
@@ -329,7 +329,21 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_decreaseLiquidity");
+        snapLastCall("PositionManager_decreaseLiquidity_withClose");
+    }
+
+    function test_gas_decreaseLiquidity_withTakePair() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 10_000 ether, Constants.MSG_SENDER, ZERO_BYTES);
+
+        Plan memory planner = Planner.init().add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, config, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_decreaseLiquidity_withTakePair");
     }
 
     function test_gas_multicall_initialize_mint() public {
@@ -358,7 +372,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         snapLastCall("PositionManager_multicall_initialize_mint");
     }
 
-    function test_gas_collect() public {
+    function test_gas_collect_withClose() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, Constants.MSG_SENDER, ZERO_BYTES);
 
@@ -373,7 +387,25 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_collect");
+        snapLastCall("PositionManager_collect_withClose");
+    }
+
+    function test_gas_collect_withTakePair() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 10_000 ether, Constants.MSG_SENDER, ZERO_BYTES);
+
+        // donate to create fee revenue
+        donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
+
+        // Collect by calling decrease with 0.
+        Plan memory planner = Planner.init().add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, config, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_collect_withTakePair");
     }
 
     // same-range gas tests
@@ -433,7 +465,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         snapLastCall("PositionManager_collect_sameRange");
     }
 
-    function test_gas_burn_nonEmptyPosition() public {
+    function test_gas_burn_nonEmptyPosition_withClose() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, Constants.MSG_SENDER, ZERO_BYTES);
 
@@ -443,7 +475,20 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_burn_nonEmpty");
+        snapLastCall("PositionManager_burn_nonEmpty_withClose");
+    }
+
+    function test_gas_burn_nonEmptyPosition_withTakePair() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 10_000 ether, Constants.MSG_SENDER, ZERO_BYTES);
+
+        Plan memory planner = Planner.init().add(
+            Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
+
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_burn_nonEmpty_withTakePair");
     }
 
     function test_gas_burnEmpty() public {
@@ -594,7 +639,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         snapLastCall("PositionManager_collect_native");
     }
 
-    function test_gas_burn_nonEmptyPosition_native() public {
+    function test_gas_burn_nonEmptyPosition_native_withClose() public {
         uint256 tokenId = lpm.nextTokenId();
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, Constants.MSG_SENDER, ZERO_BYTES);
 
@@ -605,7 +650,21 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(configNative.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_burn_nonEmpty_native");
+        snapLastCall("PositionManager_burn_nonEmpty_native_withClose");
+    }
+
+    function test_gas_burn_nonEmptyPosition_native_withTakePair() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, Constants.MSG_SENDER, ZERO_BYTES);
+
+        Plan memory planner = Planner.init().add(
+            Actions.BURN_POSITION,
+            abi.encode(tokenId, configNative, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(configNative.poolKey, address(this));
+
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_burn_nonEmpty_native_withTakePair");
     }
 
     function test_gas_burnEmpty_native() public {
@@ -640,6 +699,90 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(configNative.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decrease_burnEmpty_native");
+    }
+
+    function test_gas_permit() public {
+        // alice permits for the first time
+        uint256 liquidityAlice = 1e18;
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice gives operator permission to bob
+        uint256 nonce = 1;
+        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.prank(bob);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
+        snapLastCall("PositionManager_permit");
+    }
+
+    function test_gas_permit_secondPosition() public {
+        // alice permits for her two tokens, benchmark the 2nd permit
+        uint256 liquidityAlice = 1e18;
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice gives operator permission to bob
+        uint256 nonce = 1;
+        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.prank(bob);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
+
+        // alice creates another position
+        vm.startPrank(alice);
+        tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice gives operator permission to bob
+        nonce = 2;
+        digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+        (v, r, s) = vm.sign(alicePK, digest);
+        signature = abi.encodePacked(r, s, v);
+
+        vm.prank(bob);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
+        snapLastCall("PositionManager_permit_secondPosition");
+    }
+
+    function test_gas_permit_twice() public {
+        // alice permits the same token, twice
+        address charlie = makeAddr("CHARLIE");
+
+        uint256 liquidityAlice = 1e18;
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice gives operator permission to bob
+        uint256 nonce = 1;
+        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.prank(bob);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
+
+        // alice gives operator permission to charlie
+        nonce = 2;
+        digest = getDigest(charlie, tokenIdAlice, nonce, block.timestamp + 1);
+        (v, r, s) = vm.sign(alicePK, digest);
+        signature = abi.encodePacked(r, s, v);
+
+        vm.prank(bob);
+        lpm.permit(charlie, tokenIdAlice, block.timestamp + 1, nonce, signature);
+        snapLastCall("PositionManager_permit_twice");
     }
 
     function test_gas_mint_settleWithBalance_sweep() public {

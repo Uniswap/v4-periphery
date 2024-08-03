@@ -23,6 +23,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
+import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {SlippageCheckLibrary} from "../../src/libraries/SlippageCheck.sol";
 import {BaseActionsRouter} from "../../src/base/BaseActionsRouter.sol";
@@ -220,7 +221,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
 
-    /// @dev test that clear does not work on minting
+    /// @dev clear cannot be used on mint (negative delta)
     function test_fuzz_mint_clear_revert(IPoolManager.ModifyLiquidityParams memory seedParams) public {
         IPoolManager.ModifyLiquidityParams memory params = createFuzzyLiquidityParams(key, seedParams, SQRT_PRICE_1_1);
         uint256 liquidityToAdd =
@@ -234,11 +235,17 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             Actions.MINT_POSITION,
             abi.encode(config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
         );
-        planner.add(Actions.CLEAR, abi.encode(key.currency0, type(uint256).max));
-        planner.add(Actions.CLEAR, abi.encode(key.currency1, type(uint256).max));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency0, type(uint256).max));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency1, type(uint256).max));
         bytes memory calls = planner.encode();
 
-        vm.expectRevert(SafeCast.SafeCastOverflow.selector);
+        Currency negativeDeltaCurrency = currency0;
+        // because we're fuzzing the range, single-sided mint with currency1 means currency0Delta = 0 and currency1Delta < 0
+        if (config.tickUpper <= 0) {
+            negativeDeltaCurrency = currency1;
+        }
+
+        vm.expectRevert(abi.encodeWithSelector(DeltaResolver.DeltaNotPositive.selector, negativeDeltaCurrency));
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -509,8 +516,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
                 tokenId, config, decreaseLiquidityDelta, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES
             )
         );
-        planner.add(Actions.CLEAR, abi.encode(key.currency0, type(uint256).max));
-        planner.add(Actions.CLEAR, abi.encode(key.currency1, type(uint256).max));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency0, type(uint256).max));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency1, type(uint256).max));
         bytes memory calls = planner.encode();
 
         lpm.modifyLiquidities(calls, _deadline);
@@ -525,8 +532,10 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOfSelf(), balance1Before);
     }
 
-    /// @dev Clearing on decrease reverts if it exceeds user threshold
-    function test_fuzz_decreaseLiquidity_clearRevert(IPoolManager.ModifyLiquidityParams memory params) public {
+    /// @dev Clearing on decrease will take tokens if the amount exceeds the clear limit
+    function test_fuzz_decreaseLiquidity_clearExceedsThenTake(IPoolManager.ModifyLiquidityParams memory params)
+        public
+    {
         // use fuzzer for tick range
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
@@ -551,14 +560,22 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             Actions.DECREASE_LIQUIDITY,
             abi.encode(tokenId, config, liquidityToRemove, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
-        planner.add(Actions.CLEAR, abi.encode(key.currency0, amount0 - 1 wei));
-        planner.add(Actions.CLEAR, abi.encode(key.currency1, amount1 - 1 wei));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency0, amount0 - 1 wei));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency1, amount1 - 1 wei));
         bytes memory calls = planner.encode();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(IPositionManager.ClearExceedsMaxAmount.selector, currency0, amount0, amount0 - 1 wei)
-        );
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+
+        // expect to take the tokens
         lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+
+        // amount exceeded clear limit, so we should have the tokens
+        assertEq(uint128(delta.amount0()), amount0);
+        assertEq(uint128(delta.amount1()), amount1);
+        assertEq(currency0.balanceOfSelf(), balance0Before + amount0);
+        assertEq(currency1.balanceOfSelf(), balance1Before + amount1);
     }
 
     function test_decreaseLiquidity_collectFees(
