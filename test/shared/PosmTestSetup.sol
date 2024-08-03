@@ -14,6 +14,7 @@ import {LiquidityOperations} from "./LiquidityOperations.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {HookSavesDelta} from "./HookSavesDelta.sol";
+import {ERC721PermitHashLibrary} from "../../src/libraries/ERC721PermitHash.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
@@ -63,6 +64,30 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         vm.startPrank(addr);
         approvePosm();
         vm.stopPrank();
+    }
+
+    function permit(uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {
+        bytes32 digest = getDigest(operator, tokenId, 1, block.timestamp + 1);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.prank(operator);
+        lpm.permit(operator, tokenId, block.timestamp + 1, nonce, signature);
+    }
+
+    function getDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)
+        internal
+        view
+        returns (bytes32 digest)
+    {
+        digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                lpm.DOMAIN_SEPARATOR(),
+                keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline))
+            )
+        );
     }
 
     function getLastDelta() internal view returns (BalanceDelta delta) {

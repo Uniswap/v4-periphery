@@ -28,16 +28,23 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {Permit2SignatureHelpers} from "../shared/Permit2SignatureHelpers.sol";
 import {Permit2Forwarder} from "../../src/base/Permit2Forwarder.sol";
 import {Constants} from "../../src/libraries/Constants.sol";
+import {IERC721Permit} from "../../src/interfaces/IERC721Permit.sol";
 
 contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
+    using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
     using Planner for Plan;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
     PoolId poolId;
-    address alice = makeAddr("ALICE");
+    address alice;
+    uint256 alicePK;
+    address bob;
+    // bob used for permit2 signature tests
+    uint256 bobPK;
 
     Permit2Forwarder permit2Forwarder;
 
@@ -48,13 +55,12 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
     bytes32 PERMIT2_DOMAIN_SEPARATOR;
 
-    // bob used for permit2 signature tests
-    uint256 bobPrivateKey;
-    address bob;
-
     PositionConfig config;
 
     function setUp() public {
+        (alice, alicePK) = makeAddrAndKey("ALICE");
+        (bob, bobPK) = makeAddrAndKey("BOB");
+
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
@@ -66,8 +72,8 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         permit2Forwarder = new Permit2Forwarder(permit2);
         PERMIT2_DOMAIN_SEPARATOR = permit2.DOMAIN_SEPARATOR();
 
-        bobPrivateKey = 0x12341234;
-        bob = vm.addr(bobPrivateKey);
+        seedBalance(alice);
+        approvePosmFor(alice);
 
         seedBalance(bob);
         approvePosmFor(bob);
@@ -104,6 +110,38 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         assertGt(result.amount1(), 0);
     }
 
+    function test_multicall_permitAndDecrease() public {
+        config = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 60});
+        uint256 liquidityAlice = 1e18;
+        vm.startPrank(alice);
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // Alice gives Bob permission to operate on her liquidity
+        uint256 nonce = 1;
+        bytes32 digest = getDigest(bob, tokenId, nonce, block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        // bob gives himself permission and decreases liquidity
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(
+            IERC721Permit(lpm).permit.selector, bob, tokenId, block.timestamp + 1, nonce, signature
+        );
+        uint256 liquidityToRemove = 0.4444e18;
+        bytes memory actions = getDecreaseEncoded(tokenId, config, liquidityToRemove, ZERO_BYTES);
+        calls[1] = abi.encodeWithSelector(PositionManager(lpm).modifyLiquidities.selector, actions, _deadline);
+
+        vm.prank(bob);
+        lpm.multicall(calls);
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        assertEq(liquidity, liquidityAlice - liquidityToRemove);
+    }
+
     function test_multicall_permit_mint() public {
         config = PositionConfig({
             poolKey: key,
@@ -132,7 +170,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         IAllowanceTransfer.PermitSingle memory permit =
             defaultERC20PermitAllowance(Currency.unwrap(currency0), permitAmount, permitExpiration, permitNonce);
         permit.spender = address(lpm);
-        bytes memory sig = getPermitSignature(permit, bobPrivateKey, PERMIT2_DOMAIN_SEPARATOR);
+        bytes memory sig = getPermitSignature(permit, bobPK, PERMIT2_DOMAIN_SEPARATOR);
 
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(Permit2Forwarder.permit.selector, bob, permit, sig);
@@ -190,7 +228,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         IAllowanceTransfer.PermitBatch memory permit =
             defaultERC20PermitBatchAllowance(tokens, permitAmount, permitExpiration, permitNonce);
         permit.spender = address(lpm);
-        bytes memory sig = getPermitBatchSignature(permit, bobPrivateKey, PERMIT2_DOMAIN_SEPARATOR);
+        bytes memory sig = getPermitBatchSignature(permit, bobPK, PERMIT2_DOMAIN_SEPARATOR);
 
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(Permit2Forwarder.permitBatch.selector, bob, permit, sig);

@@ -70,6 +70,11 @@ contract PositionManager is
         _;
     }
 
+    // TODO: to be implemented after audits
+    function tokenURI(uint256) public pure override returns (string memory) {
+        return "https://example.com";
+    }
+
     /// @notice Reverts if the caller is not the owner or approved for the ERC721 token
     /// @param caller The address of the caller
     /// @param tokenId the unique identifier of the ERC721 token

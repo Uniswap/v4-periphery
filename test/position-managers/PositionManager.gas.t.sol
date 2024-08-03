@@ -701,6 +701,90 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         snapLastCall("PositionManager_decrease_burnEmpty_native");
     }
 
+    function test_gas_permit() public {
+        // alice permits for the first time
+        uint256 liquidityAlice = 1e18;
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice gives operator permission to bob
+        uint256 nonce = 1;
+        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.prank(bob);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
+        snapLastCall("PositionManager_permit");
+    }
+
+    function test_gas_permit_secondPosition() public {
+        // alice permits for her two tokens, benchmark the 2nd permit
+        uint256 liquidityAlice = 1e18;
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice gives operator permission to bob
+        uint256 nonce = 1;
+        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.prank(bob);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
+
+        // alice creates another position
+        vm.startPrank(alice);
+        tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice gives operator permission to bob
+        nonce = 2;
+        digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+        (v, r, s) = vm.sign(alicePK, digest);
+        signature = abi.encodePacked(r, s, v);
+
+        vm.prank(bob);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
+        snapLastCall("PositionManager_permit_secondPosition");
+    }
+
+    function test_gas_permit_twice() public {
+        // alice permits the same token, twice
+        address charlie = makeAddr("CHARLIE");
+
+        uint256 liquidityAlice = 1e18;
+        vm.startPrank(alice);
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice gives operator permission to bob
+        uint256 nonce = 1;
+        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.prank(bob);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
+
+        // alice gives operator permission to charlie
+        nonce = 2;
+        digest = getDigest(charlie, tokenIdAlice, nonce, block.timestamp + 1);
+        (v, r, s) = vm.sign(alicePK, digest);
+        signature = abi.encodePacked(r, s, v);
+
+        vm.prank(bob);
+        lpm.permit(charlie, tokenIdAlice, block.timestamp + 1, nonce, signature);
+        snapLastCall("PositionManager_permit_twice");
+    }
+
     function test_gas_mint_settleWithBalance_sweep() public {
         uint256 liquidityAlice = 3_000e18;
 
