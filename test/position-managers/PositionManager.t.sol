@@ -35,8 +35,6 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {ReentrantToken} from "../mocks/ReentrantToken.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 
-import "forge-std/console2.sol";
-
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
