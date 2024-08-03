@@ -27,12 +27,13 @@ library Actions {
     uint256 constant TAKE = 0x12;
     uint256 constant TAKE_ALL = 0x13;
     uint256 constant TAKE_PORTION = 0x14;
+    uint256 constant TAKE_PAIR = 0x15;
 
-    uint256 constant CLOSE_CURRENCY = 0x15;
-    uint256 constant CLEAR_OR_TAKE = 0x16;
-    uint256 constant SWEEP = 0x17;
+    uint256 constant CLOSE_CURRENCY = 0x16;
+    uint256 constant CLEAR_OR_TAKE = 0x17;
+    uint256 constant SWEEP = 0x18;
 
     // minting/burning 6909s to close deltas
-    uint256 constant MINT_6909 = 0x18;
-    uint256 constant BURN_6909 = 0x19;
+    uint256 constant MINT_6909 = 0x19;
+    uint256 constant BURN_6909 = 0x20;
 }

@@ -180,6 +180,9 @@ contract PositionManager is
         } else if (action == Actions.SETTLE_PAIR) {
             (Currency currency0, Currency currency1) = params.decodeCurrencyPair();
             _settlePair(currency0, currency1);
+        } else if (action == Actions.TAKE_PAIR) {
+            (Currency currency0, Currency currency1, address to) = params.decodeCurrencyPairAndAddress();
+            _takePair(currency0, currency1, to);
         } else if (action == Actions.SWEEP) {
             (Currency currency, address to) = params.decodeCurrencyAndAddress();
             _sweep(currency, _mapRecipient(to));
@@ -274,6 +277,12 @@ contract PositionManager is
         address caller = msgSender();
         _settle(currency0, caller, _getFullDebt(currency0));
         _settle(currency1, caller, _getFullDebt(currency1));
+    }
+
+    function _takePair(Currency currency0, Currency currency1, address to) internal {
+        address recipient = _mapRecipient(to);
+        _take(currency0, recipient, _getFullCredit(currency0));
+        _take(currency1, recipient, _getFullCredit(currency1));
     }
 
     /// @dev this is overloaded with ERC721Permit._burn
