@@ -172,6 +172,18 @@ contract CalldataDecoderTest is Test {
         assertEq(_address, __address);
     }
 
+    function test_fuzz_decodeCurrencyAddressAndUint256(Currency _currency, address _addr, uint256 _amount)
+        public
+        view
+    {
+        bytes memory params = abi.encode(_currency, _addr, _amount);
+        (Currency currency, address addr, uint256 amount) = decoder.decodeCurrencyAddressAndUint256(params);
+
+        assertEq(Currency.unwrap(currency), Currency.unwrap(_currency));
+        assertEq(addr, _addr);
+        assertEq(amount, _amount);
+    }
+
     function test_fuzz_decodeCurrencyAndUint256(Currency _currency, uint256 _amount) public view {
         bytes memory params = abi.encode(_currency, _amount);
         (Currency currency, uint256 amount) = decoder.decodeCurrencyAndUint256(params);
