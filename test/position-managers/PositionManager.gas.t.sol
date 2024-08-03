@@ -807,4 +807,20 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_mint_settleWithBalance_sweep");
     }
+
+    // Does not encode a take pair
+    function test_gas_decrease_take_take() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, Constants.MSG_SENDER, ZERO_BYTES);
+
+        Plan memory plan = Planner.init();
+        plan.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+        bytes memory calls = plan.finalizeModifyLiquidityWithTake(config.poolKey, Constants.MSG_SENDER);
+
+        lpm.modifyLiquidities(calls, _deadline);
+        snapLastCall("PositionManager_decrease_take_take");
+    }
 }

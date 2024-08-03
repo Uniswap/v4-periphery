@@ -79,6 +79,14 @@ abstract contract DeltaResolver is ImmutableState {
         return amount;
     }
 
+    /// @notice Calculates the amount for a take action
+    function _mapTakeAmount(uint256 amount, Currency currency) internal view returns (uint256) {
+        if (amount == Constants.OPEN_DELTA) {
+            return _getFullCredit(currency).toUint128();
+        }
+        return amount;
+    }
+
     /// @notice Calculates the amount for a swap action
     function _mapInputAmount(uint128 amount, Currency currency) internal view returns (uint128) {
         if (amount == Constants.CONTRACT_BALANCE) {
