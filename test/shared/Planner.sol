@@ -6,6 +6,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Constants} from "../../src/libraries/Constants.sol";
 
 struct Plan {
     bytes actions;
@@ -35,6 +36,16 @@ library Planner {
         plan.params = params;
 
         return plan;
+    }
+
+    function finalizeModifyLiquidityWithTake(Plan memory plan, PoolKey memory poolKey, address takeRecipient)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        plan.add(Actions.TAKE, abi.encode(poolKey.currency0, takeRecipient, Constants.OPEN_DELTA));
+        plan.add(Actions.TAKE, abi.encode(poolKey.currency1, takeRecipient, Constants.OPEN_DELTA));
+        return plan.encode();
     }
 
     function finalizeModifyLiquidityWithClose(Plan memory plan, PoolKey memory poolKey)

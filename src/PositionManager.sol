@@ -177,6 +177,9 @@ contract PositionManager is
         } else if (action == Actions.SWEEP) {
             (Currency currency, address to) = params.decodeCurrencyAndAddress();
             _sweep(currency, _mapRecipient(to));
+        } else if (action == Actions.TAKE) {
+            (Currency currency, address recipient, uint256 amount) = params.decodeCurrencyAddressAndUint256();
+            _take(currency, _mapRecipient(recipient), _mapTakeAmount(amount, currency));
         } else {
             revert UnsupportedAction(action);
         }

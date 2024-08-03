@@ -34,6 +34,8 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {ReentrantToken} from "../mocks/ReentrantToken.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 
+import "forge-std/console2.sol";
+
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
@@ -859,6 +861,75 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(tick, TickMath.getTickAtSqrtPrice(sqrtPrice));
         assertEq(protocolFee, 0);
         assertEq(lpFee, fee);
+    }
+
+    // tests a decrease and take in both currencies
+    // does not use take pair, so its less optimal
+    function test_decrease_take() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, Constants.MSG_SENDER, ZERO_BYTES);
+
+        hook.clearDeltas();
+
+        uint256 balanceBefore0 = currency0.balanceOfSelf();
+        uint256 balanceBefore1 = currency1.balanceOfSelf();
+
+        Plan memory plan = Planner.init();
+        plan.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+        bytes memory calls = plan.finalizeModifyLiquidityWithTake(config.poolKey, Constants.MSG_SENDER);
+
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta delta = getLastDelta();
+
+        assertEq(currency0.balanceOfSelf(), balanceBefore0 + uint256(int256(delta.amount0())));
+        assertEq(currency1.balanceOfSelf(), balanceBefore1 + uint256(int256(delta.amount1())));
+    }
+
+    // decrease full range position
+    // mint new one sided position in currency1
+    // expect to TAKE currency0 and SETTLE currency1
+    function test_decrease_increaseCurrency1_take_settle() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, Constants.MSG_SENDER, ZERO_BYTES);
+
+        hook.clearDeltas();
+
+        uint256 balanceBefore0 = currency0.balanceOfSelf();
+        uint256 balanceBefore1 = currency1.balanceOfSelf();
+
+        uint256 tokenIdMint = lpm.nextTokenId();
+
+        // one-sided liq in currency1
+        PositionConfig memory configMint = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 0});
+
+        Plan memory plan = Planner.init();
+        plan.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+        plan.add(
+            Actions.MINT_POSITION,
+            abi.encode(configMint, 1e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES)
+        );
+        plan.add(Actions.TAKE, abi.encode(key.currency0, Constants.MSG_SENDER, Constants.OPEN_DELTA));
+        plan.add(Actions.SETTLE, abi.encode(key.currency1, Constants.OPEN_DELTA, true));
+        bytes memory calls = plan.finalizeModifyLiquidityWithTake(config.poolKey, Constants.MSG_SENDER);
+
+        lpm.modifyLiquidities(calls, _deadline);
+        BalanceDelta deltaDecrease = hook.deltas(0);
+        BalanceDelta deltaMint = hook.deltas(1);
+
+        assertEq(deltaMint.amount0(), 0); // there is no currency0 in the new position
+        assertEq(currency0.balanceOfSelf(), balanceBefore0 + uint256(int256(deltaDecrease.amount0())));
+        assertEq(
+            currency1.balanceOfSelf(), balanceBefore1 - uint256(-int256(deltaDecrease.amount1() + deltaMint.amount1()))
+        );
+        assertEq(lpm.ownerOf(tokenIdMint), address(this));
     }
 
     function test_mint_slippageRevert() public {}
