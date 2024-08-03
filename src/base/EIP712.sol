@@ -5,6 +5,7 @@ import {IEIP712} from "../interfaces/IEIP712.sol";
 
 /// @notice Generic EIP712 implementation
 /// @dev Maintains cross-chain replay protection in the event of a fork
+/// @dev Should not be delegatecall'd because DOMAIN_SEPARATOR returns the cached hash and does not recompute with the delegatecallers address
 /// @dev Reference: https://github.com/Uniswap/permit2/blob/main/src/EIP712.sol
 /// @dev Reference: https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/cryptography/EIP712.sol
 contract EIP712 is IEIP712 {
