@@ -29,9 +29,7 @@ contract EIP712 is IEIP712 {
     /// @notice Returns the domain separator for the current chain.
     /// @dev Uses cached version if chainid and address are unchanged from construction.
     function DOMAIN_SEPARATOR() public view override returns (bytes32) {
-        return block.chainid == _CACHED_CHAIN_ID
-            ? _CACHED_DOMAIN_SEPARATOR
-            : _buildDomainSeparator();
+        return block.chainid == _CACHED_CHAIN_ID ? _CACHED_DOMAIN_SEPARATOR : _buildDomainSeparator();
     }
 
     /// @notice Builds a domain separator using the current chainId and contract address.
