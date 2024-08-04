@@ -62,7 +62,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 (Currency currency, uint256 minAmount) = params.decodeCurrencyAndUint256();
                 uint256 amount = _getFullCredit(currency);
                 if (amount < minAmount) revert V4TooLittleReceived();
-                _take(currency, msgSender(), _getFullCredit(currency));
+                _take(currency, msgSender(), amount);
             } else if (action == Actions.SETTLE) {
                 (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
                 _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
