@@ -87,8 +87,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             TickMath.getSqrtPriceAtTick(params.tickUpper),
             liquidityToAdd.toUint128()
         );
-        // add extra wei because modifyLiquidities may be rounding up, LiquidityAmounts is imprecise?
-        lpm.unlockAndModifyLiquidities{value: amount0 + 1}(calls, _deadline);
+        // add extra wei because modifyLiquiditiesDirect may be rounding up, LiquidityAmounts is imprecise?
+        lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
@@ -142,7 +142,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         // Mint with excess native tokens
-        lpm.unlockAndModifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
+        lpm.modifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
@@ -189,7 +189,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         // Mint with excess native tokens
-        lpm.unlockAndModifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
+        lpm.modifyLiquidities{value: amount0 * 2 + 1}(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
@@ -291,7 +291,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array will be the same length.
         assertEq(numDeltas, hook.numberDeltasReturned());
 
@@ -397,7 +397,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta deltaBurn = getLastDelta();
 
         (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
@@ -447,7 +447,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, ZERO_BYTES); // double the liquidity
-        lpm.unlockAndModifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
+        lpm.modifyLiquidities{value: amount0 + 1 wei}(calls, _deadline); // TODO: off by one wei
         BalanceDelta delta = getLastDelta();
 
         // verify position liquidity increased
@@ -501,7 +501,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(Actions.SWEEP, abi.encode(currency0, ActionConstants.MSG_SENDER));
         bytes memory calls = planner.encode();
 
-        lpm.unlockAndModifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
+        lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
         BalanceDelta delta = getLastDelta();
 
         // verify position liquidity increased
@@ -553,7 +553,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(Actions.SWEEP, abi.encode(currency0, address(this)));
         bytes memory calls = planner.encode();
 
-        lpm.unlockAndModifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
+        lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline); // overpay on increase liquidity
         BalanceDelta delta = getLastDelta();
 
         // verify position liquidity increased
@@ -640,7 +640,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             )
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         bytes32 positionId =
@@ -704,7 +704,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             abi.encode(tokenId, config, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, feeRevenue0, 1 wei); // TODO: fuzzer off by 1 wei
@@ -745,7 +745,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 aliceBalance1Before = currency1.balanceOf(alice);
 
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, alice);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         assertEq(currency0.balanceOfSelf() - balance0Before, 0);
@@ -784,7 +784,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, ActionConstants.MSG_SENDER);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         assertApproxEqAbs(currency0.balanceOfSelf() - balance0Before, feeRevenue0, 1 wei); // TODO: fuzzer off by 1 wei
@@ -810,7 +810,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         bytes[] memory calls = new bytes[](2);
 
-        calls[0] = abi.encodeWithSelector(lpm.unlockAndModifyLiquidities.selector, actions, _deadline);
+        calls[0] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions, _deadline);
         calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub);
 
         lpm.multicall{value: 10e18}(calls);

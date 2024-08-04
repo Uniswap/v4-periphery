@@ -93,9 +93,8 @@ contract PositionManager is
         _;
     }
 
-    /// @param unlockData is an encoding of actions, params, and currencies
-    /// @param deadline is the timestamp at which the unlockData will no longer be valid
-    function unlockAndModifyLiquidities(bytes calldata unlockData, uint256 deadline)
+    /// @inheritdoc IPositionManager
+    function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
         external
         payable
         isNotLocked
@@ -104,7 +103,8 @@ contract PositionManager is
         _unlockAndExecuteActions(unlockData);
     }
 
-    function modifyLiquidities(bytes calldata actions, bytes[] calldata params) external payable isNotLocked {
+    /// @inheritdoc IPositionManager
+    function modifyLiquiditiesDirect(bytes calldata actions, bytes[] calldata params) external payable isNotLocked {
         _executeActions(actions, params);
     }
 

@@ -116,7 +116,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         }
 
         bytes memory calls = plan.finalizeModifyLiquidityWithSettlePair(config.poolKey);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
 
         assertEq(sub.notifySubscribeCount(), 1);
         assertEq(sub.notifyModifyLiquidityCount(), 10);
@@ -229,7 +229,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes[] memory calls = new bytes[](2);
 
-        calls[0] = abi.encodeWithSelector(lpm.unlockAndModifyLiquidities.selector, actions, _deadline);
+        calls[0] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions, _deadline);
         calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub);
 
         lpm.multicall(calls);
@@ -266,9 +266,9 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes[] memory calls = new bytes[](3);
 
-        calls[0] = abi.encodeWithSelector(lpm.unlockAndModifyLiquidities.selector, actions, _deadline);
+        calls[0] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions, _deadline);
         calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub);
-        calls[2] = abi.encodeWithSelector(lpm.unlockAndModifyLiquidities.selector, actions2, _deadline);
+        calls[2] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions2, _deadline);
 
         lpm.multicall(calls);
 

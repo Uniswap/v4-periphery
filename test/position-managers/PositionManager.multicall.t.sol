@@ -102,7 +102,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         );
         bytes memory actions = planner.finalizeModifyLiquidityWithClose(config.poolKey);
 
-        calls[1] = abi.encodeWithSelector(IPositionManager.unlockAndModifyLiquidities.selector, actions, _deadline);
+        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
         IMulticall_v4(address(lpm)).multicall(calls);
 
@@ -133,7 +133,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // Use multicall to decrease liquidity
         bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(IPositionManager.unlockAndModifyLiquidities.selector, actions, _deadline);
+        calls[0] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
         address charlie = makeAddr("CHARLIE");
         vm.startPrank(charlie);
@@ -163,7 +163,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // Use multicall to decrease liquidity
         bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(IPositionManager.unlockAndModifyLiquidities.selector, actions, _deadline);
+        calls[0] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
         lpm.multicall(calls);
@@ -210,7 +210,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         );
         uint256 liquidityToRemove = 0.4444e18;
         bytes memory actions = getDecreaseEncoded(tokenId, config, liquidityToRemove, ZERO_BYTES);
-        calls[1] = abi.encodeWithSelector(IPositionManager.unlockAndModifyLiquidities.selector, actions, _deadline);
+        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
         vm.prank(bob);
         lpm.multicall(calls);
@@ -243,7 +243,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         // 2 . call a mint that reverts because position manager doesn't have permission on permit2
         vm.expectRevert(abi.encodeWithSelector(IAllowanceTransfer.InsufficientAllowance.selector, 0));
         vm.prank(bob);
-        lpm.unlockAndModifyLiquidities(mintCall, _deadline);
+        lpm.modifyLiquidities(mintCall, _deadline);
 
         // 3. encode a permit for that revoked token
         IAllowanceTransfer.PermitSingle memory permit =
@@ -253,7 +253,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(Permit2Forwarder.permit.selector, bob, permit, sig);
-        calls[1] = abi.encodeWithSelector(lpm.unlockAndModifyLiquidities.selector, mintCall, _deadline);
+        calls[1] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, mintCall, _deadline);
 
         vm.prank(bob);
         lpm.multicall(calls);
@@ -297,7 +297,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         // 2 . call a mint that reverts because position manager doesn't have permission on permit2
         vm.expectRevert(abi.encodeWithSelector(IAllowanceTransfer.InsufficientAllowance.selector, 0));
         vm.prank(bob);
-        lpm.unlockAndModifyLiquidities(mintCall, _deadline);
+        lpm.modifyLiquidities(mintCall, _deadline);
 
         // 3. encode a permit for that revoked token
         address[] memory tokens = new address[](2);
@@ -311,7 +311,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(Permit2Forwarder.permitBatch.selector, bob, permit, sig);
-        calls[1] = abi.encodeWithSelector(lpm.unlockAndModifyLiquidities.selector, mintCall, _deadline);
+        calls[1] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, mintCall, _deadline);
 
         vm.prank(bob);
         lpm.multicall(calls);

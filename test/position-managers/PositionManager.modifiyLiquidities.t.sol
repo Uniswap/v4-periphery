@@ -49,7 +49,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         approvePosmFor(alice);
 
         // must deploy after posm
-        // Deploys a hook which can accesses IPositionManager.modifyLiquidities
+        // Deploys a hook which can accesses IPositionManager.modifyLiquiditiesDirect
         deployPosmHookModifyLiquidities();
         seedBalance(address(hookModifyLiquidities));
 
@@ -71,17 +71,13 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
         swap(key, true, -1e18, calls);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(hookTokenId, config);
 
         // original liquidity unchanged
         assertEq(liquidity, initialLiquidity);
 
         // hook minted its own position
-        positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(hookTokenId));
-        (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        liquidity = lpm.getPositionLiquidity(hookTokenId, config);
         assertEq(liquidity, newLiquidity);
 
         assertEq(lpm.ownerOf(tokenId), address(this)); // original position owned by this contract
@@ -100,9 +96,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
         swap(key, true, -1e18, calls);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
 
         assertEq(liquidity, initialLiquidity + newLiquidity);
     }
@@ -122,9 +116,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
         swap(key, true, -1e18, calls);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
 
         assertEq(liquidity, initialLiquidity - liquidityToDecrease);
     }
@@ -150,9 +142,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         bytes memory calls = getCollectEncoded(tokenId, config, ZERO_BYTES);
         swap(key, true, -1e18, calls);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
 
         // liquidity unchanged
         assertEq(liquidity, initialLiquidity);
@@ -185,9 +175,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         bytes memory calls = getBurnEncoded(tokenId, config, ZERO_BYTES);
         swap(key, true, -1e18, calls);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
 
         // liquidity burned
         assertEq(liquidity, 0);
@@ -271,7 +259,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         swap(key, true, -1e18, calls);
     }
 
-    /// @dev hook cannot re-enter modifyLiquidities in beforeRemoveLiquidity
+    /// @dev hook cannot re-enter modifyLiquiditiesDirect in beforeRemoveLiquidity
     function test_hook_increaseLiquidity_reenter_revert() public {
         uint256 initialLiquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();
@@ -283,12 +271,12 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         bytes memory hookCall = getIncreaseEncoded(tokenId, config, newLiquidity, ZERO_BYTES);
         bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, hookCall);
 
-        // should revert because hook is re-entering modifyLiquidities
+        // should revert because hook is re-entering modifyLiquiditiesDirect
         vm.expectRevert(
             abi.encodeWithSelector(
                 Hooks.FailedHookCall.selector, abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
             )
         );
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 }

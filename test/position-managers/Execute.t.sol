@@ -102,7 +102,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -134,7 +134,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithSettlePair(config.poolKey);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -169,7 +169,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
 
         bytes32 positionId =
             Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
@@ -222,7 +222,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
 
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         {
             BalanceDelta netDelta = getNetDelta();
 

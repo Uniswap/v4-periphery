@@ -161,7 +161,7 @@ contract PermitTest is Test, PosmTestSetup {
         bytes memory decrease = getDecreaseEncoded(tokenIdAlice, config, liquidityToRemove, ZERO_BYTES);
         vm.startPrank(bob);
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
-        lpm.unlockAndModifyLiquidities(decrease, _deadline);
+        lpm.modifyLiquidities(decrease, _deadline);
         vm.stopPrank();
     }
 
@@ -181,7 +181,7 @@ contract PermitTest is Test, PosmTestSetup {
         bytes memory collect = getCollectEncoded(tokenIdAlice, config, ZERO_BYTES);
         vm.startPrank(bob);
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
-        lpm.unlockAndModifyLiquidities(collect, block.timestamp + 1);
+        lpm.modifyLiquidities(collect, block.timestamp + 1);
         vm.stopPrank();
     }
 

@@ -11,13 +11,20 @@ interface IPositionManager is INotifier {
     error DeadlinePassed();
     error IncorrectPositionConfigForTokenId(uint256 tokenId);
 
-    /// @notice Batches many liquidity modification calls to pool manager
+    /// @notice Unlocks Uniswap v4 PoolManager and batches actions for modifying liquidity
+    /// @dev This is the standard entrypoint for the PositionManager
     /// @param payload is an encoding of actions, and parameters for those actions
     /// @param deadline is the deadline for the batched actions to be executed
-    function unlockAndModifyLiquidities(bytes calldata payload, uint256 deadline) external payable;
+    function modifyLiquidities(bytes calldata payload, uint256 deadline) external payable;
 
-    function modifyLiquidities(bytes calldata actions, bytes[] calldata params) external payable;
+    /// @notice Batches actions for modifying liquidity without unlocking v4 PoolManager
+    /// @dev This must be called by a contract that has already unlocked the v4 PoolManager
+    /// @param actions the actions to perform
+    /// @param params the parameters to provide for the actions
+    function modifyLiquiditiesDirect(bytes calldata actions, bytes[] calldata params) external payable;
 
+    /// Returns the ID that will be used for the next minted liquidity position
+    /// @return uint256 The next token ID
     function nextTokenId() external view returns (uint256);
 
     /// @param tokenId the ERC721 tokenId

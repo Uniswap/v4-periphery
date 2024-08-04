@@ -27,7 +27,7 @@ abstract contract LiquidityOperations is CommonBase {
 
     function mint(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData) internal {
         bytes memory calls = getMintEncoded(config, liquidity, recipient, hookData);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     function mintWithNative(
@@ -45,8 +45,8 @@ abstract contract LiquidityOperations is CommonBase {
             liquidity.toUint128()
         );
         bytes memory calls = getMintEncoded(config, liquidity, recipient, hookData);
-        // add extra wei because modifyLiquidities may be rounding up, LiquidityAmounts is imprecise?
-        lpm.unlockAndModifyLiquidities{value: amount0 + 1}(calls, _deadline);
+        // add extra wei because modifyLiquiditiesDirect may be rounding up, LiquidityAmounts is imprecise?
+        lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
     }
 
     function increaseLiquidity(
@@ -56,7 +56,7 @@ abstract contract LiquidityOperations is CommonBase {
         bytes memory hookData
     ) internal {
         bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, hookData);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     // do not make external call before unlockAndExecute, allows us to test reverts
@@ -67,21 +67,21 @@ abstract contract LiquidityOperations is CommonBase {
         bytes memory hookData
     ) internal {
         bytes memory calls = getDecreaseEncoded(tokenId, config, liquidityToRemove, hookData);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     function collect(uint256 tokenId, PositionConfig memory config, bytes memory hookData) internal {
         bytes memory calls = getCollectEncoded(tokenId, config, hookData);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     // This is encoded with close calls. Not all burns need to be encoded with closes if there is no liquidity in the position.
     function burn(uint256 tokenId, PositionConfig memory config, bytes memory hookData) internal {
         bytes memory calls = getBurnEncoded(tokenId, config, hookData);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
-    // Helper functions for getting encoded calldata for .modifyLiquidities
+    // Helper functions for getting encoded calldata for .modifyLiquiditiesDirect
     function getMintEncoded(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData)
         internal
         pure

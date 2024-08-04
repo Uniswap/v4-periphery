@@ -123,7 +123,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.startPrank(alice);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         vm.stopPrank();
 
         // alice barely spent any tokens
@@ -183,7 +183,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
 
         // alice did not spend or receive tokens
         // (alice forfeited a small amount of tokens to the pool with CLEAR)
@@ -286,7 +286,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
 
         // alice did not spend or receive tokens
         // (alice forfeited a small amount of tokens to the pool with CLEAR)
@@ -497,7 +497,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         // revert since amount0Max is too low
         bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, 1 wei, type(uint128).max, ZERO_BYTES);
         vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     function test_increaseLiquidity_slippage_revertAmount1() public {
@@ -508,7 +508,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         // revert since amount1Max is too low
         bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, type(uint128).max, 1 wei, ZERO_BYTES);
         vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     function test_increaseLiquidity_slippage_exactDoesNotRevert() public {
@@ -527,7 +527,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint128 slippage = uint128(amount0) + 1;
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, slippage, slippage, ZERO_BYTES);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         // confirm that delta == slippage tolerance
@@ -556,7 +556,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, slippage, slippage, ZERO_BYTES);
         vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 
     function test_mint_settleWithBalance_andSweepToOtherAddress() public {
@@ -588,7 +588,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
         uint256 amount0 = uint128(-delta.amount0());
         uint256 amount1 = uint128(-delta.amount1());
@@ -627,7 +627,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
         uint256 amount0 = uint128(-delta.amount0());
         uint256 amount1 = uint128(-delta.amount1());
@@ -677,7 +677,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         bytes memory calls = planner.encode();
 
         vm.prank(alice);
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
         uint256 amount0 = uint128(-delta.amount0());
         uint256 amount1 = uint128(-delta.amount1());
@@ -729,7 +729,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 balance1Before = currency1.balanceOf(address(this));
 
         // expect to take the excess, as it exceeds the amount to clear
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 
         assertEq(uint128(delta.amount0()), amountToReclaim - 1 wei); // imprecision
@@ -756,6 +756,6 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         // revert since we're trying to clear a negative delta
         vm.expectRevert(abi.encodeWithSelector(DeltaResolver.DeltaNotPositive.selector, currency0));
-        lpm.unlockAndModifyLiquidities(calls, _deadline);
+        lpm.modifyLiquidities(calls, _deadline);
     }
 }

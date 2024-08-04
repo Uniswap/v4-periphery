@@ -14,7 +14,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 
-/// @notice This contract is NOT a production use contract. It is meant to be used in testing to verify that external contracts can modify liquidity without a lock (IPositionManager.modifyLiquidities)
+/// @notice This contract is NOT a production use contract. It is meant to be used in testing to verify that external contracts can modify liquidity without a lock (IPositionManager.modifyLiquiditiesDirect)
 /// @dev a hook that can modify liquidity in beforeSwap
 contract HookModifyLiquidities is HookSavesDelta {
     IPositionManager posm;
@@ -35,7 +35,7 @@ contract HookModifyLiquidities is HookSavesDelta {
         approvePosmCurrency(key.currency1);
 
         (bytes memory actions, bytes[] memory params) = abi.decode(hookData, (bytes, bytes[]));
-        posm.modifyLiquidities(actions, params);
+        posm.modifyLiquiditiesDirect(actions, params);
         return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
@@ -47,7 +47,7 @@ contract HookModifyLiquidities is HookSavesDelta {
     ) external override returns (bytes4) {
         if (hookData.length > 0) {
             (bytes memory actions, bytes[] memory params) = abi.decode(hookData, (bytes, bytes[]));
-            posm.modifyLiquidities(actions, params);
+            posm.modifyLiquiditiesDirect(actions, params);
         }
         return this.beforeAddLiquidity.selector;
     }
@@ -60,7 +60,7 @@ contract HookModifyLiquidities is HookSavesDelta {
     ) external override returns (bytes4) {
         if (hookData.length > 0) {
             (bytes memory actions, bytes[] memory params) = abi.decode(hookData, (bytes, bytes[]));
-            posm.modifyLiquidities(actions, params);
+            posm.modifyLiquiditiesDirect(actions, params);
         }
         return this.beforeRemoveLiquidity.selector;
     }
