@@ -5,7 +5,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SafeCallback} from "./SafeCallback.sol";
 import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
 import {Actions} from "../libraries/Actions.sol";
-import {BalanceConsts} from "../libraries/BalanceConsts.sol";
+import {FlagConstants} from "../libraries/FlagConstants.sol";
 
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.
 /// @dev Suggested uint256 action values are defined in Actions.sol, however any definition can be used
@@ -57,9 +57,9 @@ abstract contract BaseActionsRouter is SafeCallback {
 
     /// @notice Calculates the address for a action
     function _mapRecipient(address recipient) internal view returns (address) {
-        if (recipient == BalanceConsts.MSG_SENDER) {
+        if (recipient == FlagConstants.MSG_SENDER) {
             return msgSender();
-        } else if (recipient == BalanceConsts.ADDRESS_THIS) {
+        } else if (recipient == FlagConstants.ADDRESS_THIS) {
             return address(this);
         } else {
             return recipient;

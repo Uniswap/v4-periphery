@@ -28,7 +28,7 @@ import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {Permit2SignatureHelpers} from "../shared/Permit2SignatureHelpers.sol";
 import {Permit2Forwarder} from "../../src/base/Permit2Forwarder.sol";
-import {BalanceConsts} from "../../src/libraries/BalanceConsts.sol";
+import {FlagConstants} from "../../src/libraries/FlagConstants.sol";
 import {IERC721Permit} from "../../src/interfaces/IERC721Permit.sol";
 
 contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTestSetup, LiquidityFuzzers {
@@ -97,7 +97,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         planner.add(
             Actions.MINT_POSITION,
             abi.encode(
-                config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, BalanceConsts.MSG_SENDER, ZERO_BYTES
+                config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, FlagConstants.MSG_SENDER, ZERO_BYTES
             )
         );
         bytes memory actions = planner.finalizeModifyLiquidityWithClose(config.poolKey);

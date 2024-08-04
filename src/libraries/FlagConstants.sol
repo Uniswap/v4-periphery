@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.19;
 
-library BalanceConsts {
+library FlagConstants {
     /// @notice used to signal that an action should use the input value of the open delta on the pool manager
     /// or of the balance that the contract holds
     uint128 internal constant OPEN_DELTA = 0;

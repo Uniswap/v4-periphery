@@ -6,7 +6,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {BalanceConsts} from "../../src/libraries/BalanceConsts.sol";
+import {FlagConstants} from "../../src/libraries/FlagConstants.sol";
 
 struct Plan {
     bytes actions;
@@ -43,8 +43,8 @@ library Planner {
         pure
         returns (bytes memory)
     {
-        plan.add(Actions.TAKE, abi.encode(poolKey.currency0, takeRecipient, BalanceConsts.OPEN_DELTA));
-        plan.add(Actions.TAKE, abi.encode(poolKey.currency1, takeRecipient, BalanceConsts.OPEN_DELTA));
+        plan.add(Actions.TAKE, abi.encode(poolKey.currency0, takeRecipient, FlagConstants.OPEN_DELTA));
+        plan.add(Actions.TAKE, abi.encode(poolKey.currency1, takeRecipient, FlagConstants.OPEN_DELTA));
         return plan.encode();
     }
 
