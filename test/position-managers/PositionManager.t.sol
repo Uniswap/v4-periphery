@@ -346,7 +346,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency0.balanceOfSelf(), balance0BeforeBurn + uint256(int256(deltaDecrease.amount0())));
         assertEq(currency1.balanceOfSelf(), balance1BeforeBurn + uint256(uint128(deltaDecrease.amount1())));
 
-        // OZ 721 will revert if the token does not exist
+        // 721 will revert if the token does not exist
         vm.expectRevert();
         lpm.ownerOf(1);
 
