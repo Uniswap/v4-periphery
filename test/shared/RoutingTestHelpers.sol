@@ -27,6 +27,9 @@ contract RoutingTestHelpers is Test, Deployers {
     PoolModifyLiquidityTest positionManager;
     MockV4Router router;
 
+    uint256 MAX_SETTLE_AMOUNT = type(uint256).max;
+    uint256 MIN_TAKE_AMOUNT = 0;
+
     // nativeKey is already defined in Deployers.sol
     PoolKey key0;
     PoolKey key1;
