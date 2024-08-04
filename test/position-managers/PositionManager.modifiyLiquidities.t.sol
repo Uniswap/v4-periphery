@@ -15,6 +15,7 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
@@ -238,5 +239,26 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
             )
         );
         swap(key, true, -1e18, calls);
+    }
+
+    /// @dev hook cannot re-enter modifyLiquidities in beforeRemoveLiquidity
+    function test_hook_increaseLiquidity_reenter_revert() public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        uint256 newLiquidity = 10e18;
+
+        // to be provided as hookData, so beforeAddLiquidity attempts to increase liquidity
+        bytes memory hookCall = getIncreaseEncoded(tokenId, config, newLiquidity, ZERO_BYTES);
+        bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, hookCall);
+
+        // should revert because hook is re-entering modifyLiquidities
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector, abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+            )
+        );
+        lpm.unlockAndModifyLiquidities(calls, _deadline);
     }
 }

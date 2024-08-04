@@ -39,6 +39,32 @@ contract HookModifyLiquidities is HookSavesDelta {
         return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
+    function beforeAddLiquidity(
+        address, /* sender **/
+        PoolKey calldata, /* key **/
+        IPoolManager.ModifyLiquidityParams calldata, /* params **/
+        bytes calldata hookData
+    ) external override returns (bytes4) {
+        if (hookData.length > 0) {
+            (bytes memory actions, bytes[] memory params) = abi.decode(hookData, (bytes, bytes[]));
+            posm.modifyLiquidities(actions, params);
+        }
+        return this.beforeAddLiquidity.selector;
+    }
+
+    function beforeRemoveLiquidity(
+        address, /* sender **/
+        PoolKey calldata, /* key **/
+        IPoolManager.ModifyLiquidityParams calldata, /* params **/
+        bytes calldata hookData
+    ) external override returns (bytes4) {
+        if (hookData.length > 0) {
+            (bytes memory actions, bytes[] memory params) = abi.decode(hookData, (bytes, bytes[]));
+            posm.modifyLiquidities(actions, params);
+        }
+        return this.beforeRemoveLiquidity.selector;
+    }
+
     function approvePosmCurrency(Currency currency) internal {
         // Because POSM uses permit2, we must execute 2 permits/approvals.
         // 1. First, the caller must approve permit2 on the token.
