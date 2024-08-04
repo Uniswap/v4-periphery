@@ -113,7 +113,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
         uint256 outputBalanceAfter = key0.currency1.balanceOfSelf();
         uint256 bobBalanceAfter = key0.currency1.balanceOf(bob);
 
-        uint256 expectedFee = expectedAmountOut * 15 / BipsLibrary.BIPS_BASE;
+        uint256 expectedFee = expectedAmountOut * 15 / BipsLibrary.BPS_DENOMINATOR;
 
         // router is empty
         assertEq(currency0.balanceOf(address(router)), 0);
@@ -132,7 +132,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0));
         // bips is larger than maximum bips
-        plan = plan.add(Actions.TAKE_PORTION, abi.encode(key0.currency1, bob, BipsLibrary.BIPS_BASE + 1));
+        plan = plan.add(Actions.TAKE_PORTION, abi.encode(key0.currency1, bob, BipsLibrary.BPS_DENOMINATOR + 1));
         plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
 
         bytes memory data = plan.encode();
