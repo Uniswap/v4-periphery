@@ -58,6 +58,27 @@ contract ERC721PermitTest is Test {
         erc721Permit.approve(address(this), tokenId);
     }
 
+    // --- Test the overriden setApprovalForAll ---
+    function test_fuzz_setApprovalForAll(address operator) public {
+        assertEq(erc721Permit.isApprovedForAll(address(this), operator), false);
+        
+        vm.expectEmit(true, true, true, true, address(erc721Permit));
+        emit IERC721.ApprovalForAll(address(this), operator, true);
+        erc721Permit.setApprovalForAll(operator, true);
+        assertEq(erc721Permit.isApprovedForAll(address(this), operator), true);
+    }
+
+    function test_fuzz_setApprovalForAll_revoke(address operator) public {
+        assertEq(erc721Permit.isApprovedForAll(address(this), operator), false);
+        erc721Permit.setApprovalForAll(operator, true);
+        assertEq(erc721Permit.isApprovedForAll(address(this), operator), true);
+        
+        vm.expectEmit(true, true, true, true, address(erc721Permit));
+        emit IERC721.ApprovalForAll(address(this), operator, false);
+        erc721Permit.setApprovalForAll(operator, false);
+        assertEq(erc721Permit.isApprovedForAll(address(this), operator), false);
+    }
+
     // --- Test the signature-based approvals (permit) ---
     function test_permitTypeHash() public view {
         assertEq(
