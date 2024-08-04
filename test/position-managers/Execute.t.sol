@@ -72,9 +72,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
@@ -104,9 +102,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd + liquidityToAdd2);
     }
@@ -136,9 +132,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = planner.finalizeModifyLiquidityWithSettlePair(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd + liquidityToAdd2);
     }
@@ -171,9 +165,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
@@ -242,9 +234,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         {
             // old position has no liquidity
-            bytes32 positionId =
-                Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-            uint128 liquidity = manager.getPositionLiquidity(config.poolKey.toId(), positionId);
+            uint128 liquidity = lpm.getPositionLiquidity(tokenId, config);
             assertEq(liquidity, 0);
 
             // new token was minted
@@ -252,10 +242,8 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
             assertEq(lpm.ownerOf(newTokenId), address(this));
 
             // new token has expected liquidity
-            positionId = Position.calculatePositionKey(
-                address(lpm), newConfig.tickLower, newConfig.tickUpper, bytes32(newTokenId)
-            );
-            liquidity = manager.getPositionLiquidity(config.poolKey.toId(), positionId);
+
+            liquidity = lpm.getPositionLiquidity(newTokenId, newConfig);
             assertEq(liquidity, newLiquidity);
         }
     }
