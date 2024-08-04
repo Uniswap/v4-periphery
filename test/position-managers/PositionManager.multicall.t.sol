@@ -22,14 +22,14 @@ import {PoolInitializer} from "../../src/base/PoolInitializer.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {IMulticall} from "../../src/interfaces/IMulticall.sol";
+import {IMulticall_v4} from "../../src/interfaces/IMulticall_v4.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {Permit2SignatureHelpers} from "../shared/Permit2SignatureHelpers.sol";
 import {Permit2Forwarder} from "../../src/base/Permit2Forwarder.sol";
-import {Constants} from "../../src/libraries/Constants.sol";
-import {IERC721Permit} from "../../src/interfaces/IERC721Permit.sol";
+import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
+import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
 
 contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -96,13 +96,15 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         Plan memory planner = Planner.init();
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES)
+            abi.encode(
+                config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ActionConstants.MSG_SENDER, ZERO_BYTES
+            )
         );
         bytes memory actions = planner.finalizeModifyLiquidityWithClose(config.poolKey);
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
-        IMulticall(address(lpm)).multicall(calls);
+        IMulticall_v4(address(lpm)).multicall(calls);
 
         // test swap, doesn't revert, showing the pool was initialized
         int256 amountSpecified = -1e18;
@@ -204,7 +206,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         // bob gives himself permission and decreases liquidity
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(
-            IERC721Permit(lpm).permit.selector, bob, tokenId, block.timestamp + 1, nonce, signature
+            IERC721Permit_v4(lpm).permit.selector, bob, tokenId, block.timestamp + 1, nonce, signature
         );
         uint256 liquidityToRemove = 0.4444e18;
         bytes memory actions = getDecreaseEncoded(tokenId, config, liquidityToRemove, ZERO_BYTES);
