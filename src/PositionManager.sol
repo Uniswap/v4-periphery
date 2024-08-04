@@ -105,7 +105,7 @@ contract PositionManager is
     }
 
     /// @inheritdoc INotifier
-    function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber)
+    function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber, bytes calldata data)
         external
         payable
         onlyIfApproved(msg.sender, tokenId)
@@ -113,18 +113,18 @@ contract PositionManager is
     {
         // call to _subscribe will revert if the user already has a sub
         positionConfigs.setSubscribe(tokenId);
-        _subscribe(tokenId, config, subscriber);
+        _subscribe(tokenId, config, subscriber, data);
     }
 
     /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId, PositionConfig calldata config)
+    function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data)
         external
         payable
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
         positionConfigs.setUnsubscribe(tokenId);
-        _unsubscribe(tokenId, config);
+        _unsubscribe(tokenId, config, data);
     }
 
     function _handleAction(uint256 action, bytes calldata params) internal virtual override {

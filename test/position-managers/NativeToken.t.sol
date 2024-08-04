@@ -811,7 +811,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes[] memory calls = new bytes[](2);
 
         calls[0] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions, _deadline);
-        calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub);
+        calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub, ZERO_BYTES);
 
         lpm.multicall{value: 10e18}(calls);
 
