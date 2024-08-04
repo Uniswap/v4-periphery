@@ -22,7 +22,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
         plan = Planner.init();
     }
 
-    function test_settleFromCaller_takeAll() public {
+    function test_settleTakePair() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
         IV4Router.ExactInputSingleParams memory params =
@@ -49,6 +49,35 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
         // caller's balance changed by input and output amounts
         assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
+    }
+
+    function test_settleAll_revertsSlippage() public {
+        uint256 amountIn = 1 ether;
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, amountIn - 1));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency0, 0));
+
+        bytes memory data = plan.encode();
+        vm.expectRevert(IV4Router.V4TooMuchRequested.selector);
+        router.executeActions(data);
+    }
+
+    function test_takeAll_revertsSlippage() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, type(uint256).max));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency0, expectedAmountOut + 1));
+
+        bytes memory data = plan.encode();
+        vm.expectRevert(IV4Router.V4TooLittleReceived.selector);
+        router.executeActions(data);
     }
 
     function test_settleFromRouter_takeAll() public {
