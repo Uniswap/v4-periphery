@@ -302,7 +302,7 @@ contract PositionManager is
         uint128 amount1Min,
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
-        uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
+        uint256 liquidity = uint256(getPositionLiquidity(tokenId, config));
 
         BalanceDelta liquidityDelta;
         // Can only call modify if there is non zero liquidity.
@@ -338,16 +338,6 @@ contract PositionManager is
         }
     }
 
-    function _getPositionLiquidity(PositionConfig calldata config, uint256 tokenId)
-        internal
-        view
-        returns (uint128 liquidity)
-    {
-        bytes32 positionId =
-            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
-        liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
-    }
-
     /// @notice Sweeps the entire contract balance of specified currency to the recipient
     function _sweep(Currency currency, address to) internal {
         uint256 balance = currency.balanceOfSelf();
@@ -368,6 +358,16 @@ contract PositionManager is
     function transferFrom(address from, address to, uint256 id) public override {
         super.transferFrom(from, to, id);
         if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
+    }
+
+    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
+        public
+        view
+        returns (uint128 liquidity)
+    {
+        bytes32 positionId =
+            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
+        liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
     }
 
     /// @inheritdoc IPositionManager

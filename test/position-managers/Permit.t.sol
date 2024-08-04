@@ -88,9 +88,7 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
 
         // alice's position decreased liquidity
-        bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenIdAlice)));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
 
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
@@ -209,9 +207,7 @@ contract PermitTest is Test, PosmTestSetup {
         decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
-        bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
 
@@ -240,9 +236,8 @@ contract PermitTest is Test, PosmTestSetup {
         decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
-        bytes32 positionId =
-            keccak256(abi.encodePacked(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId)));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
 }
