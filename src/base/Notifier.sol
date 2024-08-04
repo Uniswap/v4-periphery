@@ -3,13 +3,13 @@ pragma solidity ^0.8.24;
 
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {PositionConfig} from "../libraries/PositionConfig.sol";
-import {GasLimitCalculator} from "../libraries/GasLimitCalculator.sol";
+import {BipsLibrary} from "../libraries/BipsLibrary.sol";
 
 import "../interfaces/INotifier.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
-    using GasLimitCalculator for uint256;
+    using BipsLibrary for uint256;
 
     error AlreadySubscribed(address subscriber);
 
@@ -41,7 +41,7 @@ abstract contract Notifier is INotifier {
     function _unsubscribe(uint256 tokenId, PositionConfig memory config, bytes memory data) internal {
         ISubscriber _subscriber = subscriber[tokenId];
 
-        uint256 subscriberGasLimit = BLOCK_LIMIT_BPS.toGasLimit();
+        uint256 subscriberGasLimit = block.gaslimit.calculatePortion(BLOCK_LIMIT_BPS);
 
         try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config, data) {} catch {}
 

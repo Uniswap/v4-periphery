@@ -25,8 +25,8 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, MAX_SETTLE_AMOUNT));
+        plan = plan.add(Actions.TAKE, abi.encode(key0.currency1, address(this), ActionConstants.OPEN_DELTA));
 
         bytes memory data = plan.encode();
         router.executeActions(data);
@@ -39,8 +39,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, ActionConstants.MSG_SENDER));
+        plan = plan.add(Actions.SETTLE_TAKE_PAIR, abi.encode(key0.currency0, key0.currency1));
 
         bytes memory data = plan.encode();
         router.executeActions(data);
@@ -57,7 +56,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, ActionConstants.CONTRACT_BALANCE, false));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
+        plan = plan.add(Actions.TAKE, abi.encode(key0.currency1, address(this), ActionConstants.OPEN_DELTA));
 
         bytes memory data = plan.encode();
         router.executeActions(data);
@@ -74,7 +73,8 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE, abi.encode(currency0, ActionConstants.CONTRACT_BALANCE, false));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, ActionConstants.MSG_SENDER));
+        plan =
+            plan.add(Actions.TAKE, abi.encode(key0.currency1, ActionConstants.MSG_SENDER, ActionConstants.OPEN_DELTA));
 
         bytes memory data = plan.encode();
         router.executeActions(data);
