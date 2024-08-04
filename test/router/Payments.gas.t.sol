@@ -25,7 +25,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, type(uint256).max));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, MAX_SETTLE_AMOUNT));
         plan = plan.add(Actions.TAKE, abi.encode(key0.currency1, address(this), ActionConstants.OPEN_DELTA));
 
         bytes memory data = plan.encode();

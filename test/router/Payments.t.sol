@@ -51,29 +51,77 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
         assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
     }
 
-    function test_settleAll_revertsSlippage() public {
+    function test_exactIn_settleAll_revertsSlippage() public {
         uint256 amountIn = 1 ether;
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, amountIn - 1));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency0, 0));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency0, MIN_TAKE_AMOUNT));
 
         bytes memory data = plan.encode();
         vm.expectRevert(IV4Router.V4TooMuchRequested.selector);
         router.executeActions(data);
     }
 
-    function test_takeAll_revertsSlippage() public {
+    function test_exactIn_takeAll_revertsSlippage() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, type(uint256).max));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, MAX_SETTLE_AMOUNT));
         plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency0, expectedAmountOut + 1));
+
+        bytes memory data = plan.encode();
+        vm.expectRevert(IV4Router.V4TooLittleReceived.selector);
+        router.executeActions(data);
+    }
+
+    function test_exactOut_settleAll_revertsSlippage() public {
+        uint256 amountOut = 1 ether;
+        uint256 expectedAmountIn = 1008049273448486163;
+
+        IV4Router.ExactOutputSingleParams memory params =
+            IV4Router.ExactOutputSingleParams(key0, true, uint128(amountOut), uint128(expectedAmountIn), 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, expectedAmountIn - 1));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency0, MIN_TAKE_AMOUNT));
+
+        bytes memory data = plan.encode();
+        vm.expectRevert(IV4Router.V4TooMuchRequested.selector);
+        router.executeActions(data);
+    }
+
+    function test_exactOut_takeAll_revertsSlippage() public {
+        uint256 amountOut = 1 ether;
+        uint256 expectedAmountIn = 1008049273448486163;
+
+        IV4Router.ExactOutputSingleParams memory params =
+            IV4Router.ExactOutputSingleParams(key0, true, uint128(amountOut), uint128(expectedAmountIn), 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, MAX_SETTLE_AMOUNT));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency0, amountOut + 1));
+
+        bytes memory data = plan.encode();
+        vm.expectRevert(IV4Router.V4TooLittleReceived.selector);
+        router.executeActions(data);
+    }
+
+    function test_exactOut_takeAll_settleAll_succeedsExactAmount() public {
+        uint256 amountOut = 1 ether;
+        uint256 expectedAmountIn = 1008049273448486163;
+
+        IV4Router.ExactOutputSingleParams memory params =
+            IV4Router.ExactOutputSingleParams(key0, true, uint128(amountOut), uint128(expectedAmountIn), 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, expectedAmountIn));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency0, amountOut));
 
         bytes memory data = plan.encode();
         vm.expectRevert(IV4Router.V4TooLittleReceived.selector);
@@ -98,7 +146,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, ActionConstants.CONTRACT_BALANCE, false));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, 0));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, MIN_TAKE_AMOUNT));
 
         bytes memory data = plan.encode();
         router.executeActions(data);

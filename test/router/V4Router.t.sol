@@ -282,7 +282,7 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, ActionConstants.CONTRACT_BALANCE, false));
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, 0));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, MIN_TAKE_AMOUNT));
 
         bytes memory data = plan.encode();
 
@@ -450,7 +450,7 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SETTLE, abi.encode(nativeKey.currency0, ActionConstants.CONTRACT_BALANCE, false));
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(nativeKey.currency1, 0));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(nativeKey.currency1, MIN_TAKE_AMOUNT));
 
         bytes memory data = plan.encode();
 
