@@ -35,6 +35,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         hook = HookSavesDelta(hookAddr);
     }
 
+    /// @dev deploys a special test hook where beforeSwap hookData is used to modify liquidity
     function deployPosmHookModifyLiquidities() public {
         HookModifyLiquidities impl = new HookModifyLiquidities();
         vm.etch(hookModifyLiquiditiesAddr, address(impl).code);
