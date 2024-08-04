@@ -8,10 +8,6 @@ interface IERC721Permit {
     error NoSelfPermit();
     error Unauthorized();
 
-    /// @notice The domain separator used in the permit signature
-    /// @return The domain seperator used in encoding of permit signature
-    function DOMAIN_SEPARATOR() external view returns (bytes32);
-
     /// @notice Approve of a specific token ID for spending by spender via signature
     /// @param spender The account that is being approved
     /// @param tokenId The ID of the token that is being approved for spending

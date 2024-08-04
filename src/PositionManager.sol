@@ -60,7 +60,7 @@ contract PositionManager is
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
-        ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
+        ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM")
     {}
 
     /// @notice Reverts if the deadline has passed
