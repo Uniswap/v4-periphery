@@ -8,7 +8,7 @@ import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
 import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
-import {Constants} from "../../src/libraries/Constants.sol";
+import {BalanceConsts} from "../../src/libraries/BalanceConsts.sol";
 import {BipsLibrary} from "../../src/libraries/BipsLibrary.sol";
 
 contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
@@ -69,7 +69,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
         assertEq(currency1.balanceOf(address(router)), 0);
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, Constants.CONTRACT_BALANCE, false));
+        plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, BalanceConsts.CONTRACT_BALANCE, false));
         plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
 
         bytes memory data = plan.encode();
