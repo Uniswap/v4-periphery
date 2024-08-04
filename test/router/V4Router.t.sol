@@ -85,7 +85,7 @@ contract V4RouterTest is RoutingTestHelpers {
 
     // This is not a real use-case in isolation, but will be used in the UniversalRouter if a v4
     // swap is before another swap on v2/v3
-    function test_swapExactInputSingle_zeroForOne_takeToRouter() public {
+    function test_swapExactInputSingle_zeroForOne_takeAllToRouter() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
@@ -105,6 +105,40 @@ contract V4RouterTest is RoutingTestHelpers {
         // the output tokens have been left in the router
         assertEq(currency0.balanceOf(address(router)), 0);
         assertEq(currency1.balanceOf(address(router)), expectedAmountOut);
+
+        assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
+        // this contract's output balance has not changed because funds went to the router
+        assertEq(outputBalanceAfter, outputBalanceBefore);
+    }
+
+    // This is not a real use-case in isolation, but will be used in the UniversalRouter if a v4
+    // swap is before another swap on v2/v3
+    function test_swapExactInputSingle_zeroForOne_takeToRouter() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0));
+        // take the entire open delta to the router's address
+        plan = plan.add(Actions.TAKE, abi.encode(key0.currency1, Constants.ADDRESS_THIS, Constants.OPEN_DELTA));
+        bytes memory data = plan.encode();
+
+        // the router holds no funds before
+        assertEq(currency0.balanceOf(address(router)), 0);
+        assertEq(currency1.balanceOf(address(router)), 0);
+        uint256 inputBalanceBefore = key0.currency0.balanceOfSelf();
+        uint256 outputBalanceBefore = key0.currency1.balanceOfSelf();
+
+        router.executeActions(data);
+
+        // the output tokens have been left in the router
+        assertEq(currency0.balanceOf(address(router)), 0);
+        assertEq(currency1.balanceOf(address(router)), expectedAmountOut);
+        uint256 inputBalanceAfter = key0.currency0.balanceOfSelf();
+        uint256 outputBalanceAfter = key0.currency1.balanceOfSelf();
 
         assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
         // this contract's output balance has not changed because funds went to the router
