@@ -29,8 +29,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
+        plan = plan.add(Actions.SETTLE_TAKE_PAIR, abi.encode(key0.currency0, key0.currency1));
 
         uint256 inputBalanceBefore = key0.currency0.balanceOfSelf();
         uint256 outputBalanceBefore = key0.currency1.balanceOfSelf();
@@ -70,7 +69,7 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, Constants.CONTRACT_BALANCE, false));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, 0));
 
         bytes memory data = plan.encode();
         router.executeActions(data);
@@ -93,10 +92,9 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0));
         // take 15 bips to Bob
         plan = plan.add(Actions.TAKE_PORTION, abi.encode(key0.currency1, bob, 15));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
+        plan = plan.add(Actions.SETTLE_TAKE_PAIR, abi.encode(key0.currency0, key0.currency1));
 
         uint256 inputBalanceBefore = key0.currency0.balanceOfSelf();
         uint256 outputBalanceBefore = key0.currency1.balanceOfSelf();
@@ -130,10 +128,9 @@ contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0));
         // bips is larger than maximum bips
         plan = plan.add(Actions.TAKE_PORTION, abi.encode(key0.currency1, bob, BipsLibrary.BIPS_BASE + 1));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
+        plan = plan.add(Actions.SETTLE_TAKE_PAIR, abi.encode(key0.currency0, key0.currency1));
 
         bytes memory data = plan.encode();
 

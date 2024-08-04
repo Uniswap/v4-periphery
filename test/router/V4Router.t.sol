@@ -121,7 +121,7 @@ contract V4RouterTest is RoutingTestHelpers {
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0));
+        plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, expectedAmountOut * 12 / 10));
         // take the entire open delta to the router's address
         plan = plan.add(Actions.TAKE, abi.encode(key0.currency1, Constants.ADDRESS_THIS, Constants.OPEN_DELTA));
         bytes memory data = plan.encode();
@@ -281,7 +281,7 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, Constants.CONTRACT_BALANCE, false));
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, 0));
 
         bytes memory data = plan.encode();
 
@@ -449,7 +449,7 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SETTLE, abi.encode(nativeKey.currency0, Constants.CONTRACT_BALANCE, false));
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(nativeKey.currency1, address(this)));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(nativeKey.currency1, 0));
 
         bytes memory data = plan.encode();
 

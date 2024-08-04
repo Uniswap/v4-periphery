@@ -85,8 +85,12 @@ library Planner {
         pure
         returns (bytes memory)
     {
-        plan = plan.add(Actions.SETTLE_ALL, abi.encode(inputCurrency));
-        plan = plan.add(Actions.TAKE_ALL, abi.encode(outputCurrency, takeRecipient));
+        if (takeRecipient == Constants.MSG_SENDER) {
+            plan = plan.add(Actions.SETTLE_TAKE_PAIR, abi.encode(inputCurrency, outputCurrency));
+        } else {
+            plan = plan.add(Actions.SETTLE, abi.encode(inputCurrency, Constants.OPEN_DELTA, true));
+            plan = plan.add(Actions.TAKE, abi.encode(outputCurrency, takeRecipient, Constants.OPEN_DELTA));
+        }
         return plan.encode();
     }
 }
