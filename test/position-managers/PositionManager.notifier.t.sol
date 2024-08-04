@@ -49,7 +49,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
     function test_subscribe_revertsWithEmptyPositionConfig() public {
         uint256 tokenId = lpm.nextTokenId();
         vm.expectRevert("NOT_MINTED");
-        lpm.subscribe(tokenId, config, address(sub));
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
     }
 
     function test_subscribe_revertsWhenNotApproved() public {
@@ -59,7 +59,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         // this contract is not approved to operate on alice's liq
 
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(this)));
-        lpm.subscribe(tokenId, config, address(sub));
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
     }
 
     function test_subscribe_reverts_withIncorrectConfig() public {
@@ -74,7 +74,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         PositionConfig memory incorrectConfig = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 301});
 
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.IncorrectPositionConfigForTokenId.selector, tokenId));
-        lpm.subscribe(tokenId, incorrectConfig, address(sub));
+        lpm.subscribe(tokenId, incorrectConfig, address(sub), ZERO_BYTES);
     }
 
     function test_subscribe_succeeds() public {
@@ -86,7 +86,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.approve(address(this), tokenId);
         vm.stopPrank();
 
-        lpm.subscribe(tokenId, config, address(sub));
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
 
         assertEq(lpm.hasSubscriber(tokenId), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
@@ -102,7 +102,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.approve(address(this), tokenId);
         vm.stopPrank();
 
-        lpm.subscribe(tokenId, config, address(sub));
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
 
         assertEq(lpm.hasSubscriber(tokenId), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
@@ -131,7 +131,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.approve(address(this), tokenId);
         vm.stopPrank();
 
-        lpm.subscribe(tokenId, config, address(sub));
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
 
         assertEq(lpm.hasSubscriber(tokenId), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
@@ -150,7 +150,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.approve(address(this), tokenId);
         vm.stopPrank();
 
-        lpm.subscribe(tokenId, config, address(sub));
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
 
         assertEq(lpm.hasSubscriber(tokenId), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
@@ -169,7 +169,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.approve(address(this), tokenId);
         vm.stopPrank();
 
-        lpm.subscribe(tokenId, config, address(sub));
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
 
         assertEq(lpm.hasSubscriber(tokenId), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
@@ -188,9 +188,9 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.approve(address(this), tokenId);
         vm.stopPrank();
 
-        lpm.subscribe(tokenId, config, address(sub));
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
 
-        lpm.unsubscribe(tokenId, config);
+        lpm.unsubscribe(tokenId, config, ZERO_BYTES);
 
         assertEq(sub.notifyUnsubscribeCount(), 1);
         assertEq(lpm.hasSubscriber(tokenId), false);
@@ -206,10 +206,10 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.approve(address(this), tokenId);
         vm.stopPrank();
 
-        lpm.subscribe(tokenId, config, address(badSubscriber));
+        lpm.subscribe(tokenId, config, address(badSubscriber), ZERO_BYTES);
 
         MockReturnDataSubscriber(badSubscriber).setReturnDataSize(0x600000);
-        lpm.unsubscribe(tokenId, config);
+        lpm.unsubscribe(tokenId, config, ZERO_BYTES);
 
         // the subscriber contract call failed bc it used too much gas
         assertEq(MockReturnDataSubscriber(badSubscriber).notifyUnsubscribeCount(), 0);
@@ -230,7 +230,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         bytes[] memory calls = new bytes[](2);
 
         calls[0] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions, _deadline);
-        calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub);
+        calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub, ZERO_BYTES);
 
         lpm.multicall(calls);
 
@@ -265,7 +265,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         bytes[] memory calls = new bytes[](3);
 
         calls[0] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions, _deadline);
-        calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub);
+        calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub, ZERO_BYTES);
         calls[2] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions2, _deadline);
 
         lpm.multicall(calls);
@@ -289,6 +289,46 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         vm.stopPrank();
 
         vm.expectRevert();
-        lpm.unsubscribe(tokenId, config);
+        lpm.unsubscribe(tokenId, config, ZERO_BYTES);
+    }
+
+    function test_subscribe_withData() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        bytes memory subData = abi.encode(address(this));
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub), subData);
+
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
+        assertEq(sub.notifySubscribeCount(), 1);
+        assertEq(abi.decode(sub.subscribeData(), (address)), address(this));
+    }
+
+    function test_unsubscribe_withData() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        bytes memory subData = abi.encode(address(this));
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+
+        lpm.unsubscribe(tokenId, config, subData);
+
+        assertEq(sub.notifyUnsubscribeCount(), 1);
+        assertEq(lpm.hasSubscriber(tokenId), false);
+        assertEq(address(lpm.subscriber(tokenId)), address(0));
+        assertEq(abi.decode(sub.unsubscribeData(), (address)), address(this));
     }
 }

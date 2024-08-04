@@ -14,6 +14,9 @@ contract MockSubscriber is ISubscriber {
     uint256 public notifyModifyLiquidityCount;
     uint256 public notifyTransferCount;
 
+    bytes public subscribeData;
+    bytes public unsubscribeData;
+
     error NotAuthorizedNotifer(address sender);
 
     error NotImplemented();
@@ -27,22 +30,21 @@ contract MockSubscriber is ISubscriber {
         _;
     }
 
-    function notifySubscribe(uint256 tokenId, PositionConfig memory config) external onlyByPosm {
+    function notifySubscribe(uint256, PositionConfig memory, bytes memory data) external onlyByPosm {
         notifySubscribeCount++;
+        subscribeData = data;
     }
 
-    function notifyUnsubscribe(uint256 tokenId, PositionConfig memory config) external onlyByPosm {
+    function notifyUnsubscribe(uint256, PositionConfig memory, bytes memory data) external onlyByPosm {
         notifyUnsubscribeCount++;
+        unsubscribeData = data;
     }
 
-    function notifyModifyLiquidity(uint256 tokenId, PositionConfig memory config, int256 liquidityChange)
-        external
-        onlyByPosm
-    {
+    function notifyModifyLiquidity(uint256, PositionConfig memory, int256) external onlyByPosm {
         notifyModifyLiquidityCount++;
     }
 
-    function notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) external onlyByPosm {
+    function notifyTransfer(uint256, address, address) external onlyByPosm {
         notifyTransferCount++;
     }
 }

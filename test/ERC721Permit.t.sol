@@ -59,14 +59,14 @@ contract ERC721PermitTest is Test {
     }
 
     // --- Test the signature-based approvals (permit) ---
-    function test_permitTypeHash() public view {
+    function test_permitTypeHash() public pure {
         assertEq(
             ERC721PermitHashLibrary.PERMIT_TYPEHASH,
             keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)")
         );
     }
 
-    function test_fuzz_permitHash(address spender, uint256 tokenId, uint256 nonce, uint256 deadline) public view {
+    function test_fuzz_permitHash(address spender, uint256 tokenId, uint256 nonce, uint256 deadline) public pure {
         bytes32 expectedHash =
             keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline));
         assertEq(expectedHash, ERC721PermitHashLibrary.hash(spender, tokenId, nonce, deadline));
