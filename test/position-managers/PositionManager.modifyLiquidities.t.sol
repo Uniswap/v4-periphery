@@ -49,7 +49,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         approvePosmFor(alice);
 
         // must deploy after posm
-        // Deploys a hook which can accesses IPositionManager.modifyLiquiditiesDirect
+        // Deploys a hook which can accesses IPositionManager.modifyLiquiditiesWithoutUnlock
         deployPosmHookModifyLiquidities();
         seedBalance(address(hookModifyLiquidities));
 
@@ -259,7 +259,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         swap(key, true, -1e18, calls);
     }
 
-    /// @dev hook cannot re-enter modifyLiquiditiesDirect in beforeRemoveLiquidity
+    /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in beforeRemoveLiquidity
     function test_hook_increaseLiquidity_reenter_revert() public {
         uint256 initialLiquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();
@@ -271,7 +271,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         bytes memory hookCall = getIncreaseEncoded(tokenId, config, newLiquidity, ZERO_BYTES);
         bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, hookCall);
 
-        // should revert because hook is re-entering modifyLiquiditiesDirect
+        // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
         vm.expectRevert(
             abi.encodeWithSelector(
                 Hooks.FailedHookCall.selector, abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)

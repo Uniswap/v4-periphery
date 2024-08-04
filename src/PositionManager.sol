@@ -104,7 +104,11 @@ contract PositionManager is
     }
 
     /// @inheritdoc IPositionManager
-    function modifyLiquiditiesDirect(bytes calldata actions, bytes[] calldata params) external payable isNotLocked {
+    function modifyLiquiditiesWithoutUnlock(bytes calldata actions, bytes[] calldata params)
+        external
+        payable
+        isNotLocked
+    {
         _executeActions(actions, params);
     }
 

@@ -87,7 +87,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
             TickMath.getSqrtPriceAtTick(params.tickUpper),
             liquidityToAdd.toUint128()
         );
-        // add extra wei because modifyLiquiditiesDirect may be rounding up, LiquidityAmounts is imprecise?
+        // add extra wei because modifyLiquidities may be rounding up, LiquidityAmounts is imprecise?
         lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
         BalanceDelta delta = getLastDelta();
 

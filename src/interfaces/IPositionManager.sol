@@ -22,7 +22,7 @@ interface IPositionManager is INotifier {
     /// @dev This must be called by a contract that has already unlocked the v4 PoolManager
     /// @param actions the actions to perform
     /// @param params the parameters to provide for the actions
-    function modifyLiquiditiesDirect(bytes calldata actions, bytes[] calldata params) external payable;
+    function modifyLiquiditiesWithoutUnlock(bytes calldata actions, bytes[] calldata params) external payable;
 
     /// Returns the ID that will be used for the next minted liquidity position
     /// @return uint256 The next token ID
