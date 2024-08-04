@@ -6,7 +6,7 @@ import {ERC721Permit} from "../../src/base/ERC721Permit.sol";
 contract MockERC721Permit is ERC721Permit {
     uint256 public lastTokenId;
 
-    constructor(string memory name, string memory symbol, string memory version) ERC721Permit(name, symbol, version) {}
+    constructor(string memory name, string memory symbol) ERC721Permit(name, symbol) {}
 
     function tokenURI(uint256) public pure override returns (string memory) {
         return "";

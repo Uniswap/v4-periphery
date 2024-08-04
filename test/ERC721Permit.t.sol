@@ -19,13 +19,12 @@ contract ERC721PermitTest is Test {
 
     string constant name = "Mock ERC721Permit";
     string constant symbol = "MOCK721";
-    string constant version = "1";
 
     function setUp() public {
         (alice, alicePK) = makeAddrAndKey("ALICE");
         (bob, bobPK) = makeAddrAndKey("BOB");
 
-        erc721Permit = new MockERC721Permit(name, symbol, version);
+        erc721Permit = new MockERC721Permit(name, symbol);
     }
 
     // --- Test the overriden approval ---
@@ -67,14 +66,19 @@ contract ERC721PermitTest is Test {
         );
     }
 
+    function test_fuzz_permitHash(address spender, uint256 tokenId, uint256 nonce, uint256 deadline) public view {
+        bytes32 expectedHash =
+            keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline));
+        assertEq(expectedHash, ERC721PermitHashLibrary.hash(spender, tokenId, nonce, deadline));
+    }
+
     function test_domainSeparator() public view {
         assertEq(
-            IERC721Permit(address(erc721Permit)).DOMAIN_SEPARATOR(),
+            erc721Permit.DOMAIN_SEPARATOR(),
             keccak256(
                 abi.encode(
-                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)"),
                     keccak256(bytes(name)),
-                    keccak256(bytes(version)),
                     block.chainid,
                     address(erc721Permit)
                 )
