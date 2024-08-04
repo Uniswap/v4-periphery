@@ -66,10 +66,23 @@ contract ERC721PermitTest is Test {
         );
     }
 
+    function test_permitForAllTypeHash() public view {
+        assertEq(
+            ERC721PermitHashLibrary.PERMIT_FOR_ALL_TYPEHASH,
+            keccak256("PermitForAll(address operator,bool approved,uint256 nonce,uint256 deadline)")
+        );
+    }
+
     function test_fuzz_permitHash(address spender, uint256 tokenId, uint256 nonce, uint256 deadline) public view {
         bytes32 expectedHash =
             keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline));
         assertEq(expectedHash, ERC721PermitHashLibrary.hashPermit(spender, tokenId, nonce, deadline));
+    }
+
+    function test_fuzz_permitForAllHash(address operator, bool approved, uint256 nonce, uint256 deadline) public view {
+        bytes32 expectedHash =
+            keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_FOR_ALL_TYPEHASH, operator, approved, nonce, deadline));
+        assertEq(expectedHash, ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline));
     }
 
     function test_domainSeparator() public view {
