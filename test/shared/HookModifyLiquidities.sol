@@ -9,16 +9,14 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/type
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
-import {BaseTestHooks} from "@uniswap/v4-core/src/test/BaseTestHooks.sol";
+import {HookSavesDelta} from "./HookSavesDelta.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 
-import "forge-std/console2.sol";
-
 /// @notice This contract is NOT a production use contract. It is meant to be used in testing to verify the delta amounts against changes in a user's balance.
 /// @dev a hook that can modify liquidity in beforeSwap
-contract HookModifyLiquidities is BaseTestHooks {
+contract HookModifyLiquidities is HookSavesDelta {
     IPositionManager posm;
     IAllowanceTransfer permit2;
 
@@ -37,10 +35,8 @@ contract HookModifyLiquidities is BaseTestHooks {
         approvePosmCurrency(key.currency1);
 
         (bytes memory actions, bytes[] memory params) = abi.decode(hookData, (bytes, bytes[]));
-        console2.log("WAAAA");
         posm.modifyLiquidities(actions, params);
-        console2.log(address(posm));
-        return (BaseTestHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     function approvePosmCurrency(Currency currency) internal {

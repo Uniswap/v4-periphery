@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -69,6 +70,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         config = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 60});
     }
 
+    /// @dev increasing liquidity without approval is allowable
     function test_hook_increaseLiquidity() public {
         uint256 initialLiquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();
@@ -87,12 +89,167 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         assertEq(liquidity, initialLiquidity + newLiquidity);
     }
 
-    function test_hook_decreaseLiquidity() public {}
-    function test_hook_collect() public {}
-    function test_hook_burn() public {}
+    /// @dev hook can decrease liquidity with approval
+    function test_hook_decreaseLiquidity() public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
 
-    function test_hook_increaseLiquidity_revert() public {}
-    function test_hook_decreaseLiquidity_revert() public {}
-    function test_hook_collect_revert() public {}
-    function test_hook_burn_revert() public {}
+        // approve the hook for decreasing liquidity
+        lpm.approve(address(hookModifyLiquidities), tokenId);
+
+        // hook decreases liquidity in beforeSwap via hookData
+        uint256 liquidityToDecrease = 10e18;
+        bytes memory calls = getDecreaseEncoded(tokenId, config, liquidityToDecrease, ZERO_BYTES);
+
+        swap(key, true, -1e18, calls);
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+
+        assertEq(liquidity, initialLiquidity - liquidityToDecrease);
+    }
+
+    /// @dev hook can collect liquidity with approval
+    function test_hook_collect() public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        // approve the hook for collecting liquidity
+        lpm.approve(address(hookModifyLiquidities), tokenId);
+
+        // donate to generate revenue
+        uint256 feeRevenue0 = 1e18;
+        uint256 feeRevenue1 = 0.1e18;
+        donateRouter.donate(config.poolKey, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        uint256 balance0HookBefore = currency0.balanceOf(address(hookModifyLiquidities));
+        uint256 balance1HookBefore = currency1.balanceOf(address(hookModifyLiquidities));
+
+        // hook collects liquidity in beforeSwap via hookData
+        bytes memory calls = getCollectEncoded(tokenId, config, ZERO_BYTES);
+        swap(key, true, -1e18, calls);
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+
+        // liquidity unchanged
+        assertEq(liquidity, initialLiquidity);
+
+        // hook collected the fee revenue
+        assertEq(currency0.balanceOf(address(hookModifyLiquidities)), balance0HookBefore + feeRevenue0 - 1 wei); // imprecision, core is keeping 1 wei
+        assertEq(currency1.balanceOf(address(hookModifyLiquidities)), balance1HookBefore + feeRevenue1 - 1 wei);
+    }
+
+    /// @dev hook can burn liquidity with approval
+    function test_hook_burn() public {
+        // mint some liquidity that is NOT burned in beforeSwap
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // the position to be burned by the hook
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+        // TODO: make this less jank since HookModifyLiquidites also has delta saving capabilities
+        // BalanceDelta mintDelta = getLastDelta();
+        BalanceDelta mintDelta = hookModifyLiquidities.deltas(hookModifyLiquidities.numberDeltasReturned() - 1);
+
+        // approve the hook for burning liquidity
+        lpm.approve(address(hookModifyLiquidities), tokenId);
+
+        uint256 balance0HookBefore = currency0.balanceOf(address(hookModifyLiquidities));
+        uint256 balance1HookBefore = currency1.balanceOf(address(hookModifyLiquidities));
+
+        // hook burns liquidity in beforeSwap via hookData
+        bytes memory calls = getBurnEncoded(tokenId, config, ZERO_BYTES);
+        swap(key, true, -1e18, calls);
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+
+        // liquidity burned
+        assertEq(liquidity, 0);
+        // 721 will revert if the token does not exist
+        vm.expectRevert();
+        lpm.ownerOf(tokenId);
+
+        // hook claimed the burned liquidity
+        assertEq(
+            currency0.balanceOf(address(hookModifyLiquidities)),
+            balance0HookBefore + uint128(-mintDelta.amount0() - 1 wei) // imprecision since core is keeping 1 wei
+        );
+        assertEq(
+            currency1.balanceOf(address(hookModifyLiquidities)),
+            balance1HookBefore + uint128(-mintDelta.amount1() - 1 wei)
+        );
+    }
+
+    // --- Revert Scenarios --- //
+    /// @dev Hook does not have approval so decreasingly liquidity should revert
+    function test_hook_decreaseLiquidity_revert() public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        // hook decreases liquidity in beforeSwap via hookData
+        uint256 liquidityToDecrease = 10e18;
+        bytes memory calls = getDecreaseEncoded(tokenId, config, liquidityToDecrease, ZERO_BYTES);
+
+        // should revert because hook is not approved
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector,
+                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities))
+            )
+        );
+        swap(key, true, -1e18, calls);
+    }
+
+    /// @dev hook does not have approval so collecting liquidity should revert
+    function test_hook_collect_revert() public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        // donate to generate revenue
+        uint256 feeRevenue0 = 1e18;
+        uint256 feeRevenue1 = 0.1e18;
+        donateRouter.donate(config.poolKey, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        // hook collects liquidity in beforeSwap via hookData
+        bytes memory calls = getCollectEncoded(tokenId, config, ZERO_BYTES);
+
+        // should revert because hook is not approved
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector,
+                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities))
+            )
+        );
+        swap(key, true, -1e18, calls);
+    }
+
+    /// @dev hook does not have approval so burning liquidity should revert
+    function test_hook_burn_revert() public {
+        // the position to be burned by the hook
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        // hook burns liquidity in beforeSwap via hookData
+        bytes memory calls = getBurnEncoded(tokenId, config, ZERO_BYTES);
+
+        // should revert because hook is not approved
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector,
+                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities))
+            )
+        );
+        swap(key, true, -1e18, calls);
+    }
 }

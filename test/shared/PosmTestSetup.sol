@@ -17,8 +17,6 @@ import {HookSavesDelta} from "./HookSavesDelta.sol";
 import {HookModifyLiquidities} from "./HookModifyLiquidities.sol";
 import {ERC721PermitHashLibrary} from "../../src/libraries/ERC721PermitHash.sol";
 
-import "forge-std/console2.sol";
-
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
@@ -28,7 +26,8 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     address hookAddr = address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
 
     HookModifyLiquidities hookModifyLiquidities;
-    address hookModifyLiquiditiesAddr = address(uint160(Hooks.BEFORE_SWAP_FLAG));
+    address hookModifyLiquiditiesAddr =
+        address(uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
 
     function deployPosmHookSavesDelta() public {
         HookSavesDelta impl = new HookSavesDelta();
@@ -41,8 +40,6 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         vm.etch(hookModifyLiquiditiesAddr, address(impl).code);
         hookModifyLiquidities = HookModifyLiquidities(hookModifyLiquiditiesAddr);
 
-        console2.log(address(lpm));
-        
         // set posm address since constructor args are not easily copied by vm.etch
         hookModifyLiquidities.setAddresses(lpm, permit2);
     }
