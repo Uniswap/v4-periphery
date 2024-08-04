@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IEIP712} from "../interfaces/IEIP712.sol";
+import {IEIP712_v4} from "../interfaces/IEIP712_v4.sol";
 
 /// @notice Generic EIP712 implementation
 /// @dev Maintains cross-chain replay protection in the event of a fork
 /// @dev Should not be delegatecall'd because DOMAIN_SEPARATOR returns the cached hash and does not recompute with the delegatecallers address
 /// @dev Reference: https://github.com/Uniswap/permit2/blob/main/src/EIP712.sol
 /// @dev Reference: https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/cryptography/EIP712.sol
-contract EIP712 is IEIP712 {
+contract EIP712_v4 is IEIP712_v4 {
     // Cache the domain separator as an immutable value, but also store the chain id that it
     // corresponds to, in order to invalidate the cached domain separator if the chain id changes.
     bytes32 private immutable _CACHED_DOMAIN_SEPARATOR;

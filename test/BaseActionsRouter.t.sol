@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {MockBaseActionsRouter} from "./mocks/MockBaseActionsRouter.sol";
 import {Planner, Plan} from "./shared/Planner.sol";
 import {Actions} from "../src/libraries/Actions.sol";
-import {Constants} from "../src/libraries/Constants.sol";
+import {ActionConstants} from "../src/libraries/ActionConstants.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
@@ -141,9 +141,9 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
 
     function test_fuzz_mapRecipient(address recipient) public view {
         address mappedRecipient = router.mapRecipient(recipient);
-        if (recipient == Constants.MSG_SENDER) {
+        if (recipient == ActionConstants.MSG_SENDER) {
             assertEq(mappedRecipient, address(0xdeadbeef));
-        } else if (recipient == Constants.ADDRESS_THIS) {
+        } else if (recipient == ActionConstants.ADDRESS_THIS) {
             assertEq(mappedRecipient, address(router));
         } else {
             assertEq(mappedRecipient, recipient);

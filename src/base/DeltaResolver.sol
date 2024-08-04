@@ -6,7 +6,7 @@ import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientSta
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "./ImmutableState.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {Constants} from "../libraries/Constants.sol";
+import {ActionConstants} from "../libraries/ActionConstants.sol";
 
 /// @notice Abstract contract used to sync, send, and settle funds to the pool manager
 /// @dev Note that sync() is called before any erc-20 transfer in `settle`.
@@ -71,9 +71,9 @@ abstract contract DeltaResolver is ImmutableState {
 
     /// @notice Calculates the amount for a settle action
     function _mapSettleAmount(uint256 amount, Currency currency) internal view returns (uint256) {
-        if (amount == Constants.CONTRACT_BALANCE) {
+        if (amount == ActionConstants.CONTRACT_BALANCE) {
             return currency.balanceOfSelf();
-        } else if (amount == Constants.OPEN_DELTA) {
+        } else if (amount == ActionConstants.OPEN_DELTA) {
             return _getFullDebt(currency);
         }
         return amount;
@@ -81,7 +81,7 @@ abstract contract DeltaResolver is ImmutableState {
 
     /// @notice Calculates the amount for a take action
     function _mapTakeAmount(uint256 amount, Currency currency) internal view returns (uint256) {
-        if (amount == Constants.OPEN_DELTA) {
+        if (amount == ActionConstants.OPEN_DELTA) {
             return _getFullCredit(currency);
         }
         return amount;
@@ -93,9 +93,9 @@ abstract contract DeltaResolver is ImmutableState {
     /// For example USDC-v2->DAI-v4->USDT. This intermediate DAI amount could be swapped using CONTRACT_BALANCE
     /// or settled using CONTRACT_BALANCE then swapped using OPEN_DELTA.
     function _mapInputAmount(uint128 amount, Currency currency) internal view returns (uint128) {
-        if (amount == Constants.CONTRACT_BALANCE) {
+        if (amount == ActionConstants.CONTRACT_BALANCE) {
             return currency.balanceOfSelf().toUint128();
-        } else if (amount == Constants.OPEN_DELTA) {
+        } else if (amount == ActionConstants.OPEN_DELTA) {
             return _getFullCredit(currency).toUint128();
         }
         return amount;

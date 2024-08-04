@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import "../../src/base/Multicall.sol";
+import "../../src/base/Multicall_v4.sol";
 
 /// @dev If MockMulticall is to PositionManager, then RevertContract is to PoolManager
 contract RevertContract {
@@ -21,7 +21,7 @@ contract RevertContract {
     }
 }
 
-contract MockMulticall is Multicall {
+contract MockMulticall is Multicall_v4 {
     error Error4Bytes(); // 4 bytes of selector
     error Error36Bytes(uint8 a); // 32 bytes + 4 bytes of selector
     error Error68Bytes(uint256 a, uint256 b); // 64 bytes + 4 bytes of selector
