@@ -14,7 +14,10 @@ import {LiquidityOperations} from "./LiquidityOperations.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {HookSavesDelta} from "./HookSavesDelta.sol";
+import {HookModifyLiquidities} from "./HookModifyLiquidities.sol";
 import {ERC721PermitHashLibrary} from "../../src/libraries/ERC721PermitHash.sol";
+
+import "forge-std/console2.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
@@ -24,10 +27,24 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     HookSavesDelta hook;
     address hookAddr = address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
 
+    HookModifyLiquidities hookModifyLiquidities;
+    address hookModifyLiquiditiesAddr = address(uint160(Hooks.BEFORE_SWAP_FLAG));
+
     function deployPosmHookSavesDelta() public {
         HookSavesDelta impl = new HookSavesDelta();
         vm.etch(hookAddr, address(impl).code);
         hook = HookSavesDelta(hookAddr);
+    }
+
+    function deployPosmHookModifyLiquidities() public {
+        HookModifyLiquidities impl = new HookModifyLiquidities();
+        vm.etch(hookModifyLiquiditiesAddr, address(impl).code);
+        hookModifyLiquidities = HookModifyLiquidities(hookModifyLiquiditiesAddr);
+
+        console2.log(address(lpm));
+        
+        // set posm address since constructor args are not easily copied by vm.etch
+        hookModifyLiquidities.setAddresses(lpm, permit2);
     }
 
     function deployAndApprovePosm(IPoolManager poolManager) public {

@@ -16,7 +16,7 @@ interface IPositionManager is INotifier {
     /// @param deadline is the deadline for the batched actions to be executed
     function unlockAndModifyLiquidities(bytes calldata payload, uint256 deadline) external payable;
 
-    function modifyLiquidities(bytes calldata actions, bytes[] calldata params) external payable;
+    function modifyLiquidities(bytes memory actions, bytes[] memory params) external payable;
 
     function nextTokenId() external view returns (uint256);
 

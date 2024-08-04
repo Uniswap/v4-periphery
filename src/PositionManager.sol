@@ -30,6 +30,8 @@ import {INotifier} from "./interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 
+import "forge-std/console2.sol";
+
 contract PositionManager is
     IPositionManager,
     ERC721Permit,
@@ -105,7 +107,9 @@ contract PositionManager is
     }
 
     function modifyLiquidities(bytes calldata actions, bytes[] calldata params) external payable isNotLocked {
+        console2.log("GRAHH");
         _executeActions(actions, params);
+        console2.log("HUHHH");
     }
 
     /// @inheritdoc INotifier
