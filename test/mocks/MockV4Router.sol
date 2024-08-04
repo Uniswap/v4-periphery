@@ -2,14 +2,15 @@
 pragma solidity ^0.8.19;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {V4Router} from "../../../src/V4Router.sol";
-import {ReentrancyLock} from "../../../src/base/ReentrancyLock.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {V4Router} from "../../src/V4Router.sol";
+import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 
-contract V4RouterImplementation is V4Router, ReentrancyLock {
+contract MockV4Router is V4Router, ReentrancyLock {
     using SafeTransferLib for *;
+    using CurrencyLibrary for Currency;
 
     constructor(IPoolManager _poolManager) V4Router(_poolManager) {}
 
@@ -27,10 +28,16 @@ contract V4RouterImplementation is V4Router, ReentrancyLock {
     }
 
     function _pay(Currency token, address payer, uint256 amount) internal override {
-        ERC20(Currency.unwrap(token)).safeTransferFrom(payer, address(poolManager), amount);
+        if (payer == address(this)) {
+            token.transfer(address(poolManager), amount);
+        } else {
+            ERC20(Currency.unwrap(token)).safeTransferFrom(payer, address(poolManager), amount);
+        }
     }
 
-    function _msgSender() internal view override returns (address) {
+    function msgSender() public view override returns (address) {
         return _getLocker();
     }
+
+    receive() external payable {}
 }

@@ -22,6 +22,9 @@ abstract contract LiquidityOperations is CommonBase {
 
     uint256 _deadline = block.timestamp + 1;
 
+    uint128 constant MAX_SLIPPAGE_INCREASE = type(uint128).max;
+    uint128 constant MIN_SLIPPAGE_DECREASE = 0 wei;
+
     function mint(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData) internal {
         bytes memory calls = getMintEncoded(config, liquidity, recipient, hookData);
         lpm.unlockAndModifyLiquidities(calls, _deadline);
@@ -84,10 +87,21 @@ abstract contract LiquidityOperations is CommonBase {
         pure
         returns (bytes memory)
     {
-        Plan memory planner = Planner.init();
-        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidity, recipient, hookData));
+        return getMintEncoded(config, liquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, recipient, hookData);
+    }
 
-        return planner.finalizeModifyLiquidity(config.poolKey);
+    function getMintEncoded(
+        PositionConfig memory config,
+        uint256 liquidity,
+        uint128 amount0Max,
+        uint128 amount1Max,
+        address recipient,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
+        Plan memory planner = Planner.init();
+        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidity, amount0Max, amount1Max, recipient, hookData));
+
+        return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 
     function getIncreaseEncoded(
@@ -96,9 +110,24 @@ abstract contract LiquidityOperations is CommonBase {
         uint256 liquidityToAdd,
         bytes memory hookData
     ) internal pure returns (bytes memory) {
+        // max slippage
+        return
+            getIncreaseEncoded(tokenId, config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, hookData);
+    }
+
+    function getIncreaseEncoded(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint256 liquidityToAdd,
+        uint128 amount0Max,
+        uint128 amount1Max,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
-        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, hookData));
-        return planner.finalizeModifyLiquidity(config.poolKey);
+        planner.add(
+            Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, amount0Max, amount1Max, hookData)
+        );
+        return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 
     function getDecreaseEncoded(
@@ -107,9 +136,24 @@ abstract contract LiquidityOperations is CommonBase {
         uint256 liquidityToRemove,
         bytes memory hookData
     ) internal pure returns (bytes memory) {
+        return getDecreaseEncoded(
+            tokenId, config, liquidityToRemove, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, hookData
+        );
+    }
+
+    function getDecreaseEncoded(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint256 liquidityToRemove,
+        uint128 amount0Min,
+        uint128 amount1Min,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
-        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToRemove, hookData));
-        return planner.finalizeModifyLiquidity(config.poolKey);
+        planner.add(
+            Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToRemove, amount0Min, amount1Min, hookData)
+        );
+        return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 
     function getCollectEncoded(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
@@ -117,9 +161,19 @@ abstract contract LiquidityOperations is CommonBase {
         pure
         returns (bytes memory)
     {
+        return getCollectEncoded(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, hookData);
+    }
+
+    function getCollectEncoded(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint128 amount0Min,
+        uint128 amount1Min,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
-        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, hookData));
-        return planner.finalizeModifyLiquidity(config.poolKey);
+        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, amount0Min, amount1Min, hookData));
+        return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 
     function getBurnEncoded(uint256 tokenId, PositionConfig memory config, bytes memory hookData)
@@ -127,9 +181,19 @@ abstract contract LiquidityOperations is CommonBase {
         pure
         returns (bytes memory)
     {
+        return getBurnEncoded(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, hookData);
+    }
+
+    function getBurnEncoded(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint128 amount0Min,
+        uint128 amount1Min,
+        bytes memory hookData
+    ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
-        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, hookData));
+        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, amount0Min, amount1Min, hookData));
         // Close needed on burn in case there is liquidity left in the position.
-        return planner.finalizeModifyLiquidity(config.poolKey);
+        return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 }

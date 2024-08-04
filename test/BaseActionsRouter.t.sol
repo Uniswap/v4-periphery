@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {MockBaseActionsRouter} from "./mocks/MockBaseActionsRouter.sol";
 import {Planner, Plan} from "./shared/Planner.sol";
 import {Actions} from "../src/libraries/Actions.sol";
+import {Constants} from "../src/libraries/Constants.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
@@ -76,7 +77,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
     function test_clear_suceeds() public {
         Plan memory plan = Planner.init();
         for (uint256 i = 0; i < 10; i++) {
-            plan.add(Actions.CLEAR, "");
+            plan.add(Actions.CLEAR_OR_TAKE, "");
         }
 
         assertEq(router.clearCount(), 0);
@@ -136,5 +137,16 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         bytes memory data = plan.encode();
         router.executeActions(data);
         assertEq(router.burnCount(), 10);
+    }
+
+    function test_fuzz_mapRecipient(address recipient) public view {
+        address mappedRecipient = router.mapRecipient(recipient);
+        if (recipient == Constants.MSG_SENDER) {
+            assertEq(mappedRecipient, address(0xdeadbeef));
+        } else if (recipient == Constants.ADDRESS_THIS) {
+            assertEq(mappedRecipient, address(router));
+        } else {
+            assertEq(mappedRecipient, recipient);
+        }
     }
 }

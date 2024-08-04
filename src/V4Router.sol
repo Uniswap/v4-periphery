@@ -6,9 +6,11 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {PathKey, PathKeyLib} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
+import {BipsLibrary} from "./libraries/BipsLibrary.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
@@ -21,77 +23,70 @@ import {SafeCastTemp} from "./libraries/SafeCast.sol";
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
 abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using SafeCastTemp for *;
+    using SafeCast for *;
     using PathKeyLib for PathKey;
     using CalldataDecoder for bytes;
+    using BipsLibrary for uint256;
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
     // TODO native support !!
     function _handleAction(uint256 action, bytes calldata params) internal override {
         // swap actions and payment actions in different blocks for gas efficiency
-        if (action < Actions.SETTLE) {
+        if (action < Actions.SETTLE_ALL) {
             if (action == Actions.SWAP_EXACT_IN) {
-                _swapExactInput(abi.decode(params, (IV4Router.ExactInputParams)));
+                IV4Router.ExactInputParams calldata swapParams = params.decodeSwapExactInParams();
+                _swapExactInput(swapParams);
             } else if (action == Actions.SWAP_EXACT_IN_SINGLE) {
-                _swapExactInputSingle(abi.decode(params, (IV4Router.ExactInputSingleParams)));
+                IV4Router.ExactInputSingleParams calldata swapParams = params.decodeSwapExactInSingleParams();
+                _swapExactInputSingle(swapParams);
             } else if (action == Actions.SWAP_EXACT_OUT) {
-                _swapExactOutput(abi.decode(params, (IV4Router.ExactOutputParams)));
+                IV4Router.ExactOutputParams calldata swapParams = params.decodeSwapExactOutParams();
+                _swapExactOutput(swapParams);
             } else if (action == Actions.SWAP_EXACT_OUT_SINGLE) {
-                _swapExactOutputSingle(abi.decode(params, (IV4Router.ExactOutputSingleParams)));
+                IV4Router.ExactOutputSingleParams calldata swapParams = params.decodeSwapExactOutSingleParams();
+                _swapExactOutputSingle(swapParams);
             } else {
                 revert UnsupportedAction(action);
             }
         } else {
             if (action == Actions.SETTLE_ALL) {
-                // equivalent: abi.decode(params, (Currency))
-                Currency currency;
-                assembly ("memory-safe") {
-                    currency := calldataload(params.offset)
-                }
-
-                uint256 amount = _getFullSettleAmount(currency);
-
-                // TODO support address(this) paying too
+                Currency currency = params.decodeCurrency();
                 // TODO should it have a maxAmountOut added slippage protection?
-                _settle(currency, _msgSender(), amount);
+                _settle(currency, msgSender(), _getFullDebt(currency));
+            } else if (action == Actions.SETTLE) {
+                (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
+                _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
             } else if (action == Actions.TAKE_ALL) {
-                // equivalent: abi.decode(params, (Currency, address))
-                Currency currency;
-                address recipient;
-                assembly ("memory-safe") {
-                    currency := calldataload(params.offset)
-                    recipient := calldataload(add(params.offset, 0x20))
-                }
-
-                uint256 amount = _getFullTakeAmount(currency);
-
-                // TODO should _take have a minAmountOut added slippage check?
-                // TODO recipient mapping
-                _take(currency, recipient, amount);
+                (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
+                uint256 amount = _getFullCredit(currency);
+                _take(currency, _mapRecipient(recipient), amount);
+            } else if (action == Actions.TAKE_PORTION) {
+                (Currency currency, address recipient, uint256 bips) = params.decodeCurrencyAddressAndUint256();
+                _take(currency, _mapRecipient(recipient), _getFullCredit(currency).calculatePortion(bips));
             } else {
                 revert UnsupportedAction(action);
             }
         }
     }
 
-    function _swapExactInputSingle(IV4Router.ExactInputSingleParams memory params) private {
-        _swap(
-            params.poolKey,
-            params.zeroForOne,
-            int256(-int128(params.amountIn)),
-            params.sqrtPriceLimitX96,
-            params.hookData
-        );
+    function _swapExactInputSingle(IV4Router.ExactInputSingleParams calldata params) private {
+        uint128 amountIn =
+            _mapInputAmount(params.amountIn, params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1);
+        uint128 amountOut = _swap(
+            params.poolKey, params.zeroForOne, int256(-int128(amountIn)), params.sqrtPriceLimitX96, params.hookData
+        ).toUint128();
+        if (amountOut < params.amountOutMinimum) revert TooLittleReceived();
     }
 
-    function _swapExactInput(IV4Router.ExactInputParams memory params) private {
+    function _swapExactInput(IV4Router.ExactInputParams calldata params) private {
         unchecked {
             // Caching for gas savings
             uint256 pathLength = params.path.length;
             uint128 amountOut;
-            uint128 amountIn = params.amountIn;
             Currency currencyIn = params.currencyIn;
-            PathKey memory pathKey;
+            uint128 amountIn = _mapInputAmount(params.amountIn, currencyIn);
+            PathKey calldata pathKey;
 
             for (uint256 i = 0; i < pathLength; i++) {
                 pathKey = params.path[i];
@@ -107,24 +102,27 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         }
     }
 
-    function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams memory params) private {
-        _swap(
-            params.poolKey,
-            params.zeroForOne,
-            int256(int128(params.amountOut)),
-            params.sqrtPriceLimitX96,
-            params.hookData
-        );
+    function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams calldata params) private {
+        uint128 amountIn = (
+            -_swap(
+                params.poolKey,
+                params.zeroForOne,
+                int256(int128(params.amountOut)),
+                params.sqrtPriceLimitX96,
+                params.hookData
+            )
+        ).toUint128();
+        if (amountIn > params.amountInMaximum) revert TooMuchRequested();
     }
 
-    function _swapExactOutput(IV4Router.ExactOutputParams memory params) private {
+    function _swapExactOutput(IV4Router.ExactOutputParams calldata params) private {
         unchecked {
             // Caching for gas savings
             uint256 pathLength = params.path.length;
             uint128 amountIn;
             uint128 amountOut = params.amountOut;
             Currency currencyOut = params.currencyOut;
-            PathKey memory pathKey;
+            PathKey calldata pathKey;
 
             for (uint256 i = pathLength; i > 0; i--) {
                 pathKey = params.path[i - 1];
@@ -144,7 +142,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         bool zeroForOne,
         int256 amountSpecified,
         uint160 sqrtPriceLimitX96,
-        bytes memory hookData
+        bytes calldata hookData
     ) private returns (int128 reciprocalAmount) {
         unchecked {
             BalanceDelta delta = poolManager.swap(

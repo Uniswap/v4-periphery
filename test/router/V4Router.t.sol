@@ -6,10 +6,13 @@ import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
 import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
+import {Constants} from "../../src/libraries/Constants.sol";
 
 contract V4RouterTest is RoutingTestHelpers {
     using CurrencyLibrary for Currency;
     using Planner for Plan;
+
+    address alice = makeAddr("ALICE");
 
     function setUp() public {
         setupRouterCurrenciesAndPoolsWithLiquidity();
@@ -20,7 +23,23 @@ contract V4RouterTest is RoutingTestHelpers {
                         ERC20 -> ERC20 EXACT INPUT
     //////////////////////////////////////////////////////////////*/
 
-    function test_swapExactInputSingle_zeroForOne() public {
+    function test_swapExactInputSingle_revertsForAmountOut() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        // min amount out of 1 higher than the actual amount out
+        IV4Router.ExactInputSingleParams memory params = IV4Router.ExactInputSingleParams(
+            key0, true, uint128(amountIn), uint128(expectedAmountOut + 1), 0, bytes("")
+        );
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Constants.MSG_SENDER);
+
+        vm.expectRevert(IV4Router.TooLittleReceived.selector);
+        router.executeActions(data);
+    }
+
+    function test_swapExactInputSingle_zeroForOne_takeToMsgSender() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
@@ -36,6 +55,60 @@ contract V4RouterTest is RoutingTestHelpers {
 
         assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
+    }
+
+    function test_swapExactInputSingle_zeroForOne_takeToRecipient() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+
+        uint256 aliceOutputBalanceBefore = key0.currency1.balanceOf(alice);
+
+        // swap with alice as the take recipient
+        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
+        = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn, alice);
+
+        uint256 aliceOutputBalanceAfter = key0.currency1.balanceOf(alice);
+
+        assertEq(currency0.balanceOf(address(router)), 0);
+        assertEq(currency1.balanceOf(address(router)), 0);
+
+        assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
+        // this contract's output balance has not changed because funds went to alice
+        assertEq(outputBalanceAfter, outputBalanceBefore);
+        assertEq(aliceOutputBalanceAfter - aliceOutputBalanceBefore, expectedAmountOut);
+    }
+
+    // This is not a real use-case in isolation, but will be used in the UniversalRouter if a v4
+    // swap is before another swap on v2/v3
+    function test_swapExactInputSingle_zeroForOne_takeToRouter() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+
+        // the router holds no funds before
+        assertEq(currency0.balanceOf(address(router)), 0);
+        assertEq(currency1.balanceOf(address(router)), 0);
+
+        // swap with the router as the take recipient
+        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
+        = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn, Constants.ADDRESS_THIS);
+
+        // the output tokens have been left in the router
+        assertEq(currency0.balanceOf(address(router)), 0);
+        assertEq(currency1.balanceOf(address(router)), expectedAmountOut);
+
+        assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
+        // this contract's output balance has not changed because funds went to the router
+        assertEq(outputBalanceAfter, outputBalanceBefore);
     }
 
     function test_swapExactInputSingle_oneForZero() public {
@@ -54,6 +127,22 @@ contract V4RouterTest is RoutingTestHelpers {
 
         assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
+    }
+
+    function test_swapExactInput_revertsForAmountOut() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        tokenPath.push(currency0);
+        tokenPath.push(currency1);
+        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
+        params.amountOutMinimum = uint128(expectedAmountOut + 1);
+
+        plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Constants.MSG_SENDER);
+
+        vm.expectRevert(IV4Router.TooLittleReceived.selector);
+        router.executeActions(data);
     }
 
     function test_swapExactIn_1Hop_zeroForOne() public {
@@ -144,6 +233,37 @@ contract V4RouterTest is RoutingTestHelpers {
 
         assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
+    }
+
+    function test_swap_settleRouterBalance_swapOpenDelta() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        key0.currency0.transfer(address(router), amountIn);
+
+        // amount in of 0 to show it should use the open delta
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, true, Constants.OPEN_DELTA, 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, Constants.CONTRACT_BALANCE, false));
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, address(this)));
+
+        bytes memory data = plan.encode();
+
+        uint256 callerInputBefore = key0.currency0.balanceOfSelf();
+        uint256 routerInputBefore = key0.currency0.balanceOf(address(router));
+        uint256 callerOutputBefore = key0.currency1.balanceOfSelf();
+        router.executeActions(data);
+
+        uint256 callerInputAfter = key0.currency0.balanceOfSelf();
+        uint256 routerInputAfter = key0.currency0.balanceOf(address(router));
+        uint256 callerOutputAfter = key0.currency1.balanceOfSelf();
+
+        // caller didnt pay, router paid, caller received the output
+        assertEq(callerInputBefore, callerInputAfter);
+        assertEq(routerInputBefore - amountIn, routerInputAfter);
+        assertEq(callerOutputBefore + expectedAmountOut, callerOutputAfter);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -283,16 +403,63 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
     }
 
+    function test_swap_nativeIn_settleRouterBalance_swapOpenDelta() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        nativeKey.currency0.transfer(address(router), amountIn);
+
+        // amount in of 0 to show it should use the open delta
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(nativeKey, true, Constants.OPEN_DELTA, 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SETTLE, abi.encode(nativeKey.currency0, Constants.CONTRACT_BALANCE, false));
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(nativeKey.currency1, address(this)));
+
+        bytes memory data = plan.encode();
+
+        uint256 callerInputBefore = nativeKey.currency0.balanceOfSelf();
+        uint256 routerInputBefore = nativeKey.currency0.balanceOf(address(router));
+        uint256 callerOutputBefore = nativeKey.currency1.balanceOfSelf();
+        router.executeActions(data);
+
+        uint256 callerInputAfter = nativeKey.currency0.balanceOfSelf();
+        uint256 routerInputAfter = nativeKey.currency0.balanceOf(address(router));
+        uint256 callerOutputAfter = nativeKey.currency1.balanceOfSelf();
+
+        // caller didnt pay, router paid, caller received the output
+        assertEq(callerInputBefore, callerInputAfter);
+        assertEq(routerInputBefore - amountIn, routerInputAfter);
+        assertEq(callerOutputBefore + expectedAmountOut, callerOutputAfter);
+    }
+
     /*//////////////////////////////////////////////////////////////å
                         ERC20 -> ERC20 EXACT OUTPUT
     //////////////////////////////////////////////////////////////*/
+
+    function test_swapExactOutputSingle_revertsForAmountIn() public {
+        uint256 amountOut = 1 ether;
+        uint256 expectedAmountIn = 1008049273448486163;
+
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            key0, true, uint128(amountOut), uint128(expectedAmountIn - 1), 0, bytes("")
+        );
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Constants.MSG_SENDER);
+
+        vm.expectRevert(IV4Router.TooMuchRequested.selector);
+        router.executeActions(data);
+    }
 
     function test_swapExactOutputSingle_zeroForOne() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, true, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            key0, true, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
@@ -310,8 +477,9 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, false, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            key0, false, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
@@ -323,6 +491,22 @@ contract V4RouterTest is RoutingTestHelpers {
 
         assertEq(inputBalanceBefore - inputBalanceAfter, expectedAmountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, amountOut);
+    }
+
+    function test_swapExactOut_revertsForAmountIn() public {
+        uint256 amountOut = 1 ether;
+        uint256 expectedAmountIn = 1008049273448486163;
+
+        tokenPath.push(currency0);
+        tokenPath.push(currency1);
+        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, amountOut);
+        params.amountInMaximum = uint128(expectedAmountIn - 1);
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, Constants.MSG_SENDER);
+
+        vm.expectRevert(IV4Router.TooMuchRequested.selector);
+        router.executeActions(data);
     }
 
     function test_swapExactOut_1Hop_zeroForOne() public {
@@ -422,8 +606,9 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(nativeKey, true, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            nativeKey, true, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
@@ -441,8 +626,9 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(nativeKey, false, uint128(amountOut), 0, 0, bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            nativeKey, false, uint128(amountOut), uint128(expectedAmountIn + 1), 0, bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 

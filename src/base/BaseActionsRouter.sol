@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SafeCallback} from "./SafeCallback.sol";
 import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
+import {Actions} from "../libraries/Actions.sol";
+import {Constants} from "../libraries/Constants.sol";
 
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.
 /// @dev Suggested uint256 action values are defined in Actions.sol, however any definition can be used
@@ -25,19 +27,21 @@ abstract contract BaseActionsRouter is SafeCallback {
     }
 
     /// @notice function that is called by the PoolManager through the SafeCallback.unlockCallback
+    /// @param data Abi encoding of (bytes actions, bytes[] params)
+    /// where params[i] is the encoded parameters for actions[i]
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        // abi.decode(data, (uint256[], bytes[]));
-        (uint256[] calldata actions, bytes[] calldata params) = data.decodeActionsRouterParams();
+        // abi.decode(data, (bytes, bytes[]));
+        (bytes calldata actions, bytes[] calldata params) = data.decodeActionsRouterParams();
         _executeActions(actions, params);
         return "";
     }
 
-    function _executeActions(uint256[] calldata actions, bytes[] calldata params) internal {
+    function _executeActions(bytes calldata actions, bytes[] calldata params) internal {
         uint256 numActions = actions.length;
         if (numActions != params.length) revert InputLengthMismatch();
 
         for (uint256 actionIndex = 0; actionIndex < numActions; actionIndex++) {
-            uint256 action = actions[actionIndex];
+            uint256 action = uint256(uint8(actions[actionIndex]));
 
             _handleAction(action, params[actionIndex]);
         }
@@ -51,5 +55,21 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// In many contracts this will be the address that calls the initial entry point that calls `_executeActions`
     /// `msg.sender` shouldnt be used, as this will be the v4 pool manager contract that calls `unlockCallback`
     /// If using ReentrancyLock.sol, this function can return _getLocker()
-    function _msgSender() internal view virtual returns (address);
+    function msgSender() public view virtual returns (address);
+
+    /// @notice Calculates the address for a action
+    function _mapRecipient(address recipient) internal view returns (address) {
+        if (recipient == Constants.MSG_SENDER) {
+            return msgSender();
+        } else if (recipient == Constants.ADDRESS_THIS) {
+            return address(this);
+        } else {
+            return recipient;
+        }
+    }
+
+    /// @notice Calculates the payer for an action
+    function _mapPayer(bool payerIsUser) internal view returns (address) {
+        return payerIsUser ? msgSender() : address(this);
+    }
 }
