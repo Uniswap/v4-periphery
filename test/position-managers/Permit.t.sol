@@ -13,8 +13,8 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SignatureVerification} from "permit2/src/libraries/SignatureVerification.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
-import {IERC721Permit} from "../../src/interfaces/IERC721Permit.sol";
-import {ERC721Permit} from "../../src/base/ERC721Permit.sol";
+import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
+import {ERC721Permit_v4} from "../../src/base/ERC721Permit_v4.sol";
 import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
 
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
@@ -60,7 +60,7 @@ contract PermitTest is Test, PosmTestSetup {
 
     function test_domainSeparator() public view {
         assertEq(
-            ERC721Permit(address(lpm)).DOMAIN_SEPARATOR(),
+            ERC721Permit_v4(address(lpm)).DOMAIN_SEPARATOR(),
             keccak256(
                 abi.encode(
                     keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)"),
