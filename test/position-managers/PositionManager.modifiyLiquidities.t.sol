@@ -58,6 +58,36 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         config = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 60});
     }
 
+    /// @dev minting liquidity without approval is allowable
+    function test_hook_mint() public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        // hook mints a new position in beforeSwap via hookData
+        uint256 hookTokenId = lpm.nextTokenId();
+        uint256 newLiquidity = 10e18;
+        bytes memory calls = getMintEncoded(config, newLiquidity, address(hookModifyLiquidities), ZERO_BYTES);
+
+        swap(key, true, -1e18, calls);
+
+        bytes32 positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
+        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+
+        // original liquidity unchanged
+        assertEq(liquidity, initialLiquidity);
+
+        // hook minted its own position
+        positionId =
+            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(hookTokenId));
+        (liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        assertEq(liquidity, newLiquidity);
+
+        assertEq(lpm.ownerOf(tokenId), address(this)); // original position owned by this contract
+        assertEq(lpm.ownerOf(hookTokenId), address(hookModifyLiquidities)); // hook position owned by hook
+    }
+
     /// @dev increasing liquidity without approval is allowable
     function test_hook_increaseLiquidity() public {
         uint256 initialLiquidity = 100e18;
