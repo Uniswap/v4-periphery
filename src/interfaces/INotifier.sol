@@ -9,7 +9,7 @@ interface INotifier {
     /// @param tokenId the ERC721 tokenId
     /// @param config the corresponding PositionConfig for the tokenId
     /// @param subscriber the address to notify
-    /// @param data caller passed data to the subscriber
+    /// @param data caller-provided data that's forwarded to the subscriber contract
     /// @dev Calling subscribe when a position is already subscribed will revert
     /// @dev payable so it can be multicalled with NATIVE related actions
     function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber, bytes calldata data)
@@ -19,7 +19,7 @@ interface INotifier {
     /// @notice Removes the subscriber from receiving notifications for a respective position
     /// @param tokenId the ERC721 tokenId
     /// @param config the corresponding PositionConfig for the tokenId
-    /// @param data caller passed data to the subscriber
+    /// @param data caller-provided data that's forwarded to the subscriber contract
     /// @dev payable so it can be multicalled with NATIVE related actions
     function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data) external payable;
 
