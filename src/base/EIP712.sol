@@ -15,8 +15,8 @@ contract EIP712 is IEIP712 {
     uint256 private immutable _CACHED_CHAIN_ID;
     bytes32 private immutable _HASHED_NAME;
 
-    bytes32 private constant _TYPE_HASH =
-        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
+    /// @dev equal to keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)")
+    bytes32 private constant _TYPE_HASH = 0x8cad95687ba82c2ce50e74f7b754645e5117c3a5bec8151c0726d5857980a866;
 
     constructor(string memory name) {
         _HASHED_NAME = keccak256(bytes(name));
@@ -37,7 +37,15 @@ contract EIP712 is IEIP712 {
     }
 
     /// @notice Creates an EIP-712 typed data hash
-    function _hashTypedData(bytes32 dataHash) internal view returns (bytes32) {
-        return keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR(), dataHash));
+    function _hashTypedData(bytes32 dataHash) internal view returns (bytes32 digest) {
+        // equal to keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR(), dataHash));
+        bytes32 domainSeparator = DOMAIN_SEPARATOR();
+        assembly ("memory-safe") {
+            let fmp := mload(0x40)
+            mstore(fmp, hex"1901")
+            mstore(add(fmp, 0x02), domainSeparator)
+            mstore(add(fmp, 0x22), dataHash)
+            digest := keccak256(fmp, 0x42)
+        }
     }
 }
