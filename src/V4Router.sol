@@ -54,13 +54,15 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 Currency currency = params.decodeCurrency();
                 // TODO should it have a maxAmountOut added slippage protection?
                 _settle(currency, msgSender(), _getFullDebt(currency));
+            } else if (action == Actions.TAKE_ALL) {
+                (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
+                _take(currency, _mapRecipient(recipient), _getFullCredit(currency));
             } else if (action == Actions.SETTLE) {
                 (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
                 _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
-            } else if (action == Actions.TAKE_ALL) {
-                (Currency currency, address recipient) = params.decodeCurrencyAndAddress();
-                uint256 amount = _getFullCredit(currency);
-                _take(currency, _mapRecipient(recipient), amount);
+            } else if (action == Actions.TAKE) {
+                (Currency currency, address recipient, uint256 amount) = params.decodeCurrencyAddressAndUint256();
+                _take(currency, _mapRecipient(recipient), _mapTakeAmount(amount, currency));
             } else if (action == Actions.TAKE_PORTION) {
                 (Currency currency, address recipient, uint256 bips) = params.decodeCurrencyAddressAndUint256();
                 _take(currency, _mapRecipient(recipient), _getFullCredit(currency).calculatePortion(bips));

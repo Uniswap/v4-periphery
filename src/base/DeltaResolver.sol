@@ -82,12 +82,16 @@ abstract contract DeltaResolver is ImmutableState {
     /// @notice Calculates the amount for a take action
     function _mapTakeAmount(uint256 amount, Currency currency) internal view returns (uint256) {
         if (amount == Constants.OPEN_DELTA) {
-            return _getFullCredit(currency).toUint128();
+            return _getFullCredit(currency);
         }
         return amount;
     }
 
     /// @notice Calculates the amount for a swap action
+    /// @dev This is to be used for swaps where the input amount isn't known before the transaction, and
+    /// isn't possible using a v4 multi-hop command.
+    /// For example USDC-v2->DAI-v4->USDT. This intermediate DAI amount could be swapped using CONTRACT_BALANCE
+    /// or settled using CONTRACT_BALANCE then swapped using OPEN_DELTA.
     function _mapInputAmount(uint128 amount, Currency currency) internal view returns (uint128) {
         if (amount == Constants.CONTRACT_BALANCE) {
             return currency.balanceOfSelf().toUint128();

@@ -128,69 +128,75 @@ contract PositionManager is
     }
 
     function _handleAction(uint256 action, bytes calldata params) internal virtual override {
-        if (action == Actions.INCREASE_LIQUIDITY) {
-            (
-                uint256 tokenId,
-                PositionConfig calldata config,
-                uint256 liquidity,
-                uint128 amount0Max,
-                uint128 amount1Max,
-                bytes calldata hookData
-            ) = params.decodeModifyLiquidityParams();
-            _increase(tokenId, config, liquidity, amount0Max, amount1Max, hookData);
-        } else if (action == Actions.DECREASE_LIQUIDITY) {
-            (
-                uint256 tokenId,
-                PositionConfig calldata config,
-                uint256 liquidity,
-                uint128 amount0Min,
-                uint128 amount1Min,
-                bytes calldata hookData
-            ) = params.decodeModifyLiquidityParams();
-            _decrease(tokenId, config, liquidity, amount0Min, amount1Min, hookData);
-        } else if (action == Actions.MINT_POSITION) {
-            (
-                PositionConfig calldata config,
-                uint256 liquidity,
-                uint128 amount0Max,
-                uint128 amount1Max,
-                address owner,
-                bytes calldata hookData
-            ) = params.decodeMintParams();
-            _mint(config, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
-        } else if (action == Actions.CLOSE_CURRENCY) {
-            Currency currency = params.decodeCurrency();
-            _close(currency);
-        } else if (action == Actions.CLEAR_OR_TAKE) {
-            (Currency currency, uint256 amountMax) = params.decodeCurrencyAndUint256();
-            _clearOrTake(currency, amountMax);
-        } else if (action == Actions.BURN_POSITION) {
-            // Will automatically decrease liquidity to 0 if the position is not already empty.
-            (
-                uint256 tokenId,
-                PositionConfig calldata config,
-                uint128 amount0Min,
-                uint128 amount1Min,
-                bytes calldata hookData
-            ) = params.decodeBurnParams();
-            _burn(tokenId, config, amount0Min, amount1Min, hookData);
-        } else if (action == Actions.SETTLE) {
-            (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
-            _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
-        } else if (action == Actions.SETTLE_PAIR) {
-            (Currency currency0, Currency currency1) = params.decodeCurrencyPair();
-            _settlePair(currency0, currency1);
-        } else if (action == Actions.TAKE_PAIR) {
-            (Currency currency0, Currency currency1, address to) = params.decodeCurrencyPairAndAddress();
-            _takePair(currency0, currency1, to);
-        } else if (action == Actions.SWEEP) {
-            (Currency currency, address to) = params.decodeCurrencyAndAddress();
-            _sweep(currency, _mapRecipient(to));
-        } else if (action == Actions.TAKE) {
-            (Currency currency, address recipient, uint256 amount) = params.decodeCurrencyAddressAndUint256();
-            _take(currency, _mapRecipient(recipient), _mapTakeAmount(amount, currency));
+        if (action < Actions.SETTLE) {
+            if (action == Actions.INCREASE_LIQUIDITY) {
+                (
+                    uint256 tokenId,
+                    PositionConfig calldata config,
+                    uint256 liquidity,
+                    uint128 amount0Max,
+                    uint128 amount1Max,
+                    bytes calldata hookData
+                ) = params.decodeModifyLiquidityParams();
+                _increase(tokenId, config, liquidity, amount0Max, amount1Max, hookData);
+            } else if (action == Actions.DECREASE_LIQUIDITY) {
+                (
+                    uint256 tokenId,
+                    PositionConfig calldata config,
+                    uint256 liquidity,
+                    uint128 amount0Min,
+                    uint128 amount1Min,
+                    bytes calldata hookData
+                ) = params.decodeModifyLiquidityParams();
+                _decrease(tokenId, config, liquidity, amount0Min, amount1Min, hookData);
+            } else if (action == Actions.MINT_POSITION) {
+                (
+                    PositionConfig calldata config,
+                    uint256 liquidity,
+                    uint128 amount0Max,
+                    uint128 amount1Max,
+                    address owner,
+                    bytes calldata hookData
+                ) = params.decodeMintParams();
+                _mint(config, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
+            } else if (action == Actions.BURN_POSITION) {
+                // Will automatically decrease liquidity to 0 if the position is not already empty.
+                (
+                    uint256 tokenId,
+                    PositionConfig calldata config,
+                    uint128 amount0Min,
+                    uint128 amount1Min,
+                    bytes calldata hookData
+                ) = params.decodeBurnParams();
+                _burn(tokenId, config, amount0Min, amount1Min, hookData);
+            } else {
+                revert UnsupportedAction(action);
+            }
         } else {
-            revert UnsupportedAction(action);
+            if (action == Actions.CLOSE_CURRENCY) {
+                Currency currency = params.decodeCurrency();
+                _close(currency);
+            } else if (action == Actions.CLEAR_OR_TAKE) {
+                (Currency currency, uint256 amountMax) = params.decodeCurrencyAndUint256();
+                _clearOrTake(currency, amountMax);
+            } else if (action == Actions.SETTLE) {
+                (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
+                _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
+            } else if (action == Actions.SETTLE_PAIR) {
+                (Currency currency0, Currency currency1) = params.decodeCurrencyPair();
+                _settlePair(currency0, currency1);
+            } else if (action == Actions.TAKE_PAIR) {
+                (Currency currency0, Currency currency1, address to) = params.decodeCurrencyPairAndAddress();
+                _takePair(currency0, currency1, to);
+            } else if (action == Actions.SWEEP) {
+                (Currency currency, address to) = params.decodeCurrencyAndAddress();
+                _sweep(currency, _mapRecipient(to));
+            } else if (action == Actions.TAKE) {
+                (Currency currency, address recipient, uint256 amount) = params.decodeCurrencyAddressAndUint256();
+                _take(currency, _mapRecipient(recipient), _mapTakeAmount(amount, currency));
+            } else {
+                revert UnsupportedAction(action);
+            }
         }
     }
 
