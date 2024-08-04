@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import {ERC721Permit} from "../../src/base/ERC721Permit.sol";
+import {ERC721Permit_v4} from "../../src/base/ERC721Permit_v4.sol";
 
-contract MockERC721Permit is ERC721Permit {
+contract MockERC721Permit is ERC721Permit_v4 {
     uint256 public lastTokenId;
 
-    constructor(string memory name, string memory symbol) ERC721Permit(name, symbol) {}
+    constructor(string memory name, string memory symbol) ERC721Permit_v4(name, symbol) {}
 
     function tokenURI(uint256) public pure override returns (string memory) {
         return "";

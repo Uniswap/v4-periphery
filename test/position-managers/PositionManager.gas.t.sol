@@ -20,7 +20,7 @@ import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {IMulticall} from "../../src/interfaces/IMulticall.sol";
+import {IMulticall_v4} from "../../src/interfaces/IMulticall_v4.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {FlagConstants} from "../../src/libraries/FlagConstants.sol";
@@ -370,7 +370,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
-        IMulticall(lpm).multicall(calls);
+        IMulticall_v4(lpm).multicall(calls);
         snapLastCall("PositionManager_multicall_initialize_mint");
     }
 
