@@ -29,11 +29,11 @@ contract MockReturnDataSubscriber is ISubscriber {
         _;
     }
 
-    function notifySubscribe(uint256 tokenId, PositionConfig memory config) external onlyByPosm {
+    function notifySubscribe(uint256, PositionConfig memory, bytes memory) external onlyByPosm {
         notifySubscribeCount++;
     }
 
-    function notifyUnsubscribe(uint256 tokenId, PositionConfig memory config) external onlyByPosm {
+    function notifyUnsubscribe(uint256, PositionConfig memory, bytes memory) external onlyByPosm {
         notifyUnsubscribeCount++;
         uint256 _memPtr = memPtr;
         assembly {
@@ -44,14 +44,11 @@ contract MockReturnDataSubscriber is ISubscriber {
         }
     }
 
-    function notifyModifyLiquidity(uint256 tokenId, PositionConfig memory config, int256 liquidityChange)
-        external
-        onlyByPosm
-    {
+    function notifyModifyLiquidity(uint256, PositionConfig memory, int256) external onlyByPosm {
         notifyModifyLiquidityCount++;
     }
 
-    function notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) external onlyByPosm {
+    function notifyTransfer(uint256, address, address) external onlyByPosm {
         notifyTransferCount++;
     }
 

@@ -109,7 +109,7 @@ contract PositionManager is
     }
 
     /// @inheritdoc INotifier
-    function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber)
+    function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber, bytes calldata data)
         external
         payable
         onlyIfApproved(msg.sender, tokenId)
@@ -117,18 +117,18 @@ contract PositionManager is
     {
         // call to _subscribe will revert if the user already has a sub
         positionConfigs.setSubscribe(tokenId);
-        _subscribe(tokenId, config, subscriber);
+        _subscribe(tokenId, config, subscriber, data);
     }
 
     /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId, PositionConfig calldata config)
+    function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data)
         external
         payable
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
         positionConfigs.setUnsubscribe(tokenId);
-        _unsubscribe(tokenId, config);
+        _unsubscribe(tokenId, config, data);
     }
 
     function _handleAction(uint256 action, bytes calldata params) internal virtual override {
@@ -306,7 +306,7 @@ contract PositionManager is
         uint128 amount1Min,
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
-        uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
+        uint256 liquidity = uint256(getPositionLiquidity(tokenId, config));
 
         BalanceDelta liquidityDelta;
         // Can only call modify if there is non zero liquidity.
@@ -342,16 +342,6 @@ contract PositionManager is
         }
     }
 
-    function _getPositionLiquidity(PositionConfig calldata config, uint256 tokenId)
-        internal
-        view
-        returns (uint128 liquidity)
-    {
-        bytes32 positionId =
-            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
-        liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
-    }
-
     /// @notice Sweeps the entire contract balance of specified currency to the recipient
     function _sweep(Currency currency, address to) internal {
         uint256 balance = currency.balanceOfSelf();
@@ -372,6 +362,16 @@ contract PositionManager is
     function transferFrom(address from, address to, uint256 id) public override {
         super.transferFrom(from, to, id);
         if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
+    }
+
+    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
+        public
+        view
+        returns (uint128 liquidity)
+    {
+        bytes32 positionId =
+            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
+        liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
     }
 
     /// @inheritdoc IPositionManager

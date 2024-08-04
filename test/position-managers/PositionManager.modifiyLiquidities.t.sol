@@ -71,7 +71,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
         swap(key, true, -1e18, calls);
 
-        uint256 liquidity = lpm.getPositionLiquidity(hookTokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
 
         // original liquidity unchanged
         assertEq(liquidity, initialLiquidity);

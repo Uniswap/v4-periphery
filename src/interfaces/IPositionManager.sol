@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PositionConfig} from "../libraries/PositionConfig.sol";
 
 import {INotifier} from "./INotifier.sol";
 
@@ -31,4 +32,13 @@ interface IPositionManager is INotifier {
     /// @return configId a truncated hash of the position's poolkey, tickLower, and tickUpper
     /// @dev truncates the least significant bit of the hash
     function getPositionConfigId(uint256 tokenId) external view returns (bytes32 configId);
+
+    /// @param tokenId the ERC721 tokenId
+    /// @param config the corresponding PositionConfig for the tokenId
+    /// @return liquidity the position's liquidity, as a liquidityAmount
+    /// @dev this value can be processed as an amount0 and amount1 by using the LiquidityAmounts library
+    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
+        external
+        view
+        returns (uint128 liquidity);
 }
