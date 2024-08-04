@@ -27,11 +27,43 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
         address owner = ownerOf(tokenId);
         if (spender == owner) revert NoSelfPermit();
 
-        bytes32 hash = ERC721PermitHashLibrary.hash(spender, tokenId, nonce, deadline);
+        bytes32 hash = ERC721PermitHashLibrary.hashPermit(spender, tokenId, nonce, deadline);
         signature.verify(_hashTypedData(hash), owner);
 
         _useUnorderedNonce(owner, nonce);
         _approve(owner, spender, tokenId);
+    }
+
+    function permitForAll(address operator, bool approved, uint256 deadline, uint256 nonce, bytes calldata signature)
+        external
+        payable
+    {
+        if (block.timestamp > deadline) revert DeadlineExpired();
+
+        address owner = msg.sender;
+        if (operator == owner) revert NoSelfPermit();
+
+        bytes32 hash = ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline);
+        signature.verify(_hashTypedData(hash), owner);
+
+        _useUnorderedNonce(owner, nonce);
+        _approveForAll(owner, operator, approved);
+    }
+
+    /// @notice Enable or disable approval for a third party ("operator") to manage
+    /// all of `msg.sender`'s assets
+    /// @dev Emits the ApprovalForAll event. The contract MUST allow
+    /// multiple operators per owner.
+    /// @dev Override Solmate's ERC721 setApprovalForAll so setApprovalForAll() and permit() share the _approveForAll method
+    /// @param operator Address to add to the set of authorized operators
+    /// @param approved True if the operator is approved, false to revoke approval
+    function setApprovalForAll(address operator, bool approved) public override {
+        _approveForAll(msg.sender, operator, approved);
+    }
+
+    function _approveForAll(address owner, address operator, bool approved) internal {
+        isApprovedForAll[owner][operator] = approved;
+        emit ApprovalForAll(owner, operator, approved);
     }
 
     /// @notice Change or reaffirm the approved address for an NFT
