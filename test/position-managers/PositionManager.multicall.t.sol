@@ -215,9 +215,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         vm.prank(bob);
         lpm.multicall(calls);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
 
@@ -258,9 +256,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         vm.prank(bob);
         lpm.multicall(calls);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
 
         (_amount,,) = permit2.allowance(address(bob), Currency.unwrap(currency0), address(lpm));
 
@@ -316,9 +312,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         vm.prank(bob);
         lpm.multicall(calls);
 
-        bytes32 positionId =
-            Position.calculatePositionKey(address(lpm), config.tickLower, config.tickUpper, bytes32(tokenId));
-        (uint256 liquidity,,) = manager.getPositionInfo(config.poolKey.toId(), positionId);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
 
         (_amount0,,) = permit2.allowance(address(bob), Currency.unwrap(currency0), address(lpm));
         (_amount1,,) = permit2.allowance(address(bob), Currency.unwrap(currency1), address(lpm));
