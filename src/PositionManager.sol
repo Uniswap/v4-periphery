@@ -15,10 +15,10 @@ import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
-import {ERC721Permit} from "./base/ERC721Permit.sol";
+import {ERC721Permit_v4} from "./base/ERC721Permit_v4.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
-import {Multicall} from "./base/Multicall.sol";
+import {Multicall_v4} from "./base/Multicall_v4.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
@@ -32,9 +32,9 @@ import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 
 contract PositionManager is
     IPositionManager,
-    ERC721Permit,
+    ERC721Permit_v4,
     PoolInitializer,
-    Multicall,
+    Multicall_v4,
     DeltaResolver,
     ReentrancyLock,
     BaseActionsRouter,
@@ -60,7 +60,7 @@ contract PositionManager is
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
-        ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM")
+        ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
     {}
 
     /// @notice Reverts if the deadline has passed
@@ -298,7 +298,7 @@ contract PositionManager is
         _take(currency1, recipient, _getFullCredit(currency1));
     }
 
-    /// @dev this is overloaded with ERC721Permit._burn
+    /// @dev this is overloaded with ERC721Permit_v4._burn
     function _burn(
         uint256 tokenId,
         PositionConfig calldata config,

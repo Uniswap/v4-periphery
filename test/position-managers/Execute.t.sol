@@ -20,7 +20,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {Constants} from "../../src/libraries/Constants.sol";
+import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
@@ -68,7 +68,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         initialLiquidity = bound(initialLiquidity, 1e18, 1000e18);
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, initialLiquidity, Constants.MSG_SENDER, ZERO_BYTES);
+        mint(config, initialLiquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
 
@@ -88,7 +88,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         liquidityToAdd = bound(liquidityToAdd, 1e18, 1000e18);
         liquidityToAdd2 = bound(liquidityToAdd2, 1e18, 1000e18);
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, initialLiquidity, Constants.MSG_SENDER, ZERO_BYTES);
+        mint(config, initialLiquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init();
 
@@ -155,7 +155,12 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(
             Actions.MINT_POSITION,
             abi.encode(
-                config, initialLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES
+                config,
+                initialLiquidity,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                ActionConstants.MSG_SENDER,
+                ZERO_BYTES
             )
         );
         planner.add(
@@ -179,7 +184,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // mint a position on range [-300, 300]
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, initialLiquidity, Constants.MSG_SENDER, ZERO_BYTES);
+        mint(config, initialLiquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
         // we'll burn and mint a new position on [-60, 60]; calculate the liquidity units for the new range
@@ -207,7 +212,12 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(
             Actions.MINT_POSITION,
             abi.encode(
-                newConfig, newLiquidity, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, Constants.MSG_SENDER, ZERO_BYTES
+                newConfig,
+                newLiquidity,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                ActionConstants.MSG_SENDER,
+                ZERO_BYTES
             )
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
