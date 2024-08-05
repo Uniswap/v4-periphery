@@ -364,6 +364,16 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers, GasSnapshot {
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         snapLastCall("MIDDLEWARE_REMOVE-protected");
+        (, salt) =
+            MiddlewareMiner.find(address(factory), flags, address(manager), address(blankRemoveHooks), maxFeeBips);
+        hookAddress = factory.createMiddleware(address(blankRemoveHooks), maxFeeBips, salt);
+        (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        bytes memory OVERRIDE_BYTES =
+            abi.encode(MiddlewareRemoveNoDeltas(payable(address(hookAddress))).OVERRIDE_BYTES());
+        modifyLiquidityRouter.modifyLiquidity(
+            key, REMOVE_LIQUIDITY_PARAMS, hex"23b70c8dec38c3dec67a5596870027b04c4058cb3ac57b4e589bf628ac6669e7FFFF"
+        );
+        snapLastCall("MIDDLEWARE_REMOVE-override");
 
         flags = flags | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG;
         blankRemoveHooks = BlankRemoveHooks(address(flags));
@@ -381,9 +391,8 @@ contract MiddlewareRemoveFactoryTest is Test, Deployers, GasSnapshot {
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         snapLastCall("MIDDLEWARE_REMOVE-deltas-protected");
 
-        maxFeeBips = 1000;
-        flags = Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG;
-        FeeOnRemove feeOnRemove = FeeOnRemove(address(flags));
+        flags = flags;
+        FeeOnRemove feeOnRemove = FeeOnRemove(address(flags | 0x10000000));
         vm.etch(address(feeOnRemove), address(new FeeOnRemove(manager)).code);
         (key,) = initPoolAndAddLiquidity(
             currency0, currency1, IHooks(address(feeOnRemove)), 3000, SQRT_PRICE_1_1, ZERO_BYTES

@@ -23,7 +23,7 @@ contract FeeOnRemove is BaseHook {
             afterInitialize: false,
             beforeAddLiquidity: false,
             afterAddLiquidity: false,
-            beforeRemoveLiquidity: false,
+            beforeRemoveLiquidity: true,
             afterRemoveLiquidity: true,
             beforeSwap: false,
             afterSwap: false,
@@ -34,6 +34,15 @@ contract FeeOnRemove is BaseHook {
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: true
         });
+    }
+
+    function beforeRemoveLiquidity(
+        address,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        bytes calldata
+    ) external pure override returns (bytes4) {
+        return BaseHook.beforeRemoveLiquidity.selector;
     }
 
     function afterRemoveLiquidity(
@@ -49,6 +58,6 @@ contract FeeOnRemove is BaseHook {
         poolManager.mint(address(this), key.currency0.toId(), feeAmount0);
         poolManager.mint(address(this), key.currency1.toId(), feeAmount1);
 
-        return (IHooks.afterRemoveLiquidity.selector, toBalanceDelta(int128(feeAmount0), int128(feeAmount1)));
+        return (BaseHook.afterRemoveLiquidity.selector, toBalanceDelta(int128(feeAmount0), int128(feeAmount1)));
     }
 }

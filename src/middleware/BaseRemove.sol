@@ -33,7 +33,7 @@ abstract contract BaseRemove is BaseMiddleware {
 
     /// @notice Value is keccak256("override") - 1
     /// @dev Use this hookData to override checks and save gas
-    bytes32 constant OVERRIDE_BYTES = 0x23b70c8dec38c3dec67a5596870027b04c4058cb3ac57b4e589bf628ac6669e7;
+    bytes32 public constant OVERRIDE_BYTES = 0x23b70c8dec38c3dec67a5596870027b04c4058cb3ac57b4e589bf628ac6669e7;
 
     /// @param _poolManager The address of the pool manager
     /// @param _impl The address of the implementation contract
@@ -55,9 +55,12 @@ abstract contract BaseRemove is BaseMiddleware {
         bytes calldata hookData
     ) external returns (bytes4) {
         if (bytes32(hookData) == OVERRIDE_BYTES) {
-            (, bytes memory returnData) = address(implementation).delegatecall(
+            (bool success, bytes memory returnData) = address(implementation).delegatecall(
                 abi.encodeWithSelector(this.beforeRemoveLiquidity.selector, sender, key, params, hookData[32:])
             );
+            if (!success) {
+                revert FailedImplementationCall();
+            }
             return abi.decode(returnData, (bytes4));
         }
         if (poolManager.getNonzeroDeltaCount() != 0) {
