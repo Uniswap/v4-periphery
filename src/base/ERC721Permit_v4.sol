@@ -34,6 +34,7 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
         _approve(owner, spender, tokenId);
     }
 
+    /// @inheritdoc IERC721Permit_v4
     function permitForAll(
         address owner,
         address operator,
