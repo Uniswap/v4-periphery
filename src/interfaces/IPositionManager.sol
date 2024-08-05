@@ -24,7 +24,7 @@ interface IPositionManager is INotifier {
     /// @param params the parameters to provide for the actions
     function modifyLiquiditiesWithoutUnlock(bytes calldata actions, bytes[] calldata params) external payable;
 
-    /// Returns the ID that will be used for the next minted liquidity position
+    /// @notice Used to get the ID that will be used for the next minted liquidity position
     /// @return uint256 The next token ID
     function nextTokenId() external view returns (uint256);
 
