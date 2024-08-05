@@ -130,6 +130,10 @@ contract PositionManager is
         _unsubscribe(tokenId, config, data);
     }
 
+    function msgSender() public view override returns (address) {
+        return _getLocker();
+    }
+
     function _handleAction(uint256 action, bytes calldata params) internal virtual override {
         if (action < Actions.SETTLE) {
             if (action == Actions.INCREASE_LIQUIDITY) {
@@ -176,35 +180,31 @@ contract PositionManager is
                 revert UnsupportedAction(action);
             }
         } else {
-            if (action == Actions.CLOSE_CURRENCY) {
-                Currency currency = params.decodeCurrency();
-                _close(currency);
-            } else if (action == Actions.CLEAR_OR_TAKE) {
-                (Currency currency, uint256 amountMax) = params.decodeCurrencyAndUint256();
-                _clearOrTake(currency, amountMax);
-            } else if (action == Actions.SETTLE) {
-                (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
-                _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
-            } else if (action == Actions.SETTLE_PAIR) {
+            if (action == Actions.SETTLE_PAIR) {
                 (Currency currency0, Currency currency1) = params.decodeCurrencyPair();
                 _settlePair(currency0, currency1);
             } else if (action == Actions.TAKE_PAIR) {
                 (Currency currency0, Currency currency1, address to) = params.decodeCurrencyPairAndAddress();
                 _takePair(currency0, currency1, to);
-            } else if (action == Actions.SWEEP) {
-                (Currency currency, address to) = params.decodeCurrencyAndAddress();
-                _sweep(currency, _mapRecipient(to));
+            } else if (action == Actions.SETTLE) {
+                (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
+                _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
             } else if (action == Actions.TAKE) {
                 (Currency currency, address recipient, uint256 amount) = params.decodeCurrencyAddressAndUint256();
                 _take(currency, _mapRecipient(recipient), _mapTakeAmount(amount, currency));
+            } else if (action == Actions.CLOSE_CURRENCY) {
+                Currency currency = params.decodeCurrency();
+                _close(currency);
+            } else if (action == Actions.CLEAR_OR_TAKE) {
+                (Currency currency, uint256 amountMax) = params.decodeCurrencyAndUint256();
+                _clearOrTake(currency, amountMax);
+            } else if (action == Actions.SWEEP) {
+                (Currency currency, address to) = params.decodeCurrencyAndAddress();
+                _sweep(currency, _mapRecipient(to));
             } else {
                 revert UnsupportedAction(action);
             }
         }
-    }
-
-    function msgSender() public view override returns (address) {
-        return _getLocker();
     }
 
     /// @dev Calling increase with 0 liquidity will credit the caller with any underlying fees of the position
@@ -257,6 +257,41 @@ contract PositionManager is
         positionConfigs.setConfigId(tokenId, config);
     }
 
+    /// @dev this is overloaded with ERC721Permit_v4._burn
+    function _burn(
+        uint256 tokenId,
+        PositionConfig calldata config,
+        uint128 amount0Min,
+        uint128 amount1Min,
+        bytes calldata hookData
+    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
+        uint256 liquidity = uint256(getPositionLiquidity(tokenId, config));
+
+        BalanceDelta liquidityDelta;
+        // Can only call modify if there is non zero liquidity.
+        if (liquidity > 0) {
+            liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+            liquidityDelta.validateMinOut(amount0Min, amount1Min);
+        }
+
+        delete positionConfigs[tokenId];
+        // Burn the token.
+        _burn(tokenId);
+    }
+
+    function _settlePair(Currency currency0, Currency currency1) internal {
+        // the locker is the payer when settling
+        address caller = msgSender();
+        _settle(currency0, caller, _getFullDebt(currency0));
+        _settle(currency1, caller, _getFullDebt(currency1));
+    }
+
+    function _takePair(Currency currency0, Currency currency1, address to) internal {
+        address recipient = _mapRecipient(to);
+        _take(currency0, recipient, _getFullCredit(currency0));
+        _take(currency1, recipient, _getFullCredit(currency1));
+    }
+
     function _close(Currency currency) internal {
         // this address has applied all deltas on behalf of the user/owner
         // it is safe to close this entire delta because of slippage checks throughout the batched calls.
@@ -284,39 +319,10 @@ contract PositionManager is
         }
     }
 
-    function _settlePair(Currency currency0, Currency currency1) internal {
-        // the locker is the payer when settling
-        address caller = msgSender();
-        _settle(currency0, caller, _getFullDebt(currency0));
-        _settle(currency1, caller, _getFullDebt(currency1));
-    }
-
-    function _takePair(Currency currency0, Currency currency1, address to) internal {
-        address recipient = _mapRecipient(to);
-        _take(currency0, recipient, _getFullCredit(currency0));
-        _take(currency1, recipient, _getFullCredit(currency1));
-    }
-
-    /// @dev this is overloaded with ERC721Permit_v4._burn
-    function _burn(
-        uint256 tokenId,
-        PositionConfig calldata config,
-        uint128 amount0Min,
-        uint128 amount1Min,
-        bytes calldata hookData
-    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
-        uint256 liquidity = uint256(getPositionLiquidity(tokenId, config));
-
-        BalanceDelta liquidityDelta;
-        // Can only call modify if there is non zero liquidity.
-        if (liquidity > 0) {
-            liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-            liquidityDelta.validateMinOut(amount0Min, amount1Min);
-        }
-
-        delete positionConfigs[tokenId];
-        // Burn the token.
-        _burn(tokenId);
+    /// @notice Sweeps the entire contract balance of specified currency to the recipient
+    function _sweep(Currency currency, address to) internal {
+        uint256 balance = currency.balanceOfSelf();
+        if (balance > 0) currency.transfer(to, balance);
     }
 
     function _modifyLiquidity(
@@ -339,12 +345,6 @@ contract PositionManager is
         if (positionConfigs.hasSubscriber(uint256(salt))) {
             _notifyModifyLiquidity(uint256(salt), config, liquidityChange);
         }
-    }
-
-    /// @notice Sweeps the entire contract balance of specified currency to the recipient
-    function _sweep(Currency currency, address to) internal {
-        uint256 balance = currency.balanceOfSelf();
-        if (balance > 0) currency.transfer(to, balance);
     }
 
     // implementation of abstract function DeltaResolver._pay
