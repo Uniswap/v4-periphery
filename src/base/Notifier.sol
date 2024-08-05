@@ -4,11 +4,10 @@ pragma solidity ^0.8.24;
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {BipsLibrary} from "../libraries/BipsLibrary.sol";
-import {INotifier, PositionConfig} from "../interfaces/INotifier.sol";
+import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
-/// TODO: Use CustomRevert library when it supports subcontext's addresss
 abstract contract Notifier is INotifier {
     using BipsLibrary for uint256;
     using CustomRevert for bytes4;
@@ -35,10 +34,14 @@ abstract contract Notifier is INotifier {
         if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(address(_subscriber));
         subscriber[tokenId] = ISubscriber(newSubscriber);
 
-        try ISubscriber(newSubscriber).notifySubscribe(tokenId, config, data) {}
-        catch (bytes memory reason) {
-            revert Wrap__SubsciptionReverted(newSubscriber, reason);
+        bool success = _call(
+            address(newSubscriber), abi.encodeWithSelector(ISubscriber.notifySubscribe.selector, tokenId, config, data)
+        );
+
+        if (!success) {
+            Wrap__SubsciptionReverted.selector.bubbleUpAndRevertWith(address(newSubscriber));
         }
+
         emit Subscribed(tokenId, address(newSubscriber));
     }
 
@@ -56,17 +59,33 @@ abstract contract Notifier is INotifier {
 
     function _notifyModifyLiquidity(uint256 tokenId, PositionConfig memory config, int256 liquidityChange) internal {
         ISubscriber _subscriber = subscriber[tokenId];
-        try _subscriber.notifyModifyLiquidity(tokenId, config, liquidityChange) {}
-        catch (bytes memory reason) {
-            revert Wrap__ModifyLiquidityNotificationReverted(address(_subscriber), reason);
+
+        bool success = _call(
+            address(_subscriber),
+            abi.encodeWithSelector(ISubscriber.notifyModifyLiquidity.selector, tokenId, config, liquidityChange)
+        );
+
+        if (!success) {
+            Wrap__ModifyLiquidityNotificationReverted.selector.bubbleUpAndRevertWith(address(_subscriber));
         }
     }
 
     function _notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) internal {
         ISubscriber _subscriber = subscriber[tokenId];
-        try _subscriber.notifyTransfer(tokenId, previousOwner, newOwner) {}
-        catch (bytes memory reason) {
-            revert Wrap__TransferNotificationReverted(address(_subscriber), reason);
+
+        bool success = _call(
+            address(_subscriber),
+            abi.encodeWithSelector(ISubscriber.notifyTransfer.selector, tokenId, previousOwner, newOwner)
+        );
+
+        if (!success) {
+            Wrap__TransferNotificationReverted.selector.bubbleUpAndRevertWith(address(_subscriber));
+        }
+    }
+
+    function _call(address target, bytes memory encodedCall) internal returns (bool success) {
+        assembly ("memory-safe") {
+            success := call(gas(), target, 0, add(encodedCall, 0x20), mload(encodedCall), 0, 0)
         }
     }
 }
