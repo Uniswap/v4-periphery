@@ -49,8 +49,8 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
     ) external payable checkSignatureDeadline(deadline) {
         _checkNoSelfPermit(owner, operator);
 
-        bytes32 hash = ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline);
-        signature.verify(_hashTypedData(hash), owner);
+        bytes32 digest = ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline);
+        signature.verify(_hashTypedData(digest), owner);
 
         _useUnorderedNonce(owner, nonce);
         _approveForAll(owner, operator, approved);
