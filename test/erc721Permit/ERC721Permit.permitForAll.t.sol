@@ -10,7 +10,7 @@ import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
 
-contract ERC721PermitTest is Test {
+contract ERC721PermitForAllTest is Test {
     MockERC721Permit erc721Permit;
     address alice;
     uint256 alicePK;
@@ -30,7 +30,7 @@ contract ERC721PermitTest is Test {
     // --- Test the overriden setApprovalForAll ---
     function test_fuzz_setApprovalForAll(address operator) public {
         assertEq(erc721Permit.isApprovedForAll(address(this), operator), false);
-        
+
         vm.expectEmit(true, true, true, true, address(erc721Permit));
         emit IERC721.ApprovalForAll(address(this), operator, true);
         erc721Permit.setApprovalForAll(operator, true);
@@ -41,7 +41,7 @@ contract ERC721PermitTest is Test {
         assertEq(erc721Permit.isApprovedForAll(address(this), operator), false);
         erc721Permit.setApprovalForAll(operator, true);
         assertEq(erc721Permit.isApprovedForAll(address(this), operator), true);
-        
+
         vm.expectEmit(true, true, true, true, address(erc721Permit));
         emit IERC721.ApprovalForAll(address(this), operator, false);
         erc721Permit.setApprovalForAll(operator, false);
@@ -49,143 +49,116 @@ contract ERC721PermitTest is Test {
     }
 
     // --- Test the signature-based approvals (permitForAll) ---
-    function test_permitForAllTypeHash() public view {
+    function test_permitForAllTypeHash() public pure {
         assertEq(
             ERC721PermitHashLibrary.PERMIT_FOR_ALL_TYPEHASH,
             keccak256("PermitForAll(address operator,bool approved,uint256 nonce,uint256 deadline)")
         );
     }
 
-    function test_fuzz_permitForAllHash(address operator, bool approved, uint256 nonce, uint256 deadline) public view {
+    function test_fuzz_permitForAllHash(address operator, bool approved, uint256 nonce, uint256 deadline) public pure {
         bytes32 expectedHash =
             keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_FOR_ALL_TYPEHASH, operator, approved, nonce, deadline));
         assertEq(expectedHash, ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline));
     }
 
-    /// @dev spender uses alice's signature to approve itself
-    function test_fuzz_erc721permit_spender(address spender) public {
-        vm.assume(spender != alice);
+    /// @dev operator uses alice's signature to approve itself
+    function test_fuzz_erc721permitForAll_operator(address operator) public {
+        vm.assume(operator != alice);
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
 
         uint256 nonce = 1;
-        bytes32 digest = _getPermitForAllDigest(spender, tokenId, nonce, block.timestamp);
+        bytes32 digest = _getPermitForAllDigest(operator, true, nonce, block.timestamp);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         // no approvals existed
         assertEq(erc721Permit.getApproved(tokenId), address(0));
-        assertEq(erc721Permit.isApprovedForAll(alice, spender), false);
+        assertEq(erc721Permit.isApprovedForAll(alice, operator), false);
 
         // nonce was unspent
         (uint256 wordPos, uint256 bitPos) = _getBitmapFromNonce(nonce);
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
 
-        // -- Permit -- //
-        vm.startPrank(spender);
+        // -- PermitForAll -- //
+        vm.startPrank(operator);
         vm.expectEmit(true, true, true, true, address(erc721Permit));
-        emit IERC721.Approval(alice, spender, tokenId);
-        erc721Permit.permit(spender, tokenId, block.timestamp, nonce, signature);
+        emit IERC721.ApprovalForAll(alice, operator, true);
+        erc721Permit.permitForAll(alice, operator, true, block.timestamp, nonce, signature);
         vm.stopPrank();
 
         // approvals set
-        assertEq(erc721Permit.getApproved(tokenId), spender);
-        assertEq(erc721Permit.isApprovedForAll(alice, spender), false);
+        assertEq(erc721Permit.getApproved(tokenId), address(0));
+        assertEq(erc721Permit.isApprovedForAll(alice, operator), true);
 
         // nonce was spent
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 2); // 2 = 0010
     }
 
-    /// @dev a third party caller uses alice's signature to give `spender` the approval
-    function test_fuzz_erc721permit_caller(address caller, address spender) public {
-        vm.assume(spender != alice);
+    /// @dev a third party caller uses alice's signature to give `operator` the approval
+    function test_fuzz_erc721permitForAll_caller(address caller, address operator) public {
+        vm.assume(operator != alice);
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
 
         uint256 nonce = 1;
-        bytes32 digest = _getPermitForAllDigest(spender, tokenId, nonce, block.timestamp);
+        bytes32 digest = _getPermitForAllDigest(operator, true, nonce, block.timestamp);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         // no approvals existed
         assertEq(erc721Permit.getApproved(tokenId), address(0));
-        assertEq(erc721Permit.isApprovedForAll(alice, spender), false);
+        assertEq(erc721Permit.isApprovedForAll(alice, operator), false);
 
         // nonce was unspent
         (uint256 wordPos, uint256 bitPos) = _getBitmapFromNonce(nonce);
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
 
-        // -- Permit by third-party caller -- //
+        // -- PermitForAll -- //
         vm.startPrank(caller);
         vm.expectEmit(true, true, true, true, address(erc721Permit));
-        emit IERC721.Approval(alice, spender, tokenId);
-        erc721Permit.permit(spender, tokenId, block.timestamp, nonce, signature);
+        emit IERC721.ApprovalForAll(alice, operator, true);
+        erc721Permit.permitForAll(alice, operator, true, block.timestamp, nonce, signature);
         vm.stopPrank();
 
         // approvals set
-        assertEq(erc721Permit.getApproved(tokenId), spender);
-        assertEq(erc721Permit.isApprovedForAll(alice, spender), false);
+        assertEq(erc721Permit.getApproved(tokenId), address(0));
+        assertEq(erc721Permit.isApprovedForAll(alice, operator), true);
 
         // nonce was spent
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 2); // 2 = 0010
     }
 
-    function test_fuzz_erc721permit_nonceAlreadyUsed() public {
-        vm.prank(alice);
-        uint256 tokenIdAlice = erc721Permit.mint();
-
+    function test_fuzz_erc721permitForAll_nonceAlreadyUsed() public {
         // alice gives bob operator permissions
         uint256 nonce = 1;
-        _permit(alicePK, tokenIdAlice, bob, nonce);
+        _permitForAll(alicePK, alice, bob, true, nonce);
 
         // alice cannot reuse the nonce
-        bytes32 digest = _getPermitForAllDigest(bob, tokenIdAlice, nonce, block.timestamp);
+        bytes32 digest = _getPermitForAllDigest(bob, true, nonce, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.startPrank(alice);
         vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        erc721Permit.permit(bob, tokenIdAlice, block.timestamp, nonce, signature);
+        erc721Permit.permitForAll(alice, bob, true, block.timestamp, nonce, signature);
         vm.stopPrank();
     }
 
-    function test_fuzz_erc721permit_nonceAlreadyUsed_twoPositions() public {
-        vm.prank(alice);
-        uint256 tokenIdAlice = erc721Permit.mint();
-
-        vm.prank(alice);
-        uint256 tokenIdAlice2 = erc721Permit.mint();
-
-        // alice gives bob operator permissions for first token
-        uint256 nonce = 1;
-        _permit(alicePK, tokenIdAlice, bob, nonce);
-
-        // alice cannot reuse the nonce for the second token
-        bytes32 digest = _getPermitForAllDigest(bob, tokenIdAlice2, nonce, block.timestamp);
-
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
-        bytes memory signature = abi.encodePacked(r, s, v);
-
-        vm.startPrank(alice);
-        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
-        erc721Permit.permit(bob, tokenIdAlice2, block.timestamp, nonce, signature);
-        vm.stopPrank();
-    }
-
-    function test_fuzz_erc721permit_unauthorized() public {
+    function test_fuzz_erc721permitForAll_unauthorized() public {
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
 
         uint256 nonce = 1;
-        bytes32 digest = _getPermitForAllDigest(bob, tokenId, nonce, block.timestamp);
+        bytes32 digest = _getPermitForAllDigest(bob, true, nonce, block.timestamp);
 
         // bob attempts signing an approval for himself
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         // approvals unset
-        assertEq(erc721Permit.getApproved(tokenId), address(0));
         assertEq(erc721Permit.isApprovedForAll(alice, bob), false);
 
         // nonce was unspent
@@ -194,30 +167,25 @@ contract ERC721PermitTest is Test {
 
         vm.startPrank(bob);
         vm.expectRevert(SignatureVerification.InvalidSigner.selector);
-        erc721Permit.permit(bob, tokenId, block.timestamp, nonce, signature);
+        erc721Permit.permitForAll(alice, bob, true, block.timestamp, nonce, signature);
         vm.stopPrank();
 
         // approvals unset
-        assertEq(erc721Permit.getApproved(tokenId), address(0));
         assertEq(erc721Permit.isApprovedForAll(alice, bob), false);
 
         // nonce was unspent
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
     }
 
-    function test_fuzz_erc721Permit_deadlineExpired(address spender) public {
-        vm.prank(alice);
-        uint256 tokenId = erc721Permit.mint();
-
+    function test_fuzz_erc721permitForAll_deadlineExpired(address operator) public {
         uint256 nonce = 1;
         uint256 deadline = block.timestamp;
-        bytes32 digest = _getPermitForAllDigest(spender, tokenId, nonce, deadline);
+        bytes32 digest = _getPermitForAllDigest(operator, true, nonce, deadline);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         // no approvals existed
-        assertEq(erc721Permit.getApproved(tokenId), address(0));
-        assertEq(erc721Permit.isApprovedForAll(alice, spender), false);
+        assertEq(erc721Permit.isApprovedForAll(alice, operator), false);
 
         // nonce was unspent
         (uint256 wordPos, uint256 bitPos) = _getBitmapFromNonce(nonce);
@@ -226,32 +194,141 @@ contract ERC721PermitTest is Test {
         // fast forward to exceed deadline
         skip(1);
 
-        // -- Permit but deadline expired -- //
-        vm.startPrank(spender);
+        // -- PermitForAll but deadline expired -- //
+        vm.startPrank(operator);
         vm.expectRevert(IERC721Permit_v4.DeadlineExpired.selector);
-        erc721Permit.permit(spender, tokenId, deadline, nonce, signature);
+        erc721Permit.permitForAll(alice, operator, true, deadline, nonce, signature);
         vm.stopPrank();
 
         // approvals unset
-        assertEq(erc721Permit.getApproved(tokenId), address(0));
-        assertEq(erc721Permit.isApprovedForAll(alice, spender), false);
+        assertEq(erc721Permit.isApprovedForAll(alice, operator), false);
 
         // nonce was unspent
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
     }
 
-    // Helpers related to permit
-    function _permit(uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {
-        bytes32 digest = _getPermitForAllDigest(operator, tokenId, 1, block.timestamp);
+    /// @dev a signature for permit() cannot be used for permitForAll()
+    function test_fuzz_erc721Permit_invalidSignatureForAll(address operator) public {
+        vm.prank(alice);
+        uint256 tokenId = erc721Permit.mint();
+
+        uint256 nonce = 1;
+        uint256 deadline = block.timestamp;
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                erc721Permit.DOMAIN_SEPARATOR(),
+                keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, operator, tokenId, nonce, deadline))
+            )
+        );
+
+        // alice signs a permit for operator
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        // approvals unset
+        assertEq(erc721Permit.isApprovedForAll(alice, bob), false);
+
+        // nonce was unspent
+        (uint256 wordPos, uint256 bitPos) = _getBitmapFromNonce(nonce);
+        assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
+
+        // signature does not work with permitForAll
+        vm.startPrank(bob);
+        vm.expectRevert(SignatureVerification.InvalidSigner.selector);
+        erc721Permit.permitForAll(alice, bob, true, deadline, nonce, signature);
+        vm.stopPrank();
+
+        // approvals unset
+        assertEq(erc721Permit.isApprovedForAll(alice, bob), false);
+
+        // nonce was unspent
+        assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
+    }
+
+    /// @dev a signature for permitForAll() cannot be used for permit()
+    function test_fuzz_erc721PermitForAll_invalidSignatureForPermit(address operator) public {
+        vm.prank(alice);
+        uint256 tokenId = erc721Permit.mint();
+
+        uint256 nonce = 1;
+        uint256 deadline = block.timestamp;
+        bytes32 digest = _getPermitForAllDigest(operator, true, nonce, deadline);
+
+        // alice signs a permit for operator
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        // approvals unset
+        assertEq(erc721Permit.getApproved(tokenId), address(0));
+
+        // nonce was unspent
+        (uint256 wordPos, uint256 bitPos) = _getBitmapFromNonce(nonce);
+        assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
+
+        // signature does not work with permit
+        vm.startPrank(bob);
+        vm.expectRevert(SignatureVerification.InvalidSigner.selector);
+        erc721Permit.permit(bob, tokenId, deadline, nonce, signature);
+        vm.stopPrank();
+
+        // approvals unset
+        assertEq(erc721Permit.getApproved(tokenId), address(0));
+
+        // nonce was unspent
+        assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
+    }
+
+    /// @dev a nonce used in permit is unusable for permitForAll
+    function test_erc721PermitForAll_permitNonceUsed() public {
+        vm.prank(alice);
+        uint256 tokenId = erc721Permit.mint();
+
+        uint256 nonce = 1;
+        uint256 deadline = block.timestamp;
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                erc721Permit.DOMAIN_SEPARATOR(),
+                keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, bob, tokenId, nonce, deadline))
+            )
+        );
+        // alice signs a permit for bob
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        // bob gives himself approval
+        vm.prank(bob);
+        erc721Permit.permit(bob, tokenId, deadline, nonce, signature);
+        assertEq(erc721Permit.getApproved(tokenId), bob);
+        assertEq(erc721Permit.isApprovedForAll(alice, bob), false);
+
+        // alice tries re-using the nonce for permitForAll
+        digest = _getPermitForAllDigest(bob, true, nonce, deadline);
+        (v, r, s) = vm.sign(alicePK, digest);
+        signature = abi.encodePacked(r, s, v);
+
+        // Nonce does not work with permitForAll
+        vm.startPrank(bob);
+        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        erc721Permit.permitForAll(alice, bob, true, deadline, nonce, signature);
+        vm.stopPrank();
+    }
+
+    // Helpers related to permitForAll
+    function _permitForAll(uint256 privateKey, address owner, address operator, bool approved, uint256 nonce)
+        internal
+    {
+        bytes32 digest = _getPermitForAllDigest(operator, approved, nonce, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.prank(operator);
-        erc721Permit.permit(operator, tokenId, block.timestamp, nonce, signature);
+        erc721Permit.permitForAll(owner, operator, approved, block.timestamp, nonce, signature);
     }
 
-    function _getPermitForAllDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)
+    function _getPermitForAllDigest(address operator, bool approved, uint256 nonce, uint256 deadline)
         internal
         view
         returns (bytes32 digest)
@@ -260,7 +337,9 @@ contract ERC721PermitTest is Test {
             abi.encodePacked(
                 "\x19\x01",
                 erc721Permit.DOMAIN_SEPARATOR(),
-                keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline))
+                keccak256(
+                    abi.encode(ERC721PermitHashLibrary.PERMIT_FOR_ALL_TYPEHASH, operator, approved, nonce, deadline)
+                )
             )
         );
     }

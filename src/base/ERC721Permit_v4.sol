@@ -34,13 +34,16 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
         _approve(owner, spender, tokenId);
     }
 
-    function permitForAll(address operator, bool approved, uint256 deadline, uint256 nonce, bytes calldata signature)
-        external
-        payable
-    {
+    function permitForAll(
+        address owner,
+        address operator,
+        bool approved,
+        uint256 deadline,
+        uint256 nonce,
+        bytes calldata signature
+    ) external payable {
         if (block.timestamp > deadline) revert DeadlineExpired();
 
-        address owner = msg.sender;
         if (operator == owner) revert NoSelfPermit();
 
         bytes32 hash = ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline);

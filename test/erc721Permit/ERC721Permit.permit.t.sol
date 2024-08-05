@@ -266,7 +266,7 @@ contract ERC721PermitTest is Test {
 
     // Helpers related to permit
     function _permit(uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {
-        bytes32 digest = _getPermitDigest(operator, tokenId, 1, block.timestamp);
+        bytes32 digest = _getPermitDigest(operator, tokenId, nonce, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
