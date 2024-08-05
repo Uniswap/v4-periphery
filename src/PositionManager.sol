@@ -100,7 +100,7 @@ contract PositionManager is
         isNotLocked
         checkDeadline(deadline)
     {
-        _unlockAndExecuteActions(unlockData);
+        _executeActions(unlockData);
     }
 
     /// @inheritdoc IPositionManager
@@ -109,7 +109,7 @@ contract PositionManager is
         payable
         isNotLocked
     {
-        _executeActions(actions, params);
+        _executeActionsWithoutUnlock(actions, params);
     }
 
     /// @inheritdoc INotifier
