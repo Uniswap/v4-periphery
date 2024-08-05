@@ -435,7 +435,9 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
         vm.expectRevert(
             abi.encodeWithSelector(
-                Hooks.FailedHookCall.selector, abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+                Hooks.Wrap__FailedHookCall.selector,
+                address(hookModifyLiquidities),
+                abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
             )
         );
         lpm.modifyLiquidities(calls, _deadline);
@@ -456,7 +458,9 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
         vm.expectRevert(
             abi.encodeWithSelector(
-                Hooks.FailedHookCall.selector, abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+                Hooks.Wrap__FailedHookCall.selector,
+                address(hookModifyLiquidities),
+                abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
             )
         );
         lpm.modifyLiquidities(calls, _deadline);
@@ -477,7 +481,9 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
         vm.expectRevert(
             abi.encodeWithSelector(
-                Hooks.FailedHookCall.selector, abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+                Hooks.Wrap__FailedHookCall.selector,
+                address(hookModifyLiquidities),
+                abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
             )
         );
         lpm.modifyLiquidities(calls, _deadline);
