@@ -42,7 +42,7 @@ It has two key properties:
 
 | MiddlewareRemoveNoDeltas | MiddlewareRemove |
 | --- | --- |
-| can not modify any deltas during beforeAfterLiquidity | can only modify deltas attributed the hook, only on the two currencies of the pair |
+| can not modify any deltas during beforeAfterLiquidity | can only modify deltas attributed to the hook or caller, only on the two currencies of the pair |
 |  | the deltas modified must match the returned BalanceDelta |
 |  | this amount is capped at an immutable percent of user output specified by maxFeeBips. _eg: if a user removes 1000 USDC and 1 ETH and maxFeeBips is 100, the hook can take maximum 10 USDC and/or 0.01 ETH._ |
 
