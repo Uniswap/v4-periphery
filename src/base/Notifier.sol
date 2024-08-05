@@ -54,18 +54,18 @@ abstract contract Notifier is INotifier {
     }
 
     function _notifyModifyLiquidity(uint256 tokenId, PositionConfig memory config, int256 liquidityChange) internal {
-        ISubscriber subscriber_ = subscriber[tokenId];
-        try subscriber_.notifyModifyLiquidity(tokenId, config, liquidityChange) {}
+        ISubscriber _subscriber = subscriber[tokenId];
+        try _subscriber.notifyModifyLiquidity(tokenId, config, liquidityChange) {}
         catch (bytes memory reason) {
-            revert Wrap__ModifyLiquidityNotificationReverted(address(subscriber_), reason);
+            revert Wrap__ModifyLiquidityNotificationReverted(address(_subscriber), reason);
         }
     }
 
     function _notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) internal {
-        ISubscriber subscriber_ = subscriber[tokenId];
-        try subscriber_.notifyTransfer(tokenId, previousOwner, newOwner) {}
+        ISubscriber _subscriber = subscriber[tokenId];
+        try _subscriber.notifyTransfer(tokenId, previousOwner, newOwner) {}
         catch (bytes memory reason) {
-            revert Wrap__TransferNotificationReverted(address(subscriber_), reason);
+            revert Wrap__TransferNotificationReverted(address(_subscriber), reason);
         }
     }
 }
