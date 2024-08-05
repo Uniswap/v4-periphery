@@ -11,7 +11,9 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 contract FeeOnRemove is BaseHook {
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    uint128 public constant LIQUIDITY_FEE = 543; // 5.43%
+    error FeeTooHigh();
+
+    uint128 public liquidityFee = 543; // 5.43%
     uint128 public constant TOTAL_BIPS = 10000;
 
     // middleware implementations do not need to be mined
@@ -36,6 +38,11 @@ contract FeeOnRemove is BaseHook {
         });
     }
 
+    function setLiquidityFee(uint128 _liquidityFee) external {
+        if (_liquidityFee > TOTAL_BIPS) revert FeeTooHigh();
+        liquidityFee = _liquidityFee;
+    }
+
     function beforeRemoveLiquidity(
         address,
         PoolKey calldata,
@@ -52,8 +59,8 @@ contract FeeOnRemove is BaseHook {
         BalanceDelta delta,
         bytes calldata
     ) external override onlyByPoolManager returns (bytes4, BalanceDelta) {
-        uint128 feeAmount0 = uint128(delta.amount0()) * LIQUIDITY_FEE / TOTAL_BIPS;
-        uint128 feeAmount1 = uint128(delta.amount1()) * LIQUIDITY_FEE / TOTAL_BIPS;
+        uint128 feeAmount0 = uint128(delta.amount0()) * liquidityFee / TOTAL_BIPS;
+        uint128 feeAmount1 = uint128(delta.amount1()) * liquidityFee / TOTAL_BIPS;
 
         poolManager.mint(address(this), key.currency0.toId(), feeAmount0);
         poolManager.mint(address(this), key.currency1.toId(), feeAmount1);

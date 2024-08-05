@@ -32,7 +32,8 @@ library MiddlewareMiner {
         }
         address hookAddress;
 
-        uint256 salt = uint256(keccak256(abi.encode(implementation)));
+        // prevents coliisions during testing
+        uint256 salt = uint256(keccak256(abi.encode(implementation, maxFeeBips)));
         while (true) {
             hookAddress = computeAddress(factory, salt, creationCodeWithArgs);
             if (uint160(hookAddress) & FLAG_MASK == flags && hookAddress.code.length == 0) {

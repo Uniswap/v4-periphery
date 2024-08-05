@@ -38,7 +38,7 @@ contract RemoveGriefs is BaseHook {
         PoolKey calldata,
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
-    ) external override returns (bytes4) {
+    ) external view override returns (bytes4) {
         returnLotsOfData();
     }
 
@@ -48,7 +48,7 @@ contract RemoveGriefs is BaseHook {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata
-    ) external override returns (bytes4, BalanceDelta) {
+    ) external view override returns (bytes4, BalanceDelta) {
         returnLotsOfData();
     }
 
