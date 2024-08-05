@@ -27,63 +27,39 @@ contract ERC721PermitTest is Test {
         erc721Permit = new MockERC721Permit(name, symbol);
     }
 
-    // --- Test the overriden approval ---
-    function test_fuzz_approve(address spender) public {
-        uint256 tokenId = erc721Permit.mint();
-        assertEq(erc721Permit.getApproved(tokenId), address(0));
+    // --- Test the overriden setApprovalForAll ---
+    function test_fuzz_setApprovalForAll(address operator) public {
+        assertEq(erc721Permit.isApprovedForAll(address(this), operator), false);
+        
         vm.expectEmit(true, true, true, true, address(erc721Permit));
-        emit IERC721.Approval(address(this), spender, tokenId);
-        erc721Permit.approve(spender, tokenId);
-        assertEq(erc721Permit.getApproved(tokenId), spender);
-    }
-
-    function test_fuzz_approvedOperator_reapproves(address operator, address spender) public {
-        uint256 tokenId = erc721Permit.mint();
+        emit IERC721.ApprovalForAll(address(this), operator, true);
         erc721Permit.setApprovalForAll(operator, true);
         assertEq(erc721Permit.isApprovedForAll(address(this), operator), true);
+    }
 
-        assertEq(erc721Permit.getApproved(tokenId), address(0));
-        vm.startPrank(operator);
+    function test_fuzz_setApprovalForAll_revoke(address operator) public {
+        assertEq(erc721Permit.isApprovedForAll(address(this), operator), false);
+        erc721Permit.setApprovalForAll(operator, true);
+        assertEq(erc721Permit.isApprovedForAll(address(this), operator), true);
+        
         vm.expectEmit(true, true, true, true, address(erc721Permit));
-        emit IERC721.Approval(address(this), spender, tokenId);
-        erc721Permit.approve(spender, tokenId);
-        vm.stopPrank();
-        assertEq(erc721Permit.getApproved(tokenId), spender);
+        emit IERC721.ApprovalForAll(address(this), operator, false);
+        erc721Permit.setApprovalForAll(operator, false);
+        assertEq(erc721Permit.isApprovedForAll(address(this), operator), false);
     }
 
-    function test_fuzz_approve_unauthorizedRevert(address caller) public {
-        uint256 tokenId = erc721Permit.mint();
-        vm.prank(caller);
-        if (caller != address(this)) vm.expectRevert(IERC721Permit_v4.Unauthorized.selector);
-        erc721Permit.approve(address(this), tokenId);
-    }
-
-    // --- Test the signature-based approvals (permit) ---
-    function test_permitTypeHash() public view {
+    // --- Test the signature-based approvals (permitForAll) ---
+    function test_permitForAllTypeHash() public view {
         assertEq(
-            ERC721PermitHashLibrary.PERMIT_TYPEHASH,
-            keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)")
+            ERC721PermitHashLibrary.PERMIT_FOR_ALL_TYPEHASH,
+            keccak256("PermitForAll(address operator,bool approved,uint256 nonce,uint256 deadline)")
         );
     }
 
-    function test_fuzz_permitHash(address spender, uint256 tokenId, uint256 nonce, uint256 deadline) public view {
+    function test_fuzz_permitForAllHash(address operator, bool approved, uint256 nonce, uint256 deadline) public view {
         bytes32 expectedHash =
-            keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline));
-        assertEq(expectedHash, ERC721PermitHashLibrary.hashPermit(spender, tokenId, nonce, deadline));
-    }
-
-    function test_domainSeparator() public view {
-        assertEq(
-            erc721Permit.DOMAIN_SEPARATOR(),
-            keccak256(
-                abi.encode(
-                    keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)"),
-                    keccak256(bytes(name)),
-                    block.chainid,
-                    address(erc721Permit)
-                )
-            )
-        );
+            keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_FOR_ALL_TYPEHASH, operator, approved, nonce, deadline));
+        assertEq(expectedHash, ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline));
     }
 
     /// @dev spender uses alice's signature to approve itself
@@ -93,7 +69,7 @@ contract ERC721PermitTest is Test {
         uint256 tokenId = erc721Permit.mint();
 
         uint256 nonce = 1;
-        bytes32 digest = _getPermitDigest(spender, tokenId, nonce, block.timestamp);
+        bytes32 digest = _getPermitForAllDigest(spender, tokenId, nonce, block.timestamp);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
@@ -127,7 +103,7 @@ contract ERC721PermitTest is Test {
         uint256 tokenId = erc721Permit.mint();
 
         uint256 nonce = 1;
-        bytes32 digest = _getPermitDigest(spender, tokenId, nonce, block.timestamp);
+        bytes32 digest = _getPermitForAllDigest(spender, tokenId, nonce, block.timestamp);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
@@ -163,7 +139,7 @@ contract ERC721PermitTest is Test {
         _permit(alicePK, tokenIdAlice, bob, nonce);
 
         // alice cannot reuse the nonce
-        bytes32 digest = _getPermitDigest(bob, tokenIdAlice, nonce, block.timestamp);
+        bytes32 digest = _getPermitForAllDigest(bob, tokenIdAlice, nonce, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
@@ -186,7 +162,7 @@ contract ERC721PermitTest is Test {
         _permit(alicePK, tokenIdAlice, bob, nonce);
 
         // alice cannot reuse the nonce for the second token
-        bytes32 digest = _getPermitDigest(bob, tokenIdAlice2, nonce, block.timestamp);
+        bytes32 digest = _getPermitForAllDigest(bob, tokenIdAlice2, nonce, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
@@ -202,7 +178,7 @@ contract ERC721PermitTest is Test {
         uint256 tokenId = erc721Permit.mint();
 
         uint256 nonce = 1;
-        bytes32 digest = _getPermitDigest(bob, tokenId, nonce, block.timestamp);
+        bytes32 digest = _getPermitForAllDigest(bob, tokenId, nonce, block.timestamp);
 
         // bob attempts signing an approval for himself
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPK, digest);
@@ -235,7 +211,7 @@ contract ERC721PermitTest is Test {
 
         uint256 nonce = 1;
         uint256 deadline = block.timestamp;
-        bytes32 digest = _getPermitDigest(spender, tokenId, nonce, deadline);
+        bytes32 digest = _getPermitForAllDigest(spender, tokenId, nonce, deadline);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
@@ -266,7 +242,7 @@ contract ERC721PermitTest is Test {
 
     // Helpers related to permit
     function _permit(uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {
-        bytes32 digest = _getPermitDigest(operator, tokenId, 1, block.timestamp);
+        bytes32 digest = _getPermitForAllDigest(operator, tokenId, 1, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
@@ -275,7 +251,7 @@ contract ERC721PermitTest is Test {
         erc721Permit.permit(operator, tokenId, block.timestamp, nonce, signature);
     }
 
-    function _getPermitDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)
+    function _getPermitForAllDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)
         internal
         view
         returns (bytes32 digest)
