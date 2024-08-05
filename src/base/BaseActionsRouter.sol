@@ -32,7 +32,11 @@ abstract contract BaseActionsRouter is SafeCallback {
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         // abi.decode(data, (bytes, bytes[]));
         (bytes calldata actions, bytes[] calldata params) = data.decodeActionsRouterParams();
+        _executeActionsWithoutUnlock(actions, params);
+        return "";
+    }
 
+    function _executeActionsWithoutUnlock(bytes calldata actions, bytes[] calldata params) internal {
         uint256 numActions = actions.length;
         if (numActions != params.length) revert InputLengthMismatch();
 
@@ -41,8 +45,6 @@ abstract contract BaseActionsRouter is SafeCallback {
 
             _handleAction(action, params[actionIndex]);
         }
-
-        return "";
     }
 
     /// @notice function to handle the parsing and execution of an action and its parameters
