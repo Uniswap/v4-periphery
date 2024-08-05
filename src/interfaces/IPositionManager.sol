@@ -5,9 +5,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PositionConfig} from "../libraries/PositionConfig.sol";
 
-import {INotifier} from "./INotifier.sol";
-
-interface IPositionManager is INotifier {
+interface IPositionManager {
     error NotApproved(address caller);
     error DeadlinePassed();
     error IncorrectPositionConfigForTokenId(uint256 tokenId);

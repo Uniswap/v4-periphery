@@ -14,9 +14,10 @@ import {SlippageCheckLibrary} from "../libraries/SlippageCheck.sol";
 import {Actions} from "../libraries/Actions.sol";
 import {Permit2ImmutableState} from "./Permit2ImmutableState.sol";
 import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
+import {Notifier} from "./Notifier.sol";
 
 /// @notice The PositionActionsRouter handles all delta-putting actions and delta-resolving actions that can be executed against the v4 PoolManager
-abstract contract PositionActionsRouter is BaseActionsRouter, DeltaResolver, Permit2ImmutableState {
+abstract contract PositionActionsRouter is BaseActionsRouter, DeltaResolver, Notifier, Permit2ImmutableState {
     using SlippageCheckLibrary for BalanceDelta;
     using CalldataDecoder for bytes;
     using SafeCast for uint256;
@@ -27,20 +28,16 @@ abstract contract PositionActionsRouter is BaseActionsRouter, DeltaResolver, Per
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
-    modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
-    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) virtual;
-
-    function positionConfigs() internal virtual returns (mapping(uint256 => bytes32) storage);
-
-    function _notifyModifyLiquidity(uint256 tokenId, PositionConfig memory config, int256 liquidityChange)
-        internal
-        virtual;
-
     function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
         public
         view
         virtual
         returns (uint128 liquidity);
+    function _useTokenId() internal virtual returns (uint256);
+
+    /// Overridden in ERC721
+    function _mint(address to, uint256 id) internal virtual;
+    function _burn(uint256 id) internal virtual;
 
     /// @notice Dispatches all eligible actions
     function _handleAction(uint256 action, bytes calldata params) internal virtual override {
@@ -159,11 +156,8 @@ abstract contract PositionActionsRouter is BaseActionsRouter, DeltaResolver, Per
         bytes calldata hookData
     ) internal {
         // mint receipt token
-        uint256 tokenId;
-        // tokenId is assigned to current nextTokenId before incrementing it
-        unchecked {
-            tokenId = nextTokenId++;
-        }
+        uint256 tokenId = _useTokenId();
+
         _mint(owner, tokenId);
 
         // _beforeModify is not called here because the tokenId is newly minted

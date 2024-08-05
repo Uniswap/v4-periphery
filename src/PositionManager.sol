@@ -32,7 +32,6 @@ contract PositionManager is
     Multicall_v4,
     ReentrancyLock,
     PositionActionsRouter,
-    Notifier,
     Permit2Forwarder
 {
     using SafeTransferLib for *;
@@ -69,7 +68,7 @@ contract PositionManager is
     /// @param tokenId the unique identifier of the ERC721 token
     /// @dev either msg.sender or _msgSender() is passed in as the caller
     /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
-    modifier onlyIfApproved(address caller, uint256 tokenId) {
+    modifier onlyIfApproved(address caller, uint256 tokenId) override {
         if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
         _;
     }
@@ -77,7 +76,7 @@ contract PositionManager is
     /// @notice Reverts if the hash of the config does not equal the saved hash
     /// @param tokenId the unique identifier of the ERC721 token
     /// @param config the PositionConfig to check against
-    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) {
+    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) override {
         if (positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         _;
     }
@@ -93,29 +92,6 @@ contract PositionManager is
         _executeActions(unlockData);
     }
 
-    /// @inheritdoc INotifier
-    function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber, bytes calldata data)
-        external
-        payable
-        onlyIfApproved(msg.sender, tokenId)
-        onlyValidConfig(tokenId, config)
-    {
-        // call to _subscribe will revert if the user already has a sub
-        positionConfigs.setSubscribe(tokenId);
-        _subscribe(tokenId, config, subscriber, data);
-    }
-
-    /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data)
-        external
-        payable
-        onlyIfApproved(msg.sender, tokenId)
-        onlyValidConfig(tokenId, config)
-    {
-        positionConfigs.setUnsubscribe(tokenId);
-        _unsubscribe(tokenId, config, data);
-    }
-
     function msgSender() public view override returns (address) {
         return _getLocker();
     }
@@ -129,6 +105,7 @@ contract PositionManager is
     function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
         public
         view
+        override
         returns (uint128 liquidity)
     {
         bytes32 positionId =
@@ -144,5 +121,12 @@ contract PositionManager is
     /// @inheritdoc INotifier
     function hasSubscriber(uint256 tokenId) external view returns (bool) {
         return positionConfigs.hasSubscriber(tokenId);
+    }
+
+    function _useTokenId() internal override returns (uint256 tokenId) {
+        // tokenId is assigned to current nextTokenId before incrementing it
+        unchecked {
+            tokenId = nextTokenId++;
+        }
     }
 }
