@@ -8,7 +8,6 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-
 import {HookSavesDelta} from "./HookSavesDelta.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -63,6 +62,34 @@ contract HookModifyLiquidities is HookSavesDelta {
             posm.modifyLiquiditiesWithoutUnlock(actions, params);
         }
         return this.beforeRemoveLiquidity.selector;
+    }
+
+    function afterAddLiquidity(
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata liqParams,
+        BalanceDelta delta,
+        bytes calldata hookData
+    ) public override returns (bytes4 selector, BalanceDelta returnDelta) {
+        if (hookData.length > 0) {
+            (bytes memory actions, bytes[] memory params) = abi.decode(hookData, (bytes, bytes[]));
+            posm.modifyLiquiditiesWithoutUnlock(actions, params);
+        }
+        (selector, returnDelta) = super.afterAddLiquidity(sender, key, liqParams, delta, hookData);
+    }
+
+    function afterRemoveLiquidity(
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata liqParams,
+        BalanceDelta delta,
+        bytes calldata hookData
+    ) public override returns (bytes4 selector, BalanceDelta returnDelta) {
+        if (hookData.length > 0) {
+            (bytes memory actions, bytes[] memory params) = abi.decode(hookData, (bytes, bytes[]));
+            posm.modifyLiquiditiesWithoutUnlock(actions, params);
+        }
+        (selector, returnDelta) = super.afterRemoveLiquidity(sender, key, liqParams, delta, hookData);
     }
 
     function approvePosmCurrency(Currency currency) internal {

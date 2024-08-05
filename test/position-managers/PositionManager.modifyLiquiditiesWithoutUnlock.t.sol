@@ -305,17 +305,80 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         assertEq(lpm.getPositionLiquidity(tokenId, config), 100e18); // liquidity unchanged
     }
 
-    /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in beforeRemoveLiquidity
-    function test_hook_increaseLiquidity_reenter_revert() public {
+    /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in beforeAddLiquidity
+    function test_fuzz_hook_beforeAddLiquidity_reenter_revert(uint256 seed) public {
         uint256 initialLiquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();
         mint(config, initialLiquidity, address(this), ZERO_BYTES);
 
-        uint256 newLiquidity = 10e18;
+        uint256 liquidityToChange = 10e18;
 
-        // to be provided as hookData, so beforeAddLiquidity attempts to increase liquidity
-        bytes memory hookCall = getIncreaseEncoded(tokenId, config, newLiquidity, ZERO_BYTES);
-        bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, hookCall);
+        // a random action be provided as hookData, so beforeAddLiquidity will attempt to modifyLiquidity
+        bytes memory hookCall = getFuzzySingleEncoded(seed, tokenId, config, liquidityToChange, ZERO_BYTES);
+        bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToChange, hookCall);
+
+        // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector, abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in beforeRemoveLiquidity
+    function test_fuzz_hook_beforeRemoveLiquidity_reenter_revert(uint256 seed) public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        uint256 liquidityToChange = 10e18;
+
+        // a random action be provided as hookData, so beforeAddLiquidity will attempt to modifyLiquidity
+        bytes memory hookCall = getFuzzySingleEncoded(seed, tokenId, config, liquidityToChange, ZERO_BYTES);
+        bytes memory calls = getDecreaseEncoded(tokenId, config, liquidityToChange, hookCall);
+
+        // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector, abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in afterAddLiquidity
+    function test_fuzz_hook_afterAddLiquidity_reenter_revert(uint256 seed) public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        uint256 liquidityToChange = 10e18;
+
+        // a random action be provided as hookData, so afterAddLiquidity will attempt to modifyLiquidity
+        bytes memory hookCall = getFuzzySingleEncoded(seed, tokenId, config, liquidityToChange, ZERO_BYTES);
+        bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToChange, hookCall);
+
+        // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.FailedHookCall.selector, abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in afterRemoveLiquidity
+    function test_fuzz_hook_afterRemoveLiquidity_reenter_revert(uint256 seed) public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        uint256 liquidityToChange = 10e18;
+
+        // a random action be provided as hookData, so afterAddLiquidity will attempt to modifyLiquidity
+        bytes memory hookCall = getFuzzySingleEncoded(seed, tokenId, config, liquidityToChange, ZERO_BYTES);
+        bytes memory calls = getDecreaseEncoded(tokenId, config, liquidityToChange, hookCall);
 
         // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
         vm.expectRevert(
