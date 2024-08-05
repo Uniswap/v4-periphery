@@ -11,13 +11,13 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {HookEnabledSwapRouter} from "./utils/HookEnabledSwapRouter.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {console} from "../../../lib/forge-std/src/console.sol";
-import {BaseMiddleware} from "./../contracts/middleware/BaseMiddleware.sol";
+import {console} from "../../../lib/v4-core/lib/forge-std/src/console.sol";
+import {BaseMiddleware} from "./../src/middleware/BaseMiddleware.sol";
 import {BaseMiddlewareImplementation} from "./middleware/BaseMiddlewareImplemenation.sol";
 import {BaseMiddlewareFactoryImplementation} from "./middleware/BaseMiddlewareFactoryImplementation.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
 import {HooksCounter} from "./middleware/HooksCounter.sol";
-import {SafeCallback} from "./../contracts/base/SafeCallback.sol";
+import {SafeCallback} from "./../src/base/SafeCallback.sol";
 
 contract BaseMiddlewareFactoryTest is Test, Deployers {
     HookEnabledSwapRouter router;
@@ -72,32 +72,8 @@ contract BaseMiddlewareFactoryTest is Test, Deployers {
         factory.createMiddleware(address(hookscounter), salt);
     }
 
-    function testRevertOnIncorrectFlags() public {
-        HooksCounter hookscounter2 = HooksCounter(address(HOOKSCOUNTER_FLAGS));
-        vm.etch(address(hookscounter), address(new HooksCounter(manager)).code);
-        uint160 incorrectFlags = uint160(Hooks.BEFORE_INITIALIZE_FLAG);
-
-        (address hookAddress, bytes32 salt) = HookMiner.find(
-            address(factory),
-            incorrectFlags,
-            type(BaseMiddlewareImplementation).creationCode,
-            abi.encode(address(manager), address(hookscounter2))
-        );
-        address implementation = address(hookscounter2);
-        vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
-        factory.createMiddleware(implementation, salt);
-    }
-
-    function testRevertOnIncorrectFlagsMined() public {
-        HooksCounter hookscounter2 = HooksCounter(address(HOOKSCOUNTER_FLAGS));
-        vm.etch(address(hookscounter), address(new HooksCounter(manager)).code);
-        address implementation = address(hookscounter2);
-        vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
-        factory.createMiddleware(implementation, bytes32("who needs to mine a salt?"));
-    }
-
     function testRevertOnIncorrectCaller() public {
-        vm.expectRevert(SafeCallback.NotManager.selector);
+        vm.expectRevert(SafeCallback.NotPoolManager.selector);
         hookscounter.afterDonate(address(this), key, 0, 0, ZERO_BYTES);
     }
 

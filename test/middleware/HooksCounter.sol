@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {BaseHook} from "./../../contracts/BaseHook.sol";
+import {BaseHook} from "./../../src/base/hooks/BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -55,7 +55,7 @@ contract HooksCounter is BaseHook {
     function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata hookData)
         external
         override
-        onlyByManager
+        onlyByPoolManager
         returns (bytes4)
     {
         beforeInitializeCount[key.toId()]++;
@@ -66,7 +66,7 @@ contract HooksCounter is BaseHook {
     function afterInitialize(address, PoolKey calldata key, uint160, int24, bytes calldata hookData)
         external
         override
-        onlyByManager
+        onlyByPoolManager
         returns (bytes4)
     {
         afterInitializeCount[key.toId()]++;
@@ -79,7 +79,7 @@ contract HooksCounter is BaseHook {
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata hookData
-    ) external override onlyByManager returns (bytes4) {
+    ) external override onlyByPoolManager returns (bytes4) {
         beforeAddLiquidityCount[key.toId()]++;
         lastHookData = hookData;
         return BaseHook.beforeAddLiquidity.selector;
@@ -91,7 +91,7 @@ contract HooksCounter is BaseHook {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata hookData
-    ) external override onlyByManager returns (bytes4, BalanceDelta) {
+    ) external override onlyByPoolManager returns (bytes4, BalanceDelta) {
         afterAddLiquidityCount[key.toId()]++;
         lastHookData = hookData;
         return (BaseHook.afterAddLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
@@ -102,7 +102,7 @@ contract HooksCounter is BaseHook {
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata hookData
-    ) external override onlyByManager returns (bytes4) {
+    ) external override onlyByPoolManager returns (bytes4) {
         beforeRemoveLiquidityCount[key.toId()]++;
         lastHookData = hookData;
         return BaseHook.beforeRemoveLiquidity.selector;
@@ -114,7 +114,7 @@ contract HooksCounter is BaseHook {
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
         bytes calldata hookData
-    ) external override onlyByManager returns (bytes4, BalanceDelta) {
+    ) external override onlyByPoolManager returns (bytes4, BalanceDelta) {
         afterRemoveLiquidityCount[key.toId()]++;
         lastHookData = hookData;
         return (BaseHook.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
@@ -123,7 +123,7 @@ contract HooksCounter is BaseHook {
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata hookData)
         external
         override
-        onlyByManager
+        onlyByPoolManager
         returns (bytes4, BeforeSwapDelta, uint24)
     {
         beforeSwapCount[key.toId()]++;
@@ -137,7 +137,7 @@ contract HooksCounter is BaseHook {
         IPoolManager.SwapParams calldata,
         BalanceDelta,
         bytes calldata hookData
-    ) external override onlyByManager returns (bytes4, int128) {
+    ) external override onlyByPoolManager returns (bytes4, int128) {
         afterSwapCount[key.toId()]++;
         lastHookData = hookData;
         return (BaseHook.afterSwap.selector, 0);
@@ -146,7 +146,7 @@ contract HooksCounter is BaseHook {
     function beforeDonate(address, PoolKey calldata key, uint256, uint256, bytes calldata hookData)
         external
         override
-        onlyByManager
+        onlyByPoolManager
         returns (bytes4)
     {
         beforeDonateCount[key.toId()]++;
@@ -157,7 +157,7 @@ contract HooksCounter is BaseHook {
     function afterDonate(address, PoolKey calldata key, uint256, uint256, bytes calldata hookData)
         external
         override
-        onlyByManager
+        onlyByPoolManager
         returns (bytes4)
     {
         afterDonateCount[key.toId()]++;

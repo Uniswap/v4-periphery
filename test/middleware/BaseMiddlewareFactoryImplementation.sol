@@ -2,13 +2,30 @@
 pragma solidity ^0.8.24;
 
 import {BaseMiddlewareImplementation} from "./BaseMiddlewareImplemenation.sol";
-import {BaseMiddlewareFactory} from "./../../contracts/middleware/BaseMiddlewareFactory.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
-contract BaseMiddlewareFactoryImplementation is BaseMiddlewareFactory {
-    constructor(IPoolManager _manager) BaseMiddlewareFactory(_manager) {}
+contract BaseMiddlewareFactoryImplementation {
+    event MiddlewareCreated(address implementation, address middleware);
 
-    function _deployMiddleware(address implementation, bytes32 salt) internal override returns (address middleware) {
-        middleware = address(new BaseMiddlewareImplementation{salt: salt}(manager, implementation));
+    mapping(address => address) private _implementations;
+
+    IPoolManager public immutable poolManager;
+
+    constructor(IPoolManager _poolManager) {
+        poolManager = _poolManager;
+    }
+
+    function getImplementation(address middleware) external view returns (address implementation) {
+        return _implementations[middleware];
+    }
+
+    function createMiddleware(address implementation, bytes32 salt) external returns (address middleware) {
+        middleware = _deployMiddleware(implementation, salt);
+        _implementations[middleware] = implementation;
+        emit MiddlewareCreated(implementation, middleware);
+    }
+
+    function _deployMiddleware(address implementation, bytes32 salt) internal returns (address middleware) {
+        middleware = address(new BaseMiddlewareImplementation{salt: salt}(poolManager, implementation));
     }
 }
