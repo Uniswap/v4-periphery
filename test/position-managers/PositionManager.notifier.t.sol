@@ -292,6 +292,20 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.unsubscribe(tokenId, config, ZERO_BYTES);
     }
 
+    function test_subscribe_revertsOnEOA() public {
+        uint256 tokenId = lpm.nextTokenId();
+        address subEOA = makeAddr("SUBSCRIBER");
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        vm.expectRevert();
+        lpm.subscribe(tokenId, config, subEOA, ZERO_BYTES);
+    }
+
     function test_subscribe_withData() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
