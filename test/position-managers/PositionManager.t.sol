@@ -935,5 +935,14 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertLt(uint256(int256(deltaDecrease.amount1())), uint256(int256(-deltaMint.amount1()))); // amount1 in the second position was greater than amount1 in the first position
     }
 
+    function test_mint_emits_event() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 60});
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.expectEmit(true, false, false, true, address(lpm));
+        emit IPositionManager.MintPosition(tokenId, config);
+        mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+    }
+
     function test_mint_slippageRevert() public {}
 }
