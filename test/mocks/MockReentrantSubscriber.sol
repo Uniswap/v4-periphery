@@ -45,7 +45,7 @@ contract MockReentrantSubscriber is ISubscriber {
         }
     }
 
-    function notifyTransfer(uint256, address, address) external onlyByPosm {
+    function notifyTransfer(uint256 tokenId, address, address) external onlyByPosm {
         if (actions.length != 0) {
             posm.modifyLiquiditiesWithoutUnlock(actions, params);
         }

@@ -320,8 +320,15 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         (bytes memory actions, bytes[] memory params) = abi.decode(action, (bytes, bytes[]));
         sub.setActionsAndParams(actions, params);
 
-        // modify the token with an increase
-        bytes memory calls = getIncreaseEncoded(tokenId, config, 10e18, ZERO_BYTES);
+        // modify the token (dont mint)
+        bytes memory calls;
+        if (seed1 % 3 == 0) {
+            calls = getIncreaseEncoded(tokenId, config, 10e18, ZERO_BYTES);
+        } else if (seed1 % 3 == 1) {
+            calls = getDecreaseEncoded(tokenId, config, 10e18, ZERO_BYTES);
+        } else {
+            calls = getBurnEncoded(tokenId, config, ZERO_BYTES);
+        }
 
         // should revert because subscriber is re-entering modifyLiquiditiesWithoutUnlock
         vm.expectRevert(ReentrancyLock.ContractLocked.selector);
@@ -330,7 +337,6 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
     /// @dev subscribers cannot re-enter posm on-notifyTransfer because position manager is not unlocked
     function test_fuzz_subscriber_notifyTransfer_reenter_revert(uint256 seed) public {
-        seed = 4;
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, address(this), ZERO_BYTES);
 
@@ -344,11 +350,38 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         (bytes memory actions, bytes[] memory params) = abi.decode(action, (bytes, bytes[]));
         sub.setActionsAndParams(actions, params);
 
-        console2.log(lpm.getApproved(tokenId));
-        console2.log(address(sub));
+        // by setting the subscriber as the recipient of the ERC721 transfer, it will
+        // have permission to modify its own liquidity. it will still revert
+        // because the pool manager is not unlocked
 
         // should revert because subscriber is re-entering modifyLiquiditiesWithoutUnlock
         vm.expectRevert(IPoolManager.ManagerLocked.selector);
+        lpm.transferFrom(address(this), address(sub), tokenId);
+    }
+
+    /// @dev subscribers cannot re-enter posm on-notifyTransfer because it does not have approval anymore
+    function test_fuzz_subscriber_notifyTransfer_reenter_revertNotApproved(uint256 seed) public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // approve the subscriber to modify liquidity
+        lpm.approve(address(sub), tokenId);
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+
+        // randomly sample a single action
+        bytes memory action = getFuzzySingleEncoded(seed, tokenId, config, 10e18, ZERO_BYTES);
+        (bytes memory actions, bytes[] memory params) = abi.decode(action, (bytes, bytes[]));
+        sub.setActionsAndParams(actions, params);
+
+        uint256 actionNumber = uint256(uint8(actions[0]));
+        if (actionNumber == Actions.DECREASE_LIQUIDITY || actionNumber == Actions.BURN_POSITION) {
+            // revert because the subscriber loses approval
+            // ERC721.transferFrom happens before notifyTransfer and resets the approval
+            vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(sub)));
+        } else {
+            vm.expectRevert(IPoolManager.ManagerLocked.selector);
+        }
         lpm.transferFrom(address(this), alice, tokenId);
     }
 
