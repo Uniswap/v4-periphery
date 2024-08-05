@@ -4,11 +4,11 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import {SignatureVerification} from "permit2/src/libraries/SignatureVerification.sol";
 
-import {ERC721PermitHashLibrary} from "../src/libraries/ERC721PermitHash.sol";
-import {MockERC721Permit} from "./mocks/MockERC721Permit.sol";
-import {IERC721Permit_v4} from "../src/interfaces/IERC721Permit_v4.sol";
+import {ERC721PermitHashLibrary} from "../../src/libraries/ERC721PermitHash.sol";
+import {MockERC721Permit} from "../mocks/MockERC721Permit.sol";
+import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
-import {UnorderedNonce} from "../src/base/UnorderedNonce.sol";
+import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
 
 contract ERC721PermitTest is Test {
     MockERC721Permit erc721Permit;
@@ -69,7 +69,7 @@ contract ERC721PermitTest is Test {
     function test_fuzz_permitHash(address spender, uint256 tokenId, uint256 nonce, uint256 deadline) public pure {
         bytes32 expectedHash =
             keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline));
-        assertEq(expectedHash, ERC721PermitHashLibrary.hash(spender, tokenId, nonce, deadline));
+        assertEq(expectedHash, ERC721PermitHashLibrary.hashPermit(spender, tokenId, nonce, deadline));
     }
 
     function test_domainSeparator() public view {
@@ -93,7 +93,7 @@ contract ERC721PermitTest is Test {
         uint256 tokenId = erc721Permit.mint();
 
         uint256 nonce = 1;
-        bytes32 digest = _getDigest(spender, tokenId, nonce, block.timestamp);
+        bytes32 digest = _getPermitDigest(spender, tokenId, nonce, block.timestamp);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
@@ -127,7 +127,7 @@ contract ERC721PermitTest is Test {
         uint256 tokenId = erc721Permit.mint();
 
         uint256 nonce = 1;
-        bytes32 digest = _getDigest(spender, tokenId, nonce, block.timestamp);
+        bytes32 digest = _getPermitDigest(spender, tokenId, nonce, block.timestamp);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
@@ -163,7 +163,7 @@ contract ERC721PermitTest is Test {
         _permit(alicePK, tokenIdAlice, bob, nonce);
 
         // alice cannot reuse the nonce
-        bytes32 digest = _getDigest(bob, tokenIdAlice, nonce, block.timestamp);
+        bytes32 digest = _getPermitDigest(bob, tokenIdAlice, nonce, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
@@ -186,7 +186,7 @@ contract ERC721PermitTest is Test {
         _permit(alicePK, tokenIdAlice, bob, nonce);
 
         // alice cannot reuse the nonce for the second token
-        bytes32 digest = _getDigest(bob, tokenIdAlice2, nonce, block.timestamp);
+        bytes32 digest = _getPermitDigest(bob, tokenIdAlice2, nonce, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
@@ -202,7 +202,7 @@ contract ERC721PermitTest is Test {
         uint256 tokenId = erc721Permit.mint();
 
         uint256 nonce = 1;
-        bytes32 digest = _getDigest(bob, tokenId, nonce, block.timestamp);
+        bytes32 digest = _getPermitDigest(bob, tokenId, nonce, block.timestamp);
 
         // bob attempts signing an approval for himself
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(bobPK, digest);
@@ -229,13 +229,13 @@ contract ERC721PermitTest is Test {
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
     }
 
-    function test_fuzz_erc721Permit_deadlineExpired(address spender) public {
+    function test_fuzz_erc721Permit_SignatureDeadlineExpired(address spender) public {
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
 
         uint256 nonce = 1;
         uint256 deadline = block.timestamp;
-        bytes32 digest = _getDigest(spender, tokenId, nonce, deadline);
+        bytes32 digest = _getPermitDigest(spender, tokenId, nonce, deadline);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
@@ -252,7 +252,7 @@ contract ERC721PermitTest is Test {
 
         // -- Permit but deadline expired -- //
         vm.startPrank(spender);
-        vm.expectRevert(IERC721Permit_v4.DeadlineExpired.selector);
+        vm.expectRevert(IERC721Permit_v4.SignatureDeadlineExpired.selector);
         erc721Permit.permit(spender, tokenId, deadline, nonce, signature);
         vm.stopPrank();
 
@@ -266,7 +266,7 @@ contract ERC721PermitTest is Test {
 
     // Helpers related to permit
     function _permit(uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {
-        bytes32 digest = _getDigest(operator, tokenId, 1, block.timestamp);
+        bytes32 digest = _getPermitDigest(operator, tokenId, nonce, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
@@ -275,7 +275,7 @@ contract ERC721PermitTest is Test {
         erc721Permit.permit(operator, tokenId, block.timestamp, nonce, signature);
     }
 
-    function _getDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)
+    function _getPermitDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)
         internal
         view
         returns (bytes32 digest)

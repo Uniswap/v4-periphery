@@ -17,21 +17,59 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
     /// @notice Computes the nameHash and versionHash
     constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) EIP712_v4(name_) {}
 
+    modifier checkSignatureDeadline(uint256 deadline) {
+        if (block.timestamp > deadline) revert SignatureDeadlineExpired();
+        _;
+    }
+
     /// @inheritdoc IERC721Permit_v4
     function permit(address spender, uint256 tokenId, uint256 deadline, uint256 nonce, bytes calldata signature)
         external
         payable
+        checkSignatureDeadline(deadline)
     {
-        if (block.timestamp > deadline) revert DeadlineExpired();
-
         address owner = ownerOf(tokenId);
-        if (spender == owner) revert NoSelfPermit();
+        _checkNoSelfPermit(owner, spender);
 
-        bytes32 hash = ERC721PermitHashLibrary.hash(spender, tokenId, nonce, deadline);
-        signature.verify(_hashTypedData(hash), owner);
+        bytes32 digest = ERC721PermitHashLibrary.hashPermit(spender, tokenId, nonce, deadline);
+        signature.verify(_hashTypedData(digest), owner);
 
         _useUnorderedNonce(owner, nonce);
         _approve(owner, spender, tokenId);
+    }
+
+    /// @inheritdoc IERC721Permit_v4
+    function permitForAll(
+        address owner,
+        address operator,
+        bool approved,
+        uint256 deadline,
+        uint256 nonce,
+        bytes calldata signature
+    ) external payable checkSignatureDeadline(deadline) {
+        _checkNoSelfPermit(owner, operator);
+
+        bytes32 digest = ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline);
+        signature.verify(_hashTypedData(digest), owner);
+
+        _useUnorderedNonce(owner, nonce);
+        _approveForAll(owner, operator, approved);
+    }
+
+    /// @notice Enable or disable approval for a third party ("operator") to manage
+    /// all of `msg.sender`'s assets
+    /// @dev Emits the ApprovalForAll event. The contract MUST allow
+    /// multiple operators per owner.
+    /// @dev Override Solmate's ERC721 setApprovalForAll so setApprovalForAll() and permit() share the _approveForAll method
+    /// @param operator Address to add to the set of authorized operators
+    /// @param approved True if the operator is approved, false to revoke approval
+    function setApprovalForAll(address operator, bool approved) public override {
+        _approveForAll(msg.sender, operator, approved);
+    }
+
+    function _approveForAll(address owner, address operator, bool approved) internal {
+        isApprovedForAll[owner][operator] = approved;
+        emit ApprovalForAll(owner, operator, approved);
     }
 
     /// @notice Change or reaffirm the approved address for an NFT
@@ -57,5 +95,9 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
     function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
         return spender == ownerOf(tokenId) || getApproved[tokenId] == spender
             || isApprovedForAll[ownerOf(tokenId)][spender];
+    }
+
+    function _checkNoSelfPermit(address owner, address permitted) internal pure {
+        if (owner == permitted) revert NoSelfPermit();
     }
 }
