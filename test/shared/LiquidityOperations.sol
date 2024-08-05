@@ -196,4 +196,24 @@ abstract contract LiquidityOperations is CommonBase {
         // Close needed on burn in case there is liquidity left in the position.
         return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
+
+    function getFuzzySingleEncoded(
+        uint256 seed,
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint256 liquidityChange,
+        bytes memory hookData
+    ) internal view returns (bytes memory) {
+        if (seed % 5 == 0) {
+            return getMintEncoded(config, liquidityChange, address(this), hookData);
+        } else if (seed % 5 == 1) {
+            return getIncreaseEncoded(tokenId, config, liquidityChange, hookData);
+        } else if (seed % 5 == 2) {
+            return getDecreaseEncoded(tokenId, config, liquidityChange, hookData);
+        } else if (seed % 5 == 3) {
+            return getCollectEncoded(tokenId, config, hookData);
+        } else if (seed % 5 == 4) {
+            return getBurnEncoded(tokenId, config, hookData);
+        }
+    }
 }
