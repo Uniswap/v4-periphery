@@ -210,7 +210,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         );
         uint256 liquidityToRemove = 0.4444e18;
         bytes memory actions = getDecreaseEncoded(tokenId, config, liquidityToRemove, ZERO_BYTES);
-        calls[1] = abi.encodeWithSelector(PositionManager(lpm).modifyLiquidities.selector, actions, _deadline);
+        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
         vm.prank(bob);
         lpm.multicall(calls);
