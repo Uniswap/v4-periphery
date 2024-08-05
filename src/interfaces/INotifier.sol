@@ -5,6 +5,13 @@ import {PositionConfig} from "../libraries/PositionConfig.sol";
 
 /// @notice This interface is used to opt in to sending updates to external contracts about position modifications or transfers
 interface INotifier {
+    /// @notice Wraps the revert message of the subscriber contract on a reverting subscription
+    error Wrap__SubsciptionReverted(address subscriber, bytes reason);
+    /// @notice Wraps the revert message of the subscriber contract on a reverting modify liquidity notification
+    error Wrap__ModifyLiquidityNotificationReverted(address subscriber, bytes reason);
+    /// @notice Wraps the revert message of the subscriber contract on a reverting transfer notification
+    error Wrap__TransferNotificationReverted(address subscriber, bytes reason);
+
     /// @notice Enables the subscriber to receive notifications for a respective position
     /// @param tokenId the ERC721 tokenId
     /// @param config the corresponding PositionConfig for the tokenId
