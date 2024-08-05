@@ -16,7 +16,8 @@ import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
-import {MockReturnDataSubscriber} from "../mocks/MockBadSubscribers.sol";
+import {INotifier} from "../../src/interfaces/INotifier.sol";
+import {MockReturnDataSubscriber, MockRevertSubscriber} from "../mocks/MockBadSubscribers.sol";
 
 contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
     using PoolIdLibrary for PoolKey;
@@ -26,6 +27,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
     MockSubscriber sub;
     MockReturnDataSubscriber badSubscriber;
     PositionConfig config;
+    MockRevertSubscriber revertSubscriber;
 
     address alice = makeAddr("ALICE");
     address bob = makeAddr("BOB");
@@ -41,6 +43,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         sub = new MockSubscriber(lpm);
         badSubscriber = new MockReturnDataSubscriber(lpm);
+        revertSubscriber = new MockRevertSubscriber(lpm);
         config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
 
         // TODO: Test NATIVE poolKey
@@ -330,5 +333,119 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(lpm.hasSubscriber(tokenId), false);
         assertEq(address(lpm.subscriber(tokenId)), address(0));
         assertEq(abi.decode(sub.unsubscribeData(), (address)), address(this));
+    }
+
+    function test_subscribe_wraps_revert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        revertSubscriber.setRevert(true);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                INotifier.Wrap__SubsciptionReverted.selector,
+                address(revertSubscriber),
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifySubscribe")
+            )
+        );
+        lpm.subscribe(tokenId, config, address(revertSubscriber), ZERO_BYTES);
+    }
+
+    function test_notifyModifyLiquidiy_wraps_revert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(revertSubscriber), ZERO_BYTES);
+
+        Plan memory plan = Planner.init();
+        for (uint256 i = 0; i < 10; i++) {
+            plan.add(
+                Actions.INCREASE_LIQUIDITY,
+                abi.encode(tokenId, config, 10e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            );
+        }
+
+        bytes memory calls = plan.finalizeModifyLiquidityWithSettlePair(config.poolKey);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                INotifier.Wrap__ModifyLiquidityNotificationReverted.selector,
+                address(revertSubscriber),
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyModifyLiquidity")
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    function test_notifyTransfer_withTransferFrom_wraps_revert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(revertSubscriber), ZERO_BYTES);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                INotifier.Wrap__TransferNotificationReverted.selector,
+                address(revertSubscriber),
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer")
+            )
+        );
+        lpm.transferFrom(alice, bob, tokenId);
+    }
+
+    function test_notifyTransfer_withSafeTransferFrom_wraps_revert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(revertSubscriber), ZERO_BYTES);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                INotifier.Wrap__TransferNotificationReverted.selector,
+                address(revertSubscriber),
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer")
+            )
+        );
+        lpm.safeTransferFrom(alice, bob, tokenId);
+    }
+
+    function test_notifyTransfer_withSafeTransferFromData_wraps_revert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(revertSubscriber), ZERO_BYTES);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                INotifier.Wrap__TransferNotificationReverted.selector,
+                address(revertSubscriber),
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer")
+            )
+        );
+        lpm.safeTransferFrom(alice, bob, tokenId, "");
     }
 }

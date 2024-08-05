@@ -8,10 +8,6 @@ contract MockERC721Permit is ERC721Permit_v4 {
 
     constructor(string memory name, string memory symbol) ERC721Permit_v4(name, symbol) {}
 
-    function tokenURI(uint256) public pure override returns (string memory) {
-        return "";
-    }
-
     function mint() external returns (uint256 tokenId) {
         tokenId = ++lastTokenId;
         _mint(msg.sender, tokenId);

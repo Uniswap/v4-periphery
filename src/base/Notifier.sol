@@ -4,12 +4,14 @@ pragma solidity ^0.8.24;
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {BipsLibrary} from "../libraries/BipsLibrary.sol";
-
-import "../interfaces/INotifier.sol";
+import {INotifier, PositionConfig} from "../interfaces/INotifier.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
+/// TODO: Use CustomRevert library when it supports subcontext's addresss
 abstract contract Notifier is INotifier {
     using BipsLibrary for uint256;
+    using CustomRevert for bytes4;
 
     error AlreadySubscribed(address subscriber);
 
@@ -33,7 +35,10 @@ abstract contract Notifier is INotifier {
         if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(address(_subscriber));
         subscriber[tokenId] = ISubscriber(newSubscriber);
 
-        ISubscriber(newSubscriber).notifySubscribe(tokenId, config, data);
+        try ISubscriber(newSubscriber).notifySubscribe(tokenId, config, data) {}
+        catch (bytes memory reason) {
+            revert Wrap__SubsciptionReverted(newSubscriber, reason);
+        }
         emit Subscribed(tokenId, address(newSubscriber));
     }
 
@@ -50,10 +55,18 @@ abstract contract Notifier is INotifier {
     }
 
     function _notifyModifyLiquidity(uint256 tokenId, PositionConfig memory config, int256 liquidityChange) internal {
-        subscriber[tokenId].notifyModifyLiquidity(tokenId, config, liquidityChange);
+        ISubscriber _subscriber = subscriber[tokenId];
+        try _subscriber.notifyModifyLiquidity(tokenId, config, liquidityChange) {}
+        catch (bytes memory reason) {
+            revert Wrap__ModifyLiquidityNotificationReverted(address(_subscriber), reason);
+        }
     }
 
     function _notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) internal {
-        subscriber[tokenId].notifyTransfer(tokenId, previousOwner, newOwner);
+        ISubscriber _subscriber = subscriber[tokenId];
+        try _subscriber.notifyTransfer(tokenId, previousOwner, newOwner) {}
+        catch (bytes memory reason) {
+            revert Wrap__TransferNotificationReverted(address(_subscriber), reason);
+        }
     }
 }

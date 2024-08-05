@@ -56,3 +56,45 @@ contract MockReturnDataSubscriber is ISubscriber {
         memPtr = _value;
     }
 }
+
+/// @notice A subscriber contract that returns values from the subscriber entrypoints
+contract MockRevertSubscriber is ISubscriber {
+    PositionManager posm;
+
+    error NotAuthorizedNotifer(address sender);
+
+    error TestRevert(string);
+
+    constructor(PositionManager _posm) {
+        posm = _posm;
+    }
+
+    bool shouldRevert;
+
+    modifier onlyByPosm() {
+        if (msg.sender != address(posm)) revert NotAuthorizedNotifer(msg.sender);
+        _;
+    }
+
+    function notifySubscribe(uint256, PositionConfig memory, bytes memory) external view onlyByPosm {
+        if (shouldRevert) {
+            revert TestRevert("notifySubscribe");
+        }
+    }
+
+    function notifyUnsubscribe(uint256, PositionConfig memory, bytes memory) external view onlyByPosm {
+        revert TestRevert("notifyUnsubscribe");
+    }
+
+    function notifyModifyLiquidity(uint256, PositionConfig memory, int256) external view onlyByPosm {
+        revert TestRevert("notifyModifyLiquidity");
+    }
+
+    function notifyTransfer(uint256, address, address) external view onlyByPosm {
+        revert TestRevert("notifyTransfer");
+    }
+
+    function setRevert(bool _shouldRevert) external {
+        shouldRevert = _shouldRevert;
+    }
+}
