@@ -23,6 +23,7 @@ import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
+import {MockReentrantSubscriber} from "../mocks/MockReentrantSubscriber.sol";
 
 contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityFuzzers {
     using StateLibrary for IPoolManager;
@@ -33,6 +34,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
     uint256 alicePK;
     address bob;
 
+    MockReentrantSubscriber sub;
     PositionConfig config;
 
     function setUp() public {
@@ -54,6 +56,8 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         seedBalance(address(hookModifyLiquidities));
 
         (key, poolId) = initPool(currency0, currency1, IHooks(hookModifyLiquidities), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        sub = new MockReentrantSubscriber(lpm);
 
         config = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 60});
     }
@@ -259,7 +263,6 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         swap(key, true, -1e18, calls);
     }
 
-
     /// @dev calling modifyLiquiditiesWithoutUnlock without a lock will revert
     function test_modifyLiquiditiesWithoutUnlock_revert() public {
         bytes memory calls = getMintEncoded(config, 10e18, address(this), ZERO_BYTES);
@@ -268,9 +271,38 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         lpm.modifyLiquiditiesWithoutUnlock(actions, params);
     }
 
-    /// @dev subscribers cannot re-enter posm
-    function test_subscriber_reenter_revert() public {
-        
+    /// @dev subscribers cannot re-enter posm on-subscribe since PM is not unlocked
+    function test_fuzz_subscriber_subscribe_reenter_revert(uint256 seed) public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // approve the subscriber to modify liquidity
+        lpm.approve(address(sub), tokenId);
+
+        // randomly samples a single action
+        bytes memory calls = getFuzzySingleEncoded(seed, tokenId, config, 10e18, ZERO_BYTES);
+
+        vm.expectRevert(IPoolManager.ManagerLocked.selector);
+        lpm.subscribe(tokenId, config, address(sub), calls);
+    }
+
+    /// @dev subscribers cannot re-enter posm on-unsubscribe since PM is not unlocked
+    function test_fuzz_subscriber_unsubscribe_reenter_revert(uint256 seed) public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // approve the subscriber to modify liquidity
+        lpm.approve(address(sub), tokenId);
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+
+        // randomly samples a single action
+        bytes memory calls = getFuzzySingleEncoded(seed, tokenId, config, 10e18, ZERO_BYTES);
+        lpm.unsubscribe(tokenId, config, calls);
+
+        // subscriber did not modify liquidity
+        assertEq(lpm.ownerOf(tokenId), address(this)); // owner still owns the position
+        assertEq(lpm.nextTokenId(), tokenId + 1); // no new token minted
+        assertEq(lpm.getPositionLiquidity(tokenId, config), 100e18); // liquidity unchanged
     }
 
     /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in beforeRemoveLiquidity

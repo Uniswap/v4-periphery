@@ -6,7 +6,7 @@ import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 
 /// @notice A subscriber contract that ingests updates from the v4 position manager
-contract MockSubscriber is ISubscriber {
+contract MockReentrantSubscriber is ISubscriber {
     PositionManager posm;
 
     bytes actions;
