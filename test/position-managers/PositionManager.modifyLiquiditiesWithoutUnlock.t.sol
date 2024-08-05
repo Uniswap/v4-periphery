@@ -259,6 +259,20 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         swap(key, true, -1e18, calls);
     }
 
+
+    /// @dev calling modifyLiquiditiesWithoutUnlock without a lock will revert
+    function test_modifyLiquiditiesWithoutUnlock_revert() public {
+        bytes memory calls = getMintEncoded(config, 10e18, address(this), ZERO_BYTES);
+        (bytes memory actions, bytes[] memory params) = abi.decode(calls, (bytes, bytes[]));
+        vm.expectRevert(IPoolManager.ManagerLocked.selector);
+        lpm.modifyLiquiditiesWithoutUnlock(actions, params);
+    }
+
+    /// @dev subscribers cannot re-enter posm
+    function test_subscriber_reenter_revert() public {
+        
+    }
+
     /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in beforeRemoveLiquidity
     function test_hook_increaseLiquidity_reenter_revert() public {
         uint256 initialLiquidity = 100e18;
