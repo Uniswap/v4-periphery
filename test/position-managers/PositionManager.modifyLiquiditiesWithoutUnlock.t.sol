@@ -15,6 +15,7 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {INotifier} from "../../src/interfaces/INotifier.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
@@ -282,7 +283,13 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // randomly sample a single action
         bytes memory calls = getFuzzySingleEncoded(seed, tokenId, config, 10e18, ZERO_BYTES);
 
-        vm.expectRevert(IPoolManager.ManagerLocked.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                INotifier.Wrap__SubsciptionReverted.selector,
+                address(sub),
+                abi.encodeWithSelector(IPoolManager.ManagerLocked.selector)
+            )
+        );
         lpm.subscribe(tokenId, config, address(sub), calls);
     }
 
@@ -331,7 +338,14 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         }
 
         // should revert because subscriber is re-entering modifyLiquiditiesWithoutUnlock
-        vm.expectRevert(ReentrancyLock.ContractLocked.selector);
+        // vm.expectRevert(ReentrancyLock.ContractLocked.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                INotifier.Wrap__ModifyLiquidityNotificationReverted.selector,
+                address(sub),
+                abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+            )
+        );
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -355,7 +369,13 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // because the pool manager is not unlocked
 
         // should revert because subscriber is re-entering modifyLiquiditiesWithoutUnlock
-        vm.expectRevert(IPoolManager.ManagerLocked.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                INotifier.Wrap__TransferNotificationReverted.selector,
+                address(sub),
+                abi.encodeWithSelector(IPoolManager.ManagerLocked.selector)
+            )
+        );
         lpm.transferFrom(address(this), address(sub), tokenId);
     }
 
@@ -378,9 +398,21 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         if (actionNumber == Actions.DECREASE_LIQUIDITY || actionNumber == Actions.BURN_POSITION) {
             // revert because the subscriber loses approval
             // ERC721.transferFrom happens before notifyTransfer and resets the approval
-            vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(sub)));
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    INotifier.Wrap__TransferNotificationReverted.selector,
+                    address(sub),
+                    abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(sub))
+                )
+            );
         } else {
-            vm.expectRevert(IPoolManager.ManagerLocked.selector);
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    INotifier.Wrap__TransferNotificationReverted.selector,
+                    address(sub),
+                    abi.encodeWithSelector(IPoolManager.ManagerLocked.selector)
+                )
+            );
         }
         lpm.transferFrom(address(this), alice, tokenId);
     }
