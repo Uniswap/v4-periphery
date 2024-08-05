@@ -363,6 +363,7 @@ contract PositionManager is
         if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
     }
 
+    /// @inheritdoc IPositionManager
     function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
         public
         view
