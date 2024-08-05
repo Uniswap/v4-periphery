@@ -255,6 +255,8 @@ contract PositionManager is
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         liquidityDelta.validateMaxIn(amount0Max, amount1Max);
         positionConfigs.setConfigId(tokenId, config);
+
+        emit MintPosition(tokenId, config);
     }
 
     /// @dev this is overloaded with ERC721Permit_v4._burn
