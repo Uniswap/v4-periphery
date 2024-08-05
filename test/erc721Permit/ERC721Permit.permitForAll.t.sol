@@ -130,9 +130,8 @@ contract ERC721PermitForAllTest is Test {
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 2); // 2 = 0010
     }
 
-    function test_fuzz_erc721permitForAll_nonceAlreadyUsed() public {
+    function test_fuzz_erc721permitForAll_nonceAlreadyUsed(uint256 nonce) public {
         // alice gives bob operator permissions
-        uint256 nonce = 1;
         _permitForAll(alicePK, alice, bob, true, nonce);
 
         // alice cannot reuse the nonce
@@ -147,11 +146,7 @@ contract ERC721PermitForAllTest is Test {
         vm.stopPrank();
     }
 
-    function test_fuzz_erc721permitForAll_unauthorized() public {
-        vm.prank(alice);
-        uint256 tokenId = erc721Permit.mint();
-
-        uint256 nonce = 1;
+    function test_fuzz_erc721permitForAll_invalidSigner(uint256 nonce) public {
         bytes32 digest = _getPermitForAllDigest(bob, true, nonce, block.timestamp);
 
         // bob attempts signing an approval for himself
@@ -177,7 +172,7 @@ contract ERC721PermitForAllTest is Test {
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
     }
 
-    function test_fuzz_erc721permitForAll_deadlineExpired(address operator) public {
+    function test_fuzz_erc721permitForAll_SignatureDeadlineExpired(address operator) public {
         uint256 nonce = 1;
         uint256 deadline = block.timestamp;
         bytes32 digest = _getPermitForAllDigest(operator, true, nonce, deadline);
@@ -196,7 +191,7 @@ contract ERC721PermitForAllTest is Test {
 
         // -- PermitForAll but deadline expired -- //
         vm.startPrank(operator);
-        vm.expectRevert(IERC721Permit_v4.DeadlineExpired.selector);
+        vm.expectRevert(IERC721Permit_v4.SignatureDeadlineExpired.selector);
         erc721Permit.permitForAll(alice, operator, true, deadline, nonce, signature);
         vm.stopPrank();
 
@@ -214,13 +209,7 @@ contract ERC721PermitForAllTest is Test {
 
         uint256 nonce = 1;
         uint256 deadline = block.timestamp;
-        bytes32 digest = keccak256(
-            abi.encodePacked(
-                "\x19\x01",
-                erc721Permit.DOMAIN_SEPARATOR(),
-                keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, operator, tokenId, nonce, deadline))
-            )
-        );
+        bytes32 digest = _getPermitDigest(operator, tokenId, nonce, deadline);
 
         // alice signs a permit for operator
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
@@ -280,19 +269,12 @@ contract ERC721PermitForAllTest is Test {
     }
 
     /// @dev a nonce used in permit is unusable for permitForAll
-    function test_erc721PermitForAll_permitNonceUsed() public {
+    function test_fuzz_erc721PermitForAll_permitNonceUsed(uint256 nonce) public {
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
 
-        uint256 nonce = 1;
         uint256 deadline = block.timestamp;
-        bytes32 digest = keccak256(
-            abi.encodePacked(
-                "\x19\x01",
-                erc721Permit.DOMAIN_SEPARATOR(),
-                keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, bob, tokenId, nonce, deadline))
-            )
-        );
+        bytes32 digest = _getPermitDigest(bob, tokenId, nonce, deadline);
         // alice signs a permit for bob
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
@@ -340,6 +322,20 @@ contract ERC721PermitForAllTest is Test {
                 keccak256(
                     abi.encode(ERC721PermitHashLibrary.PERMIT_FOR_ALL_TYPEHASH, operator, approved, nonce, deadline)
                 )
+            )
+        );
+    }
+
+    function _getPermitDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)
+        internal
+        view
+        returns (bytes32 digest)
+    {
+        digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                erc721Permit.DOMAIN_SEPARATOR(),
+                keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline))
             )
         );
     }

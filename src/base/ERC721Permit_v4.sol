@@ -17,18 +17,22 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
     /// @notice Computes the nameHash and versionHash
     constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) EIP712_v4(name_) {}
 
+    modifier checkSignatureDeadline(uint256 deadline) {
+        if (block.timestamp > deadline) revert SignatureDeadlineExpired();
+        _;
+    }
+
     /// @inheritdoc IERC721Permit_v4
     function permit(address spender, uint256 tokenId, uint256 deadline, uint256 nonce, bytes calldata signature)
         external
         payable
+        checkSignatureDeadline(deadline)
     {
-        if (block.timestamp > deadline) revert DeadlineExpired();
-
         address owner = ownerOf(tokenId);
-        if (spender == owner) revert NoSelfPermit();
+        _checkNoSelfPermit(owner, spender);
 
-        bytes32 hash = ERC721PermitHashLibrary.hashPermit(spender, tokenId, nonce, deadline);
-        signature.verify(_hashTypedData(hash), owner);
+        bytes32 digest = ERC721PermitHashLibrary.hashPermit(spender, tokenId, nonce, deadline);
+        signature.verify(_hashTypedData(digest), owner);
 
         _useUnorderedNonce(owner, nonce);
         _approve(owner, spender, tokenId);
@@ -42,10 +46,8 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
         uint256 deadline,
         uint256 nonce,
         bytes calldata signature
-    ) external payable {
-        if (block.timestamp > deadline) revert DeadlineExpired();
-
-        if (operator == owner) revert NoSelfPermit();
+    ) external payable checkSignatureDeadline(deadline) {
+        _checkNoSelfPermit(owner, operator);
 
         bytes32 hash = ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline);
         signature.verify(_hashTypedData(hash), owner);
@@ -93,5 +95,9 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
     function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
         return spender == ownerOf(tokenId) || getApproved[tokenId] == spender
             || isApprovedForAll[ownerOf(tokenId)][spender];
+    }
+
+    function _checkNoSelfPermit(address owner, address permitted) internal pure {
+        if (owner == permitted) revert NoSelfPermit();
     }
 }

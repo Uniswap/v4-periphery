@@ -229,7 +229,7 @@ contract ERC721PermitTest is Test {
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
     }
 
-    function test_fuzz_erc721Permit_deadlineExpired(address spender) public {
+    function test_fuzz_erc721Permit_SignatureDeadlineExpired(address spender) public {
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
 
@@ -252,7 +252,7 @@ contract ERC721PermitTest is Test {
 
         // -- Permit but deadline expired -- //
         vm.startPrank(spender);
-        vm.expectRevert(IERC721Permit_v4.DeadlineExpired.selector);
+        vm.expectRevert(IERC721Permit_v4.SignatureDeadlineExpired.selector);
         erc721Permit.permit(spender, tokenId, deadline, nonce, signature);
         vm.stopPrank();
 
