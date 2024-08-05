@@ -100,4 +100,9 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
     function _checkNoSelfPermit(address owner, address permitted) internal pure {
         if (owner == permitted) revert NoSelfPermit();
     }
+
+    // TODO: to be implemented after audits
+    function tokenURI(uint256) public pure override returns (string memory) {
+        return "https://example.com";
+    }
 }
