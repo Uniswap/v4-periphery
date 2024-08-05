@@ -8,6 +8,7 @@ import {INotifier, PositionConfig} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
+/// TODO: Use CustomRevert library when it supports subcontext's addresss
 abstract contract Notifier is INotifier {
     using BipsLibrary for uint256;
     using CustomRevert for bytes4;
