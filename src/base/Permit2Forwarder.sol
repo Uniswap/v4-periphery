@@ -2,15 +2,12 @@
 pragma solidity ^0.8.24;
 
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {Permit2ImmutableState} from "./Permit2ImmutableState.sol";
 
 /// @notice PermitForwarder allows permitting this contract as a spender on permit2
 /// @dev This contract does not enforce the spender to be this contract, but that is the intended use case
-contract Permit2Forwarder {
-    IAllowanceTransfer public immutable permit2;
-
-    constructor(IAllowanceTransfer _permit2) {
-        permit2 = _permit2;
-    }
+contract Permit2Forwarder is Permit2ImmutableState {
+    constructor(IAllowanceTransfer _permit2) Permit2ImmutableState(_permit2) {}
 
     /// @notice allows forwarding a single permit to permit2
     /// @dev this function is payable to allow multicall with NATIVE based actions
