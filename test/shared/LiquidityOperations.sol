@@ -45,7 +45,7 @@ abstract contract LiquidityOperations is CommonBase {
             liquidity.toUint128()
         );
         bytes memory calls = getMintEncoded(config, liquidity, recipient, hookData);
-        // add extra wei because modifyLiquiditiesWithoutUnlock may be rounding up, LiquidityAmounts is imprecise?
+        // add extra wei because modifyLiquidities may be rounding up, LiquidityAmounts is imprecise?
         lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
     }
 
@@ -81,7 +81,7 @@ abstract contract LiquidityOperations is CommonBase {
         lpm.modifyLiquidities(calls, _deadline);
     }
 
-    // Helper functions for getting encoded calldata for .modifyLiquiditiesWithoutUnlock
+    // Helper functions for getting encoded calldata for .modifyLiquidities() or .modifyLiquiditiesWithoutUnlock()
     function getMintEncoded(PositionConfig memory config, uint256 liquidity, address recipient, bytes memory hookData)
         internal
         pure
