@@ -30,7 +30,7 @@ import {INotifier} from "./interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 import {PosmActionsRouter} from "./base/PosmActionsRouter.sol";
-import {PosmState} from "./base/PosmState.sol";
+import {PosmSharedState} from "./base/PosmSharedState.sol";
 
 contract PositionManager is IPositionManager, PosmActionsRouter, ERC721Permit_v4, PoolInitializer, Multicall_v4, ReentrancyLock {
     using SafeTransferLib for *;
@@ -94,7 +94,7 @@ contract PositionManager is IPositionManager, PosmActionsRouter, ERC721Permit_v4
         _burn(tokenId);
     }
 
-    function _isApprovedOrOwner(address caller, uint256 tokenId) internal view override (ERC721Permit_v4, PosmState) returns (bool) {
+    function _isApprovedOrOwner(address caller, uint256 tokenId) internal view override (ERC721Permit_v4, PosmSharedState) returns (bool) {
         return ERC721Permit_v4._isApprovedOrOwner(caller, tokenId);
     }
 }

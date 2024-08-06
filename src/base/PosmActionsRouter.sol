@@ -24,9 +24,9 @@ import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "../libraries/SlippageCheck.sol";
-import {PosmState} from "./PosmState.sol";
+import {PosmSharedState} from "./PosmSharedState.sol";
 
-abstract contract PosmActionsRouter is PosmState, DeltaResolver, Notifier, BaseActionsRouter, Permit2Forwarder {
+abstract contract PosmActionsRouter is PosmSharedState, DeltaResolver, Notifier, BaseActionsRouter, Permit2Forwarder {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;

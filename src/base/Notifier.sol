@@ -7,11 +7,11 @@ import {BipsLibrary} from "../libraries/BipsLibrary.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
-import {PosmState} from "./PosmState.sol";
+import {PosmSharedState} from "./PosmSharedState.sol";
 import {PositionConfig, PositionConfigLibrary} from "../libraries/PositionConfig.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
-abstract contract Notifier is INotifier, PosmState {
+abstract contract Notifier is INotifier, PosmSharedState {
     using BipsLibrary for uint256;
     using CustomRevert for bytes4;
     using PositionConfigLibrary for *;

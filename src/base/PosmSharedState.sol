@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {PositionConfig, PositionConfigLibrary} from "../libraries/PositionConfig.sol";
 
-abstract contract PosmState {
+abstract contract PosmSharedState {
     using PositionConfigLibrary for *;
 
     /// @dev The ID of the next token that will be minted. Skips 0
