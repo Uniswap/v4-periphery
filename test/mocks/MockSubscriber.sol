@@ -14,6 +14,9 @@ contract MockSubscriber is ISubscriber {
     uint256 public notifyUnsubscribeCount;
     uint256 public notifyModifyLiquidityCount;
     uint256 public notifyTransferCount;
+    int256 public liquidityChange;
+    BalanceDelta public liquidityDelta;
+    BalanceDelta public feesAccrued;
 
     bytes public subscribeData;
     bytes public unsubscribeData;
@@ -41,11 +44,17 @@ contract MockSubscriber is ISubscriber {
         unsubscribeData = data;
     }
 
-    function notifyModifyLiquidity(uint256, PositionConfig memory, int256, BalanceDelta, BalanceDelta)
-        external
-        onlyByPosm
-    {
+    function notifyModifyLiquidity(
+        uint256,
+        PositionConfig memory,
+        int256 _liquidityChange,
+        BalanceDelta _liquidityDelta,
+        BalanceDelta _feesAccrued
+    ) external onlyByPosm {
         notifyModifyLiquidityCount++;
+        liquidityChange = _liquidityChange;
+        liquidityDelta = _liquidityDelta;
+        feesAccrued = _feesAccrued;
     }
 
     function notifyTransfer(uint256, address, address) external onlyByPosm {

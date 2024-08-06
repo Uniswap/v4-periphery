@@ -18,11 +18,16 @@ import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {INotifier} from "../../src/interfaces/INotifier.sol";
 import {MockReturnDataSubscriber, MockRevertSubscriber} from "../mocks/MockBadSubscribers.sol";
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using Planner for Plan;
+    using SafeCast for uint256;
 
     MockSubscriber sub;
     MockReturnDataSubscriber badSubscriber;
@@ -123,6 +128,47 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         assertEq(sub.notifySubscribeCount(), 1);
         assertEq(sub.notifyModifyLiquidityCount(), 10);
+    }
+
+    function test_notifyModifyLiquidity_args() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // donate to generate fee revenue, to be checked in subscriber
+        uint256 feeRevenue0 = 1e18;
+        uint256 feeRevenue1 = 0.1e18;
+        donateRouter.donate(config.poolKey, feeRevenue0, feeRevenue1, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
+
+        uint256 liquidityToAdd = 10e18;
+        increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
+
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(liquidityToAdd)
+        );
+        // liquidityDelta provided to subscriber is principalDelta + feesAccrued
+        // where principal delta is negative (tokens to be paid for increasing liquidity)
+        BalanceDelta expectedDelta = toBalanceDelta(-(amount0.toInt128()), -(amount1.toInt128()))
+            + toBalanceDelta(feeRevenue0.toInt128(), feeRevenue1.toInt128());
+
+        assertEq(sub.notifyModifyLiquidityCount(), 1);
+        assertEq(sub.liquidityChange(), int256(liquidityToAdd));
+        assertEq(sub.liquidityDelta().amount0(), expectedDelta.amount0() - 2 wei);
+        assertEq(sub.liquidityDelta().amount1(), expectedDelta.amount1() - 2 wei);
+        assertEq(int256(sub.feesAccrued().amount0()), int256(feeRevenue0) - 1 wei);
+        assertEq(int256(sub.feesAccrued().amount1()), int256(feeRevenue1) - 1 wei);
     }
 
     function test_notifyTransfer_withTransferFrom_succeeds() public {
