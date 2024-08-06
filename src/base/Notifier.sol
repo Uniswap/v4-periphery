@@ -7,10 +7,14 @@ import {BipsLibrary} from "../libraries/BipsLibrary.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
+import {PosmState} from "./PosmState.sol";
+import {PositionConfig, PositionConfigLibrary} from "../libraries/PositionConfig.sol";
+
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
-abstract contract Notifier is INotifier {
+abstract contract Notifier is INotifier, PosmState {
     using BipsLibrary for uint256;
     using CustomRevert for bytes4;
+    using PositionConfigLibrary for *;
 
     error AlreadySubscribed(address subscriber);
 
@@ -25,6 +29,29 @@ abstract contract Notifier is INotifier {
     uint256 private constant BLOCK_LIMIT_BPS = 100;
 
     mapping(uint256 tokenId => ISubscriber subscriber) public subscriber;
+
+    /// @inheritdoc INotifier
+    function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriberAddress, bytes calldata data)
+        external
+        payable
+        onlyIfApproved(msg.sender, tokenId)
+        onlyValidConfig(tokenId, config)
+    {
+        // call to _subscribe will revert if the user already has a sub
+        positionConfigs.setSubscribe(tokenId);
+        _subscribe(tokenId, config, subscriberAddress, data);
+    }
+
+    /// @inheritdoc INotifier
+    function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data)
+        external
+        payable
+        onlyIfApproved(msg.sender, tokenId)
+        onlyValidConfig(tokenId, config)
+    {
+        positionConfigs.setUnsubscribe(tokenId);
+        _unsubscribe(tokenId, config, data);
+    }
 
     function _subscribe(uint256 tokenId, PositionConfig memory config, address newSubscriber, bytes memory data)
         internal
