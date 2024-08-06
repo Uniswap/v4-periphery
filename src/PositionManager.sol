@@ -30,7 +30,6 @@ import {INotifier} from "./interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 import {PosmActionsRouter} from "./base/PosmActionsRouter.sol";
-import {PosmSharedState} from "./base/PosmSharedState.sol";
 
 contract PositionManager is IPositionManager, PosmActionsRouter, ERC721Permit_v4, PoolInitializer, Multicall_v4, ReentrancyLock {
     using SafeTransferLib for *;
@@ -94,7 +93,15 @@ contract PositionManager is IPositionManager, PosmActionsRouter, ERC721Permit_v4
         _burn(tokenId);
     }
 
-    function _isApprovedOrOwner(address caller, uint256 tokenId) internal view override (ERC721Permit_v4, PosmSharedState) returns (bool) {
-        return ERC721Permit_v4._isApprovedOrOwner(caller, tokenId);
+    modifier onlyIfApproved(address caller, uint256 tokenId) override {
+        if (!_isApprovedOrOwner(caller, tokenId)) revert(); // TODO: NotApproved(caller);
+        _;
+    }
+
+    /// @notice Reverts if the deadline has passed
+    /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
+    modifier checkDeadline(uint256 deadline) {
+        if (block.timestamp > deadline) revert(); // TODO: error DeadlinePassed();
+        _;
     }
 }
