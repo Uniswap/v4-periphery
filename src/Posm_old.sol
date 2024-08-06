@@ -10,27 +10,35 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
+import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
-import {IPositionManager} from "../interfaces/IPositionManager.sol";
-import {DeltaResolver} from "./DeltaResolver.sol";
-import {PositionConfig, PositionConfigLibrary} from "../libraries/PositionConfig.sol";
-import {BaseActionsRouter} from "./BaseActionsRouter.sol";
-import {Actions} from "../libraries/Actions.sol";
-import {Notifier} from "./Notifier.sol";
-import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
-import {INotifier} from "../interfaces/INotifier.sol";
-import {Permit2Forwarder} from "./Permit2Forwarder.sol";
-import {SlippageCheckLibrary} from "../libraries/SlippageCheck.sol";
-import {PosmState} from "./PosmState.sol";
+import {ERC721Permit_v4} from "./base/ERC721Permit_v4.sol";
+import {ReentrancyLock} from "./base/ReentrancyLock.sol";
+import {IPositionManager} from "./interfaces/IPositionManager.sol";
+import {Multicall_v4} from "./base/Multicall_v4.sol";
+import {PoolInitializer} from "./base/PoolInitializer.sol";
+import {DeltaResolver} from "./base/DeltaResolver.sol";
+import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
+import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
+import {Actions} from "./libraries/Actions.sol";
+import {Notifier} from "./base/Notifier.sol";
+import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
+import {INotifier} from "./interfaces/INotifier.sol";
+import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
+import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 
-abstract contract PosmActionsRouter is
-    PosmState,
+contract PositionManager is
+    IPositionManager,
+    ERC721Permit_v4,
+    PoolInitializer,
+    Multicall_v4,
     DeltaResolver,
-    Notifier,
+    ReentrancyLock,
     BaseActionsRouter,
+    Notifier,
     Permit2Forwarder
 {
     using SafeTransferLib for *;
@@ -44,12 +52,87 @@ abstract contract PosmActionsRouter is
     using CalldataDecoder for bytes;
     using SlippageCheckLibrary for BalanceDelta;
 
+    /// @dev The ID of the next token that will be minted. Skips 0
+    uint256 public nextTokenId = 1;
+
+    mapping(uint256 tokenId => bytes32 config) private positionConfigs;
+
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
+        ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
     {}
 
-    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config) public virtual view returns (uint128) {}
+    /// @notice Reverts if the deadline has passed
+    /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
+    modifier checkDeadline(uint256 deadline) {
+        if (block.timestamp > deadline) revert DeadlinePassed();
+        _;
+    }
+
+    /// @notice Reverts if the caller is not the owner or approved for the ERC721 token
+    /// @param caller The address of the caller
+    /// @param tokenId the unique identifier of the ERC721 token
+    /// @dev either msg.sender or _msgSender() is passed in as the caller
+    /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
+    modifier onlyIfApproved(address caller, uint256 tokenId) {
+        if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
+        _;
+    }
+
+    /// @notice Reverts if the hash of the config does not equal the saved hash
+    /// @param tokenId the unique identifier of the ERC721 token
+    /// @param config the PositionConfig to check against
+    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) {
+        if (positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+        _;
+    }
+
+    /// @inheritdoc IPositionManager
+    function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
+        external
+        payable
+        isNotLocked
+        checkDeadline(deadline)
+    {
+        _executeActions(unlockData);
+    }
+
+    /// @inheritdoc IPositionManager
+    function modifyLiquiditiesWithoutUnlock(bytes calldata actions, bytes[] calldata params)
+        external
+        payable
+        isNotLocked
+    {
+        _executeActionsWithoutUnlock(actions, params);
+    }
+
+    /// @inheritdoc INotifier
+    function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber, bytes calldata data)
+        external
+        payable
+        onlyIfApproved(msg.sender, tokenId)
+        onlyValidConfig(tokenId, config)
+    {
+        // call to _subscribe will revert if the user already has a sub
+        positionConfigs.setSubscribe(tokenId);
+        _subscribe(tokenId, config, subscriber, data);
+    }
+
+    /// @inheritdoc INotifier
+    function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data)
+        external
+        payable
+        onlyIfApproved(msg.sender, tokenId)
+        onlyValidConfig(tokenId, config)
+    {
+        positionConfigs.setUnsubscribe(tokenId);
+        _unsubscribe(tokenId, config, data);
+    }
+
+    function msgSender() public view override returns (address) {
+        return _getLocker();
+    }
 
     function _handleAction(uint256 action, bytes calldata params) internal virtual override {
         if (action < Actions.SETTLE) {
@@ -164,7 +247,7 @@ abstract contract PosmActionsRouter is
         uint256 tokenId;
         // tokenId is assigned to current nextTokenId before incrementing it
         unchecked {
-            tokenId = _nextTokenId++;
+            tokenId = nextTokenId++;
         }
         _mint(owner, tokenId);
 
@@ -173,8 +256,7 @@ abstract contract PosmActionsRouter is
         liquidityDelta.validateMaxIn(amount0Max, amount1Max);
         positionConfigs.setConfigId(tokenId, config);
 
-        // TODO:
-        // emit MintPosition(tokenId, config);
+        emit MintPosition(tokenId, config);
     }
 
     /// @dev this is overloaded with ERC721Permit_v4._burn
@@ -275,5 +357,32 @@ abstract contract PosmActionsRouter is
         } else {
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
         }
+    }
+
+    /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
+    function transferFrom(address from, address to, uint256 id) public virtual override {
+        super.transferFrom(from, to, id);
+        if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
+    }
+
+    /// @inheritdoc IPositionManager
+    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
+        public
+        view
+        returns (uint128 liquidity)
+    {
+        bytes32 positionId =
+            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
+        liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
+    }
+
+    /// @inheritdoc IPositionManager
+    function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
+        return positionConfigs.getConfigId(tokenId);
+    }
+
+    /// @inheritdoc INotifier
+    function hasSubscriber(uint256 tokenId) external view returns (bool) {
+        return positionConfigs.hasSubscriber(tokenId);
     }
 }

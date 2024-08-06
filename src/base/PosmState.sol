@@ -8,9 +8,9 @@ contract PosmState is ERC721Permit_v4 {
     using PositionConfigLibrary for *;
 
     /// @dev The ID of the next token that will be minted. Skips 0
-    uint256 public nextTokenId = 1;
+    uint256 public _nextTokenId = 1;
 
-    mapping(uint256 tokenId => bytes32 config) private positionConfigs;
+    mapping(uint256 tokenId => bytes32 config) internal positionConfigs;
 
     constructor() ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM") {}
 
