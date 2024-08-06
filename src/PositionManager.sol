@@ -55,7 +55,11 @@ contract PositionManager is
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
-    mapping(uint256 tokenId => bytes32 config) private positionConfigs;
+    mapping(uint256 tokenId => bytes32 config) private _positionConfigs;
+
+    function positionConfigs() internal view override returns (mapping(uint256 tokenId => bytes32 config) storage) {
+        return _positionConfigs;
+    }
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
@@ -75,7 +79,7 @@ contract PositionManager is
     /// @param tokenId the unique identifier of the ERC721 token
     /// @dev either msg.sender or _msgSender() is passed in as the caller
     /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
-    modifier onlyIfApproved(address caller, uint256 tokenId) {
+    modifier onlyIfApproved(address caller, uint256 tokenId) override {
         if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
         _;
     }
@@ -83,8 +87,8 @@ contract PositionManager is
     /// @notice Reverts if the hash of the config does not equal the saved hash
     /// @param tokenId the unique identifier of the ERC721 token
     /// @param config the PositionConfig to check against
-    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) {
-        if (positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) override {
+        if (_positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         _;
     }
 
@@ -105,29 +109,6 @@ contract PositionManager is
         isNotLocked
     {
         _executeActionsWithoutUnlock(actions, params);
-    }
-
-    /// @inheritdoc INotifier
-    function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber, bytes calldata data)
-        external
-        payable
-        onlyIfApproved(msg.sender, tokenId)
-        onlyValidConfig(tokenId, config)
-    {
-        // call to _subscribe will revert if the user already has a sub
-        positionConfigs.setSubscribe(tokenId);
-        _subscribe(tokenId, config, subscriber, data);
-    }
-
-    /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data)
-        external
-        payable
-        onlyIfApproved(msg.sender, tokenId)
-        onlyValidConfig(tokenId, config)
-    {
-        positionConfigs.setUnsubscribe(tokenId);
-        _unsubscribe(tokenId, config, data);
     }
 
     function msgSender() public view override returns (address) {
@@ -254,7 +235,7 @@ contract PositionManager is
         // _beforeModify is not called here because the tokenId is newly minted
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         liquidityDelta.validateMaxIn(amount0Max, amount1Max);
-        positionConfigs.setConfigId(tokenId, config);
+        _positionConfigs.setConfigId(tokenId, config);
 
         emit MintPosition(tokenId, config);
     }
@@ -276,7 +257,7 @@ contract PositionManager is
             liquidityDelta.validateMinOut(amount0Min, amount1Min);
         }
 
-        delete positionConfigs[tokenId];
+        delete _positionConfigs[tokenId];
         // Burn the token.
         _burn(tokenId);
     }
@@ -344,7 +325,7 @@ contract PositionManager is
             hookData
         );
 
-        if (positionConfigs.hasSubscriber(uint256(salt))) {
+        if (_positionConfigs.hasSubscriber(uint256(salt))) {
             _notifyModifyLiquidity(uint256(salt), config, liquidityChange);
         }
     }
@@ -362,7 +343,7 @@ contract PositionManager is
     /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
     function transferFrom(address from, address to, uint256 id) public virtual override {
         super.transferFrom(from, to, id);
-        if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
+        if (_positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
     }
 
     /// @inheritdoc IPositionManager
@@ -378,11 +359,6 @@ contract PositionManager is
 
     /// @inheritdoc IPositionManager
     function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
-        return positionConfigs.getConfigId(tokenId);
-    }
-
-    /// @inheritdoc INotifier
-    function hasSubscriber(uint256 tokenId) external view returns (bool) {
-        return positionConfigs.hasSubscriber(tokenId);
+        return _positionConfigs.getConfigId(tokenId);
     }
 }

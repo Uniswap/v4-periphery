@@ -28,6 +28,7 @@ interface INotifier {
     /// @param config the corresponding PositionConfig for the tokenId
     /// @param data caller-provided data that's forwarded to the subscriber contract
     /// @dev payable so it can be multicalled with NATIVE related actions
+    /// @dev Must always allow a user to unsubscribe. In the case of a malicious subscriber, a user can always unsubscribe safely, ensuring liquidity is always modifiable.
     function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data) external payable;
 
     /// @notice Returns whether a a position should call out to notify a subscribing contract on modification or transfer
