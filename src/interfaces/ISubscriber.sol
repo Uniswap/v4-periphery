@@ -17,11 +17,11 @@ interface ISubscriber {
     /// @param tokenId the token ID of the position
     /// @param config details about the position
     /// @param liquidityChange the change in liquidity on the underlying position
+    /// @param feesAccrued the fees to be collected from the position as a result of the modifyLiquidity call
     function notifyModifyLiquidity(
         uint256 tokenId,
         PositionConfig memory config,
         int256 liquidityChange,
-        BalanceDelta liquidityDelta,
         BalanceDelta feesAccrued
     ) external;
     /// @param tokenId the token ID of the position

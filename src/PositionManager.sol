@@ -346,7 +346,7 @@ contract PositionManager is
         );
 
         if (positionConfigs.hasSubscriber(uint256(salt))) {
-            _notifyModifyLiquidity(uint256(salt), config, liquidityChange, liquidityDelta, feesAccrued);
+            _notifyModifyLiquidity(uint256(salt), config, liquidityChange, feesAccrued);
         }
     }
 

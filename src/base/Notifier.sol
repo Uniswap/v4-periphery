@@ -62,7 +62,6 @@ abstract contract Notifier is INotifier {
         uint256 tokenId,
         PositionConfig memory config,
         int256 liquidityChange,
-        BalanceDelta liquidityDelta,
         BalanceDelta feesAccrued
     ) internal {
         ISubscriber _subscriber = subscriber[tokenId];
@@ -70,12 +69,7 @@ abstract contract Notifier is INotifier {
         bool success = _call(
             address(_subscriber),
             abi.encodeWithSelector(
-                ISubscriber.notifyModifyLiquidity.selector,
-                tokenId,
-                config,
-                liquidityChange,
-                liquidityDelta,
-                feesAccrued
+                ISubscriber.notifyModifyLiquidity.selector, tokenId, config, liquidityChange, feesAccrued
             )
         );
 

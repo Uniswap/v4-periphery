@@ -45,10 +45,7 @@ contract MockReturnDataSubscriber is ISubscriber {
         }
     }
 
-    function notifyModifyLiquidity(uint256, PositionConfig memory, int256, BalanceDelta, BalanceDelta)
-        external
-        onlyByPosm
-    {
+    function notifyModifyLiquidity(uint256, PositionConfig memory, int256, BalanceDelta) external onlyByPosm {
         notifyModifyLiquidityCount++;
     }
 
@@ -90,11 +87,7 @@ contract MockRevertSubscriber is ISubscriber {
         revert TestRevert("notifyUnsubscribe");
     }
 
-    function notifyModifyLiquidity(uint256, PositionConfig memory, int256, BalanceDelta, BalanceDelta)
-        external
-        view
-        onlyByPosm
-    {
+    function notifyModifyLiquidity(uint256, PositionConfig memory, int256, BalanceDelta) external view onlyByPosm {
         revert TestRevert("notifyModifyLiquidity");
     }
 
