@@ -7,11 +7,10 @@ import {BipsLibrary} from "../libraries/BipsLibrary.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
-import {PosmSharedState} from "./PosmSharedState.sol";
 import {PositionConfig, PositionConfigLibrary} from "../libraries/PositionConfig.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
-abstract contract Notifier is INotifier, PosmSharedState {
+abstract contract Notifier is INotifier {
     using BipsLibrary for uint256;
     using CustomRevert for bytes4;
     using PositionConfigLibrary for *;
@@ -30,6 +29,16 @@ abstract contract Notifier is INotifier, PosmSharedState {
 
     mapping(uint256 tokenId => ISubscriber subscriber) public subscriber;
 
+    modifier onlyIfApproved(address caller, uint256 tokenId) virtual {
+        _;
+    }
+
+    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) virtual {
+        _;
+    }
+
+    function positionConfigs() internal view virtual returns (mapping(uint256 => bytes32) storage);
+
     /// @inheritdoc INotifier
     function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriberAddress, bytes calldata data)
         external
@@ -38,7 +47,7 @@ abstract contract Notifier is INotifier, PosmSharedState {
         onlyValidConfig(tokenId, config)
     {
         // call to _subscribe will revert if the user already has a sub
-        positionConfigs.setSubscribe(tokenId);
+        positionConfigs().setSubscribe(tokenId);
         _subscribe(tokenId, config, subscriberAddress, data);
     }
 
@@ -49,13 +58,13 @@ abstract contract Notifier is INotifier, PosmSharedState {
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
-        positionConfigs.setUnsubscribe(tokenId);
+        positionConfigs().setUnsubscribe(tokenId);
         _unsubscribe(tokenId, config, data);
     }
 
     /// @inheritdoc INotifier
     function hasSubscriber(uint256 tokenId) external view returns (bool) {
-        return positionConfigs.hasSubscriber(tokenId);
+        return positionConfigs().hasSubscriber(tokenId);
     }
 
     function _subscribe(uint256 tokenId, PositionConfig memory config, address newSubscriber, bytes memory data)

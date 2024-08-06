@@ -7,6 +7,7 @@ import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDe
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
+import {PositionManager} from "../../../src/PositionManager.sol";
 import {IPositionManager} from "../../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {PositionConfig} from "../../../src/libraries/PositionConfig.sol";
@@ -40,7 +41,7 @@ contract LiquidityFuzzers is Fuzzers {
             )
         );
 
-        uint256 tokenId = lpm.nextTokenId();
+        uint256 tokenId = PositionManager(address(lpm)).nextTokenId();
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, block.timestamp + 1);
 

@@ -14,7 +14,7 @@ import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
-import {IPositionManager} from "../interfaces/IPositionManager.sol";
+import {ERC721Permit_v4} from "./ERC721Permit_v4.sol";
 import {DeltaResolver} from "./DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "../libraries/PositionConfig.sol";
 import {BaseActionsRouter} from "./BaseActionsRouter.sol";
@@ -24,16 +24,15 @@ import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "../libraries/SlippageCheck.sol";
-import {PosmSharedState} from "./PosmSharedState.sol";
 import {ReentrancyLock} from "./ReentrancyLock.sol";
 
-abstract contract PosmActionsRouter is
-    PosmSharedState,
+contract PosmActionsRouter is
+    ERC721Permit_v4,
     DeltaResolver,
-    Notifier,
     BaseActionsRouter,
     Permit2Forwarder,
-    ReentrancyLock
+    ReentrancyLock,
+    Notifier
 {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
@@ -46,13 +45,38 @@ abstract contract PosmActionsRouter is
     using CalldataDecoder for bytes;
     using SlippageCheckLibrary for BalanceDelta;
 
+    /// @dev The ID of the next token that will be minted. Skips 0
+    uint256 public nextTokenId = 1;
+    mapping(uint256 tokenId => bytes32 config) private _positionConfigs;
+
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
+        ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
     {}
 
-    function _mintERC721(address to) internal virtual returns (uint256 tokenId);
-    function _burnERC721(uint256 tokenId) internal virtual;
+    modifier onlyIfApproved(address caller, uint256 tokenId) override {
+        if (!_isApprovedOrOwner(caller, tokenId)) revert(); // TODO: NotApproved(caller);
+        _;
+    }
+
+    /// @notice Reverts if the hash of the config does not equal the saved hash
+    /// @param tokenId the unique identifier of the ERC721 token
+    /// @param config the PositionConfig to check against
+    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) override {
+        if (_positionConfigs.getConfigId(tokenId) != config.toId()) revert(); // TODO: IncorrectPositionConfigForTokenId(tokenId);
+        _;
+    }
+
+    function positionConfigs() internal view override returns (mapping(uint256 => bytes32) storage) {
+        return _positionConfigs;
+    }
+
+    /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
+    function transferFrom(address from, address to, uint256 id) public virtual override {
+        super.transferFrom(from, to, id);
+        if (_positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
+    }
 
     function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
         public
@@ -173,12 +197,17 @@ abstract contract PosmActionsRouter is
         address owner,
         bytes calldata hookData
     ) internal {
-        uint256 tokenId = _mintERC721(owner);
+        uint256 tokenId;
+        // tokenId is assigned to current nextTokenId before incrementing it
+        unchecked {
+            tokenId = nextTokenId++;
+        }
+        _mint(owner, tokenId);
 
         // _beforeModify is not called here because the tokenId is newly minted
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         liquidityDelta.validateMaxIn(amount0Max, amount1Max);
-        positionConfigs.setConfigId(tokenId, config);
+        _positionConfigs.setConfigId(tokenId, config);
 
         // TODO:
         // emit MintPosition(tokenId, config);
@@ -201,9 +230,9 @@ abstract contract PosmActionsRouter is
             liquidityDelta.validateMinOut(amount0Min, amount1Min);
         }
 
-        delete positionConfigs[tokenId];
+        delete _positionConfigs[tokenId];
         // Burn the token.
-        _burnERC721(tokenId);
+        _burn(tokenId);
     }
 
     function _settlePair(Currency currency0, Currency currency1) internal {
@@ -269,7 +298,7 @@ abstract contract PosmActionsRouter is
             hookData
         );
 
-        if (positionConfigs.hasSubscriber(uint256(salt))) {
+        if (_positionConfigs.hasSubscriber(uint256(salt))) {
             _notifyModifyLiquidity(uint256(salt), config, liquidityChange);
         }
     }

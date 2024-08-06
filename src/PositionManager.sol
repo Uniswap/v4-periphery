@@ -30,25 +30,9 @@ import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 import {PosmActionsRouter} from "./base/PosmActionsRouter.sol";
 
-contract PositionManager is IPositionManager, PosmActionsRouter, ERC721Permit_v4, PoolInitializer, Multicall_v4 {
-    using SafeTransferLib for *;
-    using CurrencyLibrary for Currency;
-    using PoolIdLibrary for PoolKey;
-    using PositionConfigLibrary for *;
-    using StateLibrary for IPoolManager;
-    using TransientStateLibrary for IPoolManager;
-    using SafeCast for uint256;
-    using SafeCast for int256;
-    using CalldataDecoder for bytes;
-    using SlippageCheckLibrary for BalanceDelta;
-
-    /// @dev The ID of the next token that will be minted. Skips 0
-    uint256 public nextTokenId = 1;
-
+contract PositionManager is IPositionManager, PoolInitializer, Multicall_v4, PosmActionsRouter {
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
-        PosmActionsRouter(_poolManager, _permit2)
-        ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
-    {}
+        PosmActionsRouter(_poolManager, _permit2) {}
 
     /// @inheritdoc IPositionManager
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
@@ -67,29 +51,6 @@ contract PositionManager is IPositionManager, PosmActionsRouter, ERC721Permit_v4
         isNotLocked
     {
         _executeActionsWithoutUnlock(actions, params);
-    }
-
-    /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
-    function transferFrom(address from, address to, uint256 id) public virtual override {
-        super.transferFrom(from, to, id);
-        if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
-    }
-
-    function _mintERC721(address to) internal override(PosmActionsRouter) returns (uint256 tokenId) {
-        // tokenId is assigned to current nextTokenId before incrementing it
-        unchecked {
-            tokenId = nextTokenId++;
-        }
-        _mint(to, tokenId);
-    }
-
-    function _burnERC721(uint256 tokenId) internal override(PosmActionsRouter) {
-        _burn(tokenId);
-    }
-
-    modifier onlyIfApproved(address caller, uint256 tokenId) override {
-        if (!_isApprovedOrOwner(caller, tokenId)) revert(); // TODO: NotApproved(caller);
-        _;
     }
 
     /// @notice Reverts if the deadline has passed

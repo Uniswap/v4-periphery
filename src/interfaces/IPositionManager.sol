@@ -8,7 +8,7 @@ import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {INotifier} from "./INotifier.sol";
 import {IPoolInitializer} from "./IPoolInitializer.sol";
 
-interface IPositionManager is INotifier, IPoolInitializer {
+interface IPositionManager is IPoolInitializer {
     error NotApproved(address caller);
     error DeadlinePassed();
     error IncorrectPositionConfigForTokenId(uint256 tokenId);
@@ -26,8 +26,4 @@ interface IPositionManager is INotifier, IPoolInitializer {
     /// @param actions the actions to perform
     /// @param params the parameters to provide for the actions
     function modifyLiquiditiesWithoutUnlock(bytes calldata actions, bytes[] calldata params) external payable;
-
-    /// @notice Used to get the ID that will be used for the next minted liquidity position
-    /// @return uint256 The next token ID
-    function nextTokenId() external view returns (uint256);
 }
