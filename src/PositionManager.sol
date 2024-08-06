@@ -31,13 +31,7 @@ import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 import {PosmActionsRouter} from "./base/PosmActionsRouter.sol";
 
-contract PositionManager is
-    IPositionManager,
-    PosmActionsRouter,
-    PoolInitializer,
-    Multicall_v4,
-    ReentrancyLock
-{
+contract PositionManager is IPositionManager, PosmActionsRouter, PoolInitializer, Multicall_v4, ReentrancyLock {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -49,9 +43,7 @@ contract PositionManager is
     using CalldataDecoder for bytes;
     using SlippageCheckLibrary for BalanceDelta;
 
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
-        PosmActionsRouter(_poolManager, _permit2)
-    {}
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2) PosmActionsRouter(_poolManager, _permit2) {}
 
     function nextTokenId() external view returns (uint256) {
         return _nextTokenId;
@@ -84,27 +76,5 @@ contract PositionManager is
     function transferFrom(address from, address to, uint256 id) public virtual override {
         super.transferFrom(from, to, id);
         if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
-    }
-
-    /// @inheritdoc IPositionManager
-    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
-        public
-        view
-        override(IPositionManager, PosmActionsRouter)
-        returns (uint128 liquidity)
-    {
-        bytes32 positionId =
-            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
-        liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
-    }
-
-    /// @inheritdoc IPositionManager
-    function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
-        return positionConfigs.getConfigId(tokenId);
-    }
-
-    /// @inheritdoc INotifier
-    function hasSubscriber(uint256 tokenId) external view returns (bool) {
-        return positionConfigs.hasSubscriber(tokenId);
     }
 }

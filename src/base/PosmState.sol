@@ -14,10 +14,14 @@ contract PosmState is ERC721Permit_v4 {
 
     constructor() ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM") {}
 
+    function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
+        return positionConfigs.getConfigId(tokenId);
+    }
+
     /// @notice Reverts if the deadline has passed
     /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
     modifier checkDeadline(uint256 deadline) {
-        if (block.timestamp > deadline) revert();// TODO: error DeadlinePassed();
+        if (block.timestamp > deadline) revert(); // TODO: error DeadlinePassed();
         _;
     }
 

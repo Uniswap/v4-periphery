@@ -26,13 +26,7 @@ import {Permit2Forwarder} from "./Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "../libraries/SlippageCheck.sol";
 import {PosmState} from "./PosmState.sol";
 
-abstract contract PosmActionsRouter is
-    PosmState,
-    DeltaResolver,
-    Notifier,
-    BaseActionsRouter,
-    Permit2Forwarder
-{
+abstract contract PosmActionsRouter is PosmState, DeltaResolver, Notifier, BaseActionsRouter, Permit2Forwarder {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -49,7 +43,15 @@ abstract contract PosmActionsRouter is
         Permit2Forwarder(_permit2)
     {}
 
-    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config) public virtual view returns (uint128) {}
+    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
+        public
+        view
+        returns (uint128 liquidity)
+    {
+        bytes32 positionId =
+            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
+        liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
+    }
 
     function _handleAction(uint256 action, bytes calldata params) internal virtual override {
         if (action < Actions.SETTLE) {

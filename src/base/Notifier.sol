@@ -53,6 +53,11 @@ abstract contract Notifier is INotifier, PosmState {
         _unsubscribe(tokenId, config, data);
     }
 
+    /// @inheritdoc INotifier
+    function hasSubscriber(uint256 tokenId) external view returns (bool) {
+        return positionConfigs.hasSubscriber(tokenId);
+    }
+
     function _subscribe(uint256 tokenId, PositionConfig memory config, address newSubscriber, bytes memory data)
         internal
     {
