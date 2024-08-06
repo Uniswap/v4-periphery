@@ -6,6 +6,7 @@ import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {BipsLibrary} from "../libraries/BipsLibrary.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
@@ -57,12 +58,19 @@ abstract contract Notifier is INotifier {
         emit Unsubscribed(tokenId, address(_subscriber));
     }
 
-    function _notifyModifyLiquidity(uint256 tokenId, PositionConfig memory config, int256 liquidityChange) internal {
+    function _notifyModifyLiquidity(
+        uint256 tokenId,
+        PositionConfig memory config,
+        int256 liquidityChange,
+        BalanceDelta feesAccrued
+    ) internal {
         ISubscriber _subscriber = subscriber[tokenId];
 
         bool success = _call(
             address(_subscriber),
-            abi.encodeWithSelector(ISubscriber.notifyModifyLiquidity.selector, tokenId, config, liquidityChange)
+            abi.encodeWithSelector(
+                ISubscriber.notifyModifyLiquidity.selector, tokenId, config, liquidityChange, feesAccrued
+            )
         );
 
         if (!success) {
