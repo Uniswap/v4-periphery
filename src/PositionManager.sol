@@ -16,7 +16,6 @@ import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {ERC721Permit_v4} from "./base/ERC721Permit_v4.sol";
-import {ReentrancyLock} from "./base/ReentrancyLock.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {Multicall_v4} from "./base/Multicall_v4.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
@@ -31,7 +30,7 @@ import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 import {PosmActionsRouter} from "./base/PosmActionsRouter.sol";
 
-contract PositionManager is IPositionManager, PosmActionsRouter, ERC721Permit_v4, PoolInitializer, Multicall_v4, ReentrancyLock {
+contract PositionManager is IPositionManager, PosmActionsRouter, ERC721Permit_v4, PoolInitializer, Multicall_v4 {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -44,13 +43,12 @@ contract PositionManager is IPositionManager, PosmActionsRouter, ERC721Permit_v4
     using SlippageCheckLibrary for BalanceDelta;
 
     /// @dev The ID of the next token that will be minted. Skips 0
-    uint256 public _nextTokenId = 1;
+    uint256 public nextTokenId = 1;
 
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2) PosmActionsRouter(_poolManager, _permit2) ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM") {}
-
-    function nextTokenId() external view returns (uint256) {
-        return _nextTokenId;
-    }
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
+        PosmActionsRouter(_poolManager, _permit2)
+        ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
+    {}
 
     /// @inheritdoc IPositionManager
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
@@ -71,25 +69,21 @@ contract PositionManager is IPositionManager, PosmActionsRouter, ERC721Permit_v4
         _executeActionsWithoutUnlock(actions, params);
     }
 
-    function msgSender() public view override returns (address) {
-        return _getLocker();
-    }
-
     /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
     function transferFrom(address from, address to, uint256 id) public virtual override {
         super.transferFrom(from, to, id);
         if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
     }
 
-    function _mintERC721(address to) internal override (PosmActionsRouter) returns (uint256 tokenId) {
+    function _mintERC721(address to) internal override(PosmActionsRouter) returns (uint256 tokenId) {
         // tokenId is assigned to current nextTokenId before incrementing it
         unchecked {
-            tokenId = _nextTokenId++;
+            tokenId = nextTokenId++;
         }
         _mint(to, tokenId);
     }
 
-    function _burnERC721(uint256 tokenId) internal override (PosmActionsRouter) {
+    function _burnERC721(uint256 tokenId) internal override(PosmActionsRouter) {
         _burn(tokenId);
     }
 

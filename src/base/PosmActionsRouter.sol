@@ -25,8 +25,16 @@ import {INotifier} from "../interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "../libraries/SlippageCheck.sol";
 import {PosmSharedState} from "./PosmSharedState.sol";
+import {ReentrancyLock} from "./ReentrancyLock.sol";
 
-abstract contract PosmActionsRouter is PosmSharedState, DeltaResolver, Notifier, BaseActionsRouter, Permit2Forwarder {
+abstract contract PosmActionsRouter is
+    PosmSharedState,
+    DeltaResolver,
+    Notifier,
+    BaseActionsRouter,
+    Permit2Forwarder,
+    ReentrancyLock
+{
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -274,5 +282,9 @@ abstract contract PosmActionsRouter is PosmSharedState, DeltaResolver, Notifier,
         } else {
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
         }
+    }
+
+    function msgSender() public view override returns (address) {
+        return _getLocker();
     }
 }
