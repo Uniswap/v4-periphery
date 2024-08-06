@@ -333,7 +333,8 @@ contract PositionManager is
         bytes32 salt,
         bytes calldata hookData
     ) internal returns (BalanceDelta liquidityDelta) {
-        (liquidityDelta,) = poolManager.modifyLiquidity(
+        BalanceDelta feesAccrued;
+        (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
             config.poolKey,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: config.tickLower,
@@ -345,7 +346,7 @@ contract PositionManager is
         );
 
         if (positionConfigs.hasSubscriber(uint256(salt))) {
-            _notifyModifyLiquidity(uint256(salt), config, liquidityChange);
+            _notifyModifyLiquidity(uint256(salt), config, liquidityChange, liquidityDelta, feesAccrued);
         }
     }
 

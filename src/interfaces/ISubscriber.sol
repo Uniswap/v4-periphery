@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {PositionConfig} from "../libraries/PositionConfig.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 /// @notice Interface that a Subscriber contract should implement to receive updates from the v4 position manager
 interface ISubscriber {
@@ -16,7 +17,13 @@ interface ISubscriber {
     /// @param tokenId the token ID of the position
     /// @param config details about the position
     /// @param liquidityChange the change in liquidity on the underlying position
-    function notifyModifyLiquidity(uint256 tokenId, PositionConfig memory config, int256 liquidityChange) external;
+    function notifyModifyLiquidity(
+        uint256 tokenId,
+        PositionConfig memory config,
+        int256 liquidityChange,
+        BalanceDelta liquidityDelta,
+        BalanceDelta feesAccrued
+    ) external;
     /// @param tokenId the token ID of the position
     /// @param previousOwner address of the old owner
     /// @param newOwner address of the new owner

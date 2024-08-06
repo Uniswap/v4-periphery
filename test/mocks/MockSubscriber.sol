@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 /// @notice A subscriber contract that ingests updates from the v4 position manager
 contract MockSubscriber is ISubscriber {
@@ -40,7 +41,10 @@ contract MockSubscriber is ISubscriber {
         unsubscribeData = data;
     }
 
-    function notifyModifyLiquidity(uint256, PositionConfig memory, int256) external onlyByPosm {
+    function notifyModifyLiquidity(uint256, PositionConfig memory, int256, BalanceDelta, BalanceDelta)
+        external
+        onlyByPosm
+    {
         notifyModifyLiquidityCount++;
     }
 
