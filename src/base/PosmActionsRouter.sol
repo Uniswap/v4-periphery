@@ -43,6 +43,9 @@ abstract contract PosmActionsRouter is PosmState, DeltaResolver, Notifier, BaseA
         Permit2Forwarder(_permit2)
     {}
 
+    function _mintERC721(address to) internal virtual returns (uint256 tokenId);
+    function _burnERC721(uint256 tokenId) internal virtual;
+
     function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
         public
         view
@@ -162,13 +165,7 @@ abstract contract PosmActionsRouter is PosmState, DeltaResolver, Notifier, BaseA
         address owner,
         bytes calldata hookData
     ) internal {
-        // mint receipt token
-        uint256 tokenId;
-        // tokenId is assigned to current nextTokenId before incrementing it
-        unchecked {
-            tokenId = _nextTokenId++;
-        }
-        _mint(owner, tokenId);
+        uint256 tokenId = _mintERC721(owner);
 
         // _beforeModify is not called here because the tokenId is newly minted
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
@@ -198,7 +195,7 @@ abstract contract PosmActionsRouter is PosmState, DeltaResolver, Notifier, BaseA
 
         delete positionConfigs[tokenId];
         // Burn the token.
-        _burn(tokenId);
+        _burnERC721(tokenId);
     }
 
     function _settlePair(Currency currency0, Currency currency1) internal {

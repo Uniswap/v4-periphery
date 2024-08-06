@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {ERC721Permit_v4} from "./ERC721Permit_v4.sol";
 import {PositionConfig, PositionConfigLibrary} from "../libraries/PositionConfig.sol";
 
-contract PosmState is ERC721Permit_v4 {
+abstract contract PosmState {
     using PositionConfigLibrary for *;
 
     /// @dev The ID of the next token that will be minted. Skips 0
-    uint256 public _nextTokenId = 1;
+    // uint256 public _nextTokenId = 1;
+
+    function _isApprovedOrOwner(address caller, uint256 tokenId) internal view virtual returns (bool);
 
     mapping(uint256 tokenId => bytes32 config) internal positionConfigs;
-
-    constructor() ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM") {}
 
     function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
         return positionConfigs.getConfigId(tokenId);
