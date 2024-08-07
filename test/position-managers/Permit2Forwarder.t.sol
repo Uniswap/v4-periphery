@@ -9,10 +9,10 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {Permit2SignatureHelpers} from "../shared/Permit2SignatureHelpers.sol";
-import {MockPermit2Forwarder} from "../mocks/MockPermit2Forwarder.sol";
+import {Permit2Forwarder} from "../../src/base/Permit2Forwarder.sol";
 
 contract Permit2ForwarderTest is Test, PosmTestSetup, Permit2SignatureHelpers {
-    MockPermit2Forwarder permit2Forwarder;
+    Permit2Forwarder permit2Forwarder;
 
     uint160 amount0 = 10e18;
     // the expiration of the allowance is large
@@ -29,7 +29,7 @@ contract Permit2ForwarderTest is Test, PosmTestSetup, Permit2SignatureHelpers {
         (currency0, currency1) = deployAndMint2Currencies();
         // also deploys permit2
         deployPosm(manager);
-        permit2Forwarder = new MockPermit2Forwarder(permit2);
+        permit2Forwarder = new Permit2Forwarder(permit2);
         PERMIT2_DOMAIN_SEPARATOR = permit2.DOMAIN_SEPARATOR();
 
         alicePrivateKey = 0x12341234;
