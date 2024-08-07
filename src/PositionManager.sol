@@ -218,7 +218,7 @@ contract PositionManager is
     ) internal onlyValidConfig(tokenId, config) {
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        liquidityDelta.validateMaxInNegative(amount0Max, amount1Max);
+        liquidityDelta.validateMaxIn(amount0Max, amount1Max);
     }
 
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
