@@ -191,7 +191,7 @@ contract PositionManager is
                 _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
             } else if (action == Actions.TAKE) {
                 (Currency currency, address recipient, uint256 amount) = params.decodeCurrencyAddressAndUint256();
-                _take(currency, _mapRecipient(recipient), _mapTakeAmount(amount, currency));
+                _take(currency, _mapRecipient(recipient), _mapCreditAmount(amount, currency));
             } else if (action == Actions.CLOSE_CURRENCY) {
                 Currency currency = params.decodeCurrency();
                 _close(currency);
