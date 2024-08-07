@@ -10,7 +10,6 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {ERC721Permit_v4} from "./ERC721Permit_v4.sol";
 import {DeltaResolver} from "./DeltaResolver.sol";
@@ -24,7 +23,7 @@ import {ReentrancyLock} from "./ReentrancyLock.sol";
 import {Permit2ImmutableState} from "./Permit2ImmutableState.sol";
 import {IPositionActionsRouter} from "../interfaces/IPositionActionsRouter.sol";
 
-contract PositionActionsRouter is
+abstract contract PositionActionsRouter is
     IPositionActionsRouter,
     ERC721Permit_v4,
     DeltaResolver,
@@ -48,9 +47,8 @@ contract PositionActionsRouter is
 
     mapping(uint256 tokenId => bytes32 config) private _positionConfigs;
 
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
+    constructor(IPoolManager _poolManager)
         BaseActionsRouter(_poolManager)
-        Permit2ImmutableState(_permit2)
         ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
     {}
 
