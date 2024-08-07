@@ -47,8 +47,6 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
     // bob used for permit2 signature tests
     uint256 bobPK;
 
-    Permit2Forwarder permit2Forwarder;
-
     uint160 permitAmount = type(uint160).max;
     // the expiration of the allowance is large
     uint48 permitExpiration = uint48(block.timestamp + 10e18);
@@ -70,7 +68,6 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
 
-        permit2Forwarder = new Permit2Forwarder(permit2);
         PERMIT2_DOMAIN_SEPARATOR = permit2.DOMAIN_SEPARATOR();
 
         seedBalance(alice);

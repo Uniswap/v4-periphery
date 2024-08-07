@@ -8,7 +8,7 @@ import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {INotifier} from "./INotifier.sol";
 import {IPoolInitializer} from "./IPoolInitializer.sol";
 
-interface IPositionManager is IPoolInitializer {
+interface IPositionManager {
     error NotApproved(address caller);
     error DeadlinePassed();
     error IncorrectPositionConfigForTokenId(uint256 tokenId);

@@ -22,15 +22,15 @@ import {Actions} from "../libraries/Actions.sol";
 import {Notifier} from "./Notifier.sol";
 import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
-import {Permit2Forwarder} from "./Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "../libraries/SlippageCheck.sol";
 import {ReentrancyLock} from "./ReentrancyLock.sol";
+import {Permit2ImmutableState} from "./Permit2ImmutableState.sol";
 
 contract PosmActionsRouter is
     ERC721Permit_v4,
     DeltaResolver,
     BaseActionsRouter,
-    Permit2Forwarder,
+    Permit2ImmutableState,
     ReentrancyLock,
     Notifier
 {
@@ -47,11 +47,12 @@ contract PosmActionsRouter is
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
+
     mapping(uint256 tokenId => bytes32 config) private _positionConfigs;
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
-        Permit2Forwarder(_permit2)
+        Permit2ImmutableState(_permit2)
         ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
     {}
 
