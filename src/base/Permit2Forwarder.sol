@@ -10,9 +10,9 @@ import {Permit2ImmutableState} from "./Permit2ImmutableState.sol";
 /// @dev This contract does not enforce the spender to be this contract, but that is the intended use case
 contract Permit2Forwarder is IPermit2Forwarder, Permit2ImmutableState {
     constructor(IAllowanceTransfer _permit2) Permit2ImmutableState(_permit2) {}
+
     /// @notice allows forwarding a single permit to permit2
     /// @dev this function is payable to allow multicall with NATIVE based actions
-
     function permit(address owner, IAllowanceTransfer.PermitSingle calldata permitSingle, bytes calldata signature)
         external
         payable

@@ -10,7 +10,6 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {ERC721Permit_v4} from "./ERC721Permit_v4.sol";
 import {DeltaResolver} from "./DeltaResolver.sol";
