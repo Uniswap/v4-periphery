@@ -11,7 +11,10 @@ import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {Multicall_v4} from "./base/Multicall_v4.sol";
 
 contract PositionManager is IPositionManager, PositionActionsRouter, PoolInitializer, Permit2Forwarder, Multicall_v4 {
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2) PositionActionsRouter(_poolManager, _permit2) {}
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
+        PositionActionsRouter(_poolManager)
+        Permit2Forwarder(_permit2)
+    {}
 
     /// @inheritdoc IPositionManager
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
