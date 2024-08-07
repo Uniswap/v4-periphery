@@ -72,6 +72,27 @@ contract PermitTest is Test, PosmTestSetup {
         );
     }
 
+    function test_permit_increaseLiquidity() public {
+        uint256 liquidityAlice = 1e18;
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        vm.prank(alice);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+
+        // alice gives bob operator permissions
+        permit(alicePK, tokenIdAlice, bob, 1);
+
+        // bob can increase liquidity on alice's token
+        uint256 liquidityToAdd = 0.4444e18;
+        vm.startPrank(bob);
+        increaseLiquidity(tokenIdAlice, config, liquidityToAdd, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice's position decreased liquidity
+        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
+
+        assertEq(liquidity, liquidityAlice + liquidityToAdd);
+    }
+
     function test_permit_decreaseLiquidity() public {
         uint256 liquidityAlice = 1e18;
         vm.prank(alice);
@@ -143,9 +164,22 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
     }
 
-    // unapproved callers can increase others' positions
-    // see `test_increaseLiquidity_withUnapprovedCaller()`
-    // function test_noPermit_increaseLiquidityRevert() public {}
+    /// @dev unapproved callers CANNOT increase others' positions
+    function test_noPermit_increaseLiquidityRevert() public {
+        // increase fails if the owner did not permit
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // bob cannot increase liquidity on alice's token
+        uint256 liquidityToAdd = 0.4444e18;
+        bytes memory decrease = getIncreaseEncoded(tokenIdAlice, config, liquidityToAdd, ZERO_BYTES);
+        vm.startPrank(bob);
+        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
+        lpm.modifyLiquidities(decrease, _deadline);
+        vm.stopPrank();
+    }
 
     function test_noPermit_decreaseLiquidityRevert() public {
         // decreaseLiquidity fails if the owner did not permit
