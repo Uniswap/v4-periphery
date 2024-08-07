@@ -5,10 +5,12 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PositionConfig} from "../libraries/PositionConfig.sol";
 
-import {INotifier} from "./INotifier.sol";
+import {IPositionActionsRouter} from "./IPositionActionsRouter.sol";
 import {IPoolInitializer} from "./IPoolInitializer.sol";
+import {IPermit2Forwarder} from "./IPermit2Forwarder.sol";
+import {IMulticall_v4} from "./IMulticall_v4.sol";
 
-interface IPositionManager {
+interface IPositionManager is IPositionActionsRouter, IPoolInitializer, IPermit2Forwarder, IMulticall_v4 {
     error DeadlinePassed();
 
     /// @notice Unlocks Uniswap v4 PoolManager and batches actions for modifying liquidity

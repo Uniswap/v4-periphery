@@ -35,7 +35,7 @@ contract PositionManager is IPositionManager, PositionActionsRouter, PoolInitial
     /// @notice Reverts if the deadline has passed
     /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
     modifier checkDeadline(uint256 deadline) {
-        if (block.timestamp > deadline) revert(); // TODO: error DeadlinePassed();
+        if (block.timestamp > deadline) revert DeadlinePassed();
         _;
     }
 }
