@@ -30,8 +30,6 @@ import {FeeMath} from "../shared/FeeMath.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 
-import "forge-std/console2.sol";
-
 contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
@@ -78,7 +76,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     }
 
     /// @notice Increase liquidity by less than the amount of liquidity the position has earned, requiring a take
-    function test_increaseLiquidity_withCollection_take() public {
+    function test_increaseLiquidity_withCollection_takePair() public {
         // Alice and Bob provide liquidity on the range
         // Alice uses her exact fees to increase liquidity (compounding)
 
@@ -132,7 +130,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
                 ZERO_BYTES
             )
         );
-        bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
+        bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(alice));
         vm.startPrank(alice);
         lpm.modifyLiquidities(calls, _deadline);
         vm.stopPrank();

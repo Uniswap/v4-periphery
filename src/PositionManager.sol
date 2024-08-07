@@ -219,7 +219,7 @@ contract PositionManager is
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
             _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        // Slippage checks should be done on the principle liquidityDelta which is the liquidityDelta - feesAccrued
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
         (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
     }
 
@@ -235,7 +235,7 @@ contract PositionManager is
         // Note: the tokenId is used as the salt.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
             _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-        // Slippage checks should be done on the principle liquidityDelta which is the liquidityDelta - feesAccrued
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
         (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
     }
 
@@ -258,7 +258,7 @@ contract PositionManager is
         // _beforeModify is not called here because the tokenId is newly minted
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
             _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        // Slippage checks should be done on the principle liquidityDelta which is the liquidityDelta - feesAccrued
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
         (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
         positionConfigs.setConfigId(tokenId, config);
 
@@ -275,13 +275,11 @@ contract PositionManager is
     ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         uint256 liquidity = uint256(getPositionLiquidity(tokenId, config));
 
-        BalanceDelta liquidityDelta;
-        BalanceDelta feesAccrued;
         // Can only call modify if there is non zero liquidity.
         if (liquidity > 0) {
-            (liquidityDelta, feesAccrued) =
+            (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
                 _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-            // Slippage checks should be done on the principle liquidityDelta which is the liquidityDelta - feesAccrued
+            // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
 
