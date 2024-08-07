@@ -215,7 +215,7 @@ contract PositionManager is
         uint128 amount0Max,
         uint128 amount1Max,
         bytes calldata hookData
-    ) internal onlyValidConfig(tokenId, config) {
+    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         liquidityDelta.validateMaxInNegative(amount0Max, amount1Max);
