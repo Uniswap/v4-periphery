@@ -29,10 +29,10 @@ import {INotifier} from "./interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {Permit2ImmutableState} from "./base/Permit2ImmutableState.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
-import {PosmActionsRouter} from "./base/PosmActionsRouter.sol";
+import {PositionActionsRouter} from "./base/PositionActionsRouter.sol";
 
-contract PositionManager is IPositionManager, PosmActionsRouter, PoolInitializer, Permit2Forwarder, Multicall_v4 {
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2) PosmActionsRouter(_poolManager, _permit2) {}
+contract PositionManager is IPositionManager, PositionActionsRouter, PoolInitializer, Permit2Forwarder, Multicall_v4 {
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2) PositionActionsRouter(_poolManager, _permit2) {}
 
     /// @inheritdoc IPositionManager
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)

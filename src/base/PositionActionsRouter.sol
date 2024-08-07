@@ -26,7 +26,7 @@ import {SlippageCheckLibrary} from "../libraries/SlippageCheck.sol";
 import {ReentrancyLock} from "./ReentrancyLock.sol";
 import {Permit2ImmutableState} from "./Permit2ImmutableState.sol";
 
-contract PosmActionsRouter is
+contract PositionActionsRouter is
     ERC721Permit_v4,
     DeltaResolver,
     BaseActionsRouter,
