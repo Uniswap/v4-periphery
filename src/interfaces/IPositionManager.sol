@@ -9,11 +9,7 @@ import {INotifier} from "./INotifier.sol";
 import {IPoolInitializer} from "./IPoolInitializer.sol";
 
 interface IPositionManager {
-    error NotApproved(address caller);
     error DeadlinePassed();
-    error IncorrectPositionConfigForTokenId(uint256 tokenId);
-
-    event MintPosition(uint256 indexed tokenId, PositionConfig config);
 
     /// @notice Unlocks Uniswap v4 PoolManager and batches actions for modifying liquidity
     /// @dev This is the standard entrypoint for the PositionManager

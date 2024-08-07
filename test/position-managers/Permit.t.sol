@@ -18,7 +18,7 @@ import {ERC721Permit_v4} from "../../src/base/ERC721Permit_v4.sol";
 import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
 
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionActionsRouter} from "../../src/interfaces/IPositionActionsRouter.sol";
 
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
@@ -158,7 +158,7 @@ contract PermitTest is Test, PosmTestSetup {
         uint256 liquidityToRemove = 0.4444e18;
         bytes memory decrease = getDecreaseEncoded(tokenIdAlice, config, liquidityToRemove, ZERO_BYTES);
         vm.startPrank(bob);
-        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
+        vm.expectRevert(abi.encodeWithSelector(IPositionActionsRouter.NotApproved.selector, address(bob)));
         lpm.modifyLiquidities(decrease, _deadline);
         vm.stopPrank();
     }
@@ -178,7 +178,7 @@ contract PermitTest is Test, PosmTestSetup {
         // bob cannot collect fees
         bytes memory collect = getCollectEncoded(tokenIdAlice, config, ZERO_BYTES);
         vm.startPrank(bob);
-        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
+        vm.expectRevert(abi.encodeWithSelector(IPositionActionsRouter.NotApproved.selector, address(bob)));
         lpm.modifyLiquidities(collect, block.timestamp + 1);
         vm.stopPrank();
     }

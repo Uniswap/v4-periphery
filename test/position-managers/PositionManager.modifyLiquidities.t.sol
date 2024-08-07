@@ -14,7 +14,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
-import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionActionsRouter} from "../../src/interfaces/IPositionActionsRouter.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
@@ -210,7 +210,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
             abi.encodeWithSelector(
                 Hooks.Wrap__FailedHookCall.selector,
                 address(hookModifyLiquidities),
-                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities))
+                abi.encodeWithSelector(IPositionActionsRouter.NotApproved.selector, address(hookModifyLiquidities))
             )
         );
         swap(key, true, -1e18, calls);
@@ -235,7 +235,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
             abi.encodeWithSelector(
                 Hooks.Wrap__FailedHookCall.selector,
                 address(hookModifyLiquidities),
-                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities))
+                abi.encodeWithSelector(IPositionActionsRouter.NotApproved.selector, address(hookModifyLiquidities))
             )
         );
         swap(key, true, -1e18, calls);
@@ -256,7 +256,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
             abi.encodeWithSelector(
                 Hooks.Wrap__FailedHookCall.selector,
                 address(hookModifyLiquidities),
-                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities))
+                abi.encodeWithSelector(IPositionActionsRouter.NotApproved.selector, address(hookModifyLiquidities))
             )
         );
         swap(key, true, -1e18, calls);

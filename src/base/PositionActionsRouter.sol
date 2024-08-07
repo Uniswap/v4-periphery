@@ -25,8 +25,10 @@ import {INotifier} from "../interfaces/INotifier.sol";
 import {SlippageCheckLibrary} from "../libraries/SlippageCheck.sol";
 import {ReentrancyLock} from "./ReentrancyLock.sol";
 import {Permit2ImmutableState} from "./Permit2ImmutableState.sol";
+import {IPositionActionsRouter} from "../interfaces/IPositionActionsRouter.sol";
 
 contract PositionActionsRouter is
+    IPositionActionsRouter,
     ERC721Permit_v4,
     DeltaResolver,
     BaseActionsRouter,
@@ -57,7 +59,7 @@ contract PositionActionsRouter is
     {}
 
     modifier onlyIfApproved(address caller, uint256 tokenId) override {
-        if (!_isApprovedOrOwner(caller, tokenId)) revert(); // TODO: NotApproved(caller);
+        if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
         _;
     }
 
@@ -65,7 +67,7 @@ contract PositionActionsRouter is
     /// @param tokenId the unique identifier of the ERC721 token
     /// @param config the PositionConfig to check against
     modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) override {
-        if (_positionConfigs.getConfigId(tokenId) != config.toId()) revert(); // TODO: IncorrectPositionConfigForTokenId(tokenId);
+        if (_positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         _;
     }
 
@@ -210,8 +212,7 @@ contract PositionActionsRouter is
         liquidityDelta.validateMaxIn(amount0Max, amount1Max);
         _positionConfigs.setConfigId(tokenId, config);
 
-        // TODO:
-        // emit MintPosition(tokenId, config);
+        emit MintPosition(tokenId, config);
     }
 
     /// @dev this is overloaded with ERC721Permit_v4._burn

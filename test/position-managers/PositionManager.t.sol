@@ -20,7 +20,7 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionActionsRouter} from "../../src/interfaces/IPositionActionsRouter.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
@@ -940,7 +940,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 tokenId = lpm.nextTokenId();
 
         vm.expectEmit(true, false, false, true, address(lpm));
-        emit IPositionManager.MintPosition(tokenId, config);
+        emit IPositionActionsRouter.MintPosition(tokenId, config);
         mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
     }
 

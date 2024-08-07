@@ -13,7 +13,7 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionActionsRouter} from "../../src/interfaces/IPositionActionsRouter.sol";
 import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {INotifier} from "../../src/interfaces/INotifier.sol";
@@ -61,7 +61,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // this contract is not approved to operate on alice's liq
 
-        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(this)));
+        vm.expectRevert(abi.encodeWithSelector(IPositionActionsRouter.NotApproved.selector, address(this)));
         lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
     }
 
@@ -76,7 +76,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         PositionConfig memory incorrectConfig = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 301});
 
-        vm.expectRevert(abi.encodeWithSelector(IPositionManager.IncorrectPositionConfigForTokenId.selector, tokenId));
+        vm.expectRevert(abi.encodeWithSelector(IPositionActionsRouter.IncorrectPositionConfigForTokenId.selector, tokenId));
         lpm.subscribe(tokenId, incorrectConfig, address(sub), ZERO_BYTES);
     }
 

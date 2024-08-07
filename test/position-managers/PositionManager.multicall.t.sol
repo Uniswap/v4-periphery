@@ -18,6 +18,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionActionsRouter} from "../../src/interfaces/IPositionActionsRouter.sol";
 import {PoolInitializer} from "../../src/base/PoolInitializer.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
@@ -134,7 +135,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         address charlie = makeAddr("CHARLIE");
         vm.startPrank(charlie);
-        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, charlie));
+        vm.expectRevert(abi.encodeWithSelector(IPositionActionsRouter.NotApproved.selector, charlie));
         lpm.multicall(calls);
         vm.stopPrank();
     }
