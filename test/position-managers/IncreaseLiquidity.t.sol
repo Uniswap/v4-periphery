@@ -119,7 +119,10 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         Plan memory planner = Planner.init();
         planner.add(
-            Actions.INCREASE_LIQUIDITY, abi.encode(tokenIdAlice, config, liquidityDelta, 0 wei, 0 wei, ZERO_BYTES)
+            Actions.INCREASE_LIQUIDITY,
+            abi.encode(
+                tokenIdAlice, config, liquidityDelta, feesOwedAlice.amount0(), feesOwedAlice.amount1(), ZERO_BYTES
+            )
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.startPrank(alice);
