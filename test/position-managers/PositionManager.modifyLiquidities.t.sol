@@ -90,7 +90,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         uint256 tokenId = lpm.nextTokenId();
         mint(config, initialLiquidity, address(this), ZERO_BYTES);
 
-        // approve the hook for decreasing liquidity
+        // approve the hook for increasing liquidity
         lpm.approve(address(hookModifyLiquidities), tokenId);
 
         // hook increases liquidity in beforeSwap via hookData

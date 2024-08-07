@@ -78,7 +78,7 @@ contract PermitTest is Test, PosmTestSetup {
         vm.prank(alice);
         mint(config, liquidityAlice, alice, ZERO_BYTES);
 
-        // alice gives bob operator permissions
+        // alice gives bob permissions
         permit(alicePK, tokenIdAlice, bob, 1);
 
         // bob can increase liquidity on alice's token
@@ -87,7 +87,7 @@ contract PermitTest is Test, PosmTestSetup {
         increaseLiquidity(tokenIdAlice, config, liquidityToAdd, ZERO_BYTES);
         vm.stopPrank();
 
-        // alice's position decreased liquidity
+        // alice's position increased liquidity
         uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
 
         assertEq(liquidity, liquidityAlice + liquidityToAdd);
