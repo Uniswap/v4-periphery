@@ -9,7 +9,8 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
-import {PositionManager, Actions} from "../../src/PositionManager.sol";
+import {PositionManager} from "../../src/PositionManager.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {HookSavesDelta} from "./HookSavesDelta.sol";

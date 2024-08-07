@@ -76,7 +76,9 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         PositionConfig memory incorrectConfig = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 301});
 
-        vm.expectRevert(abi.encodeWithSelector(IPositionActionsRouter.IncorrectPositionConfigForTokenId.selector, tokenId));
+        vm.expectRevert(
+            abi.encodeWithSelector(IPositionActionsRouter.IncorrectPositionConfigForTokenId.selector, tokenId)
+        );
         lpm.subscribe(tokenId, incorrectConfig, address(sub), ZERO_BYTES);
     }
 

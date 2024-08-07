@@ -10,8 +10,6 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {ERC721Permit_v4} from "./ERC721Permit_v4.sol";
@@ -21,7 +19,6 @@ import {BaseActionsRouter} from "./BaseActionsRouter.sol";
 import {Actions} from "../libraries/Actions.sol";
 import {Notifier} from "./Notifier.sol";
 import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
-import {INotifier} from "../interfaces/INotifier.sol";
 import {SlippageCheckLibrary} from "../libraries/SlippageCheck.sol";
 import {ReentrancyLock} from "./ReentrancyLock.sol";
 import {Permit2ImmutableState} from "./Permit2ImmutableState.sol";
@@ -36,7 +33,6 @@ contract PositionActionsRouter is
     ReentrancyLock,
     Notifier
 {
-    using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using PositionConfigLibrary for *;
