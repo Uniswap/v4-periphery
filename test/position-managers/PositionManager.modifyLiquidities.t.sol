@@ -84,7 +84,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         assertEq(lpm.ownerOf(hookTokenId), address(hookModifyLiquidities)); // hook position owned by hook
     }
 
-    /// @dev increasing liquidity without approval is not allowed
+    /// @dev hook must be approved to increase liquidity
     function test_hook_increaseLiquidity() public {
         uint256 initialLiquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();
