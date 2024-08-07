@@ -16,6 +16,7 @@ import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {SafeCastTemp} from "./libraries/SafeCast.sol";
+import {ActionConstants} from "./libraries/ActionConstants.sol";
 
 /// @title UniswapV4Router
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
@@ -68,7 +69,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
             } else if (action == Actions.TAKE) {
                 (Currency currency, address recipient, uint256 amount) = params.decodeCurrencyAddressAndUint256();
-                _take(currency, _mapRecipient(recipient), _mapCreditAmount(amount, currency));
+                _take(currency, _mapRecipient(recipient), _mapTakeAmount(amount, currency));
             } else if (action == Actions.TAKE_PORTION) {
                 (Currency currency, address recipient, uint256 bips) = params.decodeCurrencyAddressAndUint256();
                 _take(currency, _mapRecipient(recipient), _getFullCredit(currency).calculatePortion(bips));
@@ -79,9 +80,11 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     }
 
     function _swapExactInputSingle(IV4Router.ExactInputSingleParams calldata params) private {
-        uint128 amountIn = _mapCreditAmount(
-            params.amountIn, params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1
-        ).toUint128();
+        uint128 amountIn = params.amountIn;
+        if (amountIn == ActionConstants.OPEN_DELTA) {
+            amountIn =
+                _getFullCredit(params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1).toUint128();
+        }
         uint128 amountOut = _swap(
             params.poolKey, params.zeroForOne, int256(-int128(amountIn)), params.sqrtPriceLimitX96, params.hookData
         ).toUint128();
@@ -94,7 +97,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             uint256 pathLength = params.path.length;
             uint128 amountOut;
             Currency currencyIn = params.currencyIn;
-            uint128 amountIn = _mapCreditAmount(params.amountIn, currencyIn).toUint128();
+            uint128 amountIn = params.amountIn;
+            if (amountIn == ActionConstants.OPEN_DELTA) amountIn = _getFullCredit(currencyIn).toUint128();
             PathKey calldata pathKey;
 
             for (uint256 i = 0; i < pathLength; i++) {
