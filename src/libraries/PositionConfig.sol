@@ -10,49 +10,8 @@ struct PositionConfig {
     int24 tickUpper;
 }
 
-/// @notice Library to get and set the PositionConfigId and subscriber status for a given tokenId
+/// @notice Library to calculate the PositionConfigId from the PositionConfig struct
 library PositionConfigLibrary {
-    using PositionConfigLibrary for PositionConfig;
-
-    bytes32 constant MASK_UPPER_BIT = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-    bytes32 constant DIRTY_UPPER_BIT = 0x8000000000000000000000000000000000000000000000000000000000000000;
-
-    /// @notice returns the truncated hash of the PositionConfig for a given tokenId
-    function getConfigId(mapping(uint256 => bytes32) storage positionConfigs, uint256 tokenId)
-        internal
-        view
-        returns (bytes32 configId)
-    {
-        configId = positionConfigs[tokenId] & MASK_UPPER_BIT;
-    }
-
-    function setConfigId(
-        mapping(uint256 => bytes32) storage positionConfigs,
-        uint256 tokenId,
-        PositionConfig calldata config
-    ) internal {
-        positionConfigs[tokenId] = config.toId();
-    }
-
-    function setSubscribe(mapping(uint256 => bytes32) storage positionConfigs, uint256 tokenId) internal {
-        positionConfigs[tokenId] |= DIRTY_UPPER_BIT;
-    }
-
-    function setUnsubscribe(mapping(uint256 => bytes32) storage positionConfigs, uint256 tokenId) internal {
-        positionConfigs[tokenId] &= MASK_UPPER_BIT;
-    }
-
-    function hasSubscriber(mapping(uint256 => bytes32) storage positionConfigs, uint256 tokenId)
-        internal
-        view
-        returns (bool subscribed)
-    {
-        bytes32 _config = positionConfigs[tokenId];
-        assembly ("memory-safe") {
-            subscribed := shr(255, _config)
-        }
-    }
-
     function toId(PositionConfig calldata config) internal pure returns (bytes32 id) {
         // id = keccak256(abi.encodePacked(currency0, currency1, fee, tickSpacing, hooks, tickLower, tickUpper))) >> 1
         assembly ("memory-safe") {
