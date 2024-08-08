@@ -29,6 +29,7 @@ import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {INotifier} from "./interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
+import {PositionConfigId, PositionConfigIdLibrary} from "./libraries/PositionConfigId.sol";
 
 contract PositionManager is
     IPositionManager,
@@ -44,21 +45,23 @@ contract PositionManager is
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
-    using PositionConfigLibrary for *;
+    using PositionConfigLibrary for PositionConfig;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
     using SafeCast for int256;
     using CalldataDecoder for bytes;
     using SlippageCheckLibrary for BalanceDelta;
+    using PositionConfigIdLibrary for PositionConfigId;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
-    mapping(uint256 tokenId => bytes32 config) private _positionConfigs;
+    mapping(uint256 tokenId => PositionConfigId configId) internal positionConfigs;
 
-    function positionConfigs() internal view override returns (mapping(uint256 tokenId => bytes32 config) storage) {
-        return _positionConfigs;
+    /// @notice an internal getter for PositionConfigId to be used by Notifier
+    function _positionConfigs(uint256 tokenId) internal view override returns (PositionConfigId storage) {
+        return positionConfigs[tokenId];
     }
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
@@ -88,7 +91,7 @@ contract PositionManager is
     /// @param tokenId the unique identifier of the ERC721 token
     /// @param config the PositionConfig to check against
     modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) override {
-        if (_positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+        if (positionConfigs[tokenId].getConfigId() != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         _;
     }
 
@@ -235,7 +238,7 @@ contract PositionManager is
         // _beforeModify is not called here because the tokenId is newly minted
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         liquidityDelta.validateMaxIn(amount0Max, amount1Max);
-        _positionConfigs.setConfigId(tokenId, config);
+        positionConfigs[tokenId].setConfigId(config);
 
         emit MintPosition(tokenId, config);
     }
@@ -257,7 +260,7 @@ contract PositionManager is
             liquidityDelta.validateMinOut(amount0Min, amount1Min);
         }
 
-        delete _positionConfigs[tokenId];
+        delete positionConfigs[tokenId];
         // Burn the token.
         _burn(tokenId);
     }
@@ -326,7 +329,7 @@ contract PositionManager is
             hookData
         );
 
-        if (_positionConfigs.hasSubscriber(uint256(salt))) {
+        if (positionConfigs[uint256(salt)].hasSubscriber()) {
             _notifyModifyLiquidity(uint256(salt), config, liquidityChange, feesAccrued);
         }
     }
@@ -344,7 +347,7 @@ contract PositionManager is
     /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
     function transferFrom(address from, address to, uint256 id) public virtual override {
         super.transferFrom(from, to, id);
-        if (_positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
+        if (positionConfigs[id].hasSubscriber()) _notifyTransfer(id, from, to);
     }
 
     /// @inheritdoc IPositionManager
@@ -360,6 +363,6 @@ contract PositionManager is
 
     /// @inheritdoc IPositionManager
     function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
-        return _positionConfigs.getConfigId(tokenId);
+        return positionConfigs[tokenId].getConfigId();
     }
 }

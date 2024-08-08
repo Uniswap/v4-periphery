@@ -2,7 +2,8 @@
 pragma solidity ^0.8.24;
 
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
-import {PositionConfig, PositionConfigLibrary} from "../libraries/PositionConfig.sol";
+import {PositionConfig} from "../libraries/PositionConfig.sol";
+import {PositionConfigId, PositionConfigIdLibrary} from "../libraries/PositionConfigId.sol";
 import {BipsLibrary} from "../libraries/BipsLibrary.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
@@ -12,7 +13,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 abstract contract Notifier is INotifier {
     using BipsLibrary for uint256;
     using CustomRevert for bytes4;
-    using PositionConfigLibrary for mapping(uint256 => bytes32);
+    using PositionConfigIdLibrary for PositionConfigId;
 
     error AlreadySubscribed(address subscriber);
 
@@ -30,7 +31,8 @@ abstract contract Notifier is INotifier {
 
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
     modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) virtual;
-    function positionConfigs() internal view virtual returns (mapping(uint256 tokenId => bytes32 config) storage);
+
+    function _positionConfigs(uint256 tokenId) internal view virtual returns (PositionConfigId storage);
 
     /// @inheritdoc INotifier
     function subscribe(uint256 tokenId, PositionConfig calldata config, address newSubscriber, bytes calldata data)
@@ -40,7 +42,7 @@ abstract contract Notifier is INotifier {
         onlyValidConfig(tokenId, config)
     {
         // will revert below if the user already has a subcriber
-        positionConfigs().setSubscribe(tokenId);
+        _positionConfigs(tokenId).setSubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
         if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(address(_subscriber));
@@ -64,7 +66,7 @@ abstract contract Notifier is INotifier {
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
-        positionConfigs().setUnsubscribe(tokenId);
+        _positionConfigs(tokenId).setUnsubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
         uint256 subscriberGasLimit = block.gaslimit.calculatePortion(BLOCK_LIMIT_BPS);
@@ -116,6 +118,6 @@ abstract contract Notifier is INotifier {
 
     /// @inheritdoc INotifier
     function hasSubscriber(uint256 tokenId) external view returns (bool) {
-        return positionConfigs().hasSubscriber(tokenId);
+        return _positionConfigs(tokenId).hasSubscriber();
     }
 }
