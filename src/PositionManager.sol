@@ -196,7 +196,7 @@ contract PositionManager is
         uint128 amount0Max,
         uint128 amount1Max,
         bytes calldata hookData
-    ) internal onlyValidConfig(tokenId, config) {
+    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         liquidityDelta.validateMaxInNegative(amount0Max, amount1Max);
@@ -314,7 +314,8 @@ contract PositionManager is
         bytes32 salt,
         bytes calldata hookData
     ) internal returns (BalanceDelta liquidityDelta) {
-        (liquidityDelta,) = poolManager.modifyLiquidity(
+        BalanceDelta feesAccrued;
+        (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
             config.poolKey,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: config.tickLower,
@@ -326,7 +327,7 @@ contract PositionManager is
         );
 
         if (_positionConfigs.hasSubscriber(uint256(salt))) {
-            _notifyModifyLiquidity(uint256(salt), config, liquidityChange);
+            _notifyModifyLiquidity(uint256(salt), config, liquidityChange, feesAccrued);
         }
     }
 
