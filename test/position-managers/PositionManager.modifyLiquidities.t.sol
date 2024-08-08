@@ -84,11 +84,14 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         assertEq(lpm.ownerOf(hookTokenId), address(hookModifyLiquidities)); // hook position owned by hook
     }
 
-    /// @dev increasing liquidity without approval is allowable
+    /// @dev hook must be approved to increase liquidity
     function test_hook_increaseLiquidity() public {
         uint256 initialLiquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();
         mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        // approve the hook for increasing liquidity
+        lpm.approve(address(hookModifyLiquidities), tokenId);
 
         // hook increases liquidity in beforeSwap via hookData
         uint256 newLiquidity = 10e18;
@@ -195,7 +198,28 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
     }
 
     // --- Revert Scenarios --- //
-    /// @dev Hook does not have approval so decreasingly liquidity should revert
+    /// @dev Hook does not have approval so increasing liquidity should revert
+    function test_hook_increaseLiquidity_revert() public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        // hook decreases liquidity in beforeSwap via hookData
+        uint256 liquidityToAdd = 10e18;
+        bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToAdd, ZERO_BYTES);
+
+        // should revert because hook is not approved
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.Wrap__FailedHookCall.selector,
+                address(hookModifyLiquidities),
+                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities))
+            )
+        );
+        swap(key, true, -1e18, calls);
+    }
+
+    /// @dev Hook does not have approval so decreasing liquidity should revert
     function test_hook_decreaseLiquidity_revert() public {
         uint256 initialLiquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();

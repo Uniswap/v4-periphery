@@ -4,11 +4,13 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 
 import {PositionConfig, PositionConfigLibrary} from "../../src/libraries/PositionConfig.sol";
+import {PositionConfigId, PositionConfigIdLibrary} from "../../src/libraries/PositionConfigId.sol";
 
 contract PositionConfigTest is Test {
-    using PositionConfigLibrary for *;
+    using PositionConfigLibrary for PositionConfig;
+    using PositionConfigIdLibrary for PositionConfigId;
 
-    mapping(uint256 => bytes32) internal testConfigs;
+    mapping(uint256 => PositionConfigId) internal testConfigs;
 
     bytes32 public constant UPPER_BIT_SET = 0x8000000000000000000000000000000000000000000000000000000000000000;
 
@@ -18,88 +20,127 @@ contract PositionConfigTest is Test {
     }
 
     function test_fuzz_setConfigId(uint256 tokenId, PositionConfig calldata config) public {
-        testConfigs.setConfigId(tokenId, config);
+        testConfigs[tokenId].setConfigId(config.toId());
 
         bytes32 expectedConfigId = _calculateExpectedId(config);
 
-        bytes32 actualConfigId = testConfigs[tokenId];
+        bytes32 actualConfigId = testConfigs[tokenId].id;
         assertEq(expectedConfigId, actualConfigId);
     }
 
     function test_fuzz_getConfigId(uint256 tokenId, PositionConfig calldata config) public {
         bytes32 expectedId = _calculateExpectedId(config);
         // set
-        testConfigs[tokenId] = expectedId;
+        testConfigs[tokenId] = PositionConfigId({id: expectedId});
 
-        assertEq(expectedId, testConfigs.getConfigId(tokenId));
+        assertEq(expectedId, testConfigs[tokenId].getConfigId());
     }
 
     function test_fuzz_setConfigId_getConfigId(uint256 tokenId, PositionConfig calldata config) public {
-        testConfigs.setConfigId(tokenId, config);
+        testConfigs[tokenId].setConfigId(config.toId());
 
         bytes32 expectedId = _calculateExpectedId(config);
 
-        assertEq(testConfigs.getConfigId(tokenId), testConfigs[tokenId]);
-        assertEq(testConfigs.getConfigId(tokenId), expectedId);
+        assertEq(testConfigs[tokenId].getConfigId(), testConfigs[tokenId].id);
+        assertEq(testConfigs[tokenId].getConfigId(), expectedId);
     }
 
     function test_fuzz_getConfigId_equal_afterSubscribe(uint256 tokenId, PositionConfig calldata config) public {
-        testConfigs.setConfigId(tokenId, config);
-        testConfigs.setSubscribe(tokenId);
+        testConfigs[tokenId].setConfigId(config.toId());
+        testConfigs[tokenId].setSubscribe();
 
-        assertEq(testConfigs.getConfigId(tokenId), config.toId());
+        assertEq(testConfigs[tokenId].getConfigId(), config.toId());
     }
 
     function test_fuzz_setSubscribe(uint256 tokenId) public {
-        testConfigs.setSubscribe(tokenId);
-        bytes32 upperBitSet = testConfigs[tokenId];
+        testConfigs[tokenId].setSubscribe();
+        bytes32 upperBitSet = testConfigs[tokenId].id;
 
         assertEq(upperBitSet, UPPER_BIT_SET);
     }
 
     function test_fuzz_setConfigId_setSubscribe(uint256 tokenId, PositionConfig calldata config) public {
-        testConfigs.setConfigId(tokenId, config);
-        testConfigs.setSubscribe(tokenId);
+        testConfigs[tokenId].setConfigId(config.toId());
+        testConfigs[tokenId].setSubscribe();
 
         bytes32 expectedConfig = _calculateExpectedId(config) | UPPER_BIT_SET;
 
-        bytes32 _config = testConfigs[tokenId];
+        bytes32 _config = testConfigs[tokenId].id;
 
         assertEq(_config, expectedConfig);
     }
 
     function test_fuzz_setUnsubscribe(uint256 tokenId) public {
-        testConfigs.setSubscribe(tokenId);
-        bytes32 _config = testConfigs[tokenId];
+        testConfigs[tokenId].setSubscribe();
+        bytes32 _config = testConfigs[tokenId].id;
         assertEq(_config, UPPER_BIT_SET);
-        testConfigs.setUnsubscribe(tokenId);
-        _config = testConfigs[tokenId];
+        testConfigs[tokenId].setUnsubscribe();
+        _config = testConfigs[tokenId].id;
         assertEq(_config, 0);
     }
 
     function test_hasSubscriber(uint256 tokenId) public {
-        testConfigs.setSubscribe(tokenId);
-        assert(testConfigs.hasSubscriber(tokenId));
-        testConfigs.setUnsubscribe(tokenId);
-        assert(!testConfigs.hasSubscriber(tokenId));
+        testConfigs[tokenId].setSubscribe();
+        assert(testConfigs[tokenId].hasSubscriber());
+        testConfigs[tokenId].setUnsubscribe();
+        assert(!testConfigs[tokenId].hasSubscriber());
     }
 
     function test_fuzz_setConfigId_setSubscribe_setUnsubscribe_getConfigId(
         uint256 tokenId,
         PositionConfig calldata config
     ) public {
-        assertEq(testConfigs.getConfigId(tokenId), 0);
+        assertEq(testConfigs[tokenId].getConfigId(), 0);
 
-        testConfigs.setConfigId(tokenId, config);
-        assertEq(testConfigs.getConfigId(tokenId), config.toId());
+        testConfigs[tokenId].setConfigId(config.toId());
+        assertEq(testConfigs[tokenId].getConfigId(), config.toId());
 
-        testConfigs.setSubscribe(tokenId);
-        assertEq(testConfigs.getConfigId(tokenId), config.toId());
-        assertEq(testConfigs.hasSubscriber(tokenId), true);
+        testConfigs[tokenId].setSubscribe();
+        assertEq(testConfigs[tokenId].getConfigId(), config.toId());
+        assertEq(testConfigs[tokenId].hasSubscriber(), true);
 
-        testConfigs.setUnsubscribe(tokenId);
-        assertEq(testConfigs.getConfigId(tokenId), config.toId());
-        assertEq(testConfigs.hasSubscriber(tokenId), false);
+        testConfigs[tokenId].setUnsubscribe();
+        assertEq(testConfigs[tokenId].getConfigId(), config.toId());
+        assertEq(testConfigs[tokenId].hasSubscriber(), false);
+    }
+
+    function test_fuzz_setSubscribe_twice(uint256 tokenId, PositionConfig calldata config) public {
+        assertFalse(testConfigs[tokenId].hasSubscriber());
+
+        testConfigs[tokenId].setSubscribe();
+        testConfigs[tokenId].setSubscribe();
+        assertTrue(testConfigs[tokenId].hasSubscriber());
+
+        // It is known behavior that setting the config id just stores the id directly, meaning the upper most bit is unset.
+        // This is ok because setConfigId will only ever be called on mint.
+        testConfigs[tokenId].setConfigId(config.toId());
+        assertFalse(testConfigs[tokenId].hasSubscriber());
+
+        testConfigs[tokenId].setSubscribe();
+        testConfigs[tokenId].setSubscribe();
+        assertTrue(testConfigs[tokenId].hasSubscriber());
+    }
+
+    function test_fuzz_setUnsubscribe_twice(uint256 tokenId, PositionConfig calldata config) public {
+        assertFalse(testConfigs[tokenId].hasSubscriber());
+
+        testConfigs[tokenId].setUnsubscribe();
+        testConfigs[tokenId].setUnsubscribe();
+        assertFalse(testConfigs[tokenId].hasSubscriber());
+
+        testConfigs[tokenId].setConfigId(config.toId());
+        assertFalse(testConfigs[tokenId].hasSubscriber());
+
+        testConfigs[tokenId].setUnsubscribe();
+        testConfigs[tokenId].setUnsubscribe();
+        assertFalse(testConfigs[tokenId].hasSubscriber());
+
+        testConfigs[tokenId].setSubscribe();
+        assertTrue(testConfigs[tokenId].hasSubscriber());
+
+        testConfigs[tokenId].setUnsubscribe();
+        testConfigs[tokenId].setUnsubscribe();
+        assertFalse(testConfigs[tokenId].hasSubscriber());
     }
 
     function _calculateExpectedId(PositionConfig calldata config) internal pure returns (bytes32 expectedId) {

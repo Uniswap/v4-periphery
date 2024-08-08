@@ -10,7 +10,6 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
@@ -29,6 +28,7 @@ import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {INotifier} from "./interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
+import {PositionConfigId, PositionConfigIdLibrary} from "./libraries/PositionConfigId.sol";
 
 //                                           444444444
 //                                444444444444      444444
@@ -109,18 +109,24 @@ contract PositionManager is
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
-    using PositionConfigLibrary for *;
+    using PositionConfigLibrary for PositionConfig;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
     using SafeCast for int256;
     using CalldataDecoder for bytes;
     using SlippageCheckLibrary for BalanceDelta;
+    using PositionConfigIdLibrary for PositionConfigId;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
-    mapping(uint256 tokenId => bytes32 config) private positionConfigs;
+    mapping(uint256 tokenId => PositionConfigId configId) internal positionConfigs;
+
+    /// @notice an internal getter for PositionConfigId to be used by Notifier
+    function _positionConfigs(uint256 tokenId) internal view override returns (PositionConfigId storage) {
+        return positionConfigs[tokenId];
+    }
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
@@ -140,7 +146,7 @@ contract PositionManager is
     /// @param tokenId the unique identifier of the ERC721 token
     /// @dev either msg.sender or _msgSender() is passed in as the caller
     /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
-    modifier onlyIfApproved(address caller, uint256 tokenId) {
+    modifier onlyIfApproved(address caller, uint256 tokenId) override {
         if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
         _;
     }
@@ -148,8 +154,8 @@ contract PositionManager is
     /// @notice Reverts if the hash of the config does not equal the saved hash
     /// @param tokenId the unique identifier of the ERC721 token
     /// @param config the PositionConfig to check against
-    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) {
-        if (positionConfigs.getConfigId(tokenId) != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) override {
+        if (positionConfigs[tokenId].getConfigId() != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         _;
     }
 
@@ -170,29 +176,6 @@ contract PositionManager is
         isNotLocked
     {
         _executeActionsWithoutUnlock(actions, params);
-    }
-
-    /// @inheritdoc INotifier
-    function subscribe(uint256 tokenId, PositionConfig calldata config, address subscriber, bytes calldata data)
-        external
-        payable
-        onlyIfApproved(msg.sender, tokenId)
-        onlyValidConfig(tokenId, config)
-    {
-        // call to _subscribe will revert if the user already has a sub
-        positionConfigs.setSubscribe(tokenId);
-        _subscribe(tokenId, config, subscriber, data);
-    }
-
-    /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data)
-        external
-        payable
-        onlyIfApproved(msg.sender, tokenId)
-        onlyValidConfig(tokenId, config)
-    {
-        positionConfigs.setUnsubscribe(tokenId);
-        _unsubscribe(tokenId, config, data);
     }
 
     function msgSender() public view override returns (address) {
@@ -280,10 +263,12 @@ contract PositionManager is
         uint128 amount0Max,
         uint128 amount1Max,
         bytes calldata hookData
-    ) internal onlyValidConfig(tokenId, config) {
+    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
-        BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        liquidityDelta.validateMaxInNegative(amount0Max, amount1Max);
+        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+            _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+        (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
     }
 
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
@@ -296,8 +281,10 @@ contract PositionManager is
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         // Note: the tokenId is used as the salt.
-        BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-        liquidityDelta.validateMinOut(amount0Min, amount1Min);
+        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+            _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+        (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
     }
 
     function _mint(
@@ -317,9 +304,11 @@ contract PositionManager is
         _mint(owner, tokenId);
 
         // _beforeModify is not called here because the tokenId is newly minted
-        BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        liquidityDelta.validateMaxIn(amount0Max, amount1Max);
-        positionConfigs.setConfigId(tokenId, config);
+        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+            _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+        (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
+        positionConfigs[tokenId].setConfigId(config.toId());
 
         emit MintPosition(tokenId, config);
     }
@@ -334,11 +323,12 @@ contract PositionManager is
     ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         uint256 liquidity = uint256(getPositionLiquidity(tokenId, config));
 
-        BalanceDelta liquidityDelta;
         // Can only call modify if there is non zero liquidity.
         if (liquidity > 0) {
-            liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-            liquidityDelta.validateMinOut(amount0Min, amount1Min);
+            (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+                _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+            // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+            (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
 
         delete positionConfigs[tokenId];
@@ -397,8 +387,8 @@ contract PositionManager is
         int256 liquidityChange,
         bytes32 salt,
         bytes calldata hookData
-    ) internal returns (BalanceDelta liquidityDelta) {
-        (liquidityDelta,) = poolManager.modifyLiquidity(
+    ) internal returns (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) {
+        (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
             config.poolKey,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: config.tickLower,
@@ -409,8 +399,8 @@ contract PositionManager is
             hookData
         );
 
-        if (positionConfigs.hasSubscriber(uint256(salt))) {
-            _notifyModifyLiquidity(uint256(salt), config, liquidityChange);
+        if (positionConfigs[uint256(salt)].hasSubscriber()) {
+            _notifyModifyLiquidity(uint256(salt), config, liquidityChange, feesAccrued);
         }
     }
 
@@ -427,7 +417,7 @@ contract PositionManager is
     /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
     function transferFrom(address from, address to, uint256 id) public virtual override {
         super.transferFrom(from, to, id);
-        if (positionConfigs.hasSubscriber(id)) _notifyTransfer(id, from, to);
+        if (positionConfigs[id].hasSubscriber()) _notifyTransfer(id, from, to);
     }
 
     /// @inheritdoc IPositionManager
@@ -443,11 +433,6 @@ contract PositionManager is
 
     /// @inheritdoc IPositionManager
     function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
-        return positionConfigs.getConfigId(tokenId);
-    }
-
-    /// @inheritdoc INotifier
-    function hasSubscriber(uint256 tokenId) external view returns (bool) {
-        return positionConfigs.hasSubscriber(tokenId);
+        return positionConfigs[tokenId].getConfigId();
     }
 }
