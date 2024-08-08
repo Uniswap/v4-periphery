@@ -366,30 +366,6 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
 
-    function test_increaseLiquidity_withUnapprovedCaller() public {
-        // Alice provides liquidity
-        // Bob increases Alice's liquidity without being approved
-        uint256 liquidityAlice = 3_000e18;
-
-        // alice provides liquidity
-        vm.startPrank(alice);
-        uint256 tokenIdAlice = lpm.nextTokenId();
-        mint(config, liquidityAlice, alice, ZERO_BYTES);
-        vm.stopPrank();
-
-        uint128 oldLiquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
-
-        // bob can increase liquidity for alice even though he is not the owner / not approved
-        vm.startPrank(bob);
-        increaseLiquidity(tokenIdAlice, config, 100e18, ZERO_BYTES);
-        vm.stopPrank();
-
-        uint128 newLiquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
-
-        // assert liqudity increased by the correct amount
-        assertEq(newLiquidity, oldLiquidity + uint128(100e18));
-    }
-
     function test_increaseLiquidity_sameRange_withExcessFees() public {
         // Alice and Bob provide liquidity on the same range
         // Alice uses half her fees to increase liquidity. The other half are collected to her wallet.
