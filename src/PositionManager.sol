@@ -201,8 +201,10 @@ contract PositionManager is
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
-        BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        liquidityDelta.validateMaxInNegative(amount0Max, amount1Max);
+        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+            _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+        (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
     }
 
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
@@ -215,8 +217,10 @@ contract PositionManager is
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         // Note: the tokenId is used as the salt.
-        BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-        liquidityDelta.validateMinOut(amount0Min, amount1Min);
+        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+            _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+        (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
     }
 
     function _mint(
@@ -236,8 +240,10 @@ contract PositionManager is
         _mint(owner, tokenId);
 
         // _beforeModify is not called here because the tokenId is newly minted
-        BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        liquidityDelta.validateMaxIn(amount0Max, amount1Max);
+        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+            _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+        (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
         positionConfigs[tokenId].setConfigId(config.toId());
 
         emit MintPosition(tokenId, config);
@@ -253,11 +259,12 @@ contract PositionManager is
     ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         uint256 liquidity = uint256(getPositionLiquidity(tokenId, config));
 
-        BalanceDelta liquidityDelta;
         // Can only call modify if there is non zero liquidity.
         if (liquidity > 0) {
-            liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-            liquidityDelta.validateMinOut(amount0Min, amount1Min);
+            (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+                _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+            // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+            (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
 
         delete positionConfigs[tokenId];
@@ -316,8 +323,7 @@ contract PositionManager is
         int256 liquidityChange,
         bytes32 salt,
         bytes calldata hookData
-    ) internal returns (BalanceDelta liquidityDelta) {
-        BalanceDelta feesAccrued;
+    ) internal returns (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) {
         (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
             config.poolKey,
             IPoolManager.ModifyLiquidityParams({
