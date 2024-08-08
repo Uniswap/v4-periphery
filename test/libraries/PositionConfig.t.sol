@@ -20,7 +20,7 @@ contract PositionConfigTest is Test {
     }
 
     function test_fuzz_setConfigId(uint256 tokenId, PositionConfig calldata config) public {
-        testConfigs[tokenId].setConfigId(config);
+        testConfigs[tokenId].setConfigId(config.toId());
 
         bytes32 expectedConfigId = _calculateExpectedId(config);
 
@@ -37,7 +37,7 @@ contract PositionConfigTest is Test {
     }
 
     function test_fuzz_setConfigId_getConfigId(uint256 tokenId, PositionConfig calldata config) public {
-        testConfigs[tokenId].setConfigId(config);
+        testConfigs[tokenId].setConfigId(config.toId());
 
         bytes32 expectedId = _calculateExpectedId(config);
 
@@ -46,7 +46,7 @@ contract PositionConfigTest is Test {
     }
 
     function test_fuzz_getConfigId_equal_afterSubscribe(uint256 tokenId, PositionConfig calldata config) public {
-        testConfigs[tokenId].setConfigId(config);
+        testConfigs[tokenId].setConfigId(config.toId());
         testConfigs[tokenId].setSubscribe();
 
         assertEq(testConfigs[tokenId].getConfigId(), config.toId());
@@ -60,7 +60,7 @@ contract PositionConfigTest is Test {
     }
 
     function test_fuzz_setConfigId_setSubscribe(uint256 tokenId, PositionConfig calldata config) public {
-        testConfigs[tokenId].setConfigId(config);
+        testConfigs[tokenId].setConfigId(config.toId());
         testConfigs[tokenId].setSubscribe();
 
         bytes32 expectedConfig = _calculateExpectedId(config) | UPPER_BIT_SET;
@@ -92,7 +92,7 @@ contract PositionConfigTest is Test {
     ) public {
         assertEq(testConfigs[tokenId].getConfigId(), 0);
 
-        testConfigs[tokenId].setConfigId(config);
+        testConfigs[tokenId].setConfigId(config.toId());
         assertEq(testConfigs[tokenId].getConfigId(), config.toId());
 
         testConfigs[tokenId].setSubscribe();
@@ -113,7 +113,7 @@ contract PositionConfigTest is Test {
 
         // It is known behavior that setting the config id just stores the id directly, meaning the upper most bit is unset.
         // This is ok because setConfigId will only ever be called on mint.
-        testConfigs[tokenId].setConfigId(config);
+        testConfigs[tokenId].setConfigId(config.toId());
         assertFalse(testConfigs[tokenId].hasSubscriber());
 
         testConfigs[tokenId].setSubscribe();
@@ -128,7 +128,7 @@ contract PositionConfigTest is Test {
         testConfigs[tokenId].setUnsubscribe();
         assertFalse(testConfigs[tokenId].hasSubscriber());
 
-        testConfigs[tokenId].setConfigId(config);
+        testConfigs[tokenId].setConfigId(config.toId());
         assertFalse(testConfigs[tokenId].hasSubscriber());
 
         testConfigs[tokenId].setUnsubscribe();

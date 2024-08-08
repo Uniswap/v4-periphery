@@ -238,7 +238,7 @@ contract PositionManager is
         // _beforeModify is not called here because the tokenId is newly minted
         BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         liquidityDelta.validateMaxIn(amount0Max, amount1Max);
-        positionConfigs[tokenId].setConfigId(config);
+        positionConfigs[tokenId].setConfigId(config.toId());
 
         emit MintPosition(tokenId, config);
     }

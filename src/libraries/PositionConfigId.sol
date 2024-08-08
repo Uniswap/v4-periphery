@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
 
-import {PositionConfig, PositionConfigLibrary} from "./PositionConfig.sol";
-
 /// @notice A configId is set per tokenId
 /// The lower 255 bits are used to store the truncated hash of the corresponding PositionConfig
 /// The upper bit is used to signal if the tokenId has a subscriber
@@ -11,8 +9,6 @@ struct PositionConfigId {
 }
 
 library PositionConfigIdLibrary {
-    using PositionConfigLibrary for PositionConfig;
-
     bytes32 constant MASK_UPPER_BIT = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
     bytes32 constant DIRTY_UPPER_BIT = 0x8000000000000000000000000000000000000000000000000000000000000000;
 
@@ -22,8 +18,8 @@ library PositionConfigIdLibrary {
     }
 
     /// @dev We only set the config on mint, guaranteeing that the most significant bit is unset, so we can just assign the entire 32 bytes to the id.
-    function setConfigId(PositionConfigId storage configId, PositionConfig calldata config) internal {
-        configId.id = config.toId();
+    function setConfigId(PositionConfigId storage _configId, bytes32 configId) internal {
+        _configId.id = configId;
     }
 
     function setSubscribe(PositionConfigId storage configId) internal {
