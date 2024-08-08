@@ -95,7 +95,7 @@ import {PositionConfigId, PositionConfigIdLibrary} from "./libraries/PositionCon
 //                                              4444444444444444444
 
 /// @notice The PositionManager (PosM) contract is responsible for creating liquidity positions on v4.
-/// PosM mints and manages the respective ERC721 tokens associated with a liquidity position.
+/// PosM mints and manages ERC721 tokens associated with each position.
 contract PositionManager is
     IPositionManager,
     ERC721Permit_v4,
