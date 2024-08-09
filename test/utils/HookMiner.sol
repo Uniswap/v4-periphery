@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.21;
+pragma solidity ^0.8.24;
 
 /// @title HookMiner - a library for mining hook addresses
 /// @dev This library is intended for `forge test` environments. There may be gotchas when using salts in `forge script` or `forge create`

@@ -3,23 +3,25 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {PathKey} from "../contracts/libraries/PathKey.sol";
-import {IQuoter} from "../contracts/interfaces/IQuoter.sol";
-import {Quoter} from "../contracts/lens/Quoter.sol";
-import {LiquidityAmounts} from "../contracts/libraries/LiquidityAmounts.sol";
-import {MockERC20} from "solmate/test/utils/mocks/MockERC20.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PathKey} from "../src/libraries/PathKey.sol";
+import {IQuoter} from "../src/interfaces/IQuoter.sol";
+import {Quoter} from "../src/lens/Quoter.sol";
+
+// v4-core
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+
+// solmate
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 contract QuoterTest is Test, Deployers {
     using SafeCast for *;
@@ -31,8 +33,8 @@ contract QuoterTest is Test, Deployers {
     // Max tick for full range with tick spacing of 60
     int24 internal constant MAX_TICK = -MIN_TICK;
 
-    uint160 internal constant SQRT_RATIO_100_102 = 78447570448055484695608110440;
-    uint160 internal constant SQRT_RATIO_102_100 = 80016521857016594389520272648;
+    uint160 internal constant SQRT_PRICE_100_102 = 78447570448055484695608110440;
+    uint160 internal constant SQRT_PRICE_102_100 = 80016521857016594389520272648;
 
     uint256 internal constant CONTROLLER_GAS_LIMIT = 500000;
 
@@ -52,7 +54,7 @@ contract QuoterTest is Test, Deployers {
 
     function setUp() public {
         deployFreshManagerAndRouters();
-        quoter = new Quoter(address(manager));
+        quoter = new Quoter(IPoolManager(manager));
         positionManager = new PoolModifyLiquidityTest(manager);
 
         // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)
@@ -87,7 +89,6 @@ contract QuoterTest is Test, Deployers {
             IQuoter.QuoteExactSingleParams({
                 poolKey: key02,
                 zeroForOne: true,
-                recipient: address(this),
                 exactAmount: uint128(amountIn),
                 sqrtPriceLimitX96: 0,
                 hookData: ZERO_BYTES
@@ -109,7 +110,6 @@ contract QuoterTest is Test, Deployers {
             IQuoter.QuoteExactSingleParams({
                 poolKey: key02,
                 zeroForOne: false,
-                recipient: address(this),
                 exactAmount: uint128(amountIn),
                 sqrtPriceLimitX96: 0,
                 hookData: ZERO_BYTES
@@ -325,15 +325,14 @@ contract QuoterTest is Test, Deployers {
             IQuoter.QuoteExactSingleParams({
                 poolKey: key01,
                 zeroForOne: true,
-                recipient: address(this),
                 exactAmount: type(uint128).max,
-                sqrtPriceLimitX96: SQRT_RATIO_100_102,
+                sqrtPriceLimitX96: SQRT_PRICE_100_102,
                 hookData: ZERO_BYTES
             })
         );
 
         assertEq(deltaAmounts[0], 9981);
-        assertEq(sqrtPriceX96After, SQRT_RATIO_100_102);
+        assertEq(sqrtPriceX96After, SQRT_PRICE_100_102);
         assertEq(initializedTicksLoaded, 0);
     }
 
@@ -343,15 +342,14 @@ contract QuoterTest is Test, Deployers {
             IQuoter.QuoteExactSingleParams({
                 poolKey: key01,
                 zeroForOne: false,
-                recipient: address(this),
                 exactAmount: type(uint128).max,
-                sqrtPriceLimitX96: SQRT_RATIO_102_100,
+                sqrtPriceLimitX96: SQRT_PRICE_102_100,
                 hookData: ZERO_BYTES
             })
         );
 
         assertEq(deltaAmounts[1], 9981);
-        assertEq(sqrtPriceX96After, SQRT_RATIO_102_100);
+        assertEq(sqrtPriceX96After, SQRT_PRICE_102_100);
         assertEq(initializedTicksLoaded, 0);
     }
 
@@ -639,7 +637,7 @@ contract QuoterTest is Test, Deployers {
 
     function getExactInputParams(MockERC20[] memory _tokenPath, uint256 amountIn)
         internal
-        view
+        pure
         returns (IQuoter.QuoteExactParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
@@ -649,13 +647,12 @@ contract QuoterTest is Test, Deployers {
 
         params.exactCurrency = Currency.wrap(address(_tokenPath[0]));
         params.path = path;
-        params.recipient = address(this);
         params.exactAmount = uint128(amountIn);
     }
 
     function getExactOutputParams(MockERC20[] memory _tokenPath, uint256 amountOut)
         internal
-        view
+        pure
         returns (IQuoter.QuoteExactParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
@@ -665,7 +662,6 @@ contract QuoterTest is Test, Deployers {
 
         params.exactCurrency = Currency.wrap(address(_tokenPath[_tokenPath.length - 1]));
         params.path = path;
-        params.recipient = address(this);
         params.exactAmount = uint128(amountOut);
     }
 }
