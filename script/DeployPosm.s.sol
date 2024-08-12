@@ -15,7 +15,6 @@ contract DeployPosmTest is Script {
     function run(address poolManager, address permit2) public returns (PositionManager posm) {
         vm.startBroadcast();
 
-        // TODO: remove salt when we have a deployed version on sepolia
         posm = new PositionManager{salt: hex"03"}(IPoolManager(poolManager), IAllowanceTransfer(permit2));
         console2.log("PositionManager", address(posm));
 
