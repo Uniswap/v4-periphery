@@ -20,7 +20,7 @@ import {console} from "forge-std/console.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IViewQuoter} from "../interfaces/IViewQuoter.sol";
+import {CheapQuoter} from "./CheapQuoter.sol";
 
 contract MiddlewareProtect is BaseMiddleware {
     using CustomRevert for bytes4;
@@ -44,25 +44,23 @@ contract MiddlewareProtect is BaseMiddleware {
 
     bytes internal constant ZERO_BYTES = bytes("");
 
-    IViewQuoter public immutable viewQuoter;
+    CheapQuoter public immutable cheapQuoter;
 
     // todo: use tstore
     int256 private quote;
 
-    constructor(IPoolManager _manager, IViewQuoter _viewQuoter, address _impl) BaseMiddleware(_manager, _impl) {
-        viewQuoter = _viewQuoter;
+    constructor(IPoolManager _poolManager, CheapQuoter _cheapQuoter, address _impl)
+        BaseMiddleware(_poolManager, _impl)
+    {
+        cheapQuoter = _cheapQuoter;
         _ensureValidFlags();
     }
 
-    function beforeSwap(address sender, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
+    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
         external
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        if (params.zeroForOne) {
-            (, quote,,) = viewQuoter.quoteSingle(key, params);
-        } else {
-            (quote,,,) = viewQuoter.quoteSingle(key, params);
-        }
+        quote = cheapQuoter.quote(key, params);
         (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
         if (!success) {
             _handleRevert(returnData);

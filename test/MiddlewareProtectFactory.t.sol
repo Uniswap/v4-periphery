@@ -26,8 +26,9 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {BaseMiddleware} from "./../src/middleware/BaseMiddleware.sol";
 import {BlankSwapHooks} from "./middleware/BlankSwapHooks.sol";
-import {ViewQuoter} from "./../src/lens/ViewQuoter.sol";
-import {IViewQuoter} from "./../src/interfaces/IViewQuoter.sol";
+import {CheapQuoter} from "./../src/middleware/CheapQuoter.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
     HookEnabledSwapRouter router;
@@ -38,7 +39,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
     HooksCounter counter;
     address middleware;
     HooksFrontrun hooksFrontrun;
-    IViewQuoter viewQuoter;
+    CheapQuoter cheapQuoter;
 
     uint160 COUNTER_FLAGS = uint160(
         Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
@@ -54,8 +55,8 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
         token0 = TestERC20(Currency.unwrap(currency0));
         token1 = TestERC20(Currency.unwrap(currency1));
 
-        viewQuoter = new ViewQuoter(manager);
-        factory = new MiddlewareProtectFactory(manager, viewQuoter);
+        cheapQuoter = new CheapQuoter(manager);
+        factory = new MiddlewareProtectFactory(manager, cheapQuoter);
         counter = HooksCounter(address(COUNTER_FLAGS));
         vm.etch(address(counter), address(new HooksCounter(manager)).code);
 
@@ -66,7 +67,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             COUNTER_FLAGS,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(viewQuoter), address(counter))
+            abi.encode(address(manager), address(cheapQuoter), address(counter))
         );
         middleware = factory.createMiddleware(address(counter), salt);
         assertEq(hookAddress, middleware);
@@ -85,7 +86,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(viewQuoter), address(hooksReturnDeltas))
+            abi.encode(address(manager), address(cheapQuoter), address(hooksReturnDeltas))
         );
         address implementation = address(hooksReturnDeltas);
         vm.expectRevert(abi.encodePacked(bytes16(MiddlewareProtect.HookPermissionForbidden.selector), hookAddress));
@@ -116,7 +117,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(viewQuoter), address(hooksFrontrun))
+            abi.encode(address(manager), address(cheapQuoter), address(hooksFrontrun))
         );
         address implementation = address(hooksFrontrun);
         address hookAddressCreated = factory.createMiddleware(implementation, salt);
@@ -147,7 +148,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(viewQuoter), address(hooksRevert))
+            abi.encode(address(manager), address(cheapQuoter), address(hooksRevert))
         );
         middleware = factory.createMiddleware(address(hooksRevert), salt);
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
@@ -166,7 +167,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(viewQuoter), address(hooksOutOfGas))
+            abi.encode(address(manager), address(cheapQuoter), address(hooksOutOfGas))
         );
         middleware = factory.createMiddleware(address(hooksOutOfGas), salt);
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
@@ -182,7 +183,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
     //         address(factory),
     //         flags,
     //         type(MiddlewareProtect).creationCode,
-    //         abi.encode(address(manager), address(viewQuoter), address(frontrunAdd))
+    //         abi.encode(address(manager), address(cheapQuoter), address(frontrunAdd))
     //     );
     //     middleware = factory.createMiddleware(address(frontrunAdd), salt);
     //     currency0.transfer(address(frontrunAdd), 1 ether);
@@ -303,7 +304,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             thisFlags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(viewQuoter), implFlags)
+            abi.encode(address(manager), address(cheapQuoter), implFlags)
         );
         factory.createMiddleware(address(implFlags), salt);
     }
@@ -319,7 +320,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(viewQuoter), address(counter))
+            abi.encode(address(manager), address(cheapQuoter), address(counter))
         );
         factory.createMiddleware(address(counter), salt);
         // second deployment should revert
@@ -336,7 +337,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             incorrectFlags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(viewQuoter), address(counter2))
+            abi.encode(address(manager), address(cheapQuoter), address(counter2))
         );
         address implementation = address(counter2);
         vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
@@ -392,9 +393,11 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
         uint160 flags = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG;
         BlankSwapHooks blankSwapHooks = BlankSwapHooks(address(flags));
         vm.etch(address(blankSwapHooks), address(new BlankSwapHooks(manager)).code);
-        (key,) = initPoolAndAddLiquidity(
-            currency0, currency1, IHooks(address(blankSwapHooks)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
+        PoolId id;
+        (key, id) = initPoolAndAddLiquidity(
+            currency0, currency1, IHooks(address(blankSwapHooks)), 500, SQRT_PRICE_1_1, ZERO_BYTES
         );
+        swap(key, true, 0.0001 ether, ZERO_BYTES);
         swap(key, true, 0.0001 ether, ZERO_BYTES);
         snapLastCall("MIDDLEWARE_PROTECT-vanilla");
         uint160 maxFeeBips = 0;
@@ -402,17 +405,29 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(viewQuoter), address(blankSwapHooks))
+            abi.encode(address(manager), address(cheapQuoter), address(blankSwapHooks))
         );
         address hookAddress = factory.createMiddleware(address(blankSwapHooks), salt);
         (PoolKey memory protectedKey,) =
-            initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+            initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 500, SQRT_PRICE_1_1, ZERO_BYTES);
+        swap(protectedKey, true, 0.0001 ether, ZERO_BYTES);
         swap(protectedKey, true, 0.0001 ether, ZERO_BYTES);
         snapLastCall("MIDDLEWARE_PROTECT-protected");
 
-        swap(key, true, 0.01 ether, ZERO_BYTES);
+        (, int24 tick,,) = StateLibrary.getSlot0(manager, id);
+
+        IPoolManager.ModifyLiquidityParams memory params = IPoolManager.ModifyLiquidityParams({
+            tickLower: tick * 100,
+            tickUpper: tick * 2,
+            liquidityDelta: 100e18,
+            salt: 0
+        });
+        modifyLiquidityRouter.modifyLiquidity(key, params, ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(protectedKey, params, ZERO_BYTES);
+
+        swap(key, true, 0.1 ether, ZERO_BYTES);
         snapLastCall("MIDDLEWARE_PROTECT-multi-vanilla");
-        swap(protectedKey, true, 0.01 ether, ZERO_BYTES);
+        swap(protectedKey, true, 0.1 ether, ZERO_BYTES);
         snapLastCall("MIDDLEWARE_PROTECT-multi-protected");
     }
 }
