@@ -17,6 +17,7 @@ Best of all, attaching a middleware to a hook is easy and usually requires no ex
 ### Caveats
 - (because of the proxy pattern) constructors will never be called, so it may be necessary to revise the implementation contract to use an initialize function if the constructor needs to set non-immutable variables.
 - let's say hook A calls a permissioned function on external contract E. a middleware pointing to hook A would then not be able to call contract E.
+- be mindful of proxy storage collisions between the middleware and the implementation.
 
 ### Deployment
 Developers should mine a salt to generate the correct flags for the middleware. While not strictly required, it’s recommended to match the hook’s flags with the middleware’s flags.

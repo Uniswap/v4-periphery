@@ -26,6 +26,8 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {BaseMiddleware} from "./../src/middleware/BaseMiddleware.sol";
 import {BlankSwapHooks} from "./middleware/BlankSwapHooks.sol";
+import {ViewQuoter} from "./../src/lens/ViewQuoter.sol";
+import {IViewQuoter} from "./../src/interfaces/IViewQuoter.sol";
 
 contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
     HookEnabledSwapRouter router;
@@ -36,6 +38,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
     HooksCounter counter;
     address middleware;
     HooksFrontrun hooksFrontrun;
+    IViewQuoter viewQuoter;
 
     uint160 COUNTER_FLAGS = uint160(
         Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG
@@ -51,7 +54,8 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
         token0 = TestERC20(Currency.unwrap(currency0));
         token1 = TestERC20(Currency.unwrap(currency1));
 
-        factory = new MiddlewareProtectFactory(manager);
+        viewQuoter = new ViewQuoter(manager);
+        factory = new MiddlewareProtectFactory(manager, viewQuoter);
         counter = HooksCounter(address(COUNTER_FLAGS));
         vm.etch(address(counter), address(new HooksCounter(manager)).code);
 
@@ -62,7 +66,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             COUNTER_FLAGS,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(counter))
+            abi.encode(address(manager), address(viewQuoter), address(counter))
         );
         middleware = factory.createMiddleware(address(counter), salt);
         assertEq(hookAddress, middleware);
@@ -81,7 +85,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(hooksReturnDeltas))
+            abi.encode(address(manager), address(viewQuoter), address(hooksReturnDeltas))
         );
         address implementation = address(hooksReturnDeltas);
         vm.expectRevert(abi.encodePacked(bytes16(MiddlewareProtect.HookPermissionForbidden.selector), hookAddress));
@@ -112,7 +116,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(hooksFrontrun))
+            abi.encode(address(manager), address(viewQuoter), address(hooksFrontrun))
         );
         address implementation = address(hooksFrontrun);
         address hookAddressCreated = factory.createMiddleware(implementation, salt);
@@ -143,7 +147,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(hooksRevert))
+            abi.encode(address(manager), address(viewQuoter), address(hooksRevert))
         );
         middleware = factory.createMiddleware(address(hooksRevert), salt);
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
@@ -162,7 +166,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(hooksOutOfGas))
+            abi.encode(address(manager), address(viewQuoter), address(hooksOutOfGas))
         );
         middleware = factory.createMiddleware(address(hooksOutOfGas), salt);
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(middleware), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
@@ -178,7 +182,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
     //         address(factory),
     //         flags,
     //         type(MiddlewareProtect).creationCode,
-    //         abi.encode(address(manager), address(frontrunAdd))
+    //         abi.encode(address(manager), address(viewQuoter), address(frontrunAdd))
     //     );
     //     middleware = factory.createMiddleware(address(frontrunAdd), salt);
     //     currency0.transfer(address(frontrunAdd), 1 ether);
@@ -296,7 +300,10 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
 
     function testFlagCompatibilities(uint160 thisFlags, uint160 implFlags) internal {
         (, bytes32 salt) = HookMiner.find(
-            address(factory), thisFlags, type(MiddlewareProtect).creationCode, abi.encode(address(manager), implFlags)
+            address(factory),
+            thisFlags,
+            type(MiddlewareProtect).creationCode,
+            abi.encode(address(manager), address(viewQuoter), implFlags)
         );
         factory.createMiddleware(address(implFlags), salt);
     }
@@ -312,7 +319,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(counter))
+            abi.encode(address(manager), address(viewQuoter), address(counter))
         );
         factory.createMiddleware(address(counter), salt);
         // second deployment should revert
@@ -329,7 +336,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             incorrectFlags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(counter2))
+            abi.encode(address(manager), address(viewQuoter), address(counter2))
         );
         address implementation = address(counter2);
         vm.expectRevert(BaseMiddleware.FlagsMismatch.selector);
@@ -381,7 +388,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
         assertEq(counterProxy.afterRemoveLiquidityCount(id), 1);
     }
 
-    function testMiddlewareRemoveGas() public {
+    function testMiddlewareProtectGas() public {
         uint160 flags = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG;
         BlankSwapHooks blankSwapHooks = BlankSwapHooks(address(flags));
         vm.etch(address(blankSwapHooks), address(new BlankSwapHooks(manager)).code);
@@ -395,7 +402,7 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
             address(factory),
             flags,
             type(MiddlewareProtect).creationCode,
-            abi.encode(address(manager), address(blankSwapHooks))
+            abi.encode(address(manager), address(viewQuoter), address(blankSwapHooks))
         );
         address hookAddress = factory.createMiddleware(address(blankSwapHooks), salt);
         (PoolKey memory protectedKey,) =

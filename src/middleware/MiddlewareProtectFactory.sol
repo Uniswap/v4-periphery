@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import {MiddlewareProtect} from "./MiddlewareProtect.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IViewQuoter} from "../interfaces/IViewQuoter.sol";
 
 contract MiddlewareProtectFactory {
     event MiddlewareCreated(address implementation, address middleware);
@@ -10,9 +11,11 @@ contract MiddlewareProtectFactory {
     mapping(address => address) private _implementations;
 
     IPoolManager public immutable poolManager;
+    IViewQuoter public immutable viewQuoter;
 
-    constructor(IPoolManager _poolManager) {
+    constructor(IPoolManager _poolManager, IViewQuoter _viewQuoter) {
         poolManager = _poolManager;
+        viewQuoter = _viewQuoter;
     }
 
     /**
@@ -31,7 +34,7 @@ contract MiddlewareProtectFactory {
      * @return middleware The address of the newly created middlewareRemove contract.
      */
     function createMiddleware(address implementation, bytes32 salt) external returns (address middleware) {
-        middleware = address(new MiddlewareProtect{salt: salt}(poolManager, implementation));
+        middleware = address(new MiddlewareProtect{salt: salt}(poolManager, viewQuoter, implementation));
         _implementations[middleware] = implementation;
         emit MiddlewareCreated(implementation, middleware);
     }

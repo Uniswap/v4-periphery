@@ -20,6 +20,7 @@ import {console} from "forge-std/console.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IViewQuoter} from "../interfaces/IViewQuoter.sol";
 
 contract MiddlewareProtect is BaseMiddleware {
     using CustomRevert for bytes4;
@@ -43,10 +44,13 @@ contract MiddlewareProtect is BaseMiddleware {
 
     bytes internal constant ZERO_BYTES = bytes("");
 
-    // todo: use tstore
-    BalanceDelta private quote;
+    IViewQuoter public immutable viewQuoter;
 
-    constructor(IPoolManager _manager, address _impl) BaseMiddleware(_manager, _impl) {
+    // todo: use tstore
+    int256 private quote;
+
+    constructor(IPoolManager _manager, IViewQuoter _viewQuoter, address _impl) BaseMiddleware(_manager, _impl) {
+        viewQuoter = _viewQuoter;
         _ensureValidFlags();
     }
 
@@ -54,9 +58,10 @@ contract MiddlewareProtect is BaseMiddleware {
         external
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        try this._quoteSwapDelta(key, params) {}
-        catch (bytes memory reason) {
-            quote = abi.decode(reason, (BalanceDelta));
+        if (params.zeroForOne) {
+            (, quote,,) = viewQuoter.quoteSingle(key, params);
+        } else {
+            (quote,,,) = viewQuoter.quoteSingle(key, params);
         }
         (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
         if (!success) {
@@ -65,24 +70,17 @@ contract MiddlewareProtect is BaseMiddleware {
         return abi.decode(returnData, (bytes4, BeforeSwapDelta, uint24));
     }
 
-    function _quoteSwapDelta(PoolKey memory key, IPoolManager.SwapParams memory params)
-        external
-        returns (bytes memory)
-    {
-        BalanceDelta swapDelta = poolManager.swap(key, params, ZERO_BYTES);
-        bytes memory result = abi.encode(swapDelta);
-        assembly {
-            revert(add(0x20, result), mload(result))
-        }
-    }
-
-    function afterSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata, BalanceDelta delta, bytes calldata)
-        external
-        returns (bytes4, int128)
-    {
+    function afterSwap(
+        address,
+        PoolKey calldata,
+        IPoolManager.SwapParams calldata params,
+        BalanceDelta delta,
+        bytes calldata
+    ) external returns (bytes4, int128) {
         IHooks implementation = IHooks(address(implementation));
         if (implementation.hasPermission(Hooks.BEFORE_SWAP_FLAG)) {
-            if (delta != quote) revert HookModifiedOutput();
+            int256 amountOut = params.zeroForOne ? delta.amount1() : delta.amount0();
+            if (amountOut != quote) revert HookModifiedOutput();
             if (!implementation.hasPermission(Hooks.AFTER_SWAP_FLAG)) {
                 return (BaseHook.afterSwap.selector, 0);
             }
