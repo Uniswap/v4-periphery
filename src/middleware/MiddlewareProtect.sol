@@ -5,7 +5,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
-import {BaseHook} from "../BaseHook.sol";
+import {BaseHook} from "../base/hooks/BaseHook.sol";
 import {BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -14,14 +14,14 @@ import {NonZeroDeltaCount} from "@uniswap/v4-core/src/libraries/NonZeroDeltaCoun
 import {IExttload} from "@uniswap/v4-core/src/interfaces/IExttload.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {MiddlewareRemove} from "./MiddlewareRemove.sol";
+import {BaseMiddleware} from "./BaseMiddleware.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {console} from "./../../lib/forge-gas-snapshot/lib/forge-std/src/console.sol";
+import {console} from "forge-std/console.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
-contract MiddlewareProtect is MiddlewareRemove {
+contract MiddlewareProtect is BaseMiddleware {
     using CustomRevert for bytes4;
     using Hooks for IHooks;
     using StateLibrary for IPoolManager;
@@ -30,28 +30,24 @@ contract MiddlewareProtect is MiddlewareRemove {
     using LPFeeLibrary for uint24;
     using BalanceDeltaLibrary for BalanceDelta;
 
-    error HookModifiedOutput();
-    error ForbiddenDynamicFee();
+    /// @notice Thrown when hook permissions are forbidden
+    /// @param hooks The address of this contract
+    error HookPermissionForbidden(address hooks);
+
+    /// @notice Thrown when both flags match, but deployer must use AFTER_SWAP_FLAG
+    /// @dev redeploy with AFTER_SWAP_FLAG
     error MustHaveAfterSwapFlagOnMiddleware();
+
+    /// @notice Thrown when the implementation modified the output of a swap
+    error HookModifiedOutput();
+
+    bytes internal constant ZERO_BYTES = bytes("");
 
     // todo: use tstore
     BalanceDelta private quote;
 
-    uint160 public constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
-    uint160 public constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
-
-    constructor(IPoolManager _manager, address _impl) MiddlewareRemove(_manager, _impl) {}
-
-    function beforeInitialize(address sender, PoolKey calldata key, uint160 sqrtPriceX96, bytes calldata hookData)
-        external
-        returns (bytes4)
-    {
-        if (key.fee.isDynamicFee()) revert ForbiddenDynamicFee();
-        (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
-        if (!success) {
-            _handleRevert(returnData);
-        }
-        return abi.decode(returnData, (bytes4));
+    constructor(IPoolManager _manager, address _impl) BaseMiddleware(_manager, _impl) {
+        _ensureValidFlags();
     }
 
     function beforeSwap(address sender, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
@@ -62,7 +58,6 @@ contract MiddlewareProtect is MiddlewareRemove {
         catch (bytes memory reason) {
             quote = abi.decode(reason, (BalanceDelta));
         }
-        uint160 outputBefore = 0;
         (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
         if (!success) {
             _handleRevert(returnData);
@@ -74,7 +69,7 @@ contract MiddlewareProtect is MiddlewareRemove {
         external
         returns (bytes memory)
     {
-        BalanceDelta swapDelta = manager.swap(key, params, ZERO_BYTES);
+        BalanceDelta swapDelta = poolManager.swap(key, params, ZERO_BYTES);
         bytes memory result = abi.encode(swapDelta);
         assembly {
             revert(add(0x20, result), mload(result))
@@ -99,42 +94,26 @@ contract MiddlewareProtect is MiddlewareRemove {
         return abi.decode(returnData, (bytes4, int128));
     }
 
-    function beforeAddLiquidity(
-        address sender,
-        PoolKey calldata key,
-        IPoolManager.ModifyLiquidityParams calldata params,
-        bytes calldata hookData
-    ) external returns (bytes4) {
-        (bool success, bytes memory returnData) = address(this).delegatecall{gas: GAS_LIMIT}(
-            abi.encodeWithSelector(this._callAndEnsurePrice.selector, msg.data)
-        );
-        if (!success) {
-            _handleRevert(returnData);
-        }
-        return BaseHook.beforeAddLiquidity.selector;
-    }
-
     function _handleRevert(bytes memory returnData) internal pure {
         assembly {
             revert(add(32, returnData), mload(returnData))
         }
     }
 
-    function _ensureValidFlags(address _impl) internal view virtual override {
+    function _ensureValidFlags() internal view {
         IHooks This = IHooks(address(this));
         if (This.hasPermission(Hooks.BEFORE_SWAP_FLAG)) {
             if (
                 uint160(address(this)) & Hooks.ALL_HOOK_MASK
-                    != uint160(_impl) & Hooks.ALL_HOOK_MASK | Hooks.AFTER_SWAP_FLAG
+                    != uint160(implementation) & Hooks.ALL_HOOK_MASK | Hooks.AFTER_SWAP_FLAG
             ) {
-                if (IHooks(_impl).hasPermission(Hooks.AFTER_SWAP_FLAG)) {
+                if (IHooks(implementation).hasPermission(Hooks.AFTER_SWAP_FLAG)) {
                     revert FlagsMismatch();
                 } else {
-                    // both flags match, but dev must enable AFTER_SWAP_FLAG
                     revert MustHaveAfterSwapFlagOnMiddleware();
                 }
             }
-        } else if (uint160(address(this)) & Hooks.ALL_HOOK_MASK != uint160(_impl) & Hooks.ALL_HOOK_MASK) {
+        } else if (uint160(address(this)) & Hooks.ALL_HOOK_MASK != uint160(implementation) & Hooks.ALL_HOOK_MASK) {
             revert FlagsMismatch();
         }
         if (

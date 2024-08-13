@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {BaseHook} from "./../../contracts/BaseHook.sol";
+import {BaseHook} from "./../../src/base/hooks/BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {BaseHook} from "./../../contracts/BaseHook.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {console} from "./../../lib/forge-gas-snapshot/lib/forge-std/src/console.sol";
+import {console} from "forge-std/console.sol";
 
 contract HooksOutOfGas is BaseHook {
     uint256 counter;

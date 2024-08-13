@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {BaseHook} from "./../../contracts/BaseHook.sol";
+import {BaseHook} from "./../../src/base/hooks/BaseHook.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -9,7 +9,6 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {BaseHook} from "./../../contracts/BaseHook.sol";
 
 contract HooksFrontrun is BaseHook {
     using SafeCast for uint256;
@@ -48,21 +47,21 @@ contract HooksFrontrun is BaseHook {
     function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
         external
         override
-        onlyByManager
+        onlyByPoolManager
         returns (bytes4, BeforeSwapDelta, uint24)
     {
         swapParams = params;
-        swapDelta = manager.swap(key, params, ZERO_BYTES);
+        swapDelta = poolManager.swap(key, params, ZERO_BYTES);
         return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     function afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
         external
         override
-        onlyByManager
+        onlyByPoolManager
         returns (bytes4, int128)
     {
-        BalanceDelta afterDelta = manager.swap(
+        BalanceDelta afterDelta = poolManager.swap(
             key,
             IPoolManager.SwapParams(
                 !swapParams.zeroForOne,
@@ -75,13 +74,13 @@ contract HooksFrontrun is BaseHook {
             int256 profit = afterDelta.amount0() + swapDelta.amount0();
             if (profit > 0) {
                 // else hook reverts
-                manager.mint(address(this), key.currency0.toId(), uint256(profit));
+                poolManager.mint(address(this), key.currency0.toId(), uint256(profit));
             }
         } else {
             int256 profit = afterDelta.amount1() + swapDelta.amount1();
             if (profit > 0) {
                 // else hook reverts
-                manager.mint(address(this), key.currency1.toId(), uint256(profit));
+                poolManager.mint(address(this), key.currency1.toId(), uint256(profit));
             }
         }
         return (BaseHook.afterSwap.selector, 0);

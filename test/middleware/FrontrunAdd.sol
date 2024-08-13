@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {BaseHook} from "./../../contracts/BaseHook.sol";
+import {BaseHook} from "./../../src/base/hooks/BaseHook.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {BaseHook} from "./../../contracts/BaseHook.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 
@@ -52,10 +51,11 @@ contract FrontrunAdd is BaseHook {
     ) external override returns (bytes4) {
         if (hasLiquidity[key.toId()]) {
             BalanceDelta swapDelta =
-                manager.swap(key, IPoolManager.SwapParams(true, SWAP_AMOUNT, MIN_PRICE_LIMIT), ZERO_BYTES);
-            key.currency0.transfer(address(manager), uint128(-swapDelta.amount0()));
-            manager.settle(key.currency0);
-            manager.take(key.currency1, address(this), uint128(swapDelta.amount1()));
+                poolManager.swap(key, IPoolManager.SwapParams(true, SWAP_AMOUNT, MIN_PRICE_LIMIT), ZERO_BYTES);
+            key.currency0.transfer(address(poolManager), uint128(-swapDelta.amount0()));
+            poolManager.sync(key.currency0);
+            poolManager.settle();
+            poolManager.take(key.currency1, address(this), uint128(swapDelta.amount1()));
         } else {
             hasLiquidity[key.toId()] = true;
         }
