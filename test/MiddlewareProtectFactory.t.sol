@@ -25,6 +25,7 @@ import {FrontrunAdd} from "./middleware/FrontrunAdd.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {BaseMiddleware} from "./../src/middleware/BaseMiddleware.sol";
+import {BlankSwapHooks} from "./middleware/BlankSwapHooks.sol";
 
 contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
     HookEnabledSwapRouter router;
@@ -378,5 +379,33 @@ contract MiddlewareProtectFactoryTest is Test, Deployers, GasSnapshot {
         modifyLiquidityRouter.modifyLiquidity(key, REMOVE_LIQUIDITY_PARAMS, ZERO_BYTES);
         assertEq(counterProxy.beforeRemoveLiquidityCount(id), 1);
         assertEq(counterProxy.afterRemoveLiquidityCount(id), 1);
+    }
+
+    function testMiddlewareRemoveGas() public {
+        uint160 flags = Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG;
+        BlankSwapHooks blankSwapHooks = BlankSwapHooks(address(flags));
+        vm.etch(address(blankSwapHooks), address(new BlankSwapHooks(manager)).code);
+        (key,) = initPoolAndAddLiquidity(
+            currency0, currency1, IHooks(address(blankSwapHooks)), 3000, SQRT_PRICE_1_1, ZERO_BYTES
+        );
+        swap(key, true, 0.0001 ether, ZERO_BYTES);
+        snapLastCall("MIDDLEWARE_PROTECT-vanilla");
+        uint160 maxFeeBips = 0;
+        (, bytes32 salt) = HookMiner.find(
+            address(factory),
+            flags,
+            type(MiddlewareProtect).creationCode,
+            abi.encode(address(manager), address(blankSwapHooks))
+        );
+        address hookAddress = factory.createMiddleware(address(blankSwapHooks), salt);
+        (PoolKey memory protectedKey,) =
+            initPoolAndAddLiquidity(currency0, currency1, IHooks(hookAddress), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        swap(protectedKey, true, 0.0001 ether, ZERO_BYTES);
+        snapLastCall("MIDDLEWARE_PROTECT-protected");
+
+        swap(key, true, 0.01 ether, ZERO_BYTES);
+        snapLastCall("MIDDLEWARE_PROTECT-multi-vanilla");
+        swap(protectedKey, true, 0.01 ether, ZERO_BYTES);
+        snapLastCall("MIDDLEWARE_PROTECT-multi-protected");
     }
 }
