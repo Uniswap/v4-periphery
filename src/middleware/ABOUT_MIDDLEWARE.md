@@ -69,13 +69,32 @@ address hookAddress = factory.createMiddleware(implementation, maxFeeBips, salt)
 ### Gas Snapshots
 |  | Unprotected | Protected | Diff |
 | --- | --- | --- | --- |
-| Before + After remove (only proxy) | 124822 | 128379 | 3557 |
-| Before + After remove (OVERRIDE) | 124822 | 133820 | 8998 |
-| Before + After remove | 124822 | 135757 | 10935 |
-| Before + After remove + returns deltas | 124851 | 138303 | 13452 |
-| Before + After remove + takes fee | 181009 | 197499 | 16490 |
+| Before + After remove (only proxy) | 124,822 | 128,379 | 3,557 |
+| Before + After remove (OVERRIDE) | 124,822 | 133,820 | 8,998 |
+| Before + After remove | 124,822 | 135,757 | 10,935 |
+| Before + After remove + returns deltas | 124,851 | 138,303 | 13,452 |
+| Before + After remove + takes fee | 181,009 | 197,499 | 16,490 |
 
 ### Override
 There is a small gas overhead when using the middleware.
 
 An advanced caller who is confident that the checks will pass can skip them by passing a hookData starting with OVERRIDE_BYTES. The remaining bytes will then be used to do a standard hook call.
+
+# Middleware Protect
+A malicious hook could frontrun a user in the beforeSwap hook, extracting value at the cost of the user.
+
+MiddlewareProtect is one possible middleware, designed to revert if this happens.
+
+Before any hooks are called, it quotes the output amount. Then, in the afterSwap hook, it compares the output amount to the quote. If they differ, the swap reverts.
+
+> [!IMPORTANT]  
+> You must mine the implementation hook address.
+
+> [!NOTE]
+> If your middleware uses the beforeSwap flag, it must also use the afterSwap flag, even if the implementation does not use afterSwap.
+
+### Gas Snapshots
+|  | Unprotected | Protected | Diff |
+| --- | --- | --- | --- |
+| Single-tick swap | 124,869 | 151,501 | 26,632 |
+| Multi-tick swap | 143,854 | 184,020 | 40,166 |
