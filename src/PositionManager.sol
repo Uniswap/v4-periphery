@@ -10,31 +10,36 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
-import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
-import {ERC721Permit} from "./base/ERC721Permit.sol";
+import {ERC721Permit_v4} from "./base/ERC721Permit_v4.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
-import {Multicall} from "./base/Multicall.sol";
+import {Multicall_v4} from "./base/Multicall_v4.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
+import {Notifier} from "./base/Notifier.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
+import {INotifier} from "./interfaces/INotifier.sol";
+import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
+import {PositionConfigId, PositionConfigIdLibrary} from "./libraries/PositionConfigId.sol";
 
 contract PositionManager is
     IPositionManager,
-    ERC721Permit,
+    ERC721Permit_v4,
     PoolInitializer,
-    Multicall,
+    Multicall_v4,
     DeltaResolver,
     ReentrancyLock,
-    BaseActionsRouter
+    BaseActionsRouter,
+    Notifier,
+    Permit2Forwarder
 {
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
@@ -43,31 +48,53 @@ contract PositionManager is
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
+    using SafeCast for int256;
     using CalldataDecoder for bytes;
     using SlippageCheckLibrary for BalanceDelta;
+    using PositionConfigIdLibrary for PositionConfigId;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
-    /// @inheritdoc IPositionManager
-    mapping(uint256 tokenId => bytes32 configId) public positionConfigs;
+    mapping(uint256 tokenId => PositionConfigId configId) internal positionConfigs;
 
-    IAllowanceTransfer public immutable permit2;
+    /// @notice an internal getter for PositionConfigId to be used by Notifier
+    function _positionConfigs(uint256 tokenId) internal view override returns (PositionConfigId storage) {
+        return positionConfigs[tokenId];
+    }
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
         BaseActionsRouter(_poolManager)
-        ERC721Permit("Uniswap V4 Positions NFT", "UNI-V4-POSM", "1")
-    {
-        permit2 = _permit2;
-    }
+        Permit2Forwarder(_permit2)
+        ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
+    {}
 
+    /// @notice Reverts if the deadline has passed
+    /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed();
         _;
     }
 
-    /// @param unlockData is an encoding of actions, params, and currencies
-    /// @param deadline is the timestamp at which the unlockData will no longer be valid
+    /// @notice Reverts if the caller is not the owner or approved for the ERC721 token
+    /// @param caller The address of the caller
+    /// @param tokenId the unique identifier of the ERC721 token
+    /// @dev either msg.sender or _msgSender() is passed in as the caller
+    /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
+    modifier onlyIfApproved(address caller, uint256 tokenId) override {
+        if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
+        _;
+    }
+
+    /// @notice Reverts if the hash of the config does not equal the saved hash
+    /// @param tokenId the unique identifier of the ERC721 token
+    /// @param config the PositionConfig to check against
+    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) override {
+        if (positionConfigs[tokenId].getConfigId() != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+        _;
+    }
+
+    /// @inheritdoc IPositionManager
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
         external
         payable
@@ -77,66 +104,90 @@ contract PositionManager is
         _executeActions(unlockData);
     }
 
-    function _handleAction(uint256 action, bytes calldata params) internal virtual override {
-        if (action == Actions.INCREASE_LIQUIDITY) {
-            (
-                uint256 tokenId,
-                PositionConfig calldata config,
-                uint256 liquidity,
-                uint128 amount0Max,
-                uint128 amount1Max,
-                bytes calldata hookData
-            ) = params.decodeModifyLiquidityParams();
-            _increase(tokenId, config, liquidity, amount0Max, amount1Max, hookData);
-        } else if (action == Actions.DECREASE_LIQUIDITY) {
-            (
-                uint256 tokenId,
-                PositionConfig calldata config,
-                uint256 liquidity,
-                uint128 amount0Min,
-                uint128 amount1Min,
-                bytes calldata hookData
-            ) = params.decodeModifyLiquidityParams();
-            _decrease(tokenId, config, liquidity, amount0Min, amount1Min, hookData);
-        } else if (action == Actions.MINT_POSITION) {
-            (
-                PositionConfig calldata config,
-                uint256 liquidity,
-                uint128 amount0Max,
-                uint128 amount1Max,
-                address owner,
-                bytes calldata hookData
-            ) = params.decodeMintParams();
-            _mint(config, liquidity, amount0Max, amount1Max, owner, hookData);
-        } else if (action == Actions.CLOSE_CURRENCY) {
-            Currency currency = params.decodeCurrency();
-            _close(currency);
-        } else if (action == Actions.CLEAR) {
-            (Currency currency, uint256 amountMax) = params.decodeCurrencyAndUint256();
-            _clear(currency, amountMax);
-        } else if (action == Actions.BURN_POSITION) {
-            // Will automatically decrease liquidity to 0 if the position is not already empty.
-            (
-                uint256 tokenId,
-                PositionConfig calldata config,
-                uint128 amount0Min,
-                uint128 amount1Min,
-                bytes calldata hookData
-            ) = params.decodeBurnParams();
-            _burn(tokenId, config, amount0Min, amount1Min, hookData);
-        } else if (action == Actions.SETTLE_WITH_BALANCE) {
-            Currency currency = params.decodeCurrency();
-            _settleWithBalance(currency);
-        } else if (action == Actions.SWEEP) {
-            (Currency currency, address to) = params.decodeCurrencyAndAddress();
-            _sweep(currency, to);
-        } else {
-            revert UnsupportedAction(action);
-        }
+    /// @inheritdoc IPositionManager
+    function modifyLiquiditiesWithoutUnlock(bytes calldata actions, bytes[] calldata params)
+        external
+        payable
+        isNotLocked
+    {
+        _executeActionsWithoutUnlock(actions, params);
     }
 
-    function _msgSender() internal view override returns (address) {
+    function msgSender() public view override returns (address) {
         return _getLocker();
+    }
+
+    function _handleAction(uint256 action, bytes calldata params) internal virtual override {
+        if (action < Actions.SETTLE) {
+            if (action == Actions.INCREASE_LIQUIDITY) {
+                (
+                    uint256 tokenId,
+                    PositionConfig calldata config,
+                    uint256 liquidity,
+                    uint128 amount0Max,
+                    uint128 amount1Max,
+                    bytes calldata hookData
+                ) = params.decodeModifyLiquidityParams();
+                _increase(tokenId, config, liquidity, amount0Max, amount1Max, hookData);
+            } else if (action == Actions.DECREASE_LIQUIDITY) {
+                (
+                    uint256 tokenId,
+                    PositionConfig calldata config,
+                    uint256 liquidity,
+                    uint128 amount0Min,
+                    uint128 amount1Min,
+                    bytes calldata hookData
+                ) = params.decodeModifyLiquidityParams();
+                _decrease(tokenId, config, liquidity, amount0Min, amount1Min, hookData);
+            } else if (action == Actions.MINT_POSITION) {
+                (
+                    PositionConfig calldata config,
+                    uint256 liquidity,
+                    uint128 amount0Max,
+                    uint128 amount1Max,
+                    address owner,
+                    bytes calldata hookData
+                ) = params.decodeMintParams();
+                _mint(config, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
+            } else if (action == Actions.BURN_POSITION) {
+                // Will automatically decrease liquidity to 0 if the position is not already empty.
+                (
+                    uint256 tokenId,
+                    PositionConfig calldata config,
+                    uint128 amount0Min,
+                    uint128 amount1Min,
+                    bytes calldata hookData
+                ) = params.decodeBurnParams();
+                _burn(tokenId, config, amount0Min, amount1Min, hookData);
+            } else {
+                revert UnsupportedAction(action);
+            }
+        } else {
+            if (action == Actions.SETTLE_PAIR) {
+                (Currency currency0, Currency currency1) = params.decodeCurrencyPair();
+                _settlePair(currency0, currency1);
+            } else if (action == Actions.TAKE_PAIR) {
+                (Currency currency0, Currency currency1, address to) = params.decodeCurrencyPairAndAddress();
+                _takePair(currency0, currency1, to);
+            } else if (action == Actions.SETTLE) {
+                (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
+                _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
+            } else if (action == Actions.TAKE) {
+                (Currency currency, address recipient, uint256 amount) = params.decodeCurrencyAddressAndUint256();
+                _take(currency, _mapRecipient(recipient), _mapTakeAmount(amount, currency));
+            } else if (action == Actions.CLOSE_CURRENCY) {
+                Currency currency = params.decodeCurrency();
+                _close(currency);
+            } else if (action == Actions.CLEAR_OR_TAKE) {
+                (Currency currency, uint256 amountMax) = params.decodeCurrencyAndUint256();
+                _clearOrTake(currency, amountMax);
+            } else if (action == Actions.SWEEP) {
+                (Currency currency, address to) = params.decodeCurrencyAndAddress();
+                _sweep(currency, _mapRecipient(to));
+            } else {
+                revert UnsupportedAction(action);
+            }
+        }
     }
 
     /// @dev Calling increase with 0 liquidity will credit the caller with any underlying fees of the position
@@ -147,11 +198,12 @@ contract PositionManager is
         uint128 amount0Max,
         uint128 amount1Max,
         bytes calldata hookData
-    ) internal {
-        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
+    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
-        BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        liquidityDelta.validateMaxInNegative(amount0Max, amount1Max);
+        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+            _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+        (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
     }
 
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
@@ -162,13 +214,12 @@ contract PositionManager is
         uint128 amount0Min,
         uint128 amount1Min,
         bytes calldata hookData
-    ) internal {
-        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
-        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
-
+    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
         // Note: the tokenId is used as the salt.
-        BalanceDelta liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-        liquidityDelta.validateMinOut(amount0Min, amount1Min);
+        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+            _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+        (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
     }
 
     function _mint(
@@ -188,9 +239,49 @@ contract PositionManager is
         _mint(owner, tokenId);
 
         // _beforeModify is not called here because the tokenId is newly minted
-        BalanceDelta liquidityDelta = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        liquidityDelta.validateMaxIn(amount0Max, amount1Max);
-        positionConfigs[tokenId] = config.toId();
+        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+            _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+        (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
+        positionConfigs[tokenId].setConfigId(config.toId());
+
+        emit MintPosition(tokenId, config);
+    }
+
+    /// @dev this is overloaded with ERC721Permit_v4._burn
+    function _burn(
+        uint256 tokenId,
+        PositionConfig calldata config,
+        uint128 amount0Min,
+        uint128 amount1Min,
+        bytes calldata hookData
+    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
+        uint256 liquidity = uint256(getPositionLiquidity(tokenId, config));
+
+        // Can only call modify if there is non zero liquidity.
+        if (liquidity > 0) {
+            (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+                _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+            // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
+            (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
+        }
+
+        delete positionConfigs[tokenId];
+        // Burn the token.
+        _burn(tokenId);
+    }
+
+    function _settlePair(Currency currency0, Currency currency1) internal {
+        // the locker is the payer when settling
+        address caller = msgSender();
+        _settle(currency0, caller, _getFullDebt(currency0));
+        _settle(currency1, caller, _getFullDebt(currency1));
+    }
+
+    function _takePair(Currency currency0, Currency currency1, address to) internal {
+        address recipient = _mapRecipient(to);
+        _take(currency0, recipient, _getFullCredit(currency0));
+        _take(currency1, recipient, _getFullCredit(currency1));
     }
 
     function _close(Currency currency) internal {
@@ -199,7 +290,7 @@ contract PositionManager is
         int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
 
         // the locker is the payer or receiver
-        address caller = _msgSender();
+        address caller = msgSender();
         if (currencyDelta < 0) {
             _settle(currency, caller, uint256(-currencyDelta));
         } else if (currencyDelta > 0) {
@@ -208,41 +299,22 @@ contract PositionManager is
     }
 
     /// @dev integrators may elect to forfeit positive deltas with clear
-    /// provides a safety check that amount-to-clear is less than a user-provided maximum
-    function _clear(Currency currency, uint256 amountMax) internal {
-        int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
-        if (uint256(currencyDelta) > amountMax) revert ClearExceedsMaxAmount(currency, currencyDelta, amountMax);
-        poolManager.clear(currency, uint256(currencyDelta));
-    }
+    /// if the forfeit amount exceeds the user-specified max, the amount is taken instead
+    function _clearOrTake(Currency currency, uint256 amountMax) internal {
+        uint256 delta = _getFullCredit(currency);
 
-    /// @dev uses this addresses balance to settle a negative delta
-    function _settleWithBalance(Currency currency) internal {
-        // set the payer to this address, performs a transfer.
-        _settle(currency, address(this), _getFullSettleAmount(currency));
-    }
-
-    /// @dev this is overloaded with ERC721Permit._burn
-    function _burn(
-        uint256 tokenId,
-        PositionConfig calldata config,
-        uint128 amount0Min,
-        uint128 amount1Min,
-        bytes calldata hookData
-    ) internal {
-        if (!_isApprovedOrOwner(_msgSender(), tokenId)) revert NotApproved(_msgSender());
-        if (positionConfigs[tokenId] != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
-        uint256 liquidity = uint256(_getPositionLiquidity(config, tokenId));
-
-        BalanceDelta liquidityDelta;
-        // Can only call modify if there is non zero liquidity.
-        if (liquidity > 0) {
-            liquidityDelta = _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
-            liquidityDelta.validateMinOut(amount0Min, amount1Min);
+        // forfeit the delta if its less than or equal to the user-specified limit
+        if (delta <= amountMax) {
+            poolManager.clear(currency, delta);
+        } else {
+            _take(currency, msgSender(), delta);
         }
+    }
 
-        delete positionConfigs[tokenId];
-        // Burn the token.
-        _burn(tokenId);
+    /// @notice Sweeps the entire contract balance of specified currency to the recipient
+    function _sweep(Currency currency, address to) internal {
+        uint256 balance = currency.balanceOfSelf();
+        if (balance > 0) currency.transfer(to, balance);
     }
 
     function _modifyLiquidity(
@@ -250,8 +322,8 @@ contract PositionManager is
         int256 liquidityChange,
         bytes32 salt,
         bytes calldata hookData
-    ) internal returns (BalanceDelta liquidityDelta) {
-        (liquidityDelta,) = poolManager.modifyLiquidity(
+    ) internal returns (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) {
+        (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
             config.poolKey,
             IPoolManager.ModifyLiquidityParams({
                 tickLower: config.tickLower,
@@ -261,22 +333,10 @@ contract PositionManager is
             }),
             hookData
         );
-    }
 
-    function _getPositionLiquidity(PositionConfig calldata config, uint256 tokenId)
-        internal
-        view
-        returns (uint128 liquidity)
-    {
-        bytes32 positionId =
-            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
-        liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
-    }
-
-    /// @notice Sweeps the entire contract balance of specified currency to the recipient
-    function _sweep(Currency currency, address to) internal {
-        uint256 balance = currency.balanceOfSelf();
-        if (balance > 0) currency.transfer(to, balance);
+        if (positionConfigs[uint256(salt)].hasSubscriber()) {
+            _notifyModifyLiquidity(uint256(salt), config, liquidityChange, feesAccrued);
+        }
     }
 
     // implementation of abstract function DeltaResolver._pay
@@ -287,5 +347,27 @@ contract PositionManager is
         } else {
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
         }
+    }
+
+    /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
+    function transferFrom(address from, address to, uint256 id) public virtual override {
+        super.transferFrom(from, to, id);
+        if (positionConfigs[id].hasSubscriber()) _notifyTransfer(id, from, to);
+    }
+
+    /// @inheritdoc IPositionManager
+    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
+        public
+        view
+        returns (uint128 liquidity)
+    {
+        bytes32 positionId =
+            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
+        liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
+    }
+
+    /// @inheritdoc IPositionManager
+    function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
+        return positionConfigs[tokenId].getConfigId();
     }
 }

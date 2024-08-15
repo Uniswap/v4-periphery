@@ -9,9 +9,9 @@ import {PathKey} from "../libraries/PathKey.sol";
 /// @notice Interface containing all the structs and errors for different v4 swap types
 interface IV4Router {
     /// @notice Emitted when an exactInput swap does not receive its minAmountOut
-    error TooLittleReceived();
+    error V4TooLittleReceived();
     /// @notice Emitted when an exactOutput is asked for more than its maxAmountIn
-    error TooMuchRequested();
+    error V4TooMuchRequested();
 
     /// @notice Parameters for a single-hop exact-input swap
     struct ExactInputSingleParams {

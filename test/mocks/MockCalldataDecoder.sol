@@ -98,7 +98,27 @@ contract MockCalldataDecoder {
         return params.decodeCurrency();
     }
 
+    function decodeCurrencyPair(bytes calldata params) external pure returns (Currency currency0, Currency currency1) {
+        return params.decodeCurrencyPair();
+    }
+
+    function decodeCurrencyPairAndAddress(bytes calldata params)
+        external
+        pure
+        returns (Currency currency0, Currency currency1, address _address)
+    {
+        return params.decodeCurrencyPairAndAddress();
+    }
+
     function decodeCurrencyAndUint256(bytes calldata params) external pure returns (Currency currency, uint256 _uint) {
         return params.decodeCurrencyAndUint256();
+    }
+
+    function decodeCurrencyAddressAndUint256(bytes calldata params)
+        external
+        pure
+        returns (Currency currency, address addr, uint256 amount)
+    {
+        return params.decodeCurrencyAddressAndUint256();
     }
 }

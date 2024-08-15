@@ -16,7 +16,7 @@ contract FeeOnRemove is BaseHook {
     uint128 public liquidityFee = 543; // 5.43%
     uint128 public constant TOTAL_BIPS = 10000;
 
-    // middleware implementations do not need to be mined
+    // for testing
     function validateHookAddress(BaseHook _this) internal pure override {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {

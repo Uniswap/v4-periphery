@@ -24,6 +24,8 @@ abstract contract BaseMiddleware is Proxy {
         implementation = _impl;
     }
 
+    receive() external payable {}
+
     function _implementation() internal view override returns (address) {
         return implementation;
     }
