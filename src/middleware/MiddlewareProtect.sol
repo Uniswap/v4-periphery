@@ -10,17 +10,14 @@ import {BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
-import {NonZeroDeltaCount} from "@uniswap/v4-core/src/libraries/NonZeroDeltaCount.sol";
-import {IExttload} from "@uniswap/v4-core/src/interfaces/IExttload.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BaseMiddleware} from "./BaseMiddleware.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {console} from "forge-std/console.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {CheapQuoter} from "./CheapQuoter.sol";
+import {Quote} from "../libraries/Quote.sol";
 
 contract MiddlewareProtect is BaseMiddleware {
     using CustomRevert for bytes4;
@@ -46,9 +43,6 @@ contract MiddlewareProtect is BaseMiddleware {
 
     CheapQuoter public immutable cheapQuoter;
 
-    // todo: use tstore
-    int256 private quote;
-
     constructor(IPoolManager _poolManager, CheapQuoter _cheapQuoter, address _impl)
         BaseMiddleware(_poolManager, _impl)
     {
@@ -60,7 +54,7 @@ contract MiddlewareProtect is BaseMiddleware {
         external
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        quote = cheapQuoter.quote(key, params);
+        Quote.set(cheapQuoter.quote(key, params));
         (bool success, bytes memory returnData) = address(implementation).delegatecall(msg.data);
         if (!success) {
             _handleRevert(returnData);
@@ -77,8 +71,9 @@ contract MiddlewareProtect is BaseMiddleware {
     ) external returns (bytes4, int128) {
         IHooks implementation = IHooks(address(implementation));
         if (implementation.hasPermission(Hooks.BEFORE_SWAP_FLAG)) {
-            int256 amountOut = params.zeroForOne ? delta.amount1() : delta.amount0();
-            if (amountOut != quote) revert HookModifiedOutput();
+            int256 amountActual = params.zeroForOne == params.amountSpecified < 0 ? delta.amount1() : delta.amount0();
+            if (amountActual != Quote.read()) revert HookModifiedOutput();
+            Quote.reset();
             if (!implementation.hasPermission(Hooks.AFTER_SWAP_FLAG)) {
                 return (BaseHook.afterSwap.selector, 0);
             }

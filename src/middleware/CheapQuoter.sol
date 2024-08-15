@@ -181,10 +181,7 @@ contract CheapQuoter {
                 // recompute unless we're on a lower tick boundary (i.e. already transitioned ticks), and haven't moved
                 state.tick = TickMath.getTickAtSqrtPrice(state.sqrtPriceX96);
             }
-
-            quote = quoteParams.exactInput
-                ? state.amountCalculated
-                : state.amountSpecifiedRemaining + swapParams.amountSpecified;
         }
+        quote = state.amountCalculated;
     }
 }
