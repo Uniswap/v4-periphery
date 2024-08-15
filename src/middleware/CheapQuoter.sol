@@ -5,7 +5,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SwapMath} from "@uniswap/v4-core/src/libraries/SwapMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {LiquidityMath} from "@uniswap/v4-core/src/libraries/LiquidityMath.sol";
 import {PoolTickBitmap} from "../libraries/PoolTickBitmap.sol";
 import {Slot0, Slot0Library} from "@uniswap/v4-core/src/types/Slot0.sol";
@@ -167,7 +167,7 @@ contract CheapQuoter {
             if (state.sqrtPriceX96 == step.sqrtPriceNextX96) {
                 // if the tick is initialized, run the tick transition
                 if (step.initialized) {
-                    (, int128 liquidityNet,,) = poolManager.getTickInfo(poolKey.toId(), step.tickNext);
+                    (, int128 liquidityNet) = poolManager.getTickLiquidity(poolKey.toId(), step.tickNext);
 
                     // if we're moving leftward, we interpret liquidityNet as the opposite sign
                     // safe because liquidityNet cannot be type(int128).min

@@ -96,5 +96,5 @@ Before any hooks are called, it quotes the output amount. Then, in the afterSwap
 ### Gas Snapshots
 |  | Unprotected | Protected | Diff |
 | --- | --- | --- | --- |
-| Single-tick swap | 124,869 | 151,501 | 26,632 |
-| Multi-tick swap | 143,854 | 184,020 | 40,166 |
+| Single-tick swap | 124,869 | 149,751 | 24,882 |
+| Multi-tick swap | 143,854 | 178,303 | 34,449 |
