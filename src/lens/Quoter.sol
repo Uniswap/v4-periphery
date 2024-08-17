@@ -9,17 +9,14 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
-import {PathKey, PathKeyLib} from "../libraries/PathKey.sol";
+import {PathKey} from "../libraries/PathKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
 
 contract Quoter is IQuoter, SafeCallback {
     using Hooks for IHooks;
-    using PoolIdLibrary for PoolKey;
-    using PathKeyLib for PathKey;
     using StateLibrary for IPoolManager;
 
     /// @dev cache used to check a safety condition in exact output swaps.
@@ -238,8 +235,8 @@ contract Quoter is IQuoter, SafeCallback {
             curAmountOut = i == pathLength ? params.exactAmount : cache.prevAmount;
             amountOutCached = curAmountOut;
 
-            (PoolKey memory poolKey, bool oneForZero) = PathKeyLib.getPoolAndSwapDirection(
-                params.path[i - 1], i == pathLength ? params.exactCurrency : cache.prevCurrency
+            (PoolKey memory poolKey, bool oneForZero) = params.path[i - 1].getPoolAndSwapDirection(
+                 i == pathLength ? params.exactCurrency : cache.prevCurrency
             );
 
             (, cache.tickBefore,,) = poolManager.getSlot0(poolKey.toId());

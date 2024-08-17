@@ -11,7 +11,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {TickBitmap} from "@uniswap/v4-core/src/libraries/TickBitmap.sol";
@@ -25,7 +25,6 @@ import {StateView} from "../src/lens/StateView.sol";
 /// This test was taken from StateLibrary.t.sol in v4-core and adapted to use the StateView contract instead.
 contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
     using FixedPointMathLib for uint256;
-    using PoolIdLibrary for PoolKey;
 
     PoolId poolId;
 

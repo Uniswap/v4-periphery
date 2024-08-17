@@ -13,6 +13,8 @@ struct PathKey {
     bytes hookData;
 }
 
+using PathKeyLib for PathKey global;
+
 library PathKeyLib {
     function getPoolAndSwapDirection(PathKey calldata params, Currency currencyIn)
         internal
