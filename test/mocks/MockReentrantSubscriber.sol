@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
@@ -39,7 +41,7 @@ contract MockReentrantSubscriber is ISubscriber {
         }
     }
 
-    function notifyModifyLiquidity(uint256, PositionConfig memory, int256) external onlyByPosm {
+    function notifyModifyLiquidity(uint256, PositionConfig memory, int256, BalanceDelta) external onlyByPosm {
         if (actions.length != 0) {
             posm.modifyLiquiditiesWithoutUnlock(actions, params);
         }

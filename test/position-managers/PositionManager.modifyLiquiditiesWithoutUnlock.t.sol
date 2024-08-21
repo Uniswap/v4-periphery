@@ -321,7 +321,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
     }
 
     /// @dev subscribers cannot re-enter posm on-unsubscribe since PM is not unlocked
-    function test_fuzz_subscriber_unsubscribe_reenter_revert(uint256 seed) public {
+    function test_fuzz_subscriber_unsubscribe_reenter(uint256 seed) public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, address(this), ZERO_BYTES);
 
@@ -337,6 +337,10 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         assertEq(lpm.ownerOf(tokenId), address(this)); // owner still owns the position
         assertEq(lpm.nextTokenId(), tokenId + 1); // no new token minted
         assertEq(lpm.getPositionLiquidity(tokenId, config), 100e18); // liquidity unchanged
+
+        // token was unsubscribed
+        assertEq(address(lpm.subscriber(tokenId)), address(0));
+        assertEq(lpm.hasSubscriber(tokenId), false);
     }
 
     /// @dev subscribers cannot re-enter posm on-notifyModifyLiquidity because of no reentrancy guards
@@ -422,7 +426,10 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         sub.setActionsAndParams(actions, params);
 
         uint256 actionNumber = uint256(uint8(actions[0]));
-        if (actionNumber == Actions.DECREASE_LIQUIDITY || actionNumber == Actions.BURN_POSITION) {
+        if (
+            actionNumber == Actions.INCREASE_LIQUIDITY || actionNumber == Actions.DECREASE_LIQUIDITY
+                || actionNumber == Actions.BURN_POSITION
+        ) {
             // revert because the subscriber loses approval
             // ERC721.transferFrom happens before notifyTransfer and resets the approval
             vm.expectRevert(
