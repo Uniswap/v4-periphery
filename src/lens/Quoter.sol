@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
@@ -17,7 +15,6 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
 
 contract Quoter is IQuoter, SafeCallback {
-    using Hooks for IHooks;
     using PoolIdLibrary for PoolKey;
     using PathKeyLib for PathKey;
     using StateLibrary for IPoolManager;

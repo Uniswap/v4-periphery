@@ -11,7 +11,6 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {ERC721Permit_v4} from "./base/ERC721Permit_v4.sol";
@@ -25,7 +24,6 @@ import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {Notifier} from "./base/Notifier.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
-import {INotifier} from "./interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 import {PositionConfigId, PositionConfigIdLibrary} from "./libraries/PositionConfigId.sol";
