@@ -69,11 +69,11 @@ abstract contract Notifier is INotifier {
         _positionConfigs(tokenId).setUnsubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
-        uint256 subscriberGasLimit = block.gaslimit.calculatePortion(BLOCK_LIMIT_BPS);
+        delete subscriber[tokenId];
 
+        uint256 subscriberGasLimit = block.gaslimit.calculatePortion(BLOCK_LIMIT_BPS);
         try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config, data) {} catch {}
 
-        delete subscriber[tokenId];
         emit Unsubscribed(tokenId, address(_subscriber));
     }
 
