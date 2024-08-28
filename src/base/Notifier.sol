@@ -65,6 +65,10 @@ abstract contract Notifier is INotifier {
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
+        _unsubscribe(tokenId, config, data);
+    }
+
+    function _unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data) internal {
         _positionConfigs(tokenId).setUnsubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 

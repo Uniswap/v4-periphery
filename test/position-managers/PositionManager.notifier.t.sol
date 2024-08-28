@@ -477,4 +477,29 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         );
         lpm.safeTransferFrom(alice, bob, tokenId, "");
     }
+
+    /// @notice burning a position will automatically notify unsubscribe
+    function test_burn_unsubscribe() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        bytes memory subData = abi.encode(address(this));
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub), subData);
+
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(sub.notifyUnsubscribeCount(), 0);
+
+        // burn the position, causing an unsubscribe
+        burn(tokenId, config, ZERO_BYTES);
+
+        // position is now unsubscribed
+        assertEq(lpm.hasSubscriber(tokenId), false);
+        assertEq(sub.notifyUnsubscribeCount(), 1);
+    }
 }
