@@ -240,7 +240,16 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory plan = Planner.init();
         plan.add(
             Actions.MINT_POSITION,
-            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                100e18,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                address(this),
+                ZERO_BYTES
+            )
         );
         bytes memory actions = plan.finalizeModifyLiquidityWithSettlePair(config.poolKey);
 
@@ -251,7 +260,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.multicall(calls);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, 100e18);
         assertEq(sub.notifySubscribeCount(), 1);
@@ -267,7 +276,16 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory plan = Planner.init();
         plan.add(
             Actions.MINT_POSITION,
-            abi.encode(config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                100e18,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                address(this),
+                ZERO_BYTES
+            )
         );
         bytes memory actions = plan.finalizeModifyLiquidityWithSettlePair(config.poolKey);
 
@@ -287,7 +305,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.multicall(calls);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, 110e18);
         assertEq(sub.notifySubscribeCount(), 1);

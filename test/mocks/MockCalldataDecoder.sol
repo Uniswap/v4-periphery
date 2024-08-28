@@ -5,6 +5,7 @@ import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {CalldataDecoder} from "../../src/libraries/CalldataDecoder.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 // we need to use a mock contract to make the calls happen in calldata not memory
 contract MockCalldataDecoder {
@@ -62,7 +63,9 @@ contract MockCalldataDecoder {
         external
         pure
         returns (
-            PositionConfig calldata config,
+            PoolKey memory poolKey,
+            int24 tickLower,
+            int24 tickUpper,
             uint256 liquidity,
             uint128 amount0Max,
             uint128 amount1Max,

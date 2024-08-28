@@ -71,13 +71,13 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
         swap(key, true, -1e18, calls);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         // original liquidity unchanged
         assertEq(liquidity, initialLiquidity);
 
         // hook minted its own position
-        liquidity = lpm.getPositionLiquidity(hookTokenId, config);
+        liquidity = lpm.getPositionLiquidity(hookTokenId);
         assertEq(liquidity, newLiquidity);
 
         assertEq(lpm.ownerOf(tokenId), address(this)); // original position owned by this contract
@@ -99,7 +99,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
         swap(key, true, -1e18, calls);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, initialLiquidity + newLiquidity);
     }
@@ -119,7 +119,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
         swap(key, true, -1e18, calls);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, initialLiquidity - liquidityToDecrease);
     }
@@ -145,7 +145,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         bytes memory calls = getCollectEncoded(tokenId, config, ZERO_BYTES);
         swap(key, true, -1e18, calls);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         // liquidity unchanged
         assertEq(liquidity, initialLiquidity);
@@ -178,7 +178,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         bytes memory calls = getBurnEncoded(tokenId, config, ZERO_BYTES);
         swap(key, true, -1e18, calls);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         // liquidity burned
         assertEq(liquidity, 0);

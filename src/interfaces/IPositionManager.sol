@@ -3,16 +3,13 @@ pragma solidity ^0.8.24;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PositionConfig} from "../libraries/PositionConfig.sol";
+import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 import {INotifier} from "./INotifier.sol";
 
 interface IPositionManager is INotifier {
     error NotApproved(address caller);
     error DeadlinePassed();
-    error IncorrectPositionConfigForTokenId(uint256 tokenId);
-
-    event MintPosition(uint256 indexed tokenId, PositionConfig config);
 
     /// @notice Unlocks Uniswap v4 PoolManager and batches actions for modifying liquidity
     /// @dev This is the standard entrypoint for the PositionManager
@@ -31,11 +28,12 @@ interface IPositionManager is INotifier {
     function nextTokenId() external view returns (uint256);
 
     /// @param tokenId the ERC721 tokenId
-    /// @param config the corresponding PositionConfig for the tokenId
     /// @return liquidity the position's liquidity, as a liquidityAmount
     /// @dev this value can be processed as an amount0 and amount1 by using the LiquidityAmounts library
-    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
-        external
-        view
-        returns (uint128 liquidity);
+    function getPositionLiquidity(uint256 tokenId) external view returns (uint128 liquidity);
+
+    /// @param tokenId the ERC721 tokenId
+    /// @return PositionInfo information about the position including the range (tickLower, tickUpper)
+    /// @return poolKey the pool key of the position
+    function getPoolPositionInfo(uint256 tokenId) external view returns (PositionInfo memory, PoolKey memory);
 }

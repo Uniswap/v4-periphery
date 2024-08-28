@@ -74,7 +74,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
             abi.encode(
-                config,
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
                 10_000 ether,
                 MAX_SLIPPAGE_INCREASE,
                 MAX_SLIPPAGE_INCREASE,
@@ -90,7 +92,16 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
     function test_gas_mint_withSettlePair() public {
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
-            abi.encode(config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                10_000 ether,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                address(this),
+                ZERO_BYTES
+            )
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithSettlePair(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -107,7 +118,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
             abi.encode(
-                config,
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
                 10_000 ether,
                 MAX_SLIPPAGE_INCREASE,
                 MAX_SLIPPAGE_INCREASE,
@@ -131,7 +144,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
             abi.encode(
-                config,
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
                 10_000 ether,
                 MAX_SLIPPAGE_INCREASE,
                 MAX_SLIPPAGE_INCREASE,
@@ -155,7 +170,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
             abi.encode(
-                config,
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
                 10_000 ether,
                 MAX_SLIPPAGE_INCREASE,
                 MAX_SLIPPAGE_INCREASE,
@@ -383,7 +400,14 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         planner.add(
             Actions.MINT_POSITION,
             abi.encode(
-                config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ActionConstants.MSG_SENDER, ZERO_BYTES
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                100e18,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                ActionConstants.MSG_SENDER,
+                ZERO_BYTES
             )
         );
         bytes memory actions = planner.finalizeModifyLiquidityWithClose(config.poolKey);
@@ -435,7 +459,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
             abi.encode(
-                config,
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
                 10_001 ether,
                 MAX_SLIPPAGE_INCREASE,
                 MAX_SLIPPAGE_INCREASE,
@@ -576,7 +602,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         planner.add(
             Actions.MINT_POSITION,
             abi.encode(
-                configNative,
+                configNative.poolKey,
+                configNative.tickLower,
+                configNative.tickUpper,
                 liquidityToAdd,
                 MAX_SLIPPAGE_INCREASE,
                 MAX_SLIPPAGE_INCREASE,
@@ -607,7 +635,14 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         planner.add(
             Actions.MINT_POSITION,
             abi.encode(
-                configNative, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES
+                configNative.poolKey,
+                configNative.tickLower,
+                configNative.tickUpper,
+                liquidityToAdd,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                address(this),
+                ZERO_BYTES
             )
         );
         planner.add(Actions.SETTLE_PAIR, abi.encode(nativeKey.currency0, nativeKey.currency1));
@@ -812,7 +847,16 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                liquidityAlice,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                alice,
+                ZERO_BYTES
+            )
         );
         planner.add(Actions.SETTLE, abi.encode(currency0, ActionConstants.OPEN_DELTA, false));
         planner.add(Actions.SETTLE, abi.encode(currency1, ActionConstants.OPEN_DELTA, false));

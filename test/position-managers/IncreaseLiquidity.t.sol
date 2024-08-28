@@ -604,7 +604,16 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                liquidityAlice,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                alice,
+                ZERO_BYTES
+            )
         );
         planner.add(Actions.SETTLE, abi.encode(currency0, ActionConstants.OPEN_DELTA, false));
         planner.add(Actions.SETTLE, abi.encode(currency1, ActionConstants.OPEN_DELTA, false));
@@ -646,7 +655,16 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                liquidityAlice,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                alice,
+                ZERO_BYTES
+            )
         );
         planner.add(Actions.SETTLE, abi.encode(currency0, ActionConstants.OPEN_DELTA, false));
         planner.add(Actions.SETTLE, abi.encode(currency1, ActionConstants.OPEN_DELTA, false));
@@ -684,7 +702,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice);
         assertEq(liquidity, liquidityAlice);
 
         // alice increases with the balance in the position manager
@@ -719,7 +737,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 amount0 = uint128(-delta.amount0());
         uint256 amount1 = uint128(-delta.amount1());
 
-        liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
+        liquidity = lpm.getPositionLiquidity(tokenIdAlice);
         assertEq(liquidity, 2 * liquidityAlice);
 
         // The balances were swept back to this address.

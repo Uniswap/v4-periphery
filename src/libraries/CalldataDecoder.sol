@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {PositionConfig} from "./PositionConfig.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IV4Router} from "../interfaces/IV4Router.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @title Library for abi decoding in calldata
 library CalldataDecoder {
@@ -60,12 +61,14 @@ library CalldataDecoder {
         hookData = params.toBytes(4);
     }
 
-    /// @dev equivalent to: abi.decode(params, (PositionConfig, uint256, uint128, uint128, address, bytes)) in calldata
+    /// @dev equivalent to: abi.decode(params, (PoolKey, int24, int24, uint256, uint128, uint128, address, bytes)) in calldata
     function decodeMintParams(bytes calldata params)
         internal
         pure
         returns (
-            PositionConfig calldata config,
+            PoolKey calldata poolKey,
+            int24 tickLower,
+            int24 tickUpper,
             uint256 liquidity,
             uint128 amount0Max,
             uint128 amount1Max,
@@ -74,7 +77,9 @@ library CalldataDecoder {
         )
     {
         assembly ("memory-safe") {
-            config := params.offset
+            poolKey := params.offset
+            tickLower := calldataload(add(params.offset, 0xa0))
+            tickUpper := calldataload(add(params.offset, 0xc0))
             liquidity := calldataload(add(params.offset, 0xe0))
             amount0Max := calldataload(add(params.offset, 0x100))
             amount1Max := calldataload(add(params.offset, 0x120))

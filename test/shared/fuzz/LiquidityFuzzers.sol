@@ -31,7 +31,9 @@ contract LiquidityFuzzers is Fuzzers {
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
             abi.encode(
-                config,
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
                 uint256(params.liquidityDelta),
                 MAX_SLIPPAGE_INCREASE,
                 MAX_SLIPPAGE_INCREASE,

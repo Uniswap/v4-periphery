@@ -72,7 +72,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
@@ -102,7 +102,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd + liquidityToAdd2);
     }
@@ -132,7 +132,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = planner.finalizeModifyLiquidityWithSettlePair(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd + liquidityToAdd2);
     }
@@ -149,7 +149,9 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(
             Actions.MINT_POSITION,
             abi.encode(
-                config,
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
                 initialLiquidity,
                 MAX_SLIPPAGE_INCREASE,
                 MAX_SLIPPAGE_INCREASE,
@@ -165,7 +167,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, initialLiquidity + liquidityToAdd);
     }
@@ -202,7 +204,9 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
         planner.add(
             Actions.MINT_POSITION,
             abi.encode(
-                newConfig,
+                newConfig.poolKey,
+                newConfig.tickLower,
+                newConfig.tickUpper,
                 newLiquidity,
                 MAX_SLIPPAGE_INCREASE,
                 MAX_SLIPPAGE_INCREASE,
@@ -232,7 +236,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         {
             // old position has no liquidity
-            uint128 liquidity = lpm.getPositionLiquidity(tokenId, config);
+            uint128 liquidity = lpm.getPositionLiquidity(tokenId);
             assertEq(liquidity, 0);
 
             // new token was minted
@@ -241,7 +245,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
             // new token has expected liquidity
 
-            liquidity = lpm.getPositionLiquidity(newTokenId, newConfig);
+            liquidity = lpm.getPositionLiquidity(newTokenId);
             assertEq(liquidity, newLiquidity);
         }
     }

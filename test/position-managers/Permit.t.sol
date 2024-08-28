@@ -88,7 +88,7 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
 
         // alice's position increased liquidity
-        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice);
 
         assertEq(liquidity, liquidityAlice + liquidityToAdd);
     }
@@ -109,7 +109,7 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
 
         // alice's position decreased liquidity
-        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice);
 
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
@@ -241,7 +241,7 @@ contract PermitTest is Test, PosmTestSetup {
         decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
 
@@ -270,7 +270,7 @@ contract PermitTest is Test, PosmTestSetup {
         decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }

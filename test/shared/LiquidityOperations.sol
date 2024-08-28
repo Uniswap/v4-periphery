@@ -99,7 +99,19 @@ abstract contract LiquidityOperations is CommonBase {
         bytes memory hookData
     ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
-        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidity, amount0Max, amount1Max, recipient, hookData));
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                liquidity,
+                amount0Max,
+                amount1Max,
+                recipient,
+                hookData
+            )
+        );
 
         return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }

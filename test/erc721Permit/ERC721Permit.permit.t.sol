@@ -229,7 +229,8 @@ contract ERC721PermitTest is Test {
         assertEq(erc721Permit.nonces(alice, wordPos) & (1 << bitPos), 0);
     }
 
-    function test_fuzz_erc721Permit_SignatureDeadlineExpired(address spender) public {
+    function test_fuzz_erc721Permit_SignatureDeadlineExpired() public {
+        address spender = 0xf30b182eA406CC5A71b8A44e2FE50cC80383F914;
         vm.prank(alice);
         uint256 tokenId = erc721Permit.mint();
 

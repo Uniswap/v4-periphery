@@ -59,9 +59,20 @@ contract CalldataDecoderTest is Test {
         address _owner,
         bytes calldata _hookData
     ) public view {
-        bytes memory params = abi.encode(_config, _liquidity, _amount0Max, _amount1Max, _owner, _hookData);
+        bytes memory params = abi.encode(
+            _config.poolKey,
+            _config.tickLower,
+            _config.tickUpper,
+            _liquidity,
+            _amount0Max,
+            _amount1Max,
+            _owner,
+            _hookData
+        );
         (
-            PositionConfig memory config,
+            PoolKey memory poolKey,
+            int24 tickLower,
+            int24 tickUpper,
             uint256 liquidity,
             uint128 amount0Max,
             uint128 amount1Max,
@@ -74,7 +85,9 @@ contract CalldataDecoderTest is Test {
         assertEq(amount1Max, _amount1Max);
         assertEq(owner, _owner);
         assertEq(hookData, _hookData);
-        _assertEq(_config, config);
+        _assertEq(_config.poolKey, poolKey);
+        assertEq(_config.tickLower, tickLower);
+        assertEq(_config.tickUpper, tickUpper);
     }
 
     function test_fuzz_decodeSwapExactInParams(IV4Router.ExactInputParams calldata _swapParams) public view {
