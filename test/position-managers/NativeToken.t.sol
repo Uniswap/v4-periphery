@@ -32,12 +32,11 @@ import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
-import {PositionConfig, PositionConfigLibrary} from "../../src/libraries/PositionConfig.sol";
+import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
-    using PositionConfigLibrary for PositionConfig;
     using Planner for Plan;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -782,7 +781,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes[] memory calls = new bytes[](2);
 
         calls[0] = abi.encodeWithSelector(lpm.modifyLiquidities.selector, actions, _deadline);
-        calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, config, sub, ZERO_BYTES);
+        calls[1] = abi.encodeWithSelector(lpm.subscribe.selector, tokenId, sub, ZERO_BYTES);
 
         lpm.multicall{value: 10e18}(calls);
 

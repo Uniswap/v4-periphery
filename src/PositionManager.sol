@@ -20,7 +20,7 @@ import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {Multicall_v4} from "./base/Multicall_v4.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
-import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
+import {PositionConfig} from "./libraries/PositionConfig.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {Notifier} from "./base/Notifier.sol";
@@ -28,7 +28,6 @@ import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {INotifier} from "./interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
-import {PositionConfigId, PositionConfigIdLibrary} from "./libraries/PositionConfigId.sol";
 import {PoolKeyChecker} from "./libraries/PoolKeyChecker.sol";
 
 //                                           444444444
@@ -111,20 +110,18 @@ contract PositionManager is
     using SafeTransferLib for *;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
-    using PositionConfigLibrary for PositionConfig;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
     using SafeCast for int256;
     using CalldataDecoder for bytes;
     using SlippageCheckLibrary for BalanceDelta;
-    using PositionConfigIdLibrary for PositionConfigId;
     using PoolKeyChecker for PoolKey;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
-    // TODO: Move to custom type so this is packed in memory
+    // TODO: Move to custom type, packed memory.
     struct PositionInfo {
         // lower 25 bytes of the poolId
         bytes25 poolId;
@@ -136,11 +133,9 @@ contract PositionManager is
     mapping(uint256 tokenId => PositionInfo info) internal positionInfo;
     mapping(bytes32 poolId => PoolKey poolKey) internal poolKeys;
 
-    mapping(uint256 tokenId => PositionConfigId configId) internal positionConfigs;
-
-    /// @notice an internal getter for PositionConfigId to be used by Notifier
-    function _positionConfigs(uint256 tokenId) internal view override returns (PositionConfigId storage) {
-        return positionConfigs[tokenId];
+    /// @notice an internal getter for PositionInfo to be used by Notifier
+    function _positionInfo(uint256 tokenId) internal view override returns (PositionInfo storage) {
+        return positionInfo[tokenId];
     }
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
@@ -163,14 +158,6 @@ contract PositionManager is
     /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
     modifier onlyIfApproved(address caller, uint256 tokenId) override {
         if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
-        _;
-    }
-
-    /// @notice Reverts if the hash of the config does not equal the saved hash
-    /// @param tokenId the unique identifier of the ERC721 token
-    /// @param config the PositionConfig to check against
-    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) override {
-        if (positionConfigs[tokenId].getConfigId() != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         _;
     }
 
@@ -308,7 +295,6 @@ contract PositionManager is
             _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
         (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
-        positionConfigs[tokenId].setConfigId(config.toId());
 
         PositionInfo memory info = PositionInfo({
             poolId: bytes25(PoolId.unwrap(config.poolKey.toId())),
@@ -343,7 +329,6 @@ contract PositionManager is
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
 
-        delete positionConfigs[tokenId];
         delete positionInfo[tokenId];
         // Burn the token.
         _burn(tokenId);
@@ -412,8 +397,9 @@ contract PositionManager is
             hookData
         );
 
-        if (positionConfigs[uint256(salt)].hasSubscriber()) {
-            _notifyModifyLiquidity(uint256(salt), config, liquidityChange, feesAccrued);
+        // TODO: Move outside this function since we've already loaded info. && other audit issues..
+        if (positionInfo[uint256(salt)].hasSubscriber) {
+            _notifyModifyLiquidity(uint256(salt), liquidityChange, feesAccrued);
         }
     }
 
@@ -430,7 +416,7 @@ contract PositionManager is
     /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
     function transferFrom(address from, address to, uint256 id) public virtual override {
         super.transferFrom(from, to, id);
-        if (positionConfigs[id].hasSubscriber()) _notifyTransfer(id, from, to);
+        if (positionInfo[id].hasSubscriber) _notifyTransfer(id, from, to);
     }
 
     /// @inheritdoc IPositionManager
@@ -446,10 +432,5 @@ contract PositionManager is
 
     function _toConfig(PositionInfo memory info) internal view returns (PositionConfig memory config) {
         return PositionConfig({poolKey: poolKeys[info.poolId], tickLower: info.tickLower, tickUpper: info.tickUpper});
-    }
-
-    /// @inheritdoc IPositionManager
-    function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
-        return positionConfigs[tokenId].getConfigId();
     }
 }

@@ -30,11 +30,11 @@ contract MockReturnDataSubscriber is ISubscriber {
         _;
     }
 
-    function notifySubscribe(uint256, PositionConfig memory, bytes memory) external onlyByPosm {
+    function notifySubscribe(uint256, bytes memory) external onlyByPosm {
         notifySubscribeCount++;
     }
 
-    function notifyUnsubscribe(uint256, PositionConfig memory, bytes memory) external onlyByPosm {
+    function notifyUnsubscribe(uint256, bytes memory) external onlyByPosm {
         notifyUnsubscribeCount++;
         uint256 _memPtr = memPtr;
         assembly {
@@ -45,7 +45,7 @@ contract MockReturnDataSubscriber is ISubscriber {
         }
     }
 
-    function notifyModifyLiquidity(uint256, PositionConfig memory, int256, BalanceDelta) external onlyByPosm {
+    function notifyModifyLiquidity(uint256, int256, BalanceDelta) external onlyByPosm {
         notifyModifyLiquidityCount++;
     }
 
@@ -77,17 +77,17 @@ contract MockRevertSubscriber is ISubscriber {
         _;
     }
 
-    function notifySubscribe(uint256, PositionConfig memory, bytes memory) external view onlyByPosm {
+    function notifySubscribe(uint256, bytes memory) external view onlyByPosm {
         if (shouldRevert) {
             revert TestRevert("notifySubscribe");
         }
     }
 
-    function notifyUnsubscribe(uint256, PositionConfig memory, bytes memory) external view onlyByPosm {
+    function notifyUnsubscribe(uint256, bytes memory) external view onlyByPosm {
         revert TestRevert("notifyUnsubscribe");
     }
 
-    function notifyModifyLiquidity(uint256, PositionConfig memory, int256, BalanceDelta) external view onlyByPosm {
+    function notifyModifyLiquidity(uint256, int256, BalanceDelta) external view onlyByPosm {
         revert TestRevert("notifyModifyLiquidity");
     }
 

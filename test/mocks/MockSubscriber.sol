@@ -33,20 +33,17 @@ contract MockSubscriber is ISubscriber {
         _;
     }
 
-    function notifySubscribe(uint256, PositionConfig memory, bytes memory data) external onlyByPosm {
+    function notifySubscribe(uint256, bytes memory data) external onlyByPosm {
         notifySubscribeCount++;
         subscribeData = data;
     }
 
-    function notifyUnsubscribe(uint256, PositionConfig memory, bytes memory data) external onlyByPosm {
+    function notifyUnsubscribe(uint256, bytes memory data) external onlyByPosm {
         notifyUnsubscribeCount++;
         unsubscribeData = data;
     }
 
-    function notifyModifyLiquidity(uint256, PositionConfig memory, int256 _liquidityChange, BalanceDelta _feesAccrued)
-        external
-        onlyByPosm
-    {
+    function notifyModifyLiquidity(uint256, int256 _liquidityChange, BalanceDelta _feesAccrued) external onlyByPosm {
         notifyModifyLiquidityCount++;
         liquidityChange = _liquidityChange;
         feesAccrued = _feesAccrued;

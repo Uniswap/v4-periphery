@@ -31,11 +31,6 @@ interface IPositionManager is INotifier {
     function nextTokenId() external view returns (uint256);
 
     /// @param tokenId the ERC721 tokenId
-    /// @return configId a truncated hash of the position's poolkey, tickLower, and tickUpper
-    /// @dev truncates the least significant bit of the hash
-    function getPositionConfigId(uint256 tokenId) external view returns (bytes32 configId);
-
-    /// @param tokenId the ERC721 tokenId
     /// @param config the corresponding PositionConfig for the tokenId
     /// @return liquidity the position's liquidity, as a liquidityAmount
     /// @dev this value can be processed as an amount0 and amount1 by using the LiquidityAmounts library
