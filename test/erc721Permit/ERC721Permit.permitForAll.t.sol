@@ -297,6 +297,25 @@ contract ERC721PermitForAllTest is Test {
         vm.stopPrank();
     }
 
+    /// @notice revoking a nonce prevents it from being used in permitForAll()
+    function test_fuzz_erc721PermitForAll_revokedNonceUsed(uint256 nonce) public {
+        // alice revokes the nonce
+        vm.prank(alice);
+        erc721Permit.revokeNonce(nonce);
+
+        uint256 deadline = block.timestamp;
+        bytes32 digest = _getPermitForAllDigest(bob, true, nonce, deadline);
+        // alice signs a permit for bob
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        // Nonce does not work with permitForAll
+        vm.startPrank(bob);
+        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        erc721Permit.permitForAll(alice, bob, true, deadline, nonce, signature);
+        vm.stopPrank();
+    }
+
     // Helpers related to permitForAll
     function _permitForAll(uint256 privateKey, address owner, address operator, bool approved, uint256 nonce)
         internal
