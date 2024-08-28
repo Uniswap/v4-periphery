@@ -127,7 +127,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         Plan memory planner = Planner.init();
         planner.add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 100e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 100e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory actions = planner.finalizeModifyLiquidityWithClose(config.poolKey);
 
@@ -157,7 +157,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         Plan memory planner = Planner.init();
         planner.add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 100e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 100e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory actions = planner.encode();
 

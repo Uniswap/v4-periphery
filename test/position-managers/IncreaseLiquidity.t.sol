@@ -122,12 +122,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         planner.add(
             Actions.INCREASE_LIQUIDITY,
             abi.encode(
-                tokenIdAlice,
-                config,
-                liquidityDelta,
-                feesOwedAlice.amount0() / 2,
-                feesOwedAlice.amount1() / 2,
-                ZERO_BYTES
+                tokenIdAlice, liquidityDelta, feesOwedAlice.amount0() / 2, feesOwedAlice.amount1() / 2, ZERO_BYTES
             )
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(alice));
@@ -189,9 +184,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(
-                tokenIdAlice, config, liquidityDelta, feesOwedAlice.amount0(), feesOwedAlice.amount1(), ZERO_BYTES
-            )
+            abi.encode(tokenIdAlice, liquidityDelta, feesOwedAlice.amount0(), feesOwedAlice.amount1(), ZERO_BYTES)
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.startPrank(alice);
@@ -248,7 +241,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, 18 wei)); // alice is willing to forfeit 18 wei
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, 18 wei));
@@ -351,7 +344,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, 1 wei)); // alice is willing to forfeit 1 wei
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, 1 wei));
@@ -698,7 +691,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenIdAlice, config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenIdAlice, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         planner.add(Actions.SETTLE, abi.encode(currency0, ActionConstants.OPEN_DELTA, false));
         planner.add(Actions.SETTLE, abi.encode(currency1, ActionConstants.OPEN_DELTA, false));
@@ -763,7 +756,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenId, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenId, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, maxClear));
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, maxClear));
@@ -792,7 +785,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenId, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, type(uint256).max));
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, type(uint256).max));

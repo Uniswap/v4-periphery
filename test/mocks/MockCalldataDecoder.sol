@@ -13,14 +13,7 @@ contract MockCalldataDecoder {
     function decodeModifyLiquidityParams(bytes calldata params)
         external
         pure
-        returns (
-            uint256 tokenId,
-            PositionConfig calldata config,
-            uint256 liquidity,
-            uint128 amount0,
-            uint128 amount1,
-            bytes calldata hookData
-        )
+        returns (uint256 tokenId, uint256 liquidity, uint128 amount0, uint128 amount1, bytes calldata hookData)
     {
         return params.decodeModifyLiquidityParams();
     }
@@ -28,13 +21,7 @@ contract MockCalldataDecoder {
     function decodeBurnParams(bytes calldata params)
         external
         pure
-        returns (
-            uint256 tokenId,
-            PositionConfig calldata config,
-            uint128 amount0Min,
-            uint128 amount1Min,
-            bytes calldata hookData
-        )
+        returns (uint256 tokenId, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData)
     {
         return params.decodeBurnParams();
     }

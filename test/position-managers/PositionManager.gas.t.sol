@@ -175,7 +175,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         Plan memory planner = Planner.init().add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenId, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
@@ -189,7 +189,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         Plan memory planner = Planner.init().add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenId, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithSettlePair(config.poolKey);
@@ -233,7 +233,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         Plan memory planner = Planner.init().add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         // because its a perfect autocompound, the delta is exactly 0 and we dont need to "close" deltas
         bytes memory calls = planner.encode();
@@ -281,7 +281,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, halfTokensOwedAlice + 1 wei));
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, halfTokensOwedAlice + 1 wei));
@@ -328,7 +328,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         Plan memory planner = Planner.init().add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
@@ -344,7 +344,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         Plan memory planner = Planner.init().add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
@@ -358,7 +358,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         Plan memory planner = Planner.init().add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
@@ -403,8 +403,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         // Collect by calling decrease with 0.
         Plan memory planner = Planner.init().add(
-            Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
@@ -421,8 +420,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         // Collect by calling decrease with 0.
         Plan memory planner = Planner.init().add(
-            Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
@@ -462,7 +460,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         Plan memory planner = Planner.init().add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
@@ -483,8 +481,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
-            Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
@@ -497,7 +494,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
 
@@ -510,7 +507,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
 
@@ -524,7 +521,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         decreaseLiquidity(tokenId, config, 10_000 ether, ZERO_BYTES);
         Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
 
         // There is no need to include CLOSE commands.
@@ -541,10 +538,10 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         Plan memory planner = Planner.init().add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         planner.add(
-            Actions.BURN_POSITION, abi.encode(tokenId, config, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
 
         // We must include CLOSE commands.
@@ -671,8 +668,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION,
-            abi.encode(tokenId, configNative, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(configNative.poolKey);
 
@@ -685,8 +681,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION,
-            abi.encode(tokenId, configNative, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(configNative.poolKey, address(this));
 
@@ -700,8 +695,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         decreaseLiquidity(tokenId, configNative, 10_000 ether, ZERO_BYTES);
         Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION,
-            abi.encode(tokenId, configNative, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
 
         // There is no need to include CLOSE commands.
@@ -718,9 +712,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         Plan memory planner = Planner.init().add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, configNative, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
-        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, configNative, 0 wei, 0 wei, ZERO_BYTES));
+        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, 0 wei, 0 wei, ZERO_BYTES));
 
         // We must include CLOSE commands.
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(configNative.poolKey);
@@ -843,7 +837,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         Plan memory plan = Planner.init();
         plan.add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 1e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory calls = plan.finalizeModifyLiquidityWithTake(config.poolKey, ActionConstants.MSG_SENDER);
 

@@ -19,44 +19,34 @@ contract CalldataDecoderTest is Test {
 
     function test_fuzz_decodeModifyLiquidityParams(
         uint256 _tokenId,
-        PositionConfig calldata _config,
         uint256 _liquidity,
         uint128 _amount0,
         uint128 _amount1,
         bytes calldata _hookData
     ) public view {
-        bytes memory params = abi.encode(_tokenId, _config, _liquidity, _amount0, _amount1, _hookData);
-        (
-            uint256 tokenId,
-            PositionConfig memory config,
-            uint256 liquidity,
-            uint128 amount0,
-            uint128 amount1,
-            bytes memory hookData
-        ) = decoder.decodeModifyLiquidityParams(params);
+        bytes memory params = abi.encode(_tokenId, _liquidity, _amount0, _amount1, _hookData);
+        (uint256 tokenId, uint256 liquidity, uint128 amount0, uint128 amount1, bytes memory hookData) =
+            decoder.decodeModifyLiquidityParams(params);
 
         assertEq(tokenId, _tokenId);
         assertEq(liquidity, _liquidity);
         assertEq(amount0, _amount0);
         assertEq(amount1, _amount1);
         assertEq(hookData, _hookData);
-        _assertEq(_config, config);
     }
 
     function test_fuzz_decodeBurnParams(
         uint256 _tokenId,
-        PositionConfig calldata _config,
         uint128 _amount0Min,
         uint128 _amount1Min,
         bytes calldata _hookData
     ) public view {
-        bytes memory params = abi.encode(_tokenId, _config, _amount0Min, _amount1Min, _hookData);
-        (uint256 tokenId, PositionConfig memory config, uint128 amount0Min, uint128 amount1Min, bytes memory hookData) =
+        bytes memory params = abi.encode(_tokenId, _amount0Min, _amount1Min, _hookData);
+        (uint256 tokenId, uint128 amount0Min, uint128 amount1Min, bytes memory hookData) =
             decoder.decodeBurnParams(params);
 
         assertEq(tokenId, _tokenId);
         assertEq(hookData, _hookData);
-        _assertEq(_config, config);
         assertEq(amount0Min, _amount0Min);
         assertEq(amount1Min, _amount1Min);
     }

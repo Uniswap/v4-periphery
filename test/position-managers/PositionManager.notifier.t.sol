@@ -115,7 +115,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         for (uint256 i = 0; i < 10; i++) {
             plan.add(
                 Actions.INCREASE_LIQUIDITY,
-                abi.encode(tokenId, config, 10e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+                abi.encode(tokenId, 10e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
             );
         }
 
@@ -290,7 +290,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         plan = Planner.init();
         plan.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 10e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenId, 10e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         bytes memory actions2 = plan.finalizeModifyLiquidityWithSettlePair(config.poolKey);
 
@@ -400,7 +400,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         for (uint256 i = 0; i < 10; i++) {
             plan.add(
                 Actions.INCREASE_LIQUIDITY,
-                abi.encode(tokenId, config, 10e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+                abi.encode(tokenId, 10e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
             );
         }
 
