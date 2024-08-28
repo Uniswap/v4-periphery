@@ -18,11 +18,6 @@ interface IQuoter {
     error NotSelf();
     error UnexpectedRevertBytes(bytes revertData);
 
-    struct PoolDeltas {
-        int128 currency0Delta;
-        int128 currency1Delta;
-    }
-
     struct QuoteExactSingleParams {
         PoolKey poolKey;
         bool zeroForOne;
