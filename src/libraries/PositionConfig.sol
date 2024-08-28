@@ -10,6 +10,8 @@ struct PositionConfig {
     int24 tickUpper;
 }
 
+using PositionConfigLibrary for PositionConfig global; 
+
 /// @notice Library to calculate the PositionConfigId from the PositionConfig struct
 library PositionConfigLibrary {
     function toId(PositionConfig calldata config) internal pure returns (bytes32 id) {

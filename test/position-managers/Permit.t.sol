@@ -6,7 +6,7 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
@@ -25,7 +25,6 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 contract PermitTest is Test, PosmTestSetup {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
-    using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
     PoolId poolId;

@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {PositionConfig} from "../libraries/PositionConfig.sol";
-import {PositionConfigId, PositionConfigIdLibrary} from "../libraries/PositionConfigId.sol";
+import {PositionConfigId} from "../libraries/PositionConfigId.sol";
 import {BipsLibrary} from "../libraries/BipsLibrary.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
@@ -13,7 +13,6 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 abstract contract Notifier is INotifier {
     using BipsLibrary for uint256;
     using CustomRevert for bytes4;
-    using PositionConfigIdLibrary for PositionConfigId;
 
     error AlreadySubscribed(address subscriber);
 

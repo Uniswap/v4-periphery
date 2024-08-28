@@ -8,7 +8,7 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
@@ -18,8 +18,6 @@ import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 library FeeMath {
     using SafeCast for uint256;
     using StateLibrary for IPoolManager;
-    using PoolIdLibrary for PoolKey;
-    using PoolIdLibrary for PoolKey;
 
     /// @notice Calculates the fees accrued to a position. Used for testing purposes.
     function getFeesOwed(IPositionManager posm, IPoolManager manager, PositionConfig memory config, uint256 tokenId)

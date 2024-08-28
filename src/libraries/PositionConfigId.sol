@@ -8,6 +8,8 @@ struct PositionConfigId {
     bytes32 id;
 }
 
+using PositionConfigIdLibrary for PositionConfigId global;
+
 library PositionConfigIdLibrary {
     bytes32 constant MASK_UPPER_BIT = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
     bytes32 constant DIRTY_UPPER_BIT = 0x8000000000000000000000000000000000000000000000000000000000000000;
