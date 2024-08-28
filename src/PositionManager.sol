@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
@@ -104,7 +104,6 @@ contract PositionManager is
     Notifier,
     Permit2Forwarder
 {
-    using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
     using PositionConfigLibrary for PositionConfig;
     using StateLibrary for IPoolManager;
