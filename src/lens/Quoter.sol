@@ -56,7 +56,7 @@ contract Quoter is IQuoter, SafeCallback {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        try poolManager.unlock(abi.encodeWithSelector(this._quoteExactInputSingle.selector, params)) {}
+        try poolManager.unlock(abi.encodeCall(this._quoteExactInputSingle, (params))) {}
         catch (bytes memory reason) {
             return _handleRevertSingle(reason);
         }
@@ -71,7 +71,7 @@ contract Quoter is IQuoter, SafeCallback {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try poolManager.unlock(abi.encodeWithSelector(this._quoteExactInput.selector, params)) {}
+        try poolManager.unlock(abi.encodeCall(this._quoteExactInput, (params))) {}
         catch (bytes memory reason) {
             return _handleRevert(reason);
         }
@@ -83,7 +83,7 @@ contract Quoter is IQuoter, SafeCallback {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        try poolManager.unlock(abi.encodeWithSelector(this._quoteExactOutputSingle.selector, params)) {}
+        try poolManager.unlock(abi.encodeCall(this._quoteExactOutputSingle, (params))) {}
         catch (bytes memory reason) {
             if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
             return _handleRevertSingle(reason);
@@ -100,7 +100,7 @@ contract Quoter is IQuoter, SafeCallback {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try poolManager.unlock(abi.encodeWithSelector(this._quoteExactOutput.selector, params)) {}
+        try poolManager.unlock(abi.encodeCall(this._quoteExactOutput, (params))) {}
         catch (bytes memory reason) {
             return _handleRevert(reason);
         }
