@@ -46,7 +46,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
     address bob;
     // bob used for permit2 signature tests
     uint256 bobPK;
-    address charlie; // charlie will NOT approvals to posm in setup()
+    address charlie; // charlie will NOT approve posm in setup()
     uint256 charliePK;
 
     Permit2Forwarder permit2Forwarder;
