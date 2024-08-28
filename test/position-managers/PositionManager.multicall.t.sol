@@ -46,6 +46,8 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
     address bob;
     // bob used for permit2 signature tests
     uint256 bobPK;
+    address charlie; // charlie will NOT approvals to posm in setup()
+    uint256 charliePK;
 
     Permit2Forwarder permit2Forwarder;
 
@@ -61,6 +63,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
     function setUp() public {
         (alice, alicePK) = makeAddrAndKey("ALICE");
         (bob, bobPK) = makeAddrAndKey("BOB");
+        (charlie, charliePK) = makeAddrAndKey("CHARLIE");
 
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
@@ -78,6 +81,13 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         seedBalance(bob);
         approvePosmFor(bob);
+
+        // do not approve posm for charlie, but approve permit2 for allowance transfer
+        seedBalance(charlie);
+        vm.startPrank(charlie);
+        IERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint256).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
+        vm.stopPrank();
     }
 
     function test_multicall_initializePool_mint() public {
@@ -320,5 +330,77 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         assertEq(_amount1, permitAmount);
         assertEq(liquidity, 10e18);
         assertEq(lpm.ownerOf(tokenId), bob);
+    }
+
+    /// @notice test that a front-ran permit does not fail a multicall with permit
+    function test_multicall_permit_frontrun_suceeds() public {
+        config = PositionConfig({
+            poolKey: key,
+            tickLower: TickMath.minUsableTick(key.tickSpacing),
+            tickUpper: TickMath.maxUsableTick(key.tickSpacing)
+        });
+
+        // Charlie signs permit for the two tokens
+        IAllowanceTransfer.PermitSingle memory permit0 =
+            defaultERC20PermitAllowance(Currency.unwrap(currency0), permitAmount, permitExpiration, permitNonce);
+        permit0.spender = address(lpm);
+        bytes memory sig0 = getPermitSignature(permit0, charliePK, PERMIT2_DOMAIN_SEPARATOR);
+
+        IAllowanceTransfer.PermitSingle memory permit1 =
+            defaultERC20PermitAllowance(Currency.unwrap(currency1), permitAmount, permitExpiration, permitNonce);
+        permit1.spender = address(lpm);
+        bytes memory sig1 = getPermitSignature(permit1, charliePK, PERMIT2_DOMAIN_SEPARATOR);
+
+        // bob front-runs the permits
+        vm.startPrank(bob);
+        lpm.permit(charlie, permit0, sig0);
+        lpm.permit(charlie, permit1, sig1);
+        vm.stopPrank();
+
+        // charlie tries to mint an LP token with multicall(permit, permit, mint)
+        bytes[] memory calls = new bytes[](3);
+        calls[0] = abi.encodeWithSelector(Permit2Forwarder(lpm).permit.selector, charlie, permit0, sig0);
+        calls[1] = abi.encodeWithSelector(Permit2Forwarder(lpm).permit.selector, charlie, permit1, sig1);
+        bytes memory mintCall = getMintEncoded(config, 10e18, charlie, ZERO_BYTES);
+        calls[2] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mintCall, _deadline);
+
+        uint256 tokenId = lpm.nextTokenId();
+        lpm.multicall(calls);
+
+        assertEq(lpm.ownerOf(tokenId), charlie);
+    }
+
+    /// @notice test that a front-ran permitBatch does not fail a multicall with permitBatch
+    function test_multicall_permitBatch_frontrun_suceeds() public {
+        config = PositionConfig({
+            poolKey: key,
+            tickLower: TickMath.minUsableTick(key.tickSpacing),
+            tickUpper: TickMath.maxUsableTick(key.tickSpacing)
+        });
+
+        // Charlie signs permitBatch for the two tokens
+        address[] memory tokens = new address[](2);
+        tokens[0] = Currency.unwrap(currency0);
+        tokens[1] = Currency.unwrap(currency1);
+
+        IAllowanceTransfer.PermitBatch memory permit =
+            defaultERC20PermitBatchAllowance(tokens, permitAmount, permitExpiration, permitNonce);
+        permit.spender = address(lpm);
+        bytes memory sig = getPermitBatchSignature(permit, charliePK, PERMIT2_DOMAIN_SEPARATOR);
+
+        // bob front-runs the permits
+        vm.prank(bob);
+        lpm.permitBatch(charlie, permit, sig);
+
+        // charlie tries to mint an LP token with multicall(permitBatch, mint)
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(Permit2Forwarder(lpm).permitBatch.selector, charlie, permit, sig);
+        bytes memory mintCall = getMintEncoded(config, 10e18, charlie, ZERO_BYTES);
+        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mintCall, _deadline);
+
+        uint256 tokenId = lpm.nextTokenId();
+        lpm.multicall(calls);
+
+        assertEq(lpm.ownerOf(tokenId), charlie);
     }
 }

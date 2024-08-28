@@ -18,7 +18,7 @@ contract Permit2Forwarder {
         external
         payable
     {
-        permit2.permit(owner, permitSingle, signature);
+        try permit2.permit(owner, permitSingle, signature) {} catch {}
     }
 
     /// @notice allows forwarding batch permits to permit2
@@ -27,6 +27,6 @@ contract Permit2Forwarder {
         external
         payable
     {
-        permit2.permit(owner, _permitBatch, signature);
+        try permit2.permit(owner, _permitBatch, signature) {} catch {}
     }
 }
