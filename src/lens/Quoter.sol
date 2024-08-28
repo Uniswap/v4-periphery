@@ -55,7 +55,7 @@ contract Quoter is IQuoter, SafeCallback {
     constructor(IPoolManager _poolManager) SafeCallback(_poolManager) {}
 
     /// @inheritdoc IQuoter
-    function quoteExactInputSingle(QuoteExactSingleParams memory params)
+    function quoteExactInputSingle(QuoteExactSingleParams calldata params)
         public
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
@@ -67,7 +67,7 @@ contract Quoter is IQuoter, SafeCallback {
     }
 
     /// @inheritdoc IQuoter
-    function quoteExactInput(QuoteExactParams memory params)
+    function quoteExactInput(QuoteExactParams calldata params)
         external
         returns (
             int128[] memory deltaAmounts,
@@ -82,7 +82,7 @@ contract Quoter is IQuoter, SafeCallback {
     }
 
     /// @inheritdoc IQuoter
-    function quoteExactOutputSingle(QuoteExactSingleParams memory params)
+    function quoteExactOutputSingle(QuoteExactSingleParams calldata params)
         public
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
@@ -95,7 +95,7 @@ contract Quoter is IQuoter, SafeCallback {
     }
 
     /// @inheritdoc IQuoter
-    function quoteExactOutput(QuoteExactParams memory params)
+    function quoteExactOutput(QuoteExactParams calldata params)
         public
         override
         returns (

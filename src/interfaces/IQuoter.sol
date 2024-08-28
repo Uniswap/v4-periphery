@@ -59,7 +59,7 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     /// @return initializedTicksLoadedList List of the initialized ticks that the swap loaded for each pool in the path
-    function quoteExactInput(QuoteExactParams memory params)
+    function quoteExactInput(QuoteExactParams calldata params)
         external
         returns (
             int128[] memory deltaAmounts,
@@ -89,7 +89,7 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     /// @return initializedTicksLoadedList List of the initialized ticks that the swap loaded for each pool in the path
-    function quoteExactOutput(QuoteExactParams memory params)
+    function quoteExactOutput(QuoteExactParams calldata params)
         external
         returns (
             int128[] memory deltaAmounts,

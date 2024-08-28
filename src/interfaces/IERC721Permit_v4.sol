@@ -23,6 +23,7 @@ interface IERC721Permit_v4 {
     /// @param operator The address that will be set as an operator for the owner
     /// @param approved The permission to set on the operator
     /// @param deadline The deadline timestamp by which the call must be mined for the approve to work
+    /// @param nonce The nonce of the owner's permit
     /// @param signature Concatenated data from a valid secp256k1 signature from the holder, i.e. abi.encodePacked(r, s, v)
     /// @dev payable so it can be multicalled with NATIVE related actions
     function permitForAll(

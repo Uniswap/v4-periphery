@@ -16,9 +16,9 @@ interface IPositionManager is INotifier {
 
     /// @notice Unlocks Uniswap v4 PoolManager and batches actions for modifying liquidity
     /// @dev This is the standard entrypoint for the PositionManager
-    /// @param payload is an encoding of actions, and parameters for those actions
+    /// @param unlockData is an encoding of actions, and parameters for those actions
     /// @param deadline is the deadline for the batched actions to be executed
-    function modifyLiquidities(bytes calldata payload, uint256 deadline) external payable;
+    function modifyLiquidities(bytes calldata unlockData, uint256 deadline) external payable;
 
     /// @notice Batches actions for modifying liquidity without unlocking v4 PoolManager
     /// @dev This must be called by a contract that has already unlocked the v4 PoolManager
@@ -31,9 +31,9 @@ interface IPositionManager is INotifier {
     function nextTokenId() external view returns (uint256);
 
     /// @param tokenId the ERC721 tokenId
-    /// @return configId a truncated hash of the position's poolkey, tickLower, and tickUpper
+    /// @return bytes32 a truncated hash of the position's poolkey, tickLower, and tickUpper
     /// @dev truncates the least significant bit of the hash
-    function getPositionConfigId(uint256 tokenId) external view returns (bytes32 configId);
+    function getPositionConfigId(uint256 tokenId) external view returns (bytes32);
 
     /// @param tokenId the ERC721 tokenId
     /// @param config the corresponding PositionConfig for the tokenId
