@@ -47,7 +47,7 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts resulted from the swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     /// @return initializedTicksLoaded The number of initialized ticks that the swap loaded
-    function quoteExactInputSingle(QuoteExactSingleParams calldata params)
+    function quoteExactInputSingle(QuoteExactSingleParams memory params)
         external
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
 
@@ -59,7 +59,7 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     /// @return initializedTicksLoadedList List of the initialized ticks that the swap loaded for each pool in the path
-    function quoteExactInput(QuoteExactParams calldata params)
+    function quoteExactInput(QuoteExactParams memory params)
         external
         returns (
             int128[] memory deltaAmounts,
@@ -77,7 +77,7 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts resulted from the swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     /// @return initializedTicksLoaded The number of initialized ticks that the swap loaded
-    function quoteExactOutputSingle(QuoteExactSingleParams calldata params)
+    function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         external
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
 
@@ -89,7 +89,7 @@ interface IQuoter {
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     /// @return initializedTicksLoadedList List of the initialized ticks that the swap loaded for each pool in the path
-    function quoteExactOutput(QuoteExactParams calldata params)
+    function quoteExactOutput(QuoteExactParams memory params)
         external
         returns (
             int128[] memory deltaAmounts,

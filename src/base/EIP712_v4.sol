@@ -26,9 +26,8 @@ contract EIP712_v4 is IEIP712_v4 {
     }
 
     /// @inheritdoc IEIP712_v4
-    /// @notice Returns the domain separator for the current chain.
-    /// @dev Uses cached version if chainid is unchanged from construction.
     function DOMAIN_SEPARATOR() public view override returns (bytes32) {
+        // uses cached version if chainid is unchanged from construction
         return block.chainid == _CACHED_CHAIN_ID ? _CACHED_DOMAIN_SEPARATOR : _buildDomainSeparator();
     }
 

@@ -180,6 +180,7 @@ contract PositionManager is
         _executeActionsWithoutUnlock(actions, params);
     }
 
+    /// @inheritdoc BaseActionsRouter
     function msgSender() public view override returns (address) {
         return _getLocker();
     }
