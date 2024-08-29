@@ -24,7 +24,6 @@ import {Notifier} from "./base/Notifier.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
-import {PoolKeyChecker} from "./libraries/PoolKeyChecker.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 
 //                                           444444444
@@ -111,7 +110,6 @@ contract PositionManager is
     using SafeCast for int256;
     using CalldataDecoder for bytes;
     using SlippageCheckLibrary for BalanceDelta;
-    using PoolKeyChecker for PoolKey;
     using PositionInfoLibrary for PositionInfo;
 
     /// @inheritdoc IPositionManager
