@@ -359,16 +359,6 @@ contract PositionManager is
         if (balance > 0) currency.transfer(to, balance);
     }
 
-    // implementation of abstract function DeltaResolver._pay
-    function _pay(Currency currency, address payer, uint256 amount) internal override {
-        if (payer == address(this)) {
-            // TODO: currency is guaranteed to not be eth so the native check in transfer is not optimal.
-            currency.transfer(address(poolManager), amount);
-        } else {
-            permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
-        }
-    }
-
     function _modifyLiquidity(
         PositionInfo info,
         PoolKey memory poolKey,
@@ -390,6 +380,16 @@ contract PositionManager is
         // TODO: Audit issue for burn, decide if we want to keep this and also unsubscribe.
         if (info.hasSubscriber()) {
             _notifyModifyLiquidity(uint256(salt), liquidityChange, feesAccrued);
+        }
+    }
+
+    // implementation of abstract function DeltaResolver._pay
+    function _pay(Currency currency, address payer, uint256 amount) internal override {
+        if (payer == address(this)) {
+            // TODO: currency is guaranteed to not be eth so the native check in transfer is not optimal.
+            currency.transfer(address(poolManager), amount);
+        } else {
+            permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
         }
     }
 
