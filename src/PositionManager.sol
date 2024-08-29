@@ -232,7 +232,7 @@ contract PositionManager is
         uint128 amount1Max,
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) {
-        (PositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
+        (PositionInfo info, PoolKey memory poolKey) = getPoolAndPositionInfo(tokenId);
 
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
@@ -249,7 +249,7 @@ contract PositionManager is
         uint128 amount1Min,
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) {
-        (PositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
+        (PositionInfo info, PoolKey memory poolKey) = getPoolAndPositionInfo(tokenId);
 
         // Note: the tokenId is used as the salt.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
@@ -298,7 +298,7 @@ contract PositionManager is
         internal
         onlyIfApproved(msgSender(), tokenId)
     {
-        (PositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
+        (PositionInfo info, PoolKey memory poolKey) = getPoolAndPositionInfo(tokenId);
 
         uint256 liquidity = uint256(_getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper()));
 
@@ -419,7 +419,7 @@ contract PositionManager is
 
     /// @inheritdoc IPositionManager
     function getPositionLiquidity(uint256 tokenId) external view returns (uint128 liquidity) {
-        (PositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
+        (PositionInfo info, PoolKey memory poolKey) = getPoolAndPositionInfo(tokenId);
         liquidity = _getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper());
     }
 
