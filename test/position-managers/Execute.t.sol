@@ -19,7 +19,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {PositionConfig} from "../shared/PositionConfig.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 

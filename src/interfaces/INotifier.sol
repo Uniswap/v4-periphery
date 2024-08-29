@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {ISubscriber} from "./ISubscriber.sol";
 
 /// @notice This interface is used to opt in to sending updates to external contracts about position modifications or transfers

@@ -9,7 +9,6 @@ import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 
 import {IPositionManager} from "../../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
-import {PositionConfig} from "../../../src/libraries/PositionConfig.sol";
 import {Planner, Plan} from "../../shared/Planner.sol";
 
 contract LiquidityFuzzers is Fuzzers {

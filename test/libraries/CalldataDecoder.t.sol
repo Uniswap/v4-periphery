@@ -6,7 +6,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 import {MockCalldataDecoder} from "../mocks/MockCalldataDecoder.sol";
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {PositionConfig} from "../shared/PositionConfig.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {PathKey} from "../../src/libraries/PathKey.sol";
 
@@ -51,7 +51,6 @@ contract CalldataDecoderTest is Test {
         assertEq(amount1Min, _amount1Min);
     }
 
-    // TODO: fix stack too deep here
     function test_fuzz_decodeMintParams(
         PositionConfig calldata _config,
         uint256 _liquidity,
@@ -199,26 +198,11 @@ contract CalldataDecoderTest is Test {
         }
     }
 
-    function _assertEq(PositionConfig memory config1, PositionConfig memory config2) internal pure {
-        _assertEq(config1.poolKey, config2.poolKey);
-        assertEq(config1.tickLower, config2.tickLower);
-        assertEq(config1.tickUpper, config2.tickUpper);
-    }
-
     function _assertEq(PoolKey memory key1, PoolKey memory key2) internal pure {
         assertEq(Currency.unwrap(key1.currency0), Currency.unwrap(key2.currency0));
         assertEq(Currency.unwrap(key1.currency1), Currency.unwrap(key2.currency1));
         assertEq(key1.fee, key2.fee);
         assertEq(key1.tickSpacing, key2.tickSpacing);
         assertEq(address(key1.hooks), address(key2.hooks));
-    }
-
-    function _assertEq(PositionConfig memory config, PoolKey memory poolKey, int24 tickLower, int24 tickUpper)
-        internal
-        pure
-    {
-        _assertEq(config.poolKey, poolKey);
-        assertEq(config.tickLower, tickLower);
-        assertEq(config.tickUpper, tickUpper);
     }
 }

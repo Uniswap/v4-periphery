@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {CalldataDecoder} from "../../src/libraries/CalldataDecoder.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
