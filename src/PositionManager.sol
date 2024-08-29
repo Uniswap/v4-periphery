@@ -285,9 +285,11 @@ contract PositionManager is
         // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
         (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
 
+        bytes25 poolId = info.poolId();
         // Store the poolKey if it is not already stored.
-        if (poolKeys[info.poolId()].isEmpty()) {
-            poolKeys[info.poolId()] = poolKey;
+        // On UniswapV4, the minimum tick spacing is 1, which means that if the tick spacing is 0, the pool key has not been set.
+        if (poolKeys[poolId].tickSpacing == 0) {
+            poolKeys[poolId] = poolKey;
         }
     }
 

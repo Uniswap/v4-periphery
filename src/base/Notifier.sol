@@ -14,6 +14,7 @@ abstract contract Notifier is INotifier {
     using CustomRevert for bytes4;
 
     error AlreadySubscribed(address subscriber);
+    error AlreadyUnsubscribed();
 
     event Subscribed(uint256 tokenId, address subscriber);
     event Unsubscribed(uint256 tokenId, address subscriber);
@@ -39,10 +40,11 @@ abstract contract Notifier is INotifier {
         payable
         onlyIfApproved(msg.sender, tokenId)
     {
-        _setSubscribe(tokenId);
         ISubscriber _subscriber = subscriber[tokenId];
 
         if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(address(_subscriber));
+
+        _setSubscribe(tokenId);
         subscriber[tokenId] = ISubscriber(newSubscriber);
 
         bool success = _call(address(newSubscriber), abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, data)));
@@ -56,8 +58,10 @@ abstract contract Notifier is INotifier {
 
     /// @inheritdoc INotifier
     function unsubscribe(uint256 tokenId, bytes calldata data) external payable onlyIfApproved(msg.sender, tokenId) {
-        _setUnsubscribe(tokenId);
         ISubscriber _subscriber = subscriber[tokenId];
+
+        if (_subscriber == NO_SUBSCRIBER) revert AlreadyUnsubscribed();
+        _setUnsubscribe(tokenId);
 
         delete subscriber[tokenId];
 
