@@ -114,6 +114,7 @@ contract PositionManager is
     using PoolKeyChecker for PoolKey;
     using PositionInfoLibrary for PositionInfo;
 
+    /// @inheritdoc IPositionManager
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
@@ -162,6 +163,7 @@ contract PositionManager is
         _executeActionsWithoutUnlock(actions, params);
     }
 
+    /// @inheritdoc BaseActionsRouter
     function msgSender() public view override returns (address) {
         return _getLocker();
     }

@@ -26,6 +26,7 @@ abstract contract Notifier is INotifier {
     // at 30M gas, the limit is 300K
     uint256 private constant BLOCK_LIMIT_BPS = 100;
 
+    /// @inheritdoc INotifier
     mapping(uint256 tokenId => ISubscriber subscriber) public subscriber;
 
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
