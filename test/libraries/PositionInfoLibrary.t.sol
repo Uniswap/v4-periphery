@@ -21,7 +21,7 @@ contract PositionInfoLibraryTest is Test {
         assertEq(info.hasSubscriber(), false);
     }
 
-    function test_fuzz_initialize_setSubscribe(PoolKey memory poolKey, int24 tickLower, int24 tickUpper) public pure {
+    function test_fuzz_initialize_setSubscribed(PoolKey memory poolKey, int24 tickLower, int24 tickUpper) public pure {
         PositionInfo info = PositionInfoLibrary.initialize(poolKey, tickLower, tickUpper);
         assertEq(info.hasSubscriber(), false);
         info = info.setSubscribe();
@@ -31,7 +31,7 @@ contract PositionInfoLibraryTest is Test {
         assertEq(info.poolId(), bytes25(PoolId.unwrap(poolKey.toId())));
     }
 
-    function test_fuzz_initialize_setUnsubscribe(PoolKey memory poolKey, int24 tickLower, int24 tickUpper)
+    function test_fuzz_initialize_setUnsubscribed(PoolKey memory poolKey, int24 tickLower, int24 tickUpper)
         public
         pure
     {

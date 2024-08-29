@@ -34,5 +34,5 @@ interface IPositionManager is INotifier {
     /// @param tokenId the ERC721 tokenId
     /// @return PositionInfo a uint256 packed value holding information about the position including the range (tickLower, tickUpper)
     /// @return poolKey the pool key of the position
-    function getPoolAndPositionInfo(uint256 tokenId) external view returns (PositionInfo, PoolKey memory);
+    function getPoolAndPositionInfo(uint256 tokenId) external view returns (PoolKey memory, PositionInfo);
 }

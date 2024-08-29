@@ -31,9 +31,9 @@ abstract contract Notifier is INotifier {
 
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
 
-    function _setUnsubscribe(uint256 tokenId) internal virtual;
+    function _setUnsubscribed(uint256 tokenId) internal virtual;
 
-    function _setSubscribe(uint256 tokenId) internal virtual;
+    function _setSubscribed(uint256 tokenId) internal virtual;
 
     /// @inheritdoc INotifier
     function subscribe(uint256 tokenId, address newSubscriber, bytes calldata data)
@@ -45,7 +45,7 @@ abstract contract Notifier is INotifier {
 
         if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(address(_subscriber));
 
-        _setSubscribe(tokenId);
+        _setSubscribed(tokenId);
         subscriber[tokenId] = ISubscriber(newSubscriber);
 
         bool success = _call(address(newSubscriber), abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, data)));
@@ -62,7 +62,7 @@ abstract contract Notifier is INotifier {
         ISubscriber _subscriber = subscriber[tokenId];
 
         if (_subscriber == NO_SUBSCRIBER) revert AlreadyUnsubscribed();
-        _setUnsubscribe(tokenId);
+        _setUnsubscribed(tokenId);
 
         delete subscriber[tokenId];
 

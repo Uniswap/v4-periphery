@@ -232,7 +232,7 @@ contract PositionManager is
         uint128 amount1Max,
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) {
-        (PositionInfo info, PoolKey memory poolKey) = getPoolAndPositionInfo(tokenId);
+        (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
 
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
@@ -249,7 +249,7 @@ contract PositionManager is
         uint128 amount1Min,
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) {
-        (PositionInfo info, PoolKey memory poolKey) = getPoolAndPositionInfo(tokenId);
+        (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
 
         // Note: the tokenId is used as the salt.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
@@ -298,7 +298,7 @@ contract PositionManager is
         internal
         onlyIfApproved(msgSender(), tokenId)
     {
-        (PositionInfo info, PoolKey memory poolKey) = getPoolAndPositionInfo(tokenId);
+        (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
 
         uint256 liquidity = uint256(_getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper()));
 
@@ -396,12 +396,12 @@ contract PositionManager is
     }
 
     /// @notice an internal helper used by Notifier
-    function _setSubscribe(uint256 tokenId) internal override {
+    function _setSubscribed(uint256 tokenId) internal override {
         positionInfo[tokenId] = positionInfo[tokenId].setSubscribe();
     }
 
     /// @notice an internal helper used by Notifier
-    function _setUnsubscribe(uint256 tokenId) internal override {
+    function _setUnsubscribed(uint256 tokenId) internal override {
         positionInfo[tokenId] = positionInfo[tokenId].setUnsubscribe();
     }
 
@@ -412,14 +412,14 @@ contract PositionManager is
     }
 
     /// @inheritdoc IPositionManager
-    function getPoolAndPositionInfo(uint256 tokenId) public view returns (PositionInfo info, PoolKey memory poolKey) {
+    function getPoolAndPositionInfo(uint256 tokenId) public view returns (PoolKey memory poolKey, PositionInfo info) {
         info = positionInfo[tokenId];
         poolKey = poolKeys[info.poolId()];
     }
 
     /// @inheritdoc IPositionManager
     function getPositionLiquidity(uint256 tokenId) external view returns (uint128 liquidity) {
-        (PositionInfo info, PoolKey memory poolKey) = getPoolAndPositionInfo(tokenId);
+        (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
         liquidity = _getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper());
     }
 
