@@ -52,44 +52,36 @@ contract CalldataDecoderTest is Test {
     }
 
     // TODO: fix stack too deep here
-    // function test_fuzz_decodeMintParams(
-    //     PositionConfig calldata _config,
-    //     uint256 _liquidity,
-    //     uint128 _amount0Max,
-    //     uint128 _amount1Max,
-    //     address _owner,
-    //     bytes calldata _hookData
-    // ) public view {
-    //     bytes memory params = abi.encode(
-    //         _config.poolKey,
-    //         _config.tickLower,
-    //         _config.tickUpper,
-    //         _liquidity,
-    //         _amount0Max,
-    //         _amount1Max,
-    //         _owner,
-    //         _hookData
-    //     );
-    //     (
-    //         PoolKey memory poolKey,
-    //         int24 tickLower,
-    //         int24 tickUpper,
-    //         uint256 liquidity,
-    //         uint128 amount0Max,
-    //         uint128 amount1Max,
-    //         address owner,
-    //         bytes memory hookData
-    //     ) = decoder.decodeMintParams(params);
+    function test_fuzz_decodeMintParams(
+        PositionConfig calldata _config,
+        uint256 _liquidity,
+        uint128 _amount0Max,
+        uint128 _amount1Max,
+        address _owner,
+        bytes calldata _hookData
+    ) public view {
+        bytes memory params = abi.encode(
+            _config.poolKey,
+            _config.tickLower,
+            _config.tickUpper,
+            _liquidity,
+            _amount0Max,
+            _amount1Max,
+            _owner,
+            _hookData
+        );
 
-    //     assertEq(liquidity, _liquidity);
-    //     assertEq(amount0Max, _amount0Max);
-    //     assertEq(amount1Max, _amount1Max);
-    //     assertEq(owner, _owner);
-    //     assertEq(hookData, _hookData);
-    //     _assertEq(_config.poolKey, poolKey);
-    //     assertEq(_config.tickLower, tickLower);
-    //     assertEq(_config.tickUpper, tickUpper);
-    // }
+        (MockCalldataDecoder.MintParams memory mintParams) = decoder.decodeMintParams(params);
+
+        assertEq(mintParams.liquidity, _liquidity);
+        assertEq(mintParams.amount0Max, _amount0Max);
+        assertEq(mintParams.amount1Max, _amount1Max);
+        assertEq(mintParams.owner, _owner);
+        assertEq(mintParams.hookData, _hookData);
+        _assertEq(mintParams.poolKey, _config.poolKey);
+        assertEq(mintParams.tickLower, _config.tickLower);
+        assertEq(mintParams.tickUpper, _config.tickUpper);
+    }
 
     function test_fuzz_decodeSwapExactInParams(IV4Router.ExactInputParams calldata _swapParams) public view {
         bytes memory params = abi.encode(_swapParams);

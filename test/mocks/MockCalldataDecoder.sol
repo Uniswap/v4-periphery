@@ -11,6 +11,17 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 contract MockCalldataDecoder {
     using CalldataDecoder for bytes;
 
+    struct MintParams {
+        PoolKey poolKey;
+        int24 tickLower;
+        int24 tickUpper;
+        uint256 liquidity;
+        uint128 amount0Max;
+        uint128 amount1Max;
+        address owner;
+        bytes hookData;
+    }
+
     function decodeModifyLiquidityParams(bytes calldata params)
         external
         pure
@@ -59,10 +70,8 @@ contract MockCalldataDecoder {
         return params.decodeSwapExactOutSingleParams();
     }
 
-    function decodeMintParams(bytes calldata params)
-        external
-        pure
-        returns (
+    function decodeMintParams(bytes calldata params) external pure returns (MintParams memory mintParams) {
+        (
             PoolKey memory poolKey,
             int24 tickLower,
             int24 tickUpper,
@@ -70,10 +79,18 @@ contract MockCalldataDecoder {
             uint128 amount0Max,
             uint128 amount1Max,
             address owner,
-            bytes calldata hookData
-        )
-    {
-        return params.decodeMintParams();
+            bytes memory hookData
+        ) = params.decodeMintParams();
+        return MintParams({
+            poolKey: poolKey,
+            tickLower: tickLower,
+            tickUpper: tickUpper,
+            liquidity: liquidity,
+            amount0Max: amount0Max,
+            amount1Max: amount1Max,
+            owner: owner,
+            hookData: hookData
+        });
     }
 
     function decodeCurrencyAndAddress(bytes calldata params)
