@@ -399,8 +399,8 @@ contract PositionManager is
     function _setSubscribe(uint256 tokenId) internal override {
         positionInfo[tokenId] = positionInfo[tokenId].setSubscribe();
     }
-    /// @notice an internal helper used by Notifier
 
+    /// @notice an internal helper used by Notifier
     function _setUnsubscribe(uint256 tokenId) internal override {
         positionInfo[tokenId] = positionInfo[tokenId].setUnsubscribe();
     }
