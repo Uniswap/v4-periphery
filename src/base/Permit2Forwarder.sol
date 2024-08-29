@@ -18,6 +18,7 @@ contract Permit2Forwarder {
         external
         payable
     {
+        // use try/catch in case an actor front-runs the permit, which would DOS multicalls
         try permit2.permit(owner, permitSingle, signature) {} catch {}
     }
 
@@ -27,6 +28,7 @@ contract Permit2Forwarder {
         external
         payable
     {
+        // use try/catch in case an actor front-runs the permit, which would DOS multicalls
         try permit2.permit(owner, _permitBatch, signature) {} catch {}
     }
 }

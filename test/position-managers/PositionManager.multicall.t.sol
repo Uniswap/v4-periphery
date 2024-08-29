@@ -145,7 +145,6 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         bytes[] memory calls = new bytes[](1);
         calls[0] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
-        address charlie = makeAddr("CHARLIE");
         vm.startPrank(charlie);
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, charlie));
         lpm.multicall(calls);
@@ -357,6 +356,18 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         lpm.permit(charlie, permit1, sig1);
         vm.stopPrank();
 
+        // bob's front-run was successful
+        (uint160 _amount, uint48 _expiration, uint48 _nonce) =
+            permit2.allowance(charlie, Currency.unwrap(currency0), address(lpm));
+        assertEq(_amount, permitAmount);
+        assertEq(_expiration, permitExpiration);
+        assertEq(_nonce, permitNonce + 1);
+        (uint160 _amount1, uint48 _expiration1, uint48 _nonce1) =
+            permit2.allowance(charlie, Currency.unwrap(currency1), address(lpm));
+        assertEq(_amount1, permitAmount);
+        assertEq(_expiration1, permitExpiration);
+        assertEq(_nonce1, permitNonce + 1);
+
         // charlie tries to mint an LP token with multicall(permit, permit, mint)
         bytes[] memory calls = new bytes[](3);
         calls[0] = abi.encodeWithSelector(Permit2Forwarder(lpm).permit.selector, charlie, permit0, sig0);
@@ -365,6 +376,9 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         calls[2] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mintCall, _deadline);
 
         uint256 tokenId = lpm.nextTokenId();
+        vm.expectRevert();
+        lpm.ownerOf(tokenId); // token does not exist
+
         lpm.multicall(calls);
 
         assertEq(lpm.ownerOf(tokenId), charlie);
@@ -392,6 +406,18 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         vm.prank(bob);
         lpm.permitBatch(charlie, permit, sig);
 
+        // bob's front-run was successful
+        (uint160 _amount, uint48 _expiration, uint48 _nonce) =
+            permit2.allowance(charlie, Currency.unwrap(currency0), address(lpm));
+        assertEq(_amount, permitAmount);
+        assertEq(_expiration, permitExpiration);
+        assertEq(_nonce, permitNonce + 1);
+        (uint160 _amount1, uint48 _expiration1, uint48 _nonce1) =
+            permit2.allowance(charlie, Currency.unwrap(currency1), address(lpm));
+        assertEq(_amount1, permitAmount);
+        assertEq(_expiration1, permitExpiration);
+        assertEq(_nonce1, permitNonce + 1);
+
         // charlie tries to mint an LP token with multicall(permitBatch, mint)
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeWithSelector(Permit2Forwarder(lpm).permitBatch.selector, charlie, permit, sig);
@@ -399,6 +425,9 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mintCall, _deadline);
 
         uint256 tokenId = lpm.nextTokenId();
+        vm.expectRevert();
+        lpm.ownerOf(tokenId); // token does not exist
+
         lpm.multicall(calls);
 
         assertEq(lpm.ownerOf(tokenId), charlie);
