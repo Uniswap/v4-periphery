@@ -8,6 +8,8 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 contract Permit2Forwarder {
     IAllowanceTransfer public immutable permit2;
 
+    error Wrap__Permit2Reverted(address _permit2, bytes reason);
+
     constructor(IAllowanceTransfer _permit2) {
         permit2 = _permit2;
     }
@@ -17,9 +19,13 @@ contract Permit2Forwarder {
     function permit(address owner, IAllowanceTransfer.PermitSingle calldata permitSingle, bytes calldata signature)
         external
         payable
+        returns (bytes memory err)
     {
         // use try/catch in case an actor front-runs the permit, which would DOS multicalls
-        try permit2.permit(owner, permitSingle, signature) {} catch {}
+        try permit2.permit(owner, permitSingle, signature) {}
+        catch (bytes memory reason) {
+            err = abi.encodeWithSelector(Wrap__Permit2Reverted.selector, address(permit2), reason);
+        }
     }
 
     /// @notice allows forwarding batch permits to permit2
@@ -27,8 +33,12 @@ contract Permit2Forwarder {
     function permitBatch(address owner, IAllowanceTransfer.PermitBatch calldata _permitBatch, bytes calldata signature)
         external
         payable
+        returns (bytes memory err)
     {
         // use try/catch in case an actor front-runs the permit, which would DOS multicalls
-        try permit2.permit(owner, _permitBatch, signature) {} catch {}
+        try permit2.permit(owner, _permitBatch, signature) {}
+        catch (bytes memory reason) {
+            err = abi.encodeWithSelector(Wrap__Permit2Reverted.selector, address(permit2), reason);
+        }
     }
 }

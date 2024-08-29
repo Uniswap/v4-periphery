@@ -56,6 +56,9 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
     uint48 permitExpiration = uint48(block.timestamp + 10e18);
     uint48 permitNonce = 0;
 
+    // redefine error from permit2/src/PermitErrors.sol since its hard-pinned to a solidity version
+    error InvalidNonce();
+
     bytes32 PERMIT2_DOMAIN_SEPARATOR;
 
     PositionConfig config;
@@ -379,7 +382,27 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         vm.expectRevert();
         lpm.ownerOf(tokenId); // token does not exist
 
-        lpm.multicall(calls);
+        bytes[] memory results = lpm.multicall(calls);
+        assertEq(
+            results[0],
+            abi.encode(
+                abi.encodeWithSelector(
+                    Permit2Forwarder.Wrap__Permit2Reverted.selector,
+                    address(permit2),
+                    abi.encodeWithSelector(InvalidNonce.selector)
+                )
+            )
+        );
+        assertEq(
+            results[1],
+            abi.encode(
+                abi.encodeWithSelector(
+                    Permit2Forwarder.Wrap__Permit2Reverted.selector,
+                    address(permit2),
+                    abi.encodeWithSelector(InvalidNonce.selector)
+                )
+            )
+        );
 
         assertEq(lpm.ownerOf(tokenId), charlie);
     }
@@ -428,7 +451,17 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         vm.expectRevert();
         lpm.ownerOf(tokenId); // token does not exist
 
-        lpm.multicall(calls);
+        bytes[] memory results = lpm.multicall(calls);
+        assertEq(
+            results[0],
+            abi.encode(
+                abi.encodeWithSelector(
+                    Permit2Forwarder.Wrap__Permit2Reverted.selector,
+                    address(permit2),
+                    abi.encodeWithSelector(InvalidNonce.selector)
+                )
+            )
+        );
 
         assertEq(lpm.ownerOf(tokenId), charlie);
     }
