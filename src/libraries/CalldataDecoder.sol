@@ -15,7 +15,7 @@ library CalldataDecoder {
     /// @notice equivalent to SliceOutOfBounds.selector
     bytes4 constant SLICE_ERROR_SELECTOR = 0x3b99b53d;
 
-    /// @dev equivalent to: abi.decode(params, (uint256[], bytes[])) in calldata
+    /// @dev equivalent to: abi.decode(params, (bytes, bytes[])) in calldata
     function decodeActionsRouterParams(bytes calldata _bytes)
         internal
         pure
@@ -139,7 +139,7 @@ library CalldataDecoder {
         }
     }
 
-    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactInputSingleParams))
+    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactOutputSingleParams))
     function decodeSwapExactOutSingleParams(bytes calldata params)
         internal
         pure

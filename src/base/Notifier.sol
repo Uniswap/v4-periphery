@@ -45,8 +45,7 @@ abstract contract Notifier is INotifier {
         if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(address(_subscriber));
         subscriber[tokenId] = ISubscriber(newSubscriber);
 
-        bool success =
-            _call(address(newSubscriber), abi.encodeWithSelector(ISubscriber.notifySubscribe.selector, tokenId, data));
+        bool success = _call(address(newSubscriber), abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, data)));
 
         if (!success) {
             Wrap__SubsciptionReverted.selector.bubbleUpAndRevertWith(address(newSubscriber));
@@ -73,7 +72,7 @@ abstract contract Notifier is INotifier {
 
         bool success = _call(
             address(_subscriber),
-            abi.encodeWithSelector(ISubscriber.notifyModifyLiquidity.selector, tokenId, liquidityChange, feesAccrued)
+            abi.encodeCall(ISubscriber.notifyModifyLiquidity, (tokenId, liquidityChange, feesAccrued))
         );
 
         if (!success) {
@@ -84,10 +83,8 @@ abstract contract Notifier is INotifier {
     function _notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) internal {
         ISubscriber _subscriber = subscriber[tokenId];
 
-        bool success = _call(
-            address(_subscriber),
-            abi.encodeWithSelector(ISubscriber.notifyTransfer.selector, tokenId, previousOwner, newOwner)
-        );
+        bool success =
+            _call(address(_subscriber), abi.encodeCall(ISubscriber.notifyTransfer, (tokenId, previousOwner, newOwner)));
 
         if (!success) {
             Wrap__TransferNotificationReverted.selector.bubbleUpAndRevertWith(address(_subscriber));
