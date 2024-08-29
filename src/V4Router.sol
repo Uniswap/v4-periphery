@@ -15,7 +15,6 @@ import {IV4Router} from "./interfaces/IV4Router.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {Actions} from "./libraries/Actions.sol";
-import {SafeCastTemp} from "./libraries/SafeCast.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
 
 /// @title UniswapV4Router
@@ -23,7 +22,6 @@ import {ActionConstants} from "./libraries/ActionConstants.sol";
 /// @dev the entry point to executing actions in this contract is calling `BaseActionsRouter._executeActions`
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
 abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
-    using SafeCastTemp for *;
     using SafeCast for *;
     using PathKeyLib for PathKey;
     using CalldataDecoder for bytes;
