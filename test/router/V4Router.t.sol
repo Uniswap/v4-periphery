@@ -688,7 +688,9 @@ contract V4RouterTest is RoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteNativeInputExactOutputSwap(CurrencyLibrary.ADDRESS_ZERO, nativeKey.currency1, expectedAmountIn);
+        = _finalizeAndExecuteNativeInputExactOutputSwap(
+            CurrencyLibrary.ADDRESS_ZERO, nativeKey.currency1, expectedAmountIn
+        );
 
         assertEq(nativeKey.currency0.balanceOf(address(router)), 0);
         assertEq(nativeKey.currency1.balanceOf(address(router)), 0);
