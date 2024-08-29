@@ -38,6 +38,7 @@ library PositionInfoLibrary {
     uint256 internal constant MASK_UPPER_200_BITS = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000;
     uint256 internal constant MASK_8_BITS = 0xFF;
     uint24 internal constant MASK_24_BITS = 0xFFFFFF;
+    uint256 internal constant SET_UNSUBSCRIBE = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00;
     uint256 internal constant SET_SUBSCRIBE = 0x01;
     uint8 internal constant TICK_LOWER_OFFSET = 8;
     uint8 internal constant TICK_UPPER_OFFSET = 32;
@@ -76,7 +77,7 @@ library PositionInfoLibrary {
     /// @dev this does not actually set any storage
     function setUnsubscribe(PositionInfo info) internal pure returns (PositionInfo _info) {
         assembly ("memory-safe") {
-            _info := and(info, not(SET_SUBSCRIBE))
+            _info := and(info, SET_UNSUBSCRIBE)
         }
     }
 
