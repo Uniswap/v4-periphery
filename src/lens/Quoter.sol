@@ -21,9 +21,10 @@ contract Quoter is IQuoter, SafeCallback {
     /// @dev cache used to check a safety condition in exact output swaps.
     uint128 private amountOutCached;
 
-    /// @dev min valid reason is 3-words long
-    /// @dev int128[2] + sqrtPriceX96After padded to 32bytes + intializeTicksLoaded padded to 32bytes
-    uint256 internal constant MINIMUM_VALID_RESPONSE_LENGTH = 96;
+    /// @dev min valid reason is 6-words long (192 bytes)
+    /// @dev int128[2] includes 32 bytes for offset, 32 bytes for length, and 32 bytes for each element
+    /// @dev Plus sqrtPriceX96After padded to 32 bytes and initializedTicksLoaded padded to 32 bytes
+    uint256 internal constant MINIMUM_VALID_RESPONSE_LENGTH = 192;
 
     struct QuoteResult {
         int128[] deltaAmounts;
@@ -266,7 +267,7 @@ contract Quoter is IQuoter, SafeCallback {
 
     /// @dev quote an ExactOutput swap on a pool, then revert with the result
     function _quoteExactOutputSingle(QuoteExactSingleParams calldata params) public selfOnly returns (bytes memory) {
-        // if no price limit has been specified, cache the output amount for comparison in the swap callback
+        // if no price limit has been specified, cache the output amount for comparison inside the _swap function
         if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.exactAmount;
 
         (, int24 tickBefore,,) = poolManager.getSlot0(params.poolKey.toId());
@@ -293,7 +294,7 @@ contract Quoter is IQuoter, SafeCallback {
     }
 
     /// @dev Execute a swap and return the amounts delta, as well as relevant pool state
-    /// @notice if amountSpecified > 0, the swap is exactInput, otherwise exactOutput
+    /// @notice if amountSpecified < 0, the swap is exactInput, otherwise exactOutput
     function _swap(
         PoolKey memory poolKey,
         bool zeroForOne,
