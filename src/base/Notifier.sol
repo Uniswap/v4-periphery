@@ -6,8 +6,7 @@ import {BipsLibrary} from "../libraries/BipsLibrary.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {PositionManager} from "../PositionManager.sol";
-import {PackedPositionInfo} from "../libraries/PositionInfoLibrary.sol";
+import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
@@ -29,7 +28,9 @@ abstract contract Notifier is INotifier {
     mapping(uint256 tokenId => ISubscriber subscriber) public subscriber;
 
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
+
     function _setUnsubscribe(uint256 tokenId) internal virtual;
+
     function _setSubscribe(uint256 tokenId) internal virtual;
 
     /// @inheritdoc INotifier

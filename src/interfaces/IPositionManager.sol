@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PackedPositionInfo} from "../libraries/PositionInfoLibrary.sol";
+import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 import {INotifier} from "./INotifier.sol";
 
@@ -33,7 +33,7 @@ interface IPositionManager is INotifier {
     function getPositionLiquidity(uint256 tokenId) external view returns (uint128 liquidity);
 
     /// @param tokenId the ERC721 tokenId
-    /// @return PackedPositionInfo a uint256 packed value holding information about the position including the range (tickLower, tickUpper)
+    /// @return  a uint256 packed value holding information about the position including the range (tickLower, tickUpper)
     /// @return poolKey the pool key of the position
-    function getPoolPositionInfo(uint256 tokenId) external view returns (PackedPositionInfo, PoolKey memory);
+    function getPoolPositionInfo(uint256 tokenId) external view returns (PositionInfo, PoolKey memory);
 }

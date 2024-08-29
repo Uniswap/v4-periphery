@@ -28,7 +28,7 @@ import {INotifier} from "./interfaces/INotifier.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
 import {PoolKeyChecker} from "./libraries/PoolKeyChecker.sol";
-import {PackedPositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
+import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 
 //                                           444444444
 //                                444444444444      444444
@@ -117,12 +117,12 @@ contract PositionManager is
     using CalldataDecoder for bytes;
     using SlippageCheckLibrary for BalanceDelta;
     using PoolKeyChecker for PoolKey;
-    using PositionInfoLibrary for PackedPositionInfo;
+    using PositionInfoLibrary for PositionInfo;
 
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
-    mapping(uint256 tokenId => PackedPositionInfo info) public positionInfo;
+    mapping(uint256 tokenId => PositionInfo info) public positionInfo;
     mapping(bytes25 poolId => PoolKey poolKey) public poolKeys;
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
@@ -237,7 +237,7 @@ contract PositionManager is
         uint128 amount1Max,
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) {
-        (PackedPositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
+        (PositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
 
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
@@ -254,7 +254,7 @@ contract PositionManager is
         uint128 amount1Min,
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) {
-        (PackedPositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
+        (PositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
 
         // Note: the tokenId is used as the salt.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
@@ -282,7 +282,7 @@ contract PositionManager is
         _mint(owner, tokenId);
 
         // Initialize the position info
-        PackedPositionInfo info = PositionInfoLibrary.initialize(poolKey, tickLower, tickUpper);
+        PositionInfo info = PositionInfoLibrary.initialize(poolKey, tickLower, tickUpper);
         positionInfo[tokenId] = info;
 
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
@@ -301,7 +301,7 @@ contract PositionManager is
         internal
         onlyIfApproved(msgSender(), tokenId)
     {
-        (PackedPositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
+        (PositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
 
         uint256 liquidity = uint256(_getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper()));
 
@@ -375,7 +375,7 @@ contract PositionManager is
     }
 
     function _modifyLiquidity(
-        PackedPositionInfo info,
+        PositionInfo info,
         PoolKey memory poolKey,
         int256 liquidityChange,
         bytes32 salt,
@@ -402,8 +402,8 @@ contract PositionManager is
     function _setSubscribe(uint256 tokenId) internal override {
         positionInfo[tokenId] = positionInfo[tokenId].setSubscribe();
     }
-
     /// @notice an internal helper used by Notifier
+
     function _setUnsubscribe(uint256 tokenId) internal override {
         positionInfo[tokenId] = positionInfo[tokenId].setUnsubscribe();
     }
@@ -415,18 +415,14 @@ contract PositionManager is
     }
 
     /// @inheritdoc IPositionManager
-    function getPoolPositionInfo(uint256 tokenId)
-        public
-        view
-        returns (PackedPositionInfo info, PoolKey memory poolKey)
-    {
+    function getPoolPositionInfo(uint256 tokenId) public view returns (PositionInfo info, PoolKey memory poolKey) {
         info = positionInfo[tokenId];
         poolKey = poolKeys[info.poolId()];
     }
 
     /// @inheritdoc IPositionManager
     function getPositionLiquidity(uint256 tokenId) external view returns (uint128 liquidity) {
-        (PackedPositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
+        (PositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
         liquidity = _getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper());
     }
 

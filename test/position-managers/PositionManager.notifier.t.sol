@@ -19,13 +19,13 @@ import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {INotifier} from "../../src/interfaces/INotifier.sol";
 import {MockReturnDataSubscriber, MockRevertSubscriber} from "../mocks/MockBadSubscribers.sol";
-import {PositionInfoLibrary, PackedPositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
+import {PositionInfoLibrary, PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 
 contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using Planner for Plan;
-    using PositionInfoLibrary for PackedPositionInfo;
+    using PositionInfoLibrary for PositionInfo;
 
     MockSubscriber sub;
     MockReturnDataSubscriber badSubscriber;
