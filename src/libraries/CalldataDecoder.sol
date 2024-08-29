@@ -4,7 +4,6 @@ pragma solidity ^0.8.0;
 import {PositionConfig} from "./PositionConfig.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IV4Router} from "../interfaces/IV4Router.sol";
-import {console2} from "forge-std/console2.sol";
 
 /// @title Library for abi decoding in calldata
 library CalldataDecoder {
