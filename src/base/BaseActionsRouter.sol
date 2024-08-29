@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SafeCallback} from "./SafeCallback.sol";
 import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
-import {Actions} from "../libraries/Actions.sol";
 import {ActionConstants} from "../libraries/ActionConstants.sol";
 
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.

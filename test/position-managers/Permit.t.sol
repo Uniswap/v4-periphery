@@ -217,6 +217,27 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
     }
 
+    /// @notice revoking a nonce prevents it from being used in permit()
+    function test_fuzz_noPermit_revokeRevert(uint256 nonce) public {
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice revokes the nonce
+        vm.prank(alice);
+        lpm.revokeNonce(nonce);
+
+        // alice gives bob spender permissions
+        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
+    }
+
     // Bob can use alice's signature to permit & decrease liquidity
     function test_permit_operatorSelfPermit() public {
         uint256 liquidityAlice = 1e18;

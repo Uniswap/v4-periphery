@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.20;
 
-import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -17,7 +14,6 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
 
 contract Quoter is IQuoter, SafeCallback {
-    using Hooks for IHooks;
     using PoolIdLibrary for PoolKey;
     using PathKeyLib for PathKey;
     using StateLibrary for IPoolManager;
@@ -25,9 +21,10 @@ contract Quoter is IQuoter, SafeCallback {
     /// @dev cache used to check a safety condition in exact output swaps.
     uint128 private amountOutCached;
 
-    /// @dev min valid reason is 3-words long
-    /// @dev int128[2] + sqrtPriceX96After padded to 32bytes + intializeTicksLoaded padded to 32bytes
-    uint256 internal constant MINIMUM_VALID_RESPONSE_LENGTH = 96;
+    /// @dev min valid reason is 6-words long (192 bytes)
+    /// @dev int128[2] includes 32 bytes for offset, 32 bytes for length, and 32 bytes for each element
+    /// @dev Plus sqrtPriceX96After padded to 32 bytes and initializedTicksLoaded padded to 32 bytes
+    uint256 internal constant MINIMUM_VALID_RESPONSE_LENGTH = 192;
 
     struct QuoteResult {
         int128[] deltaAmounts;
@@ -60,7 +57,7 @@ contract Quoter is IQuoter, SafeCallback {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        try poolManager.unlock(abi.encodeWithSelector(this._quoteExactInputSingle.selector, params)) {}
+        try poolManager.unlock(abi.encodeCall(this._quoteExactInputSingle, (params))) {}
         catch (bytes memory reason) {
             return _handleRevertSingle(reason);
         }
@@ -75,7 +72,7 @@ contract Quoter is IQuoter, SafeCallback {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try poolManager.unlock(abi.encodeWithSelector(this._quoteExactInput.selector, params)) {}
+        try poolManager.unlock(abi.encodeCall(this._quoteExactInput, (params))) {}
         catch (bytes memory reason) {
             return _handleRevert(reason);
         }
@@ -87,7 +84,7 @@ contract Quoter is IQuoter, SafeCallback {
         override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
-        try poolManager.unlock(abi.encodeWithSelector(this._quoteExactOutputSingle.selector, params)) {}
+        try poolManager.unlock(abi.encodeCall(this._quoteExactOutputSingle, (params))) {}
         catch (bytes memory reason) {
             if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
             return _handleRevertSingle(reason);
@@ -104,7 +101,7 @@ contract Quoter is IQuoter, SafeCallback {
             uint32[] memory initializedTicksLoadedList
         )
     {
-        try poolManager.unlock(abi.encodeWithSelector(this._quoteExactOutput.selector, params)) {}
+        try poolManager.unlock(abi.encodeCall(this._quoteExactOutput, (params))) {}
         catch (bytes memory reason) {
             return _handleRevert(reason);
         }
@@ -270,7 +267,7 @@ contract Quoter is IQuoter, SafeCallback {
 
     /// @dev quote an ExactOutput swap on a pool, then revert with the result
     function _quoteExactOutputSingle(QuoteExactSingleParams calldata params) public selfOnly returns (bytes memory) {
-        // if no price limit has been specified, cache the output amount for comparison in the swap callback
+        // if no price limit has been specified, cache the output amount for comparison inside the _swap function
         if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.exactAmount;
 
         (, int24 tickBefore,,) = poolManager.getSlot0(params.poolKey.toId());
@@ -297,7 +294,7 @@ contract Quoter is IQuoter, SafeCallback {
     }
 
     /// @dev Execute a swap and return the amounts delta, as well as relevant pool state
-    /// @notice if amountSpecified > 0, the swap is exactInput, otherwise exactOutput
+    /// @notice if amountSpecified < 0, the swap is exactInput, otherwise exactOutput
     function _swap(
         PoolKey memory poolKey,
         bool zeroForOne,

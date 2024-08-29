@@ -5,14 +5,12 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ImmutableState} from "./ImmutableState.sol";
-import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {ActionConstants} from "../libraries/ActionConstants.sol";
 
 /// @notice Abstract contract used to sync, send, and settle funds to the pool manager
 /// @dev Note that sync() is called before any erc-20 transfer in `settle`.
 abstract contract DeltaResolver is ImmutableState {
     using TransientStateLibrary for IPoolManager;
-    using SafeCast for *;
 
     /// @notice Emitted trying to settle a positive delta.
     error DeltaNotPositive(Currency currency);
