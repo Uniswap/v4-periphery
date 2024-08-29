@@ -9,7 +9,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 // we need to use a mock contract to make the calls happen in calldata not memory
 contract MockCalldataDecoder {
     using CalldataDecoder for bytes;
-    
+
     // This is used to avoid compiling with via-ir.
     struct MintParams {
         PoolKey poolKey;
