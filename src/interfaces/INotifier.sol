@@ -26,9 +26,4 @@ interface INotifier {
     /// @dev payable so it can be multicalled with NATIVE related actions
     /// @dev Must always allow a user to unsubscribe. In the case of a malicious subscriber, a user can always unsubscribe safely, ensuring liquidity is always modifiable.
     function unsubscribe(uint256 tokenId, bytes calldata data) external payable;
-
-    /// @notice Returns whether a a position should call out to notify a subscribing contract on modification or transfer
-    /// @param tokenId the ERC721 tokenId
-    /// @return bool whether or not the position has a subscriber
-    function hasSubscriber(uint256 tokenId) external view returns (bool);
 }

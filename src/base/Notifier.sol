@@ -7,7 +7,7 @@ import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PositionManager} from "../PositionManager.sol";
-import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
+import {PackedPositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
@@ -29,8 +29,8 @@ abstract contract Notifier is INotifier {
     mapping(uint256 tokenId => ISubscriber subscriber) public subscriber;
 
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
-
-    function _positionInfo(uint256 tokenId) internal view virtual returns (PositionInfo storage);
+    function _setUnsubscribe(uint256 tokenId) internal virtual;
+    function _setSubscribe(uint256 tokenId) internal virtual;
 
     /// @inheritdoc INotifier
     function subscribe(uint256 tokenId, address newSubscriber, bytes calldata data)
@@ -38,7 +38,7 @@ abstract contract Notifier is INotifier {
         payable
         onlyIfApproved(msg.sender, tokenId)
     {
-        _positionInfo(tokenId).hasSubscriber = true;
+        _setSubscribe(tokenId);
         ISubscriber _subscriber = subscriber[tokenId];
 
         if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(address(_subscriber));
@@ -56,7 +56,7 @@ abstract contract Notifier is INotifier {
 
     /// @inheritdoc INotifier
     function unsubscribe(uint256 tokenId, bytes calldata data) external payable onlyIfApproved(msg.sender, tokenId) {
-        _positionInfo(tokenId).hasSubscriber = false;
+        _setUnsubscribe(tokenId);
         ISubscriber _subscriber = subscriber[tokenId];
 
         delete subscriber[tokenId];
@@ -97,10 +97,5 @@ abstract contract Notifier is INotifier {
         assembly ("memory-safe") {
             success := call(gas(), target, 0, add(encodedCall, 0x20), mload(encodedCall), 0, 0)
         }
-    }
-
-    /// @inheritdoc INotifier
-    function hasSubscriber(uint256 tokenId) external view returns (bool) {
-        return _positionInfo(tokenId).hasSubscriber;
     }
 }

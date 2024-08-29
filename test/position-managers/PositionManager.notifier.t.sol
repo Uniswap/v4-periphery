@@ -8,6 +8,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {MockSubscriber} from "../mocks/MockSubscriber.sol";
@@ -18,12 +19,13 @@ import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {INotifier} from "../../src/interfaces/INotifier.sol";
 import {MockReturnDataSubscriber, MockRevertSubscriber} from "../mocks/MockBadSubscribers.sol";
-import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PositionInfoLibrary, PackedPositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 
 contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using Planner for Plan;
+    using PositionInfoLibrary for PackedPositionInfo;
 
     MockSubscriber sub;
     MockReturnDataSubscriber badSubscriber;
@@ -77,7 +79,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
 
-        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
         assertEq(sub.notifySubscribeCount(), 1);
     }
@@ -93,7 +95,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
 
-        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
 
         Plan memory plan = Planner.init();
@@ -127,7 +129,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
 
-        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
 
         uint256 liquidityToAdd = 10e18;
@@ -150,7 +152,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
 
-        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
 
         lpm.transferFrom(alice, bob, tokenId);
@@ -169,7 +171,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
 
-        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
 
         lpm.safeTransferFrom(alice, bob, tokenId);
@@ -188,7 +190,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
 
-        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
 
         lpm.safeTransferFrom(alice, bob, tokenId, "");
@@ -210,7 +212,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.unsubscribe(tokenId, ZERO_BYTES);
 
         assertEq(sub.notifyUnsubscribeCount(), 1);
-        assertEq(lpm.hasSubscriber(tokenId), false);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), false);
         assertEq(address(lpm.subscriber(tokenId)), address(0));
     }
 
@@ -230,7 +232,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // the subscriber contract call failed bc it used too much gas
         assertEq(MockReturnDataSubscriber(badSubscriber).notifyUnsubscribeCount(), 0);
-        assertEq(lpm.hasSubscriber(tokenId), false);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), false);
         assertEq(address(lpm.subscriber(tokenId)), address(0));
     }
 
@@ -265,7 +267,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(liquidity, 100e18);
         assertEq(sub.notifySubscribeCount(), 1);
 
-        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
     }
 
@@ -310,7 +312,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(liquidity, 110e18);
         assertEq(sub.notifySubscribeCount(), 1);
         assertEq(sub.notifyModifyLiquidityCount(), 1);
-        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
     }
 
@@ -340,7 +342,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.subscribe(tokenId, address(sub), subData);
 
-        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
         assertEq(sub.notifySubscribeCount(), 1);
         assertEq(abi.decode(sub.subscribeData(), (address)), address(this));
@@ -362,7 +364,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.unsubscribe(tokenId, subData);
 
         assertEq(sub.notifyUnsubscribeCount(), 1);
-        assertEq(lpm.hasSubscriber(tokenId), false);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), false);
         assertEq(address(lpm.subscriber(tokenId)), address(0));
         assertEq(abi.decode(sub.unsubscribeData(), (address)), address(this));
     }
