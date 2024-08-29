@@ -425,7 +425,7 @@ contract PositionManager is
     }
 
     /// @inheritdoc IPositionManager
-    function getPositionLiquidity(uint256 tokenId) public view returns (uint128 liquidity) {
+    function getPositionLiquidity(uint256 tokenId) external view returns (uint128 liquidity) {
         (PackedPositionInfo info, PoolKey memory poolKey) = getPoolPositionInfo(tokenId);
         liquidity = _getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper());
     }
