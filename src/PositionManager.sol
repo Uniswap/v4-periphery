@@ -412,7 +412,7 @@ contract PositionManager is
     }
 
     /// @inheritdoc IPositionManager
-    function getPoolPositionInfo(uint256 tokenId) public view returns (PositionInfo info, PoolKey memory poolKey) {
+    function getPoolAndPositionInfo(uint256 tokenId) public view returns (PositionInfo info, PoolKey memory poolKey) {
         info = positionInfo[tokenId];
         poolKey = poolKeys[info.poolId()];
     }
