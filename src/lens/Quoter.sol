@@ -54,7 +54,6 @@ contract Quoter is IQuoter, SafeCallback {
     /// @inheritdoc IQuoter
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
         public
-        override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
         try poolManager.unlock(abi.encodeCall(this._quoteExactInputSingle, (params))) {}
@@ -81,7 +80,6 @@ contract Quoter is IQuoter, SafeCallback {
     /// @inheritdoc IQuoter
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         public
-        override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
         try poolManager.unlock(abi.encodeCall(this._quoteExactOutputSingle, (params))) {}
@@ -94,7 +92,6 @@ contract Quoter is IQuoter, SafeCallback {
     /// @inheritdoc IQuoter
     function quoteExactOutput(QuoteExactParams memory params)
         public
-        override
         returns (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
