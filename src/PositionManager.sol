@@ -301,11 +301,9 @@ contract PositionManager is
         }
         _mint(owner, tokenId);
 
-        // _beforeModify is not called here because the tokenId is newly minted
-        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
-            _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
-        (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
+        // fee delta can be ignored as this is a new position
+        (BalanceDelta liquidityDelta,) = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+        liquidityDelta.validateMaxIn(amount0Max, amount1Max);
         positionConfigs[tokenId].setConfigId(config.toId());
 
         emit MintPosition(tokenId, config);
