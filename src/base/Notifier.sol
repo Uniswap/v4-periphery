@@ -73,6 +73,12 @@ abstract contract Notifier is INotifier {
 
         if (address(_subscriber).code.length > 0) {
             uint256 subscriberGasLimit = block.gaslimit.calculatePortion(BLOCK_LIMIT_BPS);
+
+            // require that the remaining gas is sufficient to notify the subscriber
+            // otherwise, users can select a gas limit where .notifyUnsubscribe hits OutOfGas yet the transaction/unsubscription
+            // can still succeed
+            // to account for EIP-150, condition could be 64 * gasleft() / 63 <= subscriberGasLimit
+            if ((64 * gasleft() / 63) < subscriberGasLimit) GasLimitTooLow.selector.revertWith();
             try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config, data) {} catch {}
         }
 

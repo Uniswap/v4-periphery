@@ -19,11 +19,13 @@ import {Actions} from "../../src/libraries/Actions.sol";
 import {INotifier} from "../../src/interfaces/INotifier.sol";
 import {MockReturnDataSubscriber, MockRevertSubscriber} from "../mocks/MockBadSubscribers.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {BipsLibrary} from "../../src/libraries/BipsLibrary.sol";
 
 contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using Planner for Plan;
+    using BipsLibrary for uint256;
 
     MockSubscriber sub;
     MockReturnDataSubscriber badSubscriber;
@@ -574,5 +576,34 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
             )
         );
         lpm.safeTransferFrom(alice, bob, tokenId, "");
+    }
+
+    /// @notice Test that users cannot forcibly avoid unsubscribe logic via gas limits
+    function test_fuzz_unsubscribe_with_gas_limit(uint64 gasLimit) public {
+        // enforce a minimum amount of gas to avoid OutOfGas reverts
+        gasLimit = uint64(bound(gasLimit, 150_000, block.gaslimit));
+
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+        uint256 beforeUnsubCount = sub.notifyUnsubscribeCount();
+
+        uint256 subscriberGasLimit = block.gaslimit.calculatePortion(100);
+
+        if (gasLimit < subscriberGasLimit) {
+            // gas too low to call a valid unsubscribe
+            vm.expectRevert(INotifier.GasLimitTooLow.selector);
+            lpm.unsubscribe{gas: gasLimit}(tokenId, config, ZERO_BYTES);
+        } else {
+            // increasing gas limit succeeds and unsubscribe was called
+            lpm.unsubscribe{gas: gasLimit}(tokenId, config, ZERO_BYTES);
+            assertEq(sub.notifyUnsubscribeCount(), beforeUnsubCount + 1);
+        }
     }
 }

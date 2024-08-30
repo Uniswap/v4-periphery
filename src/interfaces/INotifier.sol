@@ -10,6 +10,8 @@ interface INotifier {
     error NotSubscribed();
     /// @notice Thrown when a subscriber does not have code
     error NoCodeSubscriber();
+    /// @notice Thrown when a user specifies a gas limit too low to avoid valid unsubscribe notifications
+    error GasLimitTooLow();
     /// @notice Wraps the revert message of the subscriber contract on a reverting subscription
     error Wrap__SubsciptionReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting modify liquidity notification
