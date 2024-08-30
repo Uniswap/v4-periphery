@@ -102,7 +102,7 @@ contract StateView is ImmutableState {
     }
 
     /**
-     * @notice Retrieves the total the liquidity of a pool.
+     * @notice Retrieves the total liquidity of a pool.
      * @dev Corresponds to pools[poolId].liquidity
      * @param poolId The ID of the pool.
      * @return liquidity The liquidity of the pool.
