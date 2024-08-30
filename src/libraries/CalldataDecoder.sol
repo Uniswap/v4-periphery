@@ -241,7 +241,7 @@ library CalldataDecoder {
     }
 
     /// @notice Decode the `_arg`-th element in `_bytes` as `bytes`
-    /// @param _bytes The input bytes string to extract a bytes string from
+    /// @param _bytes The input bytes string to extract a bytes array from
     /// @param _arg The index of the argument to extract
     function toBytesArray(bytes calldata _bytes, uint256 _arg) internal pure returns (bytes[] calldata res) {
         uint256 encodingLength;
