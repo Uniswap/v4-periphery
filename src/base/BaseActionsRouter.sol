@@ -52,7 +52,7 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// @notice function that returns address considered executor of the actions
     /// @dev The other context functions, _msgData and _msgValue, are not supported by this contract
     /// In many contracts this will be the address that calls the initial entry point that calls `_executeActions`
-    /// `msg.sender` shouldnt be used, as this will be the v4 pool manager contract that calls `unlockCallback`
+    /// `msg.sender` shouldn't be used, as this will be the v4 pool manager contract that calls `unlockCallback`
     /// If using ReentrancyLock.sol, this function can return _getLocker()
     function msgSender() public view virtual returns (address);
 
