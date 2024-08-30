@@ -10,9 +10,9 @@ contract UnorderedNonce {
     /// @dev word is at most type(uint248).max
     mapping(address owner => mapping(uint256 word => uint256 bitmap)) public nonces;
 
-    /// @notice Consume a nonce, reverting if its already been used
+    /// @notice Consume a nonce, reverting if it has already been used
     /// @param owner address, the owner/signer of the nonce
-    /// @param nonce uint256, the nonce to consume. the top 248 bits are the word, the bottom 8 bits indicate the bit position
+    /// @param nonce uint256, the nonce to consume. The top 248 bits are the word, the bottom 8 bits indicate the bit position
     function _useUnorderedNonce(address owner, uint256 nonce) internal {
         uint256 wordPos = nonce >> 8;
         uint256 bitPos = uint8(nonce);

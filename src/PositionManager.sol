@@ -142,7 +142,7 @@ contract PositionManager is
     /// @param caller The address of the caller
     /// @param tokenId the unique identifier of the ERC721 token
     /// @dev either msg.sender or _msgSender() is passed in as the caller
-    /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
+    /// msgSender() should ONLY be used if this is called from within the unlockCallback, unless the codepath has reentrancy protection
     modifier onlyIfApproved(address caller, uint256 tokenId) override {
         if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
         _;
@@ -301,7 +301,6 @@ contract PositionManager is
         }
         _mint(owner, tokenId);
 
-        // _beforeModify is not called here because the tokenId is newly minted
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
             _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
