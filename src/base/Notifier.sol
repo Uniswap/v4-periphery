@@ -50,13 +50,13 @@ abstract contract Notifier is INotifier {
         subscriber[tokenId] = ISubscriber(newSubscriber);
 
         bool success =
-            _call(address(newSubscriber), abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, config, data)));
+            _call(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, config, data)));
 
         if (!success) {
-            Wrap__SubsciptionReverted.selector.bubbleUpAndRevertWith(address(newSubscriber));
+            Wrap__SubsciptionReverted.selector.bubbleUpAndRevertWith(newSubscriber);
         }
 
-        emit Subscribed(tokenId, address(newSubscriber));
+        emit Subscribed(tokenId, newSubscriber);
     }
 
     /// @inheritdoc INotifier
