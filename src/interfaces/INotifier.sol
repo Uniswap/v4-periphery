@@ -6,6 +6,8 @@ import {ISubscriber} from "./ISubscriber.sol";
 
 /// @notice This interface is used to opt in to sending updates to external contracts about position modifications or transfers
 interface INotifier {
+    /// @notice Thrown when unsubscribing without a subscriber
+    error NotSubscribed();
     /// @notice Wraps the revert message of the subscriber contract on a reverting subscription
     error Wrap__SubsciptionReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting modify liquidity notification

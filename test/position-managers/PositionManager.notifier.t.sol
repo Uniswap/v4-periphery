@@ -340,7 +340,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.approve(address(this), tokenId);
         vm.stopPrank();
 
-        vm.expectRevert();
+        vm.expectRevert(INotifier.NotSubscribed.selector);
         lpm.unsubscribe(tokenId, config, ZERO_BYTES);
     }
 

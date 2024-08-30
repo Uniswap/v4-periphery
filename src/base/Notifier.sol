@@ -68,6 +68,7 @@ abstract contract Notifier is INotifier {
     {
         _positionConfigs(tokenId).setUnsubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
+        if (_subscriber == NO_SUBSCRIBER) revert NotSubscribed();
 
         delete subscriber[tokenId];
 
