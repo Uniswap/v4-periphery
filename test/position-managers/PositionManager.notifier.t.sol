@@ -249,6 +249,26 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(address(lpm.subscriber(tokenId)), address(0));
     }
 
+    function test_unsubscribe_selfDestructed() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+
+        // simulate selfdestruct by etching the bytecode to 0
+        vm.etch(address(sub), ZERO_BYTES);
+
+        lpm.unsubscribe(tokenId, config, ZERO_BYTES);
+
+        assertEq(lpm.hasSubscriber(tokenId), false);
+        assertEq(address(lpm.subscriber(tokenId)), address(0));
+    }
+
     function test_multicall_mint_subscribe() public {
         uint256 tokenId = lpm.nextTokenId();
 
