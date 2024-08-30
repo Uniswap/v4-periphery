@@ -97,6 +97,22 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(sub.notifySubscribeCount(), 1);
     }
 
+    /// @notice Revert when subscribing to an address without code
+    function test_subscribe_revert_empty(address _subscriber) public {
+        vm.assume(_subscriber.code.length == 0);
+        
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        vm.expectRevert(INotifier.NoCodeSubscriber.selector);
+        lpm.subscribe(tokenId, config, _subscriber, ZERO_BYTES);
+    }
+
     function test_notifyModifyLiquidity_succeeds() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
@@ -124,6 +140,28 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         assertEq(sub.notifySubscribeCount(), 1);
         assertEq(sub.notifyModifyLiquidityCount(), 10);
+    }
+
+    function test_notifyModifyLiquidity_selfDestruct_revert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
+
+        // simulate selfdestruct by etching the bytecode to 0
+        vm.etch(address(sub), ZERO_BYTES);
+
+        uint256 liquidityToAdd = 10e18;
+        vm.expectRevert(INotifier.NoCodeSubscriber.selector);
+        increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
     }
 
     function test_notifyModifyLiquidity_args() public {
@@ -173,6 +211,26 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(sub.notifyTransferCount(), 1);
     }
 
+    function test_notifyTransfer_withTransferFrom_selfDestruct_revert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
+
+        // simulate selfdestruct by etching the bytecode to 0
+        vm.etch(address(sub), ZERO_BYTES);
+
+        vm.expectRevert(INotifier.NoCodeSubscriber.selector);
+        lpm.transferFrom(alice, bob, tokenId);
+    }
+
     function test_notifyTransfer_withSafeTransferFrom_succeeds() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
@@ -190,6 +248,26 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.safeTransferFrom(alice, bob, tokenId);
 
         assertEq(sub.notifyTransferCount(), 1);
+    }
+
+    function test_notifyTransfer_withSafeTransferFrom_selfDestruct_revert() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
+
+        // simulate selfdestruct by etching the bytecode to 0
+        vm.etch(address(sub), ZERO_BYTES);
+
+        vm.expectRevert(INotifier.NoCodeSubscriber.selector);
+        lpm.safeTransferFrom(alice, bob, tokenId);
     }
 
     function test_notifyTransfer_withSafeTransferFromData_succeeds() public {

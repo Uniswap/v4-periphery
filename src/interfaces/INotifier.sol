@@ -8,6 +8,8 @@ import {ISubscriber} from "./ISubscriber.sol";
 interface INotifier {
     /// @notice Thrown when unsubscribing without a subscriber
     error NotSubscribed();
+    /// @notice Thrown when a subscriber does not have code
+    error NoCodeSubscriber();
     /// @notice Wraps the revert message of the subscriber contract on a reverting subscription
     error Wrap__SubsciptionReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting modify liquidity notification

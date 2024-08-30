@@ -110,6 +110,7 @@ abstract contract Notifier is INotifier {
     }
 
     function _call(address target, bytes memory encodedCall) internal returns (bool success) {
+        if (target.code.length == 0) revert NoCodeSubscriber();
         assembly ("memory-safe") {
             success := call(gas(), target, 0, add(encodedCall, 0x20), mload(encodedCall), 0, 0)
         }
