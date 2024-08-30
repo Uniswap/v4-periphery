@@ -102,7 +102,7 @@ contract StateView is ImmutableState {
     }
 
     /**
-     * @notice Retrieves total the liquidity of a pool.
+     * @notice Retrieves the total the liquidity of a pool.
      * @dev Corresponds to pools[poolId].liquidity
      * @param poolId The ID of the pool.
      * @return liquidity The liquidity of the pool.
@@ -161,7 +161,7 @@ contract StateView is ImmutableState {
 
     /**
      * @notice Retrieves the liquidity of a position.
-     * @dev Corresponds to pools[poolId].positions[positionId].liquidity. More gas efficient for just retrieiving liquidity as compared to getPositionInfo
+     * @dev Corresponds to pools[poolId].positions[positionId].liquidity. More gas efficient for just retrieving liquidity as compared to getPositionInfo
      * @param poolId The ID of the pool.
      * @param positionId The ID of the position.
      * @return liquidity The liquidity of the position.
