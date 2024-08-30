@@ -100,7 +100,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
     /// @notice Revert when subscribing to an address without code
     function test_subscribe_revert_empty(address _subscriber) public {
         vm.assume(_subscriber.code.length == 0);
-        
+
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
 

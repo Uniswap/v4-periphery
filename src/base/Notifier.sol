@@ -46,7 +46,7 @@ abstract contract Notifier is INotifier {
         _positionConfigs(tokenId).setSubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
-        if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(address(_subscriber));
+        if (_subscriber != NO_SUBSCRIBER) AlreadySubscribed.selector.revertWith(address(_subscriber));
         subscriber[tokenId] = ISubscriber(newSubscriber);
 
         bool success =
@@ -68,7 +68,7 @@ abstract contract Notifier is INotifier {
     {
         _positionConfigs(tokenId).setUnsubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
-        if (_subscriber == NO_SUBSCRIBER) revert NotSubscribed();
+        if (_subscriber == NO_SUBSCRIBER) NotSubscribed.selector.revertWith();
 
         delete subscriber[tokenId];
 
@@ -110,7 +110,7 @@ abstract contract Notifier is INotifier {
     }
 
     function _call(address target, bytes memory encodedCall) internal returns (bool success) {
-        if (target.code.length == 0) revert NoCodeSubscriber();
+        if (target.code.length == 0) NoCodeSubscriber.selector.revertWith();
         assembly ("memory-safe") {
             success := call(gas(), target, 0, add(encodedCall, 0x20), mload(encodedCall), 0, 0)
         }
