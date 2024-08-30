@@ -36,7 +36,7 @@ library CalldataDecoder {
 
             // Calculate how far `params` is into the provided bytes
             let relativeOffset := sub(params.offset, _bytes.offset)
-            // Check that that isnt longer than the bytes themselves, or revert
+            // Check that that isn't longer than the bytes themselves, or revert
             if lt(_bytes.length, add(params.length, relativeOffset)) {
                 mstore(0, SLICE_ERROR_SELECTOR)
                 revert(0, 0x04)
