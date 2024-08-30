@@ -112,8 +112,7 @@ contract Quoter is IQuoter, SafeCallback {
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();
         // if the call failed, bubble up the reason
-        /// @solidity memory-safe-assembly
-        assembly {
+        assembly ("memory-safe") {
             revert(add(returnData, 32), mload(returnData))
         }
     }
