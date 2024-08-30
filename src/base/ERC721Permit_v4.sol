@@ -28,7 +28,8 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
         payable
         checkSignatureDeadline(deadline)
     {
-        address owner = ownerOf(tokenId);
+        // the .verify function checks the owner is non-0
+        address owner = _ownerOf[tokenId];
 
         bytes32 digest = ERC721PermitHashLibrary.hashPermit(spender, tokenId, nonce, deadline);
         signature.verify(_hashTypedData(digest), owner);
