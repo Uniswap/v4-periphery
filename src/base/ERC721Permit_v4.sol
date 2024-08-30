@@ -29,7 +29,6 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
         checkSignatureDeadline(deadline)
     {
         address owner = ownerOf(tokenId);
-        _checkNoSelfPermit(owner, spender);
 
         bytes32 digest = ERC721PermitHashLibrary.hashPermit(spender, tokenId, nonce, deadline);
         signature.verify(_hashTypedData(digest), owner);
@@ -47,8 +46,6 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
         uint256 nonce,
         bytes calldata signature
     ) external payable checkSignatureDeadline(deadline) {
-        _checkNoSelfPermit(owner, operator);
-
         bytes32 digest = ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline);
         signature.verify(_hashTypedData(digest), owner);
 
@@ -95,10 +92,6 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
     function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
         return spender == ownerOf(tokenId) || getApproved[tokenId] == spender
             || isApprovedForAll[ownerOf(tokenId)][spender];
-    }
-
-    function _checkNoSelfPermit(address owner, address permitted) internal pure {
-        if (owner == permitted) revert NoSelfPermit();
     }
 
     // TODO: to be implemented after audits
