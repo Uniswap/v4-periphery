@@ -113,6 +113,45 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         assertGt(result.amount1(), 0);
     }
 
+    function test_multicall_initializePool_mint_native() public {
+        key = PoolKey({
+            currency0: CurrencyLibrary.NATIVE,
+            currency1: currency1,
+            fee: 0,
+            tickSpacing: 10,
+            hooks: IHooks(address(0))
+        });
+
+        // Use multicall to initialize a pool and mint liquidity
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        config = PositionConfig({
+            poolKey: key,
+            tickLower: TickMath.minUsableTick(key.tickSpacing),
+            tickUpper: TickMath.maxUsableTick(key.tickSpacing)
+        });
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(
+                config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ActionConstants.MSG_SENDER, ZERO_BYTES
+            )
+        );
+        bytes memory actions = planner.finalizeModifyLiquidityWithClose(config.poolKey);
+
+        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
+
+        IMulticall_v4(address(lpm)).multicall{value: 1000 ether}(calls);
+
+        // test swap, doesn't revert, showing the pool was initialized
+        int256 amountSpecified = -1e18;
+        BalanceDelta result = swap(key, true, amountSpecified, ZERO_BYTES);
+        assertEq(result.amount0(), amountSpecified);
+        assertGt(result.amount1(), 0);
+    }
+
     // charlie will attempt to decrease liquidity without approval
     // posm's NotApproved(charlie) should bubble up through Multicall
     function test_multicall_bubbleRevert() public {
