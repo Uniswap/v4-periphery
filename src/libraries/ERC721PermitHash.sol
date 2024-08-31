@@ -17,7 +17,7 @@ library ERC721PermitHashLibrary {
         assembly ("memory-safe") {
             let fmp := mload(0x40)
             mstore(fmp, PERMIT_TYPEHASH)
-            mstore(add(fmp, 0x20), spender)
+            mstore(add(fmp, 0x20), and(spender, 0xffffffffffffffffffffffffffffffffffffffff))
             mstore(add(fmp, 0x40), tokenId)
             mstore(add(fmp, 0x60), nonce)
             mstore(add(fmp, 0x80), deadline)
@@ -34,8 +34,8 @@ library ERC721PermitHashLibrary {
         assembly ("memory-safe") {
             let fmp := mload(0x40)
             mstore(fmp, PERMIT_FOR_ALL_TYPEHASH)
-            mstore(add(fmp, 0x20), operator)
-            mstore(add(fmp, 0x40), approved)
+            mstore(add(fmp, 0x20), and(operator, 0xffffffffffffffffffffffffffffffffffffffff))
+            mstore(add(fmp, 0x40), and(approved, 0x1))
             mstore(add(fmp, 0x60), nonce)
             mstore(add(fmp, 0x80), deadline)
             digest := keccak256(fmp, 0xa0)
