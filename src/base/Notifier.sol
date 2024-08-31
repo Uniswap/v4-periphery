@@ -42,7 +42,7 @@ abstract contract Notifier is INotifier {
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
-        // will revert below if the user already has a subcriber
+        // will revert below if the user already has a subscriber
         _positionConfigs(tokenId).setSubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
@@ -52,7 +52,7 @@ abstract contract Notifier is INotifier {
         bool success = _call(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, config, data)));
 
         if (!success) {
-            Wrap__SubsciptionReverted.selector.bubbleUpAndRevertWith(newSubscriber);
+            Wrap__SubscriptionReverted.selector.bubbleUpAndRevertWith(newSubscriber);
         }
 
         emit Subscribed(tokenId, newSubscriber);

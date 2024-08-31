@@ -49,7 +49,7 @@ abstract contract BaseActionsRouter is SafeCallback {
     /// @notice function to handle the parsing and execution of an action and its parameters
     function _handleAction(uint256 action, bytes calldata params) internal virtual;
 
-    /// @notice function that returns address considered executer of the actions
+    /// @notice function that returns address considered executor of the actions
     /// @dev The other context functions, _msgData and _msgValue, are not supported by this contract
     /// In many contracts this will be the address that calls the initial entry point that calls `_executeActions`
     /// `msg.sender` shouldn't be used, as this will be the v4 pool manager contract that calls `unlockCallback`
