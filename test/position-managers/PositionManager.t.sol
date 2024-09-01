@@ -637,7 +637,6 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         bytes memory calls =
             getDecreaseEncoded(tokenId, config, 1e18, amount0Delta + 1, MIN_SLIPPAGE_DECREASE, ZERO_BYTES);
-        // WHY IS IT 1 LESS ????????
         vm.expectRevert(
             abi.encodeWithSelector(SlippageCheck.MinimumAmountInsufficient.selector, amount0Delta + 1, amount0Delta - 1)
         );
