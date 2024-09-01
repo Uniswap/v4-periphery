@@ -17,14 +17,13 @@ abstract contract Notifier is INotifier {
 
     error AlreadySubscribed(address subscriber);
 
-    event Subscribed(uint256 tokenId, address subscriber);
-    event Unsubscribed(uint256 tokenId, address subscriber);
+    event Subscription(uint256 indexed tokenId, address indexed subscriber);
+    event Unsubscription(uint256 indexed tokenId, address indexed subscriber);
 
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
 
     // a percentage of the block.gaslimit denoted in BPS, used as the gas limit for subscriber calls
-    // 100 bps is 1%
-    // at 30M gas, the limit is 300K
+    // 100 bps is 1%, at 30M gas, the limit is 300K
     uint256 private constant BLOCK_LIMIT_BPS = 100;
 
     /// @inheritdoc INotifier
@@ -55,7 +54,7 @@ abstract contract Notifier is INotifier {
             Wrap__SubscriptionReverted.selector.bubbleUpAndRevertWith(newSubscriber);
         }
 
-        emit Subscribed(tokenId, newSubscriber);
+        emit Subscription(tokenId, newSubscriber);
     }
 
     /// @inheritdoc INotifier
@@ -75,7 +74,7 @@ abstract contract Notifier is INotifier {
         uint256 subscriberGasLimit = block.gaslimit.calculatePortion(BLOCK_LIMIT_BPS);
         try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config, data) {} catch {}
 
-        emit Unsubscribed(tokenId, address(_subscriber));
+        emit Unsubscription(tokenId, address(_subscriber));
     }
 
     function _notifyModifyLiquidity(
