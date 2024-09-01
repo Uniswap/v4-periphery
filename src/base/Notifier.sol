@@ -70,6 +70,8 @@ abstract contract Notifier is INotifier {
 
         delete subscriber[tokenId];
 
+        // A gas limit and a try-catch block are used to protect users from a malicious subscriber.
+        // Users should always be able to unsubscribe, not matter how the subscriber behaves.
         uint256 subscriberGasLimit = block.gaslimit.calculatePortion(BLOCK_LIMIT_BPS);
         try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config, data) {} catch {}
 
