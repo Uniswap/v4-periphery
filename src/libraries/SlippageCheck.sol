@@ -6,7 +6,7 @@ import {SafeCastTemp} from "./SafeCast.sol";
 
 /// @title Slippage Check Library
 /// @notice a library for checking if a delta exceeds a maximum ceiling or fails to meet a minimum floor
-library SlippageCheckLibrary {
+library SlippageCheck {
     using SafeCastTemp for int128;
 
     error MaximumAmountExceeded(uint128 maximumAmount, uint128 amountRequested);

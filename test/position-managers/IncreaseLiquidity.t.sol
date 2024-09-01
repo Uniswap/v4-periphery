@@ -22,7 +22,7 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {SlippageCheckLibrary} from "../../src/libraries/SlippageCheck.sol";
+import {SlippageCheck} from "../../src/libraries/SlippageCheck.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
@@ -549,7 +549,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         );
         // revert since amount0Max is too low
         bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, 1 wei, type(uint128).max, ZERO_BYTES);
-        vm.expectRevert(abi.encodeWithSelector(SlippageCheckLibrary.MaximumAmountExceeded.selector, 1 wei, amount0 + 1));
+        vm.expectRevert(abi.encodeWithSelector(SlippageCheck.MaximumAmountExceeded.selector, 1 wei, amount0 + 1));
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -567,7 +567,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         );
         // revert since amount1Max is too low
         bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, type(uint128).max, 1 wei, ZERO_BYTES);
-        vm.expectRevert(abi.encodeWithSelector(SlippageCheckLibrary.MaximumAmountExceeded.selector, 1 wei, amount1 + 1));
+        vm.expectRevert(abi.encodeWithSelector(SlippageCheck.MaximumAmountExceeded.selector, 1 wei, amount1 + 1));
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -616,7 +616,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, slippage, slippage, ZERO_BYTES);
         vm.expectRevert(
-            abi.encodeWithSelector(SlippageCheckLibrary.MaximumAmountExceeded.selector, slippage, 299996249439153403)
+            abi.encodeWithSelector(SlippageCheck.MaximumAmountExceeded.selector, slippage, 299996249439153403)
         );
         lpm.modifyLiquidities(calls, _deadline);
     }

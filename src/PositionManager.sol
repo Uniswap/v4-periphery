@@ -24,7 +24,7 @@ import {Actions} from "./libraries/Actions.sol";
 import {Notifier} from "./base/Notifier.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
-import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
+import {SlippageCheck} from "./libraries/SlippageCheck.sol";
 import {PositionConfigId, PositionConfigIdLibrary} from "./libraries/PositionConfigId.sol";
 
 //                                           444444444
@@ -111,7 +111,7 @@ contract PositionManager is
     using SafeCast for uint256;
     using SafeCast for int256;
     using CalldataDecoder for bytes;
-    using SlippageCheckLibrary for BalanceDelta;
+    using SlippageCheck for BalanceDelta;
     using PositionConfigIdLibrary for PositionConfigId;
 
     /// @inheritdoc IPositionManager
