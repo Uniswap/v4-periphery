@@ -15,11 +15,6 @@ abstract contract Notifier is INotifier {
     using CustomRevert for bytes4;
     using PositionConfigIdLibrary for PositionConfigId;
 
-    error AlreadySubscribed(uint256 tokenId, address subscriber);
-
-    event Subscription(uint256 indexed tokenId, address indexed subscriber);
-    event Unsubscription(uint256 indexed tokenId, address indexed subscriber);
-
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
 
     // a percentage of the block.gaslimit denoted in BPS, used as the gas limit for subscriber calls

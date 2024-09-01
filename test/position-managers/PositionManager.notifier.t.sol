@@ -97,6 +97,25 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(sub.notifySubscribeCount(), 1);
     }
 
+    function test_subscribe_revertsWithAlreadySubscribed() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        // successfully subscribe
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(address(lpm.subscriber(tokenId)), address(sub));
+        assertEq(sub.notifySubscribeCount(), 1);
+
+        vm.expectRevert(abi.encodeWithSelector(INotifier.AlreadySubscribed.selector, tokenId, sub));
+        lpm.subscribe(tokenId, config, address(2), ZERO_BYTES);
+    }
+
     function test_notifyModifyLiquidity_succeeds() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);

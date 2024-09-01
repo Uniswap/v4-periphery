@@ -12,6 +12,13 @@ interface INotifier {
     error Wrap__ModifyLiquidityNotificationReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting transfer notification
     error Wrap__TransferNotificationReverted(address subscriber, bytes reason);
+    /// @notice Thrown when a tokenId already has a subscriber
+    error AlreadySubscribed(uint256 tokenId, address subscriber);
+
+    /// @notice Emitted on a successful call to subscribe
+    event Subscription(uint256 indexed tokenId, address indexed subscriber);
+    /// @notice Emitted on a successful call to unsubscribe
+    event Unsubscription(uint256 indexed tokenId, address indexed subscriber);
 
     /// @notice Returns the subscriber for a respective position
     /// @param tokenId the ERC721 tokenId
