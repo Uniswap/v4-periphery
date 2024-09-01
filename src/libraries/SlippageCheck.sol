@@ -9,8 +9,8 @@ import {SafeCastTemp} from "./SafeCast.sol";
 library SlippageCheckLibrary {
     using SafeCastTemp for int128;
 
-    error MaximumAmountExceeded();
-    error MinimumAmountInsufficient();
+    error MaximumAmountExceeded(uint128 maximumAmount, uint128 amountRequested);
+    error MinimumAmountInsufficient(uint128 minimumAmount, uint128 amountReceived);
 
     /// @notice Revert if one or both deltas does not meet a minimum output
     /// @param delta The principal amount of tokens to be removed, does not include any fees accrued
@@ -22,8 +22,11 @@ library SlippageCheckLibrary {
         // However, on pools where hooks can return deltas on modify liquidity, it is possible for a returned delta to be negative.
         // Because we use SafeCast, this will revert in those cases when the delta is negative.
         // This means this contract will NOT support pools where the hook returns a negative delta on burn/decrease.
-        if (delta.amount0().toUint128() < amount0Min || delta.amount1().toUint128() < amount1Min) {
-            revert MinimumAmountInsufficient();
+        if (delta.amount0().toUint128() < amount0Min) {
+            revert MinimumAmountInsufficient(amount0Min, delta.amount0().toUint128());
+        }
+        if (delta.amount1().toUint128() < amount1Min) {
+            revert MinimumAmountInsufficient(amount1Min, delta.amount1().toUint128());
         }
     }
 
@@ -40,8 +43,7 @@ library SlippageCheckLibrary {
         // This means this contract will NOT support _positive_ slippage checks (minAmountOut checks) on pools where the hook returns a positive delta on mint/increase.
         int128 amount0 = delta.amount0();
         int128 amount1 = delta.amount1();
-        if (amount0 < 0 && amount0Max < uint128(-amount0) || amount1 < 0 && amount1Max < uint128(-amount1)) {
-            revert MaximumAmountExceeded();
-        }
+        if (amount0 < 0 && amount0Max < uint128(-amount0)) revert MaximumAmountExceeded(amount0Max, uint128(-amount0));
+        if (amount1 < 0 && amount1Max < uint128(-amount1)) revert MaximumAmountExceeded(amount1Max, uint128(-amount1));
     }
 }
