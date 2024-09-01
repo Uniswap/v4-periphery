@@ -15,7 +15,7 @@ abstract contract Notifier is INotifier {
     using CustomRevert for bytes4;
     using PositionConfigIdLibrary for PositionConfigId;
 
-    error AlreadySubscribed(address subscriber);
+    error AlreadySubscribed(uint256 tokenId, address subscriber);
 
     event Subscription(uint256 indexed tokenId, address indexed subscriber);
     event Unsubscription(uint256 indexed tokenId, address indexed subscriber);
@@ -45,7 +45,7 @@ abstract contract Notifier is INotifier {
         _positionConfigs(tokenId).setSubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
-        if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(address(_subscriber));
+        if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(tokenId, address(_subscriber));
         subscriber[tokenId] = ISubscriber(newSubscriber);
 
         bool success = _call(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, config, data)));
