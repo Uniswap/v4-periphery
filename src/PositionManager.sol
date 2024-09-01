@@ -404,7 +404,6 @@ contract PositionManager is
     // implementation of abstract function DeltaResolver._pay
     function _pay(Currency currency, address payer, uint256 amount) internal override {
         if (payer == address(this)) {
-            // TODO: currency is guaranteed to not be eth so the native check in transfer is not optimal.
             currency.transfer(address(poolManager), amount);
         } else {
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
