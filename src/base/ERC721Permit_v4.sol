@@ -74,7 +74,7 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
 
     /// @notice Change or reaffirm the approved address for an NFT
     /// @dev override Solmate's ERC721 approve so approve() and permit() share the _approve method
-    /// The zero address indicates there is no approved address
+    /// Passing a spender address of zero can be used to remove any outstanding approvals
     /// Throws error unless `msg.sender` is the current NFT owner,
     /// or an authorized operator of the current owner.
     /// @param spender The new approved NFT controller
