@@ -35,7 +35,9 @@ contract V4RouterTest is RoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
 
-        vm.expectRevert(IV4Router.V4TooLittleReceived.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(IV4Router.V4TooLittleReceived.selector, expectedAmountOut + 1, expectedAmountOut)
+        );
         router.executeActions(data);
     }
 
@@ -176,7 +178,9 @@ contract V4RouterTest is RoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
         bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
 
-        vm.expectRevert(IV4Router.V4TooLittleReceived.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(IV4Router.V4TooLittleReceived.selector, 992054607780215625 + 1, 992054607780215625)
+        );
         router.executeActions(data);
     }
 
@@ -484,7 +488,9 @@ contract V4RouterTest is RoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
 
-        vm.expectRevert(IV4Router.V4TooMuchRequested.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(IV4Router.V4TooMuchRequested.selector, expectedAmountIn - 1, expectedAmountIn)
+        );
         router.executeActions(data);
     }
 
@@ -540,7 +546,9 @@ contract V4RouterTest is RoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
         bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
 
-        vm.expectRevert(IV4Router.V4TooMuchRequested.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(IV4Router.V4TooMuchRequested.selector, expectedAmountIn - 1, expectedAmountIn)
+        );
         router.executeActions(data);
     }
 
