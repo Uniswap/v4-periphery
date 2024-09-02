@@ -328,6 +328,8 @@ contract PositionManager is
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
 
+        if (positionConfigs[tokenId].hasSubscriber()) _unsubscribe(tokenId, config);
+
         delete positionConfigs[tokenId];
         // Burn the token.
         _burn(tokenId);
