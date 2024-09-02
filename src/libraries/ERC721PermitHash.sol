@@ -22,6 +22,13 @@ library ERC721PermitHashLibrary {
             mstore(add(fmp, 0x60), nonce)
             mstore(add(fmp, 0x80), deadline)
             digest := keccak256(fmp, 0xa0)
+
+            // now clean the memory we used
+            mstore(fmp, 0) // fmp held PERMIT_TYPEHASH
+            mstore(add(fmp, 0x20), 0) // fmp+0x20 held spender
+            mstore(add(fmp, 0x40), 0) // fmp+0x40 held tokenId
+            mstore(add(fmp, 0x60), 0) // fmp+0x60 held nonce
+            mstore(add(fmp, 0x80), 0) // fmp+0x80 held deadline
         }
     }
 
@@ -39,6 +46,13 @@ library ERC721PermitHashLibrary {
             mstore(add(fmp, 0x60), nonce)
             mstore(add(fmp, 0x80), deadline)
             digest := keccak256(fmp, 0xa0)
+
+            // now clean the memory we used
+            mstore(fmp, 0) // fmp held PERMIT_FOR_ALL_TYPEHASH
+            mstore(add(fmp, 0x20), 0) // fmp+0x20 held operator
+            mstore(add(fmp, 0x40), 0) // fmp+0x40 held approved
+            mstore(add(fmp, 0x60), 0) // fmp+0x60 held nonce
+            mstore(add(fmp, 0x80), 0) // fmp+0x80 held deadline
         }
     }
 }

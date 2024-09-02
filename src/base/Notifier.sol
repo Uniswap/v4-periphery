@@ -42,7 +42,7 @@ abstract contract Notifier is INotifier {
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
-        // will revert below if the user already has a subcriber
+        // will revert below if the user already has a subscriber
         _positionConfigs(tokenId).setSubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
@@ -52,26 +52,30 @@ abstract contract Notifier is INotifier {
         bool success = _call(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, config, data)));
 
         if (!success) {
-            Wrap__SubsciptionReverted.selector.bubbleUpAndRevertWith(newSubscriber);
+            Wrap__SubscriptionReverted.selector.bubbleUpAndRevertWith(newSubscriber);
         }
 
         emit Subscribed(tokenId, newSubscriber);
     }
 
     /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data)
+    function unsubscribe(uint256 tokenId, PositionConfig calldata config)
         external
         payable
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
+        _unsubscribe(tokenId, config);
+    }
+
+    function _unsubscribe(uint256 tokenId, PositionConfig calldata config) internal {
         _positionConfigs(tokenId).setUnsubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
         delete subscriber[tokenId];
 
         uint256 subscriberGasLimit = block.gaslimit.calculatePortion(BLOCK_LIMIT_BPS);
-        try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config, data) {} catch {}
+        try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config) {} catch {}
 
         emit Unsubscribed(tokenId, address(_subscriber));
     }
