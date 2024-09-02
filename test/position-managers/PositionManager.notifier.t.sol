@@ -377,7 +377,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                INotifier.Wrap__SubsciptionReverted.selector,
+                INotifier.Wrap__SubscriptionReverted.selector,
                 address(revertSubscriber),
                 abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifySubscribe")
             )

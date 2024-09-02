@@ -9,7 +9,7 @@ library ActionConstants {
     /// This value is equivalent to 1<<255, i.e. a singular 1 in the most significant bit.
     uint256 internal constant CONTRACT_BALANCE = 0x8000000000000000000000000000000000000000000000000000000000000000;
 
-    /// @notice used to signal that the recipient of an action should be the msgSender of address(this)
+    /// @notice used to signal that the recipient of an action should be the msgSender or address(this)
     address internal constant MSG_SENDER = address(1);
     address internal constant ADDRESS_THIS = address(2);
 }
