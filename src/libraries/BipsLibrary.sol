@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.0;
 
 /// @title For calculating a percentage of an amount, using bips
 // TODO: Post-audit move to core, as v4-core will use something similar.

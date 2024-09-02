@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 /// @notice Library to define different pool actions.
 /// @dev These are suggested common commands, however additional commands should be defined as required
