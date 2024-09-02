@@ -40,7 +40,7 @@ abstract contract BaseActionsRouter is SafeCallback {
         if (numActions != params.length) revert InputLengthMismatch();
 
         for (uint256 actionIndex = 0; actionIndex < numActions; actionIndex++) {
-            uint256 action = uint256(uint8(actions[actionIndex]));
+            uint256 action = uint8(actions[actionIndex]);
 
             _handleAction(action, params[actionIndex]);
         }
