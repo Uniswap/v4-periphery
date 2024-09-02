@@ -46,6 +46,11 @@ contract EIP712_v4 is IEIP712_v4 {
             mstore(add(fmp, 0x02), domainSeparator)
             mstore(add(fmp, 0x22), dataHash)
             digest := keccak256(fmp, 0x42)
+
+            // now clean the memory we used
+            mstore(fmp, 0) // fmp held "\x19\x01", domainSeparator
+            mstore(add(fmp, 0x20), 0) // fmp+0x20 held domainSeparator, dataHash
+            mstore(add(fmp, 0x40), 0) // fmp+0x40 held dataHash
         }
     }
 }
