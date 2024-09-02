@@ -318,7 +318,7 @@ contract PositionManager is
         uint128 amount1Min,
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
-        uint256 liquidity = uint256(getPositionLiquidity(tokenId, config));
+        uint256 liquidity = getPositionLiquidity(tokenId, config);
 
         // Can only call modify if there is non zero liquidity.
         if (liquidity > 0) {
