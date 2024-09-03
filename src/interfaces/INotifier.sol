@@ -39,7 +39,7 @@ interface INotifier {
     /// @param tokenId the ERC721 tokenId
     /// @param config the corresponding PositionConfig for the tokenId
     /// @param data caller-provided data that's forwarded to the subscriber contract
-    /// @dev Callers must specify a high gas limit (remaining gas should be higher than 300,000 gas) such that the subscriber can be notified
+    /// @dev Callers must specify a high gas limit (remaining gas should be higher than subscriberGasLimit) such that the subscriber can be notified
     /// @dev payable so it can be multicalled with NATIVE related actions
     /// @dev Must always allow a user to unsubscribe. In the case of a malicious subscriber, a user can always unsubscribe safely, ensuring liquidity is always modifiable.
     function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data) external payable;
