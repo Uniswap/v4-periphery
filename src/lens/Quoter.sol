@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -54,7 +54,6 @@ contract Quoter is IQuoter, SafeCallback {
     /// @inheritdoc IQuoter
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
         public
-        override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
         try poolManager.unlock(abi.encodeCall(this._quoteExactInputSingle, (params))) {}
@@ -81,7 +80,6 @@ contract Quoter is IQuoter, SafeCallback {
     /// @inheritdoc IQuoter
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         public
-        override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
         try poolManager.unlock(abi.encodeCall(this._quoteExactOutputSingle, (params))) {}
@@ -94,7 +92,6 @@ contract Quoter is IQuoter, SafeCallback {
     /// @inheritdoc IQuoter
     function quoteExactOutput(QuoteExactParams memory params)
         public
-        override
         returns (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
@@ -112,8 +109,7 @@ contract Quoter is IQuoter, SafeCallback {
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();
         // if the call failed, bubble up the reason
-        /// @solidity memory-safe-assembly
-        assembly {
+        assembly ("memory-safe") {
             revert(add(returnData, 32), mload(returnData))
         }
     }
