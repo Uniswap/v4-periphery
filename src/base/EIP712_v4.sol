@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import {IEIP712_v4} from "../interfaces/IEIP712_v4.sol";
 

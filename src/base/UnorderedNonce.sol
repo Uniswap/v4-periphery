@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 /// @title Unordered Nonce
 /// @notice Contract state and methods for using unordered nonces in signatures

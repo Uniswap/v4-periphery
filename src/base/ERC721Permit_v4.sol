@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {EIP712_v4} from "./EIP712_v4.sol";
