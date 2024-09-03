@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 import {PositionConfig} from "../libraries/PositionConfig.sol";
 
@@ -7,7 +7,7 @@ import {INotifier} from "./INotifier.sol";
 
 interface IPositionManager is INotifier {
     error NotApproved(address caller);
-    error DeadlinePassed();
+    error DeadlinePassed(uint256 deadline);
     error IncorrectPositionConfigForTokenId(uint256 tokenId);
 
     event MintPosition(uint256 indexed tokenId, PositionConfig config);

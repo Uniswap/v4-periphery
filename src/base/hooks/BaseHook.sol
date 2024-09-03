@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -45,8 +45,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();
         // if the call failed, bubble up the reason
-        /// @solidity memory-safe-assembly
-        assembly {
+        assembly ("memory-safe") {
             revert(add(returnData, 32), mload(returnData))
         }
     }

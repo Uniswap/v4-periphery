@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {PositionConfig} from "../libraries/PositionConfig.sol";
@@ -12,11 +12,6 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 abstract contract Notifier is INotifier {
     using CustomRevert for bytes4;
     using PositionConfigIdLibrary for PositionConfigId;
-
-    error AlreadySubscribed(address subscriber);
-
-    event Subscribed(uint256 tokenId, address subscriber);
-    event Unsubscribed(uint256 tokenId, address subscriber);
 
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
 
@@ -46,7 +41,7 @@ abstract contract Notifier is INotifier {
         _positionConfigs(tokenId).setSubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
-        if (_subscriber != NO_SUBSCRIBER) AlreadySubscribed.selector.revertWith(address(_subscriber));
+        if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(tokenId, address(_subscriber));
         subscriber[tokenId] = ISubscriber(newSubscriber);
 
         bool success = _call(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, config, data)));
@@ -55,7 +50,7 @@ abstract contract Notifier is INotifier {
             Wrap__SubscriptionReverted.selector.bubbleUpAndRevertWith(newSubscriber);
         }
 
-        emit Subscribed(tokenId, newSubscriber);
+        emit Subscription(tokenId, newSubscriber);
     }
 
     /// @inheritdoc INotifier
@@ -83,7 +78,7 @@ abstract contract Notifier is INotifier {
             try _subscriber.notifyUnsubscribe{gas: unsubscribeGasLimit}(tokenId, config) {} catch {}
         }
 
-        emit Unsubscribed(tokenId, address(_subscriber));
+        emit Unsubscription(tokenId, address(_subscriber));
     }
 
     function _notifyModifyLiquidity(
