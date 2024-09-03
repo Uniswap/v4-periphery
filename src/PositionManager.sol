@@ -141,8 +141,8 @@ contract PositionManager is
     /// @notice Reverts if the caller is not the owner or approved for the ERC721 token
     /// @param caller The address of the caller
     /// @param tokenId the unique identifier of the ERC721 token
-    /// @dev either msg.sender or _msgSender() is passed in as the caller
-    /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
+    /// @dev either msg.sender or msgSender() is passed in as the caller
+    /// msgSender() should ONLY be used if this is called from within the unlockCallback, unless the codepath has reentrancy protection
     modifier onlyIfApproved(address caller, uint256 tokenId) override {
         if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
         _;
@@ -301,7 +301,6 @@ contract PositionManager is
         }
         _mint(owner, tokenId);
 
-        // _beforeModify is not called here because the tokenId is newly minted
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
             _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
         // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
@@ -319,7 +318,7 @@ contract PositionManager is
         uint128 amount1Min,
         bytes calldata hookData
     ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
-        uint256 liquidity = uint256(getPositionLiquidity(tokenId, config));
+        uint256 liquidity = getPositionLiquidity(tokenId, config);
 
         // Can only call modify if there is non zero liquidity.
         if (liquidity > 0) {
@@ -328,6 +327,8 @@ contract PositionManager is
             // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
+
+        if (positionConfigs[tokenId].hasSubscriber()) _unsubscribe(tokenId, config);
 
         delete positionConfigs[tokenId];
         // Burn the token.

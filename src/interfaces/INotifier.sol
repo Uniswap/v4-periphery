@@ -13,7 +13,7 @@ interface INotifier {
     /// @notice Thrown when a user specifies a gas limit too low to avoid valid unsubscribe notifications
     error GasLimitTooLow();
     /// @notice Wraps the revert message of the subscriber contract on a reverting subscription
-    error Wrap__SubsciptionReverted(address subscriber, bytes reason);
+    error Wrap__SubscriptionReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting modify liquidity notification
     error Wrap__ModifyLiquidityNotificationReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting transfer notification
@@ -38,11 +38,10 @@ interface INotifier {
     /// @notice Removes the subscriber from receiving notifications for a respective position
     /// @param tokenId the ERC721 tokenId
     /// @param config the corresponding PositionConfig for the tokenId
-    /// @param data caller-provided data that's forwarded to the subscriber contract
     /// @dev Callers must specify a high gas limit (remaining gas should be higher than subscriberGasLimit) such that the subscriber can be notified
     /// @dev payable so it can be multicalled with NATIVE related actions
     /// @dev Must always allow a user to unsubscribe. In the case of a malicious subscriber, a user can always unsubscribe safely, ensuring liquidity is always modifiable.
-    function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data) external payable;
+    function unsubscribe(uint256 tokenId, PositionConfig calldata config) external payable;
 
     /// @notice Returns whether a position should call out to notify a subscribing contract on modification or transfer
     /// @param tokenId the ERC721 tokenId
