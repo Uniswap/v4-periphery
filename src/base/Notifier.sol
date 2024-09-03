@@ -26,7 +26,7 @@ abstract contract Notifier is INotifier {
     /// @inheritdoc INotifier
     mapping(uint256 tokenId => ISubscriber subscriber) public subscriber;
 
-    constructor (uint256 _unsubscribeGasLimit) {
+    constructor(uint256 _unsubscribeGasLimit) {
         unsubscribeGasLimit = _unsubscribeGasLimit;
     }
 
@@ -79,8 +79,7 @@ abstract contract Notifier is INotifier {
             // require that the remaining gas is sufficient to notify the subscriber
             // otherwise, users can select a gas limit where .notifyUnsubscribe hits OutOfGas yet the transaction/unsubscription
             // can still succeed
-            // to account for EIP-150, condition could be 64 * gasleft() / 63 <= unsubscribeGasLimit
-            if ((64 * gasleft() / 63) < unsubscribeGasLimit) GasLimitTooLow.selector.revertWith();
+            if (gasleft() < unsubscribeGasLimit) GasLimitTooLow.selector.revertWith();
             try _subscriber.notifyUnsubscribe{gas: unsubscribeGasLimit}(tokenId, config) {} catch {}
         }
 

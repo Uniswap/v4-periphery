@@ -583,7 +583,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
     /// @notice Test that users cannot forcibly avoid unsubscribe logic via gas limits
     function test_fuzz_unsubscribe_with_gas_limit(uint64 gasLimit) public {
         // enforce a minimum amount of gas to avoid OutOfGas reverts
-        gasLimit = uint64(bound(gasLimit, 120_000, block.gaslimit));
+        gasLimit = uint64(bound(gasLimit, 125_000, block.gaslimit));
 
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
