@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {PositionConfig} from "../libraries/PositionConfig.sol";
@@ -53,12 +53,16 @@ abstract contract Notifier is INotifier {
     }
 
     /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data)
+    function unsubscribe(uint256 tokenId, PositionConfig calldata config)
         external
         payable
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
+        _unsubscribe(tokenId, config);
+    }
+
+    function _unsubscribe(uint256 tokenId, PositionConfig calldata config) internal {
         _positionConfigs(tokenId).setUnsubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
@@ -67,7 +71,7 @@ abstract contract Notifier is INotifier {
         // A gas limit and a try-catch block are used to protect users from a malicious subscriber.
         // Users should always be able to unsubscribe, not matter how the subscriber behaves.
         uint256 subscriberGasLimit = block.gaslimit.calculatePortion(BLOCK_LIMIT_BPS);
-        try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config, data) {} catch {}
+        try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config) {} catch {}
 
         emit Unsubscription(tokenId, address(_subscriber));
     }

@@ -241,7 +241,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
 
-        lpm.unsubscribe(tokenId, config, ZERO_BYTES);
+        lpm.unsubscribe(tokenId, config);
 
         assertEq(sub.notifyUnsubscribeCount(), 1);
         assertEq(lpm.hasSubscriber(tokenId), false);
@@ -260,7 +260,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.subscribe(tokenId, config, address(badSubscriber), ZERO_BYTES);
 
         MockReturnDataSubscriber(badSubscriber).setReturnDataSize(0x600000);
-        lpm.unsubscribe(tokenId, config, ZERO_BYTES);
+        lpm.unsubscribe(tokenId, config);
 
         // the subscriber contract call failed bc it used too much gas
         assertEq(MockReturnDataSubscriber(badSubscriber).notifyUnsubscribeCount(), 0);
@@ -340,7 +340,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         vm.stopPrank();
 
         vm.expectRevert();
-        lpm.unsubscribe(tokenId, config, ZERO_BYTES);
+        lpm.unsubscribe(tokenId, config);
     }
 
     function test_subscribe_withData() public {
@@ -360,27 +360,6 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
         assertEq(sub.notifySubscribeCount(), 1);
         assertEq(abi.decode(sub.subscribeData(), (address)), address(this));
-    }
-
-    function test_unsubscribe_withData() public {
-        uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, alice, ZERO_BYTES);
-
-        bytes memory subData = abi.encode(address(this));
-
-        // approve this contract to operate on alices liq
-        vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
-        vm.stopPrank();
-
-        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
-
-        lpm.unsubscribe(tokenId, config, subData);
-
-        assertEq(sub.notifyUnsubscribeCount(), 1);
-        assertEq(lpm.hasSubscriber(tokenId), false);
-        assertEq(address(lpm.subscriber(tokenId)), address(0));
-        assertEq(abi.decode(sub.unsubscribeData(), (address)), address(this));
     }
 
     function test_subscribe_wraps_revert() public {
@@ -495,5 +474,30 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
             )
         );
         lpm.safeTransferFrom(alice, bob, tokenId, "");
+    }
+
+    /// @notice burning a position will automatically notify unsubscribe
+    function test_burn_unsubscribe() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        bytes memory subData = abi.encode(address(this));
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub), subData);
+
+        assertEq(lpm.hasSubscriber(tokenId), true);
+        assertEq(sub.notifyUnsubscribeCount(), 0);
+
+        // burn the position, causing an unsubscribe
+        burn(tokenId, config, ZERO_BYTES);
+
+        // position is now unsubscribed
+        assertEq(lpm.hasSubscriber(tokenId), false);
+        assertEq(sub.notifyUnsubscribeCount(), 1);
     }
 }

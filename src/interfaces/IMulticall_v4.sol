@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.0;
 
 /// @title Multicall_v4 interface
 /// @notice Enables calling multiple methods in a single call to the contract
