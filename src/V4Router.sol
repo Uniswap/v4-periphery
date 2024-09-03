@@ -60,13 +60,13 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             } else if (action == Actions.SETTLE_ALL) {
                 (Currency currency, uint256 maxAmount) = params.decodeCurrencyAndUint256();
                 uint256 amount = _getFullDebt(currency);
-                if (amount > maxAmount) revert V4TooMuchRequested();
+                if (amount > maxAmount) revert V4TooMuchRequested(maxAmount, amount);
                 _settle(currency, msgSender(), amount);
                 return;
             } else if (action == Actions.TAKE_ALL) {
                 (Currency currency, uint256 minAmount) = params.decodeCurrencyAndUint256();
                 uint256 amount = _getFullCredit(currency);
-                if (amount < minAmount) revert V4TooLittleReceived();
+                if (amount < minAmount) revert V4TooLittleReceived(minAmount, amount);
                 _take(currency, msgSender(), amount);
                 return;
             } else if (action == Actions.SETTLE) {
@@ -95,7 +95,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         uint128 amountOut = _swap(
             params.poolKey, params.zeroForOne, int256(-int128(amountIn)), params.sqrtPriceLimitX96, params.hookData
         ).toUint128();
-        if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived();
+        if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived(params.amountOutMinimum, amountOut);
     }
 
     function _swapExactInput(IV4Router.ExactInputParams calldata params) private {
@@ -118,7 +118,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 currencyIn = pathKey.intermediateCurrency;
             }
 
-            if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived();
+            if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived(params.amountOutMinimum, amountOut);
         }
     }
 
@@ -132,7 +132,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 params.hookData
             )
         ).toUint128();
-        if (amountIn > params.amountInMaximum) revert V4TooMuchRequested();
+        if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
     }
 
     function _swapExactOutput(IV4Router.ExactOutputParams calldata params) private {
@@ -153,7 +153,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;
             }
-            if (amountIn > params.amountInMaximum) revert V4TooMuchRequested();
+            if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
         }
     }
 

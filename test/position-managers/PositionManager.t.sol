@@ -61,6 +61,16 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         approvePosmFor(alice);
     }
 
+    function test_modifyLiquidities_reverts_deadlinePassed() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: 0, tickUpper: 60});
+        bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, "");
+
+        uint256 deadline = vm.getBlockTimestamp() - 1;
+
+        vm.expectRevert(abi.encodeWithSelector(IPositionManager.DeadlinePassed.selector, deadline));
+        lpm.modifyLiquidities(calls, deadline);
+    }
+
     function test_modifyLiquidities_reverts_mismatchedLengths() public {
         Plan memory planner = Planner.init();
         planner.add(Actions.MINT_POSITION, abi.encode("test"));
