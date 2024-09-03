@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
@@ -37,46 +37,53 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             if (action == Actions.SWAP_EXACT_IN) {
                 IV4Router.ExactInputParams calldata swapParams = params.decodeSwapExactInParams();
                 _swapExactInput(swapParams);
+                return;
             } else if (action == Actions.SWAP_EXACT_IN_SINGLE) {
                 IV4Router.ExactInputSingleParams calldata swapParams = params.decodeSwapExactInSingleParams();
                 _swapExactInputSingle(swapParams);
+                return;
             } else if (action == Actions.SWAP_EXACT_OUT) {
                 IV4Router.ExactOutputParams calldata swapParams = params.decodeSwapExactOutParams();
                 _swapExactOutput(swapParams);
+                return;
             } else if (action == Actions.SWAP_EXACT_OUT_SINGLE) {
                 IV4Router.ExactOutputSingleParams calldata swapParams = params.decodeSwapExactOutSingleParams();
                 _swapExactOutputSingle(swapParams);
-            } else {
-                revert UnsupportedAction(action);
+                return;
             }
         } else {
             if (action == Actions.SETTLE_TAKE_PAIR) {
                 (Currency settleCurrency, Currency takeCurrency) = params.decodeCurrencyPair();
                 _settle(settleCurrency, msgSender(), _getFullDebt(settleCurrency));
                 _take(takeCurrency, msgSender(), _getFullCredit(takeCurrency));
+                return;
             } else if (action == Actions.SETTLE_ALL) {
                 (Currency currency, uint256 maxAmount) = params.decodeCurrencyAndUint256();
                 uint256 amount = _getFullDebt(currency);
                 if (amount > maxAmount) revert V4TooMuchRequested();
                 _settle(currency, msgSender(), amount);
+                return;
             } else if (action == Actions.TAKE_ALL) {
                 (Currency currency, uint256 minAmount) = params.decodeCurrencyAndUint256();
                 uint256 amount = _getFullCredit(currency);
                 if (amount < minAmount) revert V4TooLittleReceived();
                 _take(currency, msgSender(), amount);
+                return;
             } else if (action == Actions.SETTLE) {
                 (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
                 _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
+                return;
             } else if (action == Actions.TAKE) {
                 (Currency currency, address recipient, uint256 amount) = params.decodeCurrencyAddressAndUint256();
                 _take(currency, _mapRecipient(recipient), _mapTakeAmount(amount, currency));
+                return;
             } else if (action == Actions.TAKE_PORTION) {
                 (Currency currency, address recipient, uint256 bips) = params.decodeCurrencyAddressAndUint256();
                 _take(currency, _mapRecipient(recipient), _getFullCredit(currency).calculatePortion(bips));
-            } else {
-                revert UnsupportedAction(action);
+                return;
             }
         }
+        revert UnsupportedAction(action);
     }
 
     function _swapExactInputSingle(IV4Router.ExactInputSingleParams calldata params) private {

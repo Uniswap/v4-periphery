@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SafeCallback} from "./SafeCallback.sol";
@@ -40,7 +40,7 @@ abstract contract BaseActionsRouter is SafeCallback {
         if (numActions != params.length) revert InputLengthMismatch();
 
         for (uint256 actionIndex = 0; actionIndex < numActions; actionIndex++) {
-            uint256 action = uint256(uint8(actions[actionIndex]));
+            uint256 action = uint8(actions[actionIndex]);
 
             _handleAction(action, params[actionIndex]);
         }

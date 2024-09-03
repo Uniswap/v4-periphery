@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
@@ -12,8 +12,7 @@ interface ISubscriber {
     function notifySubscribe(uint256 tokenId, PositionConfig memory config, bytes memory data) external;
     /// @param tokenId the token ID of the position
     /// @param config details about the position
-    /// @param data additional data passed in by the caller
-    function notifyUnsubscribe(uint256 tokenId, PositionConfig memory config, bytes memory data) external;
+    function notifyUnsubscribe(uint256 tokenId, PositionConfig memory config) external;
     /// @param tokenId the token ID of the position
     /// @param config details about the position
     /// @param liquidityChange the change in liquidity on the underlying position

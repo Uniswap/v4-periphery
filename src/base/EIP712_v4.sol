@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import {IEIP712_v4} from "../interfaces/IEIP712_v4.sol";
 
@@ -26,7 +26,7 @@ contract EIP712_v4 is IEIP712_v4 {
     }
 
     /// @inheritdoc IEIP712_v4
-    function DOMAIN_SEPARATOR() public view override returns (bytes32) {
+    function DOMAIN_SEPARATOR() public view returns (bytes32) {
         // uses cached version if chainid is unchanged from construction
         return block.chainid == _CACHED_CHAIN_ID ? _CACHED_DOMAIN_SEPARATOR : _buildDomainSeparator();
     }
@@ -46,6 +46,11 @@ contract EIP712_v4 is IEIP712_v4 {
             mstore(add(fmp, 0x02), domainSeparator)
             mstore(add(fmp, 0x22), dataHash)
             digest := keccak256(fmp, 0x42)
+
+            // now clean the memory we used
+            mstore(fmp, 0) // fmp held "\x19\x01", domainSeparator
+            mstore(add(fmp, 0x20), 0) // fmp+0x20 held domainSeparator, dataHash
+            mstore(add(fmp, 0x40), 0) // fmp+0x40 held dataHash
         }
     }
 }

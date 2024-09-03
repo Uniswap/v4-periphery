@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {ISubscriber} from "./ISubscriber.sol";
@@ -32,10 +32,9 @@ interface INotifier {
     /// @notice Removes the subscriber from receiving notifications for a respective position
     /// @param tokenId the ERC721 tokenId
     /// @param config the corresponding PositionConfig for the tokenId
-    /// @param data caller-provided data that's forwarded to the subscriber contract
     /// @dev payable so it can be multicalled with NATIVE related actions
     /// @dev Must always allow a user to unsubscribe. In the case of a malicious subscriber, a user can always unsubscribe safely, ensuring liquidity is always modifiable.
-    function unsubscribe(uint256 tokenId, PositionConfig calldata config, bytes calldata data) external payable;
+    function unsubscribe(uint256 tokenId, PositionConfig calldata config) external payable;
 
     /// @notice Returns whether a position should call out to notify a subscribing contract on modification or transfer
     /// @param tokenId the ERC721 tokenId
