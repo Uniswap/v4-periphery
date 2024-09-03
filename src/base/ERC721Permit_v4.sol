@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {EIP712_v4} from "./EIP712_v4.sol";
-import {ERC721PermitHashLibrary} from "../libraries/ERC721PermitHash.sol";
+import {ERC721PermitHash} from "../libraries/ERC721PermitHash.sol";
 import {SignatureVerification} from "permit2/src/libraries/SignatureVerification.sol";
 
 import {IERC721Permit_v4} from "../interfaces/IERC721Permit_v4.sol";
@@ -31,7 +31,7 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
         // the .verify function checks the owner is non-0
         address owner = _ownerOf[tokenId];
 
-        bytes32 digest = ERC721PermitHashLibrary.hashPermit(spender, tokenId, nonce, deadline);
+        bytes32 digest = ERC721PermitHash.hashPermit(spender, tokenId, nonce, deadline);
         signature.verify(_hashTypedData(digest), owner);
 
         _useUnorderedNonce(owner, nonce);
@@ -47,7 +47,7 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
         uint256 nonce,
         bytes calldata signature
     ) external payable checkSignatureDeadline(deadline) {
-        bytes32 digest = ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline);
+        bytes32 digest = ERC721PermitHash.hashPermitForAll(operator, approved, nonce, deadline);
         signature.verify(_hashTypedData(digest), owner);
 
         _useUnorderedNonce(owner, nonce);
