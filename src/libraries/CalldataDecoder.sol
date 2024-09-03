@@ -14,7 +14,7 @@ library CalldataDecoder {
     /// @notice equivalent to SliceOutOfBounds.selector
     bytes4 constant SLICE_ERROR_SELECTOR = 0x3b99b53d;
 
-    /// @dev equivalent to: abi.decode(params, (uint256[], bytes[])) in calldata
+    /// @dev equivalent to: abi.decode(params, (bytes, bytes[])) in calldata
     function decodeActionsRouterParams(bytes calldata _bytes)
         internal
         pure
@@ -36,7 +36,7 @@ library CalldataDecoder {
 
             // Calculate how far `params` is into the provided bytes
             let relativeOffset := sub(params.offset, _bytes.offset)
-            // Check that that isnt longer than the bytes themselves, or revert
+            // Check that that isn't longer than the bytes themselves, or revert
             if lt(_bytes.length, add(params.length, relativeOffset)) {
                 mstore(0, SLICE_ERROR_SELECTOR)
                 revert(0, 0x04)
@@ -147,7 +147,7 @@ library CalldataDecoder {
         }
     }
 
-    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactInputSingleParams))
+    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactOutputSingleParams))
     function decodeSwapExactOutSingleParams(bytes calldata params)
         internal
         pure

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity >=0.7.5;
+pragma solidity ^0.8.0;
 
 /// @title ERC721 with permit
 /// @notice Extension to ERC721 that includes a permit function for signature based approvals
@@ -23,6 +23,7 @@ interface IERC721Permit_v4 {
     /// @param operator The address that will be set as an operator for the owner
     /// @param approved The permission to set on the operator
     /// @param deadline The deadline timestamp by which the call must be mined for the approve to work
+    /// @param nonce The nonce of the owner's permit
     /// @param signature Concatenated data from a valid secp256k1 signature from the holder, i.e. abi.encodePacked(r, s, v)
     /// @dev payable so it can be multicalled with NATIVE related actions
     function permitForAll(

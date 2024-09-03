@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PathKey} from "../libraries/PathKey.sol";
 
 /// @title IV4Router
