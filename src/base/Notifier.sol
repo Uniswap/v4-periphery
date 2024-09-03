@@ -4,14 +4,12 @@ pragma solidity ^0.8.24;
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {PositionConfigId, PositionConfigIdLibrary} from "../libraries/PositionConfigId.sol";
-import {BipsLibrary} from "../libraries/BipsLibrary.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
-    using BipsLibrary for uint256;
     using CustomRevert for bytes4;
     using PositionConfigIdLibrary for PositionConfigId;
 
@@ -22,13 +20,14 @@ abstract contract Notifier is INotifier {
 
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
 
-    // a percentage of the block.gaslimit denoted in BPS, used as the gas limit for subscriber calls
-    // 100 bps is 1%
-    // at 30M gas, the limit is 300K
-    uint256 private constant BLOCK_LIMIT_BPS = 100;
+    uint256 public immutable unsubscribeGasLimit;
 
     /// @inheritdoc INotifier
     mapping(uint256 tokenId => ISubscriber subscriber) public subscriber;
+
+    constructor (uint256 _unsubscribeGasLimit) {
+        unsubscribeGasLimit = _unsubscribeGasLimit;
+    }
 
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
     modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) virtual;
@@ -76,14 +75,12 @@ abstract contract Notifier is INotifier {
         delete subscriber[tokenId];
 
         if (address(_subscriber).code.length > 0) {
-            uint256 subscriberGasLimit = block.gaslimit.calculatePortion(BLOCK_LIMIT_BPS);
-
             // require that the remaining gas is sufficient to notify the subscriber
             // otherwise, users can select a gas limit where .notifyUnsubscribe hits OutOfGas yet the transaction/unsubscription
             // can still succeed
-            // to account for EIP-150, condition could be 64 * gasleft() / 63 <= subscriberGasLimit
-            if ((64 * gasleft() / 63) < subscriberGasLimit) GasLimitTooLow.selector.revertWith();
-            try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config) {} catch {}
+            // to account for EIP-150, condition could be 64 * gasleft() / 63 <= unsubscribeGasLimit
+            if ((64 * gasleft() / 63) < unsubscribeGasLimit) GasLimitTooLow.selector.revertWith();
+            try _subscriber.notifyUnsubscribe{gas: unsubscribeGasLimit}(tokenId, config) {} catch {}
         }
 
         emit Unsubscribed(tokenId, address(_subscriber));
