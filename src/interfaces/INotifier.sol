@@ -47,4 +47,8 @@ interface INotifier {
     /// @param tokenId the ERC721 tokenId
     /// @return bool whether or not the position has a subscriber
     function hasSubscriber(uint256 tokenId) external view returns (bool);
+
+    /// @notice Returns and determines the maximum allowable gas-used for notifying unsubscribe
+    /// @return uint256 the maximum gas limit when notifying a subscriber's `notifyUnsubscribe` function
+    function unsubscribeGasLimit() external view returns (uint256);
 }

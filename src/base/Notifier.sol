@@ -20,6 +20,7 @@ abstract contract Notifier is INotifier {
 
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
 
+    /// @inheritdoc INotifier
     uint256 public immutable unsubscribeGasLimit;
 
     /// @inheritdoc INotifier
