@@ -24,7 +24,7 @@ import {Actions} from "./libraries/Actions.sol";
 import {Notifier} from "./base/Notifier.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
-import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
+import {SlippageCheck} from "./libraries/SlippageCheck.sol";
 import {PositionConfigId, PositionConfigIdLibrary} from "./libraries/PositionConfigId.sol";
 
 //                                           444444444
@@ -111,7 +111,7 @@ contract PositionManager is
     using SafeCast for uint256;
     using SafeCast for int256;
     using CalldataDecoder for bytes;
-    using SlippageCheckLibrary for BalanceDelta;
+    using SlippageCheck for BalanceDelta;
     using PositionConfigIdLibrary for PositionConfigId;
 
     /// @inheritdoc IPositionManager
@@ -134,7 +134,7 @@ contract PositionManager is
     /// @notice Reverts if the deadline has passed
     /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
     modifier checkDeadline(uint256 deadline) {
-        if (block.timestamp > deadline) revert DeadlinePassed();
+        if (block.timestamp > deadline) revert DeadlinePassed(deadline);
         _;
     }
 
@@ -414,7 +414,6 @@ contract PositionManager is
     // implementation of abstract function DeltaResolver._pay
     function _pay(Currency currency, address payer, uint256 amount) internal override {
         if (payer == address(this)) {
-            // TODO: currency is guaranteed to not be eth so the native check in transfer is not optimal.
             currency.transfer(address(poolManager), amount);
         } else {
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
