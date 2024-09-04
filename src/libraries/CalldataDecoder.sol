@@ -249,6 +249,7 @@ library CalldataDecoder {
     /// @param _arg The index of the argument to extract
     function toBytesArray(bytes calldata _bytes, uint256 _arg) internal pure returns (bytes[] calldata res) {
         uint256 encodingLength;
+        bool isValidEncoding = true;
         assembly ("memory-safe") {
             let bytesOffset := and(_bytes.offset, OFFSET_OR_LENGTH_MASK)
             // The offset of the `_arg`-th element is `32 * arg`, which stores the offset of the length pointer.
@@ -256,9 +257,19 @@ library CalldataDecoder {
             let lengthPtr := and(add(bytesOffset, calldataload(add(bytesOffset, shl(5, _arg)))), OFFSET_OR_LENGTH_MASK)
             // the number of byte strings in the byte array
             let arrayLength := and(calldataload(lengthPtr), OFFSET_OR_LENGTH_MASK)
+
+            // check the array elements are encoded in order
+            // end points at the slot after the offset of the final array element
+            let end := add(lengthPtr, shl(5, add(arrayLength, 1)))
+            // starting from index 1: for (i = 1; i < array.length, i++) {
+            for { let memPtr := add(lengthPtr, 0x40) } lt(memPtr, end) { memPtr := add(memPtr, 0x20) } {
+                // bool isValidEncoding = isValidEncoding & (offset[i-1] < offset[i])
+                isValidEncoding := and(isValidEncoding, lt(calldataload(sub(memPtr, 0x20)), calldataload(memPtr)))
+            }
+
             // pointer to encoding of the final bytes string in the array is `32 * arrayLength`
             let finalElementLengthPtr :=
-                and(add(add(lengthPtr, 0x20), calldataload(add(lengthPtr, shl(5, arrayLength)))), OFFSET_OR_LENGTH_MASK)
+                and(add(add(lengthPtr, 0x20), calldataload(sub(end, 0x20))), OFFSET_OR_LENGTH_MASK)
             // the length of the final bytes string
             let finalElementLength := and(calldataload(finalElementLengthPtr), OFFSET_OR_LENGTH_MASK)
             // the final bytes string's encoding is: 32 byte length, then the `length` bytes
@@ -273,6 +284,6 @@ library CalldataDecoder {
         }
 
         // check that the end of the variable length parameter is within the calldata provided
-        if (_bytes.length < encodingLength) revert SliceOutOfBounds();
+        if (_bytes.length < encodingLength || !isValidEncoding) revert SliceOutOfBounds();
     }
 }
