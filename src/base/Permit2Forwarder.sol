@@ -6,6 +6,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 /// @notice PermitForwarder allows permitting this contract as a spender on permit2
 /// @dev This contract does not enforce the spender to be this contract, but that is the intended use case
 contract Permit2Forwarder {
+    /// @notice the Permit2 contract to forward approvals
     IAllowanceTransfer public immutable permit2;
 
     error Wrap__Permit2Reverted(address _permit2, bytes reason);
