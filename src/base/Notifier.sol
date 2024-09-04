@@ -4,25 +4,26 @@ pragma solidity ^0.8.0;
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
 import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {PositionConfigId, PositionConfigIdLibrary} from "../libraries/PositionConfigId.sol";
-import {BipsLibrary} from "../libraries/BipsLibrary.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
-    using BipsLibrary for uint256;
     using CustomRevert for bytes4;
     using PositionConfigIdLibrary for PositionConfigId;
 
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
 
-    // a percentage of the block.gaslimit denoted in BPS, used as the gas limit for subscriber calls
-    // 100 bps is 1%, at 30M gas, the limit is 300K
-    uint256 private constant BLOCK_LIMIT_BPS = 100;
+    /// @inheritdoc INotifier
+    uint256 public immutable unsubscribeGasLimit;
 
     /// @inheritdoc INotifier
     mapping(uint256 tokenId => ISubscriber subscriber) public subscriber;
+
+    constructor(uint256 _unsubscribeGasLimit) {
+        unsubscribeGasLimit = _unsubscribeGasLimit;
+    }
 
     /// @notice Only allow callers that are approved as spenders or operators of the tokenId
     /// @dev to be implemented by the parent contract (PositionManager)
@@ -68,6 +69,7 @@ abstract contract Notifier is INotifier {
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
+        if (!_positionConfigs(tokenId).hasSubscriber()) NotSubscribed.selector.revertWith();
         _unsubscribe(tokenId, config);
     }
 
@@ -77,10 +79,13 @@ abstract contract Notifier is INotifier {
 
         delete subscriber[tokenId];
 
-        // A gas limit and a try-catch block are used to protect users from a malicious subscriber.
-        // Users should always be able to unsubscribe, not matter how the subscriber behaves.
-        uint256 subscriberGasLimit = block.gaslimit.calculatePortion(BLOCK_LIMIT_BPS);
-        try _subscriber.notifyUnsubscribe{gas: subscriberGasLimit}(tokenId, config) {} catch {}
+        if (address(_subscriber).code.length > 0) {
+            // require that the remaining gas is sufficient to notify the subscriber
+            // otherwise, users can select a gas limit where .notifyUnsubscribe hits OutOfGas yet the
+            // transaction/unsubscription can still succeed
+            if (gasleft() < unsubscribeGasLimit) GasLimitTooLow.selector.revertWith();
+            try _subscriber.notifyUnsubscribe{gas: unsubscribeGasLimit}(tokenId, config) {} catch {}
+        }
 
         emit Unsubscription(tokenId, address(_subscriber));
     }
@@ -115,6 +120,7 @@ abstract contract Notifier is INotifier {
     }
 
     function _call(address target, bytes memory encodedCall) internal returns (bool success) {
+        if (target.code.length == 0) NoCodeSubscriber.selector.revertWith();
         assembly ("memory-safe") {
             success := call(gas(), target, 0, add(encodedCall, 0x20), mload(encodedCall), 0, 0)
         }

@@ -6,6 +6,12 @@ import {ISubscriber} from "./ISubscriber.sol";
 
 /// @notice This interface is used to opt in to sending updates to external contracts about position modifications or transfers
 interface INotifier {
+    /// @notice Thrown when unsubscribing without a subscriber
+    error NotSubscribed();
+    /// @notice Thrown when a subscriber does not have code
+    error NoCodeSubscriber();
+    /// @notice Thrown when a user specifies a gas limit too low to avoid valid unsubscribe notifications
+    error GasLimitTooLow();
     /// @notice Wraps the revert message of the subscriber contract on a reverting subscription
     error Wrap__SubscriptionReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting modify liquidity notification
@@ -39,6 +45,7 @@ interface INotifier {
     /// @notice Removes the subscriber from receiving notifications for a respective position
     /// @param tokenId the ERC721 tokenId
     /// @param config the corresponding PositionConfig for the tokenId
+    /// @dev Callers must specify a high gas limit (remaining gas should be higher than subscriberGasLimit) such that the subscriber can be notified
     /// @dev payable so it can be multicalled with NATIVE related actions
     /// @dev Must always allow a user to unsubscribe. In the case of a malicious subscriber, a user can always unsubscribe safely, ensuring liquidity is always modifiable.
     function unsubscribe(uint256 tokenId, PositionConfig calldata config) external payable;
@@ -47,4 +54,8 @@ interface INotifier {
     /// @param tokenId the ERC721 tokenId
     /// @return bool whether or not the position has a subscriber
     function hasSubscriber(uint256 tokenId) external view returns (bool);
+
+    /// @notice Returns and determines the maximum allowable gas-used for notifying unsubscribe
+    /// @return uint256 the maximum gas limit when notifying a subscriber's `notifyUnsubscribe` function
+    function unsubscribeGasLimit() external view returns (uint256);
 }

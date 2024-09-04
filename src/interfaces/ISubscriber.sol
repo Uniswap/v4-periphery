@@ -10,6 +10,9 @@ interface ISubscriber {
     /// @param config details about the position
     /// @param data additional data passed in by the caller
     function notifySubscribe(uint256 tokenId, PositionConfig memory config, bytes memory data) external;
+    /// @notice Called when a position unsubscribes from the subscriber
+    /// @dev This call's gas is capped at `unsubscribeGasLimit` (set at deployment)
+    /// @dev Because of EIP-150, solidity may only allocate 63/64 of gasleft()
     /// @param tokenId the token ID of the position
     /// @param config details about the position
     function notifyUnsubscribe(uint256 tokenId, PositionConfig memory config) external;

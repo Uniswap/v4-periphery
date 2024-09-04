@@ -125,10 +125,11 @@ contract PositionManager is
         return positionConfigs[tokenId];
     }
 
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2, uint256 _unsubscribeGasLimit)
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
         ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
+        Notifier(_unsubscribeGasLimit)
     {}
 
     /// @notice Reverts if the deadline has passed
