@@ -335,11 +335,13 @@ contract PositionManager is
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
 
-        if (positionConfigs[tokenId].hasSubscriber()) _unsubscribe(tokenId, config);
+        bool hasSubscriber = positionConfigs[tokenId].hasSubscriber();
 
         delete positionConfigs[tokenId];
         // Burn the token.
         _burn(tokenId);
+
+        if (hasSubscriber) _unsubscribe(tokenId, config);
     }
 
     function _settlePair(Currency currency0, Currency currency1) internal {
