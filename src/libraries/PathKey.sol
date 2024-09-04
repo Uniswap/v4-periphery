@@ -15,7 +15,7 @@ struct PathKey {
 
 /// @title PathKey Library
 /// @notice Functions for working with PathKeys
-library PathKeyLib {
+library PathKeyLibrary {
     /// @notice Get the pool and swap direction for a given PathKey
     /// @param params the given PathKey
     /// @param currencyIn the input currency
