@@ -94,6 +94,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
         PoolKey calldata,
         IPoolManager.ModifyLiquidityParams calldata,
         BalanceDelta,
+        BalanceDelta,
         bytes calldata
     ) external virtual returns (bytes4, BalanceDelta) {
         revert HookNotImplemented();
@@ -104,6 +105,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
         address,
         PoolKey calldata,
         IPoolManager.ModifyLiquidityParams calldata,
+        BalanceDelta,
         BalanceDelta,
         bytes calldata
     ) external virtual returns (bytes4, BalanceDelta) {

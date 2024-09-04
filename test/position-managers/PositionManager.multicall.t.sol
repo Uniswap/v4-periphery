@@ -128,7 +128,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
     function test_multicall_initializePool_mint_native() public {
         key = PoolKey({
-            currency0: CurrencyLibrary.NATIVE,
+            currency0: CurrencyLibrary.ADDRESS_ZERO,
             currency1: currency1,
             fee: 0,
             tickSpacing: 10,
