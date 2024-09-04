@@ -6,15 +6,13 @@ import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {PositionDescriptor} from "../src/PositionDescriptor.sol";
 import {CurrencyRatioSortOrder} from "../src/libraries/CurrencyRatioSortOrder.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {PositionConfig} from "../src/libraries/PositionConfig.sol";
+import {PositionConfig} from "./shared/PositionConfig.sol";
 
 import {ActionConstants} from "../src/libraries/ActionConstants.sol";
-import "forge-std/console2.sol";
 
-contract PositionDescriptorTest is Test, Deployers, PosmTestSetup {
+contract PositionDescriptorTest is Test, Deployers {
     PositionDescriptor public positionDescriptor;
     address public WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address public DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
@@ -31,7 +29,8 @@ contract PositionDescriptorTest is Test, Deployers, PosmTestSetup {
 
         (currency0, currency1) = deployAndMint2Currencies();
         (key,) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
-        deployAndApprovePosm(manager);
+        deployPosm(manager, positionDescriptor);
+        approvePosm();
     }
 
     function test_setup_succeeds() public view {
@@ -93,7 +92,7 @@ contract PositionDescriptorTest is Test, Deployers, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
         // call tokenURI
-        console2.log("tokenURI", positionDescriptor.tokenURI(tokenId, config));
+        console2.log("tokenURI", positionDescriptor.tokenURI(lpm, tokenId));
         // decode json
         // check that name and description are correct
     }
