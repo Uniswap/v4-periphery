@@ -17,6 +17,9 @@ contract Permit2Forwarder {
 
     /// @notice allows forwarding a single permit to permit2
     /// @dev this function is payable to allow multicall with NATIVE based actions
+    /// @param owner the owner of the tokens
+    /// @param permitSingle the permit data
+    /// @param signature the signature of the permit; abi.encodePacked(r, s, v)
     function permit(address owner, IAllowanceTransfer.PermitSingle calldata permitSingle, bytes calldata signature)
         external
         payable
@@ -31,6 +34,9 @@ contract Permit2Forwarder {
 
     /// @notice allows forwarding batch permits to permit2
     /// @dev this function is payable to allow multicall with NATIVE based actions
+    /// @param owner the owner of the tokens
+    /// @param _permitBatch a batch of approvals
+    /// @param signature the signature of the permit; abi.encodePacked(r, s, v)
     function permitBatch(address owner, IAllowanceTransfer.PermitBatch calldata _permitBatch, bytes calldata signature)
         external
         payable
