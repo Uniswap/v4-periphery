@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 import {PositionConfig} from "../libraries/PositionConfig.sol";
 
 import {INotifier} from "./INotifier.sol";
 
+/// @title IPositionManager
+/// @notice Interface for the PositionManager contract
 interface IPositionManager is INotifier {
+    /// @notice Thrown when the caller is not approved to modify a position
     error NotApproved(address caller);
-    error DeadlinePassed();
+    /// @notice Thrown when the block.timestamp exceeds the user-provided deadline
+    error DeadlinePassed(uint256 deadline);
+    /// @notice Thrown when the caller provides the incorrect PositionConfig for a corresponding tokenId when modifying liquidity
     error IncorrectPositionConfigForTokenId(uint256 tokenId);
 
+    /// @notice Emitted when a new liquidity position is minted
     event MintPosition(uint256 indexed tokenId, PositionConfig config);
 
     /// @notice Unlocks Uniswap v4 PoolManager and batches actions for modifying liquidity

@@ -24,6 +24,7 @@ import {IMulticall_v4} from "../../src/interfaces/IMulticall_v4.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
+import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 
 contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
     using FixedPointMathLib for uint256;
@@ -42,6 +43,8 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
     PositionConfig config;
     PositionConfig configNative;
+
+    MockSubscriber sub;
 
     function setUp() public {
         (alice, alicePK) = makeAddrAndKey("ALICE");
@@ -68,6 +71,8 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         // define a reusable range
         config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
         configNative = PositionConfig({poolKey: nativeKey, tickLower: -300, tickUpper: 300});
+
+        sub = new MockSubscriber(lpm);
     }
 
     function test_gas_mint_withClose() public {
@@ -849,5 +854,16 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         lpm.modifyLiquidities(calls, _deadline);
         snapLastCall("PositionManager_decrease_take_take");
+    }
+
+    function test_gas_subscribe_unsubscribe() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+        snapLastCall("PositionManager_subscribe");
+
+        lpm.unsubscribe(tokenId, config);
+        snapLastCall("PositionManager_unsubscribe");
     }
 }

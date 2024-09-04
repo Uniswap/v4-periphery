@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import {IEIP712_v4} from "../interfaces/IEIP712_v4.sol";
 
@@ -15,8 +15,8 @@ contract EIP712_v4 is IEIP712_v4 {
     uint256 private immutable _CACHED_CHAIN_ID;
     bytes32 private immutable _HASHED_NAME;
 
-    /// @dev equal to keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)")
-    bytes32 private constant _TYPE_HASH = 0x8cad95687ba82c2ce50e74f7b754645e5117c3a5bec8151c0726d5857980a866;
+    bytes32 private constant _TYPE_HASH =
+        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
 
     constructor(string memory name) {
         _HASHED_NAME = keccak256(bytes(name));
@@ -26,7 +26,7 @@ contract EIP712_v4 is IEIP712_v4 {
     }
 
     /// @inheritdoc IEIP712_v4
-    function DOMAIN_SEPARATOR() public view override returns (bytes32) {
+    function DOMAIN_SEPARATOR() public view returns (bytes32) {
         // uses cached version if chainid is unchanged from construction
         return block.chainid == _CACHED_CHAIN_ID ? _CACHED_DOMAIN_SEPARATOR : _buildDomainSeparator();
     }
