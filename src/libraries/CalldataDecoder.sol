@@ -14,6 +14,10 @@ library CalldataDecoder {
     /// @notice equivalent to SliceOutOfBounds.selector
     bytes4 constant SLICE_ERROR_SELECTOR = 0x3b99b53d;
 
+    /// @notice mask used for offsets and lengths to ensure no overflow
+    /// @dev no sane abi encoding will pass in an offset or length greater than type(uint32).max
+    uint256 constant OFFSET_OR_LENGTH_MASK = 0xffffffff;
+
     /// @dev equivalent to: abi.decode(params, (bytes, bytes[])) in calldata
     function decodeActionsRouterParams(bytes calldata _bytes)
         internal
@@ -246,19 +250,21 @@ library CalldataDecoder {
     function toBytesArray(bytes calldata _bytes, uint256 _arg) internal pure returns (bytes[] calldata res) {
         uint256 encodingLength;
         assembly ("memory-safe") {
+            let bytesOffset := and(_bytes.offset, OFFSET_OR_LENGTH_MASK)
             // The offset of the `_arg`-th element is `32 * arg`, which stores the offset of the length pointer.
             // shl(5, x) is equivalent to mul(32, x)
-            let lengthPtr := add(_bytes.offset, calldataload(add(_bytes.offset, shl(5, _arg))))
+            let lengthPtr := and(add(bytesOffset, calldataload(add(bytesOffset, shl(5, _arg)))), OFFSET_OR_LENGTH_MASK)
             // the number of byte strings in the byte array
-            let arrayLength := calldataload(lengthPtr)
+            let arrayLength := and(calldataload(lengthPtr), OFFSET_OR_LENGTH_MASK)
             // pointer to encoding of the final bytes string in the array is `32 * arrayLength`
-            let finalElementLengthPtr := add(add(lengthPtr, 0x20), calldataload(add(lengthPtr, shl(5, arrayLength))))
+            let finalElementLengthPtr :=
+                and(add(add(lengthPtr, 0x20), calldataload(add(lengthPtr, shl(5, arrayLength)))), OFFSET_OR_LENGTH_MASK)
             // the length of the final bytes string
-            let finalElementLength := calldataload(finalElementLengthPtr)
+            let finalElementLength := and(calldataload(finalElementLengthPtr), OFFSET_OR_LENGTH_MASK)
             // the final bytes string's encoding is: 32 byte length, then the `length` bytes
             let finalElementEnd := add(add(finalElementLengthPtr, finalElementLength), 0x20)
             // total length needed in the calldata bytes array
-            encodingLength := sub(finalElementEnd, _bytes.offset)
+            encodingLength := sub(finalElementEnd, bytesOffset)
 
             // the start of the bytes string encoding is the slot after the length
             let arrayOffset := add(lengthPtr, 0x20)
