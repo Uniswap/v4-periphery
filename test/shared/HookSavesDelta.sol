@@ -17,7 +17,7 @@ contract HookSavesDelta is BaseTestHooks {
         IPoolManager.ModifyLiquidityParams calldata, /* params **/
         BalanceDelta delta,
         bytes calldata /* hookData **/
-    ) external override returns (bytes4, BalanceDelta) {
+    ) public virtual override returns (bytes4, BalanceDelta) {
         _storeDelta(delta);
         return (this.afterAddLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
@@ -28,7 +28,7 @@ contract HookSavesDelta is BaseTestHooks {
         IPoolManager.ModifyLiquidityParams calldata, /* params **/
         BalanceDelta delta,
         bytes calldata /* hookData **/
-    ) external override returns (bytes4, BalanceDelta) {
+    ) public virtual override returns (bytes4, BalanceDelta) {
         _storeDelta(delta);
         return (this.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }

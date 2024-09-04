@@ -15,6 +15,7 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {INotifier} from "../../src/interfaces/INotifier.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
@@ -23,6 +24,7 @@ import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
+import {MockReentrantSubscriber} from "../mocks/MockReentrantSubscriber.sol";
 
 contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityFuzzers {
     using StateLibrary for IPoolManager;
@@ -33,6 +35,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
     uint256 alicePK;
     address bob;
 
+    MockReentrantSubscriber sub;
     PositionConfig config;
 
     function setUp() public {
@@ -54,6 +57,8 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         seedBalance(address(hookModifyLiquidities));
 
         (key, poolId) = initPool(currency0, currency1, IHooks(hookModifyLiquidities), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        sub = new MockReentrantSubscriber(lpm);
 
         config = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 60});
     }
@@ -286,17 +291,246 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         swap(key, true, -1e18, calls);
     }
 
-    /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in beforeRemoveLiquidity
-    function test_hook_increaseLiquidity_reenter_revert() public {
+    /// @dev calling modifyLiquiditiesWithoutUnlock without a lock will revert
+    function test_modifyLiquiditiesWithoutUnlock_revert() public {
+        bytes memory calls = getMintEncoded(config, 10e18, address(this), ZERO_BYTES);
+        (bytes memory actions, bytes[] memory params) = abi.decode(calls, (bytes, bytes[]));
+        vm.expectRevert(IPoolManager.ManagerLocked.selector);
+        lpm.modifyLiquiditiesWithoutUnlock(actions, params);
+    }
+
+    /// @dev subscribers cannot re-enter posm on-subscribe since PM is not unlocked
+    function test_fuzz_subscriber_subscribe_reenter_revert(uint256 seed) public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // approve the subscriber to modify liquidity
+        lpm.approve(address(sub), tokenId);
+
+        // randomly sample a single action
+        bytes memory calls = getFuzzySingleEncoded(seed, tokenId, config, 10e18, ZERO_BYTES);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                INotifier.Wrap__SubsciptionReverted.selector,
+                address(sub),
+                abi.encodeWithSelector(IPoolManager.ManagerLocked.selector)
+            )
+        );
+        lpm.subscribe(tokenId, config, address(sub), calls);
+    }
+
+    /// @dev subscribers cannot re-enter posm on-unsubscribe since PM is not unlocked
+    function test_fuzz_subscriber_unsubscribe_reenter(uint256 seed) public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // approve the subscriber to modify liquidity
+        lpm.approve(address(sub), tokenId);
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+
+        // randomly sample a single action
+        bytes memory calls = getFuzzySingleEncoded(seed, tokenId, config, 10e18, ZERO_BYTES);
+        lpm.unsubscribe(tokenId, config, calls);
+
+        // subscriber did not modify liquidity
+        assertEq(lpm.ownerOf(tokenId), address(this)); // owner still owns the position
+        assertEq(lpm.nextTokenId(), tokenId + 1); // no new token minted
+        assertEq(lpm.getPositionLiquidity(tokenId, config), 100e18); // liquidity unchanged
+
+        // token was unsubscribed
+        assertEq(address(lpm.subscriber(tokenId)), address(0));
+        assertEq(lpm.hasSubscriber(tokenId), false);
+    }
+
+    /// @dev subscribers cannot re-enter posm on-notifyModifyLiquidity because of no reentrancy guards
+    function test_fuzz_subscriber_notifyModifyLiquidity_reenter_revert(uint256 seed0, uint256 seed1) public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // approve the subscriber to modify liquidity
+        lpm.approve(address(sub), tokenId);
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+
+        // randomly sample a single action
+        bytes memory action = getFuzzySingleEncoded(seed0, tokenId, config, 10e18, ZERO_BYTES);
+        (bytes memory actions, bytes[] memory params) = abi.decode(action, (bytes, bytes[]));
+        sub.setActionsAndParams(actions, params);
+
+        // modify the token (dont mint)
+        bytes memory calls;
+        if (seed1 % 3 == 0) {
+            calls = getIncreaseEncoded(tokenId, config, 10e18, ZERO_BYTES);
+        } else if (seed1 % 3 == 1) {
+            calls = getDecreaseEncoded(tokenId, config, 10e18, ZERO_BYTES);
+        } else {
+            calls = getBurnEncoded(tokenId, config, ZERO_BYTES);
+        }
+
+        // should revert because subscriber is re-entering modifyLiquiditiesWithoutUnlock
+        // vm.expectRevert(ReentrancyLock.ContractLocked.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                INotifier.Wrap__ModifyLiquidityNotificationReverted.selector,
+                address(sub),
+                abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    /// @dev subscribers cannot re-enter posm on-notifyTransfer because position manager is not unlocked
+    function test_fuzz_subscriber_notifyTransfer_reenter_revert(uint256 seed) public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // approve the subscriber to modify liquidity
+        lpm.approve(address(sub), tokenId);
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+
+        // randomly sample a single action
+        bytes memory action = getFuzzySingleEncoded(seed, tokenId, config, 10e18, ZERO_BYTES);
+        (bytes memory actions, bytes[] memory params) = abi.decode(action, (bytes, bytes[]));
+        sub.setActionsAndParams(actions, params);
+
+        // by setting the subscriber as the recipient of the ERC721 transfer, it will
+        // have permission to modify its own liquidity. it will still revert
+        // because the pool manager is not unlocked
+
+        // should revert because subscriber is re-entering modifyLiquiditiesWithoutUnlock
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                INotifier.Wrap__TransferNotificationReverted.selector,
+                address(sub),
+                abi.encodeWithSelector(IPoolManager.ManagerLocked.selector)
+            )
+        );
+        lpm.transferFrom(address(this), address(sub), tokenId);
+    }
+
+    /// @dev subscribers cannot re-enter posm on-notifyTransfer because it does not have approval anymore
+    function test_fuzz_subscriber_notifyTransfer_reenter_revertNotApproved(uint256 seed) public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, address(this), ZERO_BYTES);
+
+        // approve the subscriber to modify liquidity
+        lpm.approve(address(sub), tokenId);
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+
+        // randomly sample a single action
+        bytes memory action = getFuzzySingleEncoded(seed, tokenId, config, 10e18, ZERO_BYTES);
+        (bytes memory actions, bytes[] memory params) = abi.decode(action, (bytes, bytes[]));
+        sub.setActionsAndParams(actions, params);
+
+        uint256 actionNumber = uint256(uint8(actions[0]));
+        if (
+            actionNumber == Actions.INCREASE_LIQUIDITY || actionNumber == Actions.DECREASE_LIQUIDITY
+                || actionNumber == Actions.BURN_POSITION
+        ) {
+            // revert because the subscriber loses approval
+            // ERC721.transferFrom happens before notifyTransfer and resets the approval
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    INotifier.Wrap__TransferNotificationReverted.selector,
+                    address(sub),
+                    abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(sub))
+                )
+            );
+        } else {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    INotifier.Wrap__TransferNotificationReverted.selector,
+                    address(sub),
+                    abi.encodeWithSelector(IPoolManager.ManagerLocked.selector)
+                )
+            );
+        }
+        lpm.transferFrom(address(this), alice, tokenId);
+    }
+
+    /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in beforeAddLiquidity
+    function test_fuzz_hook_beforeAddLiquidity_reenter_revert(uint256 seed) public {
         uint256 initialLiquidity = 100e18;
         uint256 tokenId = lpm.nextTokenId();
         mint(config, initialLiquidity, address(this), ZERO_BYTES);
 
-        uint256 newLiquidity = 10e18;
+        uint256 liquidityToChange = 10e18;
 
-        // to be provided as hookData, so beforeAddLiquidity attempts to increase liquidity
-        bytes memory hookCall = getIncreaseEncoded(tokenId, config, newLiquidity, ZERO_BYTES);
-        bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, hookCall);
+        // a random action be provided as hookData, so beforeAddLiquidity will attempt to modifyLiquidity
+        bytes memory hookCall = getFuzzySingleEncoded(seed, tokenId, config, liquidityToChange, ZERO_BYTES);
+        bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToChange, hookCall);
+
+        // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.Wrap__FailedHookCall.selector,
+                address(hookModifyLiquidities),
+                abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in beforeRemoveLiquidity
+    function test_fuzz_hook_beforeRemoveLiquidity_reenter_revert(uint256 seed) public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        uint256 liquidityToChange = 10e18;
+
+        // a random action be provided as hookData, so beforeAddLiquidity will attempt to modifyLiquidity
+        bytes memory hookCall = getFuzzySingleEncoded(seed, tokenId, config, liquidityToChange, ZERO_BYTES);
+        bytes memory calls = getDecreaseEncoded(tokenId, config, liquidityToChange, hookCall);
+
+        // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.Wrap__FailedHookCall.selector,
+                address(hookModifyLiquidities),
+                abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in afterAddLiquidity
+    function test_fuzz_hook_afterAddLiquidity_reenter_revert(uint256 seed) public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        uint256 liquidityToChange = 10e18;
+
+        // a random action be provided as hookData, so afterAddLiquidity will attempt to modifyLiquidity
+        bytes memory hookCall = getFuzzySingleEncoded(seed, tokenId, config, liquidityToChange, ZERO_BYTES);
+        bytes memory calls = getIncreaseEncoded(tokenId, config, liquidityToChange, hookCall);
+
+        // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.Wrap__FailedHookCall.selector,
+                address(hookModifyLiquidities),
+                abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+    }
+
+    /// @dev hook cannot re-enter modifyLiquiditiesWithoutUnlock in afterRemoveLiquidity
+    function test_fuzz_hook_afterRemoveLiquidity_reenter_revert(uint256 seed) public {
+        uint256 initialLiquidity = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, initialLiquidity, address(this), ZERO_BYTES);
+
+        uint256 liquidityToChange = 10e18;
+
+        // a random action be provided as hookData, so afterAddLiquidity will attempt to modifyLiquidity
+        bytes memory hookCall = getFuzzySingleEncoded(seed, tokenId, config, liquidityToChange, ZERO_BYTES);
+        bytes memory calls = getDecreaseEncoded(tokenId, config, liquidityToChange, hookCall);
 
         // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
         vm.expectRevert(
