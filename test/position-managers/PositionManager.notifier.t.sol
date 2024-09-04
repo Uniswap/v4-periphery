@@ -441,6 +441,23 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.unsubscribe(tokenId, config);
     }
 
+    function test_unsubscribe_twice_reverts() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        lpm.approve(address(this), tokenId);
+        vm.stopPrank();
+
+        lpm.subscribe(tokenId, config, address(sub), ZERO_BYTES);
+
+        lpm.unsubscribe(tokenId, config);
+
+        vm.expectRevert(INotifier.NotSubscribed.selector);
+        lpm.unsubscribe(tokenId, config);
+    }
+
     function test_subscribe_withData() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);

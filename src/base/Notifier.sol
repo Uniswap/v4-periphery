@@ -64,9 +64,11 @@ abstract contract Notifier is INotifier {
     }
 
     function _unsubscribe(uint256 tokenId, PositionConfig calldata config) internal {
-        _positionConfigs(tokenId).setUnsubscribe();
+        PositionConfigId storage _positionConfig = _positionConfigs(tokenId);
+        if (!_positionConfig.hasSubscriber()) NotSubscribed.selector.revertWith();
+
+        _positionConfig.setUnsubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
-        if (_subscriber == NO_SUBSCRIBER) NotSubscribed.selector.revertWith();
 
         delete subscriber[tokenId];
 
