@@ -17,7 +17,7 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
     /// @notice Computes the nameHash and versionHash
     constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) EIP712_v4(name_) {}
 
-    /// @notice Checks if the block's timestamp is before a signature's deadline 
+    /// @notice Checks if the block's timestamp is before a signature's deadline
     modifier checkSignatureDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert SignatureDeadlineExpired();
         _;

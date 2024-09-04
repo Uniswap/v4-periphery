@@ -9,7 +9,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {SafeCallback} from "../SafeCallback.sol";
 
-
 /// @title Base Hook
 /// @notice abstract contract for hook implementations
 abstract contract BaseHook is IHooks, SafeCallback {

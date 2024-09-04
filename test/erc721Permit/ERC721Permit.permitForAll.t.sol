@@ -338,9 +338,7 @@ contract ERC721PermitForAllTest is Test {
             abi.encodePacked(
                 "\x19\x01",
                 erc721Permit.DOMAIN_SEPARATOR(),
-                keccak256(
-                    abi.encode(ERC721PermitHash.PERMIT_FOR_ALL_TYPEHASH, operator, approved, nonce, deadline)
-                )
+                keccak256(abi.encode(ERC721PermitHash.PERMIT_FOR_ALL_TYPEHASH, operator, approved, nonce, deadline))
             )
         );
     }
