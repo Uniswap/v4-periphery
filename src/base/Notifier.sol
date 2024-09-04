@@ -25,7 +25,16 @@ abstract contract Notifier is INotifier {
         unsubscribeGasLimit = _unsubscribeGasLimit;
     }
 
+    /// @notice Only allow callers that are approved as spenders or operators of the tokenId
+    /// @dev to be implemented by the parent contract (PositionManager)
+    /// @param caller the address of the caller
+    /// @param tokenId the tokenId of the position
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
+
+    /// @notice Only allow callers that provide the correct config for the tokenId
+    /// @dev to be implemented by the parent contract (PositionManager)
+    /// @param tokenId the tokenId of the position
+    /// @param config the config of the tokenId
     modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) virtual;
 
     function _positionConfigs(uint256 tokenId) internal view virtual returns (PositionConfigId storage);
@@ -60,14 +69,12 @@ abstract contract Notifier is INotifier {
         onlyIfApproved(msg.sender, tokenId)
         onlyValidConfig(tokenId, config)
     {
+        if (!_positionConfigs(tokenId).hasSubscriber()) NotSubscribed.selector.revertWith();
         _unsubscribe(tokenId, config);
     }
 
     function _unsubscribe(uint256 tokenId, PositionConfig calldata config) internal {
-        PositionConfigId storage _positionConfig = _positionConfigs(tokenId);
-        if (!_positionConfig.hasSubscriber()) NotSubscribed.selector.revertWith();
-
-        _positionConfig.setUnsubscribe();
+        _positionConfigs(tokenId).setUnsubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
         delete subscriber[tokenId];

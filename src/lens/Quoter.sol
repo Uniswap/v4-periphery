@@ -9,13 +9,13 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
-import {PathKey, PathKeyLib} from "../libraries/PathKey.sol";
+import {PathKey, PathKeyLibrary} from "../libraries/PathKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
 
 contract Quoter is IQuoter, SafeCallback {
     using PoolIdLibrary for PoolKey;
-    using PathKeyLib for PathKey;
+    using PathKeyLibrary for PathKey;
     using StateLibrary for IPoolManager;
 
     /// @dev cache used to check a safety condition in exact output swaps.
@@ -231,7 +231,7 @@ contract Quoter is IQuoter, SafeCallback {
             curAmountOut = i == pathLength ? params.exactAmount : cache.prevAmount;
             amountOutCached = curAmountOut;
 
-            (PoolKey memory poolKey, bool oneForZero) = PathKeyLib.getPoolAndSwapDirection(
+            (PoolKey memory poolKey, bool oneForZero) = PathKeyLibrary.getPoolAndSwapDirection(
                 params.path[i - 1], i == pathLength ? params.exactCurrency : cache.prevCurrency
             );
 
