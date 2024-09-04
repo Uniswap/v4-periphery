@@ -16,6 +16,7 @@ contract HookSavesDelta is BaseTestHooks {
         PoolKey calldata, /* key **/
         IPoolManager.ModifyLiquidityParams calldata, /* params **/
         BalanceDelta delta,
+        BalanceDelta, /* feesAccrued **/
         bytes calldata /* hookData **/
     ) external override returns (bytes4, BalanceDelta) {
         _storeDelta(delta);
@@ -27,6 +28,7 @@ contract HookSavesDelta is BaseTestHooks {
         PoolKey calldata, /* key **/
         IPoolManager.ModifyLiquidityParams calldata, /* params **/
         BalanceDelta delta,
+        BalanceDelta, /* feesAccrued */
         bytes calldata /* hookData **/
     ) external override returns (bytes4, BalanceDelta) {
         _storeDelta(delta);

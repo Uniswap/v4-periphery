@@ -86,7 +86,7 @@ contract RoutingTestHelpers is Test, Deployers {
         internal
         returns (PoolKey memory _key)
     {
-        _key = PoolKey(CurrencyLibrary.NATIVE, currency, 3000, 60, IHooks(hookAddr));
+        _key = PoolKey(CurrencyLibrary.ADDRESS_ZERO, currency, 3000, 60, IHooks(hookAddr));
 
         manager.initialize(_key, SQRT_PRICE_1_1, ZERO_BYTES);
         MockERC20(Currency.unwrap(currency)).approve(address(positionManager), type(uint256).max);
@@ -146,7 +146,7 @@ contract RoutingTestHelpers is Test, Deployers {
 
         bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, takeRecipient);
 
-        uint256 value = (inputCurrency.isNative()) ? amountIn : 0;
+        uint256 value = (inputCurrency.isAddressZero()) ? amountIn : 0;
 
         // otherwise just execute as normal
         router.executeActions{value: value}(data);
