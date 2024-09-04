@@ -9,8 +9,6 @@ contract Permit2Forwarder {
     /// @notice the Permit2 contract to forward approvals
     IAllowanceTransfer public immutable permit2;
 
-    error Wrap__Permit2Reverted(address _permit2, bytes reason);
-
     constructor(IAllowanceTransfer _permit2) {
         permit2 = _permit2;
     }
@@ -28,7 +26,7 @@ contract Permit2Forwarder {
         // use try/catch in case an actor front-runs the permit, which would DOS multicalls
         try permit2.permit(owner, permitSingle, signature) {}
         catch (bytes memory reason) {
-            err = abi.encodeWithSelector(Wrap__Permit2Reverted.selector, address(permit2), reason);
+            err = reason;
         }
     }
 
@@ -45,7 +43,7 @@ contract Permit2Forwarder {
         // use try/catch in case an actor front-runs the permit, which would DOS multicalls
         try permit2.permit(owner, _permitBatch, signature) {}
         catch (bytes memory reason) {
-            err = abi.encodeWithSelector(Wrap__Permit2Reverted.selector, address(permit2), reason);
+            err = reason;
         }
     }
 }

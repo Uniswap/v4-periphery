@@ -424,23 +424,11 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         bytes[] memory results = lpm.multicall(calls);
         assertEq(
             results[0],
-            abi.encode(
-                abi.encodeWithSelector(
-                    Permit2Forwarder.Wrap__Permit2Reverted.selector,
-                    address(permit2),
-                    abi.encodeWithSelector(InvalidNonce.selector)
-                )
-            )
+            abi.encode(abi.encodeWithSelector(InvalidNonce.selector))
         );
         assertEq(
             results[1],
-            abi.encode(
-                abi.encodeWithSelector(
-                    Permit2Forwarder.Wrap__Permit2Reverted.selector,
-                    address(permit2),
-                    abi.encodeWithSelector(InvalidNonce.selector)
-                )
-            )
+            abi.encode(abi.encodeWithSelector(InvalidNonce.selector))
         );
 
         assertEq(lpm.ownerOf(tokenId), charlie);
@@ -493,13 +481,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         bytes[] memory results = lpm.multicall(calls);
         assertEq(
             results[0],
-            abi.encode(
-                abi.encodeWithSelector(
-                    Permit2Forwarder.Wrap__Permit2Reverted.selector,
-                    address(permit2),
-                    abi.encodeWithSelector(InvalidNonce.selector)
-                )
-            )
+            abi.encode(abi.encodeWithSelector(InvalidNonce.selector))
         );
 
         assertEq(lpm.ownerOf(tokenId), charlie);
