@@ -254,7 +254,7 @@ library CalldataDecoder {
             let bytesOffset := and(_bytes.offset, OFFSET_OR_LENGTH_MASK)
             // The offset of the `_arg`-th element is `32 * arg`, which stores the offset of the length pointer.
             // shl(5, x) is equivalent to mul(32, x)
-            let lengthPtr := and(add(bytesOffset, calldataload(add(bytesOffset, shl(5, _arg)))), OFFSET_OR_LENGTH_MASK)
+            let lengthPtr := add(bytesOffset, and(calldataload(add(bytesOffset, shl(5, _arg))), OFFSET_OR_LENGTH_MASK))
             // the number of byte strings in the byte array
             let arrayLength := and(calldataload(lengthPtr), OFFSET_OR_LENGTH_MASK)
 
