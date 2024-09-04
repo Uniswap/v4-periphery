@@ -422,14 +422,8 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         lpm.ownerOf(tokenId); // token does not exist
 
         bytes[] memory results = lpm.multicall(calls);
-        assertEq(
-            results[0],
-            abi.encode(abi.encodeWithSelector(InvalidNonce.selector))
-        );
-        assertEq(
-            results[1],
-            abi.encode(abi.encodeWithSelector(InvalidNonce.selector))
-        );
+        assertEq(results[0], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
+        assertEq(results[1], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
 
         assertEq(lpm.ownerOf(tokenId), charlie);
     }
@@ -479,10 +473,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         lpm.ownerOf(tokenId); // token does not exist
 
         bytes[] memory results = lpm.multicall(calls);
-        assertEq(
-            results[0],
-            abi.encode(abi.encodeWithSelector(InvalidNonce.selector))
-        );
+        assertEq(results[0], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
 
         assertEq(lpm.ownerOf(tokenId), charlie);
     }
