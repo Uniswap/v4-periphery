@@ -534,6 +534,35 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(outputBalanceAfter - outputBalanceBefore, amountOut);
     }
 
+    function test_swapExactOutputSingle_swapOpenDelta() public {
+        uint256 expectedAmountIn = 1008049273448486163;
+
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            key0, true, ActionConstants.OPEN_DELTA, uint128(expectedAmountIn + 1), 0, bytes("")
+        );
+
+        plan = plan.add(Actions.TAKE, abi.encode(key0.currency1, ActionConstants.ADDRESS_THIS, 1 ether));
+        plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, ActionConstants.OPEN_DELTA, true));
+
+        bytes memory data = plan.encode();
+
+        uint256 callerInputBefore = key0.currency0.balanceOfSelf();
+        uint256 routerInputBefore = key0.currency1.balanceOfSelf();
+        uint256 callerOutputBefore = key0.currency1.balanceOfSelf();
+
+        router.executeActions(data);
+
+        uint256 callerInputAfter = key0.currency0.balanceOfSelf();
+        uint256 routerInputAfter = key0.currency1.balanceOfSelf();
+        uint256 callerOutputAfter = key0.currency1.balanceOfSelf();
+
+        // caller paid
+        assertEq(callerInputBefore - expectedAmountIn, callerInputAfter);
+        assertEq(routerInputBefore, routerInputAfter);
+        assertEq(callerOutputBefore, callerOutputAfter);
+    }
+
     function test_swapExactOut_revertsForAmountIn() public {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
@@ -639,6 +668,36 @@ contract V4RouterTest is RoutingTestHelpers {
 
         assertEq(inputBalanceBefore - inputBalanceAfter, expectedAmountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, amountOut);
+    }
+
+    function test_swapExactOut_swapOpenDelta() public {
+        uint256 expectedAmountIn = 1008049273448486163;
+
+        tokenPath.push(currency0);
+        tokenPath.push(currency1);
+
+        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, ActionConstants.OPEN_DELTA);
+
+        plan = plan.add(Actions.TAKE, abi.encode(key0.currency1, ActionConstants.ADDRESS_THIS, 1 ether));
+        plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
+        plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, ActionConstants.OPEN_DELTA, true));
+
+        bytes memory data = plan.encode();
+
+        uint256 callerInputBefore = key0.currency0.balanceOfSelf();
+        uint256 routerInputBefore = key0.currency1.balanceOfSelf();
+        uint256 callerOutputBefore = key0.currency1.balanceOfSelf();
+
+        router.executeActions(data);
+
+        uint256 callerInputAfter = key0.currency0.balanceOfSelf();
+        uint256 routerInputAfter = key0.currency1.balanceOfSelf();
+        uint256 callerOutputAfter = key0.currency1.balanceOfSelf();
+
+        // caller paid
+        assertEq(callerInputBefore - expectedAmountIn, callerInputAfter);
+        assertEq(routerInputBefore, routerInputAfter);
+        assertEq(callerOutputBefore, callerOutputAfter);
     }
 
     /*//////////////////////////////////////////////////////////////
