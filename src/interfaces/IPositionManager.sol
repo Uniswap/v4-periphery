@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {PositionConfig} from "../libraries/PositionConfig.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 import {INotifier} from "./INotifier.sol";
 
@@ -12,11 +13,6 @@ interface IPositionManager is INotifier {
     error NotApproved(address caller);
     /// @notice Thrown when the block.timestamp exceeds the user-provided deadline
     error DeadlinePassed(uint256 deadline);
-    /// @notice Thrown when the caller provides the incorrect PositionConfig for a corresponding tokenId when modifying liquidity
-    error IncorrectPositionConfigForTokenId(uint256 tokenId);
-
-    /// @notice Emitted when a new liquidity position is minted
-    event MintPosition(uint256 indexed tokenId, PositionConfig config);
 
     /// @notice Unlocks Uniswap v4 PoolManager and batches actions for modifying liquidity
     /// @dev This is the standard entrypoint for the PositionManager
@@ -35,16 +31,12 @@ interface IPositionManager is INotifier {
     function nextTokenId() external view returns (uint256);
 
     /// @param tokenId the ERC721 tokenId
-    /// @return bytes32 a truncated hash of the position's poolkey, tickLower, and tickUpper
-    /// @dev truncates the least significant bit of the hash
-    function getPositionConfigId(uint256 tokenId) external view returns (bytes32);
-
-    /// @param tokenId the ERC721 tokenId
-    /// @param config the corresponding PositionConfig for the tokenId
     /// @return liquidity the position's liquidity, as a liquidityAmount
     /// @dev this value can be processed as an amount0 and amount1 by using the LiquidityAmounts library
-    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
-        external
-        view
-        returns (uint128 liquidity);
+    function getPositionLiquidity(uint256 tokenId) external view returns (uint128 liquidity);
+
+    /// @param tokenId the ERC721 tokenId
+    /// @return PositionInfo a uint256 packed value holding information about the position including the range (tickLower, tickUpper)
+    /// @return poolKey the pool key of the position
+    function getPoolAndPositionInfo(uint256 tokenId) external view returns (PoolKey memory, PositionInfo);
 }
