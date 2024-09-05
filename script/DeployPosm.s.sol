@@ -12,10 +12,15 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 contract DeployPosmTest is Script {
     function setUp() public {}
 
-    function run(address poolManager, address permit2) public returns (PositionManager posm) {
+    function run(address poolManager, address permit2, uint256 unsubscribeGasLimit)
+        public
+        returns (PositionManager posm)
+    {
         vm.startBroadcast();
 
-        posm = new PositionManager{salt: hex"03"}(IPoolManager(poolManager), IAllowanceTransfer(permit2));
+        posm = new PositionManager{salt: hex"03"}(
+            IPoolManager(poolManager), IAllowanceTransfer(permit2), unsubscribeGasLimit
+        );
         console2.log("PositionManager", address(posm));
 
         vm.stopBroadcast();

@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -13,7 +13,14 @@ struct PathKey {
     bytes hookData;
 }
 
-library PathKeyLib {
+/// @title PathKey Library
+/// @notice Functions for working with PathKeys
+library PathKeyLibrary {
+    /// @notice Get the pool and swap direction for a given PathKey
+    /// @param params the given PathKey
+    /// @param currencyIn the input currency
+    /// @return poolKey the pool key of the swap
+    /// @return zeroForOne the direction of the swap, true if currency0 is being swapped for currency1
     function getPoolAndSwapDirection(PathKey calldata params, Currency currencyIn)
         internal
         pure

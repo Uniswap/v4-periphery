@@ -17,7 +17,6 @@ contract MockSubscriber is ISubscriber {
     BalanceDelta public feesAccrued;
 
     bytes public subscribeData;
-    bytes public unsubscribeData;
 
     error NotAuthorizedNotifer(address sender);
 
@@ -37,9 +36,8 @@ contract MockSubscriber is ISubscriber {
         subscribeData = data;
     }
 
-    function notifyUnsubscribe(uint256, bytes memory data) external onlyByPosm {
+    function notifyUnsubscribe(uint256) external onlyByPosm {
         notifyUnsubscribeCount++;
-        unsubscribeData = data;
     }
 
     function notifyModifyLiquidity(uint256, int256 _liquidityChange, BalanceDelta _feesAccrued) external onlyByPosm {

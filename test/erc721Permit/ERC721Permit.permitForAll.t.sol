@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import {SignatureVerification} from "permit2/src/libraries/SignatureVerification.sol";
 
-import {ERC721PermitHashLibrary} from "../../src/libraries/ERC721PermitHash.sol";
+import {ERC721PermitHash} from "../../src/libraries/ERC721PermitHash.sol";
 import {MockERC721Permit} from "../mocks/MockERC721Permit.sol";
 import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
@@ -51,15 +51,15 @@ contract ERC721PermitForAllTest is Test {
     // --- Test the signature-based approvals (permitForAll) ---
     function test_permitForAllTypeHash() public pure {
         assertEq(
-            ERC721PermitHashLibrary.PERMIT_FOR_ALL_TYPEHASH,
+            ERC721PermitHash.PERMIT_FOR_ALL_TYPEHASH,
             keccak256("PermitForAll(address operator,bool approved,uint256 nonce,uint256 deadline)")
         );
     }
 
     function test_fuzz_permitForAllHash(address operator, bool approved, uint256 nonce, uint256 deadline) public pure {
         bytes32 expectedHash =
-            keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_FOR_ALL_TYPEHASH, operator, approved, nonce, deadline));
-        assertEq(expectedHash, ERC721PermitHashLibrary.hashPermitForAll(operator, approved, nonce, deadline));
+            keccak256(abi.encode(ERC721PermitHash.PERMIT_FOR_ALL_TYPEHASH, operator, approved, nonce, deadline));
+        assertEq(expectedHash, ERC721PermitHash.hashPermitForAll(operator, approved, nonce, deadline));
     }
 
     /// @dev operator uses alice's signature to approve itself
@@ -174,7 +174,7 @@ contract ERC721PermitForAllTest is Test {
 
     function test_fuzz_erc721permitForAll_SignatureDeadlineExpired(address operator) public {
         uint256 nonce = 1;
-        uint256 deadline = block.timestamp;
+        uint256 deadline = vm.getBlockTimestamp();
         bytes32 digest = _getPermitForAllDigest(operator, true, nonce, deadline);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
@@ -338,9 +338,7 @@ contract ERC721PermitForAllTest is Test {
             abi.encodePacked(
                 "\x19\x01",
                 erc721Permit.DOMAIN_SEPARATOR(),
-                keccak256(
-                    abi.encode(ERC721PermitHashLibrary.PERMIT_FOR_ALL_TYPEHASH, operator, approved, nonce, deadline)
-                )
+                keccak256(abi.encode(ERC721PermitHash.PERMIT_FOR_ALL_TYPEHASH, operator, approved, nonce, deadline))
             )
         );
     }
@@ -354,7 +352,7 @@ contract ERC721PermitForAllTest is Test {
             abi.encodePacked(
                 "\x19\x01",
                 erc721Permit.DOMAIN_SEPARATOR(),
-                keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline))
+                keccak256(abi.encode(ERC721PermitHash.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline))
             )
         );
     }

@@ -31,7 +31,7 @@ abstract contract DeltaResolver is ImmutableState {
     /// @param payer Address of the payer
     /// @param amount Amount to send
     function _settle(Currency currency, address payer, uint256 amount) internal {
-        if (currency.isNative()) {
+        if (currency.isAddressZero()) {
             poolManager.settle{value: amount}();
         } else {
             poolManager.sync(currency);
@@ -52,7 +52,7 @@ abstract contract DeltaResolver is ImmutableState {
     /// @return amount The amount owed by this contract as a uint256
     function _getFullDebt(Currency currency) internal view returns (uint256 amount) {
         int256 _amount = poolManager.currencyDelta(address(this), currency);
-        // If the amount is negative, it should be settled not taken.
+        // If the amount is positive, it should be taken not settled.
         if (_amount > 0) revert DeltaNotNegative(currency);
         amount = uint256(-_amount);
     }
@@ -62,7 +62,7 @@ abstract contract DeltaResolver is ImmutableState {
     /// @return amount The amount owed to this contract as a uint256
     function _getFullCredit(Currency currency) internal view returns (uint256 amount) {
         int256 _amount = poolManager.currencyDelta(address(this), currency);
-        // If the amount is negative, it should be taken not settled for.
+        // If the amount is negative, it should be settled not taken.
         if (_amount < 0) revert DeltaNotPositive(currency);
         amount = uint256(_amount);
     }
@@ -73,15 +73,17 @@ abstract contract DeltaResolver is ImmutableState {
             return currency.balanceOfSelf();
         } else if (amount == ActionConstants.OPEN_DELTA) {
             return _getFullDebt(currency);
+        } else {
+            return amount;
         }
-        return amount;
     }
 
     /// @notice Calculates the amount for a take action
     function _mapTakeAmount(uint256 amount, Currency currency) internal view returns (uint256) {
         if (amount == ActionConstants.OPEN_DELTA) {
             return _getFullCredit(currency);
+        } else {
+            return amount;
         }
-        return amount;
     }
 }
