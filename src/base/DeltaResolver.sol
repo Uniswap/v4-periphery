@@ -54,6 +54,7 @@ abstract contract DeltaResolver is ImmutableState {
         int256 _amount = poolManager.currencyDelta(address(this), currency);
         // If the amount is positive, it should be taken not settled.
         if (_amount > 0) revert DeltaNotNegative(currency);
+        // Casting is safe due to limits on the total supply of a pool
         amount = uint256(-_amount);
     }
 
