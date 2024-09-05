@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 import {INotifier} from "./INotifier.sol";
 
+/// @title IPositionManager
+/// @notice Interface for the PositionManager contract
 interface IPositionManager is INotifier {
+    /// @notice Thrown when the caller is not approved to modify a position
     error NotApproved(address caller);
-    error DeadlinePassed();
+    /// @notice Thrown when the block.timestamp exceeds the user-provided deadline
+    error DeadlinePassed(uint256 deadline);
 
     /// @notice Unlocks Uniswap v4 PoolManager and batches actions for modifying liquidity
     /// @dev This is the standard entrypoint for the PositionManager

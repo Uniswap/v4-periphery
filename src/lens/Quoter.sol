@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -9,13 +9,13 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PoolTicksCounter} from "../libraries/PoolTicksCounter.sol";
-import {PathKey, PathKeyLib} from "../libraries/PathKey.sol";
+import {PathKey, PathKeyLibrary} from "../libraries/PathKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
 
 contract Quoter is IQuoter, SafeCallback {
     using PoolIdLibrary for PoolKey;
-    using PathKeyLib for PathKey;
+    using PathKeyLibrary for PathKey;
     using StateLibrary for IPoolManager;
 
     /// @dev cache used to check a safety condition in exact output swaps.
@@ -54,7 +54,6 @@ contract Quoter is IQuoter, SafeCallback {
     /// @inheritdoc IQuoter
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
         public
-        override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
         try poolManager.unlock(abi.encodeCall(this._quoteExactInputSingle, (params))) {}
@@ -81,7 +80,6 @@ contract Quoter is IQuoter, SafeCallback {
     /// @inheritdoc IQuoter
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         public
-        override
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded)
     {
         try poolManager.unlock(abi.encodeCall(this._quoteExactOutputSingle, (params))) {}
@@ -94,7 +92,6 @@ contract Quoter is IQuoter, SafeCallback {
     /// @inheritdoc IQuoter
     function quoteExactOutput(QuoteExactParams memory params)
         public
-        override
         returns (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
@@ -112,8 +109,7 @@ contract Quoter is IQuoter, SafeCallback {
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();
         // if the call failed, bubble up the reason
-        /// @solidity memory-safe-assembly
-        assembly {
+        assembly ("memory-safe") {
             revert(add(returnData, 32), mload(returnData))
         }
     }
@@ -235,7 +231,7 @@ contract Quoter is IQuoter, SafeCallback {
             curAmountOut = i == pathLength ? params.exactAmount : cache.prevAmount;
             amountOutCached = curAmountOut;
 
-            (PoolKey memory poolKey, bool oneForZero) = PathKeyLib.getPoolAndSwapDirection(
+            (PoolKey memory poolKey, bool oneForZero) = PathKeyLibrary.getPoolAndSwapDirection(
                 params.path[i - 1], i == pathLength ? params.exactCurrency : cache.prevCurrency
             );
 

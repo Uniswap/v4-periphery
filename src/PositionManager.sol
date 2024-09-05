@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -23,7 +23,7 @@ import {Actions} from "./libraries/Actions.sol";
 import {Notifier} from "./base/Notifier.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
-import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
+import {SlippageCheck} from "./libraries/SlippageCheck.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 
 //                                           444444444
@@ -109,7 +109,7 @@ contract PositionManager is
     using SafeCast for uint256;
     using SafeCast for int256;
     using CalldataDecoder for bytes;
-    using SlippageCheckLibrary for BalanceDelta;
+    using SlippageCheck for BalanceDelta;
     using PositionInfoLibrary for PositionInfo;
 
     /// @inheritdoc IPositionManager
@@ -119,24 +119,25 @@ contract PositionManager is
     mapping(uint256 tokenId => PositionInfo info) public positionInfo;
     mapping(bytes25 poolId => PoolKey poolKey) public poolKeys;
 
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2)
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2, uint256 _unsubscribeGasLimit)
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
         ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
+        Notifier(_unsubscribeGasLimit)
     {}
 
     /// @notice Reverts if the deadline has passed
     /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
     modifier checkDeadline(uint256 deadline) {
-        if (block.timestamp > deadline) revert DeadlinePassed();
+        if (block.timestamp > deadline) revert DeadlinePassed(deadline);
         _;
     }
 
     /// @notice Reverts if the caller is not the owner or approved for the ERC721 token
     /// @param caller The address of the caller
     /// @param tokenId the unique identifier of the ERC721 token
-    /// @dev either msg.sender or _msgSender() is passed in as the caller
-    /// _msgSender() should ONLY be used if this is being called from within the unlockCallback
+    /// @dev either msg.sender or msgSender() is passed in as the caller
+    /// msgSender() should ONLY be used if this is called from within the unlockCallback, unless the codepath has reentrancy protection
     modifier onlyIfApproved(address caller, uint256 tokenId) override {
         if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
         _;
@@ -172,10 +173,12 @@ contract PositionManager is
                 (uint256 tokenId, uint256 liquidity, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData) =
                     params.decodeModifyLiquidityParams();
                 _increase(tokenId, liquidity, amount0Max, amount1Max, hookData);
+                return;
             } else if (action == Actions.DECREASE_LIQUIDITY) {
                 (uint256 tokenId, uint256 liquidity, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData) =
                     params.decodeModifyLiquidityParams();
                 _decrease(tokenId, liquidity, amount0Min, amount1Min, hookData);
+                return;
             } else if (action == Actions.MINT_POSITION) {
                 (
                     PoolKey calldata poolKey,
@@ -188,40 +191,46 @@ contract PositionManager is
                     bytes calldata hookData
                 ) = params.decodeMintParams();
                 _mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
+                return;
             } else if (action == Actions.BURN_POSITION) {
                 // Will automatically decrease liquidity to 0 if the position is not already empty.
                 (uint256 tokenId, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData) =
                     params.decodeBurnParams();
                 _burn(tokenId, amount0Min, amount1Min, hookData);
-            } else {
-                revert UnsupportedAction(action);
+                return;
             }
         } else {
             if (action == Actions.SETTLE_PAIR) {
                 (Currency currency0, Currency currency1) = params.decodeCurrencyPair();
                 _settlePair(currency0, currency1);
+                return;
             } else if (action == Actions.TAKE_PAIR) {
-                (Currency currency0, Currency currency1, address to) = params.decodeCurrencyPairAndAddress();
-                _takePair(currency0, currency1, to);
+                (Currency currency0, Currency currency1, address recipient) = params.decodeCurrencyPairAndAddress();
+                _takePair(currency0, currency1, _mapRecipient(recipient));
+                return;
             } else if (action == Actions.SETTLE) {
                 (Currency currency, uint256 amount, bool payerIsUser) = params.decodeCurrencyUint256AndBool();
                 _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
+                return;
             } else if (action == Actions.TAKE) {
                 (Currency currency, address recipient, uint256 amount) = params.decodeCurrencyAddressAndUint256();
                 _take(currency, _mapRecipient(recipient), _mapTakeAmount(amount, currency));
+                return;
             } else if (action == Actions.CLOSE_CURRENCY) {
                 Currency currency = params.decodeCurrency();
                 _close(currency);
+                return;
             } else if (action == Actions.CLEAR_OR_TAKE) {
                 (Currency currency, uint256 amountMax) = params.decodeCurrencyAndUint256();
                 _clearOrTake(currency, amountMax);
+                return;
             } else if (action == Actions.SWEEP) {
                 (Currency currency, address to) = params.decodeCurrencyAndAddress();
                 _sweep(currency, _mapRecipient(to));
-            } else {
-                revert UnsupportedAction(action);
+                return;
             }
         }
+        revert UnsupportedAction(action);
     }
 
     /// @dev Calling increase with 0 liquidity will credit the caller with any underlying fees of the position
@@ -280,10 +289,10 @@ contract PositionManager is
         PositionInfo info = PositionInfoLibrary.initialize(poolKey, tickLower, tickUpper);
         positionInfo[tokenId] = info;
 
-        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
+        // fee delta can be ignored as this is a new position
+        (BalanceDelta liquidityDelta,) =
             _modifyLiquidity(info, poolKey, liquidity.toInt256(), bytes32(tokenId), hookData);
-        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
-        (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
+        (liquidityDelta).validateMaxIn(amount0Max, amount1Max);
 
         bytes25 poolId = info.poolId();
         // Store the poolKey if it is not already stored.
@@ -302,6 +311,13 @@ contract PositionManager is
 
         uint256 liquidity = uint256(_getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper()));
 
+        bool hasSubscriber = info.hasSubscriber();
+
+        // Clear the position info.
+        positionInfo[tokenId] = PositionInfoLibrary.EMPTY_POSITION_INFO;
+        // Burn the token.
+        _burn(tokenId);
+
         // Can only call modify if there is non zero liquidity.
         if (liquidity > 0) {
             (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
@@ -310,9 +326,7 @@ contract PositionManager is
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
 
-        positionInfo[tokenId] = PositionInfoLibrary.EMPTY_POSITION_INFO;
-        // Burn the token.
-        _burn(tokenId);
+        if (hasSubscriber) _unsubscribe(tokenId);
     }
 
     function _settlePair(Currency currency0, Currency currency1) internal {
@@ -322,8 +336,7 @@ contract PositionManager is
         _settle(currency1, caller, _getFullDebt(currency1));
     }
 
-    function _takePair(Currency currency0, Currency currency1, address to) internal {
-        address recipient = _mapRecipient(to);
+    function _takePair(Currency currency0, Currency currency1, address recipient) internal {
         _take(currency0, recipient, _getFullCredit(currency0));
         _take(currency1, recipient, _getFullCredit(currency1));
     }
@@ -388,7 +401,6 @@ contract PositionManager is
     // implementation of abstract function DeltaResolver._pay
     function _pay(Currency currency, address payer, uint256 amount) internal override {
         if (payer == address(this)) {
-            // TODO: currency is guaranteed to not be eth so the native check in transfer is not optimal.
             currency.transfer(address(poolManager), amount);
         } else {
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));

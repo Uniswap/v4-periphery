@@ -15,7 +15,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {HookSavesDelta} from "./HookSavesDelta.sol";
 import {HookModifyLiquidities} from "./HookModifyLiquidities.sol";
-import {ERC721PermitHashLibrary} from "../../src/libraries/ERC721PermitHash.sol";
+import {ERC721PermitHash} from "../../src/libraries/ERC721PermitHash.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
@@ -57,7 +57,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     function deployPosm(IPoolManager poolManager) internal {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
-        lpm = new PositionManager(poolManager, permit2);
+        lpm = new PositionManager(poolManager, permit2, 100_000);
     }
 
     function seedBalance(address to) internal {
@@ -104,7 +104,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
             abi.encodePacked(
                 "\x19\x01",
                 lpm.DOMAIN_SEPARATOR(),
-                keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline))
+                keccak256(abi.encode(ERC721PermitHash.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline))
             )
         );
     }
