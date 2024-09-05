@@ -234,7 +234,7 @@ contract ERC721PermitTest is Test {
         uint256 tokenId = erc721Permit.mint();
 
         uint256 nonce = 1;
-        uint256 deadline = block.timestamp;
+        uint256 deadline = vm.getBlockTimestamp();
         bytes32 digest = _getPermitDigest(spender, tokenId, nonce, deadline);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);

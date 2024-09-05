@@ -54,7 +54,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // This is needed to receive return deltas from modifyLiquidity calls.
         deployPosmHookSavesDelta();
 
-        currency0 = CurrencyLibrary.NATIVE;
+        currency0 = CurrencyLibrary.ADDRESS_ZERO;
         (nativeKey, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
         deployPosm(manager);
@@ -781,7 +781,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         );
         plan.add(Actions.CLOSE_CURRENCY, abi.encode(config.poolKey.currency0));
         plan.add(Actions.CLOSE_CURRENCY, abi.encode(config.poolKey.currency1));
-        plan.add(Actions.SWEEP, abi.encode(CurrencyLibrary.NATIVE, address(this)));
+        plan.add(Actions.SWEEP, abi.encode(CurrencyLibrary.ADDRESS_ZERO, address(this)));
         bytes memory actions = plan.encode();
 
         bytes[] memory calls = new bytes[](2);

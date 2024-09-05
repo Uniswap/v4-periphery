@@ -2,12 +2,12 @@
 pragma solidity ^0.8.0;
 
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {SafeCastTemp} from "./SafeCast.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 /// @title Slippage Check Library
 /// @notice a library for checking if a delta exceeds a maximum ceiling or fails to meet a minimum floor
 library SlippageCheck {
-    using SafeCastTemp for int128;
+    using SafeCast for int128;
 
     error MaximumAmountExceeded(uint128 maximumAmount, uint128 amountRequested);
     error MinimumAmountInsufficient(uint128 minimumAmount, uint128 amountReceived);
