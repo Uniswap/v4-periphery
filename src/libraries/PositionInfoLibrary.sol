@@ -97,7 +97,7 @@ library PositionInfoLibrary {
         assembly {
             info :=
                 or(
-                    or(_poolId, shl(TICK_UPPER_OFFSET, and(MASK_24_BITS, _tickUpper))),
+                    or(and(MASK_UPPER_200_BITS, _poolId), shl(TICK_UPPER_OFFSET, and(MASK_24_BITS, _tickUpper))),
                     shl(TICK_LOWER_OFFSET, and(MASK_24_BITS, _tickLower))
                 )
         }
