@@ -9,7 +9,7 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 library SlippageCheck {
     using SafeCast for int128;
 
-    error MaximumAmountExceeded(uint256 maximumAmount, uint256 amountRequested);
+    error MaximumAmountExceeded(uint128 maximumAmount, uint128 amountRequested);
     error MinimumAmountInsufficient(uint128 minimumAmount, uint128 amountReceived);
 
     /// @notice Revert if one or both deltas does not meet a minimum output
@@ -43,11 +43,11 @@ library SlippageCheck {
         // This means this contract will NOT support _positive_ slippage checks (minAmountOut checks) on pools where the hook returns a positive delta on mint/increase.
         int256 amount0 = delta.amount0();
         int256 amount1 = delta.amount1();
-        if (amount0 < 0 && amount0Max < uint256(-amount0)) {
-            revert MaximumAmountExceeded(uint256(amount0Max), uint256(-amount0));
+        if (amount0 < 0 && amount0Max < uint128(uint256(-amount0))) {
+            revert MaximumAmountExceeded(amount0Max, uint128(uint256(-amount0)));
         }
-        if (amount1 < 0 && amount1Max < uint256(-amount1)) {
-            revert MaximumAmountExceeded(uint256(amount1Max), uint256(-amount1));
+        if (amount1 < 0 && amount1Max < uint128(uint256(-amount1))) {
+            revert MaximumAmountExceeded(amount1Max, uint128(uint256(-amount1)));
         }
     }
 }
