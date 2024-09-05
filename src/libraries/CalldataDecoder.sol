@@ -13,16 +13,55 @@ library CalldataDecoder {
 
     /// @notice mask used for offsets and lengths to ensure no overflow
     /// @dev no sane abi encoding will pass in an offset or length greater than type(uint32).max
+    ///      (note that this does deviate from standard solidity behavior and offsets/lengths will
+    ///      be interpreted as mod type(uint32).max which will only impact malicious/buggy callers)
     uint256 constant OFFSET_OR_LENGTH_MASK = 0xffffffff;
+    uint256 constant OFFSET_OR_LENGTH_MASK_WITH_PADDING = 0xffffffe0;
 
-    /// @dev equivalent to: abi.decode(params, (bytes, bytes[])) in calldata
+    /// @notice equivalent to SliceOutOfBounds.selector, stored in least-significant bits
+    uint256 constant SLICE_ERROR_SELECTOR = 0x3b99b53d;
+
+    /// @dev equivalent to: abi.decode(params, (bytes, bytes[])) in calldata (requires strict abi encoding)
     function decodeActionsRouterParams(bytes calldata _bytes)
         internal
         pure
         returns (bytes calldata actions, bytes[] calldata params)
-    {
-        actions = _bytes.toBytes(0);
-        params = _bytes.toBytesArray(1);
+        assembly {
+            // Strict encoding requires that the data begin with:
+            // 0x00: 0x40 (offset to `actions.length`)
+            // 0x20: 0x60 + actions.length (offset to `params.length`)
+            // 0x40: `actions.length`
+            let invalidData := xor(calldataload(_bytes.offset), 0x40)
+            actions.offset := add(_bytes.offset, 0x60)
+            actions.length := and(calldataload(add(_bytes.offset, 0x40)), OFFSET_OR_LENGTH_MASK)
+
+            let paramsLengthOffset := add(and(add(actions.length, 0x1f), OFFSET_OR_LENGTH_MASK_WITH_PADDING), 0x60)
+            // Verify actions offset matches strict encoding
+            invalidData := or(
+                invalidData,
+                xor(calldataload(add(_bytes.offset, 0x20)), paramsLengthOffset)
+            )
+            let paramsLengthPointer := add(_bytes.offset, paramsLengthOffset)
+            params.length := and(calldataload(paramsLengthPointer), OFFSET_OR_LENGTH_MASK)
+            params.offset := add(paramsLengthPointer, 0x20)
+
+            // Expected head offset for `params[0]` is params.length * 32
+            let tailOffset := shl(5, params.length)
+            let expectedOffset := tailOffset
+
+            for {let offset := 0} lt(offset, tailOffset) {offset := add(offset, 32)} {
+                let cdOffsetItemLength := calldataload(add(params.offset, offset))
+                invalidData := or(invalidData, xor(cdOffsetItemLength, expectedOffset))
+                let cdPtrItemLength := add(params.offset, cdOffsetItemLength)
+                let length := add(and(add(calldataload(cdPtrItemLength), 0x1f), OFFSET_OR_LENGTH_MASK_WITH_PADDING), 0x20)
+                expectedOffset := add(expectedOffset, length)
+            }
+
+            if invalidData {
+                mstore(0, SLICE_ERROR_SELECTOR)
+                revert(0x1c, 4)
+            }
+        }
     }
 
     /// @dev equivalent to: abi.decode(params, (uint256, PositionConfig, uint256, uint128, uint128, bytes)) in calldata
