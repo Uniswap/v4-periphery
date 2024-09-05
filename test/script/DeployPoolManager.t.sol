@@ -13,7 +13,7 @@ contract DeployPoolManagerTest is Test {
     }
 
     function test_run_poolManager() public {
-        IPoolManager manager = deployer.run(100);
+        IPoolManager manager = deployer.run();
         // Foundry sets a default sender in scripts.
         address defaultSender = 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38;
         // Deployer is the owner.

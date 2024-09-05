@@ -128,7 +128,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
     function test_multicall_initializePool_mint_native() public {
         key = PoolKey({
-            currency0: CurrencyLibrary.NATIVE,
+            currency0: CurrencyLibrary.ADDRESS_ZERO,
             currency1: currency1,
             fee: 0,
             tickSpacing: 10,
@@ -422,26 +422,8 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         lpm.ownerOf(tokenId); // token does not exist
 
         bytes[] memory results = lpm.multicall(calls);
-        assertEq(
-            results[0],
-            abi.encode(
-                abi.encodeWithSelector(
-                    Permit2Forwarder.Wrap__Permit2Reverted.selector,
-                    address(permit2),
-                    abi.encodeWithSelector(InvalidNonce.selector)
-                )
-            )
-        );
-        assertEq(
-            results[1],
-            abi.encode(
-                abi.encodeWithSelector(
-                    Permit2Forwarder.Wrap__Permit2Reverted.selector,
-                    address(permit2),
-                    abi.encodeWithSelector(InvalidNonce.selector)
-                )
-            )
-        );
+        assertEq(results[0], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
+        assertEq(results[1], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
 
         assertEq(lpm.ownerOf(tokenId), charlie);
     }
@@ -491,16 +473,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         lpm.ownerOf(tokenId); // token does not exist
 
         bytes[] memory results = lpm.multicall(calls);
-        assertEq(
-            results[0],
-            abi.encode(
-                abi.encodeWithSelector(
-                    Permit2Forwarder.Wrap__Permit2Reverted.selector,
-                    address(permit2),
-                    abi.encodeWithSelector(InvalidNonce.selector)
-                )
-            )
-        );
+        assertEq(results[0], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
 
         assertEq(lpm.ownerOf(tokenId), charlie);
     }

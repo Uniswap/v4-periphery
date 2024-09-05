@@ -174,7 +174,7 @@ contract ERC721PermitForAllTest is Test {
 
     function test_fuzz_erc721permitForAll_SignatureDeadlineExpired(address operator) public {
         uint256 nonce = 1;
-        uint256 deadline = block.timestamp;
+        uint256 deadline = vm.getBlockTimestamp();
         bytes32 digest = _getPermitForAllDigest(operator, true, nonce, deadline);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
