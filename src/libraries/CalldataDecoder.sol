@@ -11,9 +11,6 @@ library CalldataDecoder {
 
     error SliceOutOfBounds();
 
-    /// @notice equivalent to SliceOutOfBounds.selector
-    bytes4 constant SLICE_ERROR_SELECTOR = 0x3b99b53d;
-
     /// @notice mask used for offsets and lengths to ensure no overflow
     /// @dev no sane abi encoding will pass in an offset or length greater than type(uint32).max
     uint256 constant OFFSET_OR_LENGTH_MASK = 0xffffffff;
@@ -228,15 +225,16 @@ library CalldataDecoder {
         uint256 length;
         uint256 relativeOffset;
         assembly ("memory-safe") {
+            let bytesOffset := and(_bytes.offset, OFFSET_OR_LENGTH_MASK)
             // The offset of the `_arg`-th element is `32 * arg`, which stores the offset of the length pointer.
             // shl(5, x) is equivalent to mul(32, x)
-            let lengthPtr := add(_bytes.offset, calldataload(add(_bytes.offset, shl(5, _arg))))
+            let lengthPtr := add(bytesOffset, and(calldataload(add(bytesOffset, shl(5, _arg))), OFFSET_OR_LENGTH_MASK))
             // the number of bytes in the bytes string
-            length := calldataload(lengthPtr)
+            length := and(calldataload(lengthPtr), OFFSET_OR_LENGTH_MASK)
             // the offset where the bytes string begins
             let offset := add(lengthPtr, 0x20)
             // the relative offset of the array from the calldata parameter
-            relativeOffset := sub(offset, _bytes.offset)
+            relativeOffset := sub(offset, bytesOffset)
             // assign the return parameters
             res.length := length
             res.offset := offset
