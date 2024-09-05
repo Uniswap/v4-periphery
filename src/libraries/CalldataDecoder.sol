@@ -13,16 +13,54 @@ library CalldataDecoder {
 
     /// @notice mask used for offsets and lengths to ensure no overflow
     /// @dev no sane abi encoding will pass in an offset or length greater than type(uint32).max
+    ///      (note that this does deviate from standard solidity behavior and offsets/lengths will
+    ///      be interpreted as mod type(uint32).max which will only impact malicious/buggy callers)
     uint256 constant OFFSET_OR_LENGTH_MASK = 0xffffffff;
+    uint256 constant OFFSET_OR_LENGTH_MASK_WITH_PADDING = 0xffffffe0;
 
-    /// @dev equivalent to: abi.decode(params, (bytes, bytes[])) in calldata
+    /// @notice equivalent to SliceOutOfBounds.selector, stored in least-significant bits
+    uint256 constant SLICE_ERROR_SELECTOR = 0x3b99b53d;
+
+    /// @dev equivalent to: abi.decode(params, (bytes, bytes[])) in calldata (requires strict abi encoding)
     function decodeActionsRouterParams(bytes calldata _bytes)
         internal
         pure
         returns (bytes calldata actions, bytes[] calldata params)
     {
-        actions = _bytes.toBytes(0);
-        params = _bytes.toBytesArray(1);
+        assembly ("memory-safe") {
+            // Strict encoding requires that the data begin with:
+            // 0x00: 0x40 (offset to `actions.length`)
+            // 0x20: 0x60 + actions.length (offset to `params.length`)
+            // 0x40: `actions.length`
+            let invalidData := xor(calldataload(_bytes.offset), 0x40)
+            actions.offset := add(_bytes.offset, 0x60)
+            actions.length := and(calldataload(add(_bytes.offset, 0x40)), OFFSET_OR_LENGTH_MASK)
+
+            let paramsLengthOffset := add(and(add(actions.length, 0x1f), OFFSET_OR_LENGTH_MASK_WITH_PADDING), 0x60)
+            // Verify actions offset matches strict encoding
+            invalidData := or(invalidData, xor(calldataload(add(_bytes.offset, 0x20)), paramsLengthOffset))
+            let paramsLengthPointer := add(_bytes.offset, paramsLengthOffset)
+            params.length := and(calldataload(paramsLengthPointer), OFFSET_OR_LENGTH_MASK)
+            params.offset := add(paramsLengthPointer, 0x20)
+
+            // Expected head offset for `params[0]` is params.length * 32
+            let tailOffset := shl(5, params.length)
+            let expectedOffset := tailOffset
+
+            for { let offset := 0 } lt(offset, tailOffset) { offset := add(offset, 32) } {
+                let cdOffsetItemLength := calldataload(add(params.offset, offset))
+                invalidData := or(invalidData, xor(cdOffsetItemLength, expectedOffset))
+                let cdPtrItemLength := add(params.offset, cdOffsetItemLength)
+                let length :=
+                    add(and(add(calldataload(cdPtrItemLength), 0x1f), OFFSET_OR_LENGTH_MASK_WITH_PADDING), 0x20)
+                expectedOffset := add(expectedOffset, length)
+            }
+
+            if invalidData {
+                mstore(0, SLICE_ERROR_SELECTOR)
+                revert(0x1c, 4)
+            }
+        }
     }
 
     /// @dev equivalent to: abi.decode(params, (uint256, PositionConfig, uint256, uint128, uint128, bytes)) in calldata
@@ -239,53 +277,11 @@ library CalldataDecoder {
             res.length := length
             res.offset := offset
         }
-        if (_bytes.length < length + relativeOffset) revert SliceOutOfBounds();
-    }
-
-    /// @notice Decode the `_arg`-th element in `_bytes` as `bytes`
-    /// @param _bytes The input bytes string to extract a bytes array from
-    /// @param _arg The index of the argument to extract
-    function toBytesArray(bytes calldata _bytes, uint256 _arg) internal pure returns (bytes[] calldata res) {
-        uint256 encodingLength;
-        bool isValidEncoding = true;
-
-        assembly ("memory-safe") {
-            let bytesOffset := and(_bytes.offset, OFFSET_OR_LENGTH_MASK)
-            // The offset of the `_arg`-th element is `32 * arg`, which stores the offset of the length pointer.
-            // shl(5, x) is equivalent to mul(32, x)
-            let lengthPtr := add(bytesOffset, and(calldataload(add(bytesOffset, shl(5, _arg))), OFFSET_OR_LENGTH_MASK))
-            // the number of byte strings in the byte array
-            let arrayLength := and(calldataload(lengthPtr), OFFSET_OR_LENGTH_MASK)
-
-            // check the array elements are encoded in order
-            // end points at the slot after the offset of the final array element
-            let end := add(lengthPtr, shl(5, add(arrayLength, 1)))
-
-            if gt(arrayLength, 0) {
-                // starting from index 1: for (i = 1; i < array.length, i++) {
-                for { let memPtr := add(lengthPtr, 0x40) } lt(memPtr, end) { memPtr := add(memPtr, 0x20) } {
-                    // bool isValidEncoding = isValidEncoding & (offset[i-1] < offset[i])
-                    isValidEncoding := and(isValidEncoding, lt(calldataload(sub(memPtr, 0x20)), calldataload(memPtr)))
-                }
-                // pointer to encoding of the final bytes string in the array is `32 * arrayLength`
-                let finalElementLengthPtr :=
-                    and(add(add(lengthPtr, 0x20), calldataload(sub(end, 0x20))), OFFSET_OR_LENGTH_MASK)
-                // the length of the final bytes string
-                let finalElementLength := and(calldataload(finalElementLengthPtr), OFFSET_OR_LENGTH_MASK)
-                // the final bytes string's encoding is: 32 byte length, then the `length` bytes
-                end := add(add(finalElementLengthPtr, finalElementLength), 0x20)
+        if (_bytes.length < length + relativeOffset) {
+            assembly ("memory-safe") {
+                mstore(0, SLICE_ERROR_SELECTOR)
+                revert(0x1c, 4)
             }
-
-            // total length needed in the calldata bytes array
-            encodingLength := sub(end, bytesOffset)
-
-            // the start of the bytes string encoding is the slot after the length
-            let arrayOffset := add(lengthPtr, 0x20)
-            res.length := arrayLength
-            res.offset := arrayOffset
         }
-
-        // check that the end of the variable length parameter is within the calldata provided
-        if (_bytes.length < encodingLength || !isValidEncoding) revert SliceOutOfBounds();
     }
 }
