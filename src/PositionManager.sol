@@ -365,6 +365,7 @@ contract PositionManager is
         // the locker is the payer or receiver
         address caller = msgSender();
         if (currencyDelta < 0) {
+            // Casting is safe due to limits on the total supply of a pool
             _settle(currency, caller, uint256(-currencyDelta));
         } else if (currencyDelta > 0) {
             _take(currency, caller, uint256(currencyDelta));
@@ -417,6 +418,7 @@ contract PositionManager is
         if (payer == address(this)) {
             currency.transfer(address(poolManager), amount);
         } else {
+            // Casting from uint256 to uint160 is safe due to limits on the total supply of a pool
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
         }
     }
