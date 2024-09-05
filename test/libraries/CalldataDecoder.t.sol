@@ -196,6 +196,7 @@ contract CalldataDecoderTest is Test {
         (bytes memory actions, bytes[] memory actionParams) = decoder.decodeActionsRouterParams(params);
         assertEq(actions, _actions);
         assertEq(actionParams.length, _actionParams.length);
+        assertEq(actionParams.length, 0);
     }
 
     function test_fuzz_decodeCurrencyPair(Currency _currency0, Currency _currency1) public view {
