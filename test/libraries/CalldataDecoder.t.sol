@@ -186,7 +186,7 @@ contract CalldataDecoderTest is Test {
         decoder.decodeActionsRouterParams(invalidParams);
     }
 
-    function test_decodeActionsRouterParams_emptyParams() public {
+    function test_decodeActionsRouterParams_emptyParams() public view {
         // create actions and parameters
         bytes memory _actions = hex"";
         bytes[] memory _actionParams = new bytes[](0);
