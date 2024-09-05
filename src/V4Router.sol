@@ -122,14 +122,18 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
 
     function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams calldata params) private {
         uint128 amountIn = (
-            uint256(-int256(_swap(
-                params.poolKey,
-                params.zeroForOne,
-                int256(uint256(params.amountOut)),
-                params.sqrtPriceLimitX96,
-                params.hookData
+            uint256(
+                -int256(
+                    _swap(
+                        params.poolKey,
+                        params.zeroForOne,
+                        int256(uint256(params.amountOut)),
+                        params.sqrtPriceLimitX96,
+                        params.hookData
+                    )
+                )
             )
-        ))).toUint128();
+        ).toUint128();
         if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
     }
 
@@ -146,7 +150,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 pathKey = params.path[i - 1];
                 (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
                 // The output delta will always be negative, except for when interacting with certain hook pools
-                amountIn = (uint256(-int256(_swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, pathKey.hookData)))).toUint128();
+                amountIn = (
+                    uint256(-int256(_swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, pathKey.hookData)))
+                ).toUint128();
 
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;
