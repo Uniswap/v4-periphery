@@ -13,10 +13,7 @@ contract MockCalldataDecoder {
     function decodeActionsRouterParams(bytes calldata params)
         external
         pure
-        returns (
-            bytes calldata actions,
-            bytes[] calldata actionParams
-        )
+        returns (bytes calldata actions, bytes[] calldata actionParams)
     {
         return params.decodeActionsRouterParams();
     }

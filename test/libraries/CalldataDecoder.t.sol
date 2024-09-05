@@ -9,6 +9,7 @@ import {MockCalldataDecoder} from "../mocks/MockCalldataDecoder.sol";
 import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {PathKey} from "../../src/libraries/PathKey.sol";
+import {CalldataDecoder} from "../../src/libraries/CalldataDecoder.sol";
 
 contract CalldataDecoderTest is Test {
     MockCalldataDecoder decoder;
@@ -160,6 +161,41 @@ contract CalldataDecoderTest is Test {
         for (uint256 i = 0; i < _actionParams.length; i++) {
             assertEq(actionParams[i], _actionParams[i]);
         }
+    }
+
+    function test_decodeActionsRouterParams_sliceOutOfBounds() public {
+        // create actions and parameters
+        bytes memory _actions = hex"12345678";
+        bytes[] memory _actionParams = new bytes[](4);
+        _actionParams[0] = hex"11111111";
+        _actionParams[1] = hex"22";
+        _actionParams[2] = hex"3333333333333333";
+        _actionParams[3] = hex"4444444444444444444444444444444444444444444444444444444444444444";
+
+        bytes memory params = abi.encode(_actions, _actionParams);
+
+        bytes memory invalidParams = new bytes(params.length - 1);
+        // dont copy the final byte
+        for (uint256 i = 0; i < params.length - 2; i++) {
+            invalidParams[i] = params[i];
+        }
+
+        assertEq(invalidParams.length, params.length - 1);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeActionsRouterParams(invalidParams);
+    }
+
+    function test_decodeActionsRouterParams_emptyParams() public {
+        // create actions and parameters
+        bytes memory _actions = hex"";
+        bytes[] memory _actionParams = new bytes[](0);
+
+        bytes memory params = abi.encode(_actions, _actionParams);
+
+        (bytes memory actions, bytes[] memory actionParams) = decoder.decodeActionsRouterParams(params);
+        assertEq(actions, _actions);
+        assertEq(actionParams.length, _actionParams.length);
     }
 
     function test_fuzz_decodeCurrencyPair(Currency _currency0, Currency _currency1) public view {
