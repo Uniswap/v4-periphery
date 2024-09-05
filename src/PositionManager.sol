@@ -289,17 +289,17 @@ contract PositionManager is
         PositionInfo info = PositionInfoLibrary.initialize(poolKey, tickLower, tickUpper);
         positionInfo[tokenId] = info;
 
+        // Store the poolKey if it is not already stored.
+        // On UniswapV4, the minimum tick spacing is 1, which means that if the tick spacing is 0, the pool key has not been set.
+        bytes25 poolId = info.poolId();
+        if (poolKeys[poolId].tickSpacing == 0) {
+            poolKeys[poolId] = poolKey;
+        }
+
         // fee delta can be ignored as this is a new position
         (BalanceDelta liquidityDelta,) =
             _modifyLiquidity(info, poolKey, liquidity.toInt256(), bytes32(tokenId), hookData);
         (liquidityDelta).validateMaxIn(amount0Max, amount1Max);
-
-        bytes25 poolId = info.poolId();
-        // Store the poolKey if it is not already stored.
-        // On UniswapV4, the minimum tick spacing is 1, which means that if the tick spacing is 0, the pool key has not been set.
-        if (poolKeys[poolId].tickSpacing == 0) {
-            poolKeys[poolId] = poolKey;
-        }
     }
 
     /// @dev this is overloaded with ERC721Permit_v4._burn
@@ -310,8 +310,6 @@ contract PositionManager is
         (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
 
         uint256 liquidity = uint256(_getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper()));
-
-        bool hasSubscriber = info.hasSubscriber();
 
         // Clear the position info.
         positionInfo[tokenId] = PositionInfoLibrary.EMPTY_POSITION_INFO;
@@ -326,7 +324,7 @@ contract PositionManager is
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
 
-        if (hasSubscriber) _unsubscribe(tokenId);
+        if (info.hasSubscriber()) _unsubscribe(tokenId);
     }
 
     function _settlePair(Currency currency0, Currency currency1) internal {
