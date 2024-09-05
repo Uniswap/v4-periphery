@@ -10,6 +10,17 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 contract MockCalldataDecoder {
     using CalldataDecoder for bytes;
 
+    function decodeActionsRouterParams(bytes calldata params)
+        external
+        pure
+        returns (
+            bytes calldata actions,
+            bytes[] calldata actionParams
+        )
+    {
+        return params.decodeActionsRouterParams();
+    }
+
     function decodeModifyLiquidityParams(bytes calldata params)
         external
         pure
