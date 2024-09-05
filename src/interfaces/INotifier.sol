@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {PositionConfig} from "../libraries/PositionConfig.sol";
 import {ISubscriber} from "./ISubscriber.sol";
 
 /// @notice This interface is used to opt in to sending updates to external contracts about position modifications or transfers
@@ -33,27 +32,18 @@ interface INotifier {
 
     /// @notice Enables the subscriber to receive notifications for a respective position
     /// @param tokenId the ERC721 tokenId
-    /// @param config the corresponding PositionConfig for the tokenId
     /// @param newSubscriber the address of the subscriber contract
     /// @param data caller-provided data that's forwarded to the subscriber contract
     /// @dev Calling subscribe when a position is already subscribed will revert
     /// @dev payable so it can be multicalled with NATIVE related actions
-    function subscribe(uint256 tokenId, PositionConfig calldata config, address newSubscriber, bytes calldata data)
-        external
-        payable;
+    function subscribe(uint256 tokenId, address newSubscriber, bytes calldata data) external payable;
 
     /// @notice Removes the subscriber from receiving notifications for a respective position
     /// @param tokenId the ERC721 tokenId
-    /// @param config the corresponding PositionConfig for the tokenId
-    /// @dev Callers must specify a high gas limit (remaining gas should be higher than subscriberGasLimit) such that the subscriber can be notified
+    /// @dev Callers must specify a high gas limit (remaining gas should be higher than unsubscriberGasLimit) such that the subscriber can be notified
     /// @dev payable so it can be multicalled with NATIVE related actions
     /// @dev Must always allow a user to unsubscribe. In the case of a malicious subscriber, a user can always unsubscribe safely, ensuring liquidity is always modifiable.
-    function unsubscribe(uint256 tokenId, PositionConfig calldata config) external payable;
-
-    /// @notice Returns whether a position should call out to notify a subscribing contract on modification or transfer
-    /// @param tokenId the ERC721 tokenId
-    /// @return bool whether or not the position has a subscriber
-    function hasSubscriber(uint256 tokenId) external view returns (bool);
+    function unsubscribe(uint256 tokenId) external payable;
 
     /// @notice Returns and determines the maximum allowable gas-used for notifying unsubscribe
     /// @return uint256 the maximum gas limit when notifying a subscriber's `notifyUnsubscribe` function

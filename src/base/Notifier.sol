@@ -2,16 +2,14 @@
 pragma solidity ^0.8.0;
 
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
-import {PositionConfig} from "../libraries/PositionConfig.sol";
-import {PositionConfigId, PositionConfigIdLibrary} from "../libraries/PositionConfigId.sol";
 import {INotifier} from "../interfaces/INotifier.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
     using CustomRevert for bytes4;
-    using PositionConfigIdLibrary for PositionConfigId;
 
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
 
@@ -31,29 +29,24 @@ abstract contract Notifier is INotifier {
     /// @param tokenId the tokenId of the position
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
 
-    /// @notice Only allow callers that provide the correct config for the tokenId
-    /// @dev to be implemented by the parent contract (PositionManager)
-    /// @param tokenId the tokenId of the position
-    /// @param config the config of the tokenId
-    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) virtual;
+    function _setUnsubscribed(uint256 tokenId) internal virtual;
 
-    function _positionConfigs(uint256 tokenId) internal view virtual returns (PositionConfigId storage);
+    function _setSubscribed(uint256 tokenId) internal virtual;
 
     /// @inheritdoc INotifier
-    function subscribe(uint256 tokenId, PositionConfig calldata config, address newSubscriber, bytes calldata data)
+    function subscribe(uint256 tokenId, address newSubscriber, bytes calldata data)
         external
         payable
         onlyIfApproved(msg.sender, tokenId)
-        onlyValidConfig(tokenId, config)
     {
-        // will revert below if the user already has a subscriber
-        _positionConfigs(tokenId).setSubscribe();
         ISubscriber _subscriber = subscriber[tokenId];
 
         if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(tokenId, address(_subscriber));
+        _setSubscribed(tokenId);
+
         subscriber[tokenId] = ISubscriber(newSubscriber);
 
-        bool success = _call(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, config, data)));
+        bool success = _call(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, data)));
 
         if (!success) {
             Wrap__SubscriptionReverted.selector.bubbleUpAndRevertWith(newSubscriber);
@@ -63,19 +56,15 @@ abstract contract Notifier is INotifier {
     }
 
     /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId, PositionConfig calldata config)
-        external
-        payable
-        onlyIfApproved(msg.sender, tokenId)
-        onlyValidConfig(tokenId, config)
-    {
-        if (!_positionConfigs(tokenId).hasSubscriber()) NotSubscribed.selector.revertWith();
-        _unsubscribe(tokenId, config);
+    function unsubscribe(uint256 tokenId) external payable onlyIfApproved(msg.sender, tokenId) {
+        _unsubscribe(tokenId);
     }
 
-    function _unsubscribe(uint256 tokenId, PositionConfig calldata config) internal {
-        _positionConfigs(tokenId).setUnsubscribe();
+    function _unsubscribe(uint256 tokenId) internal {
         ISubscriber _subscriber = subscriber[tokenId];
+
+        if (_subscriber == NO_SUBSCRIBER) revert NotSubscribed();
+        _setUnsubscribed(tokenId);
 
         delete subscriber[tokenId];
 
@@ -84,23 +73,18 @@ abstract contract Notifier is INotifier {
             // otherwise, users can select a gas limit where .notifyUnsubscribe hits OutOfGas yet the
             // transaction/unsubscription can still succeed
             if (gasleft() < unsubscribeGasLimit) GasLimitTooLow.selector.revertWith();
-            try _subscriber.notifyUnsubscribe{gas: unsubscribeGasLimit}(tokenId, config) {} catch {}
+            try _subscriber.notifyUnsubscribe{gas: unsubscribeGasLimit}(tokenId) {} catch {}
         }
 
         emit Unsubscription(tokenId, address(_subscriber));
     }
 
-    function _notifyModifyLiquidity(
-        uint256 tokenId,
-        PositionConfig memory config,
-        int256 liquidityChange,
-        BalanceDelta feesAccrued
-    ) internal {
+    function _notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) internal {
         ISubscriber _subscriber = subscriber[tokenId];
 
         bool success = _call(
             address(_subscriber),
-            abi.encodeCall(ISubscriber.notifyModifyLiquidity, (tokenId, config, liquidityChange, feesAccrued))
+            abi.encodeCall(ISubscriber.notifyModifyLiquidity, (tokenId, liquidityChange, feesAccrued))
         );
 
         if (!success) {
@@ -124,10 +108,5 @@ abstract contract Notifier is INotifier {
         assembly ("memory-safe") {
             success := call(gas(), target, 0, add(encodedCall, 0x20), mload(encodedCall), 0, 0)
         }
-    }
-
-    /// @inheritdoc INotifier
-    function hasSubscriber(uint256 tokenId) external view returns (bool) {
-        return _positionConfigs(tokenId).hasSubscriber();
     }
 }

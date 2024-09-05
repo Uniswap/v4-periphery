@@ -10,7 +10,7 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {PositionManager, Actions} from "../../src/PositionManager.sol";
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {PositionConfig} from "./PositionConfig.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {HookSavesDelta} from "./HookSavesDelta.sol";
 
@@ -99,7 +99,19 @@ abstract contract LiquidityOperations is CommonBase {
         bytes memory hookData
     ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
-        planner.add(Actions.MINT_POSITION, abi.encode(config, liquidity, amount0Max, amount1Max, recipient, hookData));
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                liquidity,
+                amount0Max,
+                amount1Max,
+                recipient,
+                hookData
+            )
+        );
 
         return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
@@ -124,9 +136,7 @@ abstract contract LiquidityOperations is CommonBase {
         bytes memory hookData
     ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
-        planner.add(
-            Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToAdd, amount0Max, amount1Max, hookData)
-        );
+        planner.add(Actions.INCREASE_LIQUIDITY, abi.encode(tokenId, liquidityToAdd, amount0Max, amount1Max, hookData));
         return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 
@@ -151,7 +161,7 @@ abstract contract LiquidityOperations is CommonBase {
     ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
         planner.add(
-            Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, liquidityToRemove, amount0Min, amount1Min, hookData)
+            Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, liquidityToRemove, amount0Min, amount1Min, hookData)
         );
         return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
@@ -172,7 +182,7 @@ abstract contract LiquidityOperations is CommonBase {
         bytes memory hookData
     ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
-        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, config, 0, amount0Min, amount1Min, hookData));
+        planner.add(Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, 0, amount0Min, amount1Min, hookData));
         return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
 
@@ -192,7 +202,7 @@ abstract contract LiquidityOperations is CommonBase {
         bytes memory hookData
     ) internal pure returns (bytes memory) {
         Plan memory planner = Planner.init();
-        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, config, amount0Min, amount1Min, hookData));
+        planner.add(Actions.BURN_POSITION, abi.encode(tokenId, amount0Min, amount1Min, hookData));
         // Close needed on burn in case there is liquidity left in the position.
         return planner.finalizeModifyLiquidityWithClose(config.poolKey);
     }
