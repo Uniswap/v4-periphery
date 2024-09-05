@@ -18,14 +18,13 @@ import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {Multicall_v4} from "./base/Multicall_v4.sol";
 import {PoolInitializer} from "./base/PoolInitializer.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
-import {PositionConfig, PositionConfigLibrary} from "./libraries/PositionConfig.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {Notifier} from "./base/Notifier.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheck} from "./libraries/SlippageCheck.sol";
-import {PositionConfigId, PositionConfigIdLibrary} from "./libraries/PositionConfigId.sol";
+import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 
 //                                           444444444
 //                                444444444444      444444
@@ -105,25 +104,20 @@ contract PositionManager is
     Permit2Forwarder
 {
     using PoolIdLibrary for PoolKey;
-    using PositionConfigLibrary for PositionConfig;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
     using SafeCast for int256;
     using CalldataDecoder for bytes;
     using SlippageCheck for BalanceDelta;
-    using PositionConfigIdLibrary for PositionConfigId;
+    using PositionInfoLibrary for PositionInfo;
 
     /// @inheritdoc IPositionManager
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
-    mapping(uint256 tokenId => PositionConfigId configId) internal positionConfigs;
-
-    /// @notice an internal getter for PositionConfigId to be used by Notifier
-    function _positionConfigs(uint256 tokenId) internal view override returns (PositionConfigId storage) {
-        return positionConfigs[tokenId];
-    }
+    mapping(uint256 tokenId => PositionInfo info) public positionInfo;
+    mapping(bytes25 poolId => PoolKey poolKey) public poolKeys;
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2, uint256 _unsubscribeGasLimit)
         BaseActionsRouter(_poolManager)
@@ -146,14 +140,6 @@ contract PositionManager is
     /// msgSender() should ONLY be used if this is called from within the unlockCallback, unless the codepath has reentrancy protection
     modifier onlyIfApproved(address caller, uint256 tokenId) override {
         if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
-        _;
-    }
-
-    /// @notice Reverts if the hash of the config does not equal the saved hash
-    /// @param tokenId the unique identifier of the ERC721 token
-    /// @param config the PositionConfig to check against
-    modifier onlyValidConfig(uint256 tokenId, PositionConfig calldata config) override {
-        if (positionConfigs[tokenId].getConfigId() != config.toId()) revert IncorrectPositionConfigForTokenId(tokenId);
         _;
     }
 
@@ -184,48 +170,33 @@ contract PositionManager is
     function _handleAction(uint256 action, bytes calldata params) internal virtual override {
         if (action < Actions.SETTLE) {
             if (action == Actions.INCREASE_LIQUIDITY) {
-                (
-                    uint256 tokenId,
-                    PositionConfig calldata config,
-                    uint256 liquidity,
-                    uint128 amount0Max,
-                    uint128 amount1Max,
-                    bytes calldata hookData
-                ) = params.decodeModifyLiquidityParams();
-                _increase(tokenId, config, liquidity, amount0Max, amount1Max, hookData);
+                (uint256 tokenId, uint256 liquidity, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData) =
+                    params.decodeModifyLiquidityParams();
+                _increase(tokenId, liquidity, amount0Max, amount1Max, hookData);
                 return;
             } else if (action == Actions.DECREASE_LIQUIDITY) {
-                (
-                    uint256 tokenId,
-                    PositionConfig calldata config,
-                    uint256 liquidity,
-                    uint128 amount0Min,
-                    uint128 amount1Min,
-                    bytes calldata hookData
-                ) = params.decodeModifyLiquidityParams();
-                _decrease(tokenId, config, liquidity, amount0Min, amount1Min, hookData);
+                (uint256 tokenId, uint256 liquidity, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData) =
+                    params.decodeModifyLiquidityParams();
+                _decrease(tokenId, liquidity, amount0Min, amount1Min, hookData);
                 return;
             } else if (action == Actions.MINT_POSITION) {
                 (
-                    PositionConfig calldata config,
+                    PoolKey calldata poolKey,
+                    int24 tickLower,
+                    int24 tickUpper,
                     uint256 liquidity,
                     uint128 amount0Max,
                     uint128 amount1Max,
                     address owner,
                     bytes calldata hookData
                 ) = params.decodeMintParams();
-                _mint(config, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
+                _mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
                 return;
             } else if (action == Actions.BURN_POSITION) {
                 // Will automatically decrease liquidity to 0 if the position is not already empty.
-                (
-                    uint256 tokenId,
-                    PositionConfig calldata config,
-                    uint128 amount0Min,
-                    uint128 amount1Min,
-                    bytes calldata hookData
-                ) = params.decodeBurnParams();
-                _burn(tokenId, config, amount0Min, amount1Min, hookData);
+                (uint256 tokenId, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData) =
+                    params.decodeBurnParams();
+                _burn(tokenId, amount0Min, amount1Min, hookData);
                 return;
             }
         } else {
@@ -265,15 +236,16 @@ contract PositionManager is
     /// @dev Calling increase with 0 liquidity will credit the caller with any underlying fees of the position
     function _increase(
         uint256 tokenId,
-        PositionConfig calldata config,
         uint256 liquidity,
         uint128 amount0Max,
         uint128 amount1Max,
         bytes calldata hookData
-    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
+    ) internal onlyIfApproved(msgSender(), tokenId) {
+        (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
+
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
-            _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
+            _modifyLiquidity(info, poolKey, liquidity.toInt256(), bytes32(tokenId), hookData);
         // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
         (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
     }
@@ -281,21 +253,24 @@ contract PositionManager is
     /// @dev Calling decrease with 0 liquidity will credit the caller with any underlying fees of the position
     function _decrease(
         uint256 tokenId,
-        PositionConfig calldata config,
         uint256 liquidity,
         uint128 amount0Min,
         uint128 amount1Min,
         bytes calldata hookData
-    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
+    ) internal onlyIfApproved(msgSender(), tokenId) {
+        (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
+
         // Note: the tokenId is used as the salt.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
-            _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+            _modifyLiquidity(info, poolKey, -(liquidity.toInt256()), bytes32(tokenId), hookData);
         // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
         (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
     }
 
     function _mint(
-        PositionConfig calldata config,
+        PoolKey calldata poolKey,
+        int24 tickLower,
+        int24 tickUpper,
         uint256 liquidity,
         uint128 amount0Max,
         uint128 amount1Max,
@@ -310,39 +285,46 @@ contract PositionManager is
         }
         _mint(owner, tokenId);
 
-        // fee delta can be ignored as this is a new position
-        (BalanceDelta liquidityDelta,) = _modifyLiquidity(config, liquidity.toInt256(), bytes32(tokenId), hookData);
-        liquidityDelta.validateMaxIn(amount0Max, amount1Max);
-        positionConfigs[tokenId].setConfigId(config.toId());
+        // Initialize the position info
+        PositionInfo info = PositionInfoLibrary.initialize(poolKey, tickLower, tickUpper);
+        positionInfo[tokenId] = info;
 
-        emit MintPosition(tokenId, config);
+        // Store the poolKey if it is not already stored.
+        // On UniswapV4, the minimum tick spacing is 1, which means that if the tick spacing is 0, the pool key has not been set.
+        bytes25 poolId = info.poolId();
+        if (poolKeys[poolId].tickSpacing == 0) {
+            poolKeys[poolId] = poolKey;
+        }
+
+        // fee delta can be ignored as this is a new position
+        (BalanceDelta liquidityDelta,) =
+            _modifyLiquidity(info, poolKey, liquidity.toInt256(), bytes32(tokenId), hookData);
+        liquidityDelta.validateMaxIn(amount0Max, amount1Max);
     }
 
     /// @dev this is overloaded with ERC721Permit_v4._burn
-    function _burn(
-        uint256 tokenId,
-        PositionConfig calldata config,
-        uint128 amount0Min,
-        uint128 amount1Min,
-        bytes calldata hookData
-    ) internal onlyIfApproved(msgSender(), tokenId) onlyValidConfig(tokenId, config) {
-        uint256 liquidity = getPositionLiquidity(tokenId, config);
+    function _burn(uint256 tokenId, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData)
+        internal
+        onlyIfApproved(msgSender(), tokenId)
+    {
+        (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
+
+        uint256 liquidity = uint256(_getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper()));
+
+        // Clear the position info.
+        positionInfo[tokenId] = PositionInfoLibrary.EMPTY_POSITION_INFO;
+        // Burn the token.
+        _burn(tokenId);
 
         // Can only call modify if there is non zero liquidity.
         if (liquidity > 0) {
             (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
-                _modifyLiquidity(config, -(liquidity.toInt256()), bytes32(tokenId), hookData);
+                _modifyLiquidity(info, poolKey, -(liquidity.toInt256()), bytes32(tokenId), hookData);
             // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
 
-        bool hasSubscriber = positionConfigs[tokenId].hasSubscriber();
-
-        delete positionConfigs[tokenId];
-        // Burn the token.
-        _burn(tokenId);
-
-        if (hasSubscriber) _unsubscribe(tokenId, config);
+        if (info.hasSubscriber()) _unsubscribe(tokenId);
     }
 
     function _settlePair(Currency currency0, Currency currency1) internal {
@@ -392,24 +374,25 @@ contract PositionManager is
     }
 
     function _modifyLiquidity(
-        PositionConfig calldata config,
+        PositionInfo info,
+        PoolKey memory poolKey,
         int256 liquidityChange,
         bytes32 salt,
         bytes calldata hookData
     ) internal returns (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) {
         (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
-            config.poolKey,
+            poolKey,
             IPoolManager.ModifyLiquidityParams({
-                tickLower: config.tickLower,
-                tickUpper: config.tickUpper,
+                tickLower: info.tickLower(),
+                tickUpper: info.tickUpper(),
                 liquidityDelta: liquidityChange,
                 salt: salt
             }),
             hookData
         );
 
-        if (positionConfigs[uint256(salt)].hasSubscriber()) {
-            _notifyModifyLiquidity(uint256(salt), config, liquidityChange, feesAccrued);
+        if (info.hasSubscriber()) {
+            _notifyModifyLiquidity(uint256(salt), liquidityChange, feesAccrued);
         }
     }
 
@@ -423,25 +406,40 @@ contract PositionManager is
         }
     }
 
+    /// @notice an internal helper used by Notifier
+    function _setSubscribed(uint256 tokenId) internal override {
+        positionInfo[tokenId] = positionInfo[tokenId].setSubscribe();
+    }
+
+    /// @notice an internal helper used by Notifier
+    function _setUnsubscribed(uint256 tokenId) internal override {
+        positionInfo[tokenId] = positionInfo[tokenId].setUnsubscribe();
+    }
+
     /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
     function transferFrom(address from, address to, uint256 id) public virtual override {
         super.transferFrom(from, to, id);
-        if (positionConfigs[id].hasSubscriber()) _notifyTransfer(id, from, to);
+        if (positionInfo[id].hasSubscriber()) _notifyTransfer(id, from, to);
     }
 
     /// @inheritdoc IPositionManager
-    function getPositionLiquidity(uint256 tokenId, PositionConfig calldata config)
-        public
+    function getPoolAndPositionInfo(uint256 tokenId) public view returns (PoolKey memory poolKey, PositionInfo info) {
+        info = positionInfo[tokenId];
+        poolKey = poolKeys[info.poolId()];
+    }
+
+    /// @inheritdoc IPositionManager
+    function getPositionLiquidity(uint256 tokenId) external view returns (uint128 liquidity) {
+        (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
+        liquidity = _getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper());
+    }
+
+    function _getLiquidity(uint256 tokenId, PoolKey memory poolKey, int24 tickLower, int24 tickUpper)
+        internal
         view
         returns (uint128 liquidity)
     {
-        bytes32 positionId =
-            Position.calculatePositionKey(address(this), config.tickLower, config.tickUpper, bytes32(tokenId));
-        liquidity = poolManager.getPositionLiquidity(config.poolKey.toId(), positionId);
-    }
-
-    /// @inheritdoc IPositionManager
-    function getPositionConfigId(uint256 tokenId) external view returns (bytes32) {
-        return positionConfigs[tokenId].getConfigId();
+        bytes32 positionId = Position.calculatePositionKey(address(this), tickLower, tickUpper, bytes32(tokenId));
+        liquidity = poolManager.getPositionLiquidity(poolKey.toId(), positionId);
     }
 }
