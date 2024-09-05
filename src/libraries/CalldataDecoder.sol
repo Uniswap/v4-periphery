@@ -162,15 +162,15 @@ library CalldataDecoder {
     /// @dev equivalent to: abi.decode(params, (Currency)) in calldata
     function decodeCurrency(bytes calldata params) internal pure returns (Currency currency) {
         assembly ("memory-safe") {
-            currency := calldataload(params.offset)
+            currency := and(calldataload(params.offset), 0xffffffffffffffffffffffffffffffffffffffff)
         }
     }
 
     /// @dev equivalent to: abi.decode(params, (Currency, Currency)) in calldata
     function decodeCurrencyPair(bytes calldata params) internal pure returns (Currency currency0, Currency currency1) {
         assembly ("memory-safe") {
-            currency0 := calldataload(params.offset)
-            currency1 := calldataload(add(params.offset, 0x20))
+            currency0 := and(calldataload(params.offset), 0xffffffffffffffffffffffffffffffffffffffff)
+            currency1 := and(calldataload(add(params.offset, 0x20)), 0xffffffffffffffffffffffffffffffffffffffff)
         }
     }
 
@@ -181,9 +181,9 @@ library CalldataDecoder {
         returns (Currency currency0, Currency currency1, address _address)
     {
         assembly ("memory-safe") {
-            currency0 := calldataload(params.offset)
-            currency1 := calldataload(add(params.offset, 0x20))
-            _address := calldataload(add(params.offset, 0x40))
+            currency0 := and(calldataload(params.offset), 0xffffffffffffffffffffffffffffffffffffffff)
+            currency1 := and(calldataload(add(params.offset, 0x20)), 0xffffffffffffffffffffffffffffffffffffffff)
+            _address := and(calldataload(add(params.offset, 0x40)), 0xffffffffffffffffffffffffffffffffffffffff)
         }
     }
 
@@ -194,8 +194,8 @@ library CalldataDecoder {
         returns (Currency currency, address _address)
     {
         assembly ("memory-safe") {
-            currency := calldataload(params.offset)
-            _address := calldataload(add(params.offset, 0x20))
+            currency := and(calldataload(params.offset), 0xffffffffffffffffffffffffffffffffffffffff)
+            _address := and(calldataload(add(params.offset, 0x20)), 0xffffffffffffffffffffffffffffffffffffffff)
         }
     }
 
@@ -206,8 +206,8 @@ library CalldataDecoder {
         returns (Currency currency, address _address, uint256 amount)
     {
         assembly ("memory-safe") {
-            currency := calldataload(params.offset)
-            _address := calldataload(add(params.offset, 0x20))
+            currency := and(calldataload(params.offset), 0xffffffffffffffffffffffffffffffffffffffff)
+            _address := and(calldataload(add(params.offset, 0x20)), 0xffffffffffffffffffffffffffffffffffffffff)
             amount := calldataload(add(params.offset, 0x40))
         }
     }
@@ -219,7 +219,7 @@ library CalldataDecoder {
         returns (Currency currency, uint256 amount)
     {
         assembly ("memory-safe") {
-            currency := calldataload(params.offset)
+            currency := and(calldataload(params.offset), 0xffffffffffffffffffffffffffffffffffffffff)
             amount := calldataload(add(params.offset, 0x20))
         }
     }
@@ -231,9 +231,9 @@ library CalldataDecoder {
         returns (Currency currency, uint256 amount, bool boolean)
     {
         assembly ("memory-safe") {
-            currency := calldataload(params.offset)
+            currency := and(calldataload(params.offset), 0xffffffffffffffffffffffffffffffffffffffff)
             amount := calldataload(add(params.offset, 0x20))
-            boolean := calldataload(add(params.offset, 0x40))
+            boolean := and(calldataload(add(params.offset, 0x40)), 0x1)
         }
     }
 
