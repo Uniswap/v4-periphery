@@ -299,7 +299,7 @@ contract PositionManager is
         // fee delta can be ignored as this is a new position
         (BalanceDelta liquidityDelta,) =
             _modifyLiquidity(info, poolKey, liquidity.toInt256(), bytes32(tokenId), hookData);
-        (liquidityDelta).validateMaxIn(amount0Max, amount1Max);
+        liquidityDelta.validateMaxIn(amount0Max, amount1Max);
     }
 
     /// @dev this is overloaded with ERC721Permit_v4._burn
