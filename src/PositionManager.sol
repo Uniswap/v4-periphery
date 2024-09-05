@@ -390,7 +390,6 @@ contract PositionManager is
             hookData
         );
 
-        // TODO: Audit issue for burn, decide if we want to keep this and also unsubscribe.
         if (info.hasSubscriber()) {
             _notifyModifyLiquidity(uint256(salt), liquidityChange, feesAccrued);
         }
