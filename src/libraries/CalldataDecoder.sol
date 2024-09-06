@@ -262,7 +262,8 @@ library CalldataDecoder {
         assembly ("memory-safe") {
             // The offset of the `_arg`-th element is `32 * arg`, which stores the offset of the length pointer.
             // shl(5, x) is equivalent to mul(32, x)
-            let lengthPtr := add(_bytes.offset, and(calldataload(add(_bytes.offset, shl(5, _arg))), OFFSET_OR_LENGTH_MASK))
+            let lengthPtr :=
+                add(_bytes.offset, and(calldataload(add(_bytes.offset, shl(5, _arg))), OFFSET_OR_LENGTH_MASK))
             // the number of bytes in the bytes string
             length := and(calldataload(lengthPtr), OFFSET_OR_LENGTH_MASK)
             // the offset where the bytes string begins
