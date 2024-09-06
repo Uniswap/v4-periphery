@@ -259,24 +259,20 @@ library CalldataDecoder {
     /// @param _arg The index of the argument to extract
     function toBytes(bytes calldata _bytes, uint256 _arg) internal pure returns (bytes calldata res) {
         uint256 length;
-        uint256 relativeOffset;
         assembly ("memory-safe") {
-            let bytesOffset := and(_bytes.offset, OFFSET_OR_LENGTH_MASK)
             // The offset of the `_arg`-th element is `32 * arg`, which stores the offset of the length pointer.
             // shl(5, x) is equivalent to mul(32, x)
-            let lengthPtr := add(bytesOffset, and(calldataload(add(bytesOffset, shl(5, _arg))), OFFSET_OR_LENGTH_MASK))
+            let lengthPtr := add(_bytes.offset, and(calldataload(add(_bytes.offset, shl(5, _arg))), OFFSET_OR_LENGTH_MASK))
             // the number of bytes in the bytes string
             length := and(calldataload(lengthPtr), OFFSET_OR_LENGTH_MASK)
             // the offset where the bytes string begins
             let offset := add(lengthPtr, 0x20)
-            // the relative offset of the array from the calldata parameter
-            relativeOffset := sub(offset, bytesOffset)
             // assign the return parameters
             res.length := length
             res.offset := offset
-        }
-        if (_bytes.length < length + relativeOffset) {
-            assembly ("memory-safe") {
+
+            // if the provided bytes string isnt as long as the encoding says, revert
+            if lt(add(_bytes.length, _bytes.offset), add(length, offset)) {
                 mstore(0, SLICE_ERROR_SELECTOR)
                 revert(0x1c, 4)
             }
