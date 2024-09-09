@@ -390,13 +390,12 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6143);
 
-        snapLastCall("Quoter_quoteExactOutput_oneHop_initializedAfter");
-
         (
             int128[] memory deltaAmounts,
             uint160[] memory sqrtPriceX96AfterList,
             uint32[] memory initializedTicksLoadedList
         ) = quoter.quoteExactOutput(params);
+        snapLastCall("Quoter_quoteExactOutput_oneHop_initializedAfter");
 
         assertEq(deltaAmounts[0], 6200);
         assertEq(sqrtPriceX96AfterList[0], 78757225449310403327341205211);
