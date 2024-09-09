@@ -50,45 +50,53 @@ contract Quoter is IQuoter, SafeCallback {
     /// @inheritdoc IQuoter
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
         public
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After)
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256 gasEstimate)
     {
+        uint256 gasBefore = gasleft();
         try poolManager.unlock(abi.encodeCall(this._quoteExactInputSingle, (params))) {}
         catch (bytes memory reason) {
-            return _handleRevertSingle(reason);
+            gasEstimate = gasBefore - gasleft();
+            return _handleRevertSingle(reason, gasEstimate);
         }
     }
 
     /// @inheritdoc IQuoter
     function quoteExactInput(QuoteExactParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList)
+        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate)
     {
+        uint256 gasBefore = gasleft();
         try poolManager.unlock(abi.encodeCall(this._quoteExactInput, (params))) {}
         catch (bytes memory reason) {
-            return _handleRevert(reason);
+            gasEstimate = gasBefore - gasleft();
+            return _handleRevert(reason, gasEstimate);
         }
     }
 
     /// @inheritdoc IQuoter
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         public
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After)
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256 gasEstimate)
     {
+        uint256 gasBefore = gasleft();
         try poolManager.unlock(abi.encodeCall(this._quoteExactOutputSingle, (params))) {}
         catch (bytes memory reason) {
+            gasEstimate = gasBefore - gasleft();
             if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
-            return _handleRevertSingle(reason);
+            return _handleRevertSingle(reason, gasEstimate);
         }
     }
 
     /// @inheritdoc IQuoter
     function quoteExactOutput(QuoteExactParams memory params)
         public
-        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList)
+        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate)
     {
+        uint256 gasBefore = gasleft();
         try poolManager.unlock(abi.encodeCall(this._quoteExactOutput, (params))) {}
         catch (bytes memory reason) {
-            return _handleRevert(reason);
+            gasEstimate = gasBefore - gasleft();
+            return _handleRevert(reason, gasEstimate);
         }
     }
 
@@ -111,23 +119,25 @@ contract Quoter is IQuoter, SafeCallback {
     }
 
     /// @dev parse revert bytes from a single-pool quote
-    function _handleRevertSingle(bytes memory reason)
+    function _handleRevertSingle(bytes memory reason, uint256 gasEstimate)
         private
         pure
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After)
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256)
     {
         reason = validateRevertReason(reason);
         (deltaAmounts, sqrtPriceX96After) = abi.decode(reason, (int128[], uint160));
+        return (deltaAmounts, sqrtPriceX96After, gasEstimate);
     }
 
     /// @dev parse revert bytes from a potentially multi-hop quote and return the delta amounts, and sqrtPriceX96After
-    function _handleRevert(bytes memory reason)
+    function _handleRevert(bytes memory reason, uint256 gasEstimate)
         private
         pure
-        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList)
+        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList, uint256)
     {
         reason = validateRevertReason(reason);
         (deltaAmounts, sqrtPriceX96AfterList) = abi.decode(reason, (int128[], uint160[]));
+        return (deltaAmounts, sqrtPriceX96AfterList, gasEstimate);
     }
 
     /// @dev quote an ExactInput swap along a path of tokens, then revert with the result

@@ -48,7 +48,7 @@ interface IQuoter {
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After);
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256 gasEstimate);
 
     /// @notice Returns the delta amounts along the swap path for a given exact input swap
     /// @param params the params for the quote, encoded as 'QuoteExactParams'
@@ -59,7 +59,7 @@ interface IQuoter {
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     function quoteExactInput(QuoteExactParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList);
+        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate);
 
     /// @notice Returns the delta amounts for a given exact output swap of a single pool
     /// @param params The params for the quote, encoded as `QuoteExactSingleParams`
@@ -72,7 +72,7 @@ interface IQuoter {
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After);
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256 gasEstimate);
 
     /// @notice Returns the delta amounts along the swap path for a given exact output swap
     /// @param params the params for the quote, encoded as 'QuoteExactParams'
@@ -83,5 +83,5 @@ interface IQuoter {
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     function quoteExactOutput(QuoteExactParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList);
+        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate);
 }
