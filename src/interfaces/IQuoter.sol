@@ -7,7 +7,7 @@ import {PathKey} from "../libraries/PathKey.sol";
 
 /// @title Quoter Interface
 /// @notice Supports quoting the delta amounts for exact input or exact output swaps.
-/// @notice For each pool also tells you the number of initialized ticks loaded and the sqrt price of the pool after the swap.
+/// @notice For each pool also tells you the sqrt price of the pool after the swap.
 /// @dev These functions are not marked view because they rely on calling non-view functions and reverting
 /// to compute the result. They are also not gas efficient and should not be called on-chain.
 interface IQuoter {
@@ -46,10 +46,9 @@ interface IQuoter {
     /// hookData arbitrary hookData to pass into the associated hooks
     /// @return deltaAmounts Delta amounts resulted from the swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
-    /// @return initializedTicksLoaded The number of initialized ticks that the swap loaded
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After);
 
     /// @notice Returns the delta amounts along the swap path for a given exact input swap
     /// @param params the params for the quote, encoded as 'QuoteExactParams'
@@ -58,14 +57,9 @@ interface IQuoter {
     /// exactAmount The desired input amount
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
-    /// @return initializedTicksLoadedList List of the initialized ticks that the swap loaded for each pool in the path
     function quoteExactInput(QuoteExactParams memory params)
         external
-        returns (
-            int128[] memory deltaAmounts,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksLoadedList
-        );
+        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList);
 
     /// @notice Returns the delta amounts for a given exact output swap of a single pool
     /// @param params The params for the quote, encoded as `QuoteExactSingleParams`
@@ -76,10 +70,9 @@ interface IQuoter {
     /// hookData arbitrary hookData to pass into the associated hooks
     /// @return deltaAmounts Delta amounts resulted from the swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
-    /// @return initializedTicksLoaded The number of initialized ticks that the swap loaded
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint32 initializedTicksLoaded);
+        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After);
 
     /// @notice Returns the delta amounts along the swap path for a given exact output swap
     /// @param params the params for the quote, encoded as 'QuoteExactParams'
@@ -88,12 +81,7 @@ interface IQuoter {
     /// exactAmount The desired output amount
     /// @return deltaAmounts Delta amounts along the path resulted from the swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
-    /// @return initializedTicksLoadedList List of the initialized ticks that the swap loaded for each pool in the path
     function quoteExactOutput(QuoteExactParams memory params)
         external
-        returns (
-            int128[] memory deltaAmounts,
-            uint160[] memory sqrtPriceX96AfterList,
-            uint32[] memory initializedTicksLoadedList
-        );
+        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList);
 }
