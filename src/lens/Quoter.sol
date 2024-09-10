@@ -7,23 +7,20 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PathKey, PathKeyLibrary} from "../libraries/PathKey.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {RevertBytes} from "../libraries/RevertBytes.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
 
 contract Quoter is IQuoter, SafeCallback {
     using PoolIdLibrary for PoolKey;
     using PathKeyLibrary for PathKey;
     using StateLibrary for IPoolManager;
+    using RevertBytes for bytes;
 
     /// @dev cache used to check a safety condition in exact output swaps.
     uint128 private amountOutCached;
-
-    /// @dev min valid reason is 5-words long (160 bytes)
-    /// @dev int128[2] includes 32 bytes for offset, 32 bytes for length, and 32 bytes for each element
-    /// @dev Plus sqrtPriceX96After padded to 32 bytes
-    uint256 internal constant MINIMUM_VALID_RESPONSE_LENGTH = 160;
 
     struct QuoteResult {
         int128[] deltaAmounts;
@@ -39,7 +36,8 @@ contract Quoter is IQuoter, SafeCallback {
         uint160 sqrtPriceX96After;
     }
 
-    /// @dev Only this address may call this function
+    /// @dev Only this address may call this function. Used to mimic internal functions, using an
+    /// external call to catch and parse revert reasons
     modifier selfOnly() {
         if (msg.sender != address(this)) revert NotSelf();
         _;
@@ -49,14 +47,14 @@ contract Quoter is IQuoter, SafeCallback {
 
     /// @inheritdoc IQuoter
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
-        public
+        external
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
         try poolManager.unlock(abi.encodeCall(this._quoteExactInputSingle, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            return _handleRevertSingle(reason, gasEstimate);
+            (deltaAmounts, sqrtPriceX96After) = reason.parseReturnDataSingle();
         }
     }
 
@@ -69,13 +67,13 @@ contract Quoter is IQuoter, SafeCallback {
         try poolManager.unlock(abi.encodeCall(this._quoteExactInput, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            return _handleRevert(reason, gasEstimate);
+            (deltaAmounts, sqrtPriceX96AfterList) = reason.parseReturnData();
         }
     }
 
     /// @inheritdoc IQuoter
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
-        public
+        external
         returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
@@ -83,65 +81,33 @@ contract Quoter is IQuoter, SafeCallback {
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
             if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
-            return _handleRevertSingle(reason, gasEstimate);
+            (deltaAmounts, sqrtPriceX96After) = reason.parseReturnDataSingle();
         }
     }
 
     /// @inheritdoc IQuoter
     function quoteExactOutput(QuoteExactParams memory params)
-        public
+        external
         returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
         try poolManager.unlock(abi.encodeCall(this._quoteExactOutput, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            return _handleRevert(reason, gasEstimate);
+            (deltaAmounts, sqrtPriceX96AfterList) = reason.parseReturnData();
         }
     }
 
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
+        // Call this contract with the data in question. Each quote path
         (bool success, bytes memory returnData) = address(this).call(data);
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();
-        // if the call failed, bubble up the reason
-        assembly ("memory-safe") {
-            revert(add(returnData, 32), mload(returnData))
-        }
-    }
-
-    /// @dev check revert bytes and pass through if considered valid; otherwise revert with different message
-    function validateRevertReason(bytes memory reason) private pure returns (bytes memory) {
-        if (reason.length < MINIMUM_VALID_RESPONSE_LENGTH) {
-            revert UnexpectedRevertBytes(reason);
-        }
-        return reason;
-    }
-
-    /// @dev parse revert bytes from a single-pool quote
-    function _handleRevertSingle(bytes memory reason, uint256 gasEstimate)
-        private
-        pure
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256)
-    {
-        reason = validateRevertReason(reason);
-        (deltaAmounts, sqrtPriceX96After) = abi.decode(reason, (int128[], uint160));
-        return (deltaAmounts, sqrtPriceX96After, gasEstimate);
-    }
-
-    /// @dev parse revert bytes from a potentially multi-hop quote and return the delta amounts, and sqrtPriceX96After
-    function _handleRevert(bytes memory reason, uint256 gasEstimate)
-        private
-        pure
-        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList, uint256)
-    {
-        reason = validateRevertReason(reason);
-        (deltaAmounts, sqrtPriceX96AfterList) = abi.decode(reason, (int128[], uint160[]));
-        return (deltaAmounts, sqrtPriceX96AfterList, gasEstimate);
+        returnData.revertWith();
     }
 
     /// @dev quote an ExactInput swap along a path of tokens, then revert with the result
-    function _quoteExactInput(QuoteExactParams calldata params) public selfOnly returns (bytes memory) {
+    function _quoteExactInput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
         QuoteResult memory result =
@@ -171,13 +137,11 @@ contract Quoter is IQuoter, SafeCallback {
             result.sqrtPriceX96AfterList[i] = cache.sqrtPriceX96After;
         }
         bytes memory encodedResult = abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList);
-        assembly ("memory-safe") {
-            revert(add(0x20, encodedResult), mload(encodedResult))
-        }
+        encodedResult.revertWith();
     }
 
     /// @dev quote an ExactInput swap on a pool, then revert with the result
-    function _quoteExactInputSingle(QuoteExactSingleParams calldata params) public selfOnly returns (bytes memory) {
+    function _quoteExactInputSingle(QuoteExactSingleParams calldata params) external selfOnly returns (bytes memory) {
         (BalanceDelta deltas, uint160 sqrtPriceX96After) = _swap(
             params.poolKey,
             params.zeroForOne,
@@ -192,13 +156,11 @@ contract Quoter is IQuoter, SafeCallback {
         deltaAmounts[1] = -deltas.amount1();
 
         bytes memory encodedResult = abi.encode(deltaAmounts, sqrtPriceX96After);
-        assembly ("memory-safe") {
-            revert(add(0x20, encodedResult), mload(encodedResult))
-        }
+        encodedResult.revertWith();
     }
 
     /// @dev quote an ExactOutput swap along a path of tokens, then revert with the result
-    function _quoteExactOutput(QuoteExactParams calldata params) public selfOnly returns (bytes memory) {
+    function _quoteExactOutput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
         QuoteResult memory result =
@@ -230,13 +192,11 @@ contract Quoter is IQuoter, SafeCallback {
             result.sqrtPriceX96AfterList[i - 1] = cache.sqrtPriceX96After;
         }
         bytes memory encodedResult = abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList);
-        assembly ("memory-safe") {
-            revert(add(0x20, encodedResult), mload(encodedResult))
-        }
+        encodedResult.revertWith();
     }
 
     /// @dev quote an ExactOutput swap on a pool, then revert with the result
-    function _quoteExactOutputSingle(QuoteExactSingleParams calldata params) public selfOnly returns (bytes memory) {
+    function _quoteExactOutputSingle(QuoteExactSingleParams calldata params) external selfOnly returns (bytes memory) {
         // if no price limit has been specified, cache the output amount for comparison inside the _swap function
         if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.exactAmount;
 
@@ -255,9 +215,7 @@ contract Quoter is IQuoter, SafeCallback {
         deltaAmounts[1] = -deltas.amount1();
 
         bytes memory encodedResult = abi.encode(deltaAmounts, sqrtPriceX96After);
-        assembly ("memory-safe") {
-            revert(add(0x20, encodedResult), mload(encodedResult))
-        }
+        encodedResult.revertWith();
     }
 
     /// @dev Execute a swap and return the amounts delta, as well as relevant pool state
