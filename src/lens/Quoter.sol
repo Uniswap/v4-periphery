@@ -106,12 +106,14 @@ contract Quoter is IQuoter, SafeCallback {
         BalanceDelta swapDelta;
         uint128 amountIn = params.exactAmount;
         Currency inputCurrency = params.exactCurrency;
+        PathKey calldata pathKey;
 
         for (uint256 i = 0; i < pathLength; i++) {
-            (PoolKey memory poolKey, bool zeroForOne) = params.path[i].getPoolAndSwapDirection(inputCurrency);
+            pathKey = params.path[i];
+            (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(inputCurrency);
 
             (swapDelta, result.sqrtPriceX96AfterList[i]) =
-                _swap(poolKey, zeroForOne, -int256(int128(amountIn)), 0, params.path[i].hookData);
+                _swap(poolKey, zeroForOne, -int256(int128(amountIn)), 0, pathKey.hookData);
 
             if (zeroForOne) {
                 result.deltaAmounts[i] += -swapDelta.amount0();
@@ -122,7 +124,7 @@ contract Quoter is IQuoter, SafeCallback {
                 result.deltaAmounts[i + 1] += -swapDelta.amount0();
                 amountIn = uint128(swapDelta.amount0());
             }
-            inputCurrency = params.path[i].intermediateCurrency;
+            inputCurrency = pathKey.intermediateCurrency;
         }
         bytes memory encodedResult = abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList);
         encodedResult.revertWith();
@@ -156,14 +158,16 @@ contract Quoter is IQuoter, SafeCallback {
         BalanceDelta swapDelta;
         uint128 amountOut = params.exactAmount;
         Currency outputCurrency = params.exactCurrency;
+        PathKey calldata pathKey;
 
         for (uint256 i = pathLength; i > 0; i--) {
+            pathKey = params.path[i - 1];
             amountOutCached = amountOut;
 
-            (PoolKey memory poolKey, bool oneForZero) = params.path[i - 1].getPoolAndSwapDirection(outputCurrency);
+            (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(outputCurrency);
 
             (swapDelta, result.sqrtPriceX96AfterList[i - 1]) =
-                _swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, params.path[i - 1].hookData);
+                _swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, pathKey.hookData);
 
             // always clear because sqrtPriceLimitX96 is set to 0 always
             delete amountOutCached;
@@ -178,7 +182,7 @@ contract Quoter is IQuoter, SafeCallback {
                 amountOut = uint128(-swapDelta.amount1());
             }
 
-            outputCurrency = params.path[i - 1].intermediateCurrency;
+            outputCurrency = pathKey.intermediateCurrency;
         }
         bytes memory encodedResult = abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList);
         encodedResult.revertWith();
