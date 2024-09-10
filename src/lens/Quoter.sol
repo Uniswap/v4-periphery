@@ -27,15 +27,6 @@ contract Quoter is IQuoter, SafeCallback {
         uint160[] sqrtPriceX96AfterList;
     }
 
-    struct QuoteCache {
-        BalanceDelta curDeltas;
-        uint128 prevAmount;
-        int128 deltaIn;
-        int128 deltaOut;
-        Currency prevCurrency;
-        uint160 sqrtPriceX96After;
-    }
-
     /// @dev Only this address may call this function. Used to mimic internal functions, using an
     /// external call to catch and parse revert reasons
     modifier selfOnly() {
@@ -106,41 +97,38 @@ contract Quoter is IQuoter, SafeCallback {
         returnData.revertWith();
     }
 
-    /// @dev quote an ExactInput swap along a path of tokens, then revert with the result
+    /// @dev external function called within the _unlockCallback, to simulate an exact input swap, then revert with the result
     function _quoteExactInput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
         QuoteResult memory result =
             QuoteResult({deltaAmounts: new int128[](pathLength + 1), sqrtPriceX96AfterList: new uint160[](pathLength)});
-        QuoteCache memory cache;
+        BalanceDelta swapDelta;
+        uint128 amountIn = params.exactAmount;
+        Currency inputCurrency = params.exactCurrency;
 
         for (uint256 i = 0; i < pathLength; i++) {
-            (PoolKey memory poolKey, bool zeroForOne) =
-                params.path[i].getPoolAndSwapDirection(i == 0 ? params.exactCurrency : cache.prevCurrency);
+            (PoolKey memory poolKey, bool zeroForOne) = params.path[i].getPoolAndSwapDirection(inputCurrency);
 
-            (cache.curDeltas, cache.sqrtPriceX96After) = _swap(
-                poolKey,
-                zeroForOne,
-                -int256(int128(i == 0 ? params.exactAmount : cache.prevAmount)),
-                0,
-                params.path[i].hookData
-            );
+            (swapDelta, result.sqrtPriceX96AfterList[i]) =
+                _swap(poolKey, zeroForOne, -int256(int128(amountIn)), 0, params.path[i].hookData);
 
-            (cache.deltaIn, cache.deltaOut) = zeroForOne
-                ? (-cache.curDeltas.amount0(), -cache.curDeltas.amount1())
-                : (-cache.curDeltas.amount1(), -cache.curDeltas.amount0());
-            result.deltaAmounts[i] += cache.deltaIn;
-            result.deltaAmounts[i + 1] += cache.deltaOut;
-
-            cache.prevAmount = zeroForOne ? uint128(cache.curDeltas.amount1()) : uint128(cache.curDeltas.amount0());
-            cache.prevCurrency = params.path[i].intermediateCurrency;
-            result.sqrtPriceX96AfterList[i] = cache.sqrtPriceX96After;
+            if (zeroForOne) {
+                result.deltaAmounts[i] += -swapDelta.amount0();
+                result.deltaAmounts[i + 1] += -swapDelta.amount1();
+                amountIn = uint128(swapDelta.amount1());
+            } else {
+                result.deltaAmounts[i] += -swapDelta.amount1();
+                result.deltaAmounts[i + 1] += -swapDelta.amount0();
+                amountIn = uint128(swapDelta.amount0());
+            }
+            inputCurrency = params.path[i].intermediateCurrency;
         }
         bytes memory encodedResult = abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList);
         encodedResult.revertWith();
     }
 
-    /// @dev quote an ExactInput swap on a pool, then revert with the result
+    /// @dev external function called within the _unlockCallback, to simulate a single-hop exact input swap, then revert with the result
     function _quoteExactInputSingle(QuoteExactSingleParams calldata params) external selfOnly returns (bytes memory) {
         (BalanceDelta deltas, uint160 sqrtPriceX96After) = _swap(
             params.poolKey,
@@ -159,43 +147,44 @@ contract Quoter is IQuoter, SafeCallback {
         encodedResult.revertWith();
     }
 
-    /// @dev quote an ExactOutput swap along a path of tokens, then revert with the result
+    /// @dev external function called within the _unlockCallback, to simulate an exact output swap, then revert with the result
     function _quoteExactOutput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
         QuoteResult memory result =
             QuoteResult({deltaAmounts: new int128[](pathLength + 1), sqrtPriceX96AfterList: new uint160[](pathLength)});
-        QuoteCache memory cache;
-        uint128 curAmountOut;
+        BalanceDelta swapDelta;
+        uint128 amountOut = params.exactAmount;
+        Currency outputCurrency = params.exactCurrency;
 
         for (uint256 i = pathLength; i > 0; i--) {
-            curAmountOut = i == pathLength ? params.exactAmount : cache.prevAmount;
-            amountOutCached = curAmountOut;
+            amountOutCached = amountOut;
 
-            (PoolKey memory poolKey, bool oneForZero) = PathKeyLibrary.getPoolAndSwapDirection(
-                params.path[i - 1], i == pathLength ? params.exactCurrency : cache.prevCurrency
-            );
+            (PoolKey memory poolKey, bool oneForZero) = params.path[i - 1].getPoolAndSwapDirection(outputCurrency);
 
-            (cache.curDeltas, cache.sqrtPriceX96After) =
-                _swap(poolKey, !oneForZero, int256(uint256(curAmountOut)), 0, params.path[i - 1].hookData);
+            (swapDelta, result.sqrtPriceX96AfterList[i - 1]) =
+                _swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, params.path[i - 1].hookData);
 
             // always clear because sqrtPriceLimitX96 is set to 0 always
             delete amountOutCached;
-            (cache.deltaIn, cache.deltaOut) = !oneForZero
-                ? (-cache.curDeltas.amount0(), -cache.curDeltas.amount1())
-                : (-cache.curDeltas.amount1(), -cache.curDeltas.amount0());
-            result.deltaAmounts[i - 1] += cache.deltaIn;
-            result.deltaAmounts[i] += cache.deltaOut;
 
-            cache.prevAmount = !oneForZero ? uint128(-cache.curDeltas.amount0()) : uint128(-cache.curDeltas.amount1());
-            cache.prevCurrency = params.path[i - 1].intermediateCurrency;
-            result.sqrtPriceX96AfterList[i - 1] = cache.sqrtPriceX96After;
+            if (!oneForZero) {
+                result.deltaAmounts[i - 1] += -swapDelta.amount0();
+                result.deltaAmounts[i] += -swapDelta.amount1();
+                amountOut = uint128(-swapDelta.amount0());
+            } else {
+                result.deltaAmounts[i - 1] += -swapDelta.amount1();
+                result.deltaAmounts[i] += -swapDelta.amount0();
+                amountOut = uint128(-swapDelta.amount1());
+            }
+
+            outputCurrency = params.path[i - 1].intermediateCurrency;
         }
         bytes memory encodedResult = abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList);
         encodedResult.revertWith();
     }
 
-    /// @dev quote an ExactOutput swap on a pool, then revert with the result
+    /// @dev external function called within the _unlockCallback, to simulate a single-hop exact output swap, then revert with the result
     function _quoteExactOutputSingle(QuoteExactSingleParams calldata params) external selfOnly returns (bytes memory) {
         // if no price limit has been specified, cache the output amount for comparison inside the _swap function
         if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.exactAmount;
@@ -218,7 +207,7 @@ contract Quoter is IQuoter, SafeCallback {
         encodedResult.revertWith();
     }
 
-    /// @dev Execute a swap and return the amounts delta, as well as relevant pool state
+    /// @dev Execute a swap and return the amount deltas, as well as the sqrtPrice from the end of the swap
     /// @notice if amountSpecified < 0, the swap is exactInput, otherwise exactOutput
     function _swap(
         PoolKey memory poolKey,
