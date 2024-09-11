@@ -9,7 +9,7 @@ import {StateView} from "../src/lens/StateView.sol";
 import {PositionManager} from "../src/PositionManager.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
-contract DeployPosmTest is Script {
+contract DeployPosm is Script {
     function setUp() public {}
 
     function run(address poolManager, address permit2, uint256 unsubscribeGasLimit)
@@ -18,7 +18,7 @@ contract DeployPosmTest is Script {
     {
         vm.startBroadcast();
 
-        posm = new PositionManager{salt: hex"03"}(
+        posm = new PositionManager{salt: hex"01"}(
             IPoolManager(poolManager), IAllowanceTransfer(permit2), unsubscribeGasLimit
         );
         console2.log("PositionManager", address(posm));
