@@ -22,11 +22,6 @@ contract Quoter is IQuoter, SafeCallback {
     /// @dev cache used to check a safety condition in exact output swaps.
     uint128 private amountOutCached;
 
-    struct QuoteResult {
-        int128[] deltaAmounts;
-        uint160[] sqrtPriceX96AfterList;
-    }
-
     /// @dev Only this address may call this function. Used to mimic internal functions, using an
     /// external call to catch and parse revert reasons
     modifier selfOnly() {
@@ -39,53 +34,53 @@ contract Quoter is IQuoter, SafeCallback {
     /// @inheritdoc IQuoter
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256 gasEstimate)
+        returns (uint256 amountOut, uint160 sqrtPriceX96After, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
         try poolManager.unlock(abi.encodeCall(this._quoteExactInputSingle, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            (deltaAmounts, sqrtPriceX96After) = reason.parseReturnDataSingle();
+            (amountOut, sqrtPriceX96After) = reason.parseReturnDataSingle();
         }
     }
 
     /// @inheritdoc IQuoter
     function quoteExactInput(QuoteExactParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate)
+        returns (uint256 amountOut, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
         try poolManager.unlock(abi.encodeCall(this._quoteExactInput, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            (deltaAmounts, sqrtPriceX96AfterList) = reason.parseReturnData();
+            (amountOut, sqrtPriceX96AfterList) = reason.parseReturnData();
         }
     }
 
     /// @inheritdoc IQuoter
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256 gasEstimate)
+        returns (uint256 amountIn, uint160 sqrtPriceX96After, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
         try poolManager.unlock(abi.encodeCall(this._quoteExactOutputSingle, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
             if (params.sqrtPriceLimitX96 == 0) delete amountOutCached;
-            (deltaAmounts, sqrtPriceX96After) = reason.parseReturnDataSingle();
+            (amountIn, sqrtPriceX96After) = reason.parseReturnDataSingle();
         }
     }
 
     /// @inheritdoc IQuoter
     function quoteExactOutput(QuoteExactParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate)
+        returns (uint256 amountIn, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
         try poolManager.unlock(abi.encodeCall(this._quoteExactOutput, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            (deltaAmounts, sqrtPriceX96AfterList) = reason.parseReturnData();
+            (amountIn, sqrtPriceX96AfterList) = reason.parseReturnData();
         }
     }
 
@@ -101,8 +96,7 @@ contract Quoter is IQuoter, SafeCallback {
     function _quoteExactInput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
-        QuoteResult memory result =
-            QuoteResult({deltaAmounts: new int128[](pathLength + 1), sqrtPriceX96AfterList: new uint160[](pathLength)});
+        uint160[] memory sqrtPriceX96AfterList = new uint160[](pathLength);
         BalanceDelta swapDelta;
         uint128 amountIn = params.exactAmount;
         Currency inputCurrency = params.exactCurrency;
@@ -112,21 +106,14 @@ contract Quoter is IQuoter, SafeCallback {
             pathKey = params.path[i];
             (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(inputCurrency);
 
-            (swapDelta, result.sqrtPriceX96AfterList[i]) =
+            (swapDelta, sqrtPriceX96AfterList[i]) =
                 _swap(poolKey, zeroForOne, -int256(int128(amountIn)), 0, pathKey.hookData);
 
-            if (zeroForOne) {
-                result.deltaAmounts[i] += -swapDelta.amount0();
-                result.deltaAmounts[i + 1] += -swapDelta.amount1();
-                amountIn = uint128(swapDelta.amount1());
-            } else {
-                result.deltaAmounts[i] += -swapDelta.amount1();
-                result.deltaAmounts[i + 1] += -swapDelta.amount0();
-                amountIn = uint128(swapDelta.amount0());
-            }
+            amountIn = zeroForOne ? uint128(swapDelta.amount1()) : uint128(swapDelta.amount0());
             inputCurrency = pathKey.intermediateCurrency;
         }
-        bytes memory encodedResult = abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList);
+        // amountIn after the loop actually holds the amountOut of the trade
+        bytes memory encodedResult = abi.encode(amountIn, sqrtPriceX96AfterList);
         encodedResult.revertWith();
     }
 
@@ -140,12 +127,10 @@ contract Quoter is IQuoter, SafeCallback {
             params.hookData
         );
 
-        int128[] memory deltaAmounts = new int128[](2);
+        // the output delta of a swap is positive
+        uint256 amountOut = params.zeroForOne ? uint128(deltas.amount1()) : uint128(deltas.amount0());
 
-        deltaAmounts[0] = -deltas.amount0();
-        deltaAmounts[1] = -deltas.amount1();
-
-        bytes memory encodedResult = abi.encode(deltaAmounts, sqrtPriceX96After);
+        bytes memory encodedResult = abi.encode(amountOut, sqrtPriceX96After);
         encodedResult.revertWith();
     }
 
@@ -153,8 +138,7 @@ contract Quoter is IQuoter, SafeCallback {
     function _quoteExactOutput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
 
-        QuoteResult memory result =
-            QuoteResult({deltaAmounts: new int128[](pathLength + 1), sqrtPriceX96AfterList: new uint160[](pathLength)});
+        uint160[] memory sqrtPriceX96AfterList = new uint160[](pathLength);
         BalanceDelta swapDelta;
         uint128 amountOut = params.exactAmount;
         Currency outputCurrency = params.exactCurrency;
@@ -166,25 +150,18 @@ contract Quoter is IQuoter, SafeCallback {
 
             (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(outputCurrency);
 
-            (swapDelta, result.sqrtPriceX96AfterList[i - 1]) =
+            (swapDelta, sqrtPriceX96AfterList[i - 1]) =
                 _swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, pathKey.hookData);
 
             // always clear because sqrtPriceLimitX96 is set to 0 always
             delete amountOutCached;
 
-            if (!oneForZero) {
-                result.deltaAmounts[i - 1] += -swapDelta.amount0();
-                result.deltaAmounts[i] += -swapDelta.amount1();
-                amountOut = uint128(-swapDelta.amount0());
-            } else {
-                result.deltaAmounts[i - 1] += -swapDelta.amount1();
-                result.deltaAmounts[i] += -swapDelta.amount0();
-                amountOut = uint128(-swapDelta.amount1());
-            }
+            amountOut = oneForZero ? uint128(-swapDelta.amount1()) : uint128(-swapDelta.amount0());
 
             outputCurrency = pathKey.intermediateCurrency;
         }
-        bytes memory encodedResult = abi.encode(result.deltaAmounts, result.sqrtPriceX96AfterList);
+        // amountOut after the loop exits actually holds the amountIn of the trade
+        bytes memory encodedResult = abi.encode(amountOut, sqrtPriceX96AfterList);
         encodedResult.revertWith();
     }
 
@@ -202,12 +179,11 @@ contract Quoter is IQuoter, SafeCallback {
         );
 
         if (amountOutCached != 0) delete amountOutCached;
-        int128[] memory deltaAmounts = new int128[](2);
 
-        deltaAmounts[0] = -deltas.amount0();
-        deltaAmounts[1] = -deltas.amount1();
+        // the input delta of a swap is negative so we must flip it
+        uint256 amountIn = params.zeroForOne ? uint128(-deltas.amount0()) : uint128(-deltas.amount1());
 
-        bytes memory encodedResult = abi.encode(deltaAmounts, sqrtPriceX96After);
+        bytes memory encodedResult = abi.encode(amountIn, sqrtPriceX96After);
         encodedResult.revertWith();
     }
 

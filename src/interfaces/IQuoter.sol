@@ -43,22 +43,22 @@ interface IQuoter {
     /// exactAmount The desired input amount
     /// sqrtPriceLimitX96 The price limit of the pool that cannot be exceeded by the swap
     /// hookData arbitrary hookData to pass into the associated hooks
-    /// @return deltaAmounts Delta amounts resulted from the swap
+    /// @return amountOut The output quote for the exactIn swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256 gasEstimate);
+        returns (uint256 amountOut, uint160 sqrtPriceX96After, uint256 gasEstimate);
 
     /// @notice Returns the delta amounts along the swap path for a given exact input swap
     /// @param params the params for the quote, encoded as 'QuoteExactParams'
     /// currencyIn The input currency of the swap
     /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
     /// exactAmount The desired input amount
-    /// @return deltaAmounts Delta amounts along the path resulted from the swap
+    /// @return amountOut The output quote for the exactIn swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     function quoteExactInput(QuoteExactParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate);
+        returns (uint256 amountOut, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate);
 
     /// @notice Returns the delta amounts for a given exact output swap of a single pool
     /// @param params The params for the quote, encoded as `QuoteExactSingleParams`
@@ -67,20 +67,20 @@ interface IQuoter {
     /// exactAmount The desired output amount
     /// sqrtPriceLimitX96 The price limit of the pool that cannot be exceeded by the swap
     /// hookData arbitrary hookData to pass into the associated hooks
-    /// @return deltaAmounts Delta amounts resulted from the swap
+    /// @return amountIn The input quote for the exactOut swap
     /// @return sqrtPriceX96After The sqrt price of the pool after the swap
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160 sqrtPriceX96After, uint256 gasEstimate);
+        returns (uint256 amountIn, uint160 sqrtPriceX96After, uint256 gasEstimate);
 
     /// @notice Returns the delta amounts along the swap path for a given exact output swap
     /// @param params the params for the quote, encoded as 'QuoteExactParams'
     /// currencyOut The output currency of the swap
     /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
     /// exactAmount The desired output amount
-    /// @return deltaAmounts Delta amounts along the path resulted from the swap
+    /// @return amountIn The input quote for the exactOut swap
     /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
     function quoteExactOutput(QuoteExactParams memory params)
         external
-        returns (int128[] memory deltaAmounts, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate);
+        returns (uint256 amountIn, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate);
 }
