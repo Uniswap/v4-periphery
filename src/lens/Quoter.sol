@@ -52,7 +52,6 @@ contract Quoter is IQuoter, BaseV4Quoter {
         try poolManager.unlock(abi.encodeCall(this._quoteExactOutputSingle, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            if (params.sqrtPriceLimitX96 == 0) _clearAmountSpecified();
             amountIn = reason.parseReturnData();
         }
     }
@@ -73,7 +72,6 @@ contract Quoter is IQuoter, BaseV4Quoter {
     /// @dev external function called within the _unlockCallback, to simulate an exact input swap, then revert with the result
     function _quoteExactInput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
-
         BalanceDelta swapDelta;
         uint128 amountIn = params.exactAmount;
         Currency inputCurrency = params.exactCurrency;
@@ -110,7 +108,6 @@ contract Quoter is IQuoter, BaseV4Quoter {
     /// @dev external function called within the _unlockCallback, to simulate an exact output swap, then revert with the result
     function _quoteExactOutput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
-
         BalanceDelta swapDelta;
         uint128 amountOut = params.exactAmount;
         Currency outputCurrency = params.exactCurrency;
@@ -118,14 +115,9 @@ contract Quoter is IQuoter, BaseV4Quoter {
 
         for (uint256 i = pathLength; i > 0; i--) {
             pathKey = params.path[i - 1];
-            _setAmountSpecified(amountOut);
-
             (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(outputCurrency);
 
             swapDelta = _swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, pathKey.hookData);
-
-            // always clear because sqrtPriceLimitX96 is set to 0 always
-            _clearAmountSpecified();
 
             amountOut = oneForZero ? uint128(-swapDelta.amount1()) : uint128(-swapDelta.amount0());
 
@@ -137,9 +129,6 @@ contract Quoter is IQuoter, BaseV4Quoter {
 
     /// @dev external function called within the _unlockCallback, to simulate a single-hop exact output swap, then revert with the result
     function _quoteExactOutputSingle(QuoteExactSingleParams calldata params) external selfOnly returns (bytes memory) {
-        // if no price limit has been specified, cache the output amount for comparison inside the _swap function
-        if (params.sqrtPriceLimitX96 == 0) _setAmountSpecified(params.exactAmount);
-
         BalanceDelta swapDelta = _swap(
             params.poolKey,
             params.zeroForOne,
@@ -147,8 +136,6 @@ contract Quoter is IQuoter, BaseV4Quoter {
             params.sqrtPriceLimitX96,
             params.hookData
         );
-
-        _clearAmountSpecified();
 
         // the input delta of a swap is negative so we must flip it
         uint256 amountIn = params.zeroForOne ? uint128(-swapDelta.amount0()) : uint128(-swapDelta.amount1());
