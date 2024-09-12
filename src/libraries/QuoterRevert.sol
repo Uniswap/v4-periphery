@@ -43,10 +43,11 @@ library QuoterRevert {
         return reason.parseAmountUnpecified();
     }
 
+    /// @notice extracts the amountUnspecified from an encoded QuoteSwap(amountUnspecified)
     function parseAmountUnpecified(bytes memory reason) internal pure returns (uint256 amountUnspecified) {
         // reason -> reason+0x1f is the length of the reason string
         // reason+0x20 -> reason+0x23 is the selector of QuoteSwap
-        // reason+0x24 -> reason+0x43 is the amountSpecified
+        // reason+0x24 -> reason+0x43 is the amountUnspecified
         assembly ("memory-safe") {
             amountUnspecified := mload(add(reason, 0x24))
         }
