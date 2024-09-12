@@ -10,14 +10,14 @@ import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PathKey, PathKeyLibrary} from "../libraries/PathKey.sol";
-import {RevertBytes} from "../libraries/RevertBytes.sol";
+import {QuoterRevert} from "../libraries/QuoterRevert.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
 
 contract Quoter is IQuoter, SafeCallback {
     using PoolIdLibrary for PoolKey;
     using PathKeyLibrary for PathKey;
     using StateLibrary for IPoolManager;
-    using RevertBytes for bytes;
+    using QuoterRevert for *;
 
     /// @dev cache used to check a safety condition in exact output swaps.
     uint128 private amountOutCached;
@@ -89,7 +89,7 @@ contract Quoter is IQuoter, SafeCallback {
         (bool success, bytes memory returnData) = address(this).call(data);
         if (success) return returnData;
         if (returnData.length == 0) revert LockFailure();
-        returnData.revertWith();
+        returnData.bubbleReason();
     }
 
     /// @dev external function called within the _unlockCallback, to simulate an exact input swap, then revert with the result
@@ -111,8 +111,7 @@ contract Quoter is IQuoter, SafeCallback {
             inputCurrency = pathKey.intermediateCurrency;
         }
         // amountIn after the loop actually holds the amountOut of the trade
-        bytes memory encodedResult = abi.encode(amountIn);
-        encodedResult.revertWith();
+        amountIn.revertQuote();
     }
 
     /// @dev external function called within the _unlockCallback, to simulate a single-hop exact input swap, then revert with the result
@@ -127,9 +126,7 @@ contract Quoter is IQuoter, SafeCallback {
 
         // the output delta of a swap is positive
         uint256 amountOut = params.zeroForOne ? uint128(swapDelta.amount1()) : uint128(swapDelta.amount0());
-
-        bytes memory encodedResult = abi.encode(amountOut);
-        encodedResult.revertWith();
+        amountOut.revertQuote();
     }
 
     /// @dev external function called within the _unlockCallback, to simulate an exact output swap, then revert with the result
@@ -157,8 +154,7 @@ contract Quoter is IQuoter, SafeCallback {
             outputCurrency = pathKey.intermediateCurrency;
         }
         // amountOut after the loop exits actually holds the amountIn of the trade
-        bytes memory encodedResult = abi.encode(amountOut);
-        encodedResult.revertWith();
+        amountOut.revertQuote();
     }
 
     /// @dev external function called within the _unlockCallback, to simulate a single-hop exact output swap, then revert with the result
@@ -178,9 +174,7 @@ contract Quoter is IQuoter, SafeCallback {
 
         // the input delta of a swap is negative so we must flip it
         uint256 amountIn = params.zeroForOne ? uint128(-swapDelta.amount0()) : uint128(-swapDelta.amount1());
-
-        bytes memory encodedResult = abi.encode(amountIn);
-        encodedResult.revertWith();
+        amountIn.revertQuote();
     }
 
     /// @dev Execute a swap and return the amount deltas, as well as the sqrtPrice from the end of the swap
