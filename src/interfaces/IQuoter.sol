@@ -11,16 +11,9 @@ import {PathKey} from "../libraries/PathKey.sol";
 /// @dev These functions are not marked view because they rely on calling non-view functions and reverting
 /// to compute the result. They are also not gas efficient and should not be called on-chain.
 interface IQuoter {
-    error InvalidLockCaller();
-    error InvalidQuoteBatchParams();
     error InsufficientAmountOut();
     error LockFailure();
     error NotSelf();
-
-    struct PoolDeltas {
-        int128 currency0Delta;
-        int128 currency1Delta;
-    }
 
     struct QuoteExactSingleParams {
         PoolKey poolKey;
@@ -44,10 +37,10 @@ interface IQuoter {
     /// sqrtPriceLimitX96 The price limit of the pool that cannot be exceeded by the swap
     /// hookData arbitrary hookData to pass into the associated hooks
     /// @return amountOut The output quote for the exactIn swap
-    /// @return sqrtPriceX96After The sqrt price of the pool after the swap
+    /// @return gasEstimate Estimated gas units used for the swap
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
         external
-        returns (uint256 amountOut, uint160 sqrtPriceX96After, uint256 gasEstimate);
+        returns (uint256 amountOut, uint256 gasEstimate);
 
     /// @notice Returns the delta amounts along the swap path for a given exact input swap
     /// @param params the params for the quote, encoded as 'QuoteExactParams'
@@ -55,10 +48,10 @@ interface IQuoter {
     /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
     /// exactAmount The desired input amount
     /// @return amountOut The output quote for the exactIn swap
-    /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
+    /// @return gasEstimate Estimated gas units used for the swap
     function quoteExactInput(QuoteExactParams memory params)
         external
-        returns (uint256 amountOut, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate);
+        returns (uint256 amountOut, uint256 gasEstimate);
 
     /// @notice Returns the delta amounts for a given exact output swap of a single pool
     /// @param params The params for the quote, encoded as `QuoteExactSingleParams`
@@ -68,10 +61,10 @@ interface IQuoter {
     /// sqrtPriceLimitX96 The price limit of the pool that cannot be exceeded by the swap
     /// hookData arbitrary hookData to pass into the associated hooks
     /// @return amountIn The input quote for the exactOut swap
-    /// @return sqrtPriceX96After The sqrt price of the pool after the swap
+    /// @return gasEstimate Estimated gas units used for the swap
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         external
-        returns (uint256 amountIn, uint160 sqrtPriceX96After, uint256 gasEstimate);
+        returns (uint256 amountIn, uint256 gasEstimate);
 
     /// @notice Returns the delta amounts along the swap path for a given exact output swap
     /// @param params the params for the quote, encoded as 'QuoteExactParams'
@@ -79,8 +72,8 @@ interface IQuoter {
     /// path The path of the swap encoded as PathKeys that contains currency, fee, tickSpacing, and hook info
     /// exactAmount The desired output amount
     /// @return amountIn The input quote for the exactOut swap
-    /// @return sqrtPriceX96AfterList List of the sqrt price after the swap for each pool in the path
+    /// @return gasEstimate Estimated gas units used for the swap
     function quoteExactOutput(QuoteExactParams memory params)
         external
-        returns (uint256 amountIn, uint160[] memory sqrtPriceX96AfterList, uint256 gasEstimate);
+        returns (uint256 amountIn, uint256 gasEstimate);
 }
