@@ -6,6 +6,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {QuoterRevert} from "../libraries/QuoterRevert.sol";
 import {SqrtPriceLimitHelper} from "../libraries/SqrtPriceLimitHelper.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
+import {CacheAmountSpecified} from "../libraries/CacheAmountSpecified.sol";
 
 abstract contract BaseV4Quoter is SafeCallback {
     using SqrtPriceLimitHelper for uint160;
@@ -17,14 +18,23 @@ abstract contract BaseV4Quoter is SafeCallback {
 
     constructor(IPoolManager _poolManager) SafeCallback(_poolManager) {}
 
-    /// @dev cache used to check a safety condition in exact output swaps.
-    uint128 internal amountOutCached;
-
     /// @dev Only this address may call this function. Used to mimic internal functions, using an
     /// external call to catch and parse revert reasons
     modifier selfOnly() {
         if (msg.sender != address(this)) revert NotSelf();
         _;
+    }
+
+    function _clearAmountSpecified() internal {
+        CacheAmountSpecified.set(0);
+    }
+
+    function _setAmountSpecified(uint256 amountSpecified) internal {
+        CacheAmountSpecified.set(amountSpecified);
+    }
+
+    function _getAmountSpecified() internal returns (uint256 amountSpecified) {
+        return CacheAmountSpecified.get();
     }
 
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
@@ -54,6 +64,7 @@ abstract contract BaseV4Quoter is SafeCallback {
             hookData
         );
         // only exactOut case
+        uint256 amountOutCached = _getAmountSpecified();
         if (amountOutCached != 0 && amountOutCached != uint128(zeroForOne ? swapDelta.amount1() : swapDelta.amount0()))
         {
             revert InsufficientAmountOut();
