@@ -1,35 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.0;
 
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IQuoter} from "../interfaces/IQuoter.sol";
 import {PathKey, PathKeyLibrary} from "../libraries/PathKey.sol";
 import {QuoterRevert} from "../libraries/QuoterRevert.sol";
-import {SafeCallback} from "../base/SafeCallback.sol";
+import {BaseV4Quoter} from "../base/BaseV4Quoter.sol";
 
-contract Quoter is IQuoter, SafeCallback {
-    using PoolIdLibrary for PoolKey;
+contract Quoter is IQuoter, BaseV4Quoter {
     using PathKeyLibrary for PathKey;
-    using StateLibrary for IPoolManager;
     using QuoterRevert for *;
 
-    /// @dev cache used to check a safety condition in exact output swaps.
-    uint128 private amountOutCached;
-
-    /// @dev Only this address may call this function. Used to mimic internal functions, using an
-    /// external call to catch and parse revert reasons
-    modifier selfOnly() {
-        if (msg.sender != address(this)) revert NotSelf();
-        _;
-    }
-
-    constructor(IPoolManager _poolManager) SafeCallback(_poolManager) {}
+    constructor(IPoolManager _poolManager) BaseV4Quoter(_poolManager) {}
 
     /// @inheritdoc IQuoter
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
@@ -82,14 +68,6 @@ contract Quoter is IQuoter, SafeCallback {
             gasEstimate = gasBefore - gasleft();
             amountIn = reason.parseReturnData();
         }
-    }
-
-    function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        // Call this contract with the data in question. Each quote path
-        (bool success, bytes memory returnData) = address(this).call(data);
-        if (success) return returnData;
-        if (returnData.length == 0) revert LockFailure();
-        returnData.bubbleReason();
     }
 
     /// @dev external function called within the _unlockCallback, to simulate an exact input swap, then revert with the result
@@ -175,37 +153,5 @@ contract Quoter is IQuoter, SafeCallback {
         // the input delta of a swap is negative so we must flip it
         uint256 amountIn = params.zeroForOne ? uint128(-swapDelta.amount0()) : uint128(-swapDelta.amount1());
         amountIn.revertQuote();
-    }
-
-    /// @dev Execute a swap and return the amount deltas, as well as the sqrtPrice from the end of the swap
-    /// @notice if amountSpecified < 0, the swap is exactInput, otherwise exactOutput
-    function _swap(
-        PoolKey memory poolKey,
-        bool zeroForOne,
-        int256 amountSpecified,
-        uint160 sqrtPriceLimitX96,
-        bytes calldata hookData
-    ) private returns (BalanceDelta swapDelta) {
-        swapDelta = poolManager.swap(
-            poolKey,
-            IPoolManager.SwapParams({
-                zeroForOne: zeroForOne,
-                amountSpecified: amountSpecified,
-                sqrtPriceLimitX96: _sqrtPriceLimitOrDefault(sqrtPriceLimitX96, zeroForOne)
-            }),
-            hookData
-        );
-        // only exactOut case
-        if (amountOutCached != 0 && amountOutCached != uint128(zeroForOne ? swapDelta.amount1() : swapDelta.amount0()))
-        {
-            revert InsufficientAmountOut();
-        }
-    }
-
-    /// @dev return either the sqrtPriceLimit from user input, or the max/min value possible depending on trade direction
-    function _sqrtPriceLimitOrDefault(uint160 sqrtPriceLimitX96, bool zeroForOne) private pure returns (uint160) {
-        return sqrtPriceLimitX96 == 0
-            ? zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
-            : sqrtPriceLimitX96;
     }
 }

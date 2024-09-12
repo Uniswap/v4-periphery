@@ -11,10 +11,6 @@ import {PathKey} from "../libraries/PathKey.sol";
 /// @dev These functions are not marked view because they rely on calling non-view functions and reverting
 /// to compute the result. They are also not gas efficient and should not be called on-chain.
 interface IQuoter {
-    error InsufficientAmountOut();
-    error LockFailure();
-    error NotSelf();
-
     struct QuoteExactSingleParams {
         PoolKey poolKey;
         bool zeroForOne;

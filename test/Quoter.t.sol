@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {PathKey} from "../src/libraries/PathKey.sol";
 import {IQuoter} from "../src/interfaces/IQuoter.sol";
 import {Quoter} from "../src/lens/Quoter.sol";
+import {BaseV4Quoter} from "../src/base/BaseV4Quoter.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 
 // v4-core
@@ -118,7 +119,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
     // nested self-call into unlockCallback reverts
     function testQuoter_callUnlockCallback_reverts() public {
-        vm.expectRevert(IQuoter.LockFailure.selector);
+        vm.expectRevert(BaseV4Quoter.LockFailure.selector);
         vm.prank(address(manager));
         quoter.unlockCallback(abi.encodeWithSelector(quoter.unlockCallback.selector, address(this), "0x"));
     }
