@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: UNLICENSED
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
@@ -30,7 +30,6 @@ abstract contract BaseV4Quoter is SafeCallback {
         // Call this contract with the data in question. Each quote path
         (bool success, bytes memory returnData) = address(this).call(data);
         if (success) return returnData;
-        if (returnData.length == 0) revert LockFailure();
         returnData.bubbleReason();
     }
 

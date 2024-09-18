@@ -85,7 +85,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         uint256 amountIn = 10000;
         uint256 expectedAmountOut = 9871;
 
-        (uint256 amountOut,) = quoter.quoteExactInputSingle(
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInputSingle(
             IQuoter.QuoteExactSingleParams({
                 poolKey: key02,
                 zeroForOne: true,
@@ -96,6 +96,8 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         );
         snapLastCall("Quoter_exactInputSingle_zeroForOne_multiplePositions");
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, expectedAmountOut);
     }
 
@@ -103,7 +105,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         uint256 amountIn = 10000;
         uint256 expectedAmountOut = 9871;
 
-        (uint256 amountOut,) = quoter.quoteExactInputSingle(
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInputSingle(
             IQuoter.QuoteExactSingleParams({
                 poolKey: key02,
                 zeroForOne: false,
@@ -114,14 +116,9 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         );
         snapLastCall("Quoter_exactInputSingle_oneForZero_multiplePositions");
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, expectedAmountOut);
-    }
-
-    // nested self-call into unlockCallback reverts
-    function testQuoter_callUnlockCallback_reverts() public {
-        vm.expectRevert(BaseV4Quoter.LockFailure.selector);
-        vm.prank(address(manager));
-        quoter.unlockCallback(abi.encodeWithSelector(quoter.unlockCallback.selector, address(this), "0x"));
     }
 
     function testQuoter_quoteExactInput_0to2_2TicksLoaded() public {
@@ -129,8 +126,10 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token2);
         IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
-        (uint256 amountOut,) = quoter.quoteExactInput(params);
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, 9871);
     }
 
@@ -142,8 +141,10 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         // -120 is an initialized tick for this pool. We check that we don't count it.
         IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 6200);
 
-        (uint256 amountOut,) = quoter.quoteExactInput(params);
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, 6143);
     }
 
@@ -155,10 +156,12 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         // -60 is an initialized tick for this pool. We check that we don't count it.
         IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 4000);
 
-        (uint256 amountOut,) = quoter.quoteExactInput(params);
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
         snapLastCall("Quoter_quoteExactInput_oneHop_1TickLoaded");
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, 3971);
     }
 
@@ -167,8 +170,10 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token2);
         IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10);
 
-        (uint256 amountOut,) = quoter.quoteExactInput(params);
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, 8);
     }
 
@@ -178,8 +183,10 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token2);
         IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10);
 
-        (uint256 amountOut,) = quoter.quoteExactInput(params);
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, 8);
     }
 
@@ -188,8 +195,10 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token0);
         IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
-        (uint256 amountOut,) = quoter.quoteExactInput(params);
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, 9871);
     }
 
@@ -201,10 +210,12 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         // 120 is an initialized tick for this pool. We check that we don't count it.
         IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 6250);
 
-        (uint256 amountOut,) = quoter.quoteExactInput(params);
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
         snapLastCall("Quoter_quoteExactInput_oneHop_initializedAfter");
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, 6190);
     }
 
@@ -215,10 +226,12 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 200);
 
         // Tick 0 initialized. Tick after = 1
-        (uint256 amountOut,) = quoter.quoteExactInput(params);
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
         snapLastCall("Quoter_quoteExactInput_oneHop_startingInitialized");
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, 198);
     }
 
@@ -228,8 +241,10 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token0);
         IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 103);
 
-        (uint256 amountOut,) = quoter.quoteExactInput(params);
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, 101);
     }
 
@@ -238,7 +253,9 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token1);
         IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
-        (uint256 amountOut,) = quoter.quoteExactInput(params);
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, 9871);
     }
 
@@ -248,15 +265,17 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token1);
         IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
-        (uint256 amountOut,) = quoter.quoteExactInput(params);
+        (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
         snapLastCall("Quoter_quoteExactInput_twoHops");
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountOut, 9745);
     }
 
     function testQuoter_quoteExactOutputSingle_0to1() public {
-        (uint256 amountIn,) = quoter.quoteExactOutputSingle(
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutputSingle(
             IQuoter.QuoteExactSingleParams({
                 poolKey: key01,
                 zeroForOne: true,
@@ -267,11 +286,13 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         );
         snapLastCall("Quoter_exactOutputSingle_zeroForOne");
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 9981);
     }
 
     function testQuoter_quoteExactOutputSingle_1to0() public {
-        (uint256 amountIn,) = quoter.quoteExactOutputSingle(
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutputSingle(
             IQuoter.QuoteExactSingleParams({
                 poolKey: key01,
                 zeroForOne: false,
@@ -282,6 +303,8 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         );
         snapLastCall("Quoter_exactOutputSingle_oneForZero");
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 9981);
     }
 
@@ -290,10 +313,11 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token2);
         IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 15000);
 
-        (uint256 amountIn,) = quoter.quoteExactOutput(params);
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
         snapLastCall("Quoter_quoteExactOutput_oneHop_2TicksLoaded");
-
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 15273);
     }
 
@@ -303,9 +327,11 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6143);
 
-        (uint256 amountIn,) = quoter.quoteExactOutput(params);
-        snapLastCall("Quoter_quoteExactOutput_oneHop_initializedAfter");
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
+        snapLastCall("Quoter_quoteExactOutput_oneHop_initializedAfter");
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 6200);
     }
 
@@ -315,9 +341,11 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 4000);
 
-        (uint256 amountIn,) = quoter.quoteExactOutput(params);
-        snapLastCall("Quoter_quoteExactOutput_oneHop_1TickLoaded");
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
+        snapLastCall("Quoter_quoteExactOutput_oneHop_1TickLoaded");
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 4029);
     }
 
@@ -329,9 +357,11 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 100);
 
         // Tick 0 initialized. Tick after = 1
-        (uint256 amountIn,) = quoter.quoteExactOutput(params);
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
         snapLastCall("Quoter_quoteExactOutput_oneHop_startingInitialized");
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 102);
     }
 
@@ -341,8 +371,10 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 10);
 
-        (uint256 amountIn,) = quoter.quoteExactOutput(params);
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 12);
     }
 
@@ -351,8 +383,10 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token0);
         IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 15000);
 
-        (uint256 amountIn,) = quoter.quoteExactOutput(params);
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 15273);
     }
 
@@ -362,8 +396,10 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6223);
 
-        (uint256 amountIn,) = quoter.quoteExactOutput(params);
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 6283);
     }
 
@@ -372,8 +408,10 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         tokenPath.push(token0);
 
         IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6000);
-        (uint256 amountIn,) = quoter.quoteExactOutput(params);
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 6055);
     }
 
@@ -383,8 +421,10 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 9871);
 
-        (uint256 amountIn,) = quoter.quoteExactOutput(params);
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 10000);
     }
 
@@ -395,10 +435,12 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 9745);
 
-        (uint256 amountIn,) = quoter.quoteExactOutput(params);
+        (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
         snapLastCall("Quoter_quoteExactOutput_twoHops");
 
+        assertGt(gasEstimate, 50000);
+        assertLt(gasEstimate, 400000);
         assertEq(amountIn, 10000);
     }
 
