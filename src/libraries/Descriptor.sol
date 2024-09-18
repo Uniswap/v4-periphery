@@ -10,8 +10,8 @@ import "@openzeppelin/contracts/utils/Base64.sol";
 import "./NFTSVG.sol";
 import "./HexStrings.sol";
 
-import "forge-std/console2.sol";
-
+/// @title Descriptor
+/// @notice Describes NFT token positions
 library Descriptor {
     using TickMath for int24;
     using Strings for uint256;
@@ -37,23 +37,25 @@ library Descriptor {
         address hooks;
     }
 
+    /// @notice Constructs the token URI for a Uniswap V4 NFT
+    /// @param params Parameters needed to construct the token URI
+    /// @return The token URI as a string
     function constructTokenURI(ConstructTokenURIParams calldata params) public pure returns (string memory) {
         string memory name = generateName(params, feeToPercentString(params.fee));
         string memory descriptionPartOne = generateDescriptionPartOne(
             escapeQuotes(params.quoteCurrencySymbol),
             escapeQuotes(params.baseCurrencySymbol),
-            addressToString(params.poolManager)
+            addressToString(params.poolManager),
+            addressToString(Currency.unwrap(params.quoteCurrency))
         );
         string memory descriptionPartTwo = generateDescriptionPartTwo(
             params.tokenId.toString(),
             escapeQuotes(params.baseCurrencySymbol),
-            addressToString(Currency.unwrap(params.quoteCurrency)),
             addressToString(Currency.unwrap(params.baseCurrency)),
             addressToString(params.hooks),
             feeToPercentString(params.fee)
         );
-        //string memory image = Base64.encode(bytes(generateSVGImage(params)));
-        string memory image = "";
+        string memory image = Base64.encode(bytes(generateSVGImage(params)));
 
         return string(
             abi.encodePacked(
@@ -77,6 +79,9 @@ library Descriptor {
         );
     }
 
+    /// @notice Escapes double quotes in a string if they are present
+    /// @param symbol The string to escape
+    /// @return The string with double quotes escaped
     function escapeQuotes(string memory symbol) internal pure returns (string memory) {
         bytes memory symbolBytes = bytes(symbol);
         uint8 quotesCount = 0;
@@ -103,10 +108,17 @@ library Descriptor {
         return symbol;
     }
 
+    /// @notice Generates the first part of the description for a Uniswap V4 NFT
+    /// @param quoteCurrencySymbol The symbol of the quote currency
+    /// @param baseCurrencySymbol The symbol of the base currency
+    /// @param poolManager The address of the pool manager
+    /// @param quoteCurrency The address of the quote currency
+    /// @return The first part of the description
     function generateDescriptionPartOne(
         string memory quoteCurrencySymbol,
         string memory baseCurrencySymbol,
-        string memory poolManager
+        string memory poolManager,
+        string memory quoteCurrency
     ) private pure returns (string memory) {
         return string(
             abi.encodePacked(
@@ -119,24 +131,30 @@ library Descriptor {
                 "\\nPool Manager Address: ",
                 poolManager,
                 "\\n",
-                quoteCurrencySymbol
+                quoteCurrencySymbol,
+                " Address: ",
+                quoteCurrency,
+                "\\n"
             )
         );
     }
 
+    /// @notice Generates the second part of the description for a Uniswap V4 NFTs
+    /// @param tokenId The token ID
+    /// @param baseCurrencySymbol The symbol of the base currency
+    /// @param baseCurrency The address of the base currency
+    /// @param hooks The address of the hooks contract
+    /// @param feeTier The fee tier of the pool
+    /// @return The second part of the description
     function generateDescriptionPartTwo(
         string memory tokenId,
         string memory baseCurrencySymbol,
-        string memory quoteCurrency,
         string memory baseCurrency,
         string memory hooks,
         string memory feeTier
     ) private pure returns (string memory) {
         return string(
             abi.encodePacked(
-                " Address: ",
-                quoteCurrency,
-                "\\n",
                 baseCurrencySymbol,
                 " Address: ",
                 baseCurrency,
@@ -152,11 +170,16 @@ library Descriptor {
         );
     }
 
+    /// @notice Generates the name for a Uniswap V4 NFT
+    /// @param params Parameters needed to generate the name
+    /// @param feeTier The fee tier of the pool
+    /// @return The name of the NFT
     function generateName(ConstructTokenURIParams calldata params, string memory feeTier)
         private
         pure
         returns (string memory)
     {
+        // image shows in terms of price, ie quoteCurrency/baseCurrency
         return string(
             abi.encodePacked(
                 "Uniswap - ",
@@ -204,6 +227,7 @@ library Descriptor {
         bool isPercent;
     }
 
+
     function generateDecimalString(DecimalStringParams memory params) private pure returns (string memory) {
         bytes memory buffer = new bytes(params.bufferLength);
         if (params.isPercent) {
@@ -234,6 +258,14 @@ library Descriptor {
         return string(buffer);
     }
 
+    /// @notice Gets the price (quote/base) at a specific tick in decimal form
+    /// MIN or MAX are returned if tick is at the bottom or top of the price curve
+    /// @param tick The tick (either tickLower or tickUpper)
+    /// @param tickSpacing The tick spacing of the pool
+    /// @param baseCurrencyDecimals The decimals of the base currency
+    /// @param quoteCurrencyDecimals The decimals of the quote currency
+    /// @param flipRatio True if the ratio was flipped
+    /// @return The ratio value as a string
     function tickToDecimalString(
         int24 tick,
         int24 tickSpacing,
@@ -257,10 +289,10 @@ library Descriptor {
     function sigfigsRounded(uint256 value, uint8 digits) private pure returns (uint256, bool) {
         bool extraDigit;
         if (digits > 5) {
-            value = value / ((10 ** (digits - 5)));
+            value = value / (10 ** (digits - 5));
         }
         bool roundUp = value % 10 > 4;
-        value = value / (10);
+        value = value / 10;
         if (roundUp) {
             value = value + 1;
         }
@@ -272,6 +304,11 @@ library Descriptor {
         return (value, extraDigit);
     }
 
+    /// @notice Adjusts the sqrt price for different currencies with different decimals
+    /// @param sqrtRatioX96 The sqrt price at a specific tick
+    /// @param baseCurrencyDecimals The decimals of the base currency
+    /// @param quoteCurrencyDecimals The decimals of the quote currency
+    /// @return adjustedSqrtRatioX96 The adjusted sqrt price
     function adjustForDecimalPrecision(uint160 sqrtRatioX96, uint8 baseCurrencyDecimals, uint8 quoteCurrencyDecimals)
         private
         pure
@@ -295,22 +332,25 @@ library Descriptor {
         }
     }
 
+    /// @notice Absolute value of a signed integer
+    /// @param x The signed integer
+    /// @return The absolute value of x
     function abs(int256 x) private pure returns (uint256) {
         return uint256(x >= 0 ? x : -x);
     }
 
-    // @notice Returns string that includes first 5 significant figures of a decimal number
-    // @param sqrtRatioX96 a sqrt price
+    /// @notice Returns string that includes first 5 significant figures of a decimal number
+    /// @param sqrtRatioX96 a sqrt price
+    /// @param baseCurrencyDecimals The decimals of the base currency
+    /// @param quoteCurrencyDecimals The decimals of the quote currency
+    /// @return The decimal string
     function fixedPointToDecimalString(uint160 sqrtRatioX96, uint8 baseCurrencyDecimals, uint8 quoteCurrencyDecimals)
         internal
         pure
         returns (string memory)
     {
-        console2.log("fixedpointtodecimalstring");
-        console2.log("sqrtRatioX96", sqrtRatioX96);
         uint256 adjustedSqrtRatioX96 =
             adjustForDecimalPrecision(sqrtRatioX96, baseCurrencyDecimals, quoteCurrencyDecimals);
-        console2.log("adjustedSqrtRatioX96", adjustedSqrtRatioX96);
         uint256 value = FullMath.mulDiv(adjustedSqrtRatioX96, adjustedSqrtRatioX96, 1 << 64);
 
         bool priceBelow1 = adjustedSqrtRatioX96 < 2 ** 96;
@@ -364,8 +404,9 @@ library Descriptor {
         return generateDecimalString(params);
     }
 
-    // @notice Returns string as decimal percentage of fee amount.
-    // @param fee fee amount
+    /// @notice Converts fee amount in pips to decimal string with percent sign
+    /// @param fee fee amount
+    /// @return fee as a decimal string with percent sign
     function feeToPercentString(uint24 fee) internal pure returns (string memory) {
         if (fee == 0) {
             return "0%";
@@ -414,76 +455,91 @@ library Descriptor {
         return generateDecimalString(params);
     }
 
+    /// @notice Converts an address to a string
+    /// @param addr The address to convert
+    /// @return The address as a string
     function addressToString(address addr) internal pure returns (string memory) {
         return (uint256(uint160(addr))).toHexString(20);
     }
 
-    // function generateSVGImage(ConstructTokenURIParams memory params) internal pure returns (string memory svg) {
-    //     NFTSVG.SVGParams memory svgParams =
-    //         NFTSVG.SVGParams({
-    //             quoteCurrency: addressToString(Currency.unwrap(params.quoteCurrency)),
-    //             baseCurrency: addressToString(Currency.unwrap(params.baseCurrency)),
-    //             hooks: params.hooks,
-    //             quoteCurrencySymbol: params.quoteCurrencySymbol,
-    //             baseCurrencySymbol: params.baseCurrencySymbol,
-    //             feeTier: feeToPercentString(params.fee),
-    //             tickLower: params.tickLower,
-    //             tickUpper: params.tickUpper,
-    //             tickSpacing: params.tickSpacing,
-    //             overRange: overRange(params.tickLower, params.tickUpper, params.tickCurrent),
-    //             tokenId: params.tokenId,
-    //             color0: currencyToColorHex(params.quoteCurrency.toId(), 136),
-    //             color1: currencyToColorHex(params.baseCurrency.toId(), 136),
-    //             color2: currencyToColorHex(params.quoteCurrency.toId(), 0),
-    //             color3: currencyToColorHex(params.baseCurrency.toId(), 0),
-    //             x1: scale(getCircleCoord(params.quoteCurrency.toId(), 16, params.tokenId), 0, 255, 16, 274),
-    //             y1: scale(getCircleCoord(params.baseCurrency.toId(), 16, params.tokenId), 0, 255, 100, 484),
-    //             x2: scale(getCircleCoord(params.quoteCurrency.toId(), 32, params.tokenId), 0, 255, 16, 274),
-    //             y2: scale(getCircleCoord(params.baseCurrency.toId(), 32, params.tokenId), 0, 255, 100, 484),
-    //             x3: scale(getCircleCoord(params.quoteCurrency.toId(), 48, params.tokenId), 0, 255, 16, 274),
-    //             y3: scale(getCircleCoord(params.baseCurrency.toId(), 48, params.tokenId), 0, 255, 100, 484)
-    //         });
+    /// @notice Generates the SVG image for a Uniswap V4 NFT
+    /// @param params Parameters needed to generate the SVG image
+    /// @return svg The SVG image as a string
+    function generateSVGImage(ConstructTokenURIParams memory params) internal pure returns (string memory svg) {
+        NFTSVG.SVGParams memory svgParams =
+            NFTSVG.SVGParams({
+                quoteCurrency: addressToString(Currency.unwrap(params.quoteCurrency)),
+                baseCurrency: addressToString(Currency.unwrap(params.baseCurrency)),
+                hooks: params.hooks,
+                quoteCurrencySymbol: params.quoteCurrencySymbol,
+                baseCurrencySymbol: params.baseCurrencySymbol,
+                feeTier: feeToPercentString(params.fee),
+                tickLower: params.tickLower,
+                tickUpper: params.tickUpper,
+                tickSpacing: params.tickSpacing,
+                overRange: overRange(params.tickLower, params.tickUpper, params.tickCurrent),
+                tokenId: params.tokenId,
+                color0: currencyToColorHex(params.quoteCurrency.toId(), 136),
+                color1: currencyToColorHex(params.baseCurrency.toId(), 136),
+                color2: currencyToColorHex(params.quoteCurrency.toId(), 0),
+                color3: currencyToColorHex(params.baseCurrency.toId(), 0),
+                x1: scale(getCircleCoord(params.quoteCurrency.toId(), 16, params.tokenId), 0, 255, 16, 274),
+                y1: scale(getCircleCoord(params.baseCurrency.toId(), 16, params.tokenId), 0, 255, 100, 484),
+                x2: scale(getCircleCoord(params.quoteCurrency.toId(), 32, params.tokenId), 0, 255, 16, 274),
+                y2: scale(getCircleCoord(params.baseCurrency.toId(), 32, params.tokenId), 0, 255, 100, 484),
+                x3: scale(getCircleCoord(params.quoteCurrency.toId(), 48, params.tokenId), 0, 255, 16, 274),
+                y3: scale(getCircleCoord(params.baseCurrency.toId(), 48, params.tokenId), 0, 255, 100, 484)
+            });
 
-    //     return NFTSVG.generateSVG(svgParams);
-    // }
+        return NFTSVG.generateSVG(svgParams);
+    }
 
-    // function overRange(
-    //     int24 tickLower,
-    //     int24 tickUpper,
-    //     int24 tickCurrent
-    // ) private pure returns (int8) {
-    //     if (tickCurrent < tickLower) {
-    //         return -1;
-    //     } else if (tickCurrent > tickUpper) {
-    //         return 1;
-    //     } else {
-    //         return 0;
-    //     }
-    // }
+    /// @notice Checks if the current tick is within the tick range, above, or below
+    /// @param tickLower The lower tick
+    /// @param tickUpper The upper tick
+    /// @param tickCurrent The current tick
+    /// @return 0 if current tick is within range, -1 if below, 1 if above
+    function overRange(
+        int24 tickLower,
+        int24 tickUpper,
+        int24 tickCurrent
+    ) private pure returns (int8) {
+        if (tickCurrent < tickLower) {
+            return -1;
+        } else if (tickCurrent > tickUpper) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
 
-    // function scale(
-    //     uint256 n,
-    //     uint256 inMn,
-    //     uint256 inMx,
-    //     uint256 outMn,
-    //     uint256 outMx
-    // ) private pure returns (string memory) {
-    //     return (n - (inMn) * (outMx - (outMn)) / (inMx - (inMn)) + (outMn)).toString();
-    // }
+    function scale(
+        uint256 n,
+        uint256 inMn,
+        uint256 inMx,
+        uint256 outMn,
+        uint256 outMx
+    ) private pure returns (string memory) {
+        return (n - inMn * (outMx - outMn) / (inMx - inMn) + outMn).toString();
+    }
 
-    // function currencyToColorHex(uint256 currency, uint256 offset) internal pure returns (string memory str) {
-    //     return string((currency >> offset).toHexStringNoPrefix(3));
-    // }
+    /// @notice Converts a currency ID to a color hex to be used in the SVG
+    /// @param currency The currency ID
+    /// @param offset The offset to slice the token hex
+    /// @return str The color hex as a string
+    function currencyToColorHex(uint256 currency, uint256 offset) internal pure returns (string memory str) {
+        return string((currency >> offset).toHexStringNoPrefix(3));
+    }
 
-    // function getCircleCoord(
-    //     uint256 currency,
-    //     uint256 offset,
-    //     uint256 tokenId
-    // ) internal pure returns (uint256) {
-    //     return (sliceTokenHex(currency, offset) * tokenId) % 255;
-    // }
+    function getCircleCoord(
+        uint256 currency,
+        uint256 offset,
+        uint256 tokenId
+    ) internal pure returns (uint256) {
+        return (sliceTokenHex(currency, offset) * tokenId) % 255;
+    }
 
-    // function sliceTokenHex(uint256 currency, uint256 offset) internal pure returns (uint256) {
-    //     return uint256(uint8(currency >> offset));
-    // }
+    function sliceTokenHex(uint256 currency, uint256 offset) internal pure returns (uint256) {
+        return uint256(uint8(currency >> offset));
+    }
 }

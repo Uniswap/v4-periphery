@@ -10,10 +10,10 @@ import "forge-std/console2.sol";
 contract DeployPoolManager is Script {
     function setUp() public {}
 
-    function run(uint256 controllerGasLimit) public returns (IPoolManager manager) {
+    function run() public returns (IPoolManager manager) {
         vm.startBroadcast();
 
-        manager = new PoolManager(controllerGasLimit);
+        manager = new PoolManager();
         console2.log("PoolManager", address(manager));
 
         vm.stopBroadcast();

@@ -22,6 +22,14 @@ contract MockCalldataDecoder {
         bytes hookData;
     }
 
+    function decodeActionsRouterParams(bytes calldata params)
+        external
+        pure
+        returns (bytes calldata actions, bytes[] calldata actionParams)
+    {
+        return params.decodeActionsRouterParams();
+    }
+
     function decodeModifyLiquidityParams(bytes calldata params)
         external
         pure

@@ -12,4 +12,8 @@ contract MockERC721Permit is ERC721Permit_v4 {
         tokenId = ++lastTokenId;
         _mint(msg.sender, tokenId);
     }
+
+    function tokenURI(uint256 id) public view override returns (string memory) {
+        return "mock";
+    }
 }

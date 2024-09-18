@@ -24,11 +24,14 @@ contract PositionDescriptor is IPositionDescriptor {
     using CurrencyLibrary for Currency;
     using PositionInfoLibrary for PositionInfo;
 
+    // mainnet addresses
     address private constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address private constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address private constant USDT = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
     address private constant TBTC = 0x8dAEBADE922dF735c38C80C7eBD708Af50815fAa;
     address private constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
+
+    // optimism, polygon, arbitrum, base?
 
     address public immutable WETH9;
     /// @dev A null-terminated string
@@ -61,7 +64,11 @@ contract PositionDescriptor is IPositionDescriptor {
         (PoolKey memory poolKey, PositionInfo positionInfo) = positionManager.getPoolAndPositionInfo(tokenId);
         (, int24 tick,,) = poolManager.getSlot0(poolKey.toId());
 
+        // flip if currency0 priority is greater than currency1 priority
         bool _flipRatio = flipRatio(Currency.unwrap(poolKey.currency0), Currency.unwrap(poolKey.currency1));
+
+        // If not flipped, quote currency is currency1, base currency is currency0
+        // If flipped, quote currency is currency0, base currency is currency1
         Currency quoteCurrency = !_flipRatio ? poolKey.currency1 : poolKey.currency0;
         Currency baseCurrency = !_flipRatio ? poolKey.currency0 : poolKey.currency1;
 
@@ -70,16 +77,17 @@ contract PositionDescriptor is IPositionDescriptor {
                 tokenId: tokenId,
                 quoteCurrency: quoteCurrency,
                 baseCurrency: baseCurrency,
-                quoteCurrencySymbol: Currency.unwrap(quoteCurrency) == WETH9 || quoteCurrency.isNative()
+                // if currency is weth, use 'WETH' as symbol?
+                quoteCurrencySymbol: Currency.unwrap(quoteCurrency) == WETH9 || quoteCurrency.isAddressZero()
                     ? nativeCurrencyLabel()
                     : SafeERC20Namer.tokenSymbol(Currency.unwrap(quoteCurrency)),
-                baseCurrencySymbol: Currency.unwrap(baseCurrency) == WETH9 || baseCurrency.isNative()
+                baseCurrencySymbol: Currency.unwrap(baseCurrency) == WETH9 || baseCurrency.isAddressZero()
                     ? nativeCurrencyLabel()
                     : SafeERC20Namer.tokenSymbol(Currency.unwrap(baseCurrency)),
-                quoteCurrencyDecimals: quoteCurrency.isNative()
+                quoteCurrencyDecimals: quoteCurrency.isAddressZero()
                     ? 18
                     : IERC20Metadata(Currency.unwrap(quoteCurrency)).decimals(),
-                baseCurrencyDecimals: baseCurrency.isNative()
+                baseCurrencyDecimals: baseCurrency.isAddressZero()
                     ? 18
                     : IERC20Metadata(Currency.unwrap(baseCurrency)).decimals(),
                 flipRatio: _flipRatio,
@@ -94,11 +102,20 @@ contract PositionDescriptor is IPositionDescriptor {
         );
     }
 
+    /// @notice Returns true if currency0 has higher priority than currency1
+    /// @param currency0 The first currency
+    /// @param currency1 The second currency
+    /// @return flipRatio True if currency0 has higher priority than currency1
     function flipRatio(address currency0, address currency1) public view returns (bool) {
         return currencyRatioPriority(currency0) > currencyRatioPriority(currency1);
     }
 
+    /// @notice Returns the priority of a currency. 
+    /// For certain currencies on mainnet, the smaller the currency, the higher the priority
+    /// @param currency The currency
+    /// @return priority The priority of the currency
     function currencyRatioPriority(address currency) public view returns (int256) {
+        // Currencies in order of priority on mainnet: USDC, USDT, DAI, WETH, TBTC, WBTC
         if (currency == WETH9) {
             return CurrencyRatioSortOrder.DENOMINATOR;
         }

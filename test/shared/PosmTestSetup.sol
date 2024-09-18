@@ -15,15 +15,15 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {HookSavesDelta} from "./HookSavesDelta.sol";
 import {HookModifyLiquidities} from "./HookModifyLiquidities.sol";
-import {ERC721PermitHashLibrary} from "../../src/libraries/ERC721PermitHash.sol";
-import {IPositionDescriptor} from "../../src/interfaces/IPositionDescriptor.sol";
+import {PositionDescriptor} from "../../src/PositionDescriptor.sol";
+import {ERC721PermitHash} from "../../src/libraries/ERC721PermitHash.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
-contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations, IPositionDescriptor {
+contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
     IAllowanceTransfer permit2;
-    IPositionDescriptor public positionDescriptor;
+    PositionDescriptor public positionDescriptor;
     HookSavesDelta hook;
     address hookAddr = address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
 
@@ -41,10 +41,6 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations, I
         hook = HookSavesDelta(hookAddr);
     }
 
-    function deployPositionDescriptor() public {
-        positionDescriptor = IPositionDescriptor(manager, 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, "ETH");
-    }
-
     /// @dev deploys a special test hook where beforeSwap hookData is used to modify liquidity
     function deployPosmHookModifyLiquidities() public {
         HookModifyLiquidities impl = new HookModifyLiquidities();
@@ -56,14 +52,15 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations, I
     }
 
     function deployAndApprovePosm(IPoolManager poolManager) public {
-        deployPosm(poolManager, deployPositionDescriptor());
+        deployPosm(poolManager);
         approvePosm();
     }
 
-    function deployPosm(IPoolManager poolManager, IPositionDescriptor tokenDescriptor) internal {
+    function deployPosm(IPoolManager poolManager) internal {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
-        lpm = new PositionManager(poolManager, permit2, tokenDescriptor);
+        positionDescriptor = new PositionDescriptor(poolManager, 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, "ETH");
+        lpm = new PositionManager(poolManager, permit2, 100_000, positionDescriptor);
     }
 
     function seedBalance(address to) internal {
@@ -110,7 +107,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations, I
             abi.encodePacked(
                 "\x19\x01",
                 lpm.DOMAIN_SEPARATOR(),
-                keccak256(abi.encode(ERC721PermitHashLibrary.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline))
+                keccak256(abi.encode(ERC721PermitHash.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline))
             )
         );
     }

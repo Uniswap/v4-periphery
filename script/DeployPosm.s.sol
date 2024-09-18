@@ -8,14 +8,20 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateView} from "../src/lens/StateView.sol";
 import {PositionManager} from "../src/PositionManager.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IPositionDescriptor} from "../src/interfaces/IPositionDescriptor.sol";
 
 contract DeployPosmTest is Script {
     function setUp() public {}
 
-    function run(address poolManager, address permit2) public returns (PositionManager posm) {
+    function run(address poolManager, address permit2, uint256 unsubscribeGasLimit, address positionDescriptor)
+        public
+        returns (PositionManager posm)
+    {
         vm.startBroadcast();
 
-        posm = new PositionManager{salt: hex"03"}(IPoolManager(poolManager), IAllowanceTransfer(permit2));
+        posm = new PositionManager{salt: hex"03"}(
+            IPoolManager(poolManager), IAllowanceTransfer(permit2), unsubscribeGasLimit, IPositionDescriptor(positionDescriptor)
+        );
         console2.log("PositionManager", address(posm));
 
         vm.stopBroadcast();

@@ -6,6 +6,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
+/// @title Pool Ticks Counter
+/// @notice Functions for counting the number of initialized ticks between two ticks
 library PoolTicksCounter {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -19,10 +21,16 @@ library PoolTicksCounter {
         bool tickAfterInitialized;
     }
 
+    /// @notice Count the number of initialized ticks between two ticks
     /// @dev This function counts the number of initialized ticks that would incur a gas cost between tickBefore and tickAfter.
     /// When tickBefore and/or tickAfter themselves are initialized, the logic over whether we should count them depends on the
     /// direction of the swap. If we are swapping upwards (tickAfter > tickBefore) we don't want to count tickBefore but we do
     /// want to count tickAfter. The opposite is true if we are swapping downwards.
+    /// @param self the IPoolManager
+    /// @param key the PoolKey of the pool
+    /// @param tickBefore the tick before the swap
+    /// @param tickAfter the tick after the swap
+    /// @return initializedTicksLoaded the number of initialized ticks loaded
     function countInitializedTicksLoaded(IPoolManager self, PoolKey memory key, int24 tickBefore, int24 tickAfter)
         internal
         view
@@ -94,6 +102,8 @@ library PoolTicksCounter {
         return initializedTicksLoaded;
     }
 
+    /// @notice Count the number of set bits in a uint256
+    /// @param x the uint256 to count the bits of
     function countOneBits(uint256 x) private pure returns (uint16) {
         uint16 bits = 0;
         while (x != 0) {

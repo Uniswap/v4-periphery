@@ -24,7 +24,7 @@ import {Actions} from "./libraries/Actions.sol";
 import {Notifier} from "./base/Notifier.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
-import {SlippageCheckLibrary} from "./libraries/SlippageCheck.sol";
+import {SlippageCheck} from "./libraries/SlippageCheck.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 
 //                                           444444444
@@ -110,7 +110,7 @@ contract PositionManager is
     using SafeCast for uint256;
     using SafeCast for int256;
     using CalldataDecoder for bytes;
-    using SlippageCheckLibrary for BalanceDelta;
+    using SlippageCheck for BalanceDelta;
     using PositionInfoLibrary for PositionInfo;
 
     /// @inheritdoc IPositionManager
@@ -122,10 +122,11 @@ contract PositionManager is
     mapping(uint256 tokenId => PositionInfo info) public positionInfo;
     mapping(bytes25 poolId => PoolKey poolKey) public poolKeys;
 
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2, IPositionDescriptor _tokenDescriptor)
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2, uint256 _unsubscribeGasLimit, IPositionDescriptor _tokenDescriptor)
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
         ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
+        Notifier(_unsubscribeGasLimit)
     {
         tokenDescriptor = _tokenDescriptor;
     }
@@ -133,7 +134,7 @@ contract PositionManager is
     /// @notice Reverts if the deadline has passed
     /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
     modifier checkDeadline(uint256 deadline) {
-        if (block.timestamp > deadline) revert DeadlinePassed();
+        if (block.timestamp > deadline) revert DeadlinePassed(deadline);
         _;
     }
 
@@ -181,10 +182,12 @@ contract PositionManager is
                 (uint256 tokenId, uint256 liquidity, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData) =
                     params.decodeModifyLiquidityParams();
                 _increase(tokenId, liquidity, amount0Max, amount1Max, hookData);
+                return;
             } else if (action == Actions.DECREASE_LIQUIDITY) {
                 (uint256 tokenId, uint256 liquidity, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData) =
                     params.decodeModifyLiquidityParams();
                 _decrease(tokenId, liquidity, amount0Min, amount1Min, hookData);
+                return;
             } else if (action == Actions.MINT_POSITION) {
                 (
                     PoolKey calldata poolKey,
@@ -197,13 +200,13 @@ contract PositionManager is
                     bytes calldata hookData
                 ) = params.decodeMintParams();
                 _mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
+                return;
             } else if (action == Actions.BURN_POSITION) {
                 // Will automatically decrease liquidity to 0 if the position is not already empty.
                 (uint256 tokenId, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData) =
                     params.decodeBurnParams();
                 _burn(tokenId, amount0Min, amount1Min, hookData);
-            } else {
-                revert UnsupportedAction(action);
+                return;
             }
         } else {
             if (action == Actions.SETTLE_PAIR) {
@@ -295,17 +298,17 @@ contract PositionManager is
         PositionInfo info = PositionInfoLibrary.initialize(poolKey, tickLower, tickUpper);
         positionInfo[tokenId] = info;
 
-        (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
-            _modifyLiquidity(info, poolKey, liquidity.toInt256(), bytes32(tokenId), hookData);
-        // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
-        (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
-
-        bytes25 poolId = info.poolId();
         // Store the poolKey if it is not already stored.
         // On UniswapV4, the minimum tick spacing is 1, which means that if the tick spacing is 0, the pool key has not been set.
+        bytes25 poolId = info.poolId();
         if (poolKeys[poolId].tickSpacing == 0) {
             poolKeys[poolId] = poolKey;
         }
+
+        // fee delta can be ignored as this is a new position
+        (BalanceDelta liquidityDelta,) =
+            _modifyLiquidity(info, poolKey, liquidity.toInt256(), bytes32(tokenId), hookData);
+        liquidityDelta.validateMaxIn(amount0Max, amount1Max);
     }
 
     /// @dev this is overloaded with ERC721Permit_v4._burn
@@ -317,6 +320,11 @@ contract PositionManager is
 
         uint256 liquidity = uint256(_getLiquidity(tokenId, poolKey, info.tickLower(), info.tickUpper()));
 
+        // Clear the position info.
+        positionInfo[tokenId] = PositionInfoLibrary.EMPTY_POSITION_INFO;
+        // Burn the token.
+        _burn(tokenId);
+
         // Can only call modify if there is non zero liquidity.
         if (liquidity > 0) {
             (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
@@ -325,9 +333,7 @@ contract PositionManager is
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
 
-        positionInfo[tokenId] = PositionInfoLibrary.EMPTY_POSITION_INFO;
-        // Burn the token.
-        _burn(tokenId);
+        if (info.hasSubscriber()) _unsubscribe(tokenId);
     }
 
     function _settlePair(Currency currency0, Currency currency1) internal {
@@ -350,6 +356,7 @@ contract PositionManager is
         // the locker is the payer or receiver
         address caller = msgSender();
         if (currencyDelta < 0) {
+            // Casting is safe due to limits on the total supply of a pool
             _settle(currency, caller, uint256(-currencyDelta));
         } else if (currencyDelta > 0) {
             _take(currency, caller, uint256(currencyDelta));
@@ -393,7 +400,6 @@ contract PositionManager is
             hookData
         );
 
-        // TODO: Audit issue for burn, decide if we want to keep this and also unsubscribe.
         if (info.hasSubscriber()) {
             _notifyModifyLiquidity(uint256(salt), liquidityChange, feesAccrued);
         }
@@ -402,9 +408,9 @@ contract PositionManager is
     // implementation of abstract function DeltaResolver._pay
     function _pay(Currency currency, address payer, uint256 amount) internal override {
         if (payer == address(this)) {
-            // TODO: currency is guaranteed to not be eth so the native check in transfer is not optimal.
             currency.transfer(address(poolManager), amount);
         } else {
+            // Casting from uint256 to uint160 is safe due to limits on the total supply of a pool
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
         }
     }

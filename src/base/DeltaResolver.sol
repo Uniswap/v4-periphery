@@ -31,7 +31,7 @@ abstract contract DeltaResolver is ImmutableState {
     /// @param payer Address of the payer
     /// @param amount Amount to send
     function _settle(Currency currency, address payer, uint256 amount) internal {
-        if (currency.isNative()) {
+        if (currency.isAddressZero()) {
             poolManager.settle{value: amount}();
         } else {
             poolManager.sync(currency);
@@ -54,6 +54,7 @@ abstract contract DeltaResolver is ImmutableState {
         int256 _amount = poolManager.currencyDelta(address(this), currency);
         // If the amount is positive, it should be taken not settled.
         if (_amount > 0) revert DeltaNotNegative(currency);
+        // Casting is safe due to limits on the total supply of a pool
         amount = uint256(-_amount);
     }
 

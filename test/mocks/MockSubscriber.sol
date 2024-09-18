@@ -36,7 +36,7 @@ contract MockSubscriber is ISubscriber {
         subscribeData = data;
     }
 
-    function notifyUnsubscribe(uint256, bytes memory data) external onlyByPosm {
+    function notifyUnsubscribe(uint256) external onlyByPosm {
         notifyUnsubscribeCount++;
     }
 

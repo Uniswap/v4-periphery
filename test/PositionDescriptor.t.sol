@@ -2,18 +2,19 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {PositionDescriptor} from "../src/PositionDescriptor.sol";
 import {CurrencyRatioSortOrder} from "../src/libraries/CurrencyRatioSortOrder.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {PositionConfig} from "./shared/PositionConfig.sol";
-
+import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 import {ActionConstants} from "../src/libraries/ActionConstants.sol";
+import {Base64} from "./base64.sol";
 
-contract PositionDescriptorTest is Test, Deployers {
-    PositionDescriptor public positionDescriptor;
+contract PositionDescriptorTest is Test, PosmTestSetup {
+    using Base64 for string;
+
     address public WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address public DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address public USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
@@ -22,15 +23,17 @@ contract PositionDescriptorTest is Test, Deployers {
     address public WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
     bytes32 public nativeCurrencyLabel = "ETH";
 
+    struct Token {
+        string description;
+        string image;
+        string name;
+    }
+
     function setUp() public {
         deployFreshManager();
-        // need to pass in WETH address and native currency label
-        positionDescriptor = new PositionDescriptor(manager, WETH9, nativeCurrencyLabel);
-
         (currency0, currency1) = deployAndMint2Currencies();
         (key,) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
-        deployPosm(manager, positionDescriptor);
-        approvePosm();
+        deployAndApprovePosm(manager);
     }
 
     function test_setup_succeeds() public view {
@@ -67,15 +70,14 @@ contract PositionDescriptorTest is Test, Deployers {
     function test_flipRatio_succeeds() public {
         vm.chainId(1);
         // bc price = token1/token0
-        assertTrue(positionDescriptor.flipRatio(USDC, DAI));
-        assertTrue(positionDescriptor.flipRatio(WETH9, WBTC));
-        assertTrue(positionDescriptor.flipRatio(DAI, WBTC));
+        assertTrue(positionDescriptor.flipRatio(USDC, WETH9));
+        assertFalse(positionDescriptor.flipRatio(DAI, USDC));
+        assertFalse(positionDescriptor.flipRatio(WBTC, WETH9));
+        assertFalse(positionDescriptor.flipRatio(WBTC, USDC));
         assertFalse(positionDescriptor.flipRatio(WBTC, DAI));
     }
 
     function test_tokenURI_succeeds() public {
-        // create v4 pool (already created in setup)
-        // mint a position
         int24 tickLower = -int24(key.tickSpacing);
         int24 tickUpper = int24(key.tickSpacing);
         uint256 amount0Desired = 100e18;
@@ -91,9 +93,28 @@ contract PositionDescriptorTest is Test, Deployers {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
         uint256 tokenId = lpm.nextTokenId();
         mint(config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
-        // call tokenURI
-        console2.log("tokenURI", positionDescriptor.tokenURI(lpm, tokenId));
+
+        // The prefix length is calculated by converting the string to bytes and finding its length
+        uint256 prefixLength = bytes('data:application/json;base64,').length;
+
+        string memory uri = positionDescriptor.tokenURI(lpm, tokenId);
+        // Convert the uri to bytes
+        bytes memory uriBytes = bytes(uri);
+
+        // Slice the uri to get only the base64-encoded part
+        bytes memory base64Part = new bytes(uriBytes.length - prefixLength);
+
+        for (uint256 i = 0; i < base64Part.length; i++) {
+            base64Part[i] = uriBytes[i + prefixLength];
+        }
+
+        // Decode the base64-encoded part
+        bytes memory decoded = Base64.decode(string(base64Part));
+        string memory json = string(decoded);
+
         // decode json
-        // check that name and description are correct
+        bytes memory data = vm.parseJson(json);
+        Token memory token = abi.decode(data, (Token));
+        console2.log("token.image", token.image);
     }
 }
