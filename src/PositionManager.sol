@@ -122,7 +122,12 @@ contract PositionManager is
     mapping(uint256 tokenId => PositionInfo info) public positionInfo;
     mapping(bytes25 poolId => PoolKey poolKey) public poolKeys;
 
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2, uint256 _unsubscribeGasLimit, IPositionDescriptor _tokenDescriptor)
+    constructor(
+        IPoolManager _poolManager,
+        IAllowanceTransfer _permit2,
+        uint256 _unsubscribeGasLimit,
+        IPositionDescriptor _tokenDescriptor
+    )
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
         ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")

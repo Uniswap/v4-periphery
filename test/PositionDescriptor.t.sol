@@ -95,7 +95,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
         mint(config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         // The prefix length is calculated by converting the string to bytes and finding its length
-        uint256 prefixLength = bytes('data:application/json;base64,').length;
+        uint256 prefixLength = bytes("data:application/json;base64,").length;
 
         string memory uri = positionDescriptor.tokenURI(lpm, tokenId);
         // Convert the uri to bytes

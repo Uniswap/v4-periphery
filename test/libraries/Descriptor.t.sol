@@ -57,7 +57,10 @@ contract DescriptorTest is Test {
         assertEq(Descriptor.tickToDecimalString(maxTick, tickSpacing, 18, 18, false), "MAX");
         assertEq(Descriptor.tickToDecimalString(1, tickSpacing, 18, 18, false), "1.0001");
         int24 otherMinTick = (TickMath.MIN_TICK / 60) * 60;
-        assertEq(Descriptor.tickToDecimalString(otherMinTick, tickSpacing, 18, 18, false), "0.0000000000000000000000000000000000000029387");
+        assertEq(
+            Descriptor.tickToDecimalString(otherMinTick, tickSpacing, 18, 18, false),
+            "0.0000000000000000000000000000000000000029387"
+        );
     }
 
     function test_tickToDecimalString_withTickSpacing60() public {
@@ -68,7 +71,10 @@ contract DescriptorTest is Test {
         assertEq(Descriptor.tickToDecimalString(maxTick, tickSpacing, 18, 18, false), "MAX");
         assertEq(Descriptor.tickToDecimalString(-1, tickSpacing, 18, 18, false), "0.99990");
         int24 otherMinTick = (TickMath.MIN_TICK / 200) * 200;
-        assertEq(Descriptor.tickToDecimalString(otherMinTick, tickSpacing, 18, 18, false), "0.0000000000000000000000000000000000000029387");
+        assertEq(
+            Descriptor.tickToDecimalString(otherMinTick, tickSpacing, 18, 18, false),
+            "0.0000000000000000000000000000000000000029387"
+        );
     }
 
     function test_tickToDecimalString_withTickSpacing200() public {
@@ -79,7 +85,10 @@ contract DescriptorTest is Test {
         assertEq(Descriptor.tickToDecimalString(maxTick, tickSpacing, 18, 18, false), "MAX");
         assertEq(Descriptor.tickToDecimalString(0, tickSpacing, 18, 18, false), "1.0000");
         int24 otherMinTick = (TickMath.MIN_TICK / 60) * 60;
-        assertEq(Descriptor.tickToDecimalString(otherMinTick, tickSpacing, 18, 18, false), "0.0000000000000000000000000000000000000029387");
+        assertEq(
+            Descriptor.tickToDecimalString(otherMinTick, tickSpacing, 18, 18, false),
+            "0.0000000000000000000000000000000000000029387"
+        );
     }
 
     function test_tickToDecimalString_ratio_returnsInverseMediumNumbers() public {
@@ -107,8 +116,5 @@ contract DescriptorTest is Test {
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 10, 18, true), "0.0000000090484");
     }
 
-    function test_fixedPointToDecimalString_succeeds() public {
-
-    }
- 
+    function test_fixedPointToDecimalString_succeeds() public {}
 }

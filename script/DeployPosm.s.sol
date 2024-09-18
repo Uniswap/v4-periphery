@@ -20,7 +20,10 @@ contract DeployPosmTest is Script {
         vm.startBroadcast();
 
         posm = new PositionManager{salt: hex"03"}(
-            IPoolManager(poolManager), IAllowanceTransfer(permit2), unsubscribeGasLimit, IPositionDescriptor(positionDescriptor)
+            IPoolManager(poolManager),
+            IAllowanceTransfer(permit2),
+            unsubscribeGasLimit,
+            IPositionDescriptor(positionDescriptor)
         );
         console2.log("PositionManager", address(posm));
 

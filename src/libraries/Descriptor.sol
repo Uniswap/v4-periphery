@@ -228,7 +228,6 @@ library Descriptor {
         bool isPercent;
     }
 
-
     function generateDecimalString(DecimalStringParams memory params) private pure returns (string memory) {
         bytes memory buffer = new bytes(params.bufferLength);
         if (params.isPercent) {
@@ -467,30 +466,29 @@ library Descriptor {
     /// @param params Parameters needed to generate the SVG image
     /// @return svg The SVG image as a string
     function generateSVGImage(ConstructTokenURIParams memory params) internal pure returns (string memory svg) {
-        SVG.SVGParams memory svgParams =
-            SVG.SVGParams({
-                quoteCurrency: addressToString(Currency.unwrap(params.quoteCurrency)),
-                baseCurrency: addressToString(Currency.unwrap(params.baseCurrency)),
-                hooks: params.hooks,
-                quoteCurrencySymbol: params.quoteCurrencySymbol,
-                baseCurrencySymbol: params.baseCurrencySymbol,
-                feeTier: feeToPercentString(params.fee),
-                tickLower: params.tickLower,
-                tickUpper: params.tickUpper,
-                tickSpacing: params.tickSpacing,
-                overRange: overRange(params.tickLower, params.tickUpper, params.tickCurrent),
-                tokenId: params.tokenId,
-                color0: currencyToColorHex(params.quoteCurrency.toId(), 136),
-                color1: currencyToColorHex(params.baseCurrency.toId(), 136),
-                color2: currencyToColorHex(params.quoteCurrency.toId(), 0),
-                color3: currencyToColorHex(params.baseCurrency.toId(), 0),
-                x1: scale(getCircleCoord(params.quoteCurrency.toId(), 16, params.tokenId), 0, 255, 16, 274),
-                y1: scale(getCircleCoord(params.baseCurrency.toId(), 16, params.tokenId), 0, 255, 100, 484),
-                x2: scale(getCircleCoord(params.quoteCurrency.toId(), 32, params.tokenId), 0, 255, 16, 274),
-                y2: scale(getCircleCoord(params.baseCurrency.toId(), 32, params.tokenId), 0, 255, 100, 484),
-                x3: scale(getCircleCoord(params.quoteCurrency.toId(), 48, params.tokenId), 0, 255, 16, 274),
-                y3: scale(getCircleCoord(params.baseCurrency.toId(), 48, params.tokenId), 0, 255, 100, 484)
-            });
+        SVG.SVGParams memory svgParams = SVG.SVGParams({
+            quoteCurrency: addressToString(Currency.unwrap(params.quoteCurrency)),
+            baseCurrency: addressToString(Currency.unwrap(params.baseCurrency)),
+            hooks: params.hooks,
+            quoteCurrencySymbol: params.quoteCurrencySymbol,
+            baseCurrencySymbol: params.baseCurrencySymbol,
+            feeTier: feeToPercentString(params.fee),
+            tickLower: params.tickLower,
+            tickUpper: params.tickUpper,
+            tickSpacing: params.tickSpacing,
+            overRange: overRange(params.tickLower, params.tickUpper, params.tickCurrent),
+            tokenId: params.tokenId,
+            color0: currencyToColorHex(params.quoteCurrency.toId(), 136),
+            color1: currencyToColorHex(params.baseCurrency.toId(), 136),
+            color2: currencyToColorHex(params.quoteCurrency.toId(), 0),
+            color3: currencyToColorHex(params.baseCurrency.toId(), 0),
+            x1: scale(getCircleCoord(params.quoteCurrency.toId(), 16, params.tokenId), 0, 255, 16, 274),
+            y1: scale(getCircleCoord(params.baseCurrency.toId(), 16, params.tokenId), 0, 255, 100, 484),
+            x2: scale(getCircleCoord(params.quoteCurrency.toId(), 32, params.tokenId), 0, 255, 16, 274),
+            y2: scale(getCircleCoord(params.baseCurrency.toId(), 32, params.tokenId), 0, 255, 100, 484),
+            x3: scale(getCircleCoord(params.quoteCurrency.toId(), 48, params.tokenId), 0, 255, 16, 274),
+            y3: scale(getCircleCoord(params.baseCurrency.toId(), 48, params.tokenId), 0, 255, 100, 484)
+        });
 
         return SVG.generateSVG(svgParams);
     }
@@ -500,11 +498,7 @@ library Descriptor {
     /// @param tickUpper The upper tick
     /// @param tickCurrent The current tick
     /// @return 0 if current tick is within range, -1 if below, 1 if above
-    function overRange(
-        int24 tickLower,
-        int24 tickUpper,
-        int24 tickCurrent
-    ) private pure returns (int8) {
+    function overRange(int24 tickLower, int24 tickUpper, int24 tickCurrent) private pure returns (int8) {
         if (tickCurrent < tickLower) {
             return -1;
         } else if (tickCurrent > tickUpper) {
@@ -521,13 +515,11 @@ library Descriptor {
     /// @param outMn The minimum of the output range
     /// @param outMx The maximum of the output range
     /// @return The scaled number as a string
-    function scale(
-        uint256 n,
-        uint256 inMn,
-        uint256 inMx,
-        uint256 outMn,
-        uint256 outMx
-    ) private pure returns (string memory) {
+    function scale(uint256 n, uint256 inMn, uint256 inMx, uint256 outMn, uint256 outMx)
+        private
+        pure
+        returns (string memory)
+    {
         return (n - inMn * (outMx - outMn) / (inMx - inMn) + outMn).toString();
     }
 
@@ -544,11 +536,7 @@ library Descriptor {
     /// @param offset The offset to slice the token hex
     /// @param tokenId The token ID
     /// @return The coordinate
-    function getCircleCoord(
-        uint256 currency,
-        uint256 offset,
-        uint256 tokenId
-    ) internal pure returns (uint256) {
+    function getCircleCoord(uint256 currency, uint256 offset, uint256 tokenId) internal pure returns (uint256) {
         return (sliceCurrencyHex(currency, offset) * tokenId) % 255;
     }
 

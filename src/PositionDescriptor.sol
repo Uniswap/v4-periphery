@@ -59,8 +59,12 @@ contract PositionDescriptor is IPositionDescriptor {
     }
 
     /// @inheritdoc IPositionDescriptor
-    function tokenURI(IPositionManager positionManager, uint256 tokenId) external view override returns (string memory) {
-        
+    function tokenURI(IPositionManager positionManager, uint256 tokenId)
+        external
+        view
+        override
+        returns (string memory)
+    {
         (PoolKey memory poolKey, PositionInfo positionInfo) = positionManager.getPoolAndPositionInfo(tokenId);
         (, int24 tick,,) = poolManager.getSlot0(poolKey.toId());
 
@@ -109,7 +113,7 @@ contract PositionDescriptor is IPositionDescriptor {
         return currencyRatioPriority(currency0) > currencyRatioPriority(currency1);
     }
 
-    /// @notice Returns the priority of a currency. 
+    /// @notice Returns the priority of a currency.
     /// For certain currencies on mainnet, the smaller the currency, the higher the priority
     /// @param currency The currency
     /// @return priority The priority of the currency
