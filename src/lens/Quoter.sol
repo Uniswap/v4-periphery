@@ -26,7 +26,8 @@ contract Quoter is IQuoter, BaseV4Quoter {
         try poolManager.unlock(abi.encodeCall(this._quoteExactInputSingle, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            amountOut = reason.parseReturnData();
+            // Extract the quote from QuoteSwap error, or throw if the quote failed
+            amountOut = reason.parseQuoteAmount();
         }
     }
 
@@ -39,7 +40,8 @@ contract Quoter is IQuoter, BaseV4Quoter {
         try poolManager.unlock(abi.encodeCall(this._quoteExactInput, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            amountOut = reason.parseReturnData();
+            // Extract the quote from QuoteSwap error, or throw if the quote failed
+            amountOut = reason.parseQuoteAmount();
         }
     }
 
@@ -52,7 +54,8 @@ contract Quoter is IQuoter, BaseV4Quoter {
         try poolManager.unlock(abi.encodeCall(this._quoteExactOutputSingle, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            amountIn = reason.parseReturnData();
+            // Extract the quote from QuoteSwap error, or throw if the quote failed
+            amountIn = reason.parseQuoteAmount();
         }
     }
 
@@ -65,7 +68,8 @@ contract Quoter is IQuoter, BaseV4Quoter {
         try poolManager.unlock(abi.encodeCall(this._quoteExactOutput, (params))) {}
         catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            amountIn = reason.parseReturnData();
+            // Extract the quote from QuoteSwap error, or throw if the quote failed
+            amountIn = reason.parseQuoteAmount();
         }
     }
 

@@ -14,8 +14,8 @@ abstract contract BaseV4Quoter is SafeCallback {
     using PoolIdLibrary for PoolId;
 
     error NotEnoughLiquidity(PoolId poolId);
-    error LockFailure();
     error NotSelf();
+    error UnexpectedCallSuccess();
 
     constructor(IPoolManager _poolManager) SafeCallback(_poolManager) {}
 
@@ -27,9 +27,10 @@ abstract contract BaseV4Quoter is SafeCallback {
     }
 
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        // Call this contract with the data in question. Each quote path
         (bool success, bytes memory returnData) = address(this).call(data);
-        if (success) return returnData;
+        // Every quote path gathers a quote, and then reverts either with QuoteSwap(quoteAmount) or alternative error
+        if (success) revert UnexpectedCallSuccess();
+        // Bubble the revert string, whether a valid quote or an alternative error
         returnData.bubbleReason();
     }
 
