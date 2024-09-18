@@ -3,9 +3,13 @@ pragma solidity ^0.8.24;
 
 import "./AddressStringUtil.sol";
 
-// produces token descriptors from inconsistent or absent ERC20 symbol implementations that can return string or bytes32
-// this library will always produce a string symbol to represent the token
+/// @title SafeERC20Namer
+/// @notice produces token descriptors from inconsistent or absent ERC20 symbol implementations that can return string or bytes32
+/// this library will always produce a string symbol to represent the token
 library SafeERC20Namer {
+    /// @notice converts a bytes32 to a string
+    /// @param x the bytes32 to convert
+    /// @return the string representation
     function bytes32ToString(bytes32 x) private pure returns (string memory) {
         bytes memory bytesString = new bytes(32);
         uint256 charCount = 0;
@@ -23,36 +27,18 @@ library SafeERC20Namer {
         return string(bytesStringTrimmed);
     }
 
-    // assumes the data is in position 2
-    function parseStringData(bytes memory b) private pure returns (string memory) {
-        uint256 charCount = 0;
-        // first parse the charCount out of the data
-        for (uint256 i = 32; i < 64; i++) {
-            charCount <<= 8;
-            charCount += uint8(b[i]);
-        }
-
-        bytes memory bytesStringTrimmed = new bytes(charCount);
-        for (uint256 i = 0; i < charCount; i++) {
-            bytesStringTrimmed[i] = b[i + 64];
-        }
-
-        return string(bytesStringTrimmed);
-    }
-
-    // uses a heuristic to produce a token name from the address
-    // the heuristic returns the full hex of the address string in upper case
-    function addressToName(address token) private pure returns (string memory) {
-        return AddressStringUtil.toAsciiString(token, 40);
-    }
-
-    // uses a heuristic to produce a token symbol from the address
+    /// @notice uses a heuristic to produce a token symbol from the address
     // the heuristic returns the first 6 hex of the address string in upper case
+    /// @param token the token address
+    /// @return the token symbol
     function addressToSymbol(address token) private pure returns (string memory) {
         return AddressStringUtil.toAsciiString(token, 6);
     }
 
-    // calls an external view token contract method that returns a symbol or name, and parses the output into a string
+    /// @notice calls an external view token contract method that returns a symbol, and parses the output into a string
+    /// @param token the token address
+    /// @param selector the selector of the symbol method
+    /// @return the token symbol
     function callAndParseStringReturn(address token, bytes4 selector) private view returns (string memory) {
         (bool success, bytes memory data) = token.staticcall(abi.encodeWithSelector(selector));
         // if not implemented, or returns empty data, return empty string
@@ -69,7 +55,9 @@ library SafeERC20Namer {
         return "";
     }
 
-    // attempts to extract the token symbol. if it does not implement symbol, returns a symbol derived from the address
+    /// @notice attempts to extract the token symbol. if it does not implement symbol, returns a symbol derived from the address
+    /// @param token the token address
+    /// @return the token symbol
     function tokenSymbol(address token) internal view returns (string memory) {
         // 0x95d89b41 = bytes4(keccak256("symbol()"))
         string memory symbol = callAndParseStringReturn(token, 0x95d89b41);
@@ -78,16 +66,5 @@ library SafeERC20Namer {
             return addressToSymbol(token);
         }
         return symbol;
-    }
-
-    // attempts to extract the token name. if it does not implement name, returns a name derived from the address
-    function tokenName(address token) internal view returns (string memory) {
-        // 0x06fdde03 = bytes4(keccak256("name()"))
-        string memory name = callAndParseStringReturn(token, 0x06fdde03);
-        if (bytes(name).length == 0) {
-            // fallback to full hex of address
-            return addressToName(token);
-        }
-        return name;
     }
 }

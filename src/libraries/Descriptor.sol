@@ -7,7 +7,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/Base64.sol";
-import "./NFTSVG.sol";
+import "./SVG.sol";
 import "./HexStrings.sol";
 
 /// @title Descriptor
@@ -120,6 +120,7 @@ library Descriptor {
         string memory poolManager,
         string memory quoteCurrency
     ) private pure returns (string memory) {
+        // displays quote currency first, then base currency
         return string(
             abi.encodePacked(
                 "This NFT represents a liquidity position in a Uniswap V4 ",
@@ -466,8 +467,8 @@ library Descriptor {
     /// @param params Parameters needed to generate the SVG image
     /// @return svg The SVG image as a string
     function generateSVGImage(ConstructTokenURIParams memory params) internal pure returns (string memory svg) {
-        NFTSVG.SVGParams memory svgParams =
-            NFTSVG.SVGParams({
+        SVG.SVGParams memory svgParams =
+            SVG.SVGParams({
                 quoteCurrency: addressToString(Currency.unwrap(params.quoteCurrency)),
                 baseCurrency: addressToString(Currency.unwrap(params.baseCurrency)),
                 hooks: params.hooks,
@@ -491,7 +492,7 @@ library Descriptor {
                 y3: scale(getCircleCoord(params.baseCurrency.toId(), 48, params.tokenId), 0, 255, 100, 484)
             });
 
-        return NFTSVG.generateSVG(svgParams);
+        return SVG.generateSVG(svgParams);
     }
 
     /// @notice Checks if the current tick is within the tick range, above, or below
@@ -513,6 +514,13 @@ library Descriptor {
         }
     }
 
+    /// @notice Scales a number from one range to another
+    /// @param n The number to scale
+    /// @param inMn The minimum of the input range
+    /// @param inMx The maximum of the input range
+    /// @param outMn The minimum of the output range
+    /// @param outMx The maximum of the output range
+    /// @return The scaled number as a string
     function scale(
         uint256 n,
         uint256 inMn,
@@ -523,23 +531,32 @@ library Descriptor {
         return (n - inMn * (outMx - outMn) / (inMx - inMn) + outMn).toString();
     }
 
-    /// @notice Converts a currency ID to a color hex to be used in the SVG
-    /// @param currency The currency ID
+    /// @notice Converts a currency to a color in hex to be used in the SVG
+    /// @param currency The currency
     /// @param offset The offset to slice the token hex
     /// @return str The color hex as a string
     function currencyToColorHex(uint256 currency, uint256 offset) internal pure returns (string memory str) {
         return string((currency >> offset).toHexStringNoPrefix(3));
     }
 
+    /// @notice Gets the coordinate for a circle
+    /// @param currency The currency ID
+    /// @param offset The offset to slice the token hex
+    /// @param tokenId The token ID
+    /// @return The coordinate
     function getCircleCoord(
         uint256 currency,
         uint256 offset,
         uint256 tokenId
     ) internal pure returns (uint256) {
-        return (sliceTokenHex(currency, offset) * tokenId) % 255;
+        return (sliceCurrencyHex(currency, offset) * tokenId) % 255;
     }
 
-    function sliceTokenHex(uint256 currency, uint256 offset) internal pure returns (uint256) {
+    /// @notice Slices the currency ID hex
+    /// @param currency The currency ID
+    /// @param offset The offset to slice the token hex
+    /// @return The sliced hex
+    function sliceCurrencyHex(uint256 currency, uint256 offset) internal pure returns (uint256) {
         return uint256(uint8(currency >> offset));
     }
 }

@@ -7,11 +7,9 @@ import '@openzeppelin/contracts/utils/Strings.sol';
 import '@uniswap/v4-core/src/libraries/BitMath.sol';
 import '@openzeppelin/contracts/utils/Base64.sol';
 
-import "forge-std/console2.sol";
-
-/// @title NFTSVG
+/// @title SVG
 /// @notice Provides a function for generating an SVG associated with a Uniswap NFT
-library NFTSVG {
+library SVG {
     using Strings for uint256;
 
     // SVG path commands for the curve that represent the steepness of the position

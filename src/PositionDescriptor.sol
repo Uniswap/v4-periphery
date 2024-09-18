@@ -31,7 +31,7 @@ contract PositionDescriptor is IPositionDescriptor {
     address private constant TBTC = 0x8dAEBADE922dF735c38C80C7eBD708Af50815fAa;
     address private constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
 
-    // optimism, polygon, arbitrum, base?
+    // WBTC, DAI, TBTC, USDC, USDT
 
     address public immutable WETH9;
     /// @dev A null-terminated string
@@ -77,11 +77,10 @@ contract PositionDescriptor is IPositionDescriptor {
                 tokenId: tokenId,
                 quoteCurrency: quoteCurrency,
                 baseCurrency: baseCurrency,
-                // if currency is weth, use 'WETH' as symbol?
-                quoteCurrencySymbol: Currency.unwrap(quoteCurrency) == WETH9 || quoteCurrency.isAddressZero()
+                quoteCurrencySymbol: quoteCurrency.isAddressZero()
                     ? nativeCurrencyLabel()
                     : SafeERC20Namer.tokenSymbol(Currency.unwrap(quoteCurrency)),
-                baseCurrencySymbol: Currency.unwrap(baseCurrency) == WETH9 || baseCurrency.isAddressZero()
+                baseCurrencySymbol: baseCurrency.isAddressZero()
                     ? nativeCurrencyLabel()
                     : SafeERC20Namer.tokenSymbol(Currency.unwrap(baseCurrency)),
                 quoteCurrencyDecimals: quoteCurrency.isAddressZero()
@@ -116,6 +115,11 @@ contract PositionDescriptor is IPositionDescriptor {
     /// @return priority The priority of the currency
     function currencyRatioPriority(address currency) public view returns (int256) {
         // Currencies in order of priority on mainnet: USDC, USDT, DAI, WETH, TBTC, WBTC
+        // USDC > USDT > DAI > WETH > TBTC > WBTC
+        // or native currency
+        // weth is different address on different chains. passed in constructor
+
+        // if currency is WETH OR currency is native
         if (currency == WETH9) {
             return CurrencyRatioSortOrder.DENOMINATOR;
         }

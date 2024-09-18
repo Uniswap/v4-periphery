@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import {Descriptor} from "../../src/libraries/Descriptor.sol";
 import {Test} from "forge-std/Test.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import "forge-std/console2.sol";
 
 contract DescriptorTest is Test {
     function test_feeToPercentString_succeeds() public {
@@ -106,6 +105,10 @@ contract DescriptorTest is Test {
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 18, 18, true), "0.90484");
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 18, 10, true), "90484000");
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 10, 18, true), "0.0000000090484");
+    }
+
+    function test_fixedPointToDecimalString_succeeds() public {
+
     }
  
 }

@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
+/// @title AddressStringUtil
+/// @notice provides utility functions for converting addresses to strings
 library AddressStringUtil {
-    // converts an address to the uppercase hex string, extracting only len bytes (up to 20, multiple of 2)
+    /// @notice Converts an address to the uppercase hex string, extracting only len bytes (up to 20, multiple of 2)
+    /// @param addr the address to convert
+    /// @param len the number of bytes to extract
+    /// @return the hex string
     function toAsciiString(address addr, uint256 len) internal pure returns (string memory) {
         require(len % 2 == 0 && len > 0 && len <= 40, "AddressStringUtil: INVALID_LEN");
 
@@ -21,9 +26,11 @@ library AddressStringUtil {
         return string(s);
     }
 
+    /// @notice Converts a value into is corresponding ASCII character for the hex representation
     // hi and lo are only 4 bits and between 0 and 16
-    // this method converts those values to the unicode/ascii code point for the hex representation
     // uses upper case for the characters
+    /// @param b the value to convert
+    /// @return c the ASCII character
     function char(uint8 b) private pure returns (bytes1 c) {
         if (b < 10) {
             return bytes1(b + 0x30);
