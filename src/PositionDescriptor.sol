@@ -45,7 +45,8 @@ contract PositionDescriptor is IPositionDescriptor {
         nativeCurrencyLabelBytes = _nativeCurrencyLabel;
     }
 
-    /// @notice Returns the native currency label as a string
+    /// @notice Takes the native currency label in bytes32 and returns it as a string
+    /// @return nativeCurrencyLabel The native currency label
     function nativeCurrencyLabel() public view returns (string memory) {
         uint256 len = 0;
         while (len < 32 && nativeCurrencyLabelBytes[len] != 0) {
