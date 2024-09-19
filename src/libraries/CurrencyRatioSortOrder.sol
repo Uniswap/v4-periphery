@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.20;
 
 library CurrencyRatioSortOrder {
     int256 constant NUMERATOR_MOST = 300;
@@ -8,5 +8,6 @@ library CurrencyRatioSortOrder {
 
     int256 constant DENOMINATOR_MOST = -300;
     int256 constant DENOMINATOR_MORE = -200;
+    int256 constant DENOMINATOR_2 = -150;
     int256 constant DENOMINATOR = -100;
 }

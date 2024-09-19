@@ -6,7 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 contract DescriptorTest is Test {
-    function test_feeToPercentString_succeeds() public {
+    function test_feeToPercentString_succeeds() public pure {
         assertEq(Descriptor.feeToPercentString(0), "0%");
         assertEq(Descriptor.feeToPercentString(1), "0.0001%");
         assertEq(Descriptor.feeToPercentString(30), "0.003%");
@@ -115,6 +115,4 @@ contract DescriptorTest is Test {
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 18, 10, true), "90484000");
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 10, 18, true), "0.0000000090484");
     }
-
-    function test_fixedPointToDecimalString_succeeds() public pure {}
 }

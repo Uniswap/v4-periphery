@@ -30,8 +30,6 @@ contract PositionDescriptor is IPositionDescriptor {
     address private constant TBTC = 0x8dAEBADE922dF735c38C80C7eBD708Af50815fAa;
     address private constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
 
-    // WBTC, DAI, TBTC, USDC, USDT
-
     address public immutable WETH9;
     /// @dev A null-terminated string
     bytes32 public immutable nativeCurrencyLabelBytes;
@@ -118,14 +116,15 @@ contract PositionDescriptor is IPositionDescriptor {
     /// @param currency The currency
     /// @return priority The priority of the currency
     function currencyRatioPriority(address currency) public view returns (int256) {
-        // Currencies in order of priority on mainnet: USDC, USDT, DAI, WETH, TBTC, WBTC
-        // USDC > USDT > DAI > WETH > TBTC > WBTC
-        // or native currency
+        // Currencies in order of priority on mainnet: USDC, USDT, DAI, ETH, WETH, TBTC, WBTC
         // weth is different address on different chains. passed in constructor
 
-        // if currency is WETH OR currency is native
-        if (currency == WETH9) {
+        // native currency
+        if (currency == address(0)) {
             return CurrencyRatioSortOrder.DENOMINATOR;
+        }
+        if (currency == WETH9) {
+            return CurrencyRatioSortOrder.DENOMINATOR_2;
         }
         if (block.chainid == 1) {
             if (currency == USDC) {
