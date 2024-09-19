@@ -7,9 +7,6 @@ import "./AddressStringUtil.sol";
 /// @notice produces token descriptors from inconsistent or absent ERC20 symbol implementations that can return string or bytes32
 /// this library will always produce a string symbol to represent the token
 library SafeERC20Namer {
-    /// @notice converts a bytes32 to a string
-    /// @param x the bytes32 to convert
-    /// @return the string representation
     function bytes32ToString(bytes32 x) private pure returns (string memory) {
         bytes memory bytesString = new bytes(32);
         uint256 charCount = 0;
@@ -27,8 +24,7 @@ library SafeERC20Namer {
         return string(bytesStringTrimmed);
     }
 
-    /// @notice uses a heuristic to produce a token symbol from the address
-    // the heuristic returns the first 6 hex of the address string in upper case
+    /// @notice produces a token symbol from the address - the first 6 hex of the address string in upper case
     /// @param token the token address
     /// @return the token symbol
     function addressToSymbol(address token) private pure returns (string memory) {

@@ -25,7 +25,7 @@ contract DescriptorTest is Test {
         assertEq(Descriptor.feeToPercentString(12300000), "1230%");
     }
 
-    function test_addressToString_succeeds() public {
+    function test_addressToString_succeeds() public pure {
         assertEq(Descriptor.addressToString(address(0)), "0x0000000000000000000000000000000000000000");
         assertEq(Descriptor.addressToString(address(1)), "0x0000000000000000000000000000000000000001");
         assertEq(
@@ -38,7 +38,7 @@ contract DescriptorTest is Test {
         );
     }
 
-    function test_escapeQuotes_succeeds() public {
+    function test_escapeQuotes_succeeds() public pure {
         assertEq(Descriptor.escapeQuotes(""), "");
         assertEq(Descriptor.escapeQuotes("a"), "a");
         assertEq(Descriptor.escapeQuotes("abc"), "abc");
@@ -49,7 +49,7 @@ contract DescriptorTest is Test {
         assertEq(Descriptor.escapeQuotes("\"a\"b\"c\"\""), "\\\"a\\\"b\\\"c\\\"\\\"");
     }
 
-    function test_tickToDecimalString_withTickSpacing10() public {
+    function test_tickToDecimalString_withTickSpacing10() public pure {
         int24 tickSpacing = 10;
         int24 minTick = (TickMath.MIN_TICK / tickSpacing) * tickSpacing;
         int24 maxTick = (TickMath.MAX_TICK / tickSpacing) * tickSpacing;
@@ -63,7 +63,7 @@ contract DescriptorTest is Test {
         );
     }
 
-    function test_tickToDecimalString_withTickSpacing60() public {
+    function test_tickToDecimalString_withTickSpacing60() public pure {
         int24 tickSpacing = 60;
         int24 minTick = (TickMath.MIN_TICK / tickSpacing) * tickSpacing;
         int24 maxTick = (TickMath.MAX_TICK / tickSpacing) * tickSpacing;
@@ -77,7 +77,7 @@ contract DescriptorTest is Test {
         );
     }
 
-    function test_tickToDecimalString_withTickSpacing200() public {
+    function test_tickToDecimalString_withTickSpacing200() public pure {
         int24 tickSpacing = 200;
         int24 minTick = (TickMath.MIN_TICK / tickSpacing) * tickSpacing;
         int24 maxTick = (TickMath.MAX_TICK / tickSpacing) * tickSpacing;
@@ -91,30 +91,30 @@ contract DescriptorTest is Test {
         );
     }
 
-    function test_tickToDecimalString_ratio_returnsInverseMediumNumbers() public {
+    function test_tickToDecimalString_ratio_returnsInverseMediumNumbers() public pure {
         int24 tickSpacing = 200;
         assertEq(Descriptor.tickToDecimalString(10, tickSpacing, 18, 18, false), "1.0010");
         assertEq(Descriptor.tickToDecimalString(10, tickSpacing, 18, 18, true), "0.99900");
     }
 
-    function test_tickToDecimalString_ratio_returnsInverseLargeNumbers() public {
+    function test_tickToDecimalString_ratio_returnsInverseLargeNumbers() public pure {
         int24 tickSpacing = 200;
         assertEq(Descriptor.tickToDecimalString(487272, tickSpacing, 18, 18, false), "1448400000000000000000");
         assertEq(Descriptor.tickToDecimalString(487272, tickSpacing, 18, 18, true), "0.00000000000000000000069041");
     }
 
-    function test_tickToDecimalString_ratio_returnsInverseSmallNumbers() public {
+    function test_tickToDecimalString_ratio_returnsInverseSmallNumbers() public pure {
         int24 tickSpacing = 200;
         assertEq(Descriptor.tickToDecimalString(-387272, tickSpacing, 18, 18, false), "0.000000000000000015200");
         assertEq(Descriptor.tickToDecimalString(-387272, tickSpacing, 18, 18, true), "65791000000000000");
     }
 
-    function test_tickToDecimalString_differentDecimals() public {
+    function test_tickToDecimalString_differentDecimals() public pure {
         int24 tickSpacing = 200;
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 18, 18, true), "0.90484");
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 18, 10, true), "90484000");
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 10, 18, true), "0.0000000090484");
     }
 
-    function test_fixedPointToDecimalString_succeeds() public {}
+    function test_fixedPointToDecimalString_succeeds() public pure {}
 }

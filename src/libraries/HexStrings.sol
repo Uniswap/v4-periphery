@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
+/// @title HexStrings
+/// @notice Provides function for converting numbers to hexadecimal strings
 library HexStrings {
     bytes16 internal constant ALPHABET = "0123456789abcdef";
 

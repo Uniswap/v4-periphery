@@ -115,6 +115,5 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
         // decode json
         bytes memory data = vm.parseJson(json);
         Token memory token = abi.decode(data, (Token));
-        console2.log("token.image", token.image);
     }
 }

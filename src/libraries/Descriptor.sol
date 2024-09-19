@@ -80,8 +80,6 @@ library Descriptor {
     }
 
     /// @notice Escapes double quotes in a string if they are present
-    /// @param symbol The string to escape
-    /// @return The string with double quotes escaped
     function escapeQuotes(string memory symbol) internal pure returns (string memory) {
         bytes memory symbolBytes = bytes(symbol);
         uint8 quotesCount = 0;
@@ -339,11 +337,6 @@ library Descriptor {
         return uint256(x >= 0 ? x : -x);
     }
 
-    /// @notice Returns string that includes first 5 significant figures of a decimal number
-    /// @param sqrtRatioX96 a sqrt price
-    /// @param baseCurrencyDecimals The decimals of the base currency
-    /// @param quoteCurrencyDecimals The decimals of the quote currency
-    /// @return The decimal string
     function fixedPointToDecimalString(uint160 sqrtRatioX96, uint8 baseCurrencyDecimals, uint8 quoteCurrencyDecimals)
         internal
         pure
@@ -455,9 +448,6 @@ library Descriptor {
         return generateDecimalString(params);
     }
 
-    /// @notice Converts an address to a string
-    /// @param addr The address to convert
-    /// @return The address as a string
     function addressToString(address addr) internal pure returns (string memory) {
         return (uint256(uint160(addr))).toHexString(20);
     }
@@ -508,13 +498,6 @@ library Descriptor {
         }
     }
 
-    /// @notice Scales a number from one range to another
-    /// @param n The number to scale
-    /// @param inMn The minimum of the input range
-    /// @param inMx The maximum of the input range
-    /// @param outMn The minimum of the output range
-    /// @param outMx The maximum of the output range
-    /// @return The scaled number as a string
     function scale(uint256 n, uint256 inMn, uint256 inMx, uint256 outMn, uint256 outMx)
         private
         pure
@@ -523,27 +506,14 @@ library Descriptor {
         return (n - inMn * (outMx - outMn) / (inMx - inMn) + outMn).toString();
     }
 
-    /// @notice Converts a currency to a color in hex to be used in the SVG
-    /// @param currency The currency
-    /// @param offset The offset to slice the token hex
-    /// @return str The color hex as a string
     function currencyToColorHex(uint256 currency, uint256 offset) internal pure returns (string memory str) {
         return string((currency >> offset).toHexStringNoPrefix(3));
     }
 
-    /// @notice Gets the coordinate for a circle
-    /// @param currency The currency ID
-    /// @param offset The offset to slice the token hex
-    /// @param tokenId The token ID
-    /// @return The coordinate
     function getCircleCoord(uint256 currency, uint256 offset, uint256 tokenId) internal pure returns (uint256) {
         return (sliceCurrencyHex(currency, offset) * tokenId) % 255;
     }
 
-    /// @notice Slices the currency ID hex
-    /// @param currency The currency ID
-    /// @param offset The offset to slice the token hex
-    /// @return The sliced hex
     function sliceCurrencyHex(uint256 currency, uint256 offset) internal pure returns (uint256) {
         return uint256(uint8(currency >> offset));
     }
