@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.20;
 
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
-import "@uniswap/v4-core/src/libraries/BitMath.sol";
-import "@openzeppelin/contracts/utils/Base64.sol";
+import {BitMath} from "@uniswap/v4-core/src/libraries/BitMath.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 
 /// @title SVG
 /// @notice Provides a function for generating an SVG associated with a Uniswap NFT
@@ -226,7 +226,7 @@ library SVG {
         );
     }
 
-    /// @notice Generate the SVG for the curve that represents the position. Fade up (top is faded) if position over range, fade down (bottom is faded) if under range, else no fade
+    /// @notice Generate the SVG for the curve that represents the position. Fade up (top is faded) if current price is above your position range, fade down (bottom is faded) if current price is below your position range
     /// Circles are generated at the ends of the curve if the position is in range, or at one end of the curve it is on if not in range
     /// @param tickLower The lower tick
     /// @param tickUpper The upper tick
@@ -335,7 +335,7 @@ library SVG {
         }
     }
 
-    /// @notice Generate the SVG for the position data (token ID, hooks address, min tick, max tick) and the location curve (the LP's position in the curve where the provider is active in the pool)
+    /// @notice Generate the SVG for the position data (token ID, hooks address, min tick, max tick) and the location curve (where your position falls on the curve)
     /// @param tokenId The token ID
     /// @param hook The hooks address
     /// @param tickLower The lower tick
@@ -397,11 +397,6 @@ library SVG {
         );
     }
 
-    /// @notice Get a substring of a string
-    /// @param str The string
-    /// @param startIndex The start index
-    /// @param endIndex The end index
-    /// @return The substring
     function substring(string memory str, uint256 startIndex, uint256 endIndex) internal pure returns (string memory) {
         bytes memory strBytes = bytes(str);
         bytes memory result = new bytes(endIndex - startIndex);
@@ -411,9 +406,6 @@ library SVG {
         return string(result);
     }
 
-    /// @notice Convert a tick to a string
-    /// @param tick The tick to convert
-    /// @return The tick as a string
     function tickToString(int24 tick) private pure returns (string memory) {
         string memory sign = "";
         if (tick < 0) {
@@ -423,7 +415,7 @@ library SVG {
         return string(abi.encodePacked(sign, uint256(uint24(tick)).toString()));
     }
 
-    /// @notice Get the location of where the liquidity is supplied based on the tick range of the position
+    /// @notice Get the location of where your position falls on the curve
     /// @param tickLower The lower tick
     /// @param tickUpper The upper tick
     /// @return The x and y coordinates of the location of the liquidity

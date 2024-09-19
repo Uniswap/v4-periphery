@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.20;
 
 /// @title HexStrings
 /// @notice Provides function for converting numbers to hexadecimal strings

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.20;
 
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/utils/Base64.sol";
-import "./SVG.sol";
-import "./HexStrings.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
+import {SVG} from "./SVG.sol";
+import {HexStrings} from "./HexStrings.sol";
 
 /// @title Descriptor
 /// @notice Describes NFT token positions
@@ -483,11 +483,11 @@ library Descriptor {
         return SVG.generateSVG(svgParams);
     }
 
-    /// @notice Checks if the current tick is within the tick range, above, or below
+    /// @notice Checks if the current price is within your position range, above, or below
     /// @param tickLower The lower tick
     /// @param tickUpper The upper tick
     /// @param tickCurrent The current tick
-    /// @return 0 if current tick is within range, -1 if below, 1 if above
+    /// @return 0 if the current price is within the position range, -1 if below, 1 if above
     function overRange(int24 tickLower, int24 tickUpper, int24 tickCurrent) private pure returns (int8) {
         if (tickCurrent < tickLower) {
             return -1;

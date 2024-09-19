@@ -78,8 +78,8 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
     }
 
     function test_tokenURI_succeeds() public {
-        int24 tickLower = -int24(key.tickSpacing);
-        int24 tickUpper = int24(key.tickSpacing);
+        int24 tickLower = int24(key.tickSpacing);
+        int24 tickUpper = int24(key.tickSpacing * 2);
         uint256 amount0Desired = 100e18;
         uint256 amount1Desired = 100e18;
         uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
