@@ -95,7 +95,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
 
         // Try to add liquidity at that range, but the token reenters posm
-        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: 0, tickUpper: 60});
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -int24(key.tickSpacing), tickUpper: int24(key.tickSpacing)});
         bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, "");
 
         // Permit2.transferFrom does not bubble the ContractLocked error and instead reverts with its own error
