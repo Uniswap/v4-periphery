@@ -16,11 +16,7 @@ contract DeployPositionDescriptorTest is Script {
     {
         vm.startBroadcast();
 
-        positionDescriptor = new PositionDescriptor(
-            IPoolManager(poolManager),
-            weth,
-            nativeCurrencyLabel
-        );
+        positionDescriptor = new PositionDescriptor(IPoolManager(poolManager), weth, nativeCurrencyLabel);
         console2.log("PositionDescriptor", address(positionDescriptor));
 
         vm.stopBroadcast();
