@@ -10,7 +10,7 @@ import {PositionDescriptor} from "../src/PositionDescriptor.sol";
 contract DeployPositionDescriptorTest is Script {
     function setUp() public {}
 
-    function run(address poolManager, address weth, bytes32 nativeCurrencyLabel)
+    function run(address poolManager, address weth, string memory nativeCurrencyLabel)
         public
         returns (PositionDescriptor positionDescriptor)
     {

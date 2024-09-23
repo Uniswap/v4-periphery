@@ -31,29 +31,14 @@ contract PositionDescriptor is IPositionDescriptor {
     address private constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
 
     address public immutable WETH9;
-    /// @dev A null-terminated string
-    bytes32 public immutable nativeCurrencyLabelBytes;
+    string public nativeCurrencyLabel;
 
     IPoolManager public immutable poolManager;
 
-    constructor(IPoolManager _poolManager, address _WETH9, bytes32 _nativeCurrencyLabel) {
+    constructor(IPoolManager _poolManager, address _WETH9, string memory _nativeCurrencyLabel) {
         poolManager = _poolManager;
         WETH9 = _WETH9;
-        nativeCurrencyLabelBytes = _nativeCurrencyLabel;
-    }
-
-    /// @notice Takes the native currency label in bytes32 and returns it as a string
-    /// @return nativeCurrencyLabel The native currency label
-    function nativeCurrencyLabel() public view returns (string memory) {
-        uint256 len = 0;
-        while (len < 32 && nativeCurrencyLabelBytes[len] != 0) {
-            len++;
-        }
-        bytes memory b = new bytes(len);
-        for (uint256 i = 0; i < len; i++) {
-            b[i] = nativeCurrencyLabelBytes[i];
-        }
-        return string(b);
+        nativeCurrencyLabel = _nativeCurrencyLabel;
     }
 
     /// @inheritdoc IPositionDescriptor
@@ -80,10 +65,10 @@ contract PositionDescriptor is IPositionDescriptor {
                 quoteCurrency: quoteCurrency,
                 baseCurrency: baseCurrency,
                 quoteCurrencySymbol: quoteCurrency.isAddressZero()
-                    ? nativeCurrencyLabel()
+                    ? nativeCurrencyLabel
                     : SafeERC20Namer.tokenSymbol(Currency.unwrap(quoteCurrency)),
                 baseCurrencySymbol: baseCurrency.isAddressZero()
-                    ? nativeCurrencyLabel()
+                    ? nativeCurrencyLabel
                     : SafeERC20Namer.tokenSymbol(Currency.unwrap(baseCurrency)),
                 quoteCurrencyDecimals: quoteCurrency.isAddressZero()
                     ? 18
