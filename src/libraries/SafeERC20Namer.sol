@@ -38,7 +38,7 @@ library SafeERC20Namer {
     function callAndParseStringReturn(address token, bytes4 selector) private view returns (string memory) {
         (bool success, bytes memory data) = token.staticcall(abi.encodeWithSelector(selector));
         // if not implemented, or returns empty data, return empty string
-        if (!success || data.length == 0) {
+        if (!success) {
             return "";
         }
         // bytes32 data always has length 32
