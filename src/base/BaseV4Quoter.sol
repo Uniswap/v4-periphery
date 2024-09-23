@@ -4,12 +4,11 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {QuoterRevert} from "../libraries/QuoterRevert.sol";
-import {SqrtPriceLimitHelper} from "../libraries/SqrtPriceLimitHelper.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 abstract contract BaseV4Quoter is SafeCallback {
-    using SqrtPriceLimitHelper for uint160;
     using QuoterRevert for *;
     using PoolIdLibrary for PoolId;
 
@@ -36,26 +35,23 @@ abstract contract BaseV4Quoter is SafeCallback {
 
     /// @dev Execute a swap and return the balance delta
     /// @notice if amountSpecified < 0, the swap is exactInput, otherwise exactOutput
-    function _swap(
-        PoolKey memory poolKey,
-        bool zeroForOne,
-        int256 amountSpecified,
-        uint160 sqrtPriceLimitX96,
-        bytes calldata hookData
-    ) internal returns (BalanceDelta swapDelta) {
+    function _swap(PoolKey memory poolKey, bool zeroForOne, int256 amountSpecified, bytes calldata hookData)
+        internal
+        returns (BalanceDelta swapDelta)
+    {
         swapDelta = poolManager.swap(
             poolKey,
             IPoolManager.SwapParams({
                 zeroForOne: zeroForOne,
                 amountSpecified: amountSpecified,
-                sqrtPriceLimitX96: sqrtPriceLimitX96.getSqrtPriceLimit(zeroForOne)
+                sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             }),
             hookData
         );
 
         // Check that the pool was not illiquid.
         int128 amountSpecifiedActual = (zeroForOne == (amountSpecified < 0)) ? swapDelta.amount0() : swapDelta.amount1();
-        if (sqrtPriceLimitX96 == 0 && amountSpecifiedActual != amountSpecified) {
+        if (amountSpecifiedActual != amountSpecified) {
             revert NotEnoughLiquidity(poolKey.toId());
         }
     }

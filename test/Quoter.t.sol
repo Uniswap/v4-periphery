@@ -90,7 +90,6 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
                 poolKey: key02,
                 zeroForOne: true,
                 exactAmount: uint128(amountIn),
-                sqrtPriceLimitX96: 0,
                 hookData: ZERO_BYTES
             })
         );
@@ -110,7 +109,6 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
                 poolKey: key02,
                 zeroForOne: false,
                 exactAmount: uint128(amountIn),
-                sqrtPriceLimitX96: 0,
                 hookData: ZERO_BYTES
             })
         );
@@ -275,12 +273,12 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
     }
 
     function testQuoter_quoteExactOutputSingle_0to1() public {
+        uint256 amountOut = 10000;
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutputSingle(
             IQuoter.QuoteExactSingleParams({
                 poolKey: key01,
                 zeroForOne: true,
-                exactAmount: type(uint128).max,
-                sqrtPriceLimitX96: SQRT_PRICE_100_102,
+                exactAmount: uint128(amountOut),
                 hookData: ZERO_BYTES
             })
         );
@@ -288,16 +286,16 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
-        assertEq(amountIn, 9981);
+        assertEq(amountIn, 10133);
     }
 
     function testQuoter_quoteExactOutputSingle_1to0() public {
+        uint256 amountOut = 10000;
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutputSingle(
             IQuoter.QuoteExactSingleParams({
                 poolKey: key01,
                 zeroForOne: false,
-                exactAmount: type(uint128).max,
-                sqrtPriceLimitX96: SQRT_PRICE_102_100,
+                exactAmount: uint128(amountOut),
                 hookData: ZERO_BYTES
             })
         );
@@ -305,7 +303,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
-        assertEq(amountIn, 9981);
+        assertEq(amountIn, 10133);
     }
 
     function testQuoter_quoteExactOutput_0to2_2TicksLoaded() public {

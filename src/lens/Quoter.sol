@@ -85,7 +85,7 @@ contract Quoter is IQuoter, BaseV4Quoter {
             pathKey = params.path[i];
             (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(inputCurrency);
 
-            swapDelta = _swap(poolKey, zeroForOne, -int256(int128(amountIn)), 0, pathKey.hookData);
+            swapDelta = _swap(poolKey, zeroForOne, -int256(int128(amountIn)), pathKey.hookData);
 
             amountIn = zeroForOne ? uint128(swapDelta.amount1()) : uint128(swapDelta.amount0());
             inputCurrency = pathKey.intermediateCurrency;
@@ -96,13 +96,8 @@ contract Quoter is IQuoter, BaseV4Quoter {
 
     /// @dev external function called within the _unlockCallback, to simulate a single-hop exact input swap, then revert with the result
     function _quoteExactInputSingle(QuoteExactSingleParams calldata params) external selfOnly returns (bytes memory) {
-        BalanceDelta swapDelta = _swap(
-            params.poolKey,
-            params.zeroForOne,
-            -int256(int128(params.exactAmount)),
-            params.sqrtPriceLimitX96,
-            params.hookData
-        );
+        BalanceDelta swapDelta =
+            _swap(params.poolKey, params.zeroForOne, -int256(int128(params.exactAmount)), params.hookData);
 
         // the output delta of a swap is positive
         uint256 amountOut = params.zeroForOne ? uint128(swapDelta.amount1()) : uint128(swapDelta.amount0());
@@ -121,7 +116,7 @@ contract Quoter is IQuoter, BaseV4Quoter {
             pathKey = params.path[i - 1];
             (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(outputCurrency);
 
-            swapDelta = _swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, pathKey.hookData);
+            swapDelta = _swap(poolKey, !oneForZero, int256(uint256(amountOut)), pathKey.hookData);
 
             amountOut = oneForZero ? uint128(-swapDelta.amount1()) : uint128(-swapDelta.amount0());
 
@@ -133,13 +128,8 @@ contract Quoter is IQuoter, BaseV4Quoter {
 
     /// @dev external function called within the _unlockCallback, to simulate a single-hop exact output swap, then revert with the result
     function _quoteExactOutputSingle(QuoteExactSingleParams calldata params) external selfOnly returns (bytes memory) {
-        BalanceDelta swapDelta = _swap(
-            params.poolKey,
-            params.zeroForOne,
-            int256(uint256(params.exactAmount)),
-            params.sqrtPriceLimitX96,
-            params.hookData
-        );
+        BalanceDelta swapDelta =
+            _swap(params.poolKey, params.zeroForOne, int256(uint256(params.exactAmount)), params.hookData);
 
         // the input delta of a swap is negative so we must flip it
         uint256 amountIn = params.zeroForOne ? uint128(-swapDelta.amount0()) : uint128(-swapDelta.amount1());

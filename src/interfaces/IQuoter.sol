@@ -15,7 +15,6 @@ interface IQuoter {
         PoolKey poolKey;
         bool zeroForOne;
         uint128 exactAmount;
-        uint160 sqrtPriceLimitX96;
         bytes hookData;
     }
 
@@ -30,7 +29,6 @@ interface IQuoter {
     /// poolKey The key for identifying a V4 pool
     /// zeroForOne If the swap is from currency0 to currency1
     /// exactAmount The desired input amount
-    /// sqrtPriceLimitX96 The price limit of the pool that cannot be exceeded by the swap
     /// hookData arbitrary hookData to pass into the associated hooks
     /// @return amountOut The output quote for the exactIn swap
     /// @return gasEstimate Estimated gas units used for the swap
@@ -54,7 +52,6 @@ interface IQuoter {
     /// poolKey The key for identifying a V4 pool
     /// zeroForOne If the swap is from currency0 to currency1
     /// exactAmount The desired output amount
-    /// sqrtPriceLimitX96 The price limit of the pool that cannot be exceeded by the swap
     /// hookData arbitrary hookData to pass into the associated hooks
     /// @return amountIn The input quote for the exactOut swap
     /// @return gasEstimate Estimated gas units used for the swap
