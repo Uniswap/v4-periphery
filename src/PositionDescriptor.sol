@@ -51,6 +51,7 @@ contract PositionDescriptor is IPositionDescriptor {
         (PoolKey memory poolKey, PositionInfo positionInfo) = positionManager.getPoolAndPositionInfo(tokenId);
         (, int24 tick,,) = poolManager.getSlot0(poolKey.toId());
 
+        // If possible, flip currencies to get the larger currency as the base currency, so that the price (quote/base) is more readable
         // flip if currency0 priority is greater than currency1 priority
         bool _flipRatio = flipRatio(Currency.unwrap(poolKey.currency0), Currency.unwrap(poolKey.currency1));
 

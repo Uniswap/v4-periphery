@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "./AddressStringUtil.sol";
 
 /// @title SafeERC20Namer
 /// @notice produces token descriptors from inconsistent or absent ERC20 symbol implementations that can return string or bytes32
 /// this library will always produce a string symbol to represent the token
+/// @dev Reference: https://github.com/Uniswap/solidity-lib/blob/master/contracts/libraries/SafeERC20Namer.sol
 library SafeERC20Namer {
     function bytes32ToString(bytes32 x) private pure returns (string memory) {
         bytes memory bytesString = new bytes(32);
@@ -37,7 +39,7 @@ library SafeERC20Namer {
     /// @return the token symbol
     function callAndParseStringReturn(address token, bytes4 selector) private view returns (string memory) {
         (bool success, bytes memory data) = token.staticcall(abi.encodeWithSelector(selector));
-        // if not implemented, or returns empty data, return empty string
+        // if not implemented, return empty string
         if (!success) {
             return "";
         }
@@ -55,8 +57,7 @@ library SafeERC20Namer {
     /// @param token the token address
     /// @return the token symbol
     function tokenSymbol(address token) internal view returns (string memory) {
-        // 0x95d89b41 = bytes4(keccak256("symbol()"))
-        string memory symbol = callAndParseStringReturn(token, 0x95d89b41);
+        string memory symbol = callAndParseStringReturn(token, IERC20Metadata.symbol.selector);
         if (bytes(symbol).length == 0) {
             // fallback to 6 uppercase hex of address
             return addressToSymbol(token);

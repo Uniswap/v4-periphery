@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 /// @title AddressStringUtil
 /// @notice provides utility functions for converting addresses to strings
+/// @dev Reference: https://github.com/Uniswap/solidity-lib/blob/master/contracts/libraries/AddressStringUtil.sol
 library AddressStringUtil {
     /// @notice Converts an address to the uppercase hex string, extracting only len bytes (up to 20, multiple of 2)
     /// @param addr the address to convert
