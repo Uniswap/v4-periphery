@@ -53,12 +53,6 @@ library SVG {
     /// @param params The SVGParams struct containing the parameters for the SVG
     /// @return svg The SVG string associated with the NFT
     function generateSVG(SVGParams memory params) internal pure returns (string memory svg) {
-        /*
-        address: "0xe8ab59d3bcde16a29912de83a90eb39628cfc163",
-        msg: "Forged in SVG for Uniswap in 2021 by 0xe8ab59d3bcde16a29912de83a90eb39628cfc163",
-        sig: "0x2df0e99d9cbfec33a705d83f75666d98b22dea7c1af412c584f7d626d83f02875993df740dc87563b9c73378f8462426da572d7989de88079a382ad96c57b68d1b",
-        version: "2"
-        */
         return string(
             abi.encodePacked(
                 generateSVGDefs(params),

@@ -18,7 +18,7 @@ import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
 
 /// @title UniswapV4Router
-/// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
+/// @notice Abstract contract that contains all internal logic needed for routing through Uniswap v4 pools
 /// @dev the entry point to executing actions in this contract is calling `BaseActionsRouter._executeActions`
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
 abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {

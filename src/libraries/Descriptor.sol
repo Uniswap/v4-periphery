@@ -5,6 +5,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 import {SVG} from "./SVG.sol";
@@ -46,12 +47,12 @@ library Descriptor {
         string memory descriptionPartOne = generateDescriptionPartOne(
             escapeQuotes(params.quoteCurrencySymbol),
             escapeQuotes(params.baseCurrencySymbol),
-            addressToString(params.poolManager),
-            addressToString(Currency.unwrap(params.quoteCurrency))
+            addressToString(params.poolManager)
         );
         string memory descriptionPartTwo = generateDescriptionPartTwo(
             params.tokenId.toString(),
             escapeQuotes(params.baseCurrencySymbol),
+            addressToString(Currency.unwrap(params.quoteCurrency)),
             addressToString(Currency.unwrap(params.baseCurrency)),
             addressToString(params.hooks),
             feeToPercentString(params.fee)
@@ -111,18 +112,16 @@ library Descriptor {
     /// @param quoteCurrencySymbol The symbol of the quote currency
     /// @param baseCurrencySymbol The symbol of the base currency
     /// @param poolManager The address of the pool manager
-    /// @param quoteCurrency The address of the quote currency
     /// @return The first part of the description
     function generateDescriptionPartOne(
         string memory quoteCurrencySymbol,
         string memory baseCurrencySymbol,
-        string memory poolManager,
-        string memory quoteCurrency
+        string memory poolManager
     ) private pure returns (string memory) {
         // displays quote currency first, then base currency
         return string(
             abi.encodePacked(
-                "This NFT represents a liquidity position in a Uniswap V4 ",
+                "This NFT represents a liquidity position in a Uniswap v4 ",
                 quoteCurrencySymbol,
                 "-",
                 baseCurrencySymbol,
@@ -131,10 +130,7 @@ library Descriptor {
                 "\\nPool Manager Address: ",
                 poolManager,
                 "\\n",
-                quoteCurrencySymbol,
-                " Address: ",
-                quoteCurrency,
-                "\\n"
+                quoteCurrencySymbol
             )
         );
     }
@@ -142,6 +138,7 @@ library Descriptor {
     /// @notice Generates the second part of the description for a Uniswap v4 NFTs
     /// @param tokenId The token ID
     /// @param baseCurrencySymbol The symbol of the base currency
+    /// @param quoteCurrency The address of the quote currency
     /// @param baseCurrency The address of the base currency
     /// @param hooks The address of the hooks contract
     /// @param feeTier The fee tier of the pool
@@ -149,12 +146,16 @@ library Descriptor {
     function generateDescriptionPartTwo(
         string memory tokenId,
         string memory baseCurrencySymbol,
+        string memory quoteCurrency,
         string memory baseCurrency,
         string memory hooks,
         string memory feeTier
     ) private pure returns (string memory) {
         return string(
             abi.encodePacked(
+                ' Address: ',
+                quoteCurrency,
+                "\\n",
                 baseCurrencySymbol,
                 " Address: ",
                 baseCurrency,
@@ -402,6 +403,9 @@ library Descriptor {
     /// @param fee fee amount
     /// @return fee as a decimal string with percent sign
     function feeToPercentString(uint24 fee) internal pure returns (string memory) {
+        if (fee == LPFeeLibrary.DYNAMIC_FEE_FLAG) {
+            return "Dynamic";
+        }
         if (fee == 0) {
             return "0%";
         }
