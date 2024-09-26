@@ -153,7 +153,7 @@ library Descriptor {
     ) private pure returns (string memory) {
         return string(
             abi.encodePacked(
-                ' Address: ',
+                " Address: ",
                 quoteCurrency,
                 "\\n",
                 baseCurrencySymbol,
