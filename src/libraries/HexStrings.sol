@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 /// @title HexStrings
 /// @notice Provides function for converting numbers to hexadecimal strings
+/// @dev Reference: https://github.com/Uniswap/v3-periphery/blob/main/contracts/libraries/HexStrings.sol
 library HexStrings {
     bytes16 internal constant ALPHABET = "0123456789abcdef";
 

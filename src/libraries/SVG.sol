@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -9,6 +9,7 @@ import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 
 /// @title SVG
 /// @notice Provides a function for generating an SVG associated with a Uniswap NFT
+/// @dev Reference: https://github.com/Uniswap/v3-periphery/blob/main/contracts/libraries/NFTSVG.sol
 library SVG {
     using Strings for uint256;
 
@@ -48,7 +49,7 @@ library SVG {
         string y3;
     }
 
-    /// @notice Generate the SVG associated with a Uniswap V4 NFT
+    /// @notice Generate the SVG associated with a Uniswap v4 NFT
     /// @param params The SVGParams struct containing the parameters for the SVG
     /// @return svg The SVG string associated with the NFT
     function generateSVG(SVGParams memory params) internal pure returns (string memory svg) {

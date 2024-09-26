@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 /// @title AddressStringUtil
 /// @notice provides utility functions for converting addresses to strings
 /// @dev Reference: https://github.com/Uniswap/solidity-lib/blob/master/contracts/libraries/AddressStringUtil.sol
 library AddressStringUtil {
+    error InvalidAddressLength(uint256 len);
+
     /// @notice Converts an address to the uppercase hex string, extracting only len bytes (up to 20, multiple of 2)
     /// @param addr the address to convert
     /// @param len the number of bytes to extract
     /// @return the hex string
     function toAsciiString(address addr, uint256 len) internal pure returns (string memory) {
-        require(len % 2 == 0 && len > 0 && len <= 40, "AddressStringUtil: INVALID_LEN");
+        if (!(len % 2 == 0 && len > 0 && len <= 40)) {
+            revert InvalidAddressLength(len);
+        }
 
         bytes memory s = new bytes(len);
         uint256 addrNum = uint256(uint160(addr));

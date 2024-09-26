@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -12,6 +12,7 @@ import {HexStrings} from "./HexStrings.sol";
 
 /// @title Descriptor
 /// @notice Describes NFT token positions
+/// @dev Reference: https://github.com/Uniswap/v3-periphery/blob/main/contracts/libraries/NFTDescriptor.sol
 library Descriptor {
     using TickMath for int24;
     using Strings for uint256;
@@ -37,7 +38,7 @@ library Descriptor {
         address hooks;
     }
 
-    /// @notice Constructs the token URI for a Uniswap V4 NFT
+    /// @notice Constructs the token URI for a Uniswap v4 NFT
     /// @param params Parameters needed to construct the token URI
     /// @return The token URI as a string
     function constructTokenURI(ConstructTokenURIParams calldata params) public pure returns (string memory) {
@@ -106,7 +107,7 @@ library Descriptor {
         return symbol;
     }
 
-    /// @notice Generates the first part of the description for a Uniswap V4 NFT
+    /// @notice Generates the first part of the description for a Uniswap v4 NFT
     /// @param quoteCurrencySymbol The symbol of the quote currency
     /// @param baseCurrencySymbol The symbol of the base currency
     /// @param poolManager The address of the pool manager
@@ -138,7 +139,7 @@ library Descriptor {
         );
     }
 
-    /// @notice Generates the second part of the description for a Uniswap V4 NFTs
+    /// @notice Generates the second part of the description for a Uniswap v4 NFTs
     /// @param tokenId The token ID
     /// @param baseCurrencySymbol The symbol of the base currency
     /// @param baseCurrency The address of the base currency
@@ -169,7 +170,7 @@ library Descriptor {
         );
     }
 
-    /// @notice Generates the name for a Uniswap V4 NFT
+    /// @notice Generates the name for a Uniswap v4 NFT
     /// @param params Parameters needed to generate the name
     /// @param feeTier The fee tier of the pool
     /// @return The name of the NFT
@@ -452,7 +453,7 @@ library Descriptor {
         return (uint256(uint160(addr))).toHexString(20);
     }
 
-    /// @notice Generates the SVG image for a Uniswap V4 NFT
+    /// @notice Generates the SVG image for a Uniswap v4 NFT
     /// @param params Parameters needed to generate the SVG image
     /// @return svg The SVG image as a string
     function generateSVGImage(ConstructTokenURIParams memory params) internal pure returns (string memory svg) {
@@ -503,7 +504,7 @@ library Descriptor {
         pure
         returns (string memory)
     {
-        return (n - inMn * (outMx - outMn) / (inMx - inMn) + outMn).toString();
+        return ((n - inMn) * (outMx - outMn) / (inMx - inMn) + outMn).toString();
     }
 
     function currencyToColorHex(uint256 currency, uint256 offset) internal pure returns (string memory str) {
