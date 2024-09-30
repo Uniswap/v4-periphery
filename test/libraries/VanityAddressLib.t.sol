@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
-import {VanityAddressLib} from "../../contracts/libraries/VanityAddressLib.sol";
+import {VanityAddressLib} from "../../src/libraries/VanityAddressLib.sol";
 
 contract VanityAddressLibTest is Test {
     // function testScore(uint8 numZerosStart, uint8 numFoursStart, uint8 numOtherFours) public {

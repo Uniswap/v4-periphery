@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.20;
 
-import {Owned} from "solmate/auth/Owned.sol";
+import {Owned} from "solmate/src/auth/Owned.sol";
 import {Test, console2} from "forge-std/Test.sol";
-import {PoolManager} from "v4-core/PoolManager.sol";
-import {UniswapV4DeployerCompetition} from "../contracts/UniswapV4DeployerCompetition.sol";
+import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
+import {UniswapV4DeployerCompetition} from "../src/UniswapV4DeployerCompetition.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 contract UniswapV4DeployerCompetitionTest is Test {
     UniswapV4DeployerCompetition deployer;
@@ -39,7 +40,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
         deployer.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
         assertFalse(v4Core.code.length == 0);
         assertEq(Owned(v4Core).owner(), v4Owner);
-        assertEq(PoolManager(v4Core).MAX_TICK_SPACING(), type(int16).max);
+        assertEq(TickMath.MAX_TICK_SPACING, type(int16).max);
         assertEq(address(deployer).balance, 0 ether);
         assertEq(winner.balance, 1 ether);
     }
@@ -59,7 +60,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
         deployer.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
         assertFalse(v4Core.code.length == 0);
         assertEq(Owned(v4Core).owner(), v4Owner);
-        assertEq(PoolManager(v4Core).MAX_TICK_SPACING(), type(int16).max);
+        assertEq(TickMath.MAX_TICK_SPACING, type(int16).max);
     }
 
     function testCompetitionNotOver(bytes32 salt, uint256 timestamp) public {
