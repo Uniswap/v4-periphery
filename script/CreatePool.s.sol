@@ -57,8 +57,7 @@ contract CreatePool is Script, LiquidityOperations {
         permit2.approve(Currency.unwrap(token0), address(posm), type(uint160).max, type(uint48).max);
         permit2.approve(Currency.unwrap(token1), address(posm), type(uint160).max, type(uint48).max);
 
-        posm.modifyLiquidities{ value: amount0Desired }(calls, block.timestamp + 100000);
-
+        posm.modifyLiquidities{value: amount0Desired}(calls, block.timestamp + 100000);
 
         vm.stopBroadcast();
     }
