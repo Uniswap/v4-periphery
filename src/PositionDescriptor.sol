@@ -13,7 +13,7 @@ import {IPositionDescriptor} from "./interfaces/IPositionDescriptor.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 import {Descriptor} from "./libraries/Descriptor.sol";
 import {CurrencyRatioSortOrder} from "./libraries/CurrencyRatioSortOrder.sol";
-import {SafeERC20Namer} from "./libraries/SafeERC20Namer.sol";
+import {SafeERC20Metadata} from "./libraries/SafeERC20Metadata.sol";
 
 /// @title Describes NFT token positions
 /// @notice Produces a string containing the data URI for a JSON metadata string
@@ -67,16 +67,16 @@ contract PositionDescriptor is IPositionDescriptor {
                 baseCurrency: baseCurrency,
                 quoteCurrencySymbol: quoteCurrency.isAddressZero()
                     ? nativeCurrencyLabel
-                    : SafeERC20Namer.tokenSymbol(Currency.unwrap(quoteCurrency)),
+                    : SafeERC20Metadata.tokenSymbol(Currency.unwrap(quoteCurrency)),
                 baseCurrencySymbol: baseCurrency.isAddressZero()
                     ? nativeCurrencyLabel
-                    : SafeERC20Namer.tokenSymbol(Currency.unwrap(baseCurrency)),
+                    : SafeERC20Metadata.tokenSymbol(Currency.unwrap(baseCurrency)),
                 quoteCurrencyDecimals: quoteCurrency.isAddressZero()
                     ? 18
-                    : IERC20Metadata(Currency.unwrap(quoteCurrency)).decimals(),
+                    : SafeERC20Metadata.tokenDecimals(Currency.unwrap(quoteCurrency)),
                 baseCurrencyDecimals: baseCurrency.isAddressZero()
                     ? 18
-                    : IERC20Metadata(Currency.unwrap(baseCurrency)).decimals(),
+                    : SafeERC20Metadata.tokenDecimals(Currency.unwrap(baseCurrency)),
                 flipRatio: _flipRatio,
                 tickLower: positionInfo.tickLower(),
                 tickUpper: positionInfo.tickUpper(),

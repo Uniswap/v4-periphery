@@ -18,6 +18,7 @@ library Descriptor {
     using TickMath for int24;
     using Strings for uint256;
     using HexStrings for uint256;
+    using LPFeeLibrary for uint24;
 
     uint256 constant sqrt10X128 = 1076067327063303206878105757264492625226;
 
@@ -403,7 +404,7 @@ library Descriptor {
     /// @param fee fee amount
     /// @return fee as a decimal string with percent sign
     function feeToPercentString(uint24 fee) internal pure returns (string memory) {
-        if (fee == LPFeeLibrary.DYNAMIC_FEE_FLAG) {
+        if (fee.isDynamicFee()) {
             return "Dynamic";
         }
         if (fee == 0) {
