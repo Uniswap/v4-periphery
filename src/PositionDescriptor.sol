@@ -3,11 +3,9 @@ pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {IPositionDescriptor} from "./interfaces/IPositionDescriptor.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
@@ -30,14 +28,14 @@ contract PositionDescriptor is IPositionDescriptor {
     address private constant TBTC = 0x8dAEBADE922dF735c38C80C7eBD708Af50815fAa;
     address private constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
 
-    address public immutable WETH9;
+    address public immutable wrappedNative;
     string public nativeCurrencyLabel;
 
     IPoolManager public immutable poolManager;
 
-    constructor(IPoolManager _poolManager, address _WETH9, string memory _nativeCurrencyLabel) {
+    constructor(IPoolManager _poolManager, address _wrappedNative, string memory _nativeCurrencyLabel) {
         poolManager = _poolManager;
-        WETH9 = _WETH9;
+        wrappedNative = _wrappedNative;
         nativeCurrencyLabel = _nativeCurrencyLabel;
     }
 
@@ -65,18 +63,10 @@ contract PositionDescriptor is IPositionDescriptor {
                 tokenId: tokenId,
                 quoteCurrency: quoteCurrency,
                 baseCurrency: baseCurrency,
-                quoteCurrencySymbol: quoteCurrency.isAddressZero()
-                    ? nativeCurrencyLabel
-                    : SafeERC20Metadata.tokenSymbol(Currency.unwrap(quoteCurrency)),
-                baseCurrencySymbol: baseCurrency.isAddressZero()
-                    ? nativeCurrencyLabel
-                    : SafeERC20Metadata.tokenSymbol(Currency.unwrap(baseCurrency)),
-                quoteCurrencyDecimals: quoteCurrency.isAddressZero()
-                    ? 18
-                    : SafeERC20Metadata.tokenDecimals(Currency.unwrap(quoteCurrency)),
-                baseCurrencyDecimals: baseCurrency.isAddressZero()
-                    ? 18
-                    : SafeERC20Metadata.tokenDecimals(Currency.unwrap(baseCurrency)),
+                quoteCurrencySymbol: SafeERC20Metadata.currencySymbol(quoteCurrency, nativeCurrencyLabel),
+                baseCurrencySymbol: SafeERC20Metadata.currencySymbol(baseCurrency, nativeCurrencyLabel),
+                quoteCurrencyDecimals: SafeERC20Metadata.currencyDecimals(quoteCurrency),
+                baseCurrencyDecimals: SafeERC20Metadata.currencyDecimals(baseCurrency),
                 flipRatio: _flipRatio,
                 tickLower: positionInfo.tickLower(),
                 tickUpper: positionInfo.tickUpper(),
@@ -90,8 +80,8 @@ contract PositionDescriptor is IPositionDescriptor {
     }
 
     /// @notice Returns true if currency0 has higher priority than currency1
-    /// @param currency0 The first currency
-    /// @param currency1 The second currency
+    /// @param currency0 The first currency address
+    /// @param currency1 The second currency address
     /// @return flipRatio True if currency0 has higher priority than currency1
     function flipRatio(address currency0, address currency1) public view returns (bool) {
         return currencyRatioPriority(currency0) > currencyRatioPriority(currency1);
@@ -99,18 +89,15 @@ contract PositionDescriptor is IPositionDescriptor {
 
     /// @notice Returns the priority of a currency.
     /// For certain currencies on mainnet, the smaller the currency, the higher the priority
-    /// @param currency The currency
+    /// @param currency The currency address
     /// @return priority The priority of the currency
     function currencyRatioPriority(address currency) public view returns (int256) {
-        // Currencies in order of priority on mainnet: USDC, USDT, DAI, ETH, WETH, TBTC, WBTC
-        // weth is different address on different chains. passed in constructor
+        // Currencies in order of priority on mainnet: USDC, USDT, DAI, (ETH, WETH), TBTC, WBTC
+        // wrapped native is different address on different chains. passed in constructor
 
         // native currency
-        if (currency == address(0)) {
+        if (currency == address(0) || currency == wrappedNative) {
             return CurrencyRatioSortOrder.DENOMINATOR;
-        }
-        if (currency == WETH9) {
-            return CurrencyRatioSortOrder.DENOMINATOR_2;
         }
         if (block.chainid == 1) {
             if (currency == USDC) {

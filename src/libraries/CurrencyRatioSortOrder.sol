@@ -12,6 +12,5 @@ library CurrencyRatioSortOrder {
 
     int256 constant DENOMINATOR_MOST = -300;
     int256 constant DENOMINATOR_MORE = -200;
-    int256 constant DENOMINATOR_2 = -150;
     int256 constant DENOMINATOR = -100;
 }

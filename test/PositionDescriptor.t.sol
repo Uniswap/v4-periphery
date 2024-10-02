@@ -38,13 +38,14 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
 
     function test_setup_succeeds() public view {
         assertEq(address(positionDescriptor.poolManager()), address(manager));
-        assertEq(positionDescriptor.WETH9(), WETH9);
+        assertEq(positionDescriptor.wrappedNative(), WETH9);
         assertEq(positionDescriptor.nativeCurrencyLabel(), nativeCurrencyLabel);
     }
 
     function test_currencyRatioPriority_mainnet_succeeds() public {
         vm.chainId(1);
-        assertEq(positionDescriptor.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR_2);
+        assertEq(positionDescriptor.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR);
+        assertEq(positionDescriptor.currencyRatioPriority(address(0)), CurrencyRatioSortOrder.DENOMINATOR);
         assertEq(positionDescriptor.currencyRatioPriority(USDC), CurrencyRatioSortOrder.NUMERATOR_MOST);
         assertEq(positionDescriptor.currencyRatioPriority(USDT), CurrencyRatioSortOrder.NUMERATOR_MORE);
         assertEq(positionDescriptor.currencyRatioPriority(DAI), CurrencyRatioSortOrder.NUMERATOR);
@@ -54,7 +55,8 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
     }
 
     function test_currencyRatioPriority_notMainnet_succeeds() public {
-        assertEq(positionDescriptor.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR_2);
+        assertEq(positionDescriptor.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR);
+        assertEq(positionDescriptor.currencyRatioPriority(address(0)), CurrencyRatioSortOrder.DENOMINATOR);
         assertEq(positionDescriptor.currencyRatioPriority(USDC), 0);
         assertEq(positionDescriptor.currencyRatioPriority(USDT), 0);
         assertEq(positionDescriptor.currencyRatioPriority(DAI), 0);
