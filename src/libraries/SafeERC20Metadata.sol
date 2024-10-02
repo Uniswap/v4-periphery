@@ -79,7 +79,8 @@ library SafeERC20Metadata {
         if (currency.isAddressZero()) {
             return 18;
         }
-        (bool success, bytes memory data) = Currency.unwrap(currency).staticcall(abi.encodeCall(IERC20Metadata.decimals, ()));
+        (bool success, bytes memory data) =
+            Currency.unwrap(currency).staticcall(abi.encodeCall(IERC20Metadata.decimals, ()));
         if (!success) {
             return 0;
         }
