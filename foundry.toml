@@ -4,7 +4,7 @@ solc_version = '0.8.26'
 optimizer_runs = 44444444
 via_ir = true
 ffi = true
-fs_permissions = [{ access = "read-write", path = ".forge-snapshots/"}]
+fs_permissions = [{ access = "read-write", path = ".forge-snapshots/"}, { access = "read-write", path = "./script/parameters/"}]
 evm_version = "cancun"
 gas_limit = "3000000000"
 fuzz_runs = 10_000
