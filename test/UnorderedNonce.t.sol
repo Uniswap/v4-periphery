@@ -107,4 +107,16 @@ contract UnorderedNonceTest is Test {
             unorderedNonce.spendNonce(address(this), second);
         }
     }
+
+    function test_fuzz_revokeNonce(uint256 nonce) public {
+        unorderedNonce.revokeNonce(nonce);
+        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        unorderedNonce.revokeNonce(nonce);
+    }
+
+    function test_fuzz_revokeNonce_twoNonces(uint256 first, uint256 second) public {
+        unorderedNonce.revokeNonce(first);
+        if (first == second) vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        unorderedNonce.revokeNonce(second);
+    }
 }

@@ -21,7 +21,7 @@ import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {PoolInitializer} from "../../src/base/PoolInitializer.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {PositionConfig} from "../shared/PositionConfig.sol";
 import {IMulticall_v4} from "../../src/interfaces/IMulticall_v4.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
@@ -46,6 +46,8 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
     address bob;
     // bob used for permit2 signature tests
     uint256 bobPK;
+    address charlie; // charlie will NOT approve posm in setup()
+    uint256 charliePK;
 
     Permit2Forwarder permit2Forwarder;
 
@@ -54,6 +56,9 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
     uint48 permitExpiration = uint48(block.timestamp + 10e18);
     uint48 permitNonce = 0;
 
+    // redefine error from permit2/src/PermitErrors.sol since its hard-pinned to a solidity version
+    error InvalidNonce();
+
     bytes32 PERMIT2_DOMAIN_SEPARATOR;
 
     PositionConfig config;
@@ -61,6 +66,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
     function setUp() public {
         (alice, alicePK) = makeAddrAndKey("ALICE");
         (bob, bobPK) = makeAddrAndKey("BOB");
+        (charlie, charliePK) = makeAddrAndKey("CHARLIE");
 
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
@@ -78,10 +84,63 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         seedBalance(bob);
         approvePosmFor(bob);
+
+        // do not approve posm for charlie, but approve permit2 for allowance transfer
+        seedBalance(charlie);
+        vm.startPrank(charlie);
+        IERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint256).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
+        vm.stopPrank();
     }
 
     function test_multicall_initializePool_mint() public {
         key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
+
+        // Use multicall to initialize a pool and mint liquidity
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        config = PositionConfig({
+            poolKey: key,
+            tickLower: TickMath.minUsableTick(key.tickSpacing),
+            tickUpper: TickMath.maxUsableTick(key.tickSpacing)
+        });
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                100e18,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                ActionConstants.MSG_SENDER,
+                ZERO_BYTES
+            )
+        );
+        bytes memory actions = planner.finalizeModifyLiquidityWithClose(config.poolKey);
+
+        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
+
+        IMulticall_v4(address(lpm)).multicall(calls);
+
+        // test swap, doesn't revert, showing the pool was initialized
+        int256 amountSpecified = -1e18;
+        BalanceDelta result = swap(key, true, amountSpecified, ZERO_BYTES);
+        assertEq(result.amount0(), amountSpecified);
+        assertGt(result.amount1(), 0);
+    }
+
+    function test_multicall_initializePool_mint_native() public {
+        key = PoolKey({
+            currency0: CurrencyLibrary.ADDRESS_ZERO,
+            currency1: currency1,
+            fee: 0,
+            tickSpacing: 10,
+            hooks: IHooks(address(0))
+        });
 
         // Use multicall to initialize a pool and mint liquidity
         bytes[] memory calls = new bytes[](2);
@@ -104,7 +163,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
-        IMulticall_v4(address(lpm)).multicall(calls);
+        IMulticall_v4(address(lpm)).multicall{value: 1000 ether}(calls);
 
         // test swap, doesn't revert, showing the pool was initialized
         int256 amountSpecified = -1e18;
@@ -127,7 +186,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         Plan memory planner = Planner.init();
         planner.add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 100e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 100e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory actions = planner.finalizeModifyLiquidityWithClose(config.poolKey);
 
@@ -135,7 +194,6 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         bytes[] memory calls = new bytes[](1);
         calls[0] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
-        address charlie = makeAddr("CHARLIE");
         vm.startPrank(charlie);
         vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, charlie));
         lpm.multicall(calls);
@@ -157,7 +215,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         Plan memory planner = Planner.init();
         planner.add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 100e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 100e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory actions = planner.encode();
 
@@ -215,7 +273,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         vm.prank(bob);
         lpm.multicall(calls);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
 
@@ -256,7 +314,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         vm.prank(bob);
         lpm.multicall(calls);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         (_amount,,) = permit2.allowance(address(bob), Currency.unwrap(currency0), address(lpm));
 
@@ -312,7 +370,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         vm.prank(bob);
         lpm.multicall(calls);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         (_amount0,,) = permit2.allowance(address(bob), Currency.unwrap(currency0), address(lpm));
         (_amount1,,) = permit2.allowance(address(bob), Currency.unwrap(currency1), address(lpm));
@@ -320,5 +378,110 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         assertEq(_amount1, permitAmount);
         assertEq(liquidity, 10e18);
         assertEq(lpm.ownerOf(tokenId), bob);
+    }
+
+    /// @notice test that a front-ran permit does not fail a multicall with permit
+    function test_multicall_permit_frontrun_suceeds() public {
+        config = PositionConfig({
+            poolKey: key,
+            tickLower: TickMath.minUsableTick(key.tickSpacing),
+            tickUpper: TickMath.maxUsableTick(key.tickSpacing)
+        });
+
+        // Charlie signs permit for the two tokens
+        IAllowanceTransfer.PermitSingle memory permit0 =
+            defaultERC20PermitAllowance(Currency.unwrap(currency0), permitAmount, permitExpiration, permitNonce);
+        permit0.spender = address(lpm);
+        bytes memory sig0 = getPermitSignature(permit0, charliePK, PERMIT2_DOMAIN_SEPARATOR);
+
+        IAllowanceTransfer.PermitSingle memory permit1 =
+            defaultERC20PermitAllowance(Currency.unwrap(currency1), permitAmount, permitExpiration, permitNonce);
+        permit1.spender = address(lpm);
+        bytes memory sig1 = getPermitSignature(permit1, charliePK, PERMIT2_DOMAIN_SEPARATOR);
+
+        // bob front-runs the permits
+        vm.startPrank(bob);
+        lpm.permit(charlie, permit0, sig0);
+        lpm.permit(charlie, permit1, sig1);
+        vm.stopPrank();
+
+        // bob's front-run was successful
+        (uint160 _amount, uint48 _expiration, uint48 _nonce) =
+            permit2.allowance(charlie, Currency.unwrap(currency0), address(lpm));
+        assertEq(_amount, permitAmount);
+        assertEq(_expiration, permitExpiration);
+        assertEq(_nonce, permitNonce + 1);
+        (uint160 _amount1, uint48 _expiration1, uint48 _nonce1) =
+            permit2.allowance(charlie, Currency.unwrap(currency1), address(lpm));
+        assertEq(_amount1, permitAmount);
+        assertEq(_expiration1, permitExpiration);
+        assertEq(_nonce1, permitNonce + 1);
+
+        // charlie tries to mint an LP token with multicall(permit, permit, mint)
+        bytes[] memory calls = new bytes[](3);
+        calls[0] = abi.encodeWithSelector(Permit2Forwarder(lpm).permit.selector, charlie, permit0, sig0);
+        calls[1] = abi.encodeWithSelector(Permit2Forwarder(lpm).permit.selector, charlie, permit1, sig1);
+        bytes memory mintCall = getMintEncoded(config, 10e18, charlie, ZERO_BYTES);
+        calls[2] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mintCall, _deadline);
+
+        uint256 tokenId = lpm.nextTokenId();
+        vm.expectRevert();
+        lpm.ownerOf(tokenId); // token does not exist
+
+        bytes[] memory results = lpm.multicall(calls);
+        assertEq(results[0], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
+        assertEq(results[1], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
+
+        assertEq(lpm.ownerOf(tokenId), charlie);
+    }
+
+    /// @notice test that a front-ran permitBatch does not fail a multicall with permitBatch
+    function test_multicall_permitBatch_frontrun_suceeds() public {
+        config = PositionConfig({
+            poolKey: key,
+            tickLower: TickMath.minUsableTick(key.tickSpacing),
+            tickUpper: TickMath.maxUsableTick(key.tickSpacing)
+        });
+
+        // Charlie signs permitBatch for the two tokens
+        address[] memory tokens = new address[](2);
+        tokens[0] = Currency.unwrap(currency0);
+        tokens[1] = Currency.unwrap(currency1);
+
+        IAllowanceTransfer.PermitBatch memory permit =
+            defaultERC20PermitBatchAllowance(tokens, permitAmount, permitExpiration, permitNonce);
+        permit.spender = address(lpm);
+        bytes memory sig = getPermitBatchSignature(permit, charliePK, PERMIT2_DOMAIN_SEPARATOR);
+
+        // bob front-runs the permits
+        vm.prank(bob);
+        lpm.permitBatch(charlie, permit, sig);
+
+        // bob's front-run was successful
+        (uint160 _amount, uint48 _expiration, uint48 _nonce) =
+            permit2.allowance(charlie, Currency.unwrap(currency0), address(lpm));
+        assertEq(_amount, permitAmount);
+        assertEq(_expiration, permitExpiration);
+        assertEq(_nonce, permitNonce + 1);
+        (uint160 _amount1, uint48 _expiration1, uint48 _nonce1) =
+            permit2.allowance(charlie, Currency.unwrap(currency1), address(lpm));
+        assertEq(_amount1, permitAmount);
+        assertEq(_expiration1, permitExpiration);
+        assertEq(_nonce1, permitNonce + 1);
+
+        // charlie tries to mint an LP token with multicall(permitBatch, mint)
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(Permit2Forwarder(lpm).permitBatch.selector, charlie, permit, sig);
+        bytes memory mintCall = getMintEncoded(config, 10e18, charlie, ZERO_BYTES);
+        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mintCall, _deadline);
+
+        uint256 tokenId = lpm.nextTokenId();
+        vm.expectRevert();
+        lpm.ownerOf(tokenId); // token does not exist
+
+        bytes[] memory results = lpm.multicall(calls);
+        assertEq(results[0], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
+
+        assertEq(lpm.ownerOf(tokenId), charlie);
     }
 }

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import {IEIP712_v4} from "../interfaces/IEIP712_v4.sol";
 
 /// @notice Generic EIP712 implementation
 /// @dev Maintains cross-chain replay protection in the event of a fork
 /// @dev Should not be delegatecall'd because DOMAIN_SEPARATOR returns the cached hash and does not recompute with the delegatecallers address
-/// @dev Reference: https://github.com/Uniswap/permit2/blob/main/src/EIP712.sol
-/// @dev Reference: https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/cryptography/EIP712.sol
+/// @dev Reference: https://github.com/Uniswap/permit2/blob/3f17e8db813189a03950dc7fc8382524a095c053/src/EIP712.sol
+/// @dev Reference: https://github.com/OpenZeppelin/openzeppelin-contracts/blob/7bd2b2aaf68c21277097166a9a51eb72ae239b34/contracts/utils/cryptography/EIP712.sol
 contract EIP712_v4 is IEIP712_v4 {
     // Cache the domain separator as an immutable value, but also store the chain id that it
     // corresponds to, in order to invalidate the cached domain separator if the chain id changes.
@@ -15,8 +15,8 @@ contract EIP712_v4 is IEIP712_v4 {
     uint256 private immutable _CACHED_CHAIN_ID;
     bytes32 private immutable _HASHED_NAME;
 
-    /// @dev equal to keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)")
-    bytes32 private constant _TYPE_HASH = 0x8cad95687ba82c2ce50e74f7b754645e5117c3a5bec8151c0726d5857980a866;
+    bytes32 private constant _TYPE_HASH =
+        keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
 
     constructor(string memory name) {
         _HASHED_NAME = keccak256(bytes(name));
@@ -25,9 +25,9 @@ contract EIP712_v4 is IEIP712_v4 {
         _CACHED_DOMAIN_SEPARATOR = _buildDomainSeparator();
     }
 
-    /// @notice Returns the domain separator for the current chain.
-    /// @dev Uses cached version if chainid is unchanged from construction.
-    function DOMAIN_SEPARATOR() public view override returns (bytes32) {
+    /// @inheritdoc IEIP712_v4
+    function DOMAIN_SEPARATOR() public view returns (bytes32) {
+        // uses cached version if chainid is unchanged from construction
         return block.chainid == _CACHED_CHAIN_ID ? _CACHED_DOMAIN_SEPARATOR : _buildDomainSeparator();
     }
 
@@ -46,6 +46,11 @@ contract EIP712_v4 is IEIP712_v4 {
             mstore(add(fmp, 0x02), domainSeparator)
             mstore(add(fmp, 0x22), dataHash)
             digest := keccak256(fmp, 0x42)
+
+            // now clean the memory we used
+            mstore(fmp, 0) // fmp held "\x19\x01", domainSeparator
+            mstore(add(fmp, 0x20), 0) // fmp+0x20 held domainSeparator, dataHash
+            mstore(add(fmp, 0x40), 0) // fmp+0x40 held dataHash
         }
     }
 }

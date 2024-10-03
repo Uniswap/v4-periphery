@@ -6,9 +6,10 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 import {MockCalldataDecoder} from "../mocks/MockCalldataDecoder.sol";
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {PositionConfig} from "../shared/PositionConfig.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {PathKey} from "../../src/libraries/PathKey.sol";
+import {CalldataDecoder} from "../../src/libraries/CalldataDecoder.sol";
 
 contract CalldataDecoderTest is Test {
     MockCalldataDecoder decoder;
@@ -19,44 +20,34 @@ contract CalldataDecoderTest is Test {
 
     function test_fuzz_decodeModifyLiquidityParams(
         uint256 _tokenId,
-        PositionConfig calldata _config,
         uint256 _liquidity,
         uint128 _amount0,
         uint128 _amount1,
         bytes calldata _hookData
     ) public view {
-        bytes memory params = abi.encode(_tokenId, _config, _liquidity, _amount0, _amount1, _hookData);
-        (
-            uint256 tokenId,
-            PositionConfig memory config,
-            uint256 liquidity,
-            uint128 amount0,
-            uint128 amount1,
-            bytes memory hookData
-        ) = decoder.decodeModifyLiquidityParams(params);
+        bytes memory params = abi.encode(_tokenId, _liquidity, _amount0, _amount1, _hookData);
+        (uint256 tokenId, uint256 liquidity, uint128 amount0, uint128 amount1, bytes memory hookData) =
+            decoder.decodeModifyLiquidityParams(params);
 
         assertEq(tokenId, _tokenId);
         assertEq(liquidity, _liquidity);
         assertEq(amount0, _amount0);
         assertEq(amount1, _amount1);
         assertEq(hookData, _hookData);
-        _assertEq(_config, config);
     }
 
     function test_fuzz_decodeBurnParams(
         uint256 _tokenId,
-        PositionConfig calldata _config,
         uint128 _amount0Min,
         uint128 _amount1Min,
         bytes calldata _hookData
     ) public view {
-        bytes memory params = abi.encode(_tokenId, _config, _amount0Min, _amount1Min, _hookData);
-        (uint256 tokenId, PositionConfig memory config, uint128 amount0Min, uint128 amount1Min, bytes memory hookData) =
+        bytes memory params = abi.encode(_tokenId, _amount0Min, _amount1Min, _hookData);
+        (uint256 tokenId, uint128 amount0Min, uint128 amount1Min, bytes memory hookData) =
             decoder.decodeBurnParams(params);
 
         assertEq(tokenId, _tokenId);
         assertEq(hookData, _hookData);
-        _assertEq(_config, config);
         assertEq(amount0Min, _amount0Min);
         assertEq(amount1Min, _amount1Min);
     }
@@ -69,22 +60,27 @@ contract CalldataDecoderTest is Test {
         address _owner,
         bytes calldata _hookData
     ) public view {
-        bytes memory params = abi.encode(_config, _liquidity, _amount0Max, _amount1Max, _owner, _hookData);
-        (
-            PositionConfig memory config,
-            uint256 liquidity,
-            uint128 amount0Max,
-            uint128 amount1Max,
-            address owner,
-            bytes memory hookData
-        ) = decoder.decodeMintParams(params);
+        bytes memory params = abi.encode(
+            _config.poolKey,
+            _config.tickLower,
+            _config.tickUpper,
+            _liquidity,
+            _amount0Max,
+            _amount1Max,
+            _owner,
+            _hookData
+        );
 
-        assertEq(liquidity, _liquidity);
-        assertEq(amount0Max, _amount0Max);
-        assertEq(amount1Max, _amount1Max);
-        assertEq(owner, _owner);
-        assertEq(hookData, _hookData);
-        _assertEq(_config, config);
+        (MockCalldataDecoder.MintParams memory mintParams) = decoder.decodeMintParams(params);
+
+        assertEq(mintParams.liquidity, _liquidity);
+        assertEq(mintParams.amount0Max, _amount0Max);
+        assertEq(mintParams.amount1Max, _amount1Max);
+        assertEq(mintParams.owner, _owner);
+        assertEq(mintParams.hookData, _hookData);
+        _assertEq(mintParams.poolKey, _config.poolKey);
+        assertEq(mintParams.tickLower, _config.tickLower);
+        assertEq(mintParams.tickUpper, _config.tickUpper);
     }
 
     function test_fuzz_decodeSwapExactInParams(IV4Router.ExactInputParams calldata _swapParams) public view {
@@ -152,6 +148,52 @@ contract CalldataDecoderTest is Test {
         assertEq(Currency.unwrap(currency), Currency.unwrap(_currency));
     }
 
+    function test_fuzz_decodeActionsRouterParams(bytes memory _actions, bytes[] memory _actionParams) public view {
+        bytes memory params = abi.encode(_actions, _actionParams);
+        (bytes memory actions, bytes[] memory actionParams) = decoder.decodeActionsRouterParams(params);
+
+        assertEq(actions, _actions);
+        for (uint256 i = 0; i < _actionParams.length; i++) {
+            assertEq(actionParams[i], _actionParams[i]);
+        }
+    }
+
+    function test_decodeActionsRouterParams_sliceOutOfBounds() public {
+        // create actions and parameters
+        bytes memory _actions = hex"12345678";
+        bytes[] memory _actionParams = new bytes[](4);
+        _actionParams[0] = hex"11111111";
+        _actionParams[1] = hex"22";
+        _actionParams[2] = hex"3333333333333333";
+        _actionParams[3] = hex"4444444444444444444444444444444444444444444444444444444444444444";
+
+        bytes memory params = abi.encode(_actions, _actionParams);
+
+        bytes memory invalidParams = new bytes(params.length - 1);
+        // dont copy the final byte
+        for (uint256 i = 0; i < params.length - 2; i++) {
+            invalidParams[i] = params[i];
+        }
+
+        assertEq(invalidParams.length, params.length - 1);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeActionsRouterParams(invalidParams);
+    }
+
+    function test_decodeActionsRouterParams_emptyParams() public view {
+        // create actions and parameters
+        bytes memory _actions = hex"";
+        bytes[] memory _actionParams = new bytes[](0);
+
+        bytes memory params = abi.encode(_actions, _actionParams);
+
+        (bytes memory actions, bytes[] memory actionParams) = decoder.decodeActionsRouterParams(params);
+        assertEq(actions, _actions);
+        assertEq(actionParams.length, _actionParams.length);
+        assertEq(actionParams.length, 0);
+    }
+
     function test_fuzz_decodeCurrencyPair(Currency _currency0, Currency _currency1) public view {
         bytes memory params = abi.encode(_currency0, _currency1);
         (Currency currency0, Currency currency1) = decoder.decodeCurrencyPair(params);
@@ -201,12 +243,6 @@ contract CalldataDecoderTest is Test {
             assertEq(address(path1[i].hooks), address(path2[i].hooks));
             assertEq(path1[i].hookData, path2[i].hookData);
         }
-    }
-
-    function _assertEq(PositionConfig memory config1, PositionConfig memory config2) internal pure {
-        _assertEq(config1.poolKey, config2.poolKey);
-        assertEq(config1.tickLower, config2.tickLower);
-        assertEq(config1.tickUpper, config2.tickUpper);
     }
 
     function _assertEq(PoolKey memory key1, PoolKey memory key2) internal pure {

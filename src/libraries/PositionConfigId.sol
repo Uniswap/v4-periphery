@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 /// @notice A configId is set per tokenId
 /// The lower 255 bits are used to store the truncated hash of the corresponding PositionConfig

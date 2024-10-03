@@ -24,8 +24,8 @@ import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {SlippageCheckLibrary} from "../../src/libraries/SlippageCheck.sol";
+import {PositionConfig} from "../shared/PositionConfig.sol";
+import {SlippageCheck} from "../../src/libraries/SlippageCheck.sol";
 import {BaseActionsRouter} from "../../src/base/BaseActionsRouter.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 
@@ -59,6 +59,16 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         seedBalance(alice);
         approvePosmFor(alice);
+    }
+
+    function test_modifyLiquidities_reverts_deadlinePassed() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: 0, tickUpper: 60});
+        bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, "");
+
+        uint256 deadline = vm.getBlockTimestamp() - 1;
+
+        vm.expectRevert(abi.encodeWithSelector(IPositionManager.DeadlinePassed.selector, deadline));
+        lpm.modifyLiquidities(calls, deadline);
     }
 
     function test_modifyLiquidities_reverts_mismatchedLengths() public {
@@ -115,7 +125,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(lpm.nextTokenId(), 2);
         assertEq(lpm.ownerOf(tokenId), address(this));
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
         assertEq(balance0Before - currency0.balanceOfSelf(), uint256(int256(-delta.amount0())), "incorrect amount0");
@@ -229,7 +239,16 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(config, liquidityToAdd, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, address(this), ZERO_BYTES)
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                liquidityToAdd,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                address(this),
+                ZERO_BYTES
+            )
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency0, type(uint256).max));
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency1, type(uint256).max));
@@ -248,18 +267,33 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_mint_slippage_revertAmount0() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
 
+        uint256 liquidity = 1e18;
+        (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(liquidity)
+        );
+
         bytes memory calls =
-            getMintEncoded(config, 1e18, 1 wei, MAX_SLIPPAGE_INCREASE, ActionConstants.MSG_SENDER, ZERO_BYTES);
-        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+            getMintEncoded(config, liquidity, 1 wei, MAX_SLIPPAGE_INCREASE, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        vm.expectRevert(abi.encodeWithSelector(SlippageCheck.MaximumAmountExceeded.selector, 1 wei, amount0 + 1));
         lpm.modifyLiquidities(calls, _deadline);
     }
 
     function test_mint_slippage_revertAmount1() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
 
+        uint256 liquidity = 1e18;
+        (, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(liquidity)
+        );
         bytes memory calls =
-            getMintEncoded(config, 1e18, MAX_SLIPPAGE_INCREASE, 1 wei, ActionConstants.MSG_SENDER, ZERO_BYTES);
-        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+            getMintEncoded(config, liquidity, MAX_SLIPPAGE_INCREASE, 1 wei, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        vm.expectRevert(abi.encodeWithSelector(SlippageCheck.MaximumAmountExceeded.selector, 1 wei, amount1 + 1));
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -304,7 +338,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // swap to move the price and cause a slippage revert
         swap(key, true, -1e18, ZERO_BYTES);
 
-        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(SlippageCheck.MaximumAmountExceeded.selector, slippage, 1199947202932782783)
+        );
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -320,7 +356,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
 
@@ -335,7 +371,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         burn(tokenId, config, ZERO_BYTES);
         assertEq(numDeltas, hook.numberDeltasReturned());
 
-        liquidity = lpm.getPositionLiquidity(tokenId, config);
+        liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, 0);
 
@@ -364,7 +400,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(tokenId, 1);
         assertEq(lpm.ownerOf(1), address(this));
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
 
@@ -386,7 +422,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(uint256(int256(deltaBurn.amount0())), amount0);
         assertEq(uint256(int256(deltaBurn.amount1())), amount1);
 
-        liquidity = lpm.getPositionLiquidity(tokenId, config);
+        liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, 0);
 
@@ -408,10 +444,12 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
+        uint128 amount0 = uint128(-delta.amount0());
 
-        bytes memory calls =
-            getBurnEncoded(tokenId, config, uint128(-delta.amount0()) + 1 wei, MIN_SLIPPAGE_DECREASE, ZERO_BYTES);
-        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
+        bytes memory calls = getBurnEncoded(tokenId, config, amount0 + 1 wei, MIN_SLIPPAGE_DECREASE, ZERO_BYTES);
+        vm.expectRevert(
+            abi.encodeWithSelector(SlippageCheck.MinimumAmountInsufficient.selector, amount0 + 1, amount0 - 1)
+        );
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -420,10 +458,14 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
+        uint128 amount1 = uint128(-delta.amount1());
 
-        bytes memory calls =
-            getBurnEncoded(tokenId, config, MIN_SLIPPAGE_DECREASE, uint128(-delta.amount1()) + 1 wei, ZERO_BYTES);
-        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
+        bytes memory calls = getBurnEncoded(tokenId, config, MIN_SLIPPAGE_DECREASE, amount1 + 1 wei, ZERO_BYTES);
+
+        // reverts on amount1, because the swap sent token0 into the pool and took token1
+        vm.expectRevert(
+            abi.encodeWithSelector(SlippageCheck.MinimumAmountInsufficient.selector, amount1 + 1, amount1 - 1)
+        );
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -450,15 +492,15 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
+        uint128 amount1 = uint128(-delta.amount1());
 
-        bytes memory calls = getBurnEncoded(
-            tokenId, config, uint128(-delta.amount0()) - 1 wei, uint128(-delta.amount1()) - 1 wei, ZERO_BYTES
-        );
+        bytes memory calls =
+            getBurnEncoded(tokenId, config, uint128(-delta.amount0()) - 1 wei, amount1 - 1 wei, ZERO_BYTES);
 
         // swap to move the price and cause a slippage revert
         swap(key, true, -1e18, ZERO_BYTES);
 
-        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
+        vm.expectRevert(abi.encodeWithSelector(SlippageCheck.MinimumAmountInsufficient.selector, amount1 - 1, 0));
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -478,7 +520,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
         assertEq(currency0.balanceOfSelf(), balance0Before + uint256(uint128(delta.amount0())));
@@ -494,9 +536,6 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         decreaseLiquidityDelta = uint256(bound(int256(decreaseLiquidityDelta), 0, params.liquidityDelta));
 
-        PositionConfig memory config =
-            PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
-
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
 
@@ -504,9 +543,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(
-                tokenId, config, decreaseLiquidityDelta, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES
-            )
+            abi.encode(tokenId, decreaseLiquidityDelta, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency0, type(uint256).max));
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency1, type(uint256).max));
@@ -514,7 +551,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         lpm.modifyLiquidities(calls, _deadline);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
         // did not recieve tokens, as they were forfeited with CLEAR
@@ -548,7 +585,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, liquidityToRemove, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, liquidityToRemove, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency0, amount0 - 1 wei));
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency1, amount1 - 1 wei));
@@ -589,7 +626,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1Before = currency1.balanceOfSelf();
         decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
@@ -610,11 +647,13 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
+        uint128 amount0Delta = uint128(-delta.amount0());
 
-        bytes memory calls = getDecreaseEncoded(
-            tokenId, config, 1e18, uint128(-delta.amount0()) + 1 wei, MIN_SLIPPAGE_DECREASE, ZERO_BYTES
+        bytes memory calls =
+            getDecreaseEncoded(tokenId, config, 1e18, amount0Delta + 1, MIN_SLIPPAGE_DECREASE, ZERO_BYTES);
+        vm.expectRevert(
+            abi.encodeWithSelector(SlippageCheck.MinimumAmountInsufficient.selector, amount0Delta + 1, amount0Delta - 1)
         );
-        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -623,11 +662,13 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
+        uint128 amount1Delta = uint128(-delta.amount0());
 
-        bytes memory calls = getDecreaseEncoded(
-            tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, uint128(-delta.amount1()) + 1 wei, ZERO_BYTES
+        bytes memory calls =
+            getDecreaseEncoded(tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, amount1Delta + 1 wei, ZERO_BYTES);
+        vm.expectRevert(
+            abi.encodeWithSelector(SlippageCheck.MinimumAmountInsufficient.selector, amount1Delta + 1, amount1Delta - 1)
         );
-        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -655,15 +696,16 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
+        uint128 amount1 = uint128(-delta.amount1());
 
-        bytes memory calls = getDecreaseEncoded(
-            tokenId, config, 1e18, uint128(-delta.amount0()) - 1 wei, uint128(-delta.amount1()) - 1 wei, ZERO_BYTES
-        );
+        bytes memory calls =
+            getDecreaseEncoded(tokenId, config, 1e18, uint128(-delta.amount0()) - 1 wei, amount1 - 1 wei, ZERO_BYTES);
 
         // swap to move the price and cause a slippage revert
         swap(key, true, -1e18, ZERO_BYTES);
 
-        vm.expectRevert(SlippageCheckLibrary.MinimumAmountInsufficient.selector);
+        // reverts on amount1, because the swap sent token0 into the pool and took token1
+        vm.expectRevert(abi.encodeWithSelector(SlippageCheck.MinimumAmountInsufficient.selector, amount1 - 1, 0));
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -690,7 +732,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         decreaseLiquidity(tokenId, config, decreaseLiquidityDelta, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, uint256(params.liquidityDelta) - decreaseLiquidityDelta);
 
@@ -775,7 +817,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         vm.stopPrank();
 
         // position liquidity increased
-        uint256 newLiq = lpm.getPositionLiquidity(tokenId, config);
+        uint256 newLiq = lpm.getPositionLiquidity(tokenId);
         assertEq(newLiq, liquidity + liquidityToAdd);
 
         // alice paid the tokens
@@ -817,7 +859,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
             {
                 // position liquidity decreased
-                uint256 newLiq = lpm.getPositionLiquidity(tokenId, config);
+                uint256 newLiq = lpm.getPositionLiquidity(tokenId);
                 assertEq(newLiq, liquidity - liquidityToRemove);
             }
 
@@ -877,7 +919,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         Plan memory plan = Planner.init();
         plan.add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 1e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         bytes memory calls = plan.finalizeModifyLiquidityWithTake(config.poolKey, ActionConstants.MSG_SENDER);
 
@@ -909,12 +951,19 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         Plan memory plan = Planner.init();
         plan.add(
             Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            abi.encode(tokenId, 1e18, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
         plan.add(
             Actions.MINT_POSITION,
             abi.encode(
-                configMint, 1e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ActionConstants.MSG_SENDER, ZERO_BYTES
+                configMint.poolKey,
+                configMint.tickLower,
+                configMint.tickUpper,
+                1e18,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                ActionConstants.MSG_SENDER,
+                ZERO_BYTES
             )
         );
         plan.add(Actions.TAKE, abi.encode(key.currency0, ActionConstants.MSG_SENDER, ActionConstants.OPEN_DELTA));
@@ -933,15 +982,6 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(lpm.ownerOf(tokenIdMint), address(this));
         assertLt(currency1.balanceOfSelf(), balanceBefore1); // currency1 was owed
         assertLt(uint256(int256(deltaDecrease.amount1())), uint256(int256(-deltaMint.amount1()))); // amount1 in the second position was greater than amount1 in the first position
-    }
-
-    function test_mint_emits_event() public {
-        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 60});
-        uint256 tokenId = lpm.nextTokenId();
-
-        vm.expectEmit(true, false, false, true, address(lpm));
-        emit IPositionManager.MintPosition(tokenId, config);
-        mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
     }
 
     function test_mint_slippageRevert() public {}
