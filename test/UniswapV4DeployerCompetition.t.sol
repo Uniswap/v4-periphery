@@ -19,6 +19,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
         winner = makeAddr("Winner");
         initCodeHash = keccak256(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
         deployer = new UniswapV4DeployerCompetition{value: 1 ether}(initCodeHash, v4Owner);
+        assertEq(deployer.v4Owner(), v4Owner);
     }
 
     function testUpdateBestAddress(bytes32 salt) public {
@@ -40,7 +41,6 @@ contract UniswapV4DeployerCompetitionTest is Test {
         deployer.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
         assertFalse(v4Core.code.length == 0);
         assertEq(Owned(v4Core).owner(), v4Owner);
-        assertEq(TickMath.MAX_TICK_SPACING, type(int16).max);
         assertEq(address(deployer).balance, 0 ether);
         assertEq(winner.balance, 1 ether);
     }

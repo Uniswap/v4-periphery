@@ -7,6 +7,8 @@ import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {TokenURILib} from "./libraries/UniswapV4DeployerTokenURILib.sol";
 import {VanityAddressLib} from "./libraries/VanityAddressLib.sol";
 
+/// @title UniswapV4DeployerCompetition
+/// @notice A competition to deploy the UniswapV4 contract with the best address
 contract UniswapV4DeployerCompetition is ERC721 {
     using VanityAddressLib for address;
 
@@ -33,6 +35,8 @@ contract UniswapV4DeployerCompetition is ERC721 {
         v4Owner = _v4Owner;
     }
 
+    /// @notice Updates the best address if the new address has a better vanity score
+    /// @param salt The salt to use to compute the new address with CREATE2
     function updateBestAddress(bytes32 salt) external {
         if (block.timestamp > competitionDeadline) {
             revert CompetitionOver();
@@ -49,6 +53,9 @@ contract UniswapV4DeployerCompetition is ERC721 {
         emit NewAddressFound(newAddress, msg.sender, newAddress.score());
     }
 
+    /// @notice Allows the winner to deploy the Uniswap v4 PoolManager contract
+    /// @param bytecode The bytecode of the Uniswap v4 PoolManager contract
+    /// @dev The bytecode must match the initCodeHash
     function deploy(bytes memory bytecode) external {
         if (keccak256(bytecode) != initCodeHash) {
             revert InvalidBytecode();
@@ -68,10 +75,11 @@ contract UniswapV4DeployerCompetition is ERC721 {
         if (!success) {
             revert BountyTransferFailed();
         }
-        // set owner
+        // set owner of the pool manager contract
         Owned(bestAddress).transferOwnership(v4Owner);
     }
 
+    /// @notice Returns the URI for the token
     function tokenURI(uint256) public pure override returns (string memory) {
         return TokenURILib.tokenURI();
     }

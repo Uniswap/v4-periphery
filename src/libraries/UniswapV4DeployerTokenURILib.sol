@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
 import {Base64} from "openzeppelin-contracts/contracts/utils/Base64.sol";
 
+/// @title TokenURILib
+/// @notice A library to generate the tokenURI for the UniswapV4DeployerCompetition contract
 library TokenURILib {
     function tokenURI() internal pure returns (string memory) {
         return string(
