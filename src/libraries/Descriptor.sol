@@ -439,16 +439,16 @@ library Descriptor {
         } else {
             // represents fee less than 1%
             // else if decimal < 1
-            nZeros = 5 - digits; // number of zeros, inlcuding the zero before decimal
-            params.zerosStartIndex = 2; // leading zeros will start after the decimal point
-            params.zerosEndIndex = uint8(nZeros + params.zerosStartIndex - 1); // end index for leading zeros
-            params.bufferLength = uint8(nZeros + numSigfigs + 2); // total length of string buffer, including "0." and "%"
-            params.sigfigIndex = uint8(params.bufferLength - 2); // index of starting signficant figure
+            nZeros = 5 - digits;
+            params.zerosStartIndex = 2;
+            params.zerosEndIndex = uint8(nZeros + params.zerosStartIndex - 1);
+            params.bufferLength = uint8(nZeros + numSigfigs + 2);
+            params.sigfigIndex = uint8(params.bufferLength - 2);
             params.isLessThanOne = true;
         }
-        params.sigfigs = uint256(fee) / (10 ** (digits - numSigfigs)); // the signficant figures of the fee
+        params.sigfigs = uint256(fee) / (10 ** (digits - numSigfigs));
         params.isPercent = true;
-        params.decimalIndex = digits > 4 ? uint8(digits - 4) : 0; // based on total number of digits in the fee
+        params.decimalIndex = digits > 4 ? uint8(digits - 4) : 0;
 
         return generateDecimalString(params);
     }

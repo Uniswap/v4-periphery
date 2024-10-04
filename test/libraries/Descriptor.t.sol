@@ -7,6 +7,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 contract DescriptorTest is Test {
     function test_feeToPercentString_succeeds() public pure {
+        assertEq(Descriptor.feeToPercentString(0x800000), "Dynamic");
         assertEq(Descriptor.feeToPercentString(0), "0%");
         assertEq(Descriptor.feeToPercentString(1), "0.0001%");
         assertEq(Descriptor.feeToPercentString(30), "0.003%");
@@ -114,5 +115,36 @@ contract DescriptorTest is Test {
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 18, 18, true), "0.90484");
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 18, 10, true), "90484000");
         assertEq(Descriptor.tickToDecimalString(1000, tickSpacing, 10, 18, true), "0.0000000090484");
+    }
+
+    function test_fixedPointToDecimalString() public pure {
+        assertEq(
+            Descriptor.fixedPointToDecimalString(1457647476727839560029885420909913413788472405159, 18, 18),
+            "338490000000000000000000000000000000000"
+        );
+        assertEq(
+            Descriptor.fixedPointToDecimalString(4025149349925610116743993887520032712, 18, 18), "2581100000000000"
+        );
+        assertEq(Descriptor.fixedPointToDecimalString(3329657202331788924044422905302854, 18, 18), "1766200000");
+        assertEq(Descriptor.fixedPointToDecimalString(16241966553695418990605751641065, 18, 18), "42026");
+        assertEq(Descriptor.fixedPointToDecimalString(2754475062069337566441091812235, 18, 18), "1208.7");
+        assertEq(Descriptor.fixedPointToDecimalString(871041495427277622831427623669, 18, 18), "120.87");
+        assertEq(Descriptor.fixedPointToDecimalString(275447506206933756644109181223, 18, 18), "12.087");
+
+        assertEq(Descriptor.fixedPointToDecimalString(88028870788706913884596530851, 18, 18), "1.2345");
+        assertEq(Descriptor.fixedPointToDecimalString(79228162514264337593543950336, 18, 18), "1.0000");
+        assertEq(Descriptor.fixedPointToDecimalString(27837173154497669652482281089, 18, 18), "0.12345");
+        assertEq(Descriptor.fixedPointToDecimalString(1559426812423768092342, 18, 18), "0.00000000000000038741");
+        assertEq(Descriptor.fixedPointToDecimalString(74532606916587, 18, 18), "0.00000000000000000000000000000088498");
+        assertEq(
+            Descriptor.fixedPointToDecimalString(4947797163, 18, 18), "0.0000000000000000000000000000000000000029387"
+        );
+
+        assertEq(Descriptor.fixedPointToDecimalString(79228162514264337593543950336, 18, 16), "100.00");
+        assertEq(Descriptor.fixedPointToDecimalString(250541448375047931186413801569, 18, 17), "100.00");
+        assertEq(Descriptor.fixedPointToDecimalString(79228162514264337593543950336, 24, 5), "1.0000");
+
+        assertEq(Descriptor.fixedPointToDecimalString(79228162514264337593543950336, 10, 18), "0.000000010000");
+        assertEq(Descriptor.fixedPointToDecimalString(79228162514264337593543950336, 7, 18), "0.000000000010000");
     }
 }

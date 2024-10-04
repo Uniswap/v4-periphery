@@ -11,7 +11,7 @@ import {IPositionDescriptor} from "./interfaces/IPositionDescriptor.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 import {Descriptor} from "./libraries/Descriptor.sol";
 import {CurrencyRatioSortOrder} from "./libraries/CurrencyRatioSortOrder.sol";
-import {SafeERC20Metadata} from "./libraries/SafeERC20Metadata.sol";
+import {SafeCurrencyMetadata} from "./libraries/SafeCurrencyMetadata.sol";
 
 /// @title Describes NFT token positions
 /// @notice Produces a string containing the data URI for a JSON metadata string
@@ -63,10 +63,10 @@ contract PositionDescriptor is IPositionDescriptor {
                 tokenId: tokenId,
                 quoteCurrency: quoteCurrency,
                 baseCurrency: baseCurrency,
-                quoteCurrencySymbol: SafeERC20Metadata.currencySymbol(quoteCurrency, nativeCurrencyLabel),
-                baseCurrencySymbol: SafeERC20Metadata.currencySymbol(baseCurrency, nativeCurrencyLabel),
-                quoteCurrencyDecimals: SafeERC20Metadata.currencyDecimals(quoteCurrency),
-                baseCurrencyDecimals: SafeERC20Metadata.currencyDecimals(baseCurrency),
+                quoteCurrencySymbol: SafeCurrencyMetadata.currencySymbol(quoteCurrency, nativeCurrencyLabel),
+                baseCurrencySymbol: SafeCurrencyMetadata.currencySymbol(baseCurrency, nativeCurrencyLabel),
+                quoteCurrencyDecimals: SafeCurrencyMetadata.currencyDecimals(quoteCurrency),
+                baseCurrencyDecimals: SafeCurrencyMetadata.currencyDecimals(baseCurrency),
                 flipRatio: _flipRatio,
                 tickLower: positionInfo.tickLower(),
                 tickUpper: positionInfo.tickUpper(),
