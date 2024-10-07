@@ -11,6 +11,7 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IPositionDescriptor} from "./interfaces/IPositionDescriptor.sol";
 
 import {ERC721Permit_v4} from "./base/ERC721Permit_v4.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
@@ -116,15 +117,24 @@ contract PositionManager is
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
 
+    IPositionDescriptor public immutable tokenDescriptor;
+
     mapping(uint256 tokenId => PositionInfo info) public positionInfo;
     mapping(bytes25 poolId => PoolKey poolKey) public poolKeys;
 
-    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2, uint256 _unsubscribeGasLimit)
+    constructor(
+        IPoolManager _poolManager,
+        IAllowanceTransfer _permit2,
+        uint256 _unsubscribeGasLimit,
+        IPositionDescriptor _tokenDescriptor
+    )
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
-        ERC721Permit_v4("Uniswap V4 Positions NFT", "UNI-V4-POSM")
+        ERC721Permit_v4("Uniswap v4 Positions NFT", "UNI-V4-POSM")
         Notifier(_unsubscribeGasLimit)
-    {}
+    {
+        tokenDescriptor = _tokenDescriptor;
+    }
 
     /// @notice Reverts if the deadline has passed
     /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
@@ -141,6 +151,10 @@ contract PositionManager is
     modifier onlyIfApproved(address caller, uint256 tokenId) override {
         if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
         _;
+    }
+
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        return IPositionDescriptor(tokenDescriptor).tokenURI(this, tokenId);
     }
 
     /// @inheritdoc IPositionManager

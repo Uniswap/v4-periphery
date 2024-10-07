@@ -64,7 +64,7 @@ contract PermitTest is Test, PosmTestSetup {
             keccak256(
                 abi.encode(
                     keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)"),
-                    keccak256("Uniswap V4 Positions NFT"), // storage is private on EIP712.sol so we need to hardcode these
+                    keccak256("Uniswap v4 Positions NFT"), // storage is private on EIP712.sol so we need to hardcode these
                     block.chainid,
                     address(lpm)
                 )

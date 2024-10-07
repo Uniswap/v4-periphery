@@ -95,9 +95,4 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
         return spender == ownerOf(tokenId) || getApproved[tokenId] == spender
             || isApprovedForAll[ownerOf(tokenId)][spender];
     }
-
-    // TODO: to be implemented after audits
-    function tokenURI(uint256) public pure override returns (string memory) {
-        return "https://example.com";
-    }
 }
