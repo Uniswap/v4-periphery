@@ -21,6 +21,8 @@ contract PositionDescriptor is IPositionDescriptor {
     using CurrencyLibrary for Currency;
     using PositionInfoLibrary for PositionInfo;
 
+    error InvalidTokenId(uint256 tokenId);
+
     // mainnet addresses
     address private constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address private constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
@@ -47,6 +49,9 @@ contract PositionDescriptor is IPositionDescriptor {
         returns (string memory)
     {
         (PoolKey memory poolKey, PositionInfo positionInfo) = positionManager.getPoolAndPositionInfo(tokenId);
+        if (positionInfo.poolId() == 0) {
+            revert InvalidTokenId(tokenId);
+        }
         (, int24 tick,,) = poolManager.getSlot0(poolKey.toId());
 
         // If possible, flip currencies to get the larger currency as the base currency, so that the price (quote/base) is more readable

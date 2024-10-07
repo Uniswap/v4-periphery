@@ -114,4 +114,26 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
         bytes memory data = vm.parseJson(json);
         Token memory token = abi.decode(data, (Token));
     }
+
+    function test_tokenURI_revertsWithInvalidTokenId() public {
+        int24 tickLower = int24(key.tickSpacing);
+        int24 tickUpper = int24(key.tickSpacing * 2);
+        uint256 amount0Desired = 100e18;
+        uint256 amount1Desired = 100e18;
+        uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            amount0Desired,
+            amount1Desired
+        );
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        vm.expectRevert(abi.encodeWithSelector(PositionDescriptor.InvalidTokenId.selector, tokenId + 1));
+
+        positionDescriptor.tokenURI(lpm, tokenId + 1);
+    }
 }
