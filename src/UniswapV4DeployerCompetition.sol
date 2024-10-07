@@ -6,20 +6,10 @@ import {Owned} from "solmate/src/auth/Owned.sol";
 import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {TokenURILib} from "./libraries/UniswapV4DeployerTokenURILib.sol";
 import {VanityAddressLib} from "./libraries/VanityAddressLib.sol";
+import {IUniswapV4DeployerCompetition} from "./interfaces/IUniswapV4DeployerCompetition.sol";
 
-/// @title UniswapV4DeployerCompetition
-/// @notice A competition to deploy the UniswapV4 contract with the best address
-contract UniswapV4DeployerCompetition is ERC721 {
+contract UniswapV4DeployerCompetition is ERC721, IUniswapV4DeployerCompetition {
     using VanityAddressLib for address;
-
-    event NewAddressFound(address bestAddress, address minter, uint256 score);
-
-    error InvalidBytecode();
-    error CompetitionNotOver();
-    error CompetitionOver();
-    error NotAllowedToDeploy();
-    error BountyTransferFailed();
-    error WorseAddress();
 
     bytes32 public bestAddressSalt;
     address public bestAddress;
@@ -35,15 +25,13 @@ contract UniswapV4DeployerCompetition is ERC721 {
         v4Owner = _v4Owner;
     }
 
-    /// @notice Updates the best address if the new address has a better vanity score
-    /// @param salt The salt to use to compute the new address with CREATE2
-    function updateBestAddress(bytes32 salt) external {
+    function updateBestAddress(bytes32 salt) external override {
         if (block.timestamp > competitionDeadline) {
-            revert CompetitionOver();
+            revert CompetitionOver(block.timestamp, competitionDeadline);
         }
         address newAddress = Create2.computeAddress(salt, initCodeHash, address(this));
         if (bestAddress != address(0) && !newAddress.betterThan(bestAddress)) {
-            revert WorseAddress();
+            revert WorseAddress(newAddress, bestAddress, newAddress.score(), bestAddress.score());
         }
 
         bestAddress = newAddress;
@@ -53,18 +41,15 @@ contract UniswapV4DeployerCompetition is ERC721 {
         emit NewAddressFound(newAddress, msg.sender, newAddress.score());
     }
 
-    /// @notice Allows the winner to deploy the Uniswap v4 PoolManager contract
-    /// @param bytecode The bytecode of the Uniswap v4 PoolManager contract
-    /// @dev The bytecode must match the initCodeHash
-    function deploy(bytes memory bytecode) external {
+    function deploy(bytes memory bytecode) external override {
         if (keccak256(bytecode) != initCodeHash) {
             revert InvalidBytecode();
         }
         if (block.timestamp < competitionDeadline) {
-            revert CompetitionNotOver();
+            revert CompetitionNotOver(block.timestamp, competitionDeadline);
         }
         if (msg.sender != bestAddressSender && block.timestamp < exclusiveDeployDeadline) {
-            revert NotAllowedToDeploy(); // anyone can deploy after the deadline
+            revert NotAllowedToDeploy(msg.sender, bestAddressSender); // anyone can deploy after the deadline
         }
         Create2.deploy(0, bestAddressSalt, bytecode);
 
@@ -80,7 +65,12 @@ contract UniswapV4DeployerCompetition is ERC721 {
     }
 
     /// @notice Returns the URI for the token
-    function tokenURI(uint256) public pure override returns (string memory) {
+    /// @param id The token id
+    /// @return The URI for the token
+    function tokenURI(uint256 id) public pure override returns (string memory) {
+        if (id != 0) {
+            revert InvalidTokenId(id);
+        }
         return TokenURILib.tokenURI();
     }
 }
