@@ -25,6 +25,7 @@ contract UniswapV4DeployerCompetition is ERC721, IUniswapV4DeployerCompetition {
         v4Owner = _v4Owner;
     }
 
+    /// @inheritdoc IUniswapV4DeployerCompetition
     function updateBestAddress(bytes32 salt) external override {
         if (block.timestamp > competitionDeadline) {
             revert CompetitionOver(block.timestamp, competitionDeadline);
@@ -41,6 +42,7 @@ contract UniswapV4DeployerCompetition is ERC721, IUniswapV4DeployerCompetition {
         emit NewAddressFound(newAddress, msg.sender, newAddress.score());
     }
 
+    /// @inheritdoc IUniswapV4DeployerCompetition
     function deploy(bytes memory bytecode) external override {
         if (keccak256(bytecode) != initCodeHash) {
             revert InvalidBytecode();
@@ -64,6 +66,7 @@ contract UniswapV4DeployerCompetition is ERC721, IUniswapV4DeployerCompetition {
         Owned(bestAddress).transferOwnership(v4Owner);
     }
 
+    /// @inheritdoc ERC721
     /// @notice Returns the URI for the token
     /// @param id The token id
     /// @return The URI for the token
