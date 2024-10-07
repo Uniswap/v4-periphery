@@ -16,8 +16,8 @@ library VanityAddressLib {
     /// @param addr The address to score
     /// @return calculatedScore The vanity score of the address
     function score(address addr) internal pure returns (uint256 calculatedScore) {
-        // 10 points for every leading 0 byte
-        // 5 points for every leading 0x44 after the 0 bytes
+        // 10 points for every leading 0
+        // 3 points for every leading 4
         // 1 point for every 4 after that
         bytes20 addrBytes = bytes20(addr);
 
@@ -28,11 +28,18 @@ library VanityAddressLib {
             if (startingZeros && addrBytes[i] == 0x00) {
                 calculatedScore += 20;
                 continue;
+            } else if (startingZeros && (addrBytes[i] & 0xF0) == 0x00) {
+                calculatedScore += 10;
+                startingZeros = false;
             } else {
                 startingZeros = false;
             }
             if (startingFours && addrBytes[i] == 0x44) {
-                calculatedScore += 5;
+                calculatedScore += 6;
+                continue;
+            } else if (startingFours && (addrBytes[i] & 0xF0 == 0x40) || (addrBytes[i] & 0xFF == 0x04)) {
+                calculatedScore += 3;
+                startingFours = false;
                 continue;
             } else {
                 startingFours = false;
@@ -42,13 +49,10 @@ library VanityAddressLib {
                 // count each nibble separately
                 if (addrBytes[i] & 0xFF == 0x44) {
                     calculatedScore += 2;
-                } else {
-                    if (addrBytes[i] & 0x0F == 0x04) {
-                        calculatedScore += 1;
-                    }
-                    if (addrBytes[i] & 0xF0 == 0x40) {
-                        calculatedScore += 1;
-                    }
+                } else if (addrBytes[i] & 0x0F == 0x04) {
+                    calculatedScore += 1;
+                } else if (addrBytes[i] & 0xF0 == 0x40) {
+                    calculatedScore += 1;
                 }
             }
         }
