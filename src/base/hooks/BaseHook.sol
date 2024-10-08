@@ -61,11 +61,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
     }
 
     /// @inheritdoc IHooks
-    function afterInitialize(address, PoolKey calldata, uint160, int24)
-        external
-        virtual
-        returns (bytes4)
-    {
+    function afterInitialize(address, PoolKey calldata, uint160, int24) external virtual returns (bytes4) {
         revert HookNotImplemented();
     }
 
