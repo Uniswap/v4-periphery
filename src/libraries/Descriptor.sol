@@ -42,7 +42,7 @@ library Descriptor {
     /// @notice Constructs the token URI for a Uniswap v4 NFT
     /// @param params Parameters needed to construct the token URI
     /// @return The token URI as a string
-    function constructTokenURI(ConstructTokenURIParams memory params) public pure returns (string memory) {
+    function constructTokenURI(ConstructTokenURIParams memory params) internal pure returns (string memory) {
         string memory name = generateName(params, feeToPercentString(params.fee));
         string memory descriptionPartOne = generateDescriptionPartOne(
             escapeQuotes(params.quoteCurrencySymbol),
