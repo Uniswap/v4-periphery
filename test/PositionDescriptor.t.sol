@@ -11,8 +11,9 @@ import {PositionConfig} from "./shared/PositionConfig.sol";
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 import {ActionConstants} from "../src/libraries/ActionConstants.sol";
 import {Base64} from "./base64.sol";
+import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 
-contract PositionDescriptorTest is Test, PosmTestSetup {
+contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
     using Base64 for string;
 
     address public WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
@@ -34,6 +35,10 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
         (currency0, currency1) = deployAndMint2Currencies();
         (key,) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
         deployAndApprovePosm(manager);
+    }
+
+    function test_bytecodeSize_positionDescriptor() public {
+        snapSize("positionDescriptor bytecode size", address(positionDescriptor));
     }
 
     function test_setup_succeeds() public view {

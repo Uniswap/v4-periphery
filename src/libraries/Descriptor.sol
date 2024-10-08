@@ -5,8 +5,8 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
+import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
+import {Base64} from "openzeppelin-contracts/contracts/utils/Base64.sol";
 import {SVG} from "./SVG.sol";
 import {HexStrings} from "./HexStrings.sol";
 
@@ -42,7 +42,7 @@ library Descriptor {
     /// @notice Constructs the token URI for a Uniswap v4 NFT
     /// @param params Parameters needed to construct the token URI
     /// @return The token URI as a string
-    function constructTokenURI(ConstructTokenURIParams calldata params) public pure returns (string memory) {
+    function constructTokenURI(ConstructTokenURIParams memory params) internal pure returns (string memory) {
         string memory name = generateName(params, feeToPercentString(params.fee));
         string memory descriptionPartOne = generateDescriptionPartOne(
             escapeQuotes(params.quoteCurrencySymbol),
@@ -175,7 +175,7 @@ library Descriptor {
     /// @param params Parameters needed to generate the name
     /// @param feeTier The fee tier of the pool
     /// @return The name of the NFT
-    function generateName(ConstructTokenURIParams calldata params, string memory feeTier)
+    function generateName(ConstructTokenURIParams memory params, string memory feeTier)
         private
         pure
         returns (string memory)
