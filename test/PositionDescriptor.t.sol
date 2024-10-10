@@ -33,7 +33,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
     function setUp() public {
         deployFreshManager();
         (currency0, currency1) = deployAndMint2Currencies();
-        (key,) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key,) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
         deployAndApprovePosm(manager);
     }
 

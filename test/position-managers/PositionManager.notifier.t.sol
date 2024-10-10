@@ -39,7 +39,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        (key,) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key,) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);

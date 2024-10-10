@@ -54,7 +54,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         deployPosmHookSavesDelta();
 
         currency0 = CurrencyLibrary.ADDRESS_ZERO;
-        (nativeKey, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (nativeKey, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1);
 
         deployPosm(manager);
         // currency0 is the native token so only execute approvals for currency1.

@@ -71,7 +71,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
@@ -98,7 +98,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // Use multicall to initialize a pool and mint liquidity
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
+        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1);
 
         config = PositionConfig({
             poolKey: key,
@@ -144,7 +144,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // Use multicall to initialize a pool and mint liquidity
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
+        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1);
 
         config = PositionConfig({
             poolKey: key,
@@ -241,7 +241,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // Use multicall to initialize a pool
         bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(PoolInitializer.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
+        calls[0] = abi.encodeWithSelector(PoolInitializer.initializePool.selector, key, SQRT_PRICE_1_1);
 
         vm.expectRevert(abi.encodeWithSelector(IPoolManager.TickSpacingTooSmall.selector, tickSpacing));
         lpm.multicall(calls);

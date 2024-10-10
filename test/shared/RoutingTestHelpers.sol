@@ -76,7 +76,7 @@ contract RoutingTestHelpers is Test, Deployers {
         if (Currency.unwrap(currencyA) > Currency.unwrap(currencyB)) (currencyA, currencyB) = (currencyB, currencyA);
         _key = PoolKey(currencyA, currencyB, 3000, 60, IHooks(hookAddr));
 
-        manager.initialize(_key, SQRT_PRICE_1_1, ZERO_BYTES);
+        manager.initialize(_key, SQRT_PRICE_1_1);
         MockERC20(Currency.unwrap(currencyA)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(currencyB)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity(_key, IPoolManager.ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x");
@@ -88,7 +88,7 @@ contract RoutingTestHelpers is Test, Deployers {
     {
         _key = PoolKey(CurrencyLibrary.ADDRESS_ZERO, currency, 3000, 60, IHooks(hookAddr));
 
-        manager.initialize(_key, SQRT_PRICE_1_1, ZERO_BYTES);
+        manager.initialize(_key, SQRT_PRICE_1_1);
         MockERC20(Currency.unwrap(currency)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity{value: 200 ether}(
             _key, IPoolManager.ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x"

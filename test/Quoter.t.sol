@@ -452,7 +452,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
     }
 
     function setupPool(PoolKey memory poolKey) internal {
-        manager.initialize(poolKey, SQRT_PRICE_1_1, ZERO_BYTES);
+        manager.initialize(poolKey, SQRT_PRICE_1_1);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity(
@@ -468,7 +468,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
     }
 
     function setupPoolMultiplePositions(PoolKey memory poolKey) internal {
-        manager.initialize(poolKey, SQRT_PRICE_1_1, ZERO_BYTES);
+        manager.initialize(poolKey, SQRT_PRICE_1_1);
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity(
@@ -501,7 +501,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         PoolId poolId = poolKey.toId();
         (uint160 sqrtPriceX96,,,) = manager.getSlot0(poolId);
         if (sqrtPriceX96 == 0) {
-            manager.initialize(poolKey, SQRT_PRICE_1_1, ZERO_BYTES);
+            manager.initialize(poolKey, SQRT_PRICE_1_1);
         }
 
         MockERC20(Currency.unwrap(poolKey.currency0)).approve(address(positionManager), type(uint256).max);
