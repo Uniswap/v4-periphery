@@ -16,45 +16,72 @@ library VanityAddressLib {
     /// @param addr The address to score
     /// @return calculatedScore The vanity score of the address
     function score(address addr) internal pure returns (uint256 calculatedScore) {
-        // 10 points for every leading 0
-        // 3 points for every leading 4
-        // 1 point for every 4 after that
+        // Requirement: The first nonzero nibble must be 4
+        // 10 points for every leading 0 nibble
+        // 40 points if the first 4 is followed by 3 more 4s
+        // 20 points if the first nibble after the 4 4s is NOT a 4
+        // 20 points if the last 4 nibbles are 4s
+        // 1 point for every 4
         bytes20 addrBytes = bytes20(addr);
 
         bool startingZeros = true;
         bool startingFours = true;
-        // iterate over the bytes of the address
-        for (uint256 i = 0; i < 20; i++) {
-            if (startingZeros && addrBytes[i] == 0x00) {
-                calculatedScore += 20;
-                continue;
-            } else if (startingZeros && (addrBytes[i] & 0xF0) == 0x00) {
-                calculatedScore += 10;
-                startingZeros = false;
+        bool firstFour = true;
+        uint8 fourCounts; // counter for the number of 4s
+        // iterate over the nibbles of the address
+        for (uint256 i = 0; i < addrBytes.length * 2; i++) {
+            uint8 currentNibble;
+            if (i % 2 == 0) {
+                // Get the higher nibble of the byte
+                currentNibble = uint8(addrBytes[i / 2] >> 4);
             } else {
-                startingZeros = false;
-            }
-            if (startingFours && addrBytes[i] == 0x44) {
-                calculatedScore += 6;
-                continue;
-            } else if (startingFours && (addrBytes[i] & 0xF0 == 0x40) || (addrBytes[i] & 0xFF == 0x04)) {
-                calculatedScore += 3;
-                startingFours = false;
-                continue;
-            } else {
-                startingFours = false;
+                // Get the lower nibble of the byte
+                currentNibble = uint8(addrBytes[i / 2] & 0x0F);
             }
 
-            if (!startingZeros && !startingFours) {
-                // count each nibble separately
-                if (addrBytes[i] & 0xFF == 0x44) {
-                    calculatedScore += 2;
-                } else if (addrBytes[i] & 0x0F == 0x04) {
-                    calculatedScore += 1;
-                } else if (addrBytes[i] & 0xF0 == 0x40) {
-                    calculatedScore += 1;
-                }
+            // leading 0s
+            if (startingZeros && currentNibble == 0) {
+                calculatedScore += 10;
+                continue;
+            } else {
+                startingZeros = false;
             }
+
+            // leading 4s
+            if (startingFours) {
+                // If the first nonzero nibble is not 4, the score is an automatic 0
+                if (firstFour && currentNibble != 4) {
+                    return 0;
+                }
+
+                if (currentNibble == 4) {
+                    fourCounts += 1;
+                    if (fourCounts == 4) {
+                        calculatedScore += 40;
+                        // If the leading 4 4s are also the last 4 nibbles, add 20 points
+                        if (i == addrBytes.length * 2 - 1) {
+                            calculatedScore += 20;
+                        }
+                    }
+                } else {
+                    // If the first nibble after the 4 4s is not a 4, add 20 points
+                    if (fourCounts == 4) {
+                        calculatedScore += 20;
+                    }
+                    startingFours = false;
+                }
+                firstFour = false;
+            }
+
+            // count each 4 nibble separately
+            if (currentNibble == 4) {
+                calculatedScore += 1;
+            }
+        }
+
+        // If the last 4 nibbles are 4s, add 20 points
+        if (addrBytes[18] & 0xFF == 0x44 && addrBytes[19] & 0xFF == 0x44) {
+            calculatedScore += 20;
         }
     }
 }

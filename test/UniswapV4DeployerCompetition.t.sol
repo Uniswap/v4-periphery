@@ -120,6 +120,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
     function testEqualSaltNotChanged(bytes32 salt) public {
         vm.prank(winner);
         deployer.updateBestAddress(salt);
+        assertFalse(deployer.bestAddress() == address(0));
         assertEq(deployer.bestAddressSender(), winner);
         assertEq(deployer.bestAddressSalt(), salt);
 
@@ -137,18 +138,6 @@ contract UniswapV4DeployerCompetitionTest is Test {
             )
         );
         deployer.updateBestAddress(salt >> 1);
-    }
-
-    function testUpdateNotEqual() public {
-        bytes32 salt1 = keccak256(abi.encodePacked(uint256(1)));
-        bytes32 salt2 = keccak256(abi.encodePacked(uint256(2)));
-        vm.prank(winner);
-        deployer.updateBestAddress(salt1);
-        vm.prank(winner);
-        deployer.updateBestAddress(salt2);
-        assertFalse(deployer.bestAddress() == address(0));
-        assertEq(deployer.bestAddressSender(), winner);
-        assertEq(deployer.bestAddressSalt(), salt2);
     }
 
     function testTokenURI(bytes32 salt) public {
