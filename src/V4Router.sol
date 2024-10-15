@@ -90,9 +90,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             amountIn =
                 _getFullCredit(params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1).toUint128();
         }
-        uint128 amountOut = _swap(
-            params.poolKey, params.zeroForOne, -int256(uint256(amountIn)), params.sqrtPriceLimitX96, params.hookData
-        ).toUint128();
+        uint128 amountOut =
+            _swap(params.poolKey, params.zeroForOne, -int256(uint256(amountIn)), params.hookData).toUint128();
         if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived(params.amountOutMinimum, amountOut);
     }
 
@@ -110,7 +109,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 pathKey = params.path[i];
                 (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(currencyIn);
                 // The output delta will always be positive, except for when interacting with certain hook pools
-                amountOut = _swap(poolKey, zeroForOne, -int256(uint256(amountIn)), 0, pathKey.hookData).toUint128();
+                amountOut = _swap(poolKey, zeroForOne, -int256(uint256(amountIn)), pathKey.hookData).toUint128();
 
                 amountIn = amountOut;
                 currencyIn = pathKey.intermediateCurrency;
@@ -127,17 +126,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 _getFullDebt(params.zeroForOne ? params.poolKey.currency1 : params.poolKey.currency0).toUint128();
         }
         uint128 amountIn = (
-            uint256(
-                -int256(
-                    _swap(
-                        params.poolKey,
-                        params.zeroForOne,
-                        int256(uint256(amountOut)),
-                        params.sqrtPriceLimitX96,
-                        params.hookData
-                    )
-                )
-            )
+            uint256(-int256(_swap(params.poolKey, params.zeroForOne, int256(uint256(amountOut)), params.hookData)))
         ).toUint128();
         if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
     }
@@ -159,9 +148,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 pathKey = params.path[i - 1];
                 (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
                 // The output delta will always be negative, except for when interacting with certain hook pools
-                amountIn = (
-                    uint256(-int256(_swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, pathKey.hookData)))
-                ).toUint128();
+                amountIn = (uint256(-int256(_swap(poolKey, !oneForZero, int256(uint256(amountOut)), pathKey.hookData))))
+                    .toUint128();
 
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;
@@ -170,22 +158,15 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         }
     }
 
-    function _swap(
-        PoolKey memory poolKey,
-        bool zeroForOne,
-        int256 amountSpecified,
-        uint160 sqrtPriceLimitX96,
-        bytes calldata hookData
-    ) private returns (int128 reciprocalAmount) {
+    function _swap(PoolKey memory poolKey, bool zeroForOne, int256 amountSpecified, bytes calldata hookData)
+        private
+        returns (int128 reciprocalAmount)
+    {
         unchecked {
             BalanceDelta delta = poolManager.swap(
                 poolKey,
                 IPoolManager.SwapParams(
-                    zeroForOne,
-                    amountSpecified,
-                    sqrtPriceLimitX96 == 0
-                        ? (zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1)
-                        : sqrtPriceLimitX96
+                    zeroForOne, amountSpecified, zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
                 ),
                 hookData
             );

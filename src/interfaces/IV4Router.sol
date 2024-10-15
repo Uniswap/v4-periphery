@@ -19,7 +19,6 @@ interface IV4Router {
         bool zeroForOne;
         uint128 amountIn;
         uint128 amountOutMinimum;
-        uint160 sqrtPriceLimitX96;
         bytes hookData;
     }
 
@@ -37,7 +36,6 @@ interface IV4Router {
         bool zeroForOne;
         uint128 amountOut;
         uint128 amountInMaximum;
-        uint160 sqrtPriceLimitX96;
         bytes hookData;
     }
 
