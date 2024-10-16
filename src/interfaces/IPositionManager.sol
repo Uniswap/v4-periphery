@@ -5,10 +5,11 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 import {INotifier} from "./INotifier.sol";
+import {IImmutableState} from "./IImmutableState.sol";
 
 /// @title IPositionManager
 /// @notice Interface for the PositionManager contract
-interface IPositionManager is INotifier {
+interface IPositionManager is INotifier, IImmutableState {
     /// @notice Thrown when the caller is not approved to modify a position
     error NotApproved(address caller);
     /// @notice Thrown when the block.timestamp exceeds the user-provided deadline
