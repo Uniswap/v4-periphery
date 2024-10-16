@@ -4,10 +4,11 @@ pragma solidity ^0.8.0;
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PathKey} from "../libraries/PathKey.sol";
+import {IImmutableState} from "./IImmutableState.sol";
 
 /// @title IV4Router
 /// @notice Interface containing all the structs and errors for different v4 swap types
-interface IV4Router {
+interface IV4Router is IImmutableState {
     /// @notice Emitted when an exactInput swap does not receive its minAmountOut
     error V4TooLittleReceived(uint256 minAmountOutReceived, uint256 amountReceived);
     /// @notice Emitted when an exactOutput is asked for more than its maxAmountIn
