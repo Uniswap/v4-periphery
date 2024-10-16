@@ -9,13 +9,13 @@ interface ISubscriber {
     /// @param tokenId the token ID of the position
     /// @param data additional data passed in by the caller
     function notifySubscribe(uint256 tokenId, bytes memory data) external;
-    
+
     /// @notice Called when a position unsubscribes from the subscriber
     /// @dev This call's gas is capped at `unsubscribeGasLimit` (set at deployment)
     /// @dev Because of EIP-150, solidity may only allocate 63/64 of gasleft()
     /// @param tokenId the token ID of the position
     function notifyUnsubscribe(uint256 tokenId) external;
-    
+
     /// @notice Called when a position modifies its liquidity or collects fees
     /// @param tokenId the token ID of the position
     /// @param liquidityChange the change in liquidity on the underlying position
@@ -24,7 +24,7 @@ interface ISubscriber {
     /// Pools with a single liquidity position can inflate feeGrowthGlobal (and consequently feesAccrued) by donating to themselves;
     /// atomically donating and collecting fees within the same unlockCallback may further inflate feeGrowthGlobal/feesAccrued
     function notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) external;
-    
+
     /// @notice Called when a position transfers ownership
     /// @param tokenId the token ID of the position
     /// @param previousOwner address of the old owner
