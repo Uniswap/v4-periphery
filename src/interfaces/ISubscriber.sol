@@ -21,7 +21,8 @@ interface ISubscriber {
     /// @param liquidityChange the change in liquidity on the underlying position
     /// @param feesAccrued the fees to be collected from the position as a result of the modifyLiquidity call
     /// @dev Note that feesAccrued can be artificially inflated by a malicious user
-    /// An actor can inflate feeGrowthGlobal (and consequently feesAccrued) by atomically donating and collecting the fees within the same unlockCallback
+    /// Pools with a single liquidity position can inflate feeGrowthGlobal (and consequently feesAccrued) by donating to themselves;
+    /// atomically donating and collecting fees within the same unlockCallback may further inflate feeGrowthGlobal/feesAccrued
     function notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) external;
     
     /// @notice Called when a position transfers ownership
