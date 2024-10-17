@@ -26,6 +26,8 @@ import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheck} from "./libraries/SlippageCheck.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
+import {NativeWrapper} from "./base/NativeWrapper.sol";
+import {IWETH9} from "./interfaces/external/IWETH9.sol";
 
 //                                           444444444
 //                                444444444444      444444
@@ -102,7 +104,8 @@ contract PositionManager is
     ReentrancyLock,
     BaseActionsRouter,
     Notifier,
-    Permit2Forwarder
+    Permit2Forwarder,
+    NativeWrapper
 {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -126,12 +129,14 @@ contract PositionManager is
         IPoolManager _poolManager,
         IAllowanceTransfer _permit2,
         uint256 _unsubscribeGasLimit,
-        IPositionDescriptor _tokenDescriptor
+        IPositionDescriptor _tokenDescriptor,
+        IWETH9 _weth9
     )
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
         ERC721Permit_v4("Uniswap v4 Positions NFT", "UNI-V4-POSM")
         Notifier(_unsubscribeGasLimit)
+        NativeWrapper(_weth9)
     {
         tokenDescriptor = _tokenDescriptor;
     }

@@ -17,6 +17,8 @@ import {HookSavesDelta} from "./HookSavesDelta.sol";
 import {HookModifyLiquidities} from "./HookModifyLiquidities.sol";
 import {PositionDescriptor} from "../../src/PositionDescriptor.sol";
 import {ERC721PermitHash} from "../../src/libraries/ERC721PermitHash.sol";
+import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
+import {WETH} from "solmate/src/tokens/WETH.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
@@ -26,6 +28,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     PositionDescriptor public positionDescriptor;
     HookSavesDelta hook;
     address hookAddr = address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
+    IWETH9 public _WETH9 = IWETH9(address(new WETH()));
 
     HookModifyLiquidities hookModifyLiquidities;
     address hookModifyLiquiditiesAddr = address(
@@ -60,7 +63,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
         positionDescriptor = new PositionDescriptor(poolManager, 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, "ETH");
-        lpm = new PositionManager(poolManager, permit2, 100_000, positionDescriptor);
+        lpm = new PositionManager(poolManager, permit2, 100_000, positionDescriptor, _WETH9);
     }
 
     function seedBalance(address to) internal {
