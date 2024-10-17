@@ -162,6 +162,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         private
         returns (int128 reciprocalAmount)
     {
+        // for protection of exactOut swaps, sqrtPriceLimit is not exposed as a feature in this contract
         unchecked {
             BalanceDelta delta = poolManager.swap(
                 poolKey,
