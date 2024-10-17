@@ -53,7 +53,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         deployPosmHookModifyLiquidities();
         seedBalance(address(hookModifyLiquidities));
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(hookModifyLiquidities), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(hookModifyLiquidities), 3000, SQRT_PRICE_1_1);
 
         config = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 60});
     }

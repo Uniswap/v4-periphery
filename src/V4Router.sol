@@ -7,7 +7,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {BipsLibrary} from "@uniswap/v4-core/src/libraries/BipsLibrary.sol";
 
 import {PathKey, PathKeyLibrary} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
@@ -16,9 +15,10 @@ import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
+import {BipsLibrary} from "./libraries/BipsLibrary.sol";
 
 /// @title UniswapV4Router
-/// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
+/// @notice Abstract contract that contains all internal logic needed for routing through Uniswap v4 pools
 /// @dev the entry point to executing actions in this contract is calling `BaseActionsRouter._executeActions`
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
 abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
