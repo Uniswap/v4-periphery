@@ -3,13 +3,13 @@ pragma solidity ^0.8.19;
 
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {BipsLibrary} from "@uniswap/v4-core/src/libraries/BipsLibrary.sol";
 
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
 import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
+import {BipsLibrary} from "../../src/libraries/BipsLibrary.sol";
 
 contract PaymentsTests is RoutingTestHelpers, GasSnapshot {
     using CurrencyLibrary for Currency;
