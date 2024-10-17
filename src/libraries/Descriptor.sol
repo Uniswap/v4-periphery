@@ -54,7 +54,7 @@ library Descriptor {
             escapeQuotes(params.baseCurrencySymbol),
             addressToString(Currency.unwrap(params.quoteCurrency)),
             addressToString(Currency.unwrap(params.baseCurrency)),
-            addressToString(params.hooks),
+            params.hooks == address(0) ? "No Hook" : addressToString(params.hooks),
             feeToPercentString(params.fee)
         );
         string memory image = Base64.encode(bytes(generateSVGImage(params)));
