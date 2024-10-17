@@ -29,7 +29,6 @@ library Actions {
     uint256 constant TAKE_PORTION = 0x14;
     uint256 constant TAKE_PAIR = 0x15;
 
-    uint256 constant SETTLE_TAKE_PAIR = 0x16;
     uint256 constant CLOSE_CURRENCY = 0x17;
     uint256 constant CLEAR_OR_TAKE = 0x18;
     uint256 constant SWEEP = 0x19;
