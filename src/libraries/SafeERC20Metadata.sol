@@ -2,41 +2,36 @@
 pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {AddressStringUtil} from "./AddressStringUtil.sol";
 
-/// @title SafeCurrencyMetadata
+/// @title SafeERC20Metadata
 /// @notice can produce symbols and decimals from inconsistent or absent ERC20 implementations
 /// @dev Reference: https://github.com/Uniswap/solidity-lib/blob/master/contracts/libraries/SafeERC20Namer.sol
-library SafeCurrencyMetadata {
-    using CurrencyLibrary for Currency;
-
+library SafeERC20Metadata {
     /// @notice attempts to extract the token symbol. if it does not implement symbol, returns a symbol derived from the address
-    /// @param currency The currency
+    /// @param addr The address
     /// @param nativeLabel The native label
     /// @return the token symbol
-    function currencySymbol(Currency currency, string memory nativeLabel) internal view returns (string memory) {
-        if (currency.isAddressZero()) {
+    function addressSymbol(address addr, string memory nativeLabel) internal view returns (string memory) {
+        if (addr == address(0)) {
             return nativeLabel;
         }
-        address currencyAddress = Currency.unwrap(currency);
-        string memory symbol = callAndParseStringReturn(currencyAddress, IERC20Metadata.symbol.selector);
+        string memory symbol = callAndParseStringReturn(addr, IERC20Metadata.symbol.selector);
         if (bytes(symbol).length == 0) {
             // fallback to 6 uppercase hex of address
-            return addressToSymbol(currencyAddress);
+            return addressToSymbol(addr);
         }
         return symbol;
     }
 
     /// @notice attempts to extract the token decimals, returns 0 if not implemented or not a uint8
-    /// @param currency The currency
+    /// @param addr The address
     /// @return the token decimals
-    function currencyDecimals(Currency currency) internal view returns (uint8) {
-        if (currency.isAddressZero()) {
+    function addressDecimals(address addr) internal view returns (uint8) {
+        if (addr == address(0)) {
             return 18;
         }
-        (bool success, bytes memory data) =
-            Currency.unwrap(currency).staticcall(abi.encodeCall(IERC20Metadata.decimals, ()));
+        (bool success, bytes memory data) = addr.staticcall(abi.encodeCall(IERC20Metadata.decimals, ()));
         if (!success) {
             return 0;
         }
@@ -64,18 +59,18 @@ library SafeCurrencyMetadata {
     }
 
     /// @notice produces a symbol from the address - the first 6 hex of the address string in upper case
-    /// @param currencyAddress the address of the currency
+    /// @param addr The address
     /// @return the symbol
-    function addressToSymbol(address currencyAddress) private pure returns (string memory) {
-        return AddressStringUtil.toAsciiString(currencyAddress, 6);
+    function addressToSymbol(address addr) private pure returns (string memory) {
+        return AddressStringUtil.toAsciiString(addr, 6);
     }
 
     /// @notice calls an external view contract method that returns a symbol, and parses the output into a string
-    /// @param currencyAddress the address of the currency
+    /// @param addr The address
     /// @param selector the selector of the symbol method
     /// @return the symbol
-    function callAndParseStringReturn(address currencyAddress, bytes4 selector) private view returns (string memory) {
-        (bool success, bytes memory data) = currencyAddress.staticcall(abi.encodeWithSelector(selector));
+    function callAndParseStringReturn(address addr, bytes4 selector) private view returns (string memory) {
+        (bool success, bytes memory data) = addr.staticcall(abi.encodeWithSelector(selector));
         // if not implemented, return empty string
         if (!success) {
             return "";

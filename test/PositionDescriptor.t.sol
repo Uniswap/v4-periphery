@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {PositionDescriptor} from "../src/PositionDescriptor.sol";
-import {CurrencyRatioSortOrder} from "../src/libraries/CurrencyRatioSortOrder.sol";
+import {AddressRatioSortOrder} from "../src/libraries/AddressRatioSortOrder.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -44,30 +44,30 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
     function test_setup_succeeds() public view {
         assertEq(address(positionDescriptor.poolManager()), address(manager));
         assertEq(positionDescriptor.wrappedNative(), WETH9);
-        assertEq(positionDescriptor.nativeCurrencyLabel(), nativeCurrencyLabel);
+        assertEq(positionDescriptor.nativeAddressLabel(), nativeCurrencyLabel);
     }
 
-    function test_currencyRatioPriority_mainnet_succeeds() public {
+    function test_addressRatioPriority_mainnet_succeeds() public {
         vm.chainId(1);
-        assertEq(positionDescriptor.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.currencyRatioPriority(address(0)), CurrencyRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.currencyRatioPriority(USDC), CurrencyRatioSortOrder.NUMERATOR_MOST);
-        assertEq(positionDescriptor.currencyRatioPriority(USDT), CurrencyRatioSortOrder.NUMERATOR_MORE);
-        assertEq(positionDescriptor.currencyRatioPriority(DAI), CurrencyRatioSortOrder.NUMERATOR);
-        assertEq(positionDescriptor.currencyRatioPriority(TBTC), CurrencyRatioSortOrder.DENOMINATOR_MORE);
-        assertEq(positionDescriptor.currencyRatioPriority(WBTC), CurrencyRatioSortOrder.DENOMINATOR_MOST);
-        assertEq(positionDescriptor.currencyRatioPriority(makeAddr("ALICE")), 0);
+        assertEq(positionDescriptor.addressRatioPriority(WETH9), AddressRatioSortOrder.DENOMINATOR);
+        assertEq(positionDescriptor.addressRatioPriority(address(0)), AddressRatioSortOrder.DENOMINATOR);
+        assertEq(positionDescriptor.addressRatioPriority(USDC), AddressRatioSortOrder.NUMERATOR_MOST);
+        assertEq(positionDescriptor.addressRatioPriority(USDT), AddressRatioSortOrder.NUMERATOR_MORE);
+        assertEq(positionDescriptor.addressRatioPriority(DAI), AddressRatioSortOrder.NUMERATOR);
+        assertEq(positionDescriptor.addressRatioPriority(TBTC), AddressRatioSortOrder.DENOMINATOR_MORE);
+        assertEq(positionDescriptor.addressRatioPriority(WBTC), AddressRatioSortOrder.DENOMINATOR_MOST);
+        assertEq(positionDescriptor.addressRatioPriority(makeAddr("ALICE")), 0);
     }
 
-    function test_currencyRatioPriority_notMainnet_succeeds() public {
-        assertEq(positionDescriptor.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.currencyRatioPriority(address(0)), CurrencyRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.currencyRatioPriority(USDC), 0);
-        assertEq(positionDescriptor.currencyRatioPriority(USDT), 0);
-        assertEq(positionDescriptor.currencyRatioPriority(DAI), 0);
-        assertEq(positionDescriptor.currencyRatioPriority(TBTC), 0);
-        assertEq(positionDescriptor.currencyRatioPriority(WBTC), 0);
-        assertEq(positionDescriptor.currencyRatioPriority(makeAddr("ALICE")), 0);
+    function test_addressRatioPriority_notMainnet_succeeds() public {
+        assertEq(positionDescriptor.addressRatioPriority(WETH9), AddressRatioSortOrder.DENOMINATOR);
+        assertEq(positionDescriptor.addressRatioPriority(address(0)), AddressRatioSortOrder.DENOMINATOR);
+        assertEq(positionDescriptor.addressRatioPriority(USDC), 0);
+        assertEq(positionDescriptor.addressRatioPriority(USDT), 0);
+        assertEq(positionDescriptor.addressRatioPriority(DAI), 0);
+        assertEq(positionDescriptor.addressRatioPriority(TBTC), 0);
+        assertEq(positionDescriptor.addressRatioPriority(WBTC), 0);
+        assertEq(positionDescriptor.addressRatioPriority(makeAddr("ALICE")), 0);
     }
 
     function test_flipRatio_succeeds() public {
@@ -122,7 +122,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(token.name, "Uniswap - 0.3% - TEST/TEST - 1.0060<>1.0121");
         assertEq(
             token.description,
-            unicode"This NFT represents a liquidity position in a Uniswap v4 TEST-TEST pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f\nTEST Address: 0x5991a2df15a8f6a256d3ec51e99254cd3fb576a9\nTEST Address: 0x2e234dae75c793f67a35089c9d99245e1c58470b\nHook Address: 0x0000000000000000000000000000000000000000\nFee Tier: 0.3%\nToken ID: 1\n\n⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currency addresses match the expected currencies, as currency symbols may be imitated."
+            unicode"This NFT represents a liquidity position in a Uniswap v4 TEST-TEST pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f\nTEST Address: 0x5991a2df15a8f6a256d3ec51e99254cd3fb576a9\nTEST Address: 0x2e234dae75c793f67a35089c9d99245e1c58470b\nHook Address: 0x0000000000000000000000000000000000000000\nFee Tier: 0.3%\nToken ID: 1\n\n⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated."
         );
     }
 
