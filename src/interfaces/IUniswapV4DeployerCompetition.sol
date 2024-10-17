@@ -4,13 +4,12 @@ pragma solidity 0.8.26;
 /// @title UniswapV4DeployerCompetition
 /// @notice A competition to deploy the UniswapV4 contract with the best address
 interface IUniswapV4DeployerCompetition {
-    event NewAddressFound(address indexed bestAddress, address indexed minter, uint256 score);
+    event NewAddressFound(address indexed bestAddress, address indexed submitter, uint256 score);
 
     error InvalidBytecode();
     error CompetitionNotOver(uint256 currentTime, uint256 deadline);
     error CompetitionOver(uint256 currentTime, uint256 deadline);
-    error NotAllowedToDeploy(address sender, address bestAddressSender);
-    error BountyTransferFailed();
+    error NotAllowedToDeploy(address sender, address deployer);
     error WorseAddress(address newAddress, address bestAddress, uint256 newScore, uint256 bestScore);
     error InvalidTokenId(uint256 tokenId);
 

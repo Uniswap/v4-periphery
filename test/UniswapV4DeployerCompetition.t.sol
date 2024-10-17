@@ -13,140 +13,133 @@ import {IUniswapV4DeployerCompetition} from "../src/interfaces/IUniswapV4Deploye
 contract UniswapV4DeployerCompetitionTest is Test {
     using VanityAddressLib for address;
 
-    UniswapV4DeployerCompetition deployer;
+    UniswapV4DeployerCompetition competition;
     bytes32 initCodeHash;
+    address deployer;
     address v4Owner;
     address winner;
     uint256 constant controllerGasLimit = 10000;
+    uint256 competitionDeadline;
 
     function setUp() public {
+        competitionDeadline = block.timestamp + 7 days;
         v4Owner = makeAddr("V4Owner");
         winner = makeAddr("Winner");
+        deployer = makeAddr("Deployer");
+        vm.prank(deployer);
         initCodeHash = keccak256(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
-        deployer = new UniswapV4DeployerCompetition{value: 1 ether}(initCodeHash, v4Owner);
-        assertEq(deployer.v4Owner(), v4Owner);
+        competition = new UniswapV4DeployerCompetition(initCodeHash, v4Owner, competitionDeadline);
+        assertEq(competition.v4Owner(), v4Owner);
     }
 
     function testUpdateBestAddress(bytes32 salt) public {
-        assertEq(deployer.bestAddress(), address(0));
-        assertEq(deployer.bestAddressSender(), address(0));
-        assertEq(deployer.bestAddressSalt(), bytes32(0));
+        assertEq(competition.bestAddress(), address(0));
+        assertEq(competition.bestAddressSubmitter(), address(0));
+        assertEq(competition.bestAddressSalt(), bytes32(0));
 
-        address newAddress = Create2.computeAddress(salt, initCodeHash, address(deployer));
+        address newAddress = Create2.computeAddress(salt, initCodeHash, address(competition));
 
         vm.prank(winner);
-        vm.expectEmit(true, true, true, false, address(deployer));
+        vm.expectEmit(true, true, true, false, address(competition));
         emit IUniswapV4DeployerCompetition.NewAddressFound(newAddress, winner, VanityAddressLib.score(newAddress));
-        deployer.updateBestAddress(salt);
-        assertEq(address(deployer).balance, 1 ether);
-        assertFalse(deployer.bestAddress() == address(0));
-        assertEq(deployer.bestAddressSender(), winner);
-        assertEq(deployer.bestAddressSalt(), salt);
-        address v4Core = deployer.bestAddress();
+        competition.updateBestAddress(salt);
+        assertFalse(competition.bestAddress() == address(0));
+        assertEq(competition.bestAddressSubmitter(), winner);
+        assertEq(competition.bestAddressSalt(), salt);
+        address v4Core = competition.bestAddress();
 
         assertEq(v4Core.code.length, 0);
-        vm.warp(deployer.competitionDeadline() + 1);
-        vm.prank(winner);
-        deployer.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
+        vm.warp(competition.competitionDeadline() + 1);
+        vm.prank(deployer);
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
         assertFalse(v4Core.code.length == 0);
         assertEq(Owned(v4Core).owner(), v4Owner);
-        assertEq(address(deployer).balance, 0 ether);
-        assertEq(winner.balance, 1 ether);
+        assertEq(address(competition).balance, 0 ether);
     }
 
     function testCompetitionOver(bytes32 salt) public {
-        vm.warp(deployer.competitionDeadline() + 1);
+        vm.warp(competition.competitionDeadline() + 1);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IUniswapV4DeployerCompetition.CompetitionOver.selector, block.timestamp, deployer.competitionDeadline()
+                IUniswapV4DeployerCompetition.CompetitionOver.selector,
+                block.timestamp,
+                competition.competitionDeadline()
             )
         );
-        deployer.updateBestAddress(salt);
+        competition.updateBestAddress(salt);
     }
 
     function testUpdateBestAddressOpen(bytes32 salt) public {
         vm.prank(winner);
-        deployer.updateBestAddress(salt);
-        address v4Core = deployer.bestAddress();
+        competition.updateBestAddress(salt);
+        address v4Core = competition.bestAddress();
 
-        vm.warp(deployer.competitionDeadline() + 1.1 days);
-        deployer.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
+        vm.warp(competition.competitionDeadline() + 1.1 days);
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
         assertFalse(v4Core.code.length == 0);
         assertEq(Owned(v4Core).owner(), v4Owner);
         assertEq(TickMath.MAX_TICK_SPACING, type(int16).max);
     }
 
     function testCompetitionNotOver(bytes32 salt, uint256 timestamp) public {
-        vm.assume(timestamp < deployer.competitionDeadline());
+        vm.assume(timestamp < competition.competitionDeadline());
         vm.prank(winner);
-        deployer.updateBestAddress(salt);
+        competition.updateBestAddress(salt);
         vm.warp(timestamp);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IUniswapV4DeployerCompetition.CompetitionNotOver.selector, timestamp, deployer.competitionDeadline()
+                IUniswapV4DeployerCompetition.CompetitionNotOver.selector, timestamp, competition.competitionDeadline()
             )
         );
-        deployer.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
     }
 
     function testInvalidBytecode(bytes32 salt) public {
         vm.prank(winner);
-        deployer.updateBestAddress(salt);
+        competition.updateBestAddress(salt);
         vm.expectRevert(IUniswapV4DeployerCompetition.InvalidBytecode.selector);
-        deployer.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit + 1));
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit + 1));
     }
 
     function testInvalidMsgSender(bytes32 salt) public {
         vm.prank(winner);
-        deployer.updateBestAddress(salt);
-        vm.warp(deployer.competitionDeadline() + 1);
+        competition.updateBestAddress(salt);
+        vm.warp(competition.competitionDeadline() + 1);
         vm.prank(address(1));
         vm.expectRevert(
-            abi.encodeWithSelector(IUniswapV4DeployerCompetition.NotAllowedToDeploy.selector, address(1), winner)
+            abi.encodeWithSelector(IUniswapV4DeployerCompetition.NotAllowedToDeploy.selector, address(1), deployer)
         );
-        deployer.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
     }
 
     function testAfterExcusiveDeployDeadline(bytes32 salt) public {
         vm.prank(winner);
-        deployer.updateBestAddress(salt);
-        vm.warp(deployer.exclusiveDeployDeadline() + 1);
+        competition.updateBestAddress(salt);
+        vm.warp(competition.exclusiveDeployDeadline() + 1);
         vm.prank(address(1));
-        deployer.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
-        assertEq(address(deployer).balance, 0 ether);
-        assertEq(winner.balance, 1 ether);
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
     }
 
     function testEqualSaltNotChanged(bytes32 salt) public {
         vm.prank(winner);
-        deployer.updateBestAddress(salt);
-        assertFalse(deployer.bestAddress() == address(0));
-        assertEq(deployer.bestAddressSender(), winner);
-        assertEq(deployer.bestAddressSalt(), salt);
+        competition.updateBestAddress(salt);
+        assertFalse(competition.bestAddress() == address(0));
+        assertEq(competition.bestAddressSubmitter(), winner);
+        assertEq(competition.bestAddressSalt(), salt);
 
-        address newAddr = Create2.computeAddress(salt >> 1, initCodeHash, address(deployer));
-        vm.assume(deployer.bestAddress().betterThan(newAddr));
+        address newAddr = Create2.computeAddress(salt >> 1, initCodeHash, address(competition));
+        vm.assume(competition.bestAddress().betterThan(newAddr));
 
         vm.prank(address(1));
         vm.expectRevert(
             abi.encodeWithSelector(
                 IUniswapV4DeployerCompetition.WorseAddress.selector,
                 newAddr,
-                deployer.bestAddress(),
+                competition.bestAddress(),
                 newAddr.score(),
-                deployer.bestAddress().score()
+                competition.bestAddress().score()
             )
         );
-        deployer.updateBestAddress(salt >> 1);
-    }
-
-    function testTokenURI(bytes32 salt) public {
-        vm.prank(winner);
-        deployer.updateBestAddress(salt);
-        vm.warp(deployer.competitionDeadline() + 1);
-        vm.prank(winner);
-        deployer.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
-        vm.expectRevert(abi.encodeWithSelector(IUniswapV4DeployerCompetition.InvalidTokenId.selector, 1));
-        deployer.tokenURI(1);
+        competition.updateBestAddress(salt >> 1);
     }
 }
