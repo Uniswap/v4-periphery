@@ -39,15 +39,20 @@ contract DescriptorTest is Test {
         );
     }
 
-    function test_escapeQuotes_succeeds() public pure {
-        assertEq(Descriptor.escapeQuotes(""), "");
-        assertEq(Descriptor.escapeQuotes("a"), "a");
-        assertEq(Descriptor.escapeQuotes("abc"), "abc");
-        assertEq(Descriptor.escapeQuotes("a\"bc"), "a\\\"bc");
-        assertEq(Descriptor.escapeQuotes("a\"b\"c"), "a\\\"b\\\"c");
-        assertEq(Descriptor.escapeQuotes("a\"b\"c\""), "a\\\"b\\\"c\\\"");
-        assertEq(Descriptor.escapeQuotes("\"a\"b\"c\""), "\\\"a\\\"b\\\"c\\\"");
-        assertEq(Descriptor.escapeQuotes("\"a\"b\"c\"\""), "\\\"a\\\"b\\\"c\\\"\\\"");
+    function test_escapeSpecialCharacters_succeeds() public pure {
+        assertEq(Descriptor.escapeSpecialCharacters(""), "");
+        assertEq(Descriptor.escapeSpecialCharacters("a"), "a");
+        assertEq(Descriptor.escapeSpecialCharacters("abc"), "abc");
+        assertEq(Descriptor.escapeSpecialCharacters("a\"bc"), "a\\\"bc");
+        assertEq(Descriptor.escapeSpecialCharacters("a\"b\"c"), "a\\\"b\\\"c");
+        assertEq(Descriptor.escapeSpecialCharacters("a\"b\"c\""), "a\\\"b\\\"c\\\"");
+        assertEq(Descriptor.escapeSpecialCharacters("\"a\"b\"c\""), "\\\"a\\\"b\\\"c\\\"");
+        assertEq(Descriptor.escapeSpecialCharacters("\"a\"b\"c\"\""), "\\\"a\\\"b\\\"c\\\"\\\"");
+
+        assertEq(Descriptor.escapeSpecialCharacters("a\rbc"), "a\\\rbc");
+        assertEq(Descriptor.escapeSpecialCharacters("a\nbc"), "a\\\nbc");
+        assertEq(Descriptor.escapeSpecialCharacters("a\tbc"), "a\\\tbc");
+        assertEq(Descriptor.escapeSpecialCharacters("a\u000cbc"), "a\\\u000cbc");
     }
 
     function test_tickToDecimalString_withTickSpacing10() public pure {
