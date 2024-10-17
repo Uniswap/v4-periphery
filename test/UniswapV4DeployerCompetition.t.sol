@@ -44,6 +44,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
         emit IUniswapV4DeployerCompetition.NewAddressFound(newAddress, winner, VanityAddressLib.score(newAddress));
         competition.updateBestAddress(salt);
         assertFalse(competition.bestAddress() == address(0));
+        assertEq(competition.bestAddress(), newAddress);
         assertEq(competition.bestAddressSubmitter(), winner);
         assertEq(competition.bestAddressSalt(), salt);
         address v4Core = competition.bestAddress();
