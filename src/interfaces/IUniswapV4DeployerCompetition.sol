@@ -17,7 +17,7 @@ interface IUniswapV4DeployerCompetition {
     /// @param salt The salt to use to compute the new address with CREATE2
     function updateBestAddress(bytes32 salt) external;
 
-    /// @notice Allows the winner to deploy the Uniswap v4 PoolManager contract
+    /// @notice deploys the Uniswap v4 PoolManager contract
     /// @param bytecode The bytecode of the Uniswap v4 PoolManager contract
     /// @dev The bytecode must match the initCodeHash
     function deploy(bytes memory bytecode) external;
