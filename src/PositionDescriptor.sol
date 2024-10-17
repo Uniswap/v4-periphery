@@ -10,8 +10,8 @@ import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {IPositionDescriptor} from "./interfaces/IPositionDescriptor.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 import {Descriptor} from "./libraries/Descriptor.sol";
-import {CurrencyRatioSortOrder} from "./libraries/CurrencyRatioSortOrder.sol";
-import {SafeCurrencyMetadata} from "./libraries/SafeCurrencyMetadata.sol";
+import {AddressRatioSortOrder} from "./libraries/AddressRatioSortOrder.sol";
+import {SafeERC20Metadata} from "./libraries/SafeERC20Metadata.sol";
 
 /// @title Describes NFT token positions
 /// @notice Produces a string containing the data URI for a JSON metadata string
@@ -31,14 +31,14 @@ contract PositionDescriptor is IPositionDescriptor {
     address private constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
 
     address public immutable wrappedNative;
-    string public nativeCurrencyLabel;
+    string public nativeAddressLabel;
 
     IPoolManager public immutable poolManager;
 
-    constructor(IPoolManager _poolManager, address _wrappedNative, string memory _nativeCurrencyLabel) {
+    constructor(IPoolManager _poolManager, address _wrappedNative, string memory _nativeAddressLabel) {
         poolManager = _poolManager;
         wrappedNative = _wrappedNative;
-        nativeCurrencyLabel = _nativeCurrencyLabel;
+        nativeAddressLabel = _nativeAddressLabel;
     }
 
     /// @inheritdoc IPositionDescriptor
@@ -54,24 +54,27 @@ contract PositionDescriptor is IPositionDescriptor {
         }
         (, int24 tick,,) = poolManager.getSlot0(poolKey.toId());
 
-        // If possible, flip currencies to get the larger currency as the base currency, so that the price (quote/base) is more readable
-        // flip if currency0 priority is greater than currency1 priority
-        bool _flipRatio = flipRatio(Currency.unwrap(poolKey.currency0), Currency.unwrap(poolKey.currency1));
+        address address0 = Currency.unwrap(poolKey.currency0);
+        address address1 = Currency.unwrap(poolKey.currency1);
 
-        // If not flipped, quote currency is currency1, base currency is currency0
-        // If flipped, quote currency is currency0, base currency is currency1
-        Currency quoteCurrency = !_flipRatio ? poolKey.currency1 : poolKey.currency0;
-        Currency baseCurrency = !_flipRatio ? poolKey.currency0 : poolKey.currency1;
+        // If possible, flip addresses to get the larger one as the base, so that the price (quote/base) is more readable
+        // flip if address0 priority is greater than address1 priority
+        bool _flipRatio = flipRatio(address0, address1);
+
+        // If not flipped, quote address is address1, base address is address0
+        // If flipped, quote address is address0, base address is address1
+        address quoteAddress = !_flipRatio ? address1 : address0;
+        address baseAddress = !_flipRatio ? address0 : address1;
 
         return Descriptor.constructTokenURI(
             Descriptor.ConstructTokenURIParams({
                 tokenId: tokenId,
-                quoteCurrency: quoteCurrency,
-                baseCurrency: baseCurrency,
-                quoteCurrencySymbol: SafeCurrencyMetadata.currencySymbol(quoteCurrency, nativeCurrencyLabel),
-                baseCurrencySymbol: SafeCurrencyMetadata.currencySymbol(baseCurrency, nativeCurrencyLabel),
-                quoteCurrencyDecimals: SafeCurrencyMetadata.currencyDecimals(quoteCurrency),
-                baseCurrencyDecimals: SafeCurrencyMetadata.currencyDecimals(baseCurrency),
+                quoteAddress: quoteAddress,
+                baseAddress: baseAddress,
+                quoteAddressSymbol: SafeERC20Metadata.addressSymbol(quoteAddress, nativeAddressLabel),
+                baseAddressSymbol: SafeERC20Metadata.addressSymbol(baseAddress, nativeAddressLabel),
+                quoteAddressDecimals: SafeERC20Metadata.addressDecimals(quoteAddress),
+                baseAddressDecimals: SafeERC20Metadata.addressDecimals(baseAddress),
                 flipRatio: _flipRatio,
                 tickLower: positionInfo.tickLower(),
                 tickUpper: positionInfo.tickUpper(),
@@ -84,37 +87,37 @@ contract PositionDescriptor is IPositionDescriptor {
         );
     }
 
-    /// @notice Returns true if currency0 has higher priority than currency1
-    /// @param currency0 The first currency address
-    /// @param currency1 The second currency address
-    /// @return flipRatio True if currency0 has higher priority than currency1
-    function flipRatio(address currency0, address currency1) public view returns (bool) {
-        return currencyRatioPriority(currency0) > currencyRatioPriority(currency1);
+    /// @notice Returns true if address0 has higher priority than address1
+    /// @param address0 The first address
+    /// @param address1 The second address
+    /// @return flipRatio True if address0 has higher priority than address1
+    function flipRatio(address address0, address address1) public view returns (bool) {
+        return addressRatioPriority(address0) > addressRatioPriority(address1);
     }
 
-    /// @notice Returns the priority of a currency.
-    /// For certain currencies on mainnet, the smaller the currency, the higher the priority
-    /// @param currency The currency address
-    /// @return priority The priority of the currency
-    function currencyRatioPriority(address currency) public view returns (int256) {
-        // Currencies in order of priority on mainnet: USDC, USDT, DAI, (ETH, WETH), TBTC, WBTC
+    /// @notice Returns the priority of an address.
+    /// For certain addresses on mainnet, the smaller the address, the higher the priority
+    /// @param addr The address
+    /// @return priority The priority of the address
+    function addressRatioPriority(address addr) public view returns (int256) {
+        // Addresses in order of priority on mainnet: USDC, USDT, DAI, (ETH, WETH), TBTC, WBTC
         // wrapped native is different address on different chains. passed in constructor
 
-        // native currency
-        if (currency == address(0) || currency == wrappedNative) {
-            return CurrencyRatioSortOrder.DENOMINATOR;
+        // native address
+        if (addr == address(0) || addr == wrappedNative) {
+            return AddressRatioSortOrder.DENOMINATOR;
         }
         if (block.chainid == 1) {
-            if (currency == USDC) {
-                return CurrencyRatioSortOrder.NUMERATOR_MOST;
-            } else if (currency == USDT) {
-                return CurrencyRatioSortOrder.NUMERATOR_MORE;
-            } else if (currency == DAI) {
-                return CurrencyRatioSortOrder.NUMERATOR;
-            } else if (currency == TBTC) {
-                return CurrencyRatioSortOrder.DENOMINATOR_MORE;
-            } else if (currency == WBTC) {
-                return CurrencyRatioSortOrder.DENOMINATOR_MOST;
+            if (addr == USDC) {
+                return AddressRatioSortOrder.NUMERATOR_MOST;
+            } else if (addr == USDT) {
+                return AddressRatioSortOrder.NUMERATOR_MORE;
+            } else if (addr == DAI) {
+                return AddressRatioSortOrder.NUMERATOR;
+            } else if (addr == TBTC) {
+                return AddressRatioSortOrder.DENOMINATOR_MORE;
+            } else if (addr == WBTC) {
+                return AddressRatioSortOrder.DENOMINATOR_MOST;
             } else {
                 return 0;
             }
