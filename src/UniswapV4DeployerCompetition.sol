@@ -6,17 +6,27 @@ import {Owned} from "solmate/src/auth/Owned.sol";
 import {VanityAddressLib} from "./libraries/VanityAddressLib.sol";
 import {IUniswapV4DeployerCompetition} from "./interfaces/IUniswapV4DeployerCompetition.sol";
 
+/// @title UniswapV4DeployerCompetition
+/// @notice A contract to crowdsource a salt for the best Uniswap V4 address
 contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
     using VanityAddressLib for address;
 
+    /// @dev The salt for the best address found so far
     bytes32 public bestAddressSalt;
+    /// @dev The best address found so far
     address public bestAddress;
+    /// @dev The submitter of the best address found so far
     address public bestAddressSubmitter;
 
+    /// @dev The deployer who can initiate the deployment of V4
     address public immutable deployer;
+    /// @dev The owner of the V4 contract
     address public immutable v4Owner;
+    /// @dev The deadline for the competition
     uint256 public immutable competitionDeadline;
+    /// @dev The deadline for exclusive deployment by deployer after deadline
     uint256 public immutable exclusiveDeployDeadline;
+    /// @dev The init code hash of the V4 contract
     bytes32 public immutable initCodeHash;
 
     constructor(bytes32 _initCodeHash, address _v4Owner, uint256 _competitionDeadline) {
