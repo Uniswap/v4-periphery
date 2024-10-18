@@ -20,7 +20,6 @@ interface IV4Router is IImmutableState {
         bool zeroForOne;
         uint128 amountIn;
         uint128 amountOutMinimum;
-        uint160 sqrtPriceLimitX96;
         bytes hookData;
     }
 
@@ -38,7 +37,6 @@ interface IV4Router is IImmutableState {
         bool zeroForOne;
         uint128 amountOut;
         uint128 amountInMaximum;
-        uint160 sqrtPriceLimitX96;
         bytes hookData;
     }
 
