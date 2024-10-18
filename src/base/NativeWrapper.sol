@@ -3,23 +3,31 @@ pragma solidity ^0.8.0;
 
 import {IWETH9} from "../interfaces/external/IWETH9.sol";
 import {ActionConstants} from "../libraries/ActionConstants.sol";
+import {ImmutableState} from "./ImmutableState.sol";
 
 /// @title Native Wrapper
-/// @notice Immutables and helpers for wrapping and unwrapping native
-contract NativeWrapper {
+/// @notice Used for wrapping and unwrapping native
+abstract contract NativeWrapper is ImmutableState {
     IWETH9 public immutable WETH9;
 
-    error InsufficientBalance();
+    /// @notice Thrown when a non-expected address sends ETH to this contract
+    error InvalidEthSender();
 
     constructor(IWETH9 _weth9) {
         WETH9 = _weth9;
     }
 
-    function _map(uint256 amount, uint256 balance) internal pure returns (uint256) {
-        if (amount == ActionConstants.CONTRACT_BALANCE) return balance;
-        if (amount > balance) revert InsufficientBalance();
-        return amount;
+    /// @dev The amount should already be <= the current balance in this contract.
+    function _wrap(uint256 amount) internal {
+        if (amount > 0) WETH9.deposit{value: amount}();
     }
 
-    receive() external payable {}
+    /// @dev The amount should already be <= the current balance in this contract.
+    function _unwrap(uint256 amount) internal {
+        if (amount > 0) WETH9.withdraw(amount);
+    }
+
+    receive() external payable {
+        if (msg.sender != address(WETH9) && msg.sender != address(poolManager)) revert InvalidEthSender();
+    }
 }
