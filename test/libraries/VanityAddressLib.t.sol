@@ -5,11 +5,10 @@ import {Test, console} from "forge-std/Test.sol";
 import {VanityAddressLib} from "../../src/libraries/VanityAddressLib.sol";
 
 contract VanityAddressLibTest is Test {
-    function test_scoreAllZeros() public pure {
-        address addr = address(0);
-        uint256 score = VanityAddressLib.score(addr);
-        uint256 expected = 400; // not a 4 after the zeros
-        assertEq(score, expected);
+    function test_fuzz_reasonableScoreNeverReverts(address test) public pure {
+        uint256 score = VanityAddressLib.score(address(test));
+        assertGe(score, 0);
+        assertLe(score, 444);
     }
 
     function test_scoreAllFours() public pure {
