@@ -19,6 +19,10 @@ import {PositionDescriptor} from "../../src/PositionDescriptor.sol";
 import {ERC721PermitHash} from "../../src/libraries/ERC721PermitHash.sol";
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {WETH} from "solmate/src/tokens/WETH.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+import {SortTokens} from "@uniswap/v4-core/test/utils/SortTokens.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {PositionConfig} from "../shared/PositionConfig.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
@@ -37,6 +41,9 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
                 | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG
         )
     );
+
+    PoolKey wethKey;
+    PositionConfig wethConfig;
 
     function deployPosmHookSavesDelta() public {
         HookSavesDelta impl = new HookSavesDelta();
@@ -89,6 +96,19 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         vm.startPrank(addr);
         approvePosm();
         vm.stopPrank();
+    }
+
+    function seedWeth(address to) internal {
+        vm.deal(address(this), STARTING_USER_BALANCE);
+        _WETH9.deposit{value: STARTING_USER_BALANCE}();
+        _WETH9.transfer(to, STARTING_USER_BALANCE);
+    }
+
+    function initWethPool(Currency currencyB, IHooks hooks, uint24 fee, uint160 sqrtPriceX96) internal {
+        (Currency _currency0, Currency _currency1) =
+            SortTokens.sort(MockERC20(address(_WETH9)), MockERC20(Currency.unwrap(currencyB)));
+
+        (wethKey,) = initPool(_currency0, _currency1, hooks, fee, sqrtPriceX96);
     }
 
     function permit(uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {

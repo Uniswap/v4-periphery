@@ -5,22 +5,21 @@ import {IWETH9} from "../interfaces/external/IWETH9.sol";
 import {ActionConstants} from "../libraries/ActionConstants.sol";
 
 /// @title Native Wrapper
-/// @notice Allows wrapping and unwrapping of native tokens before or after adding/removing liquidity
+/// @notice Immutables and helpers for wrapping and unwrapping native
 contract NativeWrapper {
     IWETH9 public immutable WETH9;
+
+    error InsufficientBalance();
 
     constructor(IWETH9 _weth9) {
         WETH9 = _weth9;
     }
 
-    function wrap(uint256 _amount) external payable {
-        uint256 amount = _amount == ActionConstants.CONTRACT_BALANCE ? address(this).balance : _amount;
-        WETH9.deposit{value: amount}();
+    function _map(uint256 amount, uint256 balance) internal pure returns (uint256) {
+        if (amount == ActionConstants.CONTRACT_BALANCE) return balance;
+        if (amount > balance) revert InsufficientBalance();
+        return amount;
     }
 
-    /// @dev payable so it can be multicalled
-    function unwrap(uint256 _amount) external payable {
-        uint256 amount = _amount == ActionConstants.CONTRACT_BALANCE ? WETH9.balanceOf(address(this)) : _amount;
-        WETH9.withdraw(amount);
-    }
+    receive() external payable {}
 }

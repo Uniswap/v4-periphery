@@ -247,6 +247,14 @@ contract PositionManager is
                 (Currency currency, address to) = params.decodeCurrencyAndAddress();
                 _sweep(currency, _mapRecipient(to));
                 return;
+            } else if (action == Actions.WRAP) {
+                (uint256 amount) = params.decodeUint256();
+                _wrap(amount);
+                return;
+            } else if (action == Actions.UNWRAP) {
+                (uint256 amount) = params.decodeUint256();
+                _unwrap(amount);
+                return;
             }
         }
         revert UnsupportedAction(action);
@@ -390,6 +398,16 @@ contract PositionManager is
     function _sweep(Currency currency, address to) internal {
         uint256 balance = currency.balanceOfSelf();
         if (balance > 0) currency.transfer(to, balance);
+    }
+
+    function _wrap(uint256 _amount) internal {
+        uint256 amount = _map(_amount, address(this).balance);
+        if (amount > 0) WETH9.deposit{value: amount}();
+    }
+
+    function _unwrap(uint256 _amount) internal {
+        uint256 amount = _map(_amount, WETH9.balanceOf(address(this)));
+        if (amount > 0) WETH9.withdraw(amount);
     }
 
     function _modifyLiquidity(
