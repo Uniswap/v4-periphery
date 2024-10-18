@@ -33,7 +33,7 @@ library VanityAddressLib {
         uint256 leadingZeroCount = getLeadingNibbleCount(addrBytes, 0, 0);
         calculatedScore += (leadingZeroCount * 10);
 
-        // special handling for 4s immediatley after leading 0s
+        // special handling for 4s immediately after leading 0s
         uint256 leadingFourCount = getLeadingNibbleCount(addrBytes, leadingZeroCount, 4);
         // If the first nonzero nibble is not 4, return 0
         if (leadingFourCount == 0) {
