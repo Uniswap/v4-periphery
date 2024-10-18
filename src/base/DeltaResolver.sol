@@ -16,6 +16,8 @@ abstract contract DeltaResolver is ImmutableState {
     error DeltaNotPositive(Currency currency);
     /// @notice Emitted trying to take a negative delta.
     error DeltaNotNegative(Currency currency);
+    /// @notice Emitted when the contract does not have enough balance to wrap or unwrap.
+    error InsufficientBalance();
 
     /// @notice Take an amount of currency out of the PoolManager
     /// @param currency Currency to take
@@ -86,5 +88,30 @@ abstract contract DeltaResolver is ImmutableState {
         } else {
             return amount;
         }
+    }
+
+    /// @notice Calculates the sanitized amount before wrapping/unwrapping.
+    /// @param inputCurrency The currency, either native or wrapped native, that the contract holds
+    /// @param amount The amount to wrap or unwrap. Can be CONTRACT_BALANCE or OPEN_DELTA or a specific amount
+    /// @param outputCurrency The currency after the wrap/unwrap that the user may owe a balance in on the poolManager
+    function _mapWrapUnwrapAmount(Currency inputCurrency, uint256 amount, Currency outputCurrency)
+        internal
+        view
+        returns (uint256 _amount)
+    {
+        // if wrapping, the balance in this contract should be in ETH
+        // if unwrapping, the balance in this contract should be in WETH
+        uint256 balance = inputCurrency.balanceOf(address(this));
+        if (amount == ActionConstants.CONTRACT_BALANCE) {
+            return balance;
+        }
+        if (amount == ActionConstants.OPEN_DELTA) {
+            // if wrapping, the open currency on the contract is WETH.
+            // if unwrapping, the open currency on the contract is ETH.
+            _amount = _getFullDebt(outputCurrency);
+        } else {
+            _amount = amount;
+        }
+        if (_amount > balance) revert InsufficientBalance();
     }
 }
