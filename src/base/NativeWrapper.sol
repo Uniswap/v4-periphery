@@ -8,9 +8,10 @@ import {ImmutableState} from "./ImmutableState.sol";
 /// @title Native Wrapper
 /// @notice Used for wrapping and unwrapping native
 abstract contract NativeWrapper is ImmutableState {
+    /// @notice The address for WETH9
     IWETH9 public immutable WETH9;
 
-    /// @notice Thrown when a non-expected address sends ETH to this contract
+    /// @notice Thrown when an unexpected address sends ETH to this contract
     error InvalidEthSender();
 
     constructor(IWETH9 _weth9) {

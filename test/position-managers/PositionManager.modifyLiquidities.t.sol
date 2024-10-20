@@ -31,8 +31,6 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 
-import "forge-std/console2.sol";
-
 contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityFuzzers {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
@@ -414,7 +412,6 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         uint256 balanceEthBefore = address(this).balance;
         uint256 balance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(this));
 
-        console2.log(balance1Before);
         Plan memory planner = Planner.init();
         planner.add(
             Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
