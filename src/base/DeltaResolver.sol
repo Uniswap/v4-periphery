@@ -92,7 +92,7 @@ abstract contract DeltaResolver is ImmutableState {
 
     /// @notice Calculates the sanitized amount before wrapping/unwrapping.
     /// @param inputCurrency The currency, either native or wrapped native, that this contract holds
-    /// @param amount The amount to wrap or unwrap. Can be CONTRACT_BALANCE or OPEN_DELTA or a specific amount
+    /// @param amount The amount to wrap or unwrap. Can be CONTRACT_BALANCE, OPEN_DELTA or a specific amount
     /// @param outputCurrency The currency after the wrap/unwrap that the user may owe a balance in on the poolManager
     function _mapWrapUnwrapAmount(Currency inputCurrency, uint256 amount, Currency outputCurrency)
         internal
@@ -109,7 +109,7 @@ abstract contract DeltaResolver is ImmutableState {
         if (amount == ActionConstants.OPEN_DELTA) {
             // if wrapping, the open currency on the PoolManager is WETH.
             // if unwrapping, the open currency on the PoolManager is ETH.
-            // note that we use the DEBT amount. positive deltas can be taken and then wrapped.
+            // note that we use the DEBT amount. Positive deltas can be taken and then wrapped.
             amount = _getFullDebt(outputCurrency);
         }
         if (amount > balance) revert InsufficientBalance();

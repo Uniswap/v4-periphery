@@ -596,7 +596,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // 4 _mint to an eth pool
         // 4 _unwrap using open delta (pool managers ETH balance)
         // 3 _take where leftover currency1 is sent to the msg sender
-        // 5 _settle eth oprn delta
+        // 5 _settle eth open delta
         // 5 _sweep leftover weth
 
         uint256 tokenId = lpm.nextTokenId();
