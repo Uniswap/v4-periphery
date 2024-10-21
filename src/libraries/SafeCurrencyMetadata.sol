@@ -11,7 +11,7 @@ import {AddressStringUtil} from "./AddressStringUtil.sol";
 library SafeCurrencyMetadata {
     using CurrencyLibrary for Currency;
 
-    uint8 constant MAX_SYMBOL_LENGTH = 6;
+    uint8 constant MAX_SYMBOL_LENGTH = 12;
 
     /// @notice attempts to extract the token symbol. if it does not implement symbol, returns a symbol derived from the address
     /// @param currency The currency
