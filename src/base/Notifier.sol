@@ -29,6 +29,10 @@ abstract contract Notifier is INotifier {
     /// @param tokenId the tokenId of the position
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
 
+    /// @notice Enforces that the PoolManager is locked.
+    /// @dev Reverts if the caller tries to transfer, subscribe, or unsubscribe the position while the PoolManager is unlocked.
+    modifier onlyIfPoolManagerLocked() virtual;
+
     function _setUnsubscribed(uint256 tokenId) internal virtual;
 
     function _setSubscribed(uint256 tokenId) internal virtual;
@@ -37,6 +41,7 @@ abstract contract Notifier is INotifier {
     function subscribe(uint256 tokenId, address newSubscriber, bytes calldata data)
         external
         payable
+        onlyIfPoolManagerLocked
         onlyIfApproved(msg.sender, tokenId)
     {
         ISubscriber _subscriber = subscriber[tokenId];
@@ -56,7 +61,12 @@ abstract contract Notifier is INotifier {
     }
 
     /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId) external payable onlyIfApproved(msg.sender, tokenId) {
+    function unsubscribe(uint256 tokenId)
+        external
+        payable
+        onlyIfPoolManagerLocked
+        onlyIfApproved(msg.sender, tokenId)
+    {
         _unsubscribe(tokenId);
     }
 
