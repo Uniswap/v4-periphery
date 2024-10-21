@@ -97,7 +97,7 @@ abstract contract DeltaResolver is ImmutableState {
     function _mapWrapUnwrapAmount(Currency inputCurrency, uint256 amount, Currency outputCurrency)
         internal
         view
-        returns (uint256 _amount)
+        returns (uint256)
     {
         // if wrapping, the balance in this contract is in ETH
         // if unwrapping, the balance in this contract is in WETH
@@ -110,10 +110,9 @@ abstract contract DeltaResolver is ImmutableState {
             // if wrapping, the open currency on the PoolManager is WETH.
             // if unwrapping, the open currency on the PoolManager is ETH.
             // note that we use the DEBT amount. positive deltas can be taken and then wrapped.
-            _amount = _getFullDebt(outputCurrency);
-        } else {
-            _amount = amount;
+            amount = _getFullDebt(outputCurrency);
         }
-        if (_amount > balance) revert InsufficientBalance();
+        if (amount > balance) revert InsufficientBalance();
+        return amount;
     }
 }
