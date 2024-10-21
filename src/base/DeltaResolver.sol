@@ -109,6 +109,7 @@ abstract contract DeltaResolver is ImmutableState {
         if (amount == ActionConstants.OPEN_DELTA) {
             // if wrapping, the open currency on the PoolManager is WETH.
             // if unwrapping, the open currency on the PoolManager is ETH.
+            // note that we use the DEBT amount. positive deltas can be taken and then wrapped.
             _amount = _getFullDebt(outputCurrency);
         } else {
             _amount = amount;

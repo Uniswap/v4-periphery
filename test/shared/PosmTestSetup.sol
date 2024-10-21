@@ -43,7 +43,6 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     );
 
     PoolKey wethKey;
-    PositionConfig wethConfig;
 
     function deployPosmHookSavesDelta() public {
         HookSavesDelta impl = new HookSavesDelta();

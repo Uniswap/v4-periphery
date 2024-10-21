@@ -45,6 +45,8 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
     address bob;
 
     PositionConfig config;
+    PositionConfig wethConfig;
+    PositionConfig nativeConfig;
 
     function setUp() public {
         (alice, alicePK) = makeAddrAndKey("ALICE");
@@ -69,13 +71,17 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
         seedWeth(address(this));
         approvePosmCurrency(Currency.wrap(address(_WETH9)));
+
+        nativeKey = PoolKey(CurrencyLibrary.ADDRESS_ZERO, currency1, 3000, 60, IHooks(address(0)));
+        manager.initialize(nativeKey, SQRT_PRICE_1_1);
+
+        config = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 60});
         wethConfig = PositionConfig({
             poolKey: wethKey,
             tickLower: TickMath.minUsableTick(wethKey.tickSpacing),
             tickUpper: TickMath.maxUsableTick(wethKey.tickSpacing)
         });
-
-        config = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 60});
+        nativeConfig = PositionConfig({poolKey: nativeKey, tickLower: -120, tickUpper: 120});
 
         vm.deal(address(this), 1000 ether);
     }
@@ -527,14 +533,14 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         lpm.modifyLiquidities{value: 100 ether}(actions, _deadline);
     }
 
-    function test_weth_burn_unwrap() public {
+    function test_unwrap_usingContractBalance() public {
         // weth-currency1 pool
         // output: eth, currency1
         // modifyLiquidities call to mint liquidity weth and currency1
         // 1 _burn
         // 2 _take where the weth is sent to the lpm contract
         // 3 _take where currency1 is sent to the msg sender
-        // 4 _unwrap
+        // 4 _unwrap using contract balance
         // 5 _sweep where eth is sent to msg sender
         uint256 tokenId = lpm.nextTokenId();
 
@@ -565,7 +571,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
             abi.encode(address(Currency.unwrap(currency1)), ActionConstants.MSG_SENDER, ActionConstants.OPEN_DELTA)
         );
         planner.add(Actions.UNWRAP, abi.encode(ActionConstants.CONTRACT_BALANCE));
-        planner.add(Actions.SWEEP, abi.encode(address(0), ActionConstants.MSG_SENDER));
+        planner.add(Actions.SWEEP, abi.encode(CurrencyLibrary.ADDRESS_ZERO, ActionConstants.MSG_SENDER));
 
         actions = planner.encode();
 
@@ -577,24 +583,106 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         assertApproxEqAbs(balanceEthAfter - balanceEthBefore, 100 ether, 1 wei);
         assertApproxEqAbs(balance1After - balance1Before, 100 ether, 1 wei);
         assertEq(lpm.getPositionLiquidity(tokenId), 0);
+        assertEq(_WETH9.balanceOf(address(lpm)), 0);
+        assertEq(address(lpm).balance, 0);
     }
 
-    function test_weth_increase_wrap_openDelta() public {
-        // weth-currency1 pool initialized as wethKey
-        // input: eth, currency1
+    function test_unwrap_openDelta_reinvest() public {
+        // weth-currency1 pool rolls half to eth-currency1 pool
+        // output: eth, currency1
         // modifyLiquidities call to mint liquidity weth and currency1
-        // 1 _wrap
-        // 2 _mint
-        // 3 _settle weth where the payer is the contract
-        // 4 _close currency1, payer is caller
-        // Note there is no sweep encoding for weth, but that would be the safest action.
+        // 1 _burn (weth-currency1)
+        // 2 _take where the weth is sent to the lpm contract
+        // 4 _mint to an eth pool
+        // 4 _unwrap using open delta (pool managers ETH balance)
+        // 3 _take where leftover currency1 is sent to the msg sender
+        // 5 _settle eth oprn delta
+        // 5 _sweep leftover weth
+
+        uint256 tokenId = lpm.nextTokenId();
+
+        uint128 liquidityAmount = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(wethConfig.tickLower),
+            TickMath.getSqrtPriceAtTick(wethConfig.tickUpper),
+            100 ether,
+            100 ether
+        );
+
+        bytes memory actions = getMintEncoded(wethConfig, liquidityAmount, address(this), ZERO_BYTES);
+        lpm.modifyLiquidities(actions, _deadline);
+
+        assertEq(lpm.getPositionLiquidity(tokenId), liquidityAmount);
+
+        uint256 balanceEthBefore = address(this).balance;
+        uint256 balance1Before = IERC20(Currency.unwrap(currency1)).balanceOf(address(this));
+        uint256 balanceWethBefore = _WETH9.balanceOf(address(this));
+
+        uint128 newLiquidityAmount = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(nativeConfig.tickLower),
+            TickMath.getSqrtPriceAtTick(nativeConfig.tickUpper),
+            50 ether,
+            50 ether
+        );
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+        // take the weth to the position manager to be unwrapped
+        planner.add(Actions.TAKE, abi.encode(address(_WETH9), ActionConstants.ADDRESS_THIS, ActionConstants.OPEN_DELTA));
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(
+                nativeConfig.poolKey,
+                nativeConfig.tickLower,
+                nativeConfig.tickUpper,
+                newLiquidityAmount,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                ActionConstants.MSG_SENDER,
+                ZERO_BYTES
+            )
+        );
+        planner.add(Actions.UNWRAP, abi.encode(ActionConstants.OPEN_DELTA));
+        // pay the eth
+        planner.add(Actions.SETTLE, abi.encode(CurrencyLibrary.ADDRESS_ZERO, ActionConstants.OPEN_DELTA, false));
+        // take the leftover currency1
+        planner.add(
+            Actions.TAKE,
+            abi.encode(address(Currency.unwrap(currency1)), ActionConstants.MSG_SENDER, ActionConstants.OPEN_DELTA)
+        );
+        planner.add(Actions.SWEEP, abi.encode(address(_WETH9), ActionConstants.MSG_SENDER));
+
+        actions = planner.encode();
+
+        lpm.modifyLiquidities(actions, _deadline);
+
+        uint256 balanceEthAfter = address(this).balance;
+        uint256 balance1After = IERC20(Currency.unwrap(currency1)).balanceOf(address(this));
+        uint256 balanceWethAfter = _WETH9.balanceOf(address(this));
+
+        // Eth balance should not change.
+        assertEq(balanceEthAfter, balanceEthBefore);
+        // Only half of the original liquidity was reinvested.
+        assertApproxEqAbs(balance1After - balance1Before, 50 ether, 1 wei);
+        assertApproxEqAbs(balanceWethAfter - balanceWethBefore, 50 ether, 1 wei);
+        assertEq(lpm.getPositionLiquidity(tokenId), 0);
+        assertEq(_WETH9.balanceOf(address(lpm)), 0);
+        assertEq(address(lpm).balance, 0);
     }
 
-    // Scenario 1 - WRAP
-    // Eth in
-    // Weth pool
+    function test_unwrap_revertsInsufficientBalance() public {
+        // 1 _unwrap with more than is in the contract
 
-    // 1.1 - Use contract balance
-    // 1.2 - Use open delta
-    // 1.3 - Amount > balance & Expect Revert
+        Plan memory planner = Planner.init();
+        // unwraps more eth than what is in the contract
+        planner.add(Actions.UNWRAP, abi.encode(101 ether));
+
+        bytes memory actions = planner.encode();
+
+        vm.expectRevert(DeltaResolver.InsufficientBalance.selector);
+        lpm.modifyLiquidities(actions, _deadline);
+    }
 }
