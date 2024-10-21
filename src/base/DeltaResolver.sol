@@ -99,7 +99,7 @@ abstract contract DeltaResolver is ImmutableState {
         view
         returns (uint256 _amount)
     {
-        // if wrapping, the balance in this is in ETH
+        // if wrapping, the balance in this contract is in ETH
         // if unwrapping, the balance in this contract is in WETH
         uint256 balance = inputCurrency.balanceOf(address(this));
         if (amount == ActionConstants.CONTRACT_BALANCE) {
