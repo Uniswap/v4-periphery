@@ -4,7 +4,7 @@ pragma solidity 0.8.26;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
@@ -26,6 +26,8 @@ import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheck} from "./libraries/SlippageCheck.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
+import {NativeWrapper} from "./base/NativeWrapper.sol";
+import {IWETH9} from "./interfaces/external/IWETH9.sol";
 
 //                                           444444444
 //                                444444444444      444444
@@ -102,7 +104,8 @@ contract PositionManager is
     ReentrancyLock,
     BaseActionsRouter,
     Notifier,
-    Permit2Forwarder
+    Permit2Forwarder,
+    NativeWrapper
 {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -126,12 +129,14 @@ contract PositionManager is
         IPoolManager _poolManager,
         IAllowanceTransfer _permit2,
         uint256 _unsubscribeGasLimit,
-        IPositionDescriptor _tokenDescriptor
+        IPositionDescriptor _tokenDescriptor,
+        IWETH9 _weth9
     )
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
         ERC721Permit_v4("Uniswap v4 Positions NFT", "UNI-V4-POSM")
         Notifier(_unsubscribeGasLimit)
+        NativeWrapper(_weth9)
     {
         tokenDescriptor = _tokenDescriptor;
     }
@@ -241,6 +246,14 @@ contract PositionManager is
             } else if (action == Actions.SWEEP) {
                 (Currency currency, address to) = params.decodeCurrencyAndAddress();
                 _sweep(currency, _mapRecipient(to));
+                return;
+            } else if (action == Actions.WRAP) {
+                uint256 amount = params.decodeUint256();
+                _wrap(_mapWrapUnwrapAmount(CurrencyLibrary.ADDRESS_ZERO, amount, Currency.wrap(address(WETH9))));
+                return;
+            } else if (action == Actions.UNWRAP) {
+                uint256 amount = params.decodeUint256();
+                _unwrap(_mapWrapUnwrapAmount(Currency.wrap(address(WETH9)), amount, CurrencyLibrary.ADDRESS_ZERO));
                 return;
             }
         }

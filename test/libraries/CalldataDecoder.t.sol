@@ -232,6 +232,13 @@ contract CalldataDecoderTest is Test {
         assertEq(amount, _amount);
     }
 
+    function test_fuzz_decodeUint256(uint256 _amount) public {
+        bytes memory params = abi.encode(_amount);
+        uint256 amount = decoder.decodeUint256(params);
+
+        assertEq(amount, _amount);
+    }
+
     function _assertEq(PathKey[] memory path1, PathKey[] memory path2) internal pure {
         assertEq(path1.length, path2.length);
         for (uint256 i = 0; i < path1.length; i++) {
