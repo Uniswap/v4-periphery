@@ -9,7 +9,6 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
@@ -21,7 +20,7 @@ import {INotifier} from "../../src/interfaces/INotifier.sol";
 import {MockReturnDataSubscriber, MockRevertSubscriber} from "../mocks/MockBadSubscribers.sol";
 import {PositionInfoLibrary, PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 
-contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
+contract PositionManagerNotifierTest is Test, PosmTestSetup {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using Planner for Plan;
