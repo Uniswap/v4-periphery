@@ -337,7 +337,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         lpm.modifyLiquidities(calls, _deadline);
     }
 
-    function test_wrap_increaseLiquidity_usingContractBalance() public {
+    function test_wrap_mint_usingContractBalance() public {
         // weth-currency1 pool initialized as wethKey
         // input: eth, currency1
         // modifyLiquidities call to mint liquidity weth and currency1
@@ -442,7 +442,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         planner.add(Actions.SETTLE, abi.encode(address(_WETH9), ActionConstants.OPEN_DELTA, false));
         // other currency can close normally
         planner.add(Actions.CLOSE_CURRENCY, abi.encode(currency1));
-        // we wrapped the full contract balance so we sweep back in the wrapped currency
+        // we wrapped the open delta balance so we sweep back in the native currency
         planner.add(Actions.SWEEP, abi.encode(CurrencyLibrary.ADDRESS_ZERO, ActionConstants.MSG_SENDER));
         bytes memory actions = planner.encode();
 
@@ -502,7 +502,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         planner.add(Actions.SETTLE, abi.encode(address(_WETH9), ActionConstants.OPEN_DELTA, false));
         // other currency can close normally
         planner.add(Actions.CLOSE_CURRENCY, abi.encode(currency1));
-        // we wrapped the full contract balance so we sweep back in the wrapped currency for safety measure
+        // we wrapped all 100 eth so we sweep back in the wrapped currency for safety measure
         planner.add(Actions.SWEEP, abi.encode(address(_WETH9), ActionConstants.MSG_SENDER));
         bytes memory actions = planner.encode();
 
