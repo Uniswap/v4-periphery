@@ -122,7 +122,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(token.name, "Uniswap - 0.3% - TEST/TEST - 1.0060<>1.0121");
         assertEq(
             token.description,
-            unicode"This NFT represents a liquidity position in a Uniswap v4 TEST-TEST pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: 0x2e234dae75c793f67a35089c9d99245e1c58470b\nTEST Address: 0xf62849f9a0b5bf2913b396098f7c7019b51a820a\nTEST Address: 0xc7183455a4c133ae270771860664b6b7ec320bb1\nHook Address: 0x0000000000000000000000000000000000000000\nFee Tier: 0.3%\nToken ID: 1\n\n⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currency addresses match the expected currencies, as currency symbols may be imitated."
+            unicode"This NFT represents a liquidity position in a Uniswap v4 TEST-TEST pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: 0x2e234dae75c793f67a35089c9d99245e1c58470b\nTEST Address: 0xf62849f9a0b5bf2913b396098f7c7019b51a820a\nTEST Address: 0xc7183455a4c133ae270771860664b6b7ec320bb1\nHook Address: No Hook\nFee Tier: 0.3%\nToken ID: 1\n\n⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currency addresses match the expected currencies, as currency symbols may be imitated."
         );
     }
 
