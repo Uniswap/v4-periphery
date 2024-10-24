@@ -154,7 +154,6 @@ contract PositionManager is
     }
 
     /// @notice Enforces that the PoolManager is locked.
-    /// @dev Reverts if the caller tries to transfer, subscribe, or unsubscribe the position while the PoolManager is unlocked.
     modifier onlyIfPoolManagerLocked() override {
         if (poolManager.isUnlocked()) revert PoolManagerMustBeLocked();
         _;
@@ -438,6 +437,7 @@ contract PositionManager is
     }
 
     /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
+    /// @dev will revert if pool manager is locked
     function transferFrom(address from, address to, uint256 id) public virtual override onlyIfPoolManagerLocked {
         super.transferFrom(from, to, id);
         if (positionInfo[id].hasSubscriber()) _notifyTransfer(id, from, to);

@@ -30,7 +30,6 @@ abstract contract Notifier is INotifier {
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
 
     /// @notice Enforces that the PoolManager is locked.
-    /// @dev Reverts if the caller tries to transfer, subscribe, or unsubscribe the position while the PoolManager is unlocked.
     modifier onlyIfPoolManagerLocked() virtual;
 
     function _setUnsubscribed(uint256 tokenId) internal virtual;
