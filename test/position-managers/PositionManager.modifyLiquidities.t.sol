@@ -398,7 +398,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         assertEq(address(lpm).balance, 0);
     }
 
-    function test_wrap_increaseLiquidity_openDelta() public {
+    function test_wrap_mint_openDelta() public {
         // weth-currency1 pool initialized as wethKey
         // input: eth, currency1
         // modifyLiquidities call to mint liquidity weth and currency1
@@ -460,7 +460,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         assertEq(address(lpm).balance, 0);
     }
 
-    function test_wrap_increaseLiquidity_usingExactAmount() public {
+    function test_wrap_mint_usingExactAmount() public {
         // weth-currency1 pool initialized as wethKey
         // input: eth, currency1
         // modifyLiquidities call to mint liquidity weth and currency1
@@ -520,7 +520,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         assertEq(address(lpm).balance, 0);
     }
 
-    function test_wrap_increaseLiquidity_revertsInsufficientBalance() public {
+    function test_wrap_mint_revertsInsufficientBalance() public {
         // 1 _wrap with more eth than is sent in
 
         Plan memory planner = Planner.init();
