@@ -36,6 +36,7 @@ interface INotifier {
     /// @param data caller-provided data that's forwarded to the subscriber contract
     /// @dev Calling subscribe when a position is already subscribed will revert
     /// @dev payable so it can be multicalled with NATIVE related actions
+    /// @dev will revert if pool manager is locked
     function subscribe(uint256 tokenId, address newSubscriber, bytes calldata data) external payable;
 
     /// @notice Removes the subscriber from receiving notifications for a respective position
@@ -43,6 +44,7 @@ interface INotifier {
     /// @dev Callers must specify a high gas limit (remaining gas should be higher than unsubscriberGasLimit) such that the subscriber can be notified
     /// @dev payable so it can be multicalled with NATIVE related actions
     /// @dev Must always allow a user to unsubscribe. In the case of a malicious subscriber, a user can always unsubscribe safely, ensuring liquidity is always modifiable.
+    /// @dev will revert if pool manager is locked
     function unsubscribe(uint256 tokenId) external payable;
 
     /// @notice Returns and determines the maximum allowable gas-used for notifying unsubscribe
