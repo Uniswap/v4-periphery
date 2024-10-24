@@ -363,7 +363,7 @@ contract PositionManager is
         if (currencyDelta < 0) {
             // Casting is safe due to limits on the total supply of a pool
             _settle(currency, caller, uint256(-currencyDelta));
-        } else if (currencyDelta > 0) {
+        } else {
             _take(currency, caller, uint256(currencyDelta));
         }
     }
