@@ -22,6 +22,18 @@ contract MockCalldataDecoder {
         bytes hookData;
     }
 
+    struct MintFromAmountsParams {
+        PoolKey poolKey;
+        int24 tickLower;
+        int24 tickUpper;
+        uint128 amount0;
+        uint128 amount1;
+        uint128 amount0Max;
+        uint128 amount1Max;
+        address owner;
+        bytes hookData;
+    }
+
     function decodeActionsRouterParams(bytes calldata params)
         external
         pure
@@ -135,5 +147,49 @@ contract MockCalldataDecoder {
         returns (Currency currency, address addr, uint256 amount)
     {
         return params.decodeCurrencyAddressAndUint256();
+    }
+
+    function decodeIncreaseLiquidityFromAmountsParams(bytes calldata params)
+        external
+        pure
+        returns (
+            uint256 tokenId,
+            uint128 amount0,
+            uint128 amount1,
+            uint128 amount0Max,
+            uint128 amount1Max,
+            bytes calldata hookData
+        )
+    {
+        return params.decodeIncreaseLiquidityFromAmountsParams();
+    }
+
+    function decodeMintFromAmountsParams(bytes calldata params)
+        external
+        pure
+        returns (MintFromAmountsParams memory mintParams)
+    {
+        (
+            PoolKey memory poolKey,
+            int24 tickLower,
+            int24 tickUpper,
+            uint128 amount0,
+            uint128 amount1,
+            uint128 amount0Max,
+            uint128 amount1Max,
+            address owner,
+            bytes memory hookData
+        ) = params.decodeMintFromAmountsParams();
+        return MintFromAmountsParams({
+            poolKey: poolKey,
+            tickLower: tickLower,
+            tickUpper: tickUpper,
+            amount0: amount0,
+            amount1: amount1,
+            amount0Max: amount0Max,
+            amount1Max: amount1Max,
+            owner: owner,
+            hookData: hookData
+        });
     }
 }

@@ -86,6 +86,30 @@ library CalldataDecoder {
         hookData = params.toBytes(4);
     }
 
+    /// @dev equivalent to: abi.decode(params, (uint256, uint256, uint256, uint128, uint128, bytes)) in calldata
+    function decodeIncreaseLiquidityFromAmountsParams(bytes calldata params)
+        internal
+        pure
+        returns (
+            uint256 tokenId,
+            uint128 amount0,
+            uint128 amount1,
+            uint128 amount0Max,
+            uint128 amount1Max,
+            bytes calldata hookData
+        )
+    {
+        assembly ("memory-safe") {
+            tokenId := calldataload(params.offset)
+            amount0 := calldataload(add(params.offset, 0x20))
+            amount1 := calldataload(add(params.offset, 0x40))
+            amount0Max := calldataload(add(params.offset, 0x60))
+            amount1Max := calldataload(add(params.offset, 0x80))
+        }
+
+        hookData = params.toBytes(5);
+    }
+
     /// @dev equivalent to: abi.decode(params, (PoolKey, int24, int24, uint256, uint128, uint128, address, bytes)) in calldata
     function decodeMintParams(bytes calldata params)
         internal
@@ -111,6 +135,36 @@ library CalldataDecoder {
             owner := calldataload(add(params.offset, 0x140))
         }
         hookData = params.toBytes(11);
+    }
+
+    /// @dev equivalent to: abi.decode(params, (PoolKey, int24, int24, uint128, uint128, uint128, uint128, address, bytes)) in calldata
+    function decodeMintFromAmountsParams(bytes calldata params)
+        internal
+        pure
+        returns (
+            PoolKey calldata poolKey,
+            int24 tickLower,
+            int24 tickUpper,
+            uint128 amount0,
+            uint128 amount1,
+            uint128 amount0Max,
+            uint128 amount1Max,
+            address owner,
+            bytes calldata hookData
+        )
+    {
+        assembly ("memory-safe") {
+            poolKey := params.offset
+            tickLower := calldataload(add(params.offset, 0xa0))
+            tickUpper := calldataload(add(params.offset, 0xc0))
+            amount0 := calldataload(add(params.offset, 0xe0))
+            amount1 := calldataload(add(params.offset, 0x100))
+            amount0Max := calldataload(add(params.offset, 0x120))
+            amount1Max := calldataload(add(params.offset, 0x140))
+            owner := calldataload(add(params.offset, 0x160))
+        }
+
+        hookData = params.toBytes(12);
     }
 
     /// @dev equivalent to: abi.decode(params, (uint256, uint128, uint128, bytes)) in calldata
