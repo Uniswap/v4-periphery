@@ -11,9 +11,8 @@ import {PositionConfig} from "./shared/PositionConfig.sol";
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 import {ActionConstants} from "../src/libraries/ActionConstants.sol";
 import {Base64} from "./base64.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 
-contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
+contract PositionDescriptorTest is Test, PosmTestSetup {
     using Base64 for string;
 
     address public WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
@@ -38,7 +37,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
     }
 
     function test_bytecodeSize_positionDescriptor() public {
-        snapSize("positionDescriptor bytecode size", address(positionDescriptor));
+        vm.snapshotValue("positionDescriptor bytecode size", address(positionDescriptor).code.length);
     }
 
     function test_setup_succeeds() public view {

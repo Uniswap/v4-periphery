@@ -1,0 +1,12 @@
+{
+  "StateView_extsload_getFeeGrowthGlobals": "2259",
+  "StateView_extsload_getFeeGrowthInside": "8003",
+  "StateView_extsload_getLiquidity": "1399",
+  "StateView_extsload_getPositionInfo": "2829",
+  "StateView_extsload_getPositionLiquidity": "1651",
+  "StateView_extsload_getSlot0": "1446",
+  "StateView_extsload_getTickBitmap": "1392",
+  "StateView_extsload_getTickFeeGrowthOutside": "2546",
+  "StateView_extsload_getTickInfo": "2761",
+  "StateView_extsload_getTickLiquidity": "1646"
+}

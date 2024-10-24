@@ -5,12 +5,11 @@ import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 
 import {MockDeltaResolver} from "./mocks/MockDeltaResolver.sol";
 
-contract DeltaResolverTest is Test, Deployers, GasSnapshot {
+contract DeltaResolverTest is Test, Deployers {
     using CurrencyLibrary for Currency;
 
     MockDeltaResolver resolver;
