@@ -9,6 +9,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
@@ -19,6 +20,7 @@ import {Actions} from "../../src/libraries/Actions.sol";
 import {INotifier} from "../../src/interfaces/INotifier.sol";
 import {MockReturnDataSubscriber, MockRevertSubscriber} from "../mocks/MockBadSubscribers.sol";
 import {PositionInfoLibrary, PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
+import {MockReenterHook} from "../mocks/MockReenterHook.sol";
 
 contract PositionManagerNotifierTest is Test, PosmTestSetup {
     using PoolIdLibrary for PoolKey;
@@ -30,9 +32,12 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup {
     MockReturnDataSubscriber badSubscriber;
     PositionConfig config;
     MockRevertSubscriber revertSubscriber;
+    MockReenterHook reenterHook;
 
     address alice = makeAddr("ALICE");
     address bob = makeAddr("BOB");
+
+    PositionConfig reenterConfig;
 
     function setUp() public {
         deployFreshManagerAndRouters();
@@ -47,6 +52,17 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup {
         badSubscriber = new MockReturnDataSubscriber(lpm);
         revertSubscriber = new MockRevertSubscriber(lpm);
         config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
+
+        // set the reenter hook
+        MockReenterHook impl = new MockReenterHook();
+        address hookAddr = payable(address(uint160(Hooks.BEFORE_ADD_LIQUIDITY_FLAG)));
+        vm.etch(hookAddr, address(impl).code);
+        reenterHook = MockReenterHook(hookAddr);
+        reenterHook.setPosm(lpm);
+
+        PoolKey memory reenterKey = PoolKey(currency0, currency1, 3000, 60, IHooks(reenterHook));
+        manager.initialize(reenterKey, SQRT_PRICE_1_1);
+        reenterConfig = PositionConfig({poolKey: reenterKey, tickLower: -60, tickUpper: 60});
 
         // TODO: Test NATIVE poolKey
     }
@@ -645,5 +661,70 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup {
             lpm.unsubscribe{gas: gasLimit}(tokenId);
             assertEq(sub.notifyUnsubscribeCount(), beforeUnsubCount + 1);
         }
+    }
+
+    function test_unsubscribe_reverts_PoolManagerMustBeLocked() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(reenterConfig, 10e18, address(this), ZERO_BYTES);
+
+        bytes memory hookData = abi.encode(lpm.unsubscribe.selector, address(this), tokenId);
+        bytes memory actions = getMintEncoded(reenterConfig, 10e18, address(this), hookData);
+
+        // approve hook as it should not revert because it does not have permissions
+        lpm.approve(address(reenterHook), tokenId);
+        // subscribe as it should not revert because there is no subscriber
+        lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
+
+        // should revert since the pool manager is unlocked
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.Wrap__FailedHookCall.selector,
+                address(reenterHook),
+                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector)
+            )
+        );
+        lpm.modifyLiquidities(actions, _deadline);
+    }
+
+    function test_subscribe_reverts_PoolManagerMustBeLocked() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(reenterConfig, 10e18, address(this), ZERO_BYTES);
+
+        bytes memory hookData = abi.encode(lpm.subscribe.selector, address(this), tokenId);
+        bytes memory actions = getMintEncoded(reenterConfig, 10e18, address(this), hookData);
+
+        // approve hook as it should not revert because it does not have permissions
+        lpm.approve(address(reenterHook), tokenId);
+
+        // should revert since the pool manager is unlocked
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.Wrap__FailedHookCall.selector,
+                address(reenterHook),
+                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector)
+            )
+        );
+        lpm.modifyLiquidities(actions, _deadline);
+    }
+
+    function test_transferFrom_reverts_PoolManagerMustBeLocked() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(reenterConfig, 10e18, address(this), ZERO_BYTES);
+
+        bytes memory hookData = abi.encode(lpm.transferFrom.selector, address(this), tokenId);
+        bytes memory actions = getMintEncoded(reenterConfig, 10e18, address(this), hookData);
+
+        // approve hook as it should not revert because it does not have permissions
+        lpm.approve(address(reenterHook), tokenId);
+
+        // should revert since the pool manager is unlocked
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Hooks.Wrap__FailedHookCall.selector,
+                address(reenterHook),
+                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector)
+            )
+        );
+        lpm.modifyLiquidities(actions, _deadline);
     }
 }
