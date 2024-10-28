@@ -346,7 +346,9 @@ library SVG {
         string memory tickLowerStr = tickToString(tickLower);
         string memory tickUpperStr = tickToString(tickUpper);
         uint256 str1length = bytes(tokenId).length + 4;
-        string memory hookSlice = string(abi.encodePacked(substring(hookStr, 0, 5), "...", substring(hookStr, 39, 42)));
+        string memory hookSlice = hook == address(0)
+            ? "No Hook"
+            : string(abi.encodePacked(substring(hookStr, 0, 5), "...", substring(hookStr, 39, 42)));
         uint256 str2length = bytes(hookSlice).length + 5;
         uint256 str3length = bytes(tickLowerStr).length + 10;
         uint256 str4length = bytes(tickUpperStr).length + 10;

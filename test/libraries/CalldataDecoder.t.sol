@@ -103,7 +103,6 @@ contract CalldataDecoderTest is Test {
         assertEq(swapParams.zeroForOne, _swapParams.zeroForOne);
         assertEq(swapParams.amountIn, _swapParams.amountIn);
         assertEq(swapParams.amountOutMinimum, _swapParams.amountOutMinimum);
-        assertEq(swapParams.sqrtPriceLimitX96, _swapParams.sqrtPriceLimitX96);
         assertEq(swapParams.hookData, _swapParams.hookData);
         _assertEq(swapParams.poolKey, _swapParams.poolKey);
     }
@@ -128,7 +127,6 @@ contract CalldataDecoderTest is Test {
         assertEq(swapParams.zeroForOne, _swapParams.zeroForOne);
         assertEq(swapParams.amountOut, _swapParams.amountOut);
         assertEq(swapParams.amountInMaximum, _swapParams.amountInMaximum);
-        assertEq(swapParams.sqrtPriceLimitX96, _swapParams.sqrtPriceLimitX96);
         assertEq(swapParams.hookData, _swapParams.hookData);
         _assertEq(swapParams.poolKey, _swapParams.poolKey);
     }
@@ -231,6 +229,13 @@ contract CalldataDecoderTest is Test {
         (Currency currency, uint256 amount) = decoder.decodeCurrencyAndUint256(params);
 
         assertEq(Currency.unwrap(currency), Currency.unwrap(_currency));
+        assertEq(amount, _amount);
+    }
+
+    function test_fuzz_decodeUint256(uint256 _amount) public {
+        bytes memory params = abi.encode(_amount);
+        uint256 amount = decoder.decodeUint256(params);
+
         assertEq(amount, _amount);
     }
 
