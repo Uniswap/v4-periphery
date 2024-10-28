@@ -12,6 +12,7 @@ import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 import {ActionConstants} from "../src/libraries/ActionConstants.sol";
 import {Base64} from "./base64.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
+import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 
 contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
     using Base64 for string;
@@ -123,6 +124,53 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(
             token.description,
             unicode"This NFT represents a liquidity position in a Uniswap v4 TEST-TEST pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f\nTEST Address: 0x5991a2df15a8f6a256d3ec51e99254cd3fb576a9\nTEST Address: 0x2e234dae75c793f67a35089c9d99245e1c58470b\nHook Address: 0x0000000000000000000000000000000000000000\nFee Tier: 0.3%\nToken ID: 1\n\n⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated."
+        );
+    }
+
+    function test_native_tokenURI_succeeds() public {
+        (nativeKey,) = initPool(CurrencyLibrary.ADDRESS_ZERO, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
+        int24 tickLower = int24(nativeKey.tickSpacing);
+        int24 tickUpper = int24(nativeKey.tickSpacing * 2);
+        uint256 amount0Desired = 100e18;
+        uint256 amount1Desired = 100e18;
+        uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            amount0Desired,
+            amount1Desired
+        );
+
+        PositionConfig memory config = PositionConfig({poolKey: nativeKey, tickLower: tickLower, tickUpper: tickUpper});
+        uint256 tokenId = lpm.nextTokenId();
+        mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        // The prefix length is calculated by converting the string to bytes and finding its length
+        uint256 prefixLength = bytes("data:application/json;base64,").length;
+
+        string memory uri = positionDescriptor.tokenURI(lpm, tokenId);
+        // Convert the uri to bytes
+        bytes memory uriBytes = bytes(uri);
+
+        // Slice the uri to get only the base64-encoded part
+        bytes memory base64Part = new bytes(uriBytes.length - prefixLength);
+
+        for (uint256 i = 0; i < base64Part.length; i++) {
+            base64Part[i] = uriBytes[i + prefixLength];
+        }
+
+        // Decode the base64-encoded part
+        bytes memory decoded = Base64.decode(string(base64Part));
+        string memory json = string(decoded);
+
+        // decode json
+        bytes memory data = vm.parseJson(json);
+        Token memory token = abi.decode(data, (Token));
+
+        assertEq(token.name, "Uniswap - 0.3% - TEST/ETH - 1.0060<>1.0121");
+        assertEq(
+            token.description,
+            unicode"This NFT represents a liquidity position in a Uniswap v4 TEST-ETH pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f\nTEST Address: 0x5991a2df15a8f6a256d3ec51e99254cd3fb576a9\nETH Address: Native\nHook Address: 0x0000000000000000000000000000000000000000\nFee Tier: 0.3%\nToken ID: 1\n\n⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated."
         );
     }
 
