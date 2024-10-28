@@ -45,13 +45,13 @@ library Descriptor {
     function constructTokenURI(ConstructTokenURIParams memory params) internal pure returns (string memory) {
         string memory name = generateName(params, feeToPercentString(params.fee));
         string memory descriptionPartOne = generateDescriptionPartOne(
-            escapeQuotes(params.quoteCurrencySymbol),
-            escapeQuotes(params.baseCurrencySymbol),
+            escapeSpecialCharacters(params.quoteCurrencySymbol),
+            escapeSpecialCharacters(params.baseCurrencySymbol),
             addressToString(params.poolManager)
         );
         string memory descriptionPartTwo = generateDescriptionPartTwo(
             params.tokenId.toString(),
-            escapeQuotes(params.baseCurrencySymbol),
+            escapeSpecialCharacters(params.baseCurrencySymbol),
             addressToString(Currency.unwrap(params.quoteCurrency)),
             addressToString(Currency.unwrap(params.baseCurrency)),
             params.hooks == address(0) ? "No Hook" : addressToString(params.hooks),
@@ -81,23 +81,23 @@ library Descriptor {
         );
     }
 
-    /// @notice Escapes double quotes in a string if they are present
-    function escapeQuotes(string memory symbol) internal pure returns (string memory) {
+    /// @notice Escapes special characters in a string if they are present
+    function escapeSpecialCharacters(string memory symbol) internal pure returns (string memory) {
         bytes memory symbolBytes = bytes(symbol);
-        uint8 quotesCount = 0;
-        // count the amount of double quotes (") in the symbol
+        uint8 specialCharCount = 0;
+        // count the amount of double quotes, form feeds, new lines, carriage returns, or tabs in the symbol
         for (uint8 i = 0; i < symbolBytes.length; i++) {
-            if (symbolBytes[i] == '"') {
-                quotesCount++;
+            if (isSpecialCharacter(symbolBytes[i])) {
+                specialCharCount++;
             }
         }
-        if (quotesCount > 0) {
-            // create a new bytes array with enough space to hold the original bytes plus space for the backslashes to escape the quotes
-            bytes memory escapedBytes = new bytes(symbolBytes.length + quotesCount);
+        if (specialCharCount > 0) {
+            // create a new bytes array with enough space to hold the original bytes plus space for the backslashes to escape the special characters
+            bytes memory escapedBytes = new bytes(symbolBytes.length + specialCharCount);
             uint256 index;
             for (uint8 i = 0; i < symbolBytes.length; i++) {
-                // add a '\' before any double quotes
-                if (symbolBytes[i] == '"') {
+                // add a '\' before any double quotes, form feeds, new lines, carriage returns, or tabs
+                if (isSpecialCharacter(symbolBytes[i])) {
                     escapedBytes[index++] = "\\";
                 }
                 // copy each byte from original string to the new array
@@ -186,9 +186,9 @@ library Descriptor {
                 "Uniswap - ",
                 feeTier,
                 " - ",
-                escapeQuotes(params.quoteCurrencySymbol),
+                escapeSpecialCharacters(params.quoteCurrencySymbol),
                 "/",
-                escapeQuotes(params.baseCurrencySymbol),
+                escapeSpecialCharacters(params.baseCurrencySymbol),
                 " - ",
                 tickToDecimalString(
                     !params.flipRatio ? params.tickLower : params.tickUpper,
@@ -501,6 +501,10 @@ library Descriptor {
         } else {
             return 0;
         }
+    }
+
+    function isSpecialCharacter(bytes1 b) private pure returns (bool) {
+        return b == '"' || b == "\u000c" || b == "\n" || b == "\r" || b == "\t";
     }
 
     function scale(uint256 n, uint256 inMn, uint256 inMx, uint256 outMn, uint256 outMx)
