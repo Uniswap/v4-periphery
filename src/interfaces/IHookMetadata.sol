@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.0;
 
 interface IHookMetadata {
     // Struct representing the auditor of a smart contract
@@ -48,14 +48,14 @@ interface IHookMetadata {
 
     // These are external functions that must be implemented by any contract that implements this interface
 
-    function name() external pure returns (string memory); // Returns the name of the hook
-    function repository() external pure returns (string memory); // Returns the repository URI for the smart contract code
-    function logoURI() external pure returns (string memory); // Returns the URI for the hook's logo
-    function description() external pure returns (string memory); // Returns a description of the hook
-    function version() external pure returns (bytes32 memory); // Returns the version of the hook
+    function name() external view returns (string memory); // Returns the name of the hook
+    function repository() external view returns (string memory); // Returns the repository URI for the smart contract code
+    function logoURI() external view returns (string memory); // Returns the URI for the hook's logo
+    function description() external view returns (string memory); // Returns a description of the hook
+    function version() external view returns (bytes32); // Returns the version of the hook
     function auditSummary() external view returns (AuditSummary memory); // Returns the audit summary of the hook
     function eip712Domain() external view returns (EIP712Domain memory); // Returns the EIP712 domain details for signing purposes
-    function signatureType() external pure returns (SignatureType[] memory); // Returns the list of supported signature types
+    function signatureType() external view returns (SignatureType[] memory); // Returns the list of supported signature types
     function signature() external view returns (Signature memory); // Returns the signature details of a specific audit
     function signedAuditSummary() external view returns (SignedAuditSummary memory); // Returns a signed audit summary of the hook
 }
