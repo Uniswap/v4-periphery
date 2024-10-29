@@ -47,4 +47,11 @@ contract DescriptorTest is Test {
         result = SVG.isRare(2, 0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB);
         assertFalse(result);
     }
+
+    function test_substring_succeeds() public pure {
+        string memory result = SVG.substring("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", 0, 5);
+        assertEq(result, "0xC02");
+        result = SVG.substring("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", 39, 42);
+        assertEq(result, "Cc2");
+    }
 }

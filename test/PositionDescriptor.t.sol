@@ -125,6 +125,8 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         Token memory token = abi.decode(data, (Token));
 
         // quote is currency1, base is currency0
+        assertFalse(positionDescriptor.flipRatio(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1)));
+
         string memory symbol0 = SafeAddressMetadata.addressSymbol(Currency.unwrap(currency0), nativeCurrencyLabel);
         string memory symbol1 = SafeAddressMetadata.addressSymbol(Currency.unwrap(currency1), nativeCurrencyLabel);
         string memory managerAddress = toHexString(address(manager));
@@ -230,6 +232,10 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         Token memory token = abi.decode(data, (Token));
 
         // quote is currency1, base is currency0
+        assertFalse(
+            positionDescriptor.flipRatio(Currency.unwrap(nativeKey.currency0), Currency.unwrap(nativeKey.currency1))
+        );
+
         string memory symbol0 =
             SafeAddressMetadata.addressSymbol(Currency.unwrap(nativeKey.currency0), nativeCurrencyLabel);
         string memory symbol1 =
