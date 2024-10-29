@@ -4,10 +4,10 @@ pragma solidity ^0.8.0;
 import {IERC20Metadata} from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {AddressStringUtil} from "./AddressStringUtil.sol";
 
-/// @title SafeERC20Metadata
+/// @title SafeAddressMetadata
 /// @notice can produce symbols and decimals from inconsistent or absent ERC20 implementations
 /// @dev Reference: https://github.com/Uniswap/solidity-lib/blob/master/contracts/libraries/SafeERC20Namer.sol
-library SafeERC20Metadata {
+library SafeAddressMetadata {
     /// @notice attempts to extract the token symbol. if it does not implement symbol, returns a symbol derived from the address
     /// @param addr The address
     /// @param nativeLabel The native label
