@@ -99,6 +99,7 @@ library SafeCurrencyMetadata {
     }
 
     /// @notice truncates the symbol to the MAX_SYMBOL_LENGTH
+    /// @dev assumes the string is already longer than MAX_SYMBOL_LENGTH (or the same)
     /// @param str the symbol
     /// @return the truncated symbol
     function truncateSymbol(string memory str) internal pure returns (string memory) {
