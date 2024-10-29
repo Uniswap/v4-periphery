@@ -131,16 +131,62 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         string memory currency0Address = toHexString(Currency.unwrap(currency0));
         string memory currency1Address = toHexString(Currency.unwrap(currency1));
         string memory id = uintToString(tokenId);
-        string memory hookAddress = address(key.hooks) == address(0) ? "No Hook" : string(abi.encodePacked("0x", toHexString(address(key.hooks))));
+        string memory hookAddress = address(key.hooks) == address(0)
+            ? "No Hook"
+            : string(abi.encodePacked("0x", toHexString(address(key.hooks))));
         string memory fee = Descriptor.feeToPercentString(key.fee);
-        string memory tickToDecimal0 = Descriptor.tickToDecimalString(tickLower, key.tickSpacing, SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)), SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)), false);
-        string memory tickToDecimal1 = Descriptor.tickToDecimalString(tickUpper, key.tickSpacing, SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)), SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)), false);
+        string memory tickToDecimal0 = Descriptor.tickToDecimalString(
+            tickLower,
+            key.tickSpacing,
+            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)),
+            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)),
+            false
+        );
+        string memory tickToDecimal1 = Descriptor.tickToDecimalString(
+            tickUpper,
+            key.tickSpacing,
+            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)),
+            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)),
+            false
+        );
 
-        assertEq(token.name, string(abi.encodePacked("Uniswap - ", fee, " - ", symbol1, "/", symbol0, " - ", tickToDecimal0, "<>", tickToDecimal1)));
+        assertEq(
+            token.name,
+            string(
+                abi.encodePacked(
+                    "Uniswap - ", fee, " - ", symbol1, "/", symbol0, " - ", tickToDecimal0, "<>", tickToDecimal1
+                )
+            )
+        );
         assertEq(
             token.description,
-            string(abi.encodePacked(unicode"This NFT represents a liquidity position in a Uniswap v4 ", symbol1, "-", symbol0, " pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: ", managerAddress, "\n", symbol1,  " Address: ", currency1Address, "\n", symbol0,  " Address: ", currency0Address, "\nHook Address: ", hookAddress, "\nFee Tier: ", fee, "\nToken ID: ", id, "\n\n", unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated.")
-        ));
+            string(
+                abi.encodePacked(
+                    unicode"This NFT represents a liquidity position in a Uniswap v4 ",
+                    symbol1,
+                    "-",
+                    symbol0,
+                    " pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: ",
+                    managerAddress,
+                    "\n",
+                    symbol1,
+                    " Address: ",
+                    currency1Address,
+                    "\n",
+                    symbol0,
+                    " Address: ",
+                    currency0Address,
+                    "\nHook Address: ",
+                    hookAddress,
+                    "\nFee Tier: ",
+                    fee,
+                    "\nToken ID: ",
+                    id,
+                    "\n\n",
+                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated."
+                )
+            )
+        );
     }
 
     function test_native_tokenURI_succeeds() public {
@@ -183,24 +229,75 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory data = vm.parseJson(json);
         Token memory token = abi.decode(data, (Token));
 
-
         // quote is currency1, base is currency0
-        string memory symbol0 = SafeAddressMetadata.addressSymbol(Currency.unwrap(nativeKey.currency0), nativeCurrencyLabel);
-        string memory symbol1 = SafeAddressMetadata.addressSymbol(Currency.unwrap(nativeKey.currency1), nativeCurrencyLabel);
+        string memory symbol0 =
+            SafeAddressMetadata.addressSymbol(Currency.unwrap(nativeKey.currency0), nativeCurrencyLabel);
+        string memory symbol1 =
+            SafeAddressMetadata.addressSymbol(Currency.unwrap(nativeKey.currency1), nativeCurrencyLabel);
         string memory managerAddress = toHexString(address(manager));
-        string memory currency0Address = Currency.unwrap(nativeKey.currency0) == address(0) ? "Native" : toHexString(Currency.unwrap(nativeKey.currency0));
-        string memory currency1Address = Currency.unwrap(nativeKey.currency1) == address(0) ? "Native" : toHexString(Currency.unwrap(nativeKey.currency1));
+        string memory currency0Address = Currency.unwrap(nativeKey.currency0) == address(0)
+            ? "Native"
+            : toHexString(Currency.unwrap(nativeKey.currency0));
+        string memory currency1Address = Currency.unwrap(nativeKey.currency1) == address(0)
+            ? "Native"
+            : toHexString(Currency.unwrap(nativeKey.currency1));
         string memory id = uintToString(tokenId);
-        string memory hookAddress = address(nativeKey.hooks) == address(0) ? "No Hook" : string(abi.encodePacked("0x", toHexString(address(nativeKey.hooks))));
+        string memory hookAddress = address(nativeKey.hooks) == address(0)
+            ? "No Hook"
+            : string(abi.encodePacked("0x", toHexString(address(nativeKey.hooks))));
         string memory fee = Descriptor.feeToPercentString(nativeKey.fee);
-        string memory tickToDecimal0 = Descriptor.tickToDecimalString(tickLower, nativeKey.tickSpacing, SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)), SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)), false);
-        string memory tickToDecimal1 = Descriptor.tickToDecimalString(tickUpper, nativeKey.tickSpacing, SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)), SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)), false);
+        string memory tickToDecimal0 = Descriptor.tickToDecimalString(
+            tickLower,
+            nativeKey.tickSpacing,
+            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)),
+            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)),
+            false
+        );
+        string memory tickToDecimal1 = Descriptor.tickToDecimalString(
+            tickUpper,
+            nativeKey.tickSpacing,
+            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)),
+            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)),
+            false
+        );
 
-        assertEq(token.name, string(abi.encodePacked("Uniswap - ", fee, " - ", symbol1, "/", symbol0, " - ", tickToDecimal0, "<>", tickToDecimal1)));
+        assertEq(
+            token.name,
+            string(
+                abi.encodePacked(
+                    "Uniswap - ", fee, " - ", symbol1, "/", symbol0, " - ", tickToDecimal0, "<>", tickToDecimal1
+                )
+            )
+        );
         assertEq(
             token.description,
-            string(abi.encodePacked(unicode"This NFT represents a liquidity position in a Uniswap v4 ", symbol1, "-", symbol0, " pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: ", managerAddress, "\n", symbol1,  " Address: ", currency1Address, "\n", symbol0,  " Address: ", currency0Address, "\nHook Address: ", hookAddress, "\nFee Tier: ", fee, "\nToken ID: ", id, "\n\n", unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated.")
-        ));
+            string(
+                abi.encodePacked(
+                    unicode"This NFT represents a liquidity position in a Uniswap v4 ",
+                    symbol1,
+                    "-",
+                    symbol0,
+                    " pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: ",
+                    managerAddress,
+                    "\n",
+                    symbol1,
+                    " Address: ",
+                    currency1Address,
+                    "\n",
+                    symbol0,
+                    " Address: ",
+                    currency0Address,
+                    "\nHook Address: ",
+                    hookAddress,
+                    "\nFee Tier: ",
+                    fee,
+                    "\nToken ID: ",
+                    id,
+                    "\n\n",
+                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated."
+                )
+            )
+        );
     }
 
     function test_tokenURI_revertsWithInvalidTokenId() public {
