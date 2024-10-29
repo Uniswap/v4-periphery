@@ -36,7 +36,10 @@ library SafeAddressMetadata {
             return 0;
         }
         if (data.length == 32) {
-            return abi.decode(data, (uint8));
+            uint256 decimals = abi.decode(data, (uint256));
+            if (decimals <= type(uint8).max) {
+                return uint8(decimals);
+            }
         }
         return 0;
     }

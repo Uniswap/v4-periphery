@@ -12,10 +12,14 @@ import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 import {ActionConstants} from "../src/libraries/ActionConstants.sol";
 import {Base64} from "./base64.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
-import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {SafeAddressMetadata} from "../src/libraries/SafeAddressMetadata.sol";
+import {AddressStringUtil} from "../src/libraries/AddressStringUtil.sol";
+import {Descriptor} from "../src/libraries/Descriptor.sol";
 
 contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
     using Base64 for string;
+    using CurrencyLibrary for Currency;
 
     address public WETH9 = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address public DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
@@ -120,11 +124,23 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory data = vm.parseJson(json);
         Token memory token = abi.decode(data, (Token));
 
-        assertEq(token.name, "Uniswap - 0.3% - TEST/TEST - 1.0060<>1.0121");
+        // quote is currency1, base is currency0
+        string memory symbol0 = SafeAddressMetadata.addressSymbol(Currency.unwrap(currency0), nativeCurrencyLabel);
+        string memory symbol1 = SafeAddressMetadata.addressSymbol(Currency.unwrap(currency1), nativeCurrencyLabel);
+        string memory managerAddress = toHexString(address(manager));
+        string memory currency0Address = toHexString(Currency.unwrap(currency0));
+        string memory currency1Address = toHexString(Currency.unwrap(currency1));
+        string memory id = uintToString(tokenId);
+        string memory hookAddress = address(key.hooks) == address(0) ? "No Hook" : string(abi.encodePacked("0x", toHexString(address(key.hooks))));
+        string memory fee = Descriptor.feeToPercentString(key.fee);
+        string memory tickToDecimal0 = Descriptor.tickToDecimalString(tickLower, key.tickSpacing, SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)), SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)), false);
+        string memory tickToDecimal1 = Descriptor.tickToDecimalString(tickUpper, key.tickSpacing, SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)), SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)), false);
+
+        assertEq(token.name, string(abi.encodePacked("Uniswap - ", fee, " - ", symbol1, "/", symbol0, " - ", tickToDecimal0, "<>", tickToDecimal1)));
         assertEq(
             token.description,
-            unicode"This NFT represents a liquidity position in a Uniswap v4 TEST-TEST pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f\nTEST Address: 0x5991a2df15a8f6a256d3ec51e99254cd3fb576a9\nTEST Address: 0x2e234dae75c793f67a35089c9d99245e1c58470b\nHook Address: 0x0000000000000000000000000000000000000000\nFee Tier: 0.3%\nToken ID: 1\n\n⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated."
-        );
+            string(abi.encodePacked(unicode"This NFT represents a liquidity position in a Uniswap v4 ", symbol1, "-", symbol0, " pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: ", managerAddress, "\n", symbol1,  " Address: ", currency1Address, "\n", symbol0,  " Address: ", currency0Address, "\nHook Address: ", hookAddress, "\nFee Tier: ", fee, "\nToken ID: ", id, "\n\n", unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated.")
+        ));
     }
 
     function test_native_tokenURI_succeeds() public {
@@ -167,11 +183,24 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory data = vm.parseJson(json);
         Token memory token = abi.decode(data, (Token));
 
-        assertEq(token.name, "Uniswap - 0.3% - TEST/ETH - 1.0060<>1.0121");
+
+        // quote is currency1, base is currency0
+        string memory symbol0 = SafeAddressMetadata.addressSymbol(Currency.unwrap(nativeKey.currency0), nativeCurrencyLabel);
+        string memory symbol1 = SafeAddressMetadata.addressSymbol(Currency.unwrap(nativeKey.currency1), nativeCurrencyLabel);
+        string memory managerAddress = toHexString(address(manager));
+        string memory currency0Address = Currency.unwrap(nativeKey.currency0) == address(0) ? "Native" : toHexString(Currency.unwrap(nativeKey.currency0));
+        string memory currency1Address = Currency.unwrap(nativeKey.currency1) == address(0) ? "Native" : toHexString(Currency.unwrap(nativeKey.currency1));
+        string memory id = uintToString(tokenId);
+        string memory hookAddress = address(nativeKey.hooks) == address(0) ? "No Hook" : string(abi.encodePacked("0x", toHexString(address(nativeKey.hooks))));
+        string memory fee = Descriptor.feeToPercentString(nativeKey.fee);
+        string memory tickToDecimal0 = Descriptor.tickToDecimalString(tickLower, nativeKey.tickSpacing, SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)), SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)), false);
+        string memory tickToDecimal1 = Descriptor.tickToDecimalString(tickUpper, nativeKey.tickSpacing, SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)), SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)), false);
+
+        assertEq(token.name, string(abi.encodePacked("Uniswap - ", fee, " - ", symbol1, "/", symbol0, " - ", tickToDecimal0, "<>", tickToDecimal1)));
         assertEq(
             token.description,
-            unicode"This NFT represents a liquidity position in a Uniswap v4 TEST-ETH pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: 0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f\nTEST Address: 0x5991a2df15a8f6a256d3ec51e99254cd3fb576a9\nETH Address: Native\nHook Address: 0x0000000000000000000000000000000000000000\nFee Tier: 0.3%\nToken ID: 1\n\n⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated."
-        );
+            string(abi.encodePacked(unicode"This NFT represents a liquidity position in a Uniswap v4 ", symbol1, "-", symbol0, " pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: ", managerAddress, "\n", symbol1,  " Address: ", currency1Address, "\n", symbol0,  " Address: ", currency0Address, "\nHook Address: ", hookAddress, "\nFee Tier: ", fee, "\nToken ID: ", id, "\n\n", unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated.")
+        ));
     }
 
     function test_tokenURI_revertsWithInvalidTokenId() public {
@@ -194,5 +223,43 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         vm.expectRevert(abi.encodeWithSelector(PositionDescriptor.InvalidTokenId.selector, tokenId + 1));
 
         positionDescriptor.tokenURI(lpm, tokenId + 1);
+    }
+
+    // Helper functions for testing purposes
+    function toHexString(address account) internal pure returns (string memory) {
+        return toHexString(uint256(uint160(account)), 20);
+    }
+
+    // different from AddressStringUtil.toHexString. this one is all lowercase hex and includes the 0x prefix
+    function toHexString(uint256 value, uint256 length) internal pure returns (string memory) {
+        bytes memory buffer = new bytes(2 * length + 2);
+        buffer[0] = "0";
+        buffer[1] = "x";
+        for (uint256 i = 2 * length + 1; i > 1; --i) {
+            uint8 digit = uint8(value & 0xf);
+            buffer[i] = digit < 10 ? bytes1(digit + 48) : bytes1(digit + 87); // Lowercase hex (0x61 is 'a' in ASCII)
+            value >>= 4;
+        }
+        require(value == 0, "Hex length insufficient");
+        return string(buffer);
+    }
+
+    function uintToString(uint256 value) internal pure returns (string memory) {
+        if (value == 0) {
+            return "0";
+        }
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+        bytes memory buffer = new bytes(digits);
+        while (value != 0) {
+            digits -= 1;
+            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
+            value /= 10;
+        }
+        return string(buffer);
     }
 }

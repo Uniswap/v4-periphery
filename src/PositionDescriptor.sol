@@ -11,7 +11,7 @@ import {IPositionDescriptor} from "./interfaces/IPositionDescriptor.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 import {Descriptor} from "./libraries/Descriptor.sol";
 import {AddressRatioSortOrder} from "./libraries/AddressRatioSortOrder.sol";
-import {SafeERC20Metadata} from "./libraries/SafeERC20Metadata.sol";
+import {SafeAddressMetadata} from "./libraries/SafeAddressMetadata.sol";
 
 /// @title Describes NFT token positions
 /// @notice Produces a string containing the data URI for a JSON metadata string
@@ -71,10 +71,10 @@ contract PositionDescriptor is IPositionDescriptor {
                 tokenId: tokenId,
                 quoteAddress: quoteAddress,
                 baseAddress: baseAddress,
-                quoteAddressSymbol: SafeERC20Metadata.addressSymbol(quoteAddress, nativeAddressLabel),
-                baseAddressSymbol: SafeERC20Metadata.addressSymbol(baseAddress, nativeAddressLabel),
-                quoteAddressDecimals: SafeERC20Metadata.addressDecimals(quoteAddress),
-                baseAddressDecimals: SafeERC20Metadata.addressDecimals(baseAddress),
+                quoteAddressSymbol: SafeAddressMetadata.addressSymbol(quoteAddress, nativeAddressLabel),
+                baseAddressSymbol: SafeAddressMetadata.addressSymbol(baseAddress, nativeAddressLabel),
+                quoteAddressDecimals: SafeAddressMetadata.addressDecimals(quoteAddress),
+                baseAddressDecimals: SafeAddressMetadata.addressDecimals(baseAddress),
                 flipRatio: _flipRatio,
                 tickLower: positionInfo.tickLower(),
                 tickUpper: positionInfo.tickUpper(),
