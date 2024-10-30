@@ -22,12 +22,10 @@ contract MockCalldataDecoder {
         bytes hookData;
     }
 
-    struct MintFromAmountsParams {
+    struct MintFromDeltasParams {
         PoolKey poolKey;
         int24 tickLower;
         int24 tickUpper;
-        uint128 amount0;
-        uint128 amount1;
         uint128 amount0Max;
         uint128 amount1Max;
         address owner;
@@ -149,43 +147,32 @@ contract MockCalldataDecoder {
         return params.decodeCurrencyAddressAndUint256();
     }
 
-    function decodeIncreaseLiquidityFromAmountsParams(bytes calldata params)
+    function decodeIncreaseLiquidityFromDeltasParams(bytes calldata params)
         external
         pure
-        returns (
-            uint256 tokenId,
-            uint128 amount0,
-            uint128 amount1,
-            uint128 amount0Max,
-            uint128 amount1Max,
-            bytes calldata hookData
-        )
+        returns (uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData)
     {
-        return params.decodeIncreaseLiquidityFromAmountsParams();
+        return params.decodeIncreaseLiquidityFromDeltasParams();
     }
 
-    function decodeMintFromAmountsParams(bytes calldata params)
+    function decodeMintFromDeltasParams(bytes calldata params)
         external
         pure
-        returns (MintFromAmountsParams memory mintParams)
+        returns (MintFromDeltasParams memory mintParams)
     {
         (
             PoolKey memory poolKey,
             int24 tickLower,
             int24 tickUpper,
-            uint128 amount0,
-            uint128 amount1,
             uint128 amount0Max,
             uint128 amount1Max,
             address owner,
             bytes memory hookData
-        ) = params.decodeMintFromAmountsParams();
-        return MintFromAmountsParams({
+        ) = params.decodeMintFromDeltasParams();
+        return MintFromDeltasParams({
             poolKey: poolKey,
             tickLower: tickLower,
             tickUpper: tickUpper,
-            amount0: amount0,
-            amount1: amount1,
             amount0Max: amount0Max,
             amount1Max: amount1Max,
             owner: owner,

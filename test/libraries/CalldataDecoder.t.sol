@@ -83,34 +83,22 @@ contract CalldataDecoderTest is Test {
         assertEq(mintParams.tickUpper, _config.tickUpper);
     }
 
-    function test_fuzz_decodeMintFromAmountsParams(
+    function test_fuzz_decodeMintFromDeltasParams(
         PositionConfig calldata _config,
-        uint128 _amount0,
-        uint128 _amount1,
         uint128 _amount0Max,
         uint128 _amount1Max,
         address _owner,
         bytes calldata _hookData
     ) public view {
         bytes memory params = abi.encode(
-            _config.poolKey,
-            _config.tickLower,
-            _config.tickUpper,
-            _amount0,
-            _amount1,
-            _amount0Max,
-            _amount1Max,
-            _owner,
-            _hookData
+            _config.poolKey, _config.tickLower, _config.tickUpper, _amount0Max, _amount1Max, _owner, _hookData
         );
 
-        (MockCalldataDecoder.MintFromAmountsParams memory mintParams) = decoder.decodeMintFromAmountsParams(params);
+        (MockCalldataDecoder.MintFromDeltasParams memory mintParams) = decoder.decodeMintFromDeltasParams(params);
 
         _assertEq(mintParams.poolKey, _config.poolKey);
         assertEq(mintParams.tickLower, _config.tickLower);
         assertEq(mintParams.tickUpper, _config.tickUpper);
-        assertEq(mintParams.amount0, _amount0);
-        assertEq(mintParams.amount1, _amount1);
         assertEq(mintParams.amount0Max, _amount0Max);
         assertEq(mintParams.amount1Max, _amount1Max);
         assertEq(mintParams.owner, _owner);
@@ -268,25 +256,15 @@ contract CalldataDecoderTest is Test {
 
     function test_fuzz_decodeIncreaseLiquidityFromAmountsParams(
         uint256 _tokenId,
-        uint128 _amount0,
-        uint128 _amount1,
         uint128 _amount0Max,
         uint128 _amount1Max,
         bytes calldata _hookData
     ) public view {
-        bytes memory params = abi.encode(_tokenId, _amount0, _amount1, _amount0Max, _amount1Max, _hookData);
+        bytes memory params = abi.encode(_tokenId, _amount0Max, _amount1Max, _hookData);
 
-        (
-            uint256 tokenId,
-            uint128 amount0,
-            uint128 amount1,
-            uint128 amount0Max,
-            uint128 amount1Max,
-            bytes memory hookData
-        ) = decoder.decodeIncreaseLiquidityFromAmountsParams(params);
+        (uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes memory hookData) =
+            decoder.decodeIncreaseLiquidityFromDeltasParams(params);
         assertEq(_tokenId, tokenId);
-        assertEq(_amount0, amount0);
-        assertEq(_amount1, amount1);
         assertEq(_amount0Max, amount0Max);
         assertEq(_amount1Max, amount1Max);
         assertEq(_hookData, hookData);

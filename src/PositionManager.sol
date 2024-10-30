@@ -191,16 +191,9 @@ contract PositionManager is
                 _increase(tokenId, liquidity, amount0Max, amount1Max, hookData);
                 return;
             } else if (action == Actions.INCREASE_LIQUIDITY_FROM_AMOUNTS) {
-                (
-                    uint256 tokenId,
-                    uint128 amount0,
-                    uint128 amount1,
-                    uint128 amount0Max,
-                    uint128 amount1Max,
-                    bytes calldata hookData
-                ) = params.decodeIncreaseLiquidityFromAmountsParams();
-                // note the amounts are mapped inside _increaseFromAmounts
-                _increaseFromAmounts(tokenId, amount0, amount1, amount0Max, amount1Max, hookData);
+                (uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData) =
+                    params.decodeIncreaseLiquidityFromDeltasParams();
+                _increaseFromDeltas(tokenId, amount0Max, amount1Max, hookData);
                 return;
             } else if (action == Actions.DECREASE_LIQUIDITY) {
                 (uint256 tokenId, uint256 liquidity, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData) =
@@ -225,16 +218,12 @@ contract PositionManager is
                     PoolKey calldata poolKey,
                     int24 tickLower,
                     int24 tickUpper,
-                    uint128 amount0,
-                    uint128 amount1,
                     uint128 amount0Max,
                     uint128 amount1Max,
                     address owner,
                     bytes calldata hookData
-                ) = params.decodeMintFromAmountsParams();
-                _mintFromAmounts(
-                    poolKey, tickLower, tickUpper, amount0, amount1, amount0Max, amount1Max, owner, hookData
-                );
+                ) = params.decodeMintFromDeltasParams();
+                _mintFromDeltas(poolKey, tickLower, tickUpper, amount0Max, amount1Max, owner, hookData);
                 return;
             } else if (action == Actions.BURN_POSITION) {
                 // Will automatically decrease liquidity to 0 if the position is not already empty.
@@ -294,19 +283,12 @@ contract PositionManager is
         (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
     }
 
-    /// @dev The amounts can be mapped to the open delta in the pool manager
-    function _increaseFromAmounts(
-        uint256 tokenId,
-        uint128 amount0,
-        uint128 amount1,
-        uint128 amount0Max,
-        uint128 amount1Max,
-        bytes calldata hookData
-    ) internal onlyIfApproved(msgSender(), tokenId) {
+    /// @dev The liquidity delta is derived from open deltas in the pool manager.
+    function _increaseFromDeltas(uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData)
+        internal
+        onlyIfApproved(msgSender(), tokenId)
+    {
         (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
-
-        amount0 = uint128(_mapTakeAmount(uint256(amount0), poolKey.currency0));
-        amount1 = uint128(_mapTakeAmount(uint256(amount1), poolKey.currency1));
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolKey.toId());
 
@@ -314,8 +296,8 @@ contract PositionManager is
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(info.tickLower()),
             TickMath.getSqrtPriceAtTick(info.tickUpper()),
-            amount0,
-            amount1
+            _getFullDebt(poolKey.currency0),
+            _getFullDebt(poolKey.currency1)
         );
 
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
@@ -377,12 +359,10 @@ contract PositionManager is
         liquidityDelta.validateMaxIn(amount0Max, amount1Max);
     }
 
-    function _mintFromAmounts(
+    function _mintFromDeltas(
         PoolKey calldata poolKey,
         int24 tickLower,
         int24 tickUpper,
-        uint128 amount0,
-        uint128 amount1,
         uint128 amount0Max,
         uint128 amount1Max,
         address owner,
@@ -394,8 +374,8 @@ contract PositionManager is
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(tickLower),
             TickMath.getSqrtPriceAtTick(tickUpper),
-            amount0,
-            amount1
+            _getFullDebt(poolKey.currency0),
+            _getFullDebt(poolKey.currency1)
         );
 
         _mint(poolKey, tickLower, tickUpper, uint256(liquidity), amount0Max, amount1Max, owner, hookData);
