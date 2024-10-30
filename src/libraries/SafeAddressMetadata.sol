@@ -8,6 +8,8 @@ import {AddressStringUtil} from "./AddressStringUtil.sol";
 /// @notice can produce symbols and decimals from inconsistent or absent ERC20 implementations
 /// @dev Reference: https://github.com/Uniswap/solidity-lib/blob/master/contracts/libraries/SafeERC20Namer.sol
 library SafeAddressMetadata {
+    uint8 constant MAX_SYMBOL_LENGTH = 12;
+
     /// @notice attempts to extract the token symbol. if it does not implement symbol, returns a symbol derived from the address
     /// @param addr The address
     /// @param nativeLabel The native label
@@ -20,6 +22,9 @@ library SafeAddressMetadata {
         if (bytes(symbol).length == 0) {
             // fallback to 6 uppercase hex of address
             return addressToSymbol(addr);
+        }
+        if (bytes(symbol).length > MAX_SYMBOL_LENGTH) {
+            return truncateSymbol(symbol);
         }
         return symbol;
     }
@@ -86,5 +91,18 @@ library SafeAddressMetadata {
             return abi.decode(data, (string));
         }
         return "";
+    }
+
+    /// @notice truncates the symbol to the MAX_SYMBOL_LENGTH
+    /// @dev assumes the string is already longer than MAX_SYMBOL_LENGTH (or the same)
+    /// @param str the symbol
+    /// @return the truncated symbol
+    function truncateSymbol(string memory str) internal pure returns (string memory) {
+        bytes memory strBytes = bytes(str);
+        bytes memory truncatedBytes = new bytes(MAX_SYMBOL_LENGTH);
+        for (uint256 i = 0; i < MAX_SYMBOL_LENGTH; i++) {
+            truncatedBytes[i] = strBytes[i];
+        }
+        return string(truncatedBytes);
     }
 }
