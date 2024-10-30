@@ -9,6 +9,7 @@ import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
+    using CustomRevert for address;
     using CustomRevert for bytes4;
 
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
@@ -53,7 +54,7 @@ abstract contract Notifier is INotifier {
         bool success = _call(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, data)));
 
         if (!success) {
-            Wrap__SubscriptionReverted.selector.bubbleUpAndRevertWith(newSubscriber);
+            newSubscriber.bubbleUpAndRevertWith(ISubscriber.notifySubscribe.selector, SubscriptionReverted.selector);
         }
 
         emit Subscription(tokenId, newSubscriber);
@@ -97,7 +98,9 @@ abstract contract Notifier is INotifier {
         );
 
         if (!success) {
-            Wrap__ModifyLiquidityNotificationReverted.selector.bubbleUpAndRevertWith(address(_subscriber));
+            address(_subscriber).bubbleUpAndRevertWith(
+                ISubscriber.notifyModifyLiquidity.selector, ModifyLiquidityNotificationReverted.selector
+            );
         }
     }
 
@@ -108,7 +111,9 @@ abstract contract Notifier is INotifier {
             _call(address(_subscriber), abi.encodeCall(ISubscriber.notifyTransfer, (tokenId, previousOwner, newOwner)));
 
         if (!success) {
-            Wrap__TransferNotificationReverted.selector.bubbleUpAndRevertWith(address(_subscriber));
+            address(_subscriber).bubbleUpAndRevertWith(
+                ISubscriber.notifyTransfer.selector, TransferNotificationReverted.selector
+            );
         }
     }
 

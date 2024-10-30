@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -239,9 +240,11 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // should revert because hook is not approved
         vm.expectRevert(
             abi.encodeWithSelector(
-                Hooks.Wrap__FailedHookCall.selector,
+                CustomRevert.WrappedError.selector,
                 address(hookModifyLiquidities),
-                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities))
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities)),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
         swap(key, true, -1e18, calls);
@@ -260,9 +263,11 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // should revert because hook is not approved
         vm.expectRevert(
             abi.encodeWithSelector(
-                Hooks.Wrap__FailedHookCall.selector,
+                CustomRevert.WrappedError.selector,
                 address(hookModifyLiquidities),
-                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities))
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities)),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
         swap(key, true, -1e18, calls);
@@ -285,9 +290,11 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // should revert because hook is not approved
         vm.expectRevert(
             abi.encodeWithSelector(
-                Hooks.Wrap__FailedHookCall.selector,
+                CustomRevert.WrappedError.selector,
                 address(hookModifyLiquidities),
-                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities))
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities)),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
         swap(key, true, -1e18, calls);
@@ -306,9 +313,11 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // should revert because hook is not approved
         vm.expectRevert(
             abi.encodeWithSelector(
-                Hooks.Wrap__FailedHookCall.selector,
+                CustomRevert.WrappedError.selector,
                 address(hookModifyLiquidities),
-                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities))
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(hookModifyLiquidities)),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
         swap(key, true, -1e18, calls);
@@ -329,9 +338,11 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // should revert because hook is re-entering modifyLiquiditiesWithoutUnlock
         vm.expectRevert(
             abi.encodeWithSelector(
-                Hooks.Wrap__FailedHookCall.selector,
+                CustomRevert.WrappedError.selector,
                 address(hookModifyLiquidities),
-                abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector)
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(ReentrancyLock.ContractLocked.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
         lpm.modifyLiquidities(calls, _deadline);

@@ -14,7 +14,7 @@ contract DeployPoolSwapTestTest is Test {
     IPoolManager manager;
 
     function setUp() public {
-        manager = new PoolManager();
+        manager = new PoolManager(address(this));
         deployer = new DeployPoolSwapTest();
     }
 
