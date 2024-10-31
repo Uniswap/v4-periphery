@@ -4,24 +4,24 @@ pragma solidity ^0.8.0;
 import {IERC20Metadata} from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {AddressStringUtil} from "./AddressStringUtil.sol";
 
-/// @title SafeAddressMetadata
+/// @title SafeCurrencyMetadata
 /// @notice can produce symbols and decimals from inconsistent or absent ERC20 implementations
 /// @dev Reference: https://github.com/Uniswap/solidity-lib/blob/master/contracts/libraries/SafeERC20Namer.sol
-library SafeAddressMetadata {
+library SafeCurrencyMetadata {
     uint8 constant MAX_SYMBOL_LENGTH = 12;
 
-    /// @notice attempts to extract the token symbol. if it does not implement symbol, returns a symbol derived from the address
-    /// @param addr The address
+    /// @notice attempts to extract the token symbol. if it does not implement symbol, returns a symbol derived from the currency address
+    /// @param currency The currency address
     /// @param nativeLabel The native label
-    /// @return the token symbol
-    function addressSymbol(address addr, string memory nativeLabel) internal view returns (string memory) {
-        if (addr == address(0)) {
+    /// @return the currency symbol
+    function currencySymbol(address currency, string memory nativeLabel) internal view returns (string memory) {
+        if (currency == address(0)) {
             return nativeLabel;
         }
-        string memory symbol = callAndParseStringReturn(addr, IERC20Metadata.symbol.selector);
+        string memory symbol = callAndParseStringReturn(currency, IERC20Metadata.symbol.selector);
         if (bytes(symbol).length == 0) {
             // fallback to 6 uppercase hex of address
-            return addressToSymbol(addr);
+            return currencyToSymbol(currency);
         }
         if (bytes(symbol).length > MAX_SYMBOL_LENGTH) {
             return truncateSymbol(symbol);
@@ -30,13 +30,13 @@ library SafeAddressMetadata {
     }
 
     /// @notice attempts to extract the token decimals, returns 0 if not implemented or not a uint8
-    /// @param addr The address
-    /// @return the token decimals
-    function addressDecimals(address addr) internal view returns (uint8) {
-        if (addr == address(0)) {
+    /// @param currency The currency address
+    /// @return the currency decimals
+    function currencyDecimals(address currency) internal view returns (uint8) {
+        if (currency == address(0)) {
             return 18;
         }
-        (bool success, bytes memory data) = addr.staticcall(abi.encodeCall(IERC20Metadata.decimals, ()));
+        (bool success, bytes memory data) = currency.staticcall(abi.encodeCall(IERC20Metadata.decimals, ()));
         if (!success) {
             return 0;
         }
@@ -67,18 +67,18 @@ library SafeAddressMetadata {
     }
 
     /// @notice produces a symbol from the address - the first 6 hex of the address string in upper case
-    /// @param addr The address
+    /// @param currency The currency address
     /// @return the symbol
-    function addressToSymbol(address addr) private pure returns (string memory) {
-        return AddressStringUtil.toAsciiString(addr, 6);
+    function currencyToSymbol(address currency) private pure returns (string memory) {
+        return AddressStringUtil.toAsciiString(currency, 6);
     }
 
     /// @notice calls an external view contract method that returns a symbol, and parses the output into a string
-    /// @param addr The address
+    /// @param currency The currency address
     /// @param selector the selector of the symbol method
     /// @return the symbol
-    function callAndParseStringReturn(address addr, bytes4 selector) private view returns (string memory) {
-        (bool success, bytes memory data) = addr.staticcall(abi.encodeWithSelector(selector));
+    function callAndParseStringReturn(address currency, bytes4 selector) private view returns (string memory) {
+        (bool success, bytes memory data) = currency.staticcall(abi.encodeWithSelector(selector));
         // if not implemented, return empty string
         if (!success) {
             return "";

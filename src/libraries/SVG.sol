@@ -25,11 +25,11 @@ library SVG {
     string constant curve8 = "M1 1C1 97 49 145 145 145";
 
     struct SVGParams {
-        string quoteAddress;
-        string baseAddress;
+        string quoteCurrency;
+        string baseCurrency;
         address hooks;
-        string quoteAddressSymbol;
-        string baseAddressSymbol;
+        string quoteCurrencySymbol;
+        string baseCurrencySymbol;
         string feeTier;
         int24 tickLower;
         int24 tickUpper;
@@ -56,9 +56,9 @@ library SVG {
             abi.encodePacked(
                 generateSVGDefs(params),
                 generateSVGBorderText(
-                    params.quoteAddress, params.baseAddress, params.quoteAddressSymbol, params.baseAddressSymbol
+                    params.quoteCurrency, params.baseCurrency, params.quoteCurrencySymbol, params.baseCurrencySymbol
                 ),
-                generateSVGCardMantle(params.quoteAddressSymbol, params.baseAddressSymbol, params.feeTier),
+                generateSVGCardMantle(params.quoteCurrencySymbol, params.baseCurrencySymbol, params.feeTier),
                 generageSvgCurve(params.tickLower, params.tickUpper, params.tickSpacing, params.overRange),
                 generateSVGPositionDataAndLocationCurve(
                     params.tokenId.toString(), params.hooks, params.tickLower, params.tickUpper
@@ -157,61 +157,61 @@ library SVG {
         );
     }
 
-    /// @notice Generate the SVG for the moving border text displaying the quote and base addresses with their symbols
-    /// @param quoteAddress The quote address
-    /// @param baseAddress The base address
-    /// @param quoteAddressSymbol The quote address symbol
-    /// @param baseAddressSymbol The base address symbol
+    /// @notice Generate the SVG for the moving border text displaying the quote and base currencies with their symbols
+    /// @param quoteCurrency The quote currency
+    /// @param baseCurrency The base currency
+    /// @param quoteCurrencySymbol The quote currency symbol
+    /// @param baseCurrencySymbol The base currency symbol
     /// @return svg The SVG for the border NFT's border text
     function generateSVGBorderText(
-        string memory quoteAddress,
-        string memory baseAddress,
-        string memory quoteAddressSymbol,
-        string memory baseAddressSymbol
+        string memory quoteCurrency,
+        string memory baseCurrency,
+        string memory quoteCurrencySymbol,
+        string memory baseCurrencySymbol
     ) private pure returns (string memory svg) {
         svg = string(
             abi.encodePacked(
                 '<text text-rendering="optimizeSpeed">',
                 '<textPath startOffset="-100%" fill="white" font-family="\'Courier New\', monospace" font-size="10px" xlink:href="#text-path-a">',
-                baseAddress,
+                baseCurrency,
                 unicode" • ",
-                baseAddressSymbol,
+                baseCurrencySymbol,
                 ' <animate additive="sum" attributeName="startOffset" from="0%" to="100%" begin="0s" dur="30s" repeatCount="indefinite" />',
                 '</textPath> <textPath startOffset="0%" fill="white" font-family="\'Courier New\', monospace" font-size="10px" xlink:href="#text-path-a">',
-                baseAddress,
+                baseCurrency,
                 unicode" • ",
-                baseAddressSymbol,
+                baseCurrencySymbol,
                 ' <animate additive="sum" attributeName="startOffset" from="0%" to="100%" begin="0s" dur="30s" repeatCount="indefinite" /> </textPath>',
                 '<textPath startOffset="50%" fill="white" font-family="\'Courier New\', monospace" font-size="10px" xlink:href="#text-path-a">',
-                quoteAddress,
+                quoteCurrency,
                 unicode" • ",
-                quoteAddressSymbol,
+                quoteCurrencySymbol,
                 ' <animate additive="sum" attributeName="startOffset" from="0%" to="100%" begin="0s" dur="30s"',
                 ' repeatCount="indefinite" /></textPath><textPath startOffset="-50%" fill="white" font-family="\'Courier New\', monospace" font-size="10px" xlink:href="#text-path-a">',
-                quoteAddress,
+                quoteCurrency,
                 unicode" • ",
-                quoteAddressSymbol,
+                quoteCurrencySymbol,
                 ' <animate additive="sum" attributeName="startOffset" from="0%" to="100%" begin="0s" dur="30s" repeatCount="indefinite" /></textPath></text>'
             )
         );
     }
 
-    /// @notice Generate the SVG for the card mantle displaying the quote and base address symbols and fee tier
-    /// @param quoteAddressSymbol The quote address symbol
-    /// @param baseAddressSymbol The base address symbol
+    /// @notice Generate the SVG for the card mantle displaying the quote and base currency symbols and fee tier
+    /// @param quoteCurrencySymbol The quote currency symbol
+    /// @param baseCurrencySymbol The base currency symbol
     /// @param feeTier The fee tier
     /// @return svg The SVG for the card mantle
     function generateSVGCardMantle(
-        string memory quoteAddressSymbol,
-        string memory baseAddressSymbol,
+        string memory quoteCurrencySymbol,
+        string memory baseCurrencySymbol,
         string memory feeTier
     ) private pure returns (string memory svg) {
         svg = string(
             abi.encodePacked(
                 '<g mask="url(#fade-symbol)"><rect fill="none" x="0px" y="0px" width="290px" height="200px" /> <text y="70px" x="32px" fill="white" font-family="\'Courier New\', monospace" font-weight="200" font-size="36px">',
-                quoteAddressSymbol,
+                quoteCurrencySymbol,
                 "/",
-                baseAddressSymbol,
+                baseCurrencySymbol,
                 '</text><text y="115px" x="32px" fill="white" font-family="\'Courier New\', monospace" font-weight="200" font-size="36px">',
                 feeTier,
                 "</text></g>",

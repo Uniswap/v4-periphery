@@ -10,8 +10,8 @@ import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {IPositionDescriptor} from "./interfaces/IPositionDescriptor.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 import {Descriptor} from "./libraries/Descriptor.sol";
-import {AddressRatioSortOrder} from "./libraries/AddressRatioSortOrder.sol";
-import {SafeAddressMetadata} from "./libraries/SafeAddressMetadata.sol";
+import {CurrencyRatioSortOrder} from "./libraries/CurrencyRatioSortOrder.sol";
+import {SafeCurrencyMetadata} from "./libraries/SafeCurrencyMetadata.sol";
 
 /// @title Describes NFT token positions
 /// @notice Produces a string containing the data URI for a JSON metadata string
@@ -31,14 +31,14 @@ contract PositionDescriptor is IPositionDescriptor {
     address private constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
 
     address public immutable wrappedNative;
-    string public nativeAddressLabel;
+    string public nativeCurrencyLabel;
 
     IPoolManager public immutable poolManager;
 
-    constructor(IPoolManager _poolManager, address _wrappedNative, string memory _nativeAddressLabel) {
+    constructor(IPoolManager _poolManager, address _wrappedNative, string memory _nativeCurrencyLabel) {
         poolManager = _poolManager;
         wrappedNative = _wrappedNative;
-        nativeAddressLabel = _nativeAddressLabel;
+        nativeCurrencyLabel = _nativeCurrencyLabel;
     }
 
     /// @inheritdoc IPositionDescriptor
@@ -54,27 +54,27 @@ contract PositionDescriptor is IPositionDescriptor {
         }
         (, int24 tick,,) = poolManager.getSlot0(poolKey.toId());
 
-        address address0 = Currency.unwrap(poolKey.currency0);
-        address address1 = Currency.unwrap(poolKey.currency1);
+        address currency0 = Currency.unwrap(poolKey.currency0);
+        address currency1 = Currency.unwrap(poolKey.currency1);
 
-        // If possible, flip addresses to get the larger one as the base, so that the price (quote/base) is more readable
-        // flip if address0 priority is greater than address1 priority
-        bool _flipRatio = flipRatio(address0, address1);
+        // If possible, flip currencies to get the larger one as the base, so that the price (quote/base) is more readable
+        // flip if currency0 priority is greater than currency1 priority
+        bool _flipRatio = flipRatio(currency0, currency1);
 
-        // If not flipped, quote address is address1, base address is address0
-        // If flipped, quote address is address0, base address is address1
-        address quoteAddress = !_flipRatio ? address1 : address0;
-        address baseAddress = !_flipRatio ? address0 : address1;
+        // If not flipped, quote currency is currency1, base currency is currency0
+        // If flipped, quote currency is currency0, base currency is currency1
+        address quoteCurrency = !_flipRatio ? currency1 : currency0;
+        address baseCurrency = !_flipRatio ? currency0 : currency1;
 
         return Descriptor.constructTokenURI(
             Descriptor.ConstructTokenURIParams({
                 tokenId: tokenId,
-                quoteAddress: quoteAddress,
-                baseAddress: baseAddress,
-                quoteAddressSymbol: SafeAddressMetadata.addressSymbol(quoteAddress, nativeAddressLabel),
-                baseAddressSymbol: SafeAddressMetadata.addressSymbol(baseAddress, nativeAddressLabel),
-                quoteAddressDecimals: SafeAddressMetadata.addressDecimals(quoteAddress),
-                baseAddressDecimals: SafeAddressMetadata.addressDecimals(baseAddress),
+                quoteCurrency: quoteCurrency,
+                baseCurrency: baseCurrency,
+                quoteCurrencySymbol: SafeCurrencyMetadata.currencySymbol(quoteCurrency, nativeCurrencyLabel),
+                baseCurrencySymbol: SafeCurrencyMetadata.currencySymbol(baseCurrency, nativeCurrencyLabel),
+                quoteCurrencyDecimals: SafeCurrencyMetadata.currencyDecimals(quoteCurrency),
+                baseCurrencyDecimals: SafeCurrencyMetadata.currencyDecimals(baseCurrency),
                 flipRatio: _flipRatio,
                 tickLower: positionInfo.tickLower(),
                 tickUpper: positionInfo.tickUpper(),
@@ -92,32 +92,32 @@ contract PositionDescriptor is IPositionDescriptor {
     /// @param address1 The second address
     /// @return flipRatio True if address0 has higher priority than address1
     function flipRatio(address address0, address address1) public view returns (bool) {
-        return addressRatioPriority(address0) > addressRatioPriority(address1);
+        return currencyRatioPriority(address0) > currencyRatioPriority(address1);
     }
 
     /// @notice Returns the priority of an address.
     /// For certain addresses on mainnet, the smaller the address, the higher the priority
     /// @param addr The address
     /// @return priority The priority of the address
-    function addressRatioPriority(address addr) public view returns (int256) {
+    function currencyRatioPriority(address addr) public view returns (int256) {
         // Addresses in order of priority on mainnet: USDC, USDT, DAI, (ETH, WETH), TBTC, WBTC
         // wrapped native is different address on different chains. passed in constructor
 
         // native address
         if (addr == address(0) || addr == wrappedNative) {
-            return AddressRatioSortOrder.DENOMINATOR;
+            return CurrencyRatioSortOrder.DENOMINATOR;
         }
         if (block.chainid == 1) {
             if (addr == USDC) {
-                return AddressRatioSortOrder.NUMERATOR_MOST;
+                return CurrencyRatioSortOrder.NUMERATOR_MOST;
             } else if (addr == USDT) {
-                return AddressRatioSortOrder.NUMERATOR_MORE;
+                return CurrencyRatioSortOrder.NUMERATOR_MORE;
             } else if (addr == DAI) {
-                return AddressRatioSortOrder.NUMERATOR;
+                return CurrencyRatioSortOrder.NUMERATOR;
             } else if (addr == TBTC) {
-                return AddressRatioSortOrder.DENOMINATOR_MORE;
+                return CurrencyRatioSortOrder.DENOMINATOR_MORE;
             } else if (addr == WBTC) {
-                return AddressRatioSortOrder.DENOMINATOR_MOST;
+                return CurrencyRatioSortOrder.DENOMINATOR_MOST;
             } else {
                 return 0;
             }

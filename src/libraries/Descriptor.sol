@@ -22,12 +22,12 @@ library Descriptor {
 
     struct ConstructTokenURIParams {
         uint256 tokenId;
-        address quoteAddress;
-        address baseAddress;
-        string quoteAddressSymbol;
-        string baseAddressSymbol;
-        uint8 quoteAddressDecimals;
-        uint8 baseAddressDecimals;
+        address quoteCurrency;
+        address baseCurrency;
+        string quoteCurrencySymbol;
+        string baseCurrencySymbol;
+        uint8 quoteCurrencyDecimals;
+        uint8 baseCurrencyDecimals;
         bool flipRatio;
         int24 tickLower;
         int24 tickUpper;
@@ -44,15 +44,15 @@ library Descriptor {
     function constructTokenURI(ConstructTokenURIParams memory params) internal pure returns (string memory) {
         string memory name = generateName(params, feeToPercentString(params.fee));
         string memory descriptionPartOne = generateDescriptionPartOne(
-            escapeSpecialCharacters(params.quoteAddressSymbol),
-            escapeSpecialCharacters(params.baseAddressSymbol),
+            escapeSpecialCharacters(params.quoteCurrencySymbol),
+            escapeSpecialCharacters(params.baseCurrencySymbol),
             addressToString(params.poolManager)
         );
         string memory descriptionPartTwo = generateDescriptionPartTwo(
             params.tokenId.toString(),
-            escapeSpecialCharacters(params.baseAddressSymbol),
-            params.quoteAddress == address(0) ? "Native" : addressToString(params.quoteAddress),
-            params.baseAddress == address(0) ? "Native" : addressToString(params.baseAddress),
+            escapeSpecialCharacters(params.baseCurrencySymbol),
+            params.quoteCurrency == address(0) ? "Native" : addressToString(params.quoteCurrency),
+            params.baseCurrency == address(0) ? "Native" : addressToString(params.baseCurrency),
             params.hooks == address(0) ? "No Hook" : addressToString(params.hooks),
             feeToPercentString(params.fee)
         );
@@ -108,56 +108,56 @@ library Descriptor {
     }
 
     /// @notice Generates the first part of the description for a Uniswap v4 NFT
-    /// @param quoteAddressSymbol The symbol of the quote address
-    /// @param baseAddressSymbol The symbol of the base address
+    /// @param quoteCurrencySymbol The symbol of the quote currency
+    /// @param baseCurrencySymbol The symbol of the base currency
     /// @param poolManager The address of the pool manager
     /// @return The first part of the description
     function generateDescriptionPartOne(
-        string memory quoteAddressSymbol,
-        string memory baseAddressSymbol,
+        string memory quoteCurrencySymbol,
+        string memory baseCurrencySymbol,
         string memory poolManager
     ) private pure returns (string memory) {
-        // displays quote address first, then base address
+        // displays quote currency first, then base currency
         return string(
             abi.encodePacked(
                 "This NFT represents a liquidity position in a Uniswap v4 ",
-                quoteAddressSymbol,
+                quoteCurrencySymbol,
                 "-",
-                baseAddressSymbol,
+                baseCurrencySymbol,
                 " pool. ",
                 "The owner of this NFT can modify or redeem the position.\\n",
                 "\\nPool Manager Address: ",
                 poolManager,
                 "\\n",
-                quoteAddressSymbol
+                quoteCurrencySymbol
             )
         );
     }
 
     /// @notice Generates the second part of the description for a Uniswap v4 NFTs
     /// @param tokenId The token ID
-    /// @param baseAddressSymbol The symbol of the base address
-    /// @param quoteAddress The address of the quote address
-    /// @param baseAddress The address of the base address
+    /// @param baseCurrencySymbol The symbol of the base address
+    /// @param quoteCurrency The address of the quote currency
+    /// @param baseCurrency The address of the base currency
     /// @param hooks The address of the hooks contract
     /// @param feeTier The fee tier of the pool
     /// @return The second part of the description
     function generateDescriptionPartTwo(
         string memory tokenId,
-        string memory baseAddressSymbol,
-        string memory quoteAddress,
-        string memory baseAddress,
+        string memory baseCurrencySymbol,
+        string memory quoteCurrency,
+        string memory baseCurrency,
         string memory hooks,
         string memory feeTier
     ) private pure returns (string memory) {
         return string(
             abi.encodePacked(
                 " Address: ",
-                quoteAddress,
+                quoteCurrency,
                 "\\n",
-                baseAddressSymbol,
+                baseCurrencySymbol,
                 " Address: ",
-                baseAddress,
+                baseCurrency,
                 "\\nHook Address: ",
                 hooks,
                 "\\nFee Tier: ",
@@ -165,7 +165,7 @@ library Descriptor {
                 "\\nToken ID: ",
                 tokenId,
                 "\\n\\n",
-                unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated."
+                unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currencies match the expected currencies, as currency symbols may be imitated."
             )
         );
     }
@@ -179,29 +179,29 @@ library Descriptor {
         pure
         returns (string memory)
     {
-        // image shows in terms of price, ie quoteAddress/baseAddress
+        // image shows in terms of price, ie quoteCurrency/baseCurrency
         return string(
             abi.encodePacked(
                 "Uniswap - ",
                 feeTier,
                 " - ",
-                escapeSpecialCharacters(params.quoteAddressSymbol),
+                escapeSpecialCharacters(params.quoteCurrencySymbol),
                 "/",
-                escapeSpecialCharacters(params.baseAddressSymbol),
+                escapeSpecialCharacters(params.baseCurrencySymbol),
                 " - ",
                 tickToDecimalString(
                     !params.flipRatio ? params.tickLower : params.tickUpper,
                     params.tickSpacing,
-                    params.baseAddressDecimals,
-                    params.quoteAddressDecimals,
+                    params.baseCurrencyDecimals,
+                    params.quoteCurrencyDecimals,
                     params.flipRatio
                 ),
                 "<>",
                 tickToDecimalString(
                     !params.flipRatio ? params.tickUpper : params.tickLower,
                     params.tickSpacing,
-                    params.baseAddressDecimals,
-                    params.quoteAddressDecimals,
+                    params.baseCurrencyDecimals,
+                    params.quoteCurrencyDecimals,
                     params.flipRatio
                 )
             )
@@ -261,15 +261,15 @@ library Descriptor {
     /// MIN or MAX are returned if tick is at the bottom or top of the price curve
     /// @param tick The tick (either tickLower or tickUpper)
     /// @param tickSpacing The tick spacing of the pool
-    /// @param baseAddressDecimals The decimals of the base address
-    /// @param quoteAddressDecimals The decimals of the quote address
+    /// @param baseCurrencyDecimals The decimals of the base address
+    /// @param quoteCurrencyDecimals The decimals of the quote address
     /// @param flipRatio True if the ratio was flipped
     /// @return The ratio value as a string
     function tickToDecimalString(
         int24 tick,
         int24 tickSpacing,
-        uint8 baseAddressDecimals,
-        uint8 quoteAddressDecimals,
+        uint8 baseCurrencyDecimals,
+        uint8 quoteCurrencyDecimals,
         bool flipRatio
     ) internal pure returns (string memory) {
         if (tick == (TickMath.MIN_TICK / tickSpacing) * tickSpacing) {
@@ -281,7 +281,7 @@ library Descriptor {
             if (flipRatio) {
                 sqrtRatioX96 = uint160(uint256(1 << 192) / sqrtRatioX96);
             }
-            return fixedPointToDecimalString(sqrtRatioX96, baseAddressDecimals, quoteAddressDecimals);
+            return fixedPointToDecimalString(sqrtRatioX96, baseCurrencyDecimals, quoteCurrencyDecimals);
         }
     }
 
@@ -305,17 +305,17 @@ library Descriptor {
 
     /// @notice Adjusts the sqrt price for different currencies with different decimals
     /// @param sqrtRatioX96 The sqrt price at a specific tick
-    /// @param baseAddressDecimals The decimals of the base address
-    /// @param quoteAddressDecimals The decimals of the quote address
+    /// @param baseCurrencyDecimals The decimals of the base address
+    /// @param quoteCurrencyDecimals The decimals of the quote address
     /// @return adjustedSqrtRatioX96 The adjusted sqrt price
-    function adjustForDecimalPrecision(uint160 sqrtRatioX96, uint8 baseAddressDecimals, uint8 quoteAddressDecimals)
+    function adjustForDecimalPrecision(uint160 sqrtRatioX96, uint8 baseCurrencyDecimals, uint8 quoteCurrencyDecimals)
         private
         pure
         returns (uint256 adjustedSqrtRatioX96)
     {
-        uint256 difference = abs(int256(uint256(baseAddressDecimals)) - (int256(uint256(quoteAddressDecimals))));
+        uint256 difference = abs(int256(uint256(baseCurrencyDecimals)) - (int256(uint256(quoteCurrencyDecimals))));
         if (difference > 0 && difference <= 18) {
-            if (baseAddressDecimals > quoteAddressDecimals) {
+            if (baseCurrencyDecimals > quoteCurrencyDecimals) {
                 adjustedSqrtRatioX96 = sqrtRatioX96 * (10 ** (difference / 2));
                 if (difference % 2 == 1) {
                     adjustedSqrtRatioX96 = FullMath.mulDiv(adjustedSqrtRatioX96, sqrt10X128, 1 << 128);
@@ -338,13 +338,13 @@ library Descriptor {
         return uint256(x >= 0 ? x : -x);
     }
 
-    function fixedPointToDecimalString(uint160 sqrtRatioX96, uint8 baseAddressDecimals, uint8 quoteAddressDecimals)
+    function fixedPointToDecimalString(uint160 sqrtRatioX96, uint8 baseCurrencyDecimals, uint8 quoteCurrencyDecimals)
         internal
         pure
         returns (string memory)
     {
         uint256 adjustedSqrtRatioX96 =
-            adjustForDecimalPrecision(sqrtRatioX96, baseAddressDecimals, quoteAddressDecimals);
+            adjustForDecimalPrecision(sqrtRatioX96, baseCurrencyDecimals, quoteCurrencyDecimals);
         uint256 value = FullMath.mulDiv(adjustedSqrtRatioX96, adjustedSqrtRatioX96, 1 << 64);
 
         bool priceBelow1 = adjustedSqrtRatioX96 < 2 ** 96;
@@ -461,27 +461,27 @@ library Descriptor {
     /// @return svg The SVG image as a string
     function generateSVGImage(ConstructTokenURIParams memory params) internal pure returns (string memory svg) {
         SVG.SVGParams memory svgParams = SVG.SVGParams({
-            quoteAddress: addressToString(params.quoteAddress),
-            baseAddress: addressToString(params.baseAddress),
+            quoteCurrency: addressToString(params.quoteCurrency),
+            baseCurrency: addressToString(params.baseCurrency),
             hooks: params.hooks,
-            quoteAddressSymbol: params.quoteAddressSymbol,
-            baseAddressSymbol: params.baseAddressSymbol,
+            quoteCurrencySymbol: params.quoteCurrencySymbol,
+            baseCurrencySymbol: params.baseCurrencySymbol,
             feeTier: feeToPercentString(params.fee),
             tickLower: params.tickLower,
             tickUpper: params.tickUpper,
             tickSpacing: params.tickSpacing,
             overRange: overRange(params.tickLower, params.tickUpper, params.tickCurrent),
             tokenId: params.tokenId,
-            color0: addressToColorHex(uint256(uint160(params.quoteAddress)), 136),
-            color1: addressToColorHex(uint256(uint160(params.baseAddress)), 136),
-            color2: addressToColorHex(uint256(uint160(params.quoteAddress)), 0),
-            color3: addressToColorHex(uint256(uint160(params.baseAddress)), 0),
-            x1: scale(getCircleCoord(uint256(uint160(params.quoteAddress)), 16, params.tokenId), 0, 255, 16, 274),
-            y1: scale(getCircleCoord(uint256(uint160(params.baseAddress)), 16, params.tokenId), 0, 255, 100, 484),
-            x2: scale(getCircleCoord(uint256(uint160(params.quoteAddress)), 32, params.tokenId), 0, 255, 16, 274),
-            y2: scale(getCircleCoord(uint256(uint160(params.baseAddress)), 32, params.tokenId), 0, 255, 100, 484),
-            x3: scale(getCircleCoord(uint256(uint160(params.quoteAddress)), 48, params.tokenId), 0, 255, 16, 274),
-            y3: scale(getCircleCoord(uint256(uint160(params.baseAddress)), 48, params.tokenId), 0, 255, 100, 484)
+            color0: currencyToColorHex(uint256(uint160(params.quoteCurrency)), 136),
+            color1: currencyToColorHex(uint256(uint160(params.baseCurrency)), 136),
+            color2: currencyToColorHex(uint256(uint160(params.quoteCurrency)), 0),
+            color3: currencyToColorHex(uint256(uint160(params.baseCurrency)), 0),
+            x1: scale(getCircleCoord(uint256(uint160(params.quoteCurrency)), 16, params.tokenId), 0, 255, 16, 274),
+            y1: scale(getCircleCoord(uint256(uint160(params.baseCurrency)), 16, params.tokenId), 0, 255, 100, 484),
+            x2: scale(getCircleCoord(uint256(uint160(params.quoteCurrency)), 32, params.tokenId), 0, 255, 16, 274),
+            y2: scale(getCircleCoord(uint256(uint160(params.baseCurrency)), 32, params.tokenId), 0, 255, 100, 484),
+            x3: scale(getCircleCoord(uint256(uint160(params.quoteCurrency)), 48, params.tokenId), 0, 255, 16, 274),
+            y3: scale(getCircleCoord(uint256(uint160(params.baseCurrency)), 48, params.tokenId), 0, 255, 100, 484)
         });
 
         return SVG.generateSVG(svgParams);
@@ -514,8 +514,8 @@ library Descriptor {
         return ((n - inMn) * (outMx - outMn) / (inMx - inMn) + outMn).toString();
     }
 
-    function addressToColorHex(uint256 addr, uint256 offset) internal pure returns (string memory str) {
-        return string((addr >> offset).toHexStringNoPrefix(3));
+    function currencyToColorHex(uint256 currency, uint256 offset) internal pure returns (string memory str) {
+        return string((currency >> offset).toHexStringNoPrefix(3));
     }
 
     function getCircleCoord(uint256 addr, uint256 offset, uint256 tokenId) internal pure returns (uint256) {

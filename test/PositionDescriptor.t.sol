@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {PositionDescriptor} from "../src/PositionDescriptor.sol";
-import {AddressRatioSortOrder} from "../src/libraries/AddressRatioSortOrder.sol";
+import {CurrencyRatioSortOrder} from "../src/libraries/CurrencyRatioSortOrder.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -13,7 +13,7 @@ import {ActionConstants} from "../src/libraries/ActionConstants.sol";
 import {Base64} from "./base64.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {SafeAddressMetadata} from "../src/libraries/SafeAddressMetadata.sol";
+import {SafeCurrencyMetadata} from "../src/libraries/SafeCurrencyMetadata.sol";
 import {AddressStringUtil} from "../src/libraries/AddressStringUtil.sol";
 import {Descriptor} from "../src/libraries/Descriptor.sol";
 
@@ -49,30 +49,30 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
     function test_setup_succeeds() public view {
         assertEq(address(positionDescriptor.poolManager()), address(manager));
         assertEq(positionDescriptor.wrappedNative(), WETH9);
-        assertEq(positionDescriptor.nativeAddressLabel(), nativeCurrencyLabel);
+        assertEq(positionDescriptor.nativeCurrencyLabel(), nativeCurrencyLabel);
     }
 
-    function test_addressRatioPriority_mainnet_succeeds() public {
+    function test_currencyRatioPriority_mainnet_succeeds() public {
         vm.chainId(1);
-        assertEq(positionDescriptor.addressRatioPriority(WETH9), AddressRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.addressRatioPriority(address(0)), AddressRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.addressRatioPriority(USDC), AddressRatioSortOrder.NUMERATOR_MOST);
-        assertEq(positionDescriptor.addressRatioPriority(USDT), AddressRatioSortOrder.NUMERATOR_MORE);
-        assertEq(positionDescriptor.addressRatioPriority(DAI), AddressRatioSortOrder.NUMERATOR);
-        assertEq(positionDescriptor.addressRatioPriority(TBTC), AddressRatioSortOrder.DENOMINATOR_MORE);
-        assertEq(positionDescriptor.addressRatioPriority(WBTC), AddressRatioSortOrder.DENOMINATOR_MOST);
-        assertEq(positionDescriptor.addressRatioPriority(makeAddr("ALICE")), 0);
+        assertEq(positionDescriptor.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR);
+        assertEq(positionDescriptor.currencyRatioPriority(address(0)), CurrencyRatioSortOrder.DENOMINATOR);
+        assertEq(positionDescriptor.currencyRatioPriority(USDC), CurrencyRatioSortOrder.NUMERATOR_MOST);
+        assertEq(positionDescriptor.currencyRatioPriority(USDT), CurrencyRatioSortOrder.NUMERATOR_MORE);
+        assertEq(positionDescriptor.currencyRatioPriority(DAI), CurrencyRatioSortOrder.NUMERATOR);
+        assertEq(positionDescriptor.currencyRatioPriority(TBTC), CurrencyRatioSortOrder.DENOMINATOR_MORE);
+        assertEq(positionDescriptor.currencyRatioPriority(WBTC), CurrencyRatioSortOrder.DENOMINATOR_MOST);
+        assertEq(positionDescriptor.currencyRatioPriority(makeAddr("ALICE")), 0);
     }
 
-    function test_addressRatioPriority_notMainnet_succeeds() public {
-        assertEq(positionDescriptor.addressRatioPriority(WETH9), AddressRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.addressRatioPriority(address(0)), AddressRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.addressRatioPriority(USDC), 0);
-        assertEq(positionDescriptor.addressRatioPriority(USDT), 0);
-        assertEq(positionDescriptor.addressRatioPriority(DAI), 0);
-        assertEq(positionDescriptor.addressRatioPriority(TBTC), 0);
-        assertEq(positionDescriptor.addressRatioPriority(WBTC), 0);
-        assertEq(positionDescriptor.addressRatioPriority(makeAddr("ALICE")), 0);
+    function test_currencyRatioPriority_notMainnet_succeeds() public {
+        assertEq(positionDescriptor.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR);
+        assertEq(positionDescriptor.currencyRatioPriority(address(0)), CurrencyRatioSortOrder.DENOMINATOR);
+        assertEq(positionDescriptor.currencyRatioPriority(USDC), 0);
+        assertEq(positionDescriptor.currencyRatioPriority(USDT), 0);
+        assertEq(positionDescriptor.currencyRatioPriority(DAI), 0);
+        assertEq(positionDescriptor.currencyRatioPriority(TBTC), 0);
+        assertEq(positionDescriptor.currencyRatioPriority(WBTC), 0);
+        assertEq(positionDescriptor.currencyRatioPriority(makeAddr("ALICE")), 0);
     }
 
     function test_flipRatio_succeeds() public {
@@ -127,8 +127,8 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         // quote is currency1, base is currency0
         assertFalse(positionDescriptor.flipRatio(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1)));
 
-        string memory symbol0 = SafeAddressMetadata.addressSymbol(Currency.unwrap(currency0), nativeCurrencyLabel);
-        string memory symbol1 = SafeAddressMetadata.addressSymbol(Currency.unwrap(currency1), nativeCurrencyLabel);
+        string memory symbol0 = SafeCurrencyMetadata.currencySymbol(Currency.unwrap(currency0), nativeCurrencyLabel);
+        string memory symbol1 = SafeCurrencyMetadata.currencySymbol(Currency.unwrap(currency1), nativeCurrencyLabel);
         string memory managerAddress = toHexString(address(manager));
         string memory currency0Address = toHexString(Currency.unwrap(currency0));
         string memory currency1Address = toHexString(Currency.unwrap(currency1));
@@ -140,15 +140,15 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         string memory tickToDecimal0 = Descriptor.tickToDecimalString(
             tickLower,
             key.tickSpacing,
-            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)),
-            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)),
+            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
+            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
             false
         );
         string memory tickToDecimal1 = Descriptor.tickToDecimalString(
             tickUpper,
             key.tickSpacing,
-            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)),
-            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)),
+            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
+            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
             false
         );
 
@@ -185,7 +185,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
                     "\nToken ID: ",
                     id,
                     "\n\n",
-                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated."
+                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currencies match the expected currencies, as currency symbols may be imitated."
                 )
             )
         );
@@ -237,9 +237,9 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         );
 
         string memory symbol0 =
-            SafeAddressMetadata.addressSymbol(Currency.unwrap(nativeKey.currency0), nativeCurrencyLabel);
+            SafeCurrencyMetadata.currencySymbol(Currency.unwrap(nativeKey.currency0), nativeCurrencyLabel);
         string memory symbol1 =
-            SafeAddressMetadata.addressSymbol(Currency.unwrap(nativeKey.currency1), nativeCurrencyLabel);
+            SafeCurrencyMetadata.currencySymbol(Currency.unwrap(nativeKey.currency1), nativeCurrencyLabel);
         string memory managerAddress = toHexString(address(manager));
         string memory currency0Address = Currency.unwrap(nativeKey.currency0) == address(0)
             ? "Native"
@@ -255,15 +255,15 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
         string memory tickToDecimal0 = Descriptor.tickToDecimalString(
             tickLower,
             nativeKey.tickSpacing,
-            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)),
-            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)),
+            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
+            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
             false
         );
         string memory tickToDecimal1 = Descriptor.tickToDecimalString(
             tickUpper,
             nativeKey.tickSpacing,
-            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency0)),
-            SafeAddressMetadata.addressDecimals(Currency.unwrap(currency1)),
+            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
+            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
             false
         );
 
@@ -300,7 +300,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
                     "\nToken ID: ",
                     id,
                     "\n\n",
-                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure addresses match the expected addresses, as symbols may be imitated."
+                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currencies match the expected currencies, as currency symbols may be imitated."
                 )
             )
         );
