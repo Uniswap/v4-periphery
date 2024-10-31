@@ -136,7 +136,7 @@ library Descriptor {
 
     /// @notice Generates the second part of the description for a Uniswap v4 NFTs
     /// @param tokenId The token ID
-    /// @param baseCurrencySymbol The symbol of the base address
+    /// @param baseCurrencySymbol The symbol of the base currency
     /// @param quoteCurrency The address of the quote currency
     /// @param baseCurrency The address of the base currency
     /// @param hooks The address of the hooks contract
@@ -165,7 +165,7 @@ library Descriptor {
                 "\\nToken ID: ",
                 tokenId,
                 "\\n\\n",
-                unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currencies match the expected currencies, as currency symbols may be imitated."
+                unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currency addresses match the expected currencies, as currency symbols may be imitated."
             )
         );
     }
@@ -261,8 +261,8 @@ library Descriptor {
     /// MIN or MAX are returned if tick is at the bottom or top of the price curve
     /// @param tick The tick (either tickLower or tickUpper)
     /// @param tickSpacing The tick spacing of the pool
-    /// @param baseCurrencyDecimals The decimals of the base address
-    /// @param quoteCurrencyDecimals The decimals of the quote address
+    /// @param baseCurrencyDecimals The decimals of the base currency
+    /// @param quoteCurrencyDecimals The decimals of the quote currency
     /// @param flipRatio True if the ratio was flipped
     /// @return The ratio value as a string
     function tickToDecimalString(
@@ -305,8 +305,8 @@ library Descriptor {
 
     /// @notice Adjusts the sqrt price for different currencies with different decimals
     /// @param sqrtRatioX96 The sqrt price at a specific tick
-    /// @param baseCurrencyDecimals The decimals of the base address
-    /// @param quoteCurrencyDecimals The decimals of the quote address
+    /// @param baseCurrencyDecimals The decimals of the base currency
+    /// @param quoteCurrencyDecimals The decimals of the quote currency
     /// @return adjustedSqrtRatioX96 The adjusted sqrt price
     function adjustForDecimalPrecision(uint160 sqrtRatioX96, uint8 baseCurrencyDecimals, uint8 quoteCurrencyDecimals)
         private
@@ -518,11 +518,11 @@ library Descriptor {
         return string((currency >> offset).toHexStringNoPrefix(3));
     }
 
-    function getCircleCoord(uint256 addr, uint256 offset, uint256 tokenId) internal pure returns (uint256) {
-        return (sliceAddressHex(addr, offset) * tokenId) % 255;
+    function getCircleCoord(uint256 currency, uint256 offset, uint256 tokenId) internal pure returns (uint256) {
+        return (sliceCurrencyHex(currency, offset) * tokenId) % 255;
     }
 
-    function sliceAddressHex(uint256 addr, uint256 offset) internal pure returns (uint256) {
-        return uint256(uint8(addr >> offset));
+    function sliceCurrencyHex(uint256 currency, uint256 offset) internal pure returns (uint256) {
+        return uint256(uint8(currency >> offset));
     }
 }

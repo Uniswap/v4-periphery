@@ -10,7 +10,7 @@ import {AddressStringUtil} from "./AddressStringUtil.sol";
 library SafeCurrencyMetadata {
     uint8 constant MAX_SYMBOL_LENGTH = 12;
 
-    /// @notice attempts to extract the token symbol. if it does not implement symbol, returns a symbol derived from the currency address
+    /// @notice attempts to extract the currency symbol. if it does not implement symbol, returns a symbol derived from the address
     /// @param currency The currency address
     /// @param nativeLabel The native label
     /// @return the currency symbol
@@ -21,7 +21,7 @@ library SafeCurrencyMetadata {
         string memory symbol = callAndParseStringReturn(currency, IERC20Metadata.symbol.selector);
         if (bytes(symbol).length == 0) {
             // fallback to 6 uppercase hex of address
-            return currencyToSymbol(currency);
+            return addressToSymbol(currency);
         }
         if (bytes(symbol).length > MAX_SYMBOL_LENGTH) {
             return truncateSymbol(symbol);
@@ -67,18 +67,18 @@ library SafeCurrencyMetadata {
     }
 
     /// @notice produces a symbol from the address - the first 6 hex of the address string in upper case
-    /// @param currency The currency address
+    /// @param currencyAddress the address of the currency
     /// @return the symbol
-    function currencyToSymbol(address currency) private pure returns (string memory) {
-        return AddressStringUtil.toAsciiString(currency, 6);
+    function addressToSymbol(address currencyAddress) private pure returns (string memory) {
+        return AddressStringUtil.toAsciiString(currencyAddress, 6);
     }
 
     /// @notice calls an external view contract method that returns a symbol, and parses the output into a string
-    /// @param currency The currency address
+    /// @param currencyAddress the address of the currency
     /// @param selector the selector of the symbol method
     /// @return the symbol
-    function callAndParseStringReturn(address currency, bytes4 selector) private view returns (string memory) {
-        (bool success, bytes memory data) = currency.staticcall(abi.encodeWithSelector(selector));
+    function callAndParseStringReturn(address currencyAddress, bytes4 selector) private view returns (string memory) {
+        (bool success, bytes memory data) = currencyAddress.staticcall(abi.encodeWithSelector(selector));
         // if not implemented, return empty string
         if (!success) {
             return "";

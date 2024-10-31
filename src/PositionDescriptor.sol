@@ -57,7 +57,7 @@ contract PositionDescriptor is IPositionDescriptor {
         address currency0 = Currency.unwrap(poolKey.currency0);
         address currency1 = Currency.unwrap(poolKey.currency1);
 
-        // If possible, flip currencies to get the larger one as the base, so that the price (quote/base) is more readable
+        // If possible, flip currencies to get the larger currency as the base, so that the price (quote/base) is more readable
         // flip if currency0 priority is greater than currency1 priority
         bool _flipRatio = flipRatio(currency0, currency1);
 
@@ -87,36 +87,36 @@ contract PositionDescriptor is IPositionDescriptor {
         );
     }
 
-    /// @notice Returns true if address0 has higher priority than address1
-    /// @param address0 The first address
-    /// @param address1 The second address
-    /// @return flipRatio True if address0 has higher priority than address1
-    function flipRatio(address address0, address address1) public view returns (bool) {
-        return currencyRatioPriority(address0) > currencyRatioPriority(address1);
+    /// @notice Returns true if currency0 has higher priority than currency1
+    /// @param currency0 The first currency address
+    /// @param currency1 The second currency address
+    /// @return flipRatio True if currency0 has higher priority than currency1
+    function flipRatio(address currency0, address currency1) public view returns (bool) {
+        return currencyRatioPriority(currency0) > currencyRatioPriority(currency1);
     }
 
-    /// @notice Returns the priority of an address.
-    /// For certain addresses on mainnet, the smaller the address, the higher the priority
-    /// @param addr The address
-    /// @return priority The priority of the address
-    function currencyRatioPriority(address addr) public view returns (int256) {
-        // Addresses in order of priority on mainnet: USDC, USDT, DAI, (ETH, WETH), TBTC, WBTC
+    /// @notice Returns the priority of a currency.
+    /// For certain currencies on mainnet, the smaller the currency, the higher the priority
+    /// @param currency The currency address
+    /// @return priority The priority of the currency
+    function currencyRatioPriority(address currency) public view returns (int256) {
+        // Currencies in order of priority on mainnet: USDC, USDT, DAI, (ETH, WETH), TBTC, WBTC
         // wrapped native is different address on different chains. passed in constructor
 
         // native address
-        if (addr == address(0) || addr == wrappedNative) {
+        if (currency == address(0) || currency == wrappedNative) {
             return CurrencyRatioSortOrder.DENOMINATOR;
         }
         if (block.chainid == 1) {
-            if (addr == USDC) {
+            if (currency == USDC) {
                 return CurrencyRatioSortOrder.NUMERATOR_MOST;
-            } else if (addr == USDT) {
+            } else if (currency == USDT) {
                 return CurrencyRatioSortOrder.NUMERATOR_MORE;
-            } else if (addr == DAI) {
+            } else if (currency == DAI) {
                 return CurrencyRatioSortOrder.NUMERATOR;
-            } else if (addr == TBTC) {
+            } else if (currency == TBTC) {
                 return CurrencyRatioSortOrder.DENOMINATOR_MORE;
-            } else if (addr == WBTC) {
+            } else if (currency == WBTC) {
                 return CurrencyRatioSortOrder.DENOMINATOR_MOST;
             } else {
                 return 0;

@@ -185,7 +185,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
                     "\nToken ID: ",
                     id,
                     "\n\n",
-                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currencies match the expected currencies, as currency symbols may be imitated."
+                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currency addresses match the expected currencies, as currency symbols may be imitated."
                 )
             )
         );
@@ -300,7 +300,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
                     "\nToken ID: ",
                     id,
                     "\n\n",
-                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currencies match the expected currencies, as currency symbols may be imitated."
+                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currency addresses match the expected currencies, as currency symbols may be imitated."
                 )
             )
         );

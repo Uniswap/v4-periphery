@@ -157,7 +157,7 @@ library SVG {
         );
     }
 
-    /// @notice Generate the SVG for the moving border text displaying the quote and base currencies with their symbols
+    /// @notice Generate the SVG for the moving border text displaying the quote and base currency addresses with their symbols
     /// @param quoteCurrency The quote currency
     /// @param baseCurrency The base currency
     /// @param quoteCurrencySymbol The quote currency symbol
