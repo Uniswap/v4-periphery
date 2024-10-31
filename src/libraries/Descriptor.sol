@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
@@ -23,8 +22,8 @@ library Descriptor {
 
     struct ConstructTokenURIParams {
         uint256 tokenId;
-        Currency quoteCurrency;
-        Currency baseCurrency;
+        address quoteCurrency;
+        address baseCurrency;
         string quoteCurrencySymbol;
         string baseCurrencySymbol;
         uint8 quoteCurrencyDecimals;
@@ -52,8 +51,8 @@ library Descriptor {
         string memory descriptionPartTwo = generateDescriptionPartTwo(
             params.tokenId.toString(),
             escapeSpecialCharacters(params.baseCurrencySymbol),
-            addressToString(Currency.unwrap(params.quoteCurrency)),
-            addressToString(Currency.unwrap(params.baseCurrency)),
+            params.quoteCurrency == address(0) ? "Native" : addressToString(params.quoteCurrency),
+            params.baseCurrency == address(0) ? "Native" : addressToString(params.baseCurrency),
             params.hooks == address(0) ? "No Hook" : addressToString(params.hooks),
             feeToPercentString(params.fee)
         );
@@ -462,8 +461,8 @@ library Descriptor {
     /// @return svg The SVG image as a string
     function generateSVGImage(ConstructTokenURIParams memory params) internal pure returns (string memory svg) {
         SVG.SVGParams memory svgParams = SVG.SVGParams({
-            quoteCurrency: addressToString(Currency.unwrap(params.quoteCurrency)),
-            baseCurrency: addressToString(Currency.unwrap(params.baseCurrency)),
+            quoteCurrency: addressToString(params.quoteCurrency),
+            baseCurrency: addressToString(params.baseCurrency),
             hooks: params.hooks,
             quoteCurrencySymbol: params.quoteCurrencySymbol,
             baseCurrencySymbol: params.baseCurrencySymbol,
@@ -473,16 +472,16 @@ library Descriptor {
             tickSpacing: params.tickSpacing,
             overRange: overRange(params.tickLower, params.tickUpper, params.tickCurrent),
             tokenId: params.tokenId,
-            color0: currencyToColorHex(params.quoteCurrency.toId(), 136),
-            color1: currencyToColorHex(params.baseCurrency.toId(), 136),
-            color2: currencyToColorHex(params.quoteCurrency.toId(), 0),
-            color3: currencyToColorHex(params.baseCurrency.toId(), 0),
-            x1: scale(getCircleCoord(params.quoteCurrency.toId(), 16, params.tokenId), 0, 255, 16, 274),
-            y1: scale(getCircleCoord(params.baseCurrency.toId(), 16, params.tokenId), 0, 255, 100, 484),
-            x2: scale(getCircleCoord(params.quoteCurrency.toId(), 32, params.tokenId), 0, 255, 16, 274),
-            y2: scale(getCircleCoord(params.baseCurrency.toId(), 32, params.tokenId), 0, 255, 100, 484),
-            x3: scale(getCircleCoord(params.quoteCurrency.toId(), 48, params.tokenId), 0, 255, 16, 274),
-            y3: scale(getCircleCoord(params.baseCurrency.toId(), 48, params.tokenId), 0, 255, 100, 484)
+            color0: currencyToColorHex(uint256(uint160(params.quoteCurrency)), 136),
+            color1: currencyToColorHex(uint256(uint160(params.baseCurrency)), 136),
+            color2: currencyToColorHex(uint256(uint160(params.quoteCurrency)), 0),
+            color3: currencyToColorHex(uint256(uint160(params.baseCurrency)), 0),
+            x1: scale(getCircleCoord(uint256(uint160(params.quoteCurrency)), 16, params.tokenId), 0, 255, 16, 274),
+            y1: scale(getCircleCoord(uint256(uint160(params.baseCurrency)), 16, params.tokenId), 0, 255, 100, 484),
+            x2: scale(getCircleCoord(uint256(uint160(params.quoteCurrency)), 32, params.tokenId), 0, 255, 16, 274),
+            y2: scale(getCircleCoord(uint256(uint160(params.baseCurrency)), 32, params.tokenId), 0, 255, 100, 484),
+            x3: scale(getCircleCoord(uint256(uint160(params.quoteCurrency)), 48, params.tokenId), 0, 255, 16, 274),
+            y3: scale(getCircleCoord(uint256(uint160(params.baseCurrency)), 48, params.tokenId), 0, 255, 100, 484)
         });
 
         return SVG.generateSVG(svgParams);
