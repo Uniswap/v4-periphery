@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -511,9 +512,11 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                INotifier.Wrap__SubscriptionReverted.selector,
+                CustomRevert.WrappedError.selector,
                 address(revertSubscriber),
-                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifySubscribe")
+                ISubscriber.notifySubscribe.selector,
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifySubscribe"),
+                abi.encodeWithSelector(INotifier.SubscriptionReverted.selector)
             )
         );
         lpm.subscribe(tokenId, address(revertSubscriber), ZERO_BYTES);
@@ -541,9 +544,11 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = plan.finalizeModifyLiquidityWithSettlePair(config.poolKey);
         vm.expectRevert(
             abi.encodeWithSelector(
-                INotifier.Wrap__ModifyLiquidityNotificationReverted.selector,
+                CustomRevert.WrappedError.selector,
                 address(revertSubscriber),
-                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyModifyLiquidity")
+                ISubscriber.notifyModifyLiquidity.selector,
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyModifyLiquidity"),
+                abi.encodeWithSelector(INotifier.ModifyLiquidityNotificationReverted.selector)
             )
         );
         lpm.modifyLiquidities(calls, _deadline);
@@ -562,9 +567,11 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                INotifier.Wrap__TransferNotificationReverted.selector,
+                CustomRevert.WrappedError.selector,
                 address(revertSubscriber),
-                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer")
+                ISubscriber.notifyTransfer.selector,
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer"),
+                abi.encodeWithSelector(INotifier.TransferNotificationReverted.selector)
             )
         );
         lpm.transferFrom(alice, bob, tokenId);
@@ -583,9 +590,11 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                INotifier.Wrap__TransferNotificationReverted.selector,
+                CustomRevert.WrappedError.selector,
                 address(revertSubscriber),
-                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer")
+                ISubscriber.notifyTransfer.selector,
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer"),
+                abi.encodeWithSelector(INotifier.TransferNotificationReverted.selector)
             )
         );
         lpm.safeTransferFrom(alice, bob, tokenId);
@@ -604,9 +613,11 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                INotifier.Wrap__TransferNotificationReverted.selector,
+                CustomRevert.WrappedError.selector,
                 address(revertSubscriber),
-                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer")
+                ISubscriber.notifyTransfer.selector,
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer"),
+                abi.encodeWithSelector(INotifier.TransferNotificationReverted.selector)
             )
         );
         lpm.safeTransferFrom(alice, bob, tokenId, "");
@@ -679,9 +690,11 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         // should revert since the pool manager is unlocked
         vm.expectRevert(
             abi.encodeWithSelector(
-                Hooks.Wrap__FailedHookCall.selector,
+                CustomRevert.WrappedError.selector,
                 address(reenterHook),
-                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector)
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
         lpm.modifyLiquidities(actions, _deadline);
@@ -700,9 +713,11 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         // should revert since the pool manager is unlocked
         vm.expectRevert(
             abi.encodeWithSelector(
-                Hooks.Wrap__FailedHookCall.selector,
+                CustomRevert.WrappedError.selector,
                 address(reenterHook),
-                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector)
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
         lpm.modifyLiquidities(actions, _deadline);
@@ -721,9 +736,11 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         // should revert since the pool manager is unlocked
         vm.expectRevert(
             abi.encodeWithSelector(
-                Hooks.Wrap__FailedHookCall.selector,
+                CustomRevert.WrappedError.selector,
                 address(reenterHook),
-                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector)
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
         lpm.modifyLiquidities(actions, _deadline);

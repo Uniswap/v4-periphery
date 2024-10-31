@@ -12,11 +12,11 @@ interface INotifier {
     /// @notice Thrown when a user specifies a gas limit too low to avoid valid unsubscribe notifications
     error GasLimitTooLow();
     /// @notice Wraps the revert message of the subscriber contract on a reverting subscription
-    error Wrap__SubscriptionReverted(address subscriber, bytes reason);
+    error SubscriptionReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting modify liquidity notification
-    error Wrap__ModifyLiquidityNotificationReverted(address subscriber, bytes reason);
+    error ModifyLiquidityNotificationReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting transfer notification
-    error Wrap__TransferNotificationReverted(address subscriber, bytes reason);
+    error TransferNotificationReverted(address subscriber, bytes reason);
     /// @notice Thrown when a tokenId already has a subscriber
     error AlreadySubscribed(uint256 tokenId, address subscriber);
 
