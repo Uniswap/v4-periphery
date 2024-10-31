@@ -57,7 +57,7 @@ contract PositionDescriptor is IPositionDescriptor {
         address currency0 = Currency.unwrap(poolKey.currency0);
         address currency1 = Currency.unwrap(poolKey.currency1);
 
-        // If possible, flip currencies to get the larger currency as the base, so that the price (quote/base) is more readable
+        // If possible, flip currencies to get the larger currency as the base currency, so that the price (quote/base) is more readable
         // flip if currency0 priority is greater than currency1 priority
         bool _flipRatio = flipRatio(currency0, currency1);
 
@@ -103,7 +103,7 @@ contract PositionDescriptor is IPositionDescriptor {
         // Currencies in order of priority on mainnet: USDC, USDT, DAI, (ETH, WETH), TBTC, WBTC
         // wrapped native is different address on different chains. passed in constructor
 
-        // native address
+        // native currency
         if (currency == address(0) || currency == wrappedNative) {
             return CurrencyRatioSortOrder.DENOMINATOR;
         }
