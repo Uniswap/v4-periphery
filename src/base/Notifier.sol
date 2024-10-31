@@ -9,8 +9,7 @@ import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
-    using CustomRevert for address;
-    using CustomRevert for bytes4;
+    using CustomRevert for *;
 
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
 
