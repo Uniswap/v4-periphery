@@ -11,7 +11,7 @@ interface IUniswapV4DeployerCompetition {
     error CompetitionOver(uint256 currentTime, uint256 deadline);
     error NotAllowedToDeploy(address sender, address deployer);
     error WorseAddress(address newAddress, address bestAddress, uint256 newScore, uint256 bestScore);
-    error InvalidTokenId(uint256 tokenId);
+    error InvalidSender(bytes32 salt, address sender);
 
     /// @notice Updates the best address if the new address has a better vanity score
     /// @param salt The salt to use to compute the new address with CREATE2

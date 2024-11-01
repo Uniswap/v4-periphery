@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {console2} from "forge-std/console2.sol";
-
 /// @title VanityAddressLib
 /// @notice A library to score addresses based on their vanity
 library VanityAddressLib {
