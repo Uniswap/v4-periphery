@@ -179,4 +179,8 @@ contract MockCalldataDecoder {
             hookData: hookData
         });
     }
+
+    function decodeUint256(bytes calldata params) external pure returns (uint256) {
+        return params.decodeUint256();
+    }
 }

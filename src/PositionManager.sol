@@ -4,7 +4,7 @@ pragma solidity 0.8.26;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
@@ -28,6 +28,8 @@ import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {SlippageCheck} from "./libraries/SlippageCheck.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
+import {NativeWrapper} from "./base/NativeWrapper.sol";
+import {IWETH9} from "./interfaces/external/IWETH9.sol";
 
 //                                           444444444
 //                                444444444444      444444
@@ -104,7 +106,8 @@ contract PositionManager is
     ReentrancyLock,
     BaseActionsRouter,
     Notifier,
-    Permit2Forwarder
+    Permit2Forwarder,
+    NativeWrapper
 {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -128,12 +131,14 @@ contract PositionManager is
         IPoolManager _poolManager,
         IAllowanceTransfer _permit2,
         uint256 _unsubscribeGasLimit,
-        IPositionDescriptor _tokenDescriptor
+        IPositionDescriptor _tokenDescriptor,
+        IWETH9 _weth9
     )
         BaseActionsRouter(_poolManager)
         Permit2Forwarder(_permit2)
         ERC721Permit_v4("Uniswap v4 Positions NFT", "UNI-V4-POSM")
         Notifier(_unsubscribeGasLimit)
+        NativeWrapper(_weth9)
     {
         tokenDescriptor = _tokenDescriptor;
     }
@@ -152,6 +157,12 @@ contract PositionManager is
     /// msgSender() should ONLY be used if this is called from within the unlockCallback, unless the codepath has reentrancy protection
     modifier onlyIfApproved(address caller, uint256 tokenId) override {
         if (!_isApprovedOrOwner(caller, tokenId)) revert NotApproved(caller);
+        _;
+    }
+
+    /// @notice Enforces that the PoolManager is locked.
+    modifier onlyIfPoolManagerLocked() override {
+        if (poolManager.isUnlocked()) revert PoolManagerMustBeLocked();
         _;
     }
 
@@ -260,6 +271,14 @@ contract PositionManager is
             } else if (action == Actions.SWEEP) {
                 (Currency currency, address to) = params.decodeCurrencyAndAddress();
                 _sweep(currency, _mapRecipient(to));
+                return;
+            } else if (action == Actions.WRAP) {
+                uint256 amount = params.decodeUint256();
+                _wrap(_mapWrapUnwrapAmount(CurrencyLibrary.ADDRESS_ZERO, amount, Currency.wrap(address(WETH9))));
+                return;
+            } else if (action == Actions.UNWRAP) {
+                uint256 amount = params.decodeUint256();
+                _unwrap(_mapWrapUnwrapAmount(Currency.wrap(address(WETH9)), amount, CurrencyLibrary.ADDRESS_ZERO));
                 return;
             }
         }
@@ -428,7 +447,7 @@ contract PositionManager is
         if (currencyDelta < 0) {
             // Casting is safe due to limits on the total supply of a pool
             _settle(currency, caller, uint256(-currencyDelta));
-        } else if (currencyDelta > 0) {
+        } else {
             _take(currency, caller, uint256(currencyDelta));
         }
     }
@@ -496,7 +515,8 @@ contract PositionManager is
     }
 
     /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
-    function transferFrom(address from, address to, uint256 id) public virtual override {
+    /// @dev will revert if pool manager is locked
+    function transferFrom(address from, address to, uint256 id) public virtual override onlyIfPoolManagerLocked {
         super.transferFrom(from, to, id);
         if (positionInfo[id].hasSubscriber()) _notifyTransfer(id, from, to);
     }

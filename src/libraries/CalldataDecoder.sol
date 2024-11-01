@@ -282,6 +282,13 @@ library CalldataDecoder {
         }
     }
 
+    /// @dev equivalent to: abi.decode(params, (uint256)) in calldata
+    function decodeUint256(bytes calldata params) internal pure returns (uint256 amount) {
+        assembly ("memory-safe") {
+            amount := calldataload(params.offset)
+        }
+    }
+
     /// @dev equivalent to: abi.decode(params, (Currency, uint256, bool)) in calldata
     function decodeCurrencyUint256AndBool(bytes calldata params)
         internal

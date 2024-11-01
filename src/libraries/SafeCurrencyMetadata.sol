@@ -2,41 +2,41 @@
 pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {AddressStringUtil} from "./AddressStringUtil.sol";
 
 /// @title SafeCurrencyMetadata
 /// @notice can produce symbols and decimals from inconsistent or absent ERC20 implementations
 /// @dev Reference: https://github.com/Uniswap/solidity-lib/blob/master/contracts/libraries/SafeERC20Namer.sol
 library SafeCurrencyMetadata {
-    using CurrencyLibrary for Currency;
+    uint8 constant MAX_SYMBOL_LENGTH = 12;
 
-    /// @notice attempts to extract the token symbol. if it does not implement symbol, returns a symbol derived from the address
-    /// @param currency The currency
+    /// @notice attempts to extract the currency symbol. if it does not implement symbol, returns a symbol derived from the address
+    /// @param currency The currency address
     /// @param nativeLabel The native label
-    /// @return the token symbol
-    function currencySymbol(Currency currency, string memory nativeLabel) internal view returns (string memory) {
-        if (currency.isAddressZero()) {
+    /// @return the currency symbol
+    function currencySymbol(address currency, string memory nativeLabel) internal view returns (string memory) {
+        if (currency == address(0)) {
             return nativeLabel;
         }
-        address currencyAddress = Currency.unwrap(currency);
-        string memory symbol = callAndParseStringReturn(currencyAddress, IERC20Metadata.symbol.selector);
+        string memory symbol = callAndParseStringReturn(currency, IERC20Metadata.symbol.selector);
         if (bytes(symbol).length == 0) {
             // fallback to 6 uppercase hex of address
-            return addressToSymbol(currencyAddress);
+            return addressToSymbol(currency);
+        }
+        if (bytes(symbol).length > MAX_SYMBOL_LENGTH) {
+            return truncateSymbol(symbol);
         }
         return symbol;
     }
 
     /// @notice attempts to extract the token decimals, returns 0 if not implemented or not a uint8
-    /// @param currency The currency
-    /// @return the token decimals
-    function currencyDecimals(Currency currency) internal view returns (uint8) {
-        if (currency.isAddressZero()) {
+    /// @param currency The currency address
+    /// @return the currency decimals
+    function currencyDecimals(address currency) internal view returns (uint8) {
+        if (currency == address(0)) {
             return 18;
         }
-        (bool success, bytes memory data) =
-            Currency.unwrap(currency).staticcall(abi.encodeCall(IERC20Metadata.decimals, ()));
+        (bool success, bytes memory data) = currency.staticcall(abi.encodeCall(IERC20Metadata.decimals, ()));
         if (!success) {
             return 0;
         }
@@ -91,5 +91,18 @@ library SafeCurrencyMetadata {
             return abi.decode(data, (string));
         }
         return "";
+    }
+
+    /// @notice truncates the symbol to the MAX_SYMBOL_LENGTH
+    /// @dev assumes the string is already longer than MAX_SYMBOL_LENGTH (or the same)
+    /// @param str the symbol
+    /// @return the truncated symbol
+    function truncateSymbol(string memory str) internal pure returns (string memory) {
+        bytes memory strBytes = bytes(str);
+        bytes memory truncatedBytes = new bytes(MAX_SYMBOL_LENGTH);
+        for (uint256 i = 0; i < MAX_SYMBOL_LENGTH; i++) {
+            truncatedBytes[i] = strBytes[i];
+        }
+        return string(truncatedBytes);
     }
 }

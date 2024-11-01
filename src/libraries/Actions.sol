@@ -37,7 +37,10 @@ library Actions {
     uint256 constant CLEAR_OR_TAKE = 0x20;
     uint256 constant SWEEP = 0x21;
 
+    uint256 constant WRAP = 0x22;
+    uint256 constant UNWRAP = 0x23;
+
     // minting/burning 6909s to close deltas
-    uint256 constant MINT_6909 = 0x22;
-    uint256 constant BURN_6909 = 0x23;
+    uint256 constant MINT_6909 = 0x24;
+    uint256 constant BURN_6909 = 0x25;
 }
