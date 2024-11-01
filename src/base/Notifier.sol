@@ -9,7 +9,7 @@ import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
-    using CustomRevert for bytes4;
+    using CustomRevert for *;
 
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
 
@@ -29,6 +29,9 @@ abstract contract Notifier is INotifier {
     /// @param tokenId the tokenId of the position
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
 
+    /// @notice Enforces that the PoolManager is locked.
+    modifier onlyIfPoolManagerLocked() virtual;
+
     function _setUnsubscribed(uint256 tokenId) internal virtual;
 
     function _setSubscribed(uint256 tokenId) internal virtual;
@@ -37,6 +40,7 @@ abstract contract Notifier is INotifier {
     function subscribe(uint256 tokenId, address newSubscriber, bytes calldata data)
         external
         payable
+        onlyIfPoolManagerLocked
         onlyIfApproved(msg.sender, tokenId)
     {
         ISubscriber _subscriber = subscriber[tokenId];
@@ -49,14 +53,19 @@ abstract contract Notifier is INotifier {
         bool success = _call(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, data)));
 
         if (!success) {
-            Wrap__SubscriptionReverted.selector.bubbleUpAndRevertWith(newSubscriber);
+            newSubscriber.bubbleUpAndRevertWith(ISubscriber.notifySubscribe.selector, SubscriptionReverted.selector);
         }
 
         emit Subscription(tokenId, newSubscriber);
     }
 
     /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId) external payable onlyIfApproved(msg.sender, tokenId) {
+    function unsubscribe(uint256 tokenId)
+        external
+        payable
+        onlyIfPoolManagerLocked
+        onlyIfApproved(msg.sender, tokenId)
+    {
         _unsubscribe(tokenId);
     }
 
@@ -88,7 +97,9 @@ abstract contract Notifier is INotifier {
         );
 
         if (!success) {
-            Wrap__ModifyLiquidityNotificationReverted.selector.bubbleUpAndRevertWith(address(_subscriber));
+            address(_subscriber).bubbleUpAndRevertWith(
+                ISubscriber.notifyModifyLiquidity.selector, ModifyLiquidityNotificationReverted.selector
+            );
         }
     }
 
@@ -99,7 +110,9 @@ abstract contract Notifier is INotifier {
             _call(address(_subscriber), abi.encodeCall(ISubscriber.notifyTransfer, (tokenId, previousOwner, newOwner)));
 
         if (!success) {
-            Wrap__TransferNotificationReverted.selector.bubbleUpAndRevertWith(address(_subscriber));
+            address(_subscriber).bubbleUpAndRevertWith(
+                ISubscriber.notifyTransfer.selector, TransferNotificationReverted.selector
+            );
         }
     }
 

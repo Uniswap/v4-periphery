@@ -12,11 +12,11 @@ interface INotifier {
     /// @notice Thrown when a user specifies a gas limit too low to avoid valid unsubscribe notifications
     error GasLimitTooLow();
     /// @notice Wraps the revert message of the subscriber contract on a reverting subscription
-    error Wrap__SubscriptionReverted(address subscriber, bytes reason);
+    error SubscriptionReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting modify liquidity notification
-    error Wrap__ModifyLiquidityNotificationReverted(address subscriber, bytes reason);
+    error ModifyLiquidityNotificationReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting transfer notification
-    error Wrap__TransferNotificationReverted(address subscriber, bytes reason);
+    error TransferNotificationReverted(address subscriber, bytes reason);
     /// @notice Thrown when a tokenId already has a subscriber
     error AlreadySubscribed(uint256 tokenId, address subscriber);
 
@@ -36,6 +36,7 @@ interface INotifier {
     /// @param data caller-provided data that's forwarded to the subscriber contract
     /// @dev Calling subscribe when a position is already subscribed will revert
     /// @dev payable so it can be multicalled with NATIVE related actions
+    /// @dev will revert if pool manager is locked
     function subscribe(uint256 tokenId, address newSubscriber, bytes calldata data) external payable;
 
     /// @notice Removes the subscriber from receiving notifications for a respective position
@@ -43,6 +44,7 @@ interface INotifier {
     /// @dev Callers must specify a high gas limit (remaining gas should be higher than unsubscriberGasLimit) such that the subscriber can be notified
     /// @dev payable so it can be multicalled with NATIVE related actions
     /// @dev Must always allow a user to unsubscribe. In the case of a malicious subscriber, a user can always unsubscribe safely, ensuring liquidity is always modifiable.
+    /// @dev will revert if pool manager is locked
     function unsubscribe(uint256 tokenId) external payable;
 
     /// @notice Returns and determines the maximum allowable gas-used for notifying unsubscribe
