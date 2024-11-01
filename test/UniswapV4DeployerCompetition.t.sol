@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import {Owned} from "solmate/src/auth/Owned.sol";
 import {Test} from "forge-std/Test.sol";
-import {console2} from "forge-std/console2.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {UniswapV4DeployerCompetition} from "../src/UniswapV4DeployerCompetition.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -85,9 +84,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
 
     function test_updateBestAddress_equalSalt_reverts_WorseAddress(bytes32 salt) public {
         vm.assume(salt != bytes32(0));
-        console2.logBytes32(salt);
         salt = (salt & mask20bytes) | bytes32(bytes20(winner));
-        console2.logBytes32(salt);
 
         vm.prank(winner);
         competition.updateBestAddress(salt);
