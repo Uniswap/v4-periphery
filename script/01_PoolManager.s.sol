@@ -13,8 +13,9 @@ contract DeployPoolManager is Script {
     function run() public returns (IPoolManager manager) {
         vm.startBroadcast();
 
-        manager = new PoolManager(address(this));
+        manager = new PoolManager(msg.sender);
         console2.log("PoolManager", address(manager));
+        console2.log("PoolManager Owner", msg.sender);
 
         vm.stopBroadcast();
     }
