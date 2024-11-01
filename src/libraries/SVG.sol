@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {BitMath} from "@uniswap/v4-core/src/libraries/BitMath.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";

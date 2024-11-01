@@ -1,15 +1,15 @@
 {
-  "Quoter_exactInputSingle_oneForZero_multiplePositions": "143930",
-  "Quoter_exactInputSingle_zeroForOne_multiplePositions": "149382",
-  "Quoter_exactOutputSingle_oneForZero": "78203",
-  "Quoter_exactOutputSingle_zeroForOne": "82626",
-  "Quoter_quoteExactInput_oneHop_1TickLoaded": "120491",
-  "Quoter_quoteExactInput_oneHop_initializedAfter": "145414",
-  "Quoter_quoteExactInput_oneHop_startingInitialized": "79437",
-  "Quoter_quoteExactInput_twoHops": "201179",
-  "Quoter_quoteExactOutput_oneHop_1TickLoaded": "119782",
-  "Quoter_quoteExactOutput_oneHop_2TicksLoaded": "149919",
-  "Quoter_quoteExactOutput_oneHop_initializedAfter": "119850",
-  "Quoter_quoteExactOutput_oneHop_startingInitialized": "96549",
-  "Quoter_quoteExactOutput_twoHops": "200630"
+  "Quoter_exactInputSingle_oneForZero_multiplePositions": "144020",
+  "Quoter_exactInputSingle_zeroForOne_multiplePositions": "149287",
+  "Quoter_exactOutputSingle_oneForZero": "78196",
+  "Quoter_exactOutputSingle_zeroForOne": "82546",
+  "Quoter_quoteExactInput_oneHop_1TickLoaded": "120406",
+  "Quoter_quoteExactInput_oneHop_initializedAfter": "145504",
+  "Quoter_quoteExactInput_oneHop_startingInitialized": "79438",
+  "Quoter_quoteExactInput_twoHops": "201071",
+  "Quoter_quoteExactOutput_oneHop_1TickLoaded": "119672",
+  "Quoter_quoteExactOutput_oneHop_2TicksLoaded": "149779",
+  "Quoter_quoteExactOutput_oneHop_initializedAfter": "119740",
+  "Quoter_quoteExactOutput_oneHop_startingInitialized": "96472",
+  "Quoter_quoteExactOutput_twoHops": "200486"
 }
