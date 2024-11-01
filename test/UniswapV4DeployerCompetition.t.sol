@@ -153,7 +153,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
         competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(winner))));
     }
 
-    function test_deploy_reverts_InvalidMsgSender(bytes32 salt) public {
+    function test_deploy_reverts_NotAllowedToDeploy(bytes32 salt) public {
         salt = (salt & mask20bytes) | bytes32(bytes20(winner));
 
         vm.prank(winner);
