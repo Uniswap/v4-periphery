@@ -18,23 +18,31 @@ contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
     /// @dev The submitter of the best address found so far
     address public bestAddressSubmitter;
 
-    /// @dev The deployer who can initiate the deployment of V4
-    address public immutable deployer;
-    /// @dev The owner of the V4 contract
+    /// @dev The owner of the v4 contract
     address public immutable v4Owner;
     /// @dev The deadline for the competition
     uint256 public immutable competitionDeadline;
-    /// @dev The deadline for exclusive deployment by deployer after deadline
-    uint256 public immutable exclusiveDeployDeadline;
     /// @dev The init code hash of the V4 contract
     bytes32 public immutable initCodeHash;
 
-    constructor(bytes32 _initCodeHash, address _v4Owner, uint256 _competitionDeadline) {
+    /// @dev The deployer who can initiate the deployment of the v4 PoolManager, until the exclusive deploy deadline.
+    /// @dev After this deadline anyone can deploy.
+    address public immutable deployer;
+    /// @dev The deadline for exclusive deployment by deployer after deadline
+    uint256 public immutable exclusiveDeployDeadline;
+
+    constructor(
+        bytes32 _initCodeHash,
+        address _v4Owner,
+        uint256 _competitionDeadline,
+        address _exclusiveDeployer,
+        uint256 _exclusiveDeployLength
+    ) {
         initCodeHash = _initCodeHash;
         v4Owner = _v4Owner;
         competitionDeadline = _competitionDeadline;
-        exclusiveDeployDeadline = _competitionDeadline + 1 days;
-        deployer = msg.sender;
+        exclusiveDeployDeadline = _competitionDeadline + _exclusiveDeployLength;
+        deployer = _exclusiveDeployer;
     }
 
     /// @inheritdoc IUniswapV4DeployerCompetition

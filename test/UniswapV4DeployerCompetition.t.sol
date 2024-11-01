@@ -19,6 +19,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
     address v4Owner;
     address winner;
     uint256 competitionDeadline;
+    uint256 exclusiveDeployLength = 1 days;
 
     bytes32 mask20bytes = bytes32(uint256(type(uint96).max));
 
@@ -29,7 +30,9 @@ contract UniswapV4DeployerCompetitionTest is Test {
         deployer = makeAddr("Deployer");
         vm.prank(deployer);
         initCodeHash = keccak256(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
-        competition = new UniswapV4DeployerCompetition(initCodeHash, v4Owner, competitionDeadline);
+        competition = new UniswapV4DeployerCompetition(
+            initCodeHash, v4Owner, competitionDeadline, deployer, exclusiveDeployLength
+        );
         assertEq(competition.v4Owner(), v4Owner);
     }
 
@@ -121,7 +124,8 @@ contract UniswapV4DeployerCompetitionTest is Test {
         competition.updateBestAddress(salt);
         address v4Core = competition.bestAddress();
 
-        vm.warp(competition.competitionDeadline() + 1.1 days);
+        vm.warp(competition.competitionDeadline() + 1);
+        vm.prank(deployer);
         competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
         assertFalse(v4Core.code.length == 0);
         assertEq(Owned(v4Core).owner(), v4Owner);
@@ -166,7 +170,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
         competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
     }
 
-    function test_deploy_afterExcusiveDeployDeadline(bytes32 salt) public {
+    function test_deploy_succeeds_afterExcusiveDeployDeadline(bytes32 salt) public {
         salt = (salt & mask20bytes) | bytes32(bytes20(winner));
 
         vm.prank(winner);

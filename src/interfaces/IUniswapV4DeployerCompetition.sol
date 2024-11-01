@@ -15,6 +15,7 @@ interface IUniswapV4DeployerCompetition {
 
     /// @notice Updates the best address if the new address has a better vanity score
     /// @param salt The salt to use to compute the new address with CREATE2
+    /// @dev The first 20 bytes of the salt must be either address(0) or msg.sender
     function updateBestAddress(bytes32 salt) external;
 
     /// @notice deploys the Uniswap v4 PoolManager contract
