@@ -18,7 +18,6 @@ contract UniswapV4DeployerCompetitionTest is Test {
     address deployer;
     address v4Owner;
     address winner;
-    uint256 constant controllerGasLimit = 10000;
     uint256 competitionDeadline;
 
     function setUp() public {
@@ -27,7 +26,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
         winner = makeAddr("Winner");
         deployer = makeAddr("Deployer");
         vm.prank(deployer);
-        initCodeHash = keccak256(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
+        initCodeHash = keccak256(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
         competition = new UniswapV4DeployerCompetition(initCodeHash, v4Owner, competitionDeadline);
         assertEq(competition.v4Owner(), v4Owner);
     }
@@ -43,16 +42,16 @@ contract UniswapV4DeployerCompetitionTest is Test {
         vm.expectEmit(true, true, true, false, address(competition));
         emit IUniswapV4DeployerCompetition.NewAddressFound(newAddress, winner, VanityAddressLib.score(newAddress));
         competition.updateBestAddress(salt);
-        assertFalse(competition.bestAddress() == address(0));
-        assertEq(competition.bestAddress(), newAddress);
-        assertEq(competition.bestAddressSubmitter(), winner);
-        assertEq(competition.bestAddressSalt(), salt);
+        assertFalse(competition.bestAddress() == address(0), "best address not set");
+        assertEq(competition.bestAddress(), newAddress, "wrong address set");
+        assertEq(competition.bestAddressSubmitter(), winner, "wrong submitter set");
+        assertEq(competition.bestAddressSalt(), salt, "incorrect salt set");
         address v4Core = competition.bestAddress();
 
         assertEq(v4Core.code.length, 0);
         vm.warp(competition.competitionDeadline() + 1);
         vm.prank(deployer);
-        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
         assertFalse(v4Core.code.length == 0);
         assertEq(Owned(v4Core).owner(), v4Owner);
         assertEq(address(competition).balance, 0 ether);
@@ -76,7 +75,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
         address v4Core = competition.bestAddress();
 
         vm.warp(competition.competitionDeadline() + 1.1 days);
-        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
         assertFalse(v4Core.code.length == 0);
         assertEq(Owned(v4Core).owner(), v4Owner);
         assertEq(TickMath.MAX_TICK_SPACING, type(int16).max);
@@ -92,14 +91,15 @@ contract UniswapV4DeployerCompetitionTest is Test {
                 IUniswapV4DeployerCompetition.CompetitionNotOver.selector, timestamp, competition.competitionDeadline()
             )
         );
-        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
     }
 
     function testInvalidBytecode(bytes32 salt) public {
         vm.prank(winner);
         competition.updateBestAddress(salt);
         vm.expectRevert(IUniswapV4DeployerCompetition.InvalidBytecode.selector);
-        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit + 1));
+        // set the owner as the winner not the correct owner
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(winner))));
     }
 
     function testInvalidMsgSender(bytes32 salt) public {
@@ -110,7 +110,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IUniswapV4DeployerCompetition.NotAllowedToDeploy.selector, address(1), deployer)
         );
-        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
     }
 
     function testAfterExcusiveDeployDeadline(bytes32 salt) public {
@@ -118,7 +118,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
         competition.updateBestAddress(salt);
         vm.warp(competition.exclusiveDeployDeadline() + 1);
         vm.prank(address(1));
-        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, controllerGasLimit));
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
     }
 
     function testEqualSaltNotChanged(bytes32 salt) public {

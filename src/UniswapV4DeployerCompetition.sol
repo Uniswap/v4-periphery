@@ -70,9 +70,7 @@ contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
             revert NotAllowedToDeploy(msg.sender, deployer);
         }
 
+        // the owner of the contract must be encoded in the bytecode
         Create2.deploy(0, bestAddressSalt, bytecode);
-
-        // set owner of the pool manager contract
-        Owned(bestAddress).transferOwnership(v4Owner);
     }
 }
