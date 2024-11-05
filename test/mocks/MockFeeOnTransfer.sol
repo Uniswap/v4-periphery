@@ -10,8 +10,14 @@ contract MockFOT is MockERC20 {
 
     IPositionManager immutable posm;
 
+    uint256 public bips;
+
     constructor(IPositionManager _posm) MockERC20("FOT Token", "FOT", 18) {
         posm = _posm;
+    }
+
+    function setFee(uint256 amountInBips) public {
+        bips = amountInBips;
     }
 
     function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
@@ -22,7 +28,7 @@ contract MockFOT is MockERC20 {
         balanceOf[from] -= amount;
 
         // 1% fee on the recipient
-        uint256 amountAfterFee = amount - amount.calculatePortion(100);
+        uint256 amountAfterFee = amount - amount.calculatePortion(bips);
 
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint256 value.

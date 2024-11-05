@@ -708,7 +708,9 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         lpm.modifyLiquidities(actions, _deadline);
     }
 
-    function test_mintFromDeltas() public {
+    function test_mintFromDeltas_fot() public {
+        // Use a 1% fee.
+        MockFOT(address(fotToken)).setFee(100);
         uint256 tokenId = lpm.nextTokenId();
 
         uint256 fotBalanceBefore = Currency.wrap(address(fotToken)).balanceOf(address(this));
@@ -754,5 +756,81 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         assertEq(lpm.ownerOf(tokenId), address(this));
         assertEq(lpm.getPositionLiquidity(tokenId), expectedLiquidity);
         assertEq(fotBalanceBefore - fotBalanceAfter, 1000e18);
+    }
+
+    function test_increaseFromDeltas() public {
+        uint128 initialLiquidity = 1000e18;
+        uint256 tokenId = lpm.nextTokenId();
+        fotConfig = PositionConfig({poolKey: fotKey, tickLower: -120, tickUpper: 120});
+
+        mint(fotConfig, initialLiquidity, address(this), ZERO_BYTES);
+
+        assertEq(lpm.ownerOf(tokenId), address(this));
+        assertEq(lpm.getPositionLiquidity(tokenId), initialLiquidity);
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.SETTLE, abi.encode(fotKey.currency0, 10e18, true));
+        planner.add(Actions.SETTLE, abi.encode(fotKey.currency1, 10e18, true));
+        planner.add(
+            Actions.INCREASE_LIQUIDITY_FROM_DELTAS,
+            abi.encode(tokenId, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+
+        bytes memory actions = planner.encode();
+
+        lpm.modifyLiquidities(actions, _deadline);
+
+        uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(fotConfig.tickLower),
+            TickMath.getSqrtPriceAtTick(fotConfig.tickUpper),
+            10e18,
+            10e18
+        );
+
+        assertEq(lpm.getPositionLiquidity(tokenId), initialLiquidity + newLiquidity);
+    }
+
+    function test_increaseFromDeltas_fot() public {
+        uint128 initialLiquidity = 1000e18;
+        uint256 tokenId = lpm.nextTokenId();
+        fotConfig = PositionConfig({poolKey: fotKey, tickLower: -120, tickUpper: 120});
+
+        mint(fotConfig, initialLiquidity, address(this), ZERO_BYTES);
+
+        assertEq(lpm.ownerOf(tokenId), address(this));
+        assertEq(lpm.getPositionLiquidity(tokenId), initialLiquidity);
+
+        // Use a 1% fee.
+        MockFOT(address(fotToken)).setFee(100);
+
+        // Set the fee on transfer amount 1% higher.
+        (uint256 amount0, uint256 amount1) =
+            fotKey.currency0 == Currency.wrap(address(fotToken)) ? (100e18, 99e18) : (99e19, 100e18);
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.SETTLE, abi.encode(fotKey.currency0, amount0, true));
+        planner.add(Actions.SETTLE, abi.encode(fotKey.currency1, amount1, true));
+        planner.add(
+            Actions.INCREASE_LIQUIDITY_FROM_DELTAS,
+            abi.encode(tokenId, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+
+        bytes memory actions = planner.encode();
+
+        lpm.modifyLiquidities(actions, _deadline);
+
+        (uint256 amount0AfterTransfer, uint256 amount1AfterTransfer) =
+            fotKey.currency0 == Currency.wrap(address(fotToken)) ? (99e18, 100e18) : (100e18, 99e19);
+
+        uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(fotConfig.tickLower),
+            TickMath.getSqrtPriceAtTick(fotConfig.tickUpper),
+            amount0AfterTransfer,
+            amount1AfterTransfer
+        );
+
+        assertEq(lpm.getPositionLiquidity(tokenId), initialLiquidity + newLiquidity);
     }
 }
