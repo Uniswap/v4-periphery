@@ -10,8 +10,8 @@ library Actions {
     uint256 constant DECREASE_LIQUIDITY = 0x01;
     uint256 constant MINT_POSITION = 0x02;
     uint256 constant BURN_POSITION = 0x03;
-    uint256 constant INCREASE_LIQUIDITY_FROM_AMOUNTS = 0x04;
-    uint256 constant MINT_POSITION_FROM_AMOUNTS = 0x05;
+    uint256 constant INCREASE_LIQUIDITY_FROM_DELTAS = 0x04;
+    uint256 constant MINT_POSITION_FROM_DELTAS = 0x05;
 
     // swapping
     uint256 constant SWAP_EXACT_IN_SINGLE = 0x06;

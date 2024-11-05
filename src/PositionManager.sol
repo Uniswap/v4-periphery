@@ -201,7 +201,7 @@ contract PositionManager is
                     params.decodeModifyLiquidityParams();
                 _increase(tokenId, liquidity, amount0Max, amount1Max, hookData);
                 return;
-            } else if (action == Actions.INCREASE_LIQUIDITY_FROM_AMOUNTS) {
+            } else if (action == Actions.INCREASE_LIQUIDITY_FROM_DELTAS) {
                 (uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData) =
                     params.decodeIncreaseLiquidityFromDeltasParams();
                 _increaseFromDeltas(tokenId, amount0Max, amount1Max, hookData);
@@ -224,7 +224,7 @@ contract PositionManager is
                 ) = params.decodeMintParams();
                 _mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
                 return;
-            } else if (action == Actions.MINT_POSITION_FROM_AMOUNTS) {
+            } else if (action == Actions.MINT_POSITION_FROM_DELTAS) {
                 (
                     PoolKey calldata poolKey,
                     int24 tickLower,
@@ -234,7 +234,7 @@ contract PositionManager is
                     address owner,
                     bytes calldata hookData
                 ) = params.decodeMintFromDeltasParams();
-                _mintFromDeltas(poolKey, tickLower, tickUpper, amount0Max, amount1Max, owner, hookData);
+                _mintFromDeltas(poolKey, tickLower, tickUpper, amount0Max, amount1Max, _mapRecipient(owner), hookData);
                 return;
             } else if (action == Actions.BURN_POSITION) {
                 // Will automatically decrease liquidity to 0 if the position is not already empty.
@@ -311,12 +311,13 @@ contract PositionManager is
 
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolKey.toId());
 
+        // Use the credit on the pool manager as the amounts for the mint.
         uint256 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(info.tickLower()),
             TickMath.getSqrtPriceAtTick(info.tickUpper()),
-            _getFullDebt(poolKey.currency0),
-            _getFullDebt(poolKey.currency1)
+            _getFullCredit(poolKey.currency0),
+            _getFullCredit(poolKey.currency1)
         );
 
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
@@ -389,12 +390,13 @@ contract PositionManager is
     ) internal {
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolKey.toId());
 
+        // Use the credit on the pool manager as the amounts for the mint.
         uint256 liquidity = LiquidityAmounts.getLiquidityForAmounts(
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(tickLower),
             TickMath.getSqrtPriceAtTick(tickUpper),
-            _getFullDebt(poolKey.currency0),
-            _getFullDebt(poolKey.currency1)
+            _getFullCredit(poolKey.currency0),
+            _getFullCredit(poolKey.currency1)
         );
 
         _mint(poolKey, tickLower, tickUpper, uint256(liquidity), amount0Max, amount1Max, owner, hookData);
