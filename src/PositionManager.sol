@@ -456,8 +456,10 @@ contract PositionManager is
 
     /// @dev integrators may elect to forfeit positive deltas with clear
     /// if the forfeit amount exceeds the user-specified max, the amount is taken instead
+    /// if there is no credit, no call is made.
     function _clearOrTake(Currency currency, uint256 amountMax) internal {
         uint256 delta = _getFullCredit(currency);
+        if (delta == 0) return;
 
         // forfeit the delta if its less than or equal to the user-specified limit
         if (delta <= amountMax) {

@@ -18,6 +18,7 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
@@ -27,6 +28,7 @@ import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
+import {BipsLibrary} from "../../src/libraries/BipsLibrary.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
@@ -40,6 +42,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
     using Planner for Plan;
+    using BipsLibrary for uint256;
 
     PoolId poolId;
     address alice;
@@ -832,5 +835,128 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         );
 
         assertEq(lpm.getPositionLiquidity(tokenId), initialLiquidity + newLiquidity);
+    }
+
+    function test_fuzz_mintFromDeltas_burn_fot(
+        uint256 bips,
+        uint256 amount0,
+        uint256 amount1,
+        int24 tickLower,
+        int24 tickUpper
+    ) public {
+        bips = bound(bips, 1, 10_000);
+        tickLower = int24(
+            bound(
+                tickLower,
+                fotKey.tickSpacing * (TickMath.MIN_TICK / fotKey.tickSpacing),
+                fotKey.tickSpacing * (TickMath.MAX_TICK / fotKey.tickSpacing)
+            )
+        );
+        tickUpper = int24(
+            bound(
+                tickUpper,
+                fotKey.tickSpacing * (TickMath.MIN_TICK / fotKey.tickSpacing),
+                fotKey.tickSpacing * (TickMath.MAX_TICK / fotKey.tickSpacing)
+            )
+        );
+
+        tickLower = fotKey.tickSpacing * (tickLower / fotKey.tickSpacing);
+        tickUpper = fotKey.tickSpacing * (tickUpper / fotKey.tickSpacing);
+        vm.assume(tickUpper > tickLower);
+
+        (uint160 sqrtPriceX96,,,) = manager.getSlot0(fotKey.toId());
+        uint128 maxLiquidityPerTick = Pool.tickSpacingToMaxLiquidityPerTick(fotKey.tickSpacing);
+
+        (uint256 maxAmount0, uint256 maxAmount1) = LiquidityAmounts.getAmountsForLiquidity(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            maxLiquidityPerTick
+        );
+
+        maxAmount0 = maxAmount0 == 0 ? 1 : maxAmount0 > STARTING_USER_BALANCE ? STARTING_USER_BALANCE : maxAmount0;
+        maxAmount1 = maxAmount1 == 0 ? 1 : maxAmount1 > STARTING_USER_BALANCE ? STARTING_USER_BALANCE : maxAmount1;
+        amount0 = bound(amount0, 1, maxAmount0);
+        amount1 = bound(amount1, 1, maxAmount1);
+
+        MockFOT(address(fotToken)).setFee(bips);
+
+        uint256 tokenId = lpm.nextTokenId();
+
+        uint256 balance0 = fotKey.currency0.balanceOf(address(this));
+        uint256 balance1 = fotKey.currency1.balanceOf(address(this));
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.SETTLE, abi.encode(fotKey.currency0, amount0, true));
+        planner.add(Actions.SETTLE, abi.encode(fotKey.currency1, amount1, true));
+        planner.add(
+            Actions.MINT_POSITION_FROM_DELTAS,
+            abi.encode(
+                fotKey,
+                tickLower,
+                tickUpper,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                ActionConstants.MSG_SENDER,
+                ZERO_BYTES
+            )
+        );
+        // take or clear the currency that is FOT, since we are limited more by the FOT amount
+        (Currency fotCurrency, Currency otherCurrency) = fotKey.currency0 == Currency.wrap(address(fotToken))
+            ? (fotKey.currency0, fotKey.currency1)
+            : (fotKey.currency1, fotKey.currency0);
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(fotCurrency, 100 wei));
+        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(otherCurrency, 100 wei));
+
+        bytes memory actions = planner.encode();
+        bool positionIsEntirelyInOtherToken = fotKey.currency0 == Currency.wrap(address(fotToken))
+            ? tickUpper <= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
+            : tickLower > TickMath.getTickAtSqrtPrice(sqrtPriceX96);
+
+        if (bips == 10000 && !positionIsEntirelyInOtherToken) {
+            vm.expectRevert(Position.CannotUpdateEmptyPosition.selector);
+            lpm.modifyLiquidities(actions, _deadline);
+        } else {
+            // MINT FROM DELTAS.
+            lpm.modifyLiquidities(actions, _deadline);
+
+            uint256 balance0After = fotKey.currency0.balanceOf(address(this));
+            uint256 balance1After = fotKey.currency1.balanceOf(address(this));
+
+            // Calculate the expected resulting balances used to create liquidity after the fee is applied.
+            uint256 amountInFOT = fotKey.currency0 == Currency.wrap(address(fotToken)) ? amount0 : amount1;
+            uint256 expectedFee = amountInFOT.calculatePortion(bips);
+            (uint256 expected0, uint256 expected1) = fotKey.currency0 == Currency.wrap(address(fotToken))
+                ? (balance0 - balance0After - expectedFee, balance1 - balance1After)
+                : (balance1 - balance1After - expectedFee, balance0 - balance0After);
+
+            // the liquidity that was created is a diff of the balance change
+            uint128 expectedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(tickLower),
+                TickMath.getSqrtPriceAtTick(tickUpper),
+                expected0,
+                expected1
+            );
+
+            assertEq(lpm.ownerOf(tokenId), address(this));
+            assertEq(lpm.getPositionLiquidity(tokenId), expectedLiquidity);
+
+            // BURN.
+            Plan memory planner = Planner.init();
+            // Note that the slippage does not include the fee from the transfer.
+            planner.add(
+                Actions.BURN_POSITION,
+                abi.encode(tokenId, expected0 == 0 ? 0 : expected0 - 1, expected1 == 0 ? 0 : expected1 - 1, ZERO_BYTES)
+            );
+
+            planner.add(Actions.TAKE_PAIR, abi.encode(fotKey.currency0, fotKey.currency1, ActionConstants.MSG_SENDER));
+
+            bytes memory actions = planner.encode();
+
+            lpm.modifyLiquidities(actions, _deadline);
+
+            assertEq(lpm.getPositionLiquidity(tokenId), 0);
+        }
     }
 }
