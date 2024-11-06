@@ -45,7 +45,6 @@ library VanityAddressLib {
         }
 
         // handling for remaining nibbles
-        // for (uint256 i = leadingZeroCount + leadingFourCount; i < addrBytes.length * 2; i++) {
         for (uint256 i = 0; i < addrBytes.length * 2; i++) {
             uint8 currentNibble = getNibble(addrBytes, i);
 
