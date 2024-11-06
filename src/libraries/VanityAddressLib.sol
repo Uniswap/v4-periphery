@@ -13,17 +13,16 @@ library VanityAddressLib {
     }
 
     /// @notice Scores an address based on its vanity
+    /// @dev Scoring rules:
+    ///    Requirement: The first nonzero nibble must be 4
+    ///    10 points for every leading 0 nibble
+    ///    40 points if the first 4 is followed by 3 more 4s
+    ///    20 points if the first nibble after the 4 4s is NOT a 4
+    ///    20 points if the last 4 nibbles are 4s
+    ///    1 point for every 4
     /// @param addr The address to score
     /// @return calculatedScore The vanity score of the address
     function score(address addr) internal pure returns (uint256 calculatedScore) {
-        //  Scoring rules:
-        //     Requirement: The first nonzero nibble must be 4
-        //     10 points for every leading 0 nibble
-        //     40 points if the first 4 is followed by 3 more 4s
-        //     20 points if the first nibble after the 4 4s is NOT a 4
-        //     20 points if the last 4 nibbles are 4s
-        //     1 point for every 4
-
         // convert the address to bytes for easier parsing
         bytes20 addrBytes = bytes20(addr);
 
