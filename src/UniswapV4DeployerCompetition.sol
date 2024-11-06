@@ -17,8 +17,6 @@ contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
     /// @dev The submitter of the best address found so far
     address public bestAddressSubmitter;
 
-    /// @dev The owner of the v4 contract
-    address public immutable v4Owner;
     /// @dev The deadline for the competition
     uint256 public immutable competitionDeadline;
     /// @dev The init code hash of the V4 contract
@@ -32,13 +30,11 @@ contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
 
     constructor(
         bytes32 _initCodeHash,
-        address _v4Owner,
         uint256 _competitionDeadline,
         address _exclusiveDeployer,
         uint256 _exclusiveDeployLength
     ) {
         initCodeHash = _initCodeHash;
-        v4Owner = _v4Owner;
         competitionDeadline = _competitionDeadline;
         exclusiveDeployDeadline = _competitionDeadline + _exclusiveDeployLength;
         deployer = _exclusiveDeployer;

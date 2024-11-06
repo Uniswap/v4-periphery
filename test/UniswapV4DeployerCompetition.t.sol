@@ -30,10 +30,8 @@ contract UniswapV4DeployerCompetitionTest is Test {
         deployer = makeAddr("Deployer");
         vm.prank(deployer);
         initCodeHash = keccak256(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
-        competition = new UniswapV4DeployerCompetition(
-            initCodeHash, v4Owner, competitionDeadline, deployer, exclusiveDeployLength
-        );
-        assertEq(competition.v4Owner(), v4Owner);
+        competition =
+            new UniswapV4DeployerCompetition(initCodeHash, competitionDeadline, deployer, exclusiveDeployLength);
     }
 
     function test_updateBestAddress_succeeds(bytes32 salt) public {
