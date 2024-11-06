@@ -3,15 +3,11 @@ pragma solidity ^0.8.20;
 
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 /// @notice Provides functions for computing liquidity amounts from token amounts and prices
 library LiquidityAmounts {
-    /// @notice Downcasts uint256 to uint128
-    /// @param x The uint258 to be downcasted
-    /// @return y The passed value, downcasted to uint128
-    function toUint128(uint256 x) private pure returns (uint128 y) {
-        require((y = uint128(x)) == x, "liquidity overflow");
-    }
+    using SafeCast for uint256;
 
     /// @notice Computes the amount of liquidity received for a given amount of token0 and price range
     /// @dev Calculates amount0 * (sqrt(upper) * sqrt(lower)) / (sqrt(upper) - sqrt(lower))
@@ -26,7 +22,7 @@ library LiquidityAmounts {
     {
         if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
         uint256 intermediate = FullMath.mulDiv(sqrtPriceAX96, sqrtPriceBX96, FixedPoint96.Q96);
-        return toUint128(FullMath.mulDiv(amount0, intermediate, sqrtPriceBX96 - sqrtPriceAX96));
+        return FullMath.mulDiv(amount0, intermediate, sqrtPriceBX96 - sqrtPriceAX96).toUint128();
     }
 
     /// @notice Computes the amount of liquidity received for a given amount of token1 and price range
@@ -41,7 +37,7 @@ library LiquidityAmounts {
         returns (uint128 liquidity)
     {
         if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
-        return toUint128(FullMath.mulDiv(amount1, FixedPoint96.Q96, sqrtPriceBX96 - sqrtPriceAX96));
+        return FullMath.mulDiv(amount1, FixedPoint96.Q96, sqrtPriceBX96 - sqrtPriceAX96).toUint128();
     }
 
     /// @notice Computes the maximum amount of liquidity received for a given amount of token0, token1, the current
