@@ -46,7 +46,7 @@ contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
     }
 
     /// @inheritdoc IUniswapV4DeployerCompetition
-    function updateBestAddress(bytes32 salt) external override {
+    function updateBestAddress(bytes32 salt) external {
         if (block.timestamp > competitionDeadline) {
             revert CompetitionOver(block.timestamp, competitionDeadline);
         }
@@ -67,7 +67,7 @@ contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
     }
 
     /// @inheritdoc IUniswapV4DeployerCompetition
-    function deploy(bytes memory bytecode) external override {
+    function deploy(bytes memory bytecode) external {
         if (keccak256(bytecode) != initCodeHash) {
             revert InvalidBytecode();
         }
