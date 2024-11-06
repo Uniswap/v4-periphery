@@ -271,8 +271,9 @@ library CalldataDecoder {
             // shl(5, x) is equivalent to mul(32, x)
             let lengthPtr :=
                 add(_bytes.offset, and(calldataload(add(_bytes.offset, shl(5, _arg))), OFFSET_OR_LENGTH_MASK))
-            // the number of bytes in the bytes string
-            length := and(calldataload(lengthPtr), OFFSET_OR_LENGTH_MASK)
+            // the number of bytes in the bytes string, rounded up to a multiple of 32 bytes
+            length := add(and(add(calldataload(lengthPtr), 0x1f), OFFSET_OR_LENGTH_MASK_AND_WORD_ALIGN), 0x20)
+
             // the offset where the bytes string begins
             let offset := add(lengthPtr, 0x20)
             // assign the return parameters
