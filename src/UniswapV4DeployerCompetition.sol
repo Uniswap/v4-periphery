@@ -54,7 +54,7 @@ contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
         address saltSubAddress = address(bytes20(salt));
         if (saltSubAddress != msg.sender && saltSubAddress != address(0)) revert InvalidSender(salt, msg.sender);
 
-        address newAddress = Create2.computeAddress(salt, initCodeHash, address(this));
+        address newAddress = Create2.computeAddress(salt, initCodeHash);
         if (bestAddress != address(0) && !newAddress.betterThan(bestAddress)) {
             revert WorseAddress(newAddress, bestAddress, newAddress.score(), bestAddress.score());
         }
