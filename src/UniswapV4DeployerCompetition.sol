@@ -12,8 +12,6 @@ contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
 
     /// @dev The salt for the best address found so far
     bytes32 public bestAddressSalt;
-    /// @dev The best address found so far
-    address public bestAddress;
     /// @dev The submitter of the best address found so far
     address public bestAddressSubmitter;
 
@@ -50,11 +48,11 @@ contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
         if (saltSubAddress != msg.sender && saltSubAddress != address(0)) revert InvalidSender(salt, msg.sender);
 
         address newAddress = Create2.computeAddress(salt, initCodeHash);
-        if (bestAddress != address(0) && !newAddress.betterThan(bestAddress)) {
-            revert WorseAddress(newAddress, bestAddress, newAddress.score(), bestAddress.score());
+        address _bestAddress = bestAddress();
+        if (!newAddress.betterThan(_bestAddress)) {
+            revert WorseAddress(newAddress, _bestAddress, newAddress.score(), _bestAddress.score());
         }
 
-        bestAddress = newAddress;
         bestAddressSalt = salt;
         bestAddressSubmitter = msg.sender;
 
@@ -78,5 +76,10 @@ contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
 
         // the owner of the contract must be encoded in the bytecode
         Create2.deploy(0, bestAddressSalt, bytecode);
+    }
+
+    /// @dev returns the best address found so far
+    function bestAddress() public view returns (address) {
+        return Create2.computeAddress(bestAddressSalt, initCodeHash);
     }
 }

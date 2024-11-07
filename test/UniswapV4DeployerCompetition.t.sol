@@ -18,6 +18,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
     address deployer;
     address v4Owner;
     address winner;
+    address defaultAddress;
     uint256 competitionDeadline;
     uint256 exclusiveDeployLength = 1 days;
 
@@ -32,16 +33,31 @@ contract UniswapV4DeployerCompetitionTest is Test {
         initCodeHash = keccak256(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
         competition =
             new UniswapV4DeployerCompetition(initCodeHash, competitionDeadline, deployer, exclusiveDeployLength);
+        defaultAddress = Create2.computeAddress(bytes32(0), initCodeHash, address(competition));
+    }
+
+    function test_defaultSalt_deploy_succeeds() public {
+        assertEq(competition.bestAddressSubmitter(), address(0));
+        assertEq(competition.bestAddressSalt(), bytes32(0));
+        assertEq(competition.bestAddress(), defaultAddress);
+
+        assertEq(defaultAddress.code.length, 0);
+        vm.warp(competition.competitionDeadline() + 1);
+        vm.prank(deployer);
+        competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
+        assertFalse(defaultAddress.code.length == 0);
+        assertEq(Owned(defaultAddress).owner(), v4Owner);
     }
 
     function test_updateBestAddress_succeeds(bytes32 salt) public {
         salt = (salt & mask20bytes) | bytes32(bytes20(winner));
 
-        assertEq(competition.bestAddress(), address(0));
         assertEq(competition.bestAddressSubmitter(), address(0));
         assertEq(competition.bestAddressSalt(), bytes32(0));
+        assertEq(competition.bestAddress(), defaultAddress);
 
         address newAddress = Create2.computeAddress(salt, initCodeHash, address(competition));
+        vm.assume(newAddress.betterThan(defaultAddress));
 
         vm.prank(winner);
         vm.expectEmit(true, true, true, false, address(competition));
@@ -83,19 +99,12 @@ contract UniswapV4DeployerCompetitionTest is Test {
         competition.updateBestAddress(salt);
     }
 
-    function test_updateBestAddress_equalSalt_reverts_WorseAddress(bytes32 salt) public {
+    function test_updateBestAddress_reverts_WorseAddress(bytes32 salt) public {
         vm.assume(salt != bytes32(0));
         salt = (salt & mask20bytes) | bytes32(bytes20(winner));
 
-        vm.prank(winner);
-        competition.updateBestAddress(salt);
-        assertFalse(competition.bestAddress() == address(0));
-        assertEq(competition.bestAddressSubmitter(), winner);
-        assertEq(competition.bestAddressSalt(), salt);
-
-        bytes32 newSalt = (salt & mask20bytes) | bytes32(bytes20(address(1)));
-        address newAddr = Create2.computeAddress(newSalt, initCodeHash, address(competition));
-        if (!newAddr.betterThan(competition.bestAddress())) {
+        address newAddr = Create2.computeAddress(salt, initCodeHash, address(competition));
+        if (!newAddr.betterThan(defaultAddress)) {
             vm.expectRevert(
                 abi.encodeWithSelector(
                     IUniswapV4DeployerCompetition.WorseAddress.selector,
@@ -105,18 +114,22 @@ contract UniswapV4DeployerCompetitionTest is Test {
                     competition.bestAddress().score()
                 )
             );
-            vm.prank(address(1));
-            competition.updateBestAddress(newSalt);
+            vm.prank(winner);
+            competition.updateBestAddress(salt);
         } else {
-            vm.prank(address(1));
-            competition.updateBestAddress(newSalt);
-            assertEq(competition.bestAddressSubmitter(), address(1));
-            assertEq(competition.bestAddressSalt(), newSalt);
+            vm.prank(winner);
+            competition.updateBestAddress(salt);
+            assertEq(competition.bestAddressSubmitter(), winner);
+            assertEq(competition.bestAddressSalt(), salt);
+            assertEq(competition.bestAddress(), newAddr);
         }
     }
 
     function test_deploy_succeeds(bytes32 salt) public {
         salt = (salt & mask20bytes) | bytes32(bytes20(winner));
+
+        address newAddress = Create2.computeAddress(salt, initCodeHash, address(competition));
+        vm.assume(newAddress.betterThan(defaultAddress));
 
         vm.prank(winner);
         competition.updateBestAddress(salt);
@@ -130,12 +143,8 @@ contract UniswapV4DeployerCompetitionTest is Test {
         assertEq(TickMath.MAX_TICK_SPACING, type(int16).max);
     }
 
-    function test_deploy_reverts_CompetitionNotOver(bytes32 salt, uint256 timestamp) public {
-        salt = (salt & mask20bytes) | bytes32(bytes20(winner));
-
+    function test_deploy_reverts_CompetitionNotOver(uint256 timestamp) public {
         vm.assume(timestamp < competition.competitionDeadline());
-        vm.prank(winner);
-        competition.updateBestAddress(salt);
         vm.warp(timestamp);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -145,21 +154,14 @@ contract UniswapV4DeployerCompetitionTest is Test {
         competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
     }
 
-    function test_deploy_reverts_InvalidBytecode(bytes32 salt) public {
-        salt = (salt & mask20bytes) | bytes32(bytes20(winner));
-
-        vm.prank(winner);
-        competition.updateBestAddress(salt);
+    function test_deploy_reverts_InvalidBytecode() public {
         vm.expectRevert(IUniswapV4DeployerCompetition.InvalidBytecode.selector);
+        vm.prank(deployer);
         // set the owner as the winner not the correct owner
         competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(winner))));
     }
 
-    function test_deploy_reverts_NotAllowedToDeploy(bytes32 salt) public {
-        salt = (salt & mask20bytes) | bytes32(bytes20(winner));
-
-        vm.prank(winner);
-        competition.updateBestAddress(salt);
+    function test_deploy_reverts_NotAllowedToDeploy() public {
         vm.warp(competition.competitionDeadline() + 1);
         vm.prank(address(1));
         vm.expectRevert(
@@ -168,11 +170,7 @@ contract UniswapV4DeployerCompetitionTest is Test {
         competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
     }
 
-    function test_deploy_succeeds_afterExcusiveDeployDeadline(bytes32 salt) public {
-        salt = (salt & mask20bytes) | bytes32(bytes20(winner));
-
-        vm.prank(winner);
-        competition.updateBestAddress(salt);
+    function test_deploy_succeeds_afterExcusiveDeployDeadline() public {
         vm.warp(competition.exclusiveDeployDeadline() + 1);
         vm.prank(address(1));
         competition.deploy(abi.encodePacked(type(PoolManager).creationCode, uint256(uint160(v4Owner))));
