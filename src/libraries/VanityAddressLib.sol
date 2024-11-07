@@ -26,36 +26,38 @@ library VanityAddressLib {
         // convert the address to bytes for easier parsing
         bytes20 addrBytes = bytes20(addr);
 
-        // 10 points per leading zero nibble
-        uint256 leadingZeroCount = getLeadingNibbleCount(addrBytes, 0, 0);
-        calculatedScore += (leadingZeroCount * 10);
+        unchecked {
+            // 10 points per leading zero nibble
+            uint256 leadingZeroCount = getLeadingNibbleCount(addrBytes, 0, 0);
+            calculatedScore += (leadingZeroCount * 10);
 
-        // special handling for 4s immediately after leading 0s
-        uint256 leadingFourCount = getLeadingNibbleCount(addrBytes, leadingZeroCount, 4);
-        // If the first nonzero nibble is not 4, return 0
-        if (leadingFourCount == 0) {
-            return 0;
-        } else if (leadingFourCount == 4) {
-            // 60 points if exactly 4 4s
-            calculatedScore += 60;
-        } else if (leadingFourCount > 4) {
-            // 40 points if more than 4 4s
-            calculatedScore += 40;
-        }
-
-        // handling for remaining nibbles
-        for (uint256 i = 0; i < addrBytes.length * 2; i++) {
-            uint8 currentNibble = getNibble(addrBytes, i);
-
-            // 1 extra point for any 4 nibbles
-            if (currentNibble == 4) {
-                calculatedScore += 1;
+            // special handling for 4s immediately after leading 0s
+            uint256 leadingFourCount = getLeadingNibbleCount(addrBytes, leadingZeroCount, 4);
+            // If the first nonzero nibble is not 4, return 0
+            if (leadingFourCount == 0) {
+                return 0;
+            } else if (leadingFourCount == 4) {
+                // 60 points if exactly 4 4s
+                calculatedScore += 60;
+            } else if (leadingFourCount > 4) {
+                // 40 points if more than 4 4s
+                calculatedScore += 40;
             }
-        }
 
-        // If the last 4 nibbles are 4s, add 20 points
-        if (addrBytes[18] == 0x44 && addrBytes[19] == 0x44) {
-            calculatedScore += 20;
+            // handling for remaining nibbles
+            for (uint256 i = 0; i < addrBytes.length * 2; i++) {
+                uint8 currentNibble = getNibble(addrBytes, i);
+
+                // 1 extra point for any 4 nibbles
+                if (currentNibble == 4) {
+                    calculatedScore += 1;
+                }
+            }
+
+            // If the last 4 nibbles are 4s, add 20 points
+            if (addrBytes[18] == 0x44 && addrBytes[19] == 0x44) {
+                calculatedScore += 20;
+            }
         }
     }
 

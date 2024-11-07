@@ -65,11 +65,11 @@ contract UniswapV4DeployerCompetition is IUniswapV4DeployerCompetition {
             revert InvalidBytecode();
         }
 
-        if (block.timestamp < competitionDeadline) {
+        if (block.timestamp <= competitionDeadline) {
             revert CompetitionNotOver(block.timestamp, competitionDeadline);
         }
 
-        if (msg.sender != deployer && block.timestamp < exclusiveDeployDeadline) {
+        if (msg.sender != deployer && block.timestamp <= exclusiveDeployDeadline) {
             // anyone can deploy after the deadline
             revert NotAllowedToDeploy(msg.sender, deployer);
         }
