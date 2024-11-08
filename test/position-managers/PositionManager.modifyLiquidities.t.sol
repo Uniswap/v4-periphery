@@ -33,8 +33,6 @@ import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
 
-import "forge-std/console2.sol";
-
 contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityFuzzers {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
