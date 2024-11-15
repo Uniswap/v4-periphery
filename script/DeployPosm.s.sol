@@ -27,7 +27,7 @@ contract DeployPosmTest is Script {
         positionDescriptor = new PositionDescriptor(IPoolManager(poolManager), wrappedNative, nativeCurrencyLabel);
         console2.log("PositionDescriptor", address(positionDescriptor));
 
-        posm = new PositionManager{salt: hex"03"}(
+        posm = new PositionManager{salt: hex"04"}(
             IPoolManager(poolManager),
             IAllowanceTransfer(permit2),
             unsubscribeGasLimit,
