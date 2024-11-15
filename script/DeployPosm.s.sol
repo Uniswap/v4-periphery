@@ -19,19 +19,18 @@ contract DeployPosmTest is Script {
         address poolManager,
         address permit2,
         uint256 unsubscribeGasLimit,
-        address wrappedNative,
-        string memory nativeCurrencyLabel
+        address wrappedNative
     ) public returns (PositionDescriptor positionDescriptor, PositionManager posm) {
         vm.startBroadcast();
 
-        positionDescriptor = new PositionDescriptor(IPoolManager(poolManager), wrappedNative, nativeCurrencyLabel);
-        console2.log("PositionDescriptor", address(positionDescriptor));
+        // positionDescriptor = new PositionDescriptor(IPoolManager(poolManager), wrappedNative, "ETH");
+        // console2.log("PositionDescriptor", address(positionDescriptor));
 
-        posm = new PositionManager{salt: hex"04"}(
+        posm = new PositionManager(
             IPoolManager(poolManager),
             IAllowanceTransfer(permit2),
             unsubscribeGasLimit,
-            IPositionDescriptor(address(positionDescriptor)),
+            IPositionDescriptor(address(0)),
             IWETH9(wrappedNative)
         );
         console2.log("PositionManager", address(posm));
