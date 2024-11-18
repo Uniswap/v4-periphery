@@ -928,7 +928,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
             uint256 expectedFee = amountInFOT.calculatePortion(bips);
             (uint256 expected0, uint256 expected1) = fotKey.currency0 == Currency.wrap(address(fotToken))
                 ? (balance0 - balance0After - expectedFee, balance1 - balance1After)
-                : (balance1 - balance1After - expectedFee, balance0 - balance0After);
+                : (balance0 - balance0After, balance1 - balance1After - expectedFee);
 
             // the liquidity that was created is a diff of the balance change
             uint128 expectedLiquidity = LiquidityAmounts.getLiquidityForAmounts(
