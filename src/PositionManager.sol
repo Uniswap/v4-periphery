@@ -399,7 +399,7 @@ contract PositionManager is
             _getFullCredit(poolKey.currency1)
         );
 
-        _mint(poolKey, tickLower, tickUpper, uint256(liquidity), amount0Max, amount1Max, owner, hookData);
+        _mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, owner, hookData);
     }
 
     /// @dev this is overloaded with ERC721Permit_v4._burn
