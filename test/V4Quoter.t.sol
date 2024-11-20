@@ -4,8 +4,8 @@ pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {PathKey} from "../src/libraries/PathKey.sol";
-import {IQuoter} from "../src/interfaces/IQuoter.sol";
-import {Quoter} from "../src/lens/Quoter.sol";
+import {IV4Quoter} from "../src/interfaces/IV4Quoter.sol";
+import {V4Quoter} from "../src/lens/V4Quoter.sol";
 import {BaseV4Quoter} from "../src/base/BaseV4Quoter.sol";
 
 // v4-core
@@ -39,7 +39,7 @@ contract QuoterTest is Test, Deployers {
 
     uint256 internal constant CONTROLLER_GAS_LIMIT = 500000;
 
-    Quoter quoter;
+    V4Quoter quoter;
 
     PoolModifyLiquidityTest positionManager;
 
@@ -55,7 +55,7 @@ contract QuoterTest is Test, Deployers {
 
     function setUp() public {
         deployFreshManagerAndRouters();
-        quoter = new Quoter(IPoolManager(manager));
+        quoter = new V4Quoter(IPoolManager(manager));
         positionManager = new PoolModifyLiquidityTest(manager);
 
         // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)
@@ -85,7 +85,7 @@ contract QuoterTest is Test, Deployers {
         uint256 expectedAmountOut = 9871;
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInputSingle(
-            IQuoter.QuoteExactSingleParams({
+            IV4Quoter.QuoteExactSingleParams({
                 poolKey: key02,
                 zeroForOne: true,
                 exactAmount: uint128(amountIn),
@@ -104,7 +104,7 @@ contract QuoterTest is Test, Deployers {
         uint256 expectedAmountOut = 9871;
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInputSingle(
-            IQuoter.QuoteExactSingleParams({
+            IV4Quoter.QuoteExactSingleParams({
                 poolKey: key02,
                 zeroForOne: false,
                 exactAmount: uint128(amountIn),
@@ -121,7 +121,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactInput_0to2_2TicksLoaded() public {
         tokenPath.push(token0);
         tokenPath.push(token2);
-        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
@@ -136,7 +136,7 @@ contract QuoterTest is Test, Deployers {
 
         // The swap amount is set such that the active tick after the swap is -120.
         // -120 is an initialized tick for this pool. We check that we don't count it.
-        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 6200);
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 6200);
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
@@ -151,7 +151,7 @@ contract QuoterTest is Test, Deployers {
 
         // The swap amount is set such that the active tick after the swap is -60.
         // -60 is an initialized tick for this pool. We check that we don't count it.
-        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 4000);
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 4000);
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
@@ -165,7 +165,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactInput_0to2_0TickLoaded_startingNotInitialized() public {
         tokenPath.push(token0);
         tokenPath.push(token2);
-        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10);
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10);
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
@@ -178,7 +178,7 @@ contract QuoterTest is Test, Deployers {
         setupPoolWithZeroTickInitialized(key02);
         tokenPath.push(token0);
         tokenPath.push(token2);
-        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10);
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10);
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
@@ -190,7 +190,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactInput_2to0_2TicksLoaded() public {
         tokenPath.push(token2);
         tokenPath.push(token0);
-        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
@@ -205,7 +205,7 @@ contract QuoterTest is Test, Deployers {
 
         // The swap amount is set such that the active tick after the swap is 120.
         // 120 is an initialized tick for this pool. We check that we don't count it.
-        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 6250);
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 6250);
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
@@ -220,7 +220,7 @@ contract QuoterTest is Test, Deployers {
         setupPoolWithZeroTickInitialized(key02);
         tokenPath.push(token2);
         tokenPath.push(token0);
-        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 200);
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 200);
 
         // Tick 0 initialized. Tick after = 1
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
@@ -236,7 +236,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactInput_2to0_0TickLoaded_startingNotInitialized() public {
         tokenPath.push(token2);
         tokenPath.push(token0);
-        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 103);
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 103);
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
@@ -248,7 +248,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactInput_2to1() public {
         tokenPath.push(token2);
         tokenPath.push(token1);
-        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
         assertGt(gasEstimate, 50000);
@@ -260,7 +260,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token0);
         tokenPath.push(token2);
         tokenPath.push(token1);
-        IQuoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
+        IV4Quoter.QuoteExactParams memory params = getExactInputParams(tokenPath, 10000);
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
@@ -274,7 +274,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactOutputSingle_0to1() public {
         uint256 amountOut = 10000;
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutputSingle(
-            IQuoter.QuoteExactSingleParams({
+            IV4Quoter.QuoteExactSingleParams({
                 poolKey: key01,
                 zeroForOne: true,
                 exactAmount: uint128(amountOut),
@@ -291,7 +291,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactOutputSingle_1to0() public {
         uint256 amountOut = 10000;
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutputSingle(
-            IQuoter.QuoteExactSingleParams({
+            IV4Quoter.QuoteExactSingleParams({
                 poolKey: key01,
                 zeroForOne: false,
                 exactAmount: uint128(amountOut),
@@ -308,7 +308,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactOutput_0to2_2TicksLoaded() public {
         tokenPath.push(token0);
         tokenPath.push(token2);
-        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 15000);
+        IV4Quoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 15000);
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
@@ -322,7 +322,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token0);
         tokenPath.push(token2);
 
-        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6143);
+        IV4Quoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6143);
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
@@ -336,7 +336,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token0);
         tokenPath.push(token2);
 
-        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 4000);
+        IV4Quoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 4000);
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
@@ -351,7 +351,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token0);
         tokenPath.push(token2);
 
-        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 100);
+        IV4Quoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 100);
 
         // Tick 0 initialized. Tick after = 1
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
@@ -366,7 +366,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token0);
         tokenPath.push(token2);
 
-        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 10);
+        IV4Quoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 10);
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
@@ -378,7 +378,7 @@ contract QuoterTest is Test, Deployers {
     function testQuoter_quoteExactOutput_2to0_2TicksLoaded() public {
         tokenPath.push(token2);
         tokenPath.push(token0);
-        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 15000);
+        IV4Quoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 15000);
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
@@ -391,7 +391,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token2);
         tokenPath.push(token0);
 
-        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6223);
+        IV4Quoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6223);
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
@@ -404,7 +404,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token2);
         tokenPath.push(token0);
 
-        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6000);
+        IV4Quoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 6000);
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
         assertGt(gasEstimate, 50000);
@@ -416,7 +416,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token2);
         tokenPath.push(token1);
 
-        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 9871);
+        IV4Quoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 9871);
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
@@ -430,7 +430,7 @@ contract QuoterTest is Test, Deployers {
         tokenPath.push(token2);
         tokenPath.push(token1);
 
-        IQuoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 9745);
+        IV4Quoter.QuoteExactParams memory params = getExactOutputParams(tokenPath, 9745);
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
@@ -547,7 +547,7 @@ contract QuoterTest is Test, Deployers {
     function getExactInputParams(MockERC20[] memory _tokenPath, uint256 amountIn)
         internal
         pure
-        returns (IQuoter.QuoteExactParams memory params)
+        returns (IV4Quoter.QuoteExactParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
         for (uint256 i = 0; i < _tokenPath.length - 1; i++) {
@@ -562,7 +562,7 @@ contract QuoterTest is Test, Deployers {
     function getExactOutputParams(MockERC20[] memory _tokenPath, uint256 amountOut)
         internal
         pure
-        returns (IQuoter.QuoteExactParams memory params)
+        returns (IV4Quoter.QuoteExactParams memory params)
     {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
         for (uint256 i = _tokenPath.length - 1; i > 0; i--) {
