@@ -17,8 +17,4 @@ interface ISubscriber {
     /// @param liquidityChange the change in liquidity on the underlying position
     /// @param feesAccrued the fees to be collected from the position as a result of the modifyLiquidity call
     function notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) external;
-    /// @param tokenId the token ID of the position
-    /// @param previousOwner address of the old owner
-    /// @param newOwner address of the new owner
-    function notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) external;
 }

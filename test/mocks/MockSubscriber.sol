@@ -12,7 +12,6 @@ contract MockSubscriber is ISubscriber {
     uint256 public notifySubscribeCount;
     uint256 public notifyUnsubscribeCount;
     uint256 public notifyModifyLiquidityCount;
-    uint256 public notifyTransferCount;
     int256 public liquidityChange;
     BalanceDelta public feesAccrued;
 
@@ -44,9 +43,5 @@ contract MockSubscriber is ISubscriber {
         notifyModifyLiquidityCount++;
         liquidityChange = _liquidityChange;
         feesAccrued = _feesAccrued;
-    }
-
-    function notifyTransfer(uint256, address, address) external onlyByPosm {
-        notifyTransferCount++;
     }
 }
