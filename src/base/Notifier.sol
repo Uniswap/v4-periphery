@@ -88,6 +88,26 @@ abstract contract Notifier is INotifier {
         emit Unsubscription(tokenId, address(_subscriber));
     }
 
+    /// @dev note this function also deletes the subscriber address from the mapping
+    function _notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
+        internal
+    {
+        ISubscriber _subscriber = subscriber[tokenId];
+
+        // remove the subscriber
+        delete subscriber[tokenId];
+
+        bool success = _call(
+            address(_subscriber), abi.encodeCall(ISubscriber.notifyBurn, (tokenId, owner, info, liquidity, feesAccrued))
+        );
+
+        if (!success) {
+            address(_subscriber).bubbleUpAndRevertWith(
+                ISubscriber.notifyBurn.selector, BurnNotificationReverted.selector
+            );
+        }
+    }
+
     function _notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) internal {
         ISubscriber _subscriber = subscriber[tokenId];
 

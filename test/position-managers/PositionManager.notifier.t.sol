@@ -566,8 +566,8 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         lpm.modifyLiquidities(calls, _deadline);
     }
 
-    /// @notice burning a position will automatically notify unsubscribe
-    function test_burn_unsubscribe() public {
+    /// @notice burning a position will automatically notify burn
+    function test_notifyBurn_succeeds() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
 
@@ -583,12 +583,13 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(sub.notifyUnsubscribeCount(), 0);
 
-        // burn the position, causing an unsubscribe
+        // burn the position, causing a notifyBurn
         burn(tokenId, config, ZERO_BYTES);
 
         // position is now unsubscribed
         assertEq(lpm.positionInfo(tokenId).hasSubscriber(), false);
-        assertEq(sub.notifyUnsubscribeCount(), 1);
+        assertEq(sub.notifyUnsubscribeCount(), 0);
+        assertEq(sub.notifyBurnCount(), 1);
     }
 
     /// @notice Test that users cannot forcibly avoid unsubscribe logic via gas limits
