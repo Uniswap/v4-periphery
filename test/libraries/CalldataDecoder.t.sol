@@ -301,7 +301,7 @@ contract CalldataDecoderTest is Test {
         decoder.decodeCurrencyAndUint256(invalidParams);
     }
 
-    function test_fuzz_decodeUint256(uint256 _amount) public {
+    function test_fuzz_decodeUint256(uint256 _amount) public view {
         bytes memory params = abi.encode(_amount);
         uint256 amount = decoder.decodeUint256(params);
 
@@ -319,7 +319,7 @@ contract CalldataDecoderTest is Test {
         decoder.decodeUint256(invalidParams);
     }
 
-    function test_fuzz_decodeCurrencyUint256AndBool(Currency _currency, uint256 _amount, bool _boolean) public {
+    function test_fuzz_decodeCurrencyUint256AndBool(Currency _currency, uint256 _amount, bool _boolean) public view {
         bytes memory params = abi.encode(_currency, _amount, _boolean);
         (Currency currency, uint256 amount, bool boolean) = decoder.decodeCurrencyUint256AndBool(params);
 

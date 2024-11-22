@@ -140,6 +140,12 @@ library CalldataDecoder {
     {
         // ExactInputParams is a variable length struct so we just have to look up its location
         assembly ("memory-safe") {
+            // only safety checks for the minimum length, where path is empty
+            // 0xa0 = 5 * 0x20 -> 3 elements, path offset, and path length 0
+            if lt(params.length, 0xa0) {
+                mstore(0, SLICE_ERROR_SELECTOR)
+                revert(0x1c, 4)
+            }
             swapParams := add(params.offset, calldataload(params.offset))
         }
     }
@@ -152,6 +158,12 @@ library CalldataDecoder {
     {
         // ExactInputSingleParams is a variable length struct so we just have to look up its location
         assembly ("memory-safe") {
+            // only safety checks for the minimum length, where hookData is empty
+            // 0x140 = 10 * 0x20 -> 8 elements, bytes offset, and bytes length 0
+            if lt(params.length, 0x140) {
+                mstore(0, SLICE_ERROR_SELECTOR)
+                revert(0x1c, 4)
+            }
             swapParams := add(params.offset, calldataload(params.offset))
         }
     }
@@ -164,6 +176,12 @@ library CalldataDecoder {
     {
         // ExactOutputParams is a variable length struct so we just have to look up its location
         assembly ("memory-safe") {
+            // only safety checks for the minimum length, where path is empty
+            // 0xa0 = 5 * 0x20 -> 3 elements, path offset, and path length 0
+            if lt(params.length, 0xa0) {
+                mstore(0, SLICE_ERROR_SELECTOR)
+                revert(0x1c, 4)
+            }
             swapParams := add(params.offset, calldataload(params.offset))
         }
     }
@@ -176,6 +194,12 @@ library CalldataDecoder {
     {
         // ExactOutputSingleParams is a variable length struct so we just have to look up its location
         assembly ("memory-safe") {
+            // only safety checks for the minimum length, where hookData is empty
+            // 0x140 = 10 * 0x20 -> 8 elements, bytes offset, and bytes length 0
+            if lt(params.length, 0x140) {
+                mstore(0, SLICE_ERROR_SELECTOR)
+                revert(0x1c, 4)
+            }
             swapParams := add(params.offset, calldataload(params.offset))
         }
     }
