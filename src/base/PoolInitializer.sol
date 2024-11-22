@@ -13,7 +13,9 @@ abstract contract PoolInitializer is ImmutableState {
     /// @param key the PoolKey of the pool to initialize
     /// @param sqrtPriceX96 the initial sqrtPriceX96 of the pool
     /// @return tick The current tick of the pool
-    function initializePool(PoolKey calldata key, uint160 sqrtPriceX96) external payable returns (int24) {
-        try poolManager.initialize(key, sqrtPriceX96) returns (int24) {} catch {}
+    function initializePool(PoolKey calldata key, uint160 sqrtPriceX96) external payable returns (int24 tick) {
+        try poolManager.initialize(key, sqrtPriceX96) returns (int24 _tick) {
+            tick = _tick;
+        } catch {}
     }
 }
