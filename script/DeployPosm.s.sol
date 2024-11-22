@@ -15,12 +15,10 @@ import {IWETH9} from "../src/interfaces/external/IWETH9.sol";
 contract DeployPosmTest is Script {
     function setUp() public {}
 
-    function run(
-        address poolManager,
-        address permit2,
-        uint256 unsubscribeGasLimit,
-        address wrappedNative
-    ) public returns (PositionDescriptor positionDescriptor, PositionManager posm) {
+    function run(address poolManager, address permit2, uint256 unsubscribeGasLimit, address wrappedNative)
+        public
+        returns (PositionDescriptor positionDescriptor, PositionManager posm)
+    {
         vm.startBroadcast();
 
         // positionDescriptor = new PositionDescriptor(IPoolManager(poolManager), wrappedNative, "ETH");
