@@ -83,6 +83,28 @@ contract CalldataDecoderTest is Test {
         assertEq(mintParams.tickUpper, _config.tickUpper);
     }
 
+    function test_fuzz_decodeMintFromDeltasParams(
+        PositionConfig calldata _config,
+        uint128 _amount0Max,
+        uint128 _amount1Max,
+        address _owner,
+        bytes calldata _hookData
+    ) public view {
+        bytes memory params = abi.encode(
+            _config.poolKey, _config.tickLower, _config.tickUpper, _amount0Max, _amount1Max, _owner, _hookData
+        );
+
+        (MockCalldataDecoder.MintFromDeltasParams memory mintParams) = decoder.decodeMintFromDeltasParams(params);
+
+        _assertEq(mintParams.poolKey, _config.poolKey);
+        assertEq(mintParams.tickLower, _config.tickLower);
+        assertEq(mintParams.tickUpper, _config.tickUpper);
+        assertEq(mintParams.amount0Max, _amount0Max);
+        assertEq(mintParams.amount1Max, _amount1Max);
+        assertEq(mintParams.owner, _owner);
+        assertEq(mintParams.hookData, _hookData);
+    }
+
     function test_fuzz_decodeSwapExactInParams(IV4Router.ExactInputParams calldata _swapParams) public view {
         bytes memory params = abi.encode(_swapParams);
         IV4Router.ExactInputParams memory swapParams = decoder.decodeSwapExactInParams(params);
@@ -232,7 +254,23 @@ contract CalldataDecoderTest is Test {
         assertEq(amount, _amount);
     }
 
-    function test_fuzz_decodeUint256(uint256 _amount) public {
+    function test_fuzz_decodeIncreaseLiquidityFromAmountsParams(
+        uint256 _tokenId,
+        uint128 _amount0Max,
+        uint128 _amount1Max,
+        bytes calldata _hookData
+    ) public view {
+        bytes memory params = abi.encode(_tokenId, _amount0Max, _amount1Max, _hookData);
+
+        (uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes memory hookData) =
+            decoder.decodeIncreaseLiquidityFromDeltasParams(params);
+        assertEq(_tokenId, tokenId);
+        assertEq(_amount0Max, amount0Max);
+        assertEq(_amount1Max, amount1Max);
+        assertEq(_hookData, hookData);
+    }
+
+    function test_fuzz_decodeUint256(uint256 _amount) public view {
         bytes memory params = abi.encode(_amount);
         uint256 amount = decoder.decodeUint256(params);
 
