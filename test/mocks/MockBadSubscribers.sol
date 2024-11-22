@@ -12,7 +12,6 @@ contract MockReturnDataSubscriber is ISubscriber {
     uint256 public notifySubscribeCount;
     uint256 public notifyUnsubscribeCount;
     uint256 public notifyModifyLiquidityCount;
-    uint256 public notifyTransferCount;
 
     error NotAuthorizedNotifer(address sender);
 
@@ -46,10 +45,6 @@ contract MockReturnDataSubscriber is ISubscriber {
 
     function notifyModifyLiquidity(uint256, int256, BalanceDelta) external onlyByPosm {
         notifyModifyLiquidityCount++;
-    }
-
-    function notifyTransfer(uint256, address, address) external onlyByPosm {
-        notifyTransferCount++;
     }
 
     function setReturnDataSize(uint256 _value) external {
@@ -88,10 +83,6 @@ contract MockRevertSubscriber is ISubscriber {
 
     function notifyModifyLiquidity(uint256, int256, BalanceDelta) external view onlyByPosm {
         revert TestRevert("notifyModifyLiquidity");
-    }
-
-    function notifyTransfer(uint256, address, address) external view onlyByPosm {
-        revert TestRevert("notifyTransfer");
     }
 
     function setRevert(bool _shouldRevert) external {
