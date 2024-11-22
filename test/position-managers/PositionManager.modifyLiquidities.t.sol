@@ -845,6 +845,8 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         int24 tickUpper
     ) public {
         bips = bound(bips, 1, 10_000);
+        MockFOT(address(fotToken)).setFee(bips);
+
         tickLower = int24(
             bound(
                 tickLower,
@@ -879,12 +881,12 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         amount0 = bound(amount0, 1, maxAmount0);
         amount1 = bound(amount1, 1, maxAmount1);
 
-        MockFOT(address(fotToken)).setFee(bips);
-
         uint256 tokenId = lpm.nextTokenId();
 
         uint256 balance0 = fotKey.currency0.balanceOf(address(this));
         uint256 balance1 = fotKey.currency1.balanceOf(address(this));
+        uint256 balance0PM = fotKey.currency0.balanceOf(address(manager));
+        uint256 balance1PM = fotKey.currency1.balanceOf(address(manager));
 
         Plan memory planner = Planner.init();
         planner.add(Actions.SETTLE, abi.encode(fotKey.currency0, amount0, true));
@@ -901,15 +903,13 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
                 ZERO_BYTES
             )
         );
-        // take or clear the currency that is FOT, since we are limited more by the FOT amount
-        (Currency fotCurrency, Currency otherCurrency) = fotKey.currency0 == Currency.wrap(address(fotToken))
-            ? (fotKey.currency0, fotKey.currency1)
-            : (fotKey.currency1, fotKey.currency0);
-        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(fotCurrency, 100 wei));
-        planner.add(Actions.CLEAR_OR_TAKE, abi.encode(otherCurrency, 100 wei));
+        // take the excess of each currency
+        planner.add(Actions.TAKE_PAIR, abi.encode(fotKey.currency0, fotKey.currency1, ActionConstants.MSG_SENDER));
 
         bytes memory actions = planner.encode();
-        bool positionIsEntirelyInOtherToken = fotKey.currency0 == Currency.wrap(address(fotToken))
+
+        bool currency0IsFOT = fotKey.currency0 == Currency.wrap(address(fotToken));
+        bool positionIsEntirelyInOtherToken = currency0IsFOT
             ? tickUpper <= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
             : tickLower > TickMath.getTickAtSqrtPrice(sqrtPriceX96);
 
@@ -922,13 +922,18 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
             uint256 balance0After = fotKey.currency0.balanceOf(address(this));
             uint256 balance1After = fotKey.currency1.balanceOf(address(this));
+            uint256 balance0PMAfter = fotKey.currency0.balanceOf(address(manager));
+            uint256 balance1PMAfter = fotKey.currency1.balanceOf(address(manager));
 
             // Calculate the expected resulting balances used to create liquidity after the fee is applied.
-            uint256 amountInFOT = fotKey.currency0 == Currency.wrap(address(fotToken)) ? amount0 : amount1;
+            uint256 amountInFOT = currency0IsFOT ? amount0 : amount1;
             uint256 expectedFee = amountInFOT.calculatePortion(bips);
-            (uint256 expected0, uint256 expected1) = fotKey.currency0 == Currency.wrap(address(fotToken))
+            (uint256 expected0, uint256 expected1) = currency0IsFOT
                 ? (balance0 - balance0After - expectedFee, balance1 - balance1After)
                 : (balance0 - balance0After, balance1 - balance1After - expectedFee);
+
+            assertEq(expected0, balance0PMAfter - balance0PM);
+            assertEq(expected1, balance1PMAfter - balance1PM);
 
             // the liquidity that was created is a diff of the balance change
             uint128 expectedLiquidity = LiquidityAmounts.getLiquidityForAmounts(

@@ -27,7 +27,7 @@ contract MockFOT is MockERC20 {
 
         balanceOf[from] -= amount;
 
-        // 1% fee on the recipient
+        // bips% fee on the recipient
         uint256 amountAfterFee = amount - amount.calculatePortion(bips);
 
         // Cannot overflow because the sum of all user
