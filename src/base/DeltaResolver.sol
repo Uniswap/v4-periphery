@@ -37,10 +37,11 @@ abstract contract DeltaResolver is ImmutableState {
     /// @dev Returns early if the amount is 0
     function _settle(Currency currency, address payer, uint256 amount) internal {
         if (amount == 0) return;
+
+        poolManager.sync(currency);
         if (currency.isAddressZero()) {
             poolManager.settle{value: amount}();
         } else {
-            poolManager.sync(currency);
             _pay(currency, payer, amount);
             poolManager.settle();
         }

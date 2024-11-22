@@ -270,7 +270,7 @@ contract CalldataDecoderTest is Test {
         assertEq(_hookData, hookData);
     }
 
-    function test_fuzz_decodeUint256(uint256 _amount) public {
+    function test_fuzz_decodeUint256(uint256 _amount) public view {
         bytes memory params = abi.encode(_amount);
         uint256 amount = decoder.decodeUint256(params);
 

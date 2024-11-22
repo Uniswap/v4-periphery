@@ -943,7 +943,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
             assertEq(lpm.getPositionLiquidity(tokenId), expectedLiquidity);
 
             // BURN.
-            Plan memory planner = Planner.init();
+            planner = Planner.init();
             // Note that the slippage does not include the fee from the transfer.
             planner.add(
                 Actions.BURN_POSITION,
@@ -952,7 +952,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
             planner.add(Actions.TAKE_PAIR, abi.encode(fotKey.currency0, fotKey.currency1, ActionConstants.MSG_SENDER));
 
-            bytes memory actions = planner.encode();
+            actions = planner.encode();
 
             lpm.modifyLiquidities(actions, _deadline);
 
