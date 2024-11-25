@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
 /// @notice This is a temporary library that allows us to use transient storage (tstore/tload)
