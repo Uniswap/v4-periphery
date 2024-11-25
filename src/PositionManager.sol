@@ -438,7 +438,7 @@ contract PositionManager is
         }
 
         // deletes then notifies the subscriber
-        if (info.hasSubscriber()) _notifyBurn(tokenId, owner, info, liquidity, feesAccrued);
+        if (info.hasSubscriber()) _removeSubscriberAndNotifyBurn(tokenId, owner, info, liquidity, feesAccrued);
     }
 
     function _settlePair(Currency currency0, Currency currency1) internal {

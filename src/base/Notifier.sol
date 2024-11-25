@@ -89,9 +89,13 @@ abstract contract Notifier is INotifier {
     }
 
     /// @dev note this function also deletes the subscriber address from the mapping
-    function _notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
-        internal
-    {
+    function _removeSubscriberAndNotifyBurn(
+        uint256 tokenId,
+        address owner,
+        PositionInfo info,
+        uint256 liquidity,
+        BalanceDelta feesAccrued
+    ) internal {
         ISubscriber _subscriber = subscriber[tokenId];
 
         // remove the subscriber
