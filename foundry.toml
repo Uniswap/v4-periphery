@@ -1,7 +1,7 @@
 [profile.default]
 out = 'foundry-out'
 solc_version = '0.8.26'
-optimizer_runs = 44444444
+optimizer_runs = 1
 via_ir = true
 ffi = true
 fs_permissions = [{ access = "read-write", path = ".forge-snapshots/"}]

@@ -75,6 +75,10 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         sub = new MockSubscriber(lpm);
     }
 
+    function test_bytecodeSize_positionManager() public {
+        snapSize("positionManager bytecode size", address(lpm));
+    }
+
     function test_gas_mint_withClose() public {
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
