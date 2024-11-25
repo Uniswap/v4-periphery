@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 
 /// @notice A subscriber contract that returns values from the subscriber entrypoints
 contract MockReturnDataSubscriber is ISubscriber {
@@ -47,6 +48,12 @@ contract MockReturnDataSubscriber is ISubscriber {
         notifyModifyLiquidityCount++;
     }
 
+    function notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
+        external
+    {
+        return;
+    }
+
     function setReturnDataSize(uint256 _value) external {
         memPtr = _value;
     }
@@ -83,6 +90,12 @@ contract MockRevertSubscriber is ISubscriber {
 
     function notifyModifyLiquidity(uint256, int256, BalanceDelta) external view onlyByPosm {
         revert TestRevert("notifyModifyLiquidity");
+    }
+
+    function notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
+        external
+    {
+        return;
     }
 
     function setRevert(bool _shouldRevert) external {
