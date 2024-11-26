@@ -226,7 +226,7 @@ contract PermitTest is Test, PosmTestSetup {
 
         // alice revokes the nonce
         vm.prank(alice);
-        lpm.revokeNonce(nonce);
+        UnorderedNonce(address(lpm)).revokeNonce(nonce);
 
         // alice gives bob spender permissions
         bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);

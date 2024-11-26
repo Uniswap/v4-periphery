@@ -19,6 +19,7 @@ import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
+import {Deploy} from "./shared/Deploy.sol";
 
 import {StateView} from "../src/lens/StateView.sol";
 
@@ -40,7 +41,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
         poolId = key.toId();
         manager.initialize(key, SQRT_PRICE_1_1);
 
-        state = new StateView(manager);
+        state = Deploy.stateView(address(manager));
     }
 
     function test_getSlot0() public {

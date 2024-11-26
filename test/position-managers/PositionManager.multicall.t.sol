@@ -16,11 +16,10 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
+import {IERC721} from "forge-std/interfaces/IERC721.sol";
 
-import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
-import {PoolInitializer} from "../../src/base/PoolInitializer.sol";
+import {IPositionManager, IPoolInitializer} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
 import {IMulticall_v4} from "../../src/interfaces/IMulticall_v4.sol";
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
@@ -98,7 +97,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // Use multicall to initialize a pool and mint liquidity
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1);
+        calls[0] = abi.encodeWithSelector(IPoolInitializer.initializePool.selector, key, SQRT_PRICE_1_1);
 
         config = PositionConfig({
             poolKey: key,
@@ -139,7 +138,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // Use multicall to initialize the pool again.
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1);
+        calls[0] = abi.encodeWithSelector(IPoolInitializer.initializePool.selector, key, SQRT_PRICE_1_1);
 
         config = PositionConfig({
             poolKey: key,
@@ -185,7 +184,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // Use multicall to initialize a pool and mint liquidity
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1);
+        calls[0] = abi.encodeWithSelector(IPoolInitializer.initializePool.selector, key, SQRT_PRICE_1_1);
 
         config = PositionConfig({
             poolKey: key,
@@ -341,7 +340,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         assertEq(_amount, permitAmount);
         assertEq(liquidity, 10e18);
-        assertEq(lpm.ownerOf(tokenId), bob);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), bob);
     }
 
     function test_multicall_permit_batch_mint() public {
@@ -398,7 +397,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         assertEq(_amount0, permitAmount);
         assertEq(_amount1, permitAmount);
         assertEq(liquidity, 10e18);
-        assertEq(lpm.ownerOf(tokenId), bob);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), bob);
     }
 
     /// @notice test that a front-ran permit does not fail a multicall with permit
@@ -422,8 +421,8 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // bob front-runs the permits
         vm.startPrank(bob);
-        lpm.permit(charlie, permit0, sig0);
-        lpm.permit(charlie, permit1, sig1);
+        Permit2Forwarder(address(lpm)).permit(charlie, permit0, sig0);
+        Permit2Forwarder(address(lpm)).permit(charlie, permit1, sig1);
         vm.stopPrank();
 
         // bob's front-run was successful
@@ -440,20 +439,20 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // charlie tries to mint an LP token with multicall(permit, permit, mint)
         bytes[] memory calls = new bytes[](3);
-        calls[0] = abi.encodeWithSelector(Permit2Forwarder(lpm).permit.selector, charlie, permit0, sig0);
-        calls[1] = abi.encodeWithSelector(Permit2Forwarder(lpm).permit.selector, charlie, permit1, sig1);
+        calls[0] = abi.encodeWithSelector(Permit2Forwarder(address(lpm)).permit.selector, charlie, permit0, sig0);
+        calls[1] = abi.encodeWithSelector(Permit2Forwarder(address(lpm)).permit.selector, charlie, permit1, sig1);
         bytes memory mintCall = getMintEncoded(config, 10e18, charlie, ZERO_BYTES);
         calls[2] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mintCall, _deadline);
 
         uint256 tokenId = lpm.nextTokenId();
         vm.expectRevert();
-        lpm.ownerOf(tokenId); // token does not exist
+        IERC721(address(lpm)).ownerOf(tokenId); // token does not exist
 
         bytes[] memory results = lpm.multicall(calls);
         assertEq(results[0], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
         assertEq(results[1], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
 
-        assertEq(lpm.ownerOf(tokenId), charlie);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), charlie);
     }
 
     /// @notice test that a front-ran permitBatch does not fail a multicall with permitBatch
@@ -476,7 +475,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // bob front-runs the permits
         vm.prank(bob);
-        lpm.permitBatch(charlie, permit, sig);
+        Permit2Forwarder(address(lpm)).permitBatch(charlie, permit, sig);
 
         // bob's front-run was successful
         (uint160 _amount, uint48 _expiration, uint48 _nonce) =
@@ -492,17 +491,17 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // charlie tries to mint an LP token with multicall(permitBatch, mint)
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(Permit2Forwarder(lpm).permitBatch.selector, charlie, permit, sig);
+        calls[0] = abi.encodeWithSelector(Permit2Forwarder(address(lpm)).permitBatch.selector, charlie, permit, sig);
         bytes memory mintCall = getMintEncoded(config, 10e18, charlie, ZERO_BYTES);
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mintCall, _deadline);
 
         uint256 tokenId = lpm.nextTokenId();
         vm.expectRevert();
-        lpm.ownerOf(tokenId); // token does not exist
+        IERC721(address(lpm)).ownerOf(tokenId); // token does not exist
 
         bytes[] memory results = lpm.multicall(calls);
         assertEq(results[0], abi.encode(abi.encodeWithSelector(InvalidNonce.selector)));
 
-        assertEq(lpm.ownerOf(tokenId), charlie);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), charlie);
     }
 }

@@ -4,8 +4,7 @@ pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {PathKey} from "../src/libraries/PathKey.sol";
-import {IV4Quoter} from "../src/interfaces/IV4Quoter.sol";
-import {V4Quoter} from "../src/lens/V4Quoter.sol";
+import {Deploy, IV4Quoter} from "../test/shared/Deploy.sol";
 import {BaseV4Quoter} from "../src/base/BaseV4Quoter.sol";
 import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 
@@ -40,7 +39,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
     uint256 internal constant CONTROLLER_GAS_LIMIT = 500000;
 
-    V4Quoter quoter;
+    IV4Quoter quoter;
 
     PoolModifyLiquidityTest positionManager;
 
@@ -56,7 +55,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
     function setUp() public {
         deployFreshManagerAndRouters();
-        quoter = new V4Quoter(IPoolManager(manager));
+        quoter = Deploy.v4Quoter(address(manager));
         positionManager = new PoolModifyLiquidityTest(manager);
 
         // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)

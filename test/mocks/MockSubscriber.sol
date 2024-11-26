@@ -2,13 +2,13 @@
 pragma solidity ^0.8.20;
 
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 
 /// @notice A subscriber contract that ingests updates from the v4 position manager
 contract MockSubscriber is ISubscriber {
-    PositionManager posm;
+    IPositionManager posm;
 
     uint256 public notifySubscribeCount;
     uint256 public notifyUnsubscribeCount;
@@ -23,7 +23,7 @@ contract MockSubscriber is ISubscriber {
 
     error NotImplemented();
 
-    constructor(PositionManager _posm) {
+    constructor(IPositionManager _posm) {
         posm = _posm;
     }
 

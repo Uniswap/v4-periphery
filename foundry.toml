@@ -1,14 +1,24 @@
 [profile.default]
 out = 'foundry-out'
 solc_version = '0.8.26'
-optimizer_runs = 1
+optimizer_runs = 44444444
 via_ir = true
 ffi = true
-fs_permissions = [{ access = "read-write", path = ".forge-snapshots/"}]
+fs_permissions = [{ access = "read-write", path = ".forge-snapshots/" }, { access = "read", path = "foundry-out/" }]
 evm_version = "cancun"
 gas_limit = "3000000000"
 fuzz_runs = 10_000
 bytecode_hash = "none"
+
+additional_compiler_profiles = [
+  { name = "descriptor", via_ir = true, optimizer_runs = 1 },
+  { name = "test", via_ir = false }
+]
+
+compilation_restrictions = [
+  { paths = "src/PositionDescriptor.sol", optimizer_runs = 1 },
+  { paths = "test/**", via_ir = false }
+]
 
 [profile.debug]
 via_ir = false

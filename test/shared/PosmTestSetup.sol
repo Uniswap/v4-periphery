@@ -8,14 +8,13 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LiquidityOperations} from "./LiquidityOperations.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {HookSavesDelta} from "./HookSavesDelta.sol";
 import {HookModifyLiquidities} from "./HookModifyLiquidities.sol";
-import {PositionDescriptor} from "../../src/PositionDescriptor.sol";
+import {Deploy, IPositionDescriptor} from "./Deploy.sol";
 import {ERC721PermitHash} from "../../src/libraries/ERC721PermitHash.sol";
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {WETH} from "solmate/src/tokens/WETH.sol";
@@ -29,7 +28,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
     IAllowanceTransfer permit2;
-    PositionDescriptor public positionDescriptor;
+    IPositionDescriptor public positionDescriptor;
     HookSavesDelta hook;
     address hookAddr = address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
     IWETH9 public _WETH9 = IWETH9(address(new WETH()));
@@ -68,8 +67,11 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     function deployPosm(IPoolManager poolManager) internal {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
-        positionDescriptor = new PositionDescriptor(poolManager, 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, "ETH");
-        lpm = new PositionManager(poolManager, permit2, 100_000, positionDescriptor, _WETH9);
+        positionDescriptor =
+            Deploy.positionDescriptor(address(poolManager), 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, "ETH");
+        lpm = Deploy.positionManager(
+            address(poolManager), address(permit2), 100_000, address(positionDescriptor), address(_WETH9), hex"03"
+        );
     }
 
     function seedBalance(address to) internal {
