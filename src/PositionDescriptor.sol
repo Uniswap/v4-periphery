@@ -86,7 +86,7 @@ contract PositionDescriptor is IPositionDescriptor {
     }
 
     /// @inheritdoc IPositionDescriptor
-    function flipRatio(address currency0, address currency1) public view override returns (bool) {
+    function flipRatio(address currency0, address currency1) public view returns (bool) {
         return currencyRatioPriority(currency0) > currencyRatioPriority(currency1);
     }
 
