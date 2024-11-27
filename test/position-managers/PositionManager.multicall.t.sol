@@ -26,7 +26,7 @@ import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {Permit2SignatureHelpers} from "../shared/Permit2SignatureHelpers.sol";
-import {Permit2Forwarder} from "../../src/base/Permit2Forwarder.sol";
+import {Permit2Forwarder, IPermit2Forwarder} from "../../src/base/Permit2Forwarder.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
 
@@ -421,8 +421,8 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // bob front-runs the permits
         vm.startPrank(bob);
-        Permit2Forwarder(address(lpm)).permit(charlie, permit0, sig0);
-        Permit2Forwarder(address(lpm)).permit(charlie, permit1, sig1);
+        lpm.permit(charlie, permit0, sig0);
+        lpm.permit(charlie, permit1, sig1);
         vm.stopPrank();
 
         // bob's front-run was successful
@@ -439,8 +439,8 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // charlie tries to mint an LP token with multicall(permit, permit, mint)
         bytes[] memory calls = new bytes[](3);
-        calls[0] = abi.encodeWithSelector(Permit2Forwarder(address(lpm)).permit.selector, charlie, permit0, sig0);
-        calls[1] = abi.encodeWithSelector(Permit2Forwarder(address(lpm)).permit.selector, charlie, permit1, sig1);
+        calls[0] = abi.encodeWithSelector(IPermit2Forwarder.permit.selector, charlie, permit0, sig0);
+        calls[1] = abi.encodeWithSelector(IPermit2Forwarder.permit.selector, charlie, permit1, sig1);
         bytes memory mintCall = getMintEncoded(config, 10e18, charlie, ZERO_BYTES);
         calls[2] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mintCall, _deadline);
 
@@ -475,7 +475,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // bob front-runs the permits
         vm.prank(bob);
-        Permit2Forwarder(address(lpm)).permitBatch(charlie, permit, sig);
+        lpm.permitBatch(charlie, permit, sig);
 
         // bob's front-run was successful
         (uint160 _amount, uint48 _expiration, uint48 _nonce) =
@@ -491,7 +491,7 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
 
         // charlie tries to mint an LP token with multicall(permitBatch, mint)
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(Permit2Forwarder(address(lpm)).permitBatch.selector, charlie, permit, sig);
+        calls[0] = abi.encodeWithSelector(lpm.permitBatch.selector, charlie, permit, sig);
         bytes memory mintCall = getMintEncoded(config, 10e18, charlie, ZERO_BYTES);
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, mintCall, _deadline);
 

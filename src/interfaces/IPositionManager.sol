@@ -11,6 +11,7 @@ import {IEIP712_v4} from "./IEIP712_v4.sol";
 import {IMulticall_v4} from "./IMulticall_v4.sol";
 import {IPoolInitializer} from "./IPoolInitializer.sol";
 import {IUnorderedNonce} from "./IUnorderedNonce.sol";
+import {IPermit2Forwarder} from "./IPermit2Forwarder.sol";
 
 /// @title IPositionManager
 /// @notice Interface for the PositionManager contract
@@ -21,7 +22,8 @@ interface IPositionManager is
     IEIP712_v4,
     IMulticall_v4,
     IPoolInitializer,
-    IUnorderedNonce
+    IUnorderedNonce,
+    IPermit2Forwarder
 {
     /// @notice Thrown when the caller is not approved to modify a position
     error NotApproved(address caller);
