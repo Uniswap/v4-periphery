@@ -19,9 +19,7 @@ import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
-import {Deploy} from "./shared/Deploy.sol";
-
-import {StateView} from "../src/lens/StateView.sol";
+import {Deploy, IStateView} from "./shared/Deploy.sol";
 
 /// This test was taken from StateLibrary.t.sol in v4-core and adapted to use the StateView contract instead.
 contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
@@ -30,7 +28,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
 
     PoolId poolId;
 
-    StateView state;
+    IStateView state;
 
     function setUp() public {
         deployFreshManagerAndRouters();

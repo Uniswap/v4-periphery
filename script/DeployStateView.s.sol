@@ -5,12 +5,12 @@ import "forge-std/console2.sol";
 import "forge-std/Script.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {Deploy, StateView} from "../test/shared/Deploy.sol";
+import {Deploy, IStateView} from "../test/shared/Deploy.sol";
 
 contract DeployStateView is Script {
     function setUp() public {}
 
-    function run(address poolManager) public returns (StateView state) {
+    function run(address poolManager) public returns (IStateView state) {
         vm.startBroadcast();
 
         // forge script --broadcast --sig 'run(address)' --rpc-url <RPC_URL> --private-key <PRIV_KEY> --verify script/DeployStateView.s.sol:DeployStateView <POOL_MANAGER_ADDR>

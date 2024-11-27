@@ -4,8 +4,8 @@ pragma solidity ^0.8.26;
 import {Vm} from "forge-std/Vm.sol";
 import {IPositionDescriptor} from "../../src/interfaces/IPositionDescriptor.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
-import {StateView} from "../../src/lens/StateView.sol";
 import {IV4Quoter} from "../../src/interfaces/IV4Quoter.sol";
+import {IStateView} from "../../src/interfaces/IStateView.sol";
 
 library Deploy {
     Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
@@ -25,10 +25,9 @@ library Deploy {
         }
     }
 
-    // no interface available, wrap in contract, this results in both versions being compiled, that's why we are importing the default version explicitly from the json file
-    function stateView(address poolManager) internal returns (StateView stateView_) {
+    function stateView(address poolManager) internal returns (IStateView stateView_) {
         bytes memory args = abi.encode(poolManager);
-        bytes memory initcode = abi.encodePacked(vm.getCode("foundry-out/StateView.sol/StateView.default.json"), args);
+        bytes memory initcode = abi.encodePacked(vm.getCode("StateView.sol:StateView"), args);
         assembly {
             stateView_ := create(0, add(initcode, 0x20), mload(initcode))
         }

@@ -5,7 +5,6 @@ import "forge-std/console2.sol";
 import "forge-std/Script.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {StateView} from "../src/lens/StateView.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {Deploy, IPositionDescriptor, IPositionManager} from "../test/shared/Deploy.sol";
 import {IWETH9} from "../src/interfaces/external/IWETH9.sol";
