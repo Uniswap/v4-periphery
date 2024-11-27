@@ -18,13 +18,13 @@ interface IPositionDescriptor {
     /// @notice Returns true if currency0 has higher priority than currency1
     /// @param currency0 The first currency address
     /// @param currency1 The second currency address
-    /// @return flipRatio True if currency0 has higher priority than currency1
+    /// @return True if currency0 has higher priority than currency1
     function flipRatio(address currency0, address currency1) external view returns (bool);
 
     /// @notice Returns the priority of a currency.
     /// For certain currencies on mainnet, the smaller the currency, the higher the priority
     /// @param currency The currency address
-    /// @return priority The priority of the currency
+    /// @return The priority of the currency
     function currencyRatioPriority(address currency) external view returns (int256);
 
     /// @return The wrapped native token for this descriptor
