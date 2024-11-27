@@ -8,6 +8,6 @@ interface IPoolInitializer {
     /// @dev If the pool is already initialized, this function will not revert and just return type(int24).max
     /// @param key The PoolKey of the pool to initialize
     /// @param sqrtPriceX96 The initial sqrtPriceX96 of the pool
-    /// @return tick The current tick of the pool
+    /// @return tick The current tick of the pool, or type(int24).max if the pool creation failed, or the pool already existed
     function initializePool(PoolKey calldata key, uint160 sqrtPriceX96) external payable returns (int24);
 }
