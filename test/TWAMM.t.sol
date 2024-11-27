@@ -43,7 +43,6 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
         uint256 earningsFactorLast
     );
 
-
     TWAMMImplementation twamm = TWAMMImplementation(
         address(uint160(Hooks.BEFORE_INITIALIZE_FLAG | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG))
     );
@@ -649,7 +648,9 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
         token0.approve(address(twamm), 100e18);
         token1.approve(address(twamm), 100e18);
-        modifyLiquidityRouter.modifyLiquidity(poolKey, IPoolManager.ModifyLiquidityParams(-2400, 2400, 10 ether, 0), ZERO_BYTES);
+        modifyLiquidityRouter.modifyLiquidity(
+            poolKey, IPoolManager.ModifyLiquidityParams(-2400, 2400, 10 ether, 0), ZERO_BYTES
+        );
 
         // submit symmetrical orders trading against each other (easy numbers)
         vm.warp(10000);
@@ -771,10 +772,10 @@ contract TWAMMTest is Test, Deployers, GasSnapshot {
 
     function newPoolKeyWithTWAMM(IHooks hooks) public returns (PoolKey memory, PoolId) {
         MockERC20[] memory tokens = deployTokens(2, 2 ** 255);
-        (MockERC20 t0, MockERC20 t1) = address(tokens[0]) < address(tokens[0]) ? (tokens[0], tokens[1]) : (tokens[1], tokens[0]);
+        (MockERC20 t0, MockERC20 t1) =
+            address(tokens[0]) < address(tokens[0]) ? (tokens[0], tokens[1]) : (tokens[1], tokens[0]);
 
-        PoolKey memory key =
-            PoolKey(Currency.wrap(address(t0)), Currency.wrap(address(t1)), 0, 60, hooks);
+        PoolKey memory key = PoolKey(Currency.wrap(address(t0)), Currency.wrap(address(t1)), 0, 60, hooks);
         return (key, key.toId());
     }
 

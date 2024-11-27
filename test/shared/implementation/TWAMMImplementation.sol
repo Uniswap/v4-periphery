@@ -16,7 +16,6 @@ contract TWAMMImplementation is TWAMM {
     // make this a no-op in testing
     function validateHookAddress(BaseHook _this) internal pure override {}
 
-
     function getOrderPoolEarningsFactorAtInterval(PoolId id, bool zeroForOne, uint256 timestamp)
         external
         view
