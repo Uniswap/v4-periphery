@@ -45,16 +45,19 @@ interface IPositionManager is
     /// @return uint256 The next token ID
     function nextTokenId() external view returns (uint256);
 
+    /// @notice Returns the liquidity of a position
     /// @param tokenId the ERC721 tokenId
     /// @return liquidity the position's liquidity, as a liquidityAmount
     /// @dev this value can be processed as an amount0 and amount1 by using the LiquidityAmounts library
     function getPositionLiquidity(uint256 tokenId) external view returns (uint128 liquidity);
 
+    /// @notice Returns the pool key and position info of a position
     /// @param tokenId the ERC721 tokenId
     /// @return poolKey the pool key of the position
     /// @return PositionInfo a uint256 packed value holding information about the position including the range (tickLower, tickUpper)
     function getPoolAndPositionInfo(uint256 tokenId) external view returns (PoolKey memory, PositionInfo);
 
+    /// @notice Returns the position info of a position
     /// @param tokenId the ERC721 tokenId
     /// @return a uint256 packed value holding information about the position including the range (tickLower, tickUpper)
     function positionInfo(uint256 tokenId) external view returns (PositionInfo);
