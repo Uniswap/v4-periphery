@@ -48,9 +48,7 @@ contract MockReturnDataSubscriber is ISubscriber {
         notifyModifyLiquidityCount++;
     }
 
-    function notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
-        external
-    {
+    function notifyBurn(uint256, address, PositionInfo, uint256, BalanceDelta) external pure {
         return;
     }
 
@@ -92,9 +90,7 @@ contract MockRevertSubscriber is ISubscriber {
         revert TestRevert("notifyModifyLiquidity");
     }
 
-    function notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
-        external
-    {
+    function notifyBurn(uint256, address, PositionInfo, uint256, BalanceDelta) external pure {
         return;
     }
 

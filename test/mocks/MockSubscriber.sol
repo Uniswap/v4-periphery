@@ -47,10 +47,7 @@ contract MockSubscriber is ISubscriber {
         feesAccrued = _feesAccrued;
     }
 
-    function notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
-        external
-        onlyByPosm
-    {
+    function notifyBurn(uint256, address, PositionInfo, uint256, BalanceDelta) external onlyByPosm {
         notifyBurnCount++;
     }
 }
