@@ -96,32 +96,28 @@ abstract contract Notifier is INotifier {
         uint256 liquidity,
         BalanceDelta feesAccrued
     ) internal {
-        ISubscriber _subscriber = subscriber[tokenId];
+        address _subscriber = address(subscriber[tokenId]);
 
         // remove the subscriber
         delete subscriber[tokenId];
 
-        bool success = _call(
-            address(_subscriber), abi.encodeCall(ISubscriber.notifyBurn, (tokenId, owner, info, liquidity, feesAccrued))
-        );
+        bool success =
+            _call(_subscriber, abi.encodeCall(ISubscriber.notifyBurn, (tokenId, owner, info, liquidity, feesAccrued)));
 
         if (!success) {
-            address(_subscriber).bubbleUpAndRevertWith(
-                ISubscriber.notifyBurn.selector, BurnNotificationReverted.selector
-            );
+            _subscriber.bubbleUpAndRevertWith(ISubscriber.notifyBurn.selector, BurnNotificationReverted.selector);
         }
     }
 
     function _notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) internal {
-        ISubscriber _subscriber = subscriber[tokenId];
+        address _subscriber = address(subscriber[tokenId]);
 
         bool success = _call(
-            address(_subscriber),
-            abi.encodeCall(ISubscriber.notifyModifyLiquidity, (tokenId, liquidityChange, feesAccrued))
+            _subscriber, abi.encodeCall(ISubscriber.notifyModifyLiquidity, (tokenId, liquidityChange, feesAccrued))
         );
 
         if (!success) {
-            address(_subscriber).bubbleUpAndRevertWith(
+            _subscriber.bubbleUpAndRevertWith(
                 ISubscriber.notifyModifyLiquidity.selector, ModifyLiquidityNotificationReverted.selector
             );
         }
