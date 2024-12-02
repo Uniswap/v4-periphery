@@ -17,8 +17,6 @@ interface INotifier {
     error ModifyLiquidityNotificationReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting burn notification
     error BurnNotificationReverted(address subscriber, bytes reason);
-    /// @notice Wraps the revert message of the subscriber contract on a reverting transfer notification
-    error TransferNotificationReverted(address subscriber, bytes reason);
     /// @notice Thrown when a tokenId already has a subscriber
     error AlreadySubscribed(uint256 tokenId, address subscriber);
 
