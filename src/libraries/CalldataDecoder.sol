@@ -76,6 +76,7 @@ library CalldataDecoder {
         pure
         returns (uint256 tokenId, uint256 liquidity, uint128 amount0, uint128 amount1, bytes calldata hookData)
     {
+        // no length check performed, as there is a length check in `toBytes`
         assembly ("memory-safe") {
             tokenId := calldataload(params.offset)
             liquidity := calldataload(add(params.offset, 0x20))
@@ -92,6 +93,7 @@ library CalldataDecoder {
         pure
         returns (uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData)
     {
+        // no length check performed, as there is a length check in `toBytes`
         assembly ("memory-safe") {
             tokenId := calldataload(params.offset)
             amount0Max := calldataload(add(params.offset, 0x20))
@@ -116,6 +118,7 @@ library CalldataDecoder {
             bytes calldata hookData
         )
     {
+        // no length check performed, as there is a length check in `toBytes`
         assembly ("memory-safe") {
             poolKey := params.offset
             tickLower := calldataload(add(params.offset, 0xa0))
@@ -142,6 +145,7 @@ library CalldataDecoder {
             bytes calldata hookData
         )
     {
+        // no length check performed, as there is a length check in `toBytes`
         assembly ("memory-safe") {
             poolKey := params.offset
             tickLower := calldataload(add(params.offset, 0xa0))
@@ -160,6 +164,7 @@ library CalldataDecoder {
         pure
         returns (uint256 tokenId, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData)
     {
+        // no length check performed, as there is a length check in `toBytes`
         assembly ("memory-safe") {
             tokenId := calldataload(params.offset)
             amount0Min := calldataload(add(params.offset, 0x20))
