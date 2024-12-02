@@ -77,10 +77,6 @@ library CalldataDecoder {
         returns (uint256 tokenId, uint256 liquidity, uint128 amount0, uint128 amount1, bytes calldata hookData)
     {
         assembly ("memory-safe") {
-            if lt(params.length, 0x80) {
-                mstore(0, SLICE_ERROR_SELECTOR)
-                revert(0x1c, 4)
-            }
             tokenId := calldataload(params.offset)
             liquidity := calldataload(add(params.offset, 0x20))
             amount0 := calldataload(add(params.offset, 0x40))
