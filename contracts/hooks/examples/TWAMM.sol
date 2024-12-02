@@ -145,12 +145,16 @@ contract TWAMM is BaseHook, ITWAMM {
         PoolId poolId = key.toId();
         (uint160 sqrtPriceX96,,,) = manager.getSlot0(poolId);
         State storage twamm = twammStates[poolId];
+        if (twamm.lastVirtualOrderTimestamp == 0) revert NotInitialized();
 
         (bool zeroForOne, uint160 sqrtPriceLimitX96) =
             _executeTWAMMOrders(twamm, manager, key, PoolParamsOnExecute(sqrtPriceX96, manager.getLiquidity(poolId)));
 
         if (sqrtPriceLimitX96 != 0 && sqrtPriceLimitX96 != sqrtPriceX96) {
-            manager.unlock(abi.encode(key, IPoolManager.SwapParams(zeroForOne, type(int256).max, sqrtPriceLimitX96)));
+            // we trade to the sqrtPriceLimitX96, but v3 math inherently has small imprecision, must set swapAmountLimit
+            // to balance in case the trade needs more wei than is left in the contract
+            int256 swapAmountLimit = -int256(zeroForOne ? key.currency0.balanceOfSelf() : key.currency1.balanceOfSelf());
+            manager.unlock(abi.encode(key, IPoolManager.SwapParams(zeroForOne, swapAmountLimit, sqrtPriceLimitX96)));
         }
     }
 
@@ -256,13 +260,16 @@ contract TWAMM is BaseHook, ITWAMM {
         if (amountDelta != 0 && orderKey.expiration <= block.timestamp) revert CannotModifyCompletedOrder(orderKey);
 
         unchecked {
-            uint256 earningsFactor = orderPool.earningsFactorCurrent - order.earningsFactorLast;
-            buyTokensOwed = (earningsFactor * order.sellRate) >> FixedPoint96.RESOLUTION;
-            earningsFactorLast = orderPool.earningsFactorCurrent;
-            order.earningsFactorLast = earningsFactorLast;
+            earningsFactorLast = orderKey.expiration <= block.timestamp
+                ? orderPool.earningsFactorAtInterval[orderKey.expiration]
+                : orderPool.earningsFactorCurrent;
+            buyTokensOwed =
+                ((earningsFactorLast - order.earningsFactorLast) * order.sellRate) >> FixedPoint96.RESOLUTION;
 
             if (orderKey.expiration <= block.timestamp) {
                 delete self.orders[_orderId(orderKey)];
+            } else {
+                order.earningsFactorLast = earningsFactorLast;
             }
 
             if (amountDelta != 0) {
