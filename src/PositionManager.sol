@@ -420,8 +420,8 @@ contract PositionManager is
 
         // Can only call modify if there is non zero liquidity.
         BalanceDelta feesAccrued;
-        BalanceDelta liquidityDelta;
         if (liquidity > 0) {
+            BalanceDelta liquidityDelta;
             // do not use _modifyLiquidity as we do not need to notify on modification for burns.
             (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
                 poolKey,
