@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";

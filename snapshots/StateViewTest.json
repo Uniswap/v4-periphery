@@ -1,12 +1,12 @@
 {
-  "StateView_extsload_getFeeGrowthGlobals": "2256",
-  "StateView_extsload_getFeeGrowthInside": "7994",
-  "StateView_extsload_getLiquidity": "1399",
-  "StateView_extsload_getPositionInfo": "2826",
-  "StateView_extsload_getPositionLiquidity": "1651",
-  "StateView_extsload_getSlot0": "1446",
-  "StateView_extsload_getTickBitmap": "1392",
-  "StateView_extsload_getTickFeeGrowthOutside": "2543",
-  "StateView_extsload_getTickInfo": "2758",
-  "StateView_extsload_getTickLiquidity": "1646"
+  "StateView_extsload_getFeeGrowthGlobals": "2367",
+  "StateView_extsload_getFeeGrowthInside": "8444",
+  "StateView_extsload_getLiquidity": "1480",
+  "StateView_extsload_getPositionInfo": "2973",
+  "StateView_extsload_getPositionLiquidity": "1750",
+  "StateView_extsload_getSlot0": "1548",
+  "StateView_extsload_getTickBitmap": "1476",
+  "StateView_extsload_getTickFeeGrowthOutside": "2672",
+  "StateView_extsload_getTickInfo": "2896",
+  "StateView_extsload_getTickLiquidity": "1748"
 }

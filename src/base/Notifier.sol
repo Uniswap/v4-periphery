@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
@@ -88,30 +88,37 @@ abstract contract Notifier is INotifier {
         emit Unsubscription(tokenId, address(_subscriber));
     }
 
-    function _notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) internal {
-        ISubscriber _subscriber = subscriber[tokenId];
+    /// @dev note this function also deletes the subscriber address from the mapping
+    function _removeSubscriberAndNotifyBurn(
+        uint256 tokenId,
+        address owner,
+        PositionInfo info,
+        uint256 liquidity,
+        BalanceDelta feesAccrued
+    ) internal {
+        address _subscriber = address(subscriber[tokenId]);
 
-        bool success = _call(
-            address(_subscriber),
-            abi.encodeCall(ISubscriber.notifyModifyLiquidity, (tokenId, liquidityChange, feesAccrued))
-        );
+        // remove the subscriber
+        delete subscriber[tokenId];
+
+        bool success =
+            _call(_subscriber, abi.encodeCall(ISubscriber.notifyBurn, (tokenId, owner, info, liquidity, feesAccrued)));
 
         if (!success) {
-            address(_subscriber).bubbleUpAndRevertWith(
-                ISubscriber.notifyModifyLiquidity.selector, ModifyLiquidityNotificationReverted.selector
-            );
+            _subscriber.bubbleUpAndRevertWith(ISubscriber.notifyBurn.selector, BurnNotificationReverted.selector);
         }
     }
 
-    function _notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) internal {
-        ISubscriber _subscriber = subscriber[tokenId];
+    function _notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) internal {
+        address _subscriber = address(subscriber[tokenId]);
 
-        bool success =
-            _call(address(_subscriber), abi.encodeCall(ISubscriber.notifyTransfer, (tokenId, previousOwner, newOwner)));
+        bool success = _call(
+            _subscriber, abi.encodeCall(ISubscriber.notifyModifyLiquidity, (tokenId, liquidityChange, feesAccrued))
+        );
 
         if (!success) {
-            address(_subscriber).bubbleUpAndRevertWith(
-                ISubscriber.notifyTransfer.selector, TransferNotificationReverted.selector
+            _subscriber.bubbleUpAndRevertWith(
+                ISubscriber.notifyModifyLiquidity.selector, ModifyLiquidityNotificationReverted.selector
             );
         }
     }

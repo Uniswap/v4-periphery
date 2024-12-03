@@ -38,7 +38,8 @@ contract PaymentsTests is RoutingTestHelpers {
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        plan = plan.add(Actions.SETTLE_TAKE_PAIR, abi.encode(key0.currency0, key0.currency1));
+        plan = plan.add(Actions.SETTLE, abi.encode(key0.currency0, amountIn, true));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key0.currency1, 0));
 
         bytes memory data = plan.encode();
         router.executeActions(data);

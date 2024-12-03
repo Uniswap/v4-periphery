@@ -103,11 +103,18 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         _WETH9.transfer(to, STARTING_USER_BALANCE);
     }
 
-    function initWethPool(Currency currencyB, IHooks hooks, uint24 fee, uint160 sqrtPriceX96) internal {
-        (Currency _currency0, Currency _currency1) =
-            SortTokens.sort(MockERC20(address(_WETH9)), MockERC20(Currency.unwrap(currencyB)));
+    function seedToken(MockERC20 token, address to) internal {
+        token.mint(to, STARTING_USER_BALANCE);
+    }
 
-        (wethKey,) = initPool(_currency0, _currency1, hooks, fee, sqrtPriceX96);
+    function initPoolUnsorted(Currency currencyA, Currency currencyB, IHooks hooks, uint24 fee, uint160 sqrtPriceX96)
+        internal
+        returns (PoolKey memory poolKey)
+    {
+        (Currency _currency0, Currency _currency1) =
+            SortTokens.sort(MockERC20(Currency.unwrap(currencyA)), MockERC20(Currency.unwrap(currencyB)));
+
+        (poolKey,) = initPool(_currency0, _currency1, hooks, fee, sqrtPriceX96);
     }
 
     function permit(uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {

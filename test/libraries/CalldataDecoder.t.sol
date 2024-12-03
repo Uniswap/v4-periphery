@@ -83,6 +83,28 @@ contract CalldataDecoderTest is Test {
         assertEq(mintParams.tickUpper, _config.tickUpper);
     }
 
+    function test_fuzz_decodeMintFromDeltasParams(
+        PositionConfig calldata _config,
+        uint128 _amount0Max,
+        uint128 _amount1Max,
+        address _owner,
+        bytes calldata _hookData
+    ) public view {
+        bytes memory params = abi.encode(
+            _config.poolKey, _config.tickLower, _config.tickUpper, _amount0Max, _amount1Max, _owner, _hookData
+        );
+
+        (MockCalldataDecoder.MintFromDeltasParams memory mintParams) = decoder.decodeMintFromDeltasParams(params);
+
+        _assertEq(mintParams.poolKey, _config.poolKey);
+        assertEq(mintParams.tickLower, _config.tickLower);
+        assertEq(mintParams.tickUpper, _config.tickUpper);
+        assertEq(mintParams.amount0Max, _amount0Max);
+        assertEq(mintParams.amount1Max, _amount1Max);
+        assertEq(mintParams.owner, _owner);
+        assertEq(mintParams.hookData, _hookData);
+    }
+
     function test_fuzz_decodeSwapExactInParams(IV4Router.ExactInputParams calldata _swapParams) public view {
         bytes memory params = abi.encode(_swapParams);
         IV4Router.ExactInputParams memory swapParams = decoder.decodeSwapExactInParams(params);
@@ -139,11 +161,34 @@ contract CalldataDecoderTest is Test {
         assertEq(_address, __address);
     }
 
+    function test_decodeCurrencyAndAddress_outOutBounds() public {
+        Currency currency = Currency.wrap(address(0x12341234));
+        address addy = address(0x23453456);
+
+        bytes memory params = abi.encode(currency, addy);
+        bytes memory invalidParams = _removeFinalByte(params);
+        assertEq(invalidParams.length, params.length - 1);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeCurrencyAndAddress(invalidParams);
+    }
+
     function test_fuzz_decodeCurrency(Currency _currency) public view {
         bytes memory params = abi.encode(_currency);
         (Currency currency) = decoder.decodeCurrency(params);
 
         assertEq(Currency.unwrap(currency), Currency.unwrap(_currency));
+    }
+
+    function test_decodeCurrency_outOutBounds() public {
+        Currency currency = Currency.wrap(address(0x12341234));
+
+        bytes memory params = abi.encode(currency);
+        bytes memory invalidParams = _removeFinalByte(params);
+        assertEq(invalidParams.length, params.length - 1);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeCurrency(invalidParams);
     }
 
     function test_fuzz_decodeActionsRouterParams(bytes memory _actions, bytes[] memory _actionParams) public view {
@@ -167,11 +212,7 @@ contract CalldataDecoderTest is Test {
 
         bytes memory params = abi.encode(_actions, _actionParams);
 
-        bytes memory invalidParams = new bytes(params.length - 1);
-        // dont copy the final byte
-        for (uint256 i = 0; i < params.length - 2; i++) {
-            invalidParams[i] = params[i];
-        }
+        bytes memory invalidParams = _removeFinalByte(params);
 
         assertEq(invalidParams.length, params.length - 1);
 
@@ -200,6 +241,18 @@ contract CalldataDecoderTest is Test {
         assertEq(Currency.unwrap(currency1), Currency.unwrap(_currency1));
     }
 
+    function test_decodeCurrencyPair_outOutBounds() public {
+        Currency currency = Currency.wrap(address(0x12341234));
+        Currency currency2 = Currency.wrap(address(0x56785678));
+
+        bytes memory params = abi.encode(currency, currency2);
+        bytes memory invalidParams = _removeFinalByte(params);
+        assertEq(invalidParams.length, params.length - 1);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeCurrencyPair(invalidParams);
+    }
+
     function test_fuzz_decodeCurrencyPairAndAddress(Currency _currency0, Currency _currency1, address __address)
         public
         view
@@ -210,6 +263,19 @@ contract CalldataDecoderTest is Test {
         assertEq(Currency.unwrap(currency0), Currency.unwrap(_currency0));
         assertEq(Currency.unwrap(currency1), Currency.unwrap(_currency1));
         assertEq(_address, __address);
+    }
+
+    function test_decodeCurrencyPairAndAddress_outOutBounds() public {
+        Currency currency = Currency.wrap(address(0x12341234));
+        Currency currency2 = Currency.wrap(address(0x56785678));
+        address addy = address(0x23453456);
+
+        bytes memory params = abi.encode(currency, currency2, addy);
+        bytes memory invalidParams = _removeFinalByte(params);
+        assertEq(invalidParams.length, params.length - 1);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeCurrencyPairAndAddress(invalidParams);
     }
 
     function test_fuzz_decodeCurrencyAddressAndUint256(Currency _currency, address _addr, uint256 _amount)
@@ -224,6 +290,19 @@ contract CalldataDecoderTest is Test {
         assertEq(amount, _amount);
     }
 
+    function test_decodeCurrencyAddressAndUint256_outOutBounds() public {
+        uint256 value = 12345678;
+        Currency currency = Currency.wrap(address(0x12341234));
+        address addy = address(0x67896789);
+
+        bytes memory params = abi.encode(currency, addy, value);
+        bytes memory invalidParams = _removeFinalByte(params);
+        assertEq(invalidParams.length, params.length - 1);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeCurrencyAddressAndUint256(invalidParams);
+    }
+
     function test_fuzz_decodeCurrencyAndUint256(Currency _currency, uint256 _amount) public view {
         bytes memory params = abi.encode(_currency, _amount);
         (Currency currency, uint256 amount) = decoder.decodeCurrencyAndUint256(params);
@@ -232,11 +311,72 @@ contract CalldataDecoderTest is Test {
         assertEq(amount, _amount);
     }
 
-    function test_fuzz_decodeUint256(uint256 _amount) public {
+    function test_decodeCurrencyAndUint256_outOutBounds() public {
+        uint256 value = 12345678;
+        Currency currency = Currency.wrap(address(0x12341234));
+
+        bytes memory params = abi.encode(currency, value);
+        bytes memory invalidParams = _removeFinalByte(params);
+        assertEq(invalidParams.length, params.length - 1);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeCurrencyAndUint256(invalidParams);
+    }
+
+    function test_fuzz_decodeIncreaseLiquidityFromAmountsParams(
+        uint256 _tokenId,
+        uint128 _amount0Max,
+        uint128 _amount1Max,
+        bytes calldata _hookData
+    ) public view {
+        bytes memory params = abi.encode(_tokenId, _amount0Max, _amount1Max, _hookData);
+
+        (uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes memory hookData) =
+            decoder.decodeIncreaseLiquidityFromDeltasParams(params);
+        assertEq(_tokenId, tokenId);
+        assertEq(_amount0Max, amount0Max);
+        assertEq(_amount1Max, amount1Max);
+        assertEq(_hookData, hookData);
+    }
+
+    function test_fuzz_decodeUint256(uint256 _amount) public view {
         bytes memory params = abi.encode(_amount);
         uint256 amount = decoder.decodeUint256(params);
 
         assertEq(amount, _amount);
+    }
+
+    function test_decodeUint256_outOutBounds() public {
+        uint256 value = 12345678;
+
+        bytes memory params = abi.encode(value);
+        bytes memory invalidParams = _removeFinalByte(params);
+        assertEq(invalidParams.length, params.length - 1);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeUint256(invalidParams);
+    }
+
+    function test_fuzz_decodeCurrencyUint256AndBool(Currency _currency, uint256 _amount, bool _boolean) public view {
+        bytes memory params = abi.encode(_currency, _amount, _boolean);
+        (Currency currency, uint256 amount, bool boolean) = decoder.decodeCurrencyUint256AndBool(params);
+
+        assertEq(Currency.unwrap(currency), Currency.unwrap(_currency));
+        assertEq(amount, _amount);
+        assertEq(boolean, _boolean);
+    }
+
+    function test_decodeCurrencyUint256AndBool_outOutBounds() public {
+        uint256 value = 12345678;
+        Currency currency = Currency.wrap(address(0x12341234));
+        bool boolean = true;
+
+        bytes memory params = abi.encode(currency, value, boolean);
+        bytes memory invalidParams = _removeFinalByte(params);
+        assertEq(invalidParams.length, params.length - 1);
+
+        vm.expectRevert(CalldataDecoder.SliceOutOfBounds.selector);
+        decoder.decodeCurrencyUint256AndBool(invalidParams);
     }
 
     function _assertEq(PathKey[] memory path1, PathKey[] memory path2) internal pure {
@@ -256,5 +396,13 @@ contract CalldataDecoderTest is Test {
         assertEq(key1.fee, key2.fee);
         assertEq(key1.tickSpacing, key2.tickSpacing);
         assertEq(address(key1.hooks), address(key2.hooks));
+    }
+
+    function _removeFinalByte(bytes memory params) internal pure returns (bytes memory result) {
+        result = new bytes(params.length - 1);
+        // dont copy the final byte
+        for (uint256 i = 0; i < params.length - 2; i++) {
+            result[i] = params[i];
+        }
     }
 }

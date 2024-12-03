@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {ISubscriber} from "./ISubscriber.sol";
@@ -15,8 +15,8 @@ interface INotifier {
     error SubscriptionReverted(address subscriber, bytes reason);
     /// @notice Wraps the revert message of the subscriber contract on a reverting modify liquidity notification
     error ModifyLiquidityNotificationReverted(address subscriber, bytes reason);
-    /// @notice Wraps the revert message of the subscriber contract on a reverting transfer notification
-    error TransferNotificationReverted(address subscriber, bytes reason);
+    /// @notice Wraps the revert message of the subscriber contract on a reverting burn notification
+    error BurnNotificationReverted(address subscriber, bytes reason);
     /// @notice Thrown when a tokenId already has a subscriber
     error AlreadySubscribed(uint256 tokenId, address subscriber);
 
