@@ -503,7 +503,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         vm.stopPrank();
 
         vm.expectRevert();
-        lpm.subscribe(tokenId, config, subEOA, ZERO_BYTES);
+        lpm.subscribe(tokenId, subEOA, ZERO_BYTES);
     }
 
     function test_subscribe_withData() public {
