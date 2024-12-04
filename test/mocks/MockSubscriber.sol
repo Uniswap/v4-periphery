@@ -1,9 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 
 /// @notice A subscriber contract that ingests updates from the v4 position manager
 contract MockSubscriber is ISubscriber {
@@ -12,10 +13,11 @@ contract MockSubscriber is ISubscriber {
     uint256 public notifySubscribeCount;
     uint256 public notifyUnsubscribeCount;
     uint256 public notifyModifyLiquidityCount;
-    uint256 public notifyTransferCount;
+    uint256 public notifyBurnCount;
+    int256 public liquidityChange;
+    BalanceDelta public feesAccrued;
 
     bytes public subscribeData;
-    bytes public unsubscribeData;
 
     error NotAuthorizedNotifer(address sender);
 
@@ -30,21 +32,25 @@ contract MockSubscriber is ISubscriber {
         _;
     }
 
-    function notifySubscribe(uint256, PositionConfig memory, bytes memory data) external onlyByPosm {
+    function notifySubscribe(uint256, bytes memory data) external onlyByPosm {
         notifySubscribeCount++;
         subscribeData = data;
     }
 
-    function notifyUnsubscribe(uint256, PositionConfig memory, bytes memory data) external onlyByPosm {
+    function notifyUnsubscribe(uint256) external onlyByPosm {
         notifyUnsubscribeCount++;
-        unsubscribeData = data;
     }
 
-    function notifyModifyLiquidity(uint256, PositionConfig memory, int256) external onlyByPosm {
+    function notifyModifyLiquidity(uint256, int256 _liquidityChange, BalanceDelta _feesAccrued) external onlyByPosm {
         notifyModifyLiquidityCount++;
+        liquidityChange = _liquidityChange;
+        feesAccrued = _feesAccrued;
     }
 
-    function notifyTransfer(uint256, address, address) external onlyByPosm {
-        notifyTransferCount++;
+    function notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
+        external
+        onlyByPosm
+    {
+        notifyBurnCount++;
     }
 }

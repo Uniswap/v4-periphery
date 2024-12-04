@@ -13,7 +13,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {PositionConfig} from "../shared/PositionConfig.sol";
 
 library FeeMath {
     using SafeCast for uint256;
@@ -35,11 +35,11 @@ library FeeMath {
         (uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128) =
             manager.getPositionInfo(poolId, address(posm), config.tickLower, config.tickUpper, bytes32(tokenId));
 
-        (uint256 feeGrowthInside0X218, uint256 feeGrowthInside1X128) =
+        (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
             manager.getFeeGrowthInside(poolId, config.tickLower, config.tickUpper);
 
         feesOwed = getFeesOwed(
-            feeGrowthInside0X218, feeGrowthInside1X128, feeGrowthInside0LastX128, feeGrowthInside1LastX128, liquidity
+            feeGrowthInside0X128, feeGrowthInside1X128, feeGrowthInside0LastX128, feeGrowthInside1LastX128, liquidity
         );
     }
 

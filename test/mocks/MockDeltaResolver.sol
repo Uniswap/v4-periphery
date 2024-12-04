@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -22,7 +22,7 @@ contract MockDeltaResolver is Test, DeltaResolver, IUnlockCallback {
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         (Currency currency, address caller, uint256 amount) = abi.decode(data, (Currency, address, uint256));
-        address recipient = (currency.isNative()) ? address(this) : caller;
+        address recipient = (currency.isAddressZero()) ? address(this) : caller;
 
         uint256 balanceBefore = currency.balanceOf(recipient);
         _take(currency, recipient, amount);

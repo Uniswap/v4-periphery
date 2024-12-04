@@ -17,7 +17,7 @@ import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
 import {ERC721Permit_v4} from "../../src/base/ERC721Permit_v4.sol";
 import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
 
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {PositionConfig} from "../shared/PositionConfig.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
@@ -43,7 +43,7 @@ contract PermitTest is Test, PosmTestSetup {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
@@ -64,12 +64,33 @@ contract PermitTest is Test, PosmTestSetup {
             keccak256(
                 abi.encode(
                     keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)"),
-                    keccak256("Uniswap V4 Positions NFT"), // storage is private on EIP712.sol so we need to hardcode these
+                    keccak256("Uniswap v4 Positions NFT"), // storage is private on EIP712.sol so we need to hardcode these
                     block.chainid,
                     address(lpm)
                 )
             )
         );
+    }
+
+    function test_permit_increaseLiquidity() public {
+        uint256 liquidityAlice = 1e18;
+        uint256 tokenIdAlice = lpm.nextTokenId();
+        vm.prank(alice);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+
+        // alice gives bob permissions
+        permit(alicePK, tokenIdAlice, bob, 1);
+
+        // bob can increase liquidity on alice's token
+        uint256 liquidityToAdd = 0.4444e18;
+        vm.startPrank(bob);
+        increaseLiquidity(tokenIdAlice, config, liquidityToAdd, ZERO_BYTES);
+        vm.stopPrank();
+
+        // alice's position increased liquidity
+        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice);
+
+        assertEq(liquidity, liquidityAlice + liquidityToAdd);
     }
 
     function test_permit_decreaseLiquidity() public {
@@ -88,7 +109,7 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
 
         // alice's position decreased liquidity
-        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice);
 
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
@@ -143,9 +164,22 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
     }
 
-    // unapproved callers can increase others' positions
-    // see `test_increaseLiquidity_withUnapprovedCaller()`
-    // function test_noPermit_increaseLiquidityRevert() public {}
+    /// @dev unapproved callers CANNOT increase others' positions
+    function test_noPermit_increaseLiquidityRevert() public {
+        // increase fails if the owner did not permit
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // bob cannot increase liquidity on alice's token
+        uint256 liquidityToAdd = 0.4444e18;
+        bytes memory decrease = getIncreaseEncoded(tokenIdAlice, config, liquidityToAdd, ZERO_BYTES);
+        vm.startPrank(bob);
+        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, address(bob)));
+        lpm.modifyLiquidities(decrease, _deadline);
+        vm.stopPrank();
+    }
 
     function test_noPermit_decreaseLiquidityRevert() public {
         // decreaseLiquidity fails if the owner did not permit
@@ -183,6 +217,27 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
     }
 
+    /// @notice revoking a nonce prevents it from being used in permit()
+    function test_fuzz_noPermit_revokeRevert(uint256 nonce) public {
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice revokes the nonce
+        vm.prank(alice);
+        lpm.revokeNonce(nonce);
+
+        // alice gives bob spender permissions
+        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
+    }
+
     // Bob can use alice's signature to permit & decrease liquidity
     function test_permit_operatorSelfPermit() public {
         uint256 liquidityAlice = 1e18;
@@ -207,7 +262,7 @@ contract PermitTest is Test, PosmTestSetup {
         decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
 
@@ -236,7 +291,7 @@ contract PermitTest is Test, PosmTestSetup {
         decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }

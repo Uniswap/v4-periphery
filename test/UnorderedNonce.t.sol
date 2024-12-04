@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
@@ -106,5 +106,17 @@ contract UnorderedNonceTest is Test {
         } else {
             unorderedNonce.spendNonce(address(this), second);
         }
+    }
+
+    function test_fuzz_revokeNonce(uint256 nonce) public {
+        unorderedNonce.revokeNonce(nonce);
+        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        unorderedNonce.revokeNonce(nonce);
+    }
+
+    function test_fuzz_revokeNonce_twoNonces(uint256 first, uint256 second) public {
+        unorderedNonce.revokeNonce(first);
+        if (first == second) vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        unorderedNonce.revokeNonce(second);
     }
 }

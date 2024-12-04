@@ -1,10 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity ^0.8.24;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SafeCallback} from "./SafeCallback.sol";
 import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
-import {Actions} from "../libraries/Actions.sol";
 import {ActionConstants} from "../libraries/ActionConstants.sol";
 
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.
@@ -32,26 +31,28 @@ abstract contract BaseActionsRouter is SafeCallback {
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         // abi.decode(data, (bytes, bytes[]));
         (bytes calldata actions, bytes[] calldata params) = data.decodeActionsRouterParams();
+        _executeActionsWithoutUnlock(actions, params);
+        return "";
+    }
 
+    function _executeActionsWithoutUnlock(bytes calldata actions, bytes[] calldata params) internal {
         uint256 numActions = actions.length;
         if (numActions != params.length) revert InputLengthMismatch();
 
         for (uint256 actionIndex = 0; actionIndex < numActions; actionIndex++) {
-            uint256 action = uint256(uint8(actions[actionIndex]));
+            uint256 action = uint8(actions[actionIndex]);
 
             _handleAction(action, params[actionIndex]);
         }
-
-        return "";
     }
 
     /// @notice function to handle the parsing and execution of an action and its parameters
     function _handleAction(uint256 action, bytes calldata params) internal virtual;
 
-    /// @notice function that returns address considered executer of the actions
+    /// @notice function that returns address considered executor of the actions
     /// @dev The other context functions, _msgData and _msgValue, are not supported by this contract
     /// In many contracts this will be the address that calls the initial entry point that calls `_executeActions`
-    /// `msg.sender` shouldnt be used, as this will be the v4 pool manager contract that calls `unlockCallback`
+    /// `msg.sender` shouldn't be used, as this will be the v4 pool manager contract that calls `unlockCallback`
     /// If using ReentrancyLock.sol, this function can return _getLocker()
     function msgSender() public view virtual returns (address);
 

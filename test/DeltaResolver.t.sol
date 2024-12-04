@@ -1,4 +1,4 @@
-//SPDX-License-Identifier: UNLICENSED
+//SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
@@ -23,7 +23,7 @@ contract DeltaResolverTest is Test, Deployers, GasSnapshot {
     function test_settle_native_succeeds(uint256 amount) public {
         amount = bound(amount, 1, address(manager).balance);
 
-        resolver.executeTest(CurrencyLibrary.NATIVE, amount);
+        resolver.executeTest(CurrencyLibrary.ADDRESS_ZERO, amount);
 
         // check `pay` was not called
         assertEq(resolver.payCallCount(), 0);
