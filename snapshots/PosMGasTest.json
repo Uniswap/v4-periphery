@@ -37,5 +37,6 @@
   "PositionManager_permit_secondPosition": "62159",
   "PositionManager_permit_twice": "45035",
   "PositionManager_subscribe": "88475",
-  "PositionManager_unsubscribe": "63253"
+  "PositionManager_unsubscribe": "63253",
+  "positionManager bytecode size": "19060"
 }

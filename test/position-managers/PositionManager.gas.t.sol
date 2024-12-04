@@ -12,7 +12,6 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
@@ -26,7 +25,7 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 
-contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
+contract PosMGasTest is Test, PosmTestSetup {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using PoolIdLibrary for PoolKey;
@@ -76,7 +75,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
     }
 
     function test_bytecodeSize_positionManager() public {
-        snapSize("positionManager bytecode size", address(lpm));
+        vm.snapshotValue("positionManager bytecode size", address(lpm).code.length);
     }
 
     function test_gas_mint_withClose() public {
