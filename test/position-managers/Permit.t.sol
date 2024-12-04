@@ -43,7 +43,7 @@ contract PermitTest is Test, PosmTestSetup {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
@@ -64,7 +64,7 @@ contract PermitTest is Test, PosmTestSetup {
             keccak256(
                 abi.encode(
                     keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)"),
-                    keccak256("Uniswap V4 Positions NFT"), // storage is private on EIP712.sol so we need to hardcode these
+                    keccak256("Uniswap v4 Positions NFT"), // storage is private on EIP712.sol so we need to hardcode these
                     block.chainid,
                     address(lpm)
                 )

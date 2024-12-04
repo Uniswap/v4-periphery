@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {ERC721} from "solmate/src/tokens/ERC721.sol";
@@ -94,10 +94,5 @@ abstract contract ERC721Permit_v4 is ERC721, IERC721Permit_v4, EIP712_v4, Unorde
     function _isApprovedOrOwner(address spender, uint256 tokenId) internal view returns (bool) {
         return spender == ownerOf(tokenId) || getApproved[tokenId] == spender
             || isApprovedForAll[ownerOf(tokenId)][spender];
-    }
-
-    // TODO: to be implemented after audits
-    function tokenURI(uint256) public pure override returns (string memory) {
-        return "https://example.com";
     }
 }

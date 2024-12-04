@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -6,18 +6,18 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {IQuoter} from "../interfaces/IQuoter.sol";
+import {IV4Quoter} from "../interfaces/IV4Quoter.sol";
 import {PathKey, PathKeyLibrary} from "../libraries/PathKey.sol";
 import {QuoterRevert} from "../libraries/QuoterRevert.sol";
 import {BaseV4Quoter} from "../base/BaseV4Quoter.sol";
 
-contract Quoter is IQuoter, BaseV4Quoter {
+contract V4Quoter is IV4Quoter, BaseV4Quoter {
     using PathKeyLibrary for PathKey;
     using QuoterRevert for *;
 
     constructor(IPoolManager _poolManager) BaseV4Quoter(_poolManager) {}
 
-    /// @inheritdoc IQuoter
+    /// @inheritdoc IV4Quoter
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
         external
         returns (uint256 amountOut, uint256 gasEstimate)
@@ -31,7 +31,7 @@ contract Quoter is IQuoter, BaseV4Quoter {
         }
     }
 
-    /// @inheritdoc IQuoter
+    /// @inheritdoc IV4Quoter
     function quoteExactInput(QuoteExactParams memory params)
         external
         returns (uint256 amountOut, uint256 gasEstimate)
@@ -45,7 +45,7 @@ contract Quoter is IQuoter, BaseV4Quoter {
         }
     }
 
-    /// @inheritdoc IQuoter
+    /// @inheritdoc IV4Quoter
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         external
         returns (uint256 amountIn, uint256 gasEstimate)
@@ -59,7 +59,7 @@ contract Quoter is IQuoter, BaseV4Quoter {
         }
     }
 
-    /// @inheritdoc IQuoter
+    /// @inheritdoc IV4Quoter
     function quoteExactOutput(QuoteExactParams memory params)
         external
         returns (uint256 amountIn, uint256 gasEstimate)

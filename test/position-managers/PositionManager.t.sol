@@ -52,7 +52,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // This is needed to receive return deltas from modifyLiquidity calls.
         deployPosmHookSavesDelta();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
@@ -92,10 +92,11 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         // Set up approvals for the reentrant token
         approvePosmCurrency(reentrantToken);
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
 
         // Try to add liquidity at that range, but the token reenters posm
-        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: 0, tickUpper: 60});
+        PositionConfig memory config =
+            PositionConfig({poolKey: key, tickLower: -int24(key.tickSpacing), tickUpper: int24(key.tickSpacing)});
         bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, "");
 
         // Permit2.transferFrom does not bubble the ContractLocked error and instead reverts with its own error
@@ -880,7 +881,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     function test_initialize() public {
         // initialize a new pool and add liquidity
         key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
-        lpm.initializePool(key, SQRT_PRICE_1_1, ZERO_BYTES);
+        lpm.initializePool(key, SQRT_PRICE_1_1);
 
         (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee) = manager.getSlot0(key.toId());
         assertEq(sqrtPriceX96, SQRT_PRICE_1_1);
@@ -895,7 +896,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
         key =
             PoolKey({currency0: currency0, currency1: currency1, fee: fee, tickSpacing: 10, hooks: IHooks(address(0))});
-        lpm.initializePool(key, sqrtPrice, ZERO_BYTES);
+        lpm.initializePool(key, sqrtPrice);
 
         (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee) = manager.getSlot0(key.toId());
         assertEq(sqrtPriceX96, sqrtPrice);

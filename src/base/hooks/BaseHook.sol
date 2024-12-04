@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
@@ -56,16 +56,12 @@ abstract contract BaseHook is IHooks, SafeCallback {
     }
 
     /// @inheritdoc IHooks
-    function beforeInitialize(address, PoolKey calldata, uint160, bytes calldata) external virtual returns (bytes4) {
+    function beforeInitialize(address, PoolKey calldata, uint160) external virtual returns (bytes4) {
         revert HookNotImplemented();
     }
 
     /// @inheritdoc IHooks
-    function afterInitialize(address, PoolKey calldata, uint160, int24, bytes calldata)
-        external
-        virtual
-        returns (bytes4)
-    {
+    function afterInitialize(address, PoolKey calldata, uint160, int24) external virtual returns (bytes4) {
         revert HookNotImplemented();
     }
 

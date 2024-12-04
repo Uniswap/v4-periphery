@@ -53,8 +53,8 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
-        (nativeKey,) = initPool(CurrencyLibrary.ADDRESS_ZERO, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
+        (nativeKey,) = initPool(CurrencyLibrary.ADDRESS_ZERO, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
@@ -73,6 +73,10 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         configNative = PositionConfig({poolKey: nativeKey, tickLower: -300, tickUpper: 300});
 
         sub = new MockSubscriber(lpm);
+    }
+
+    function test_bytecodeSize_positionManager() public {
+        snapSize("positionManager bytecode size", address(lpm));
     }
 
     function test_gas_mint_withClose() public {
@@ -393,7 +397,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         // Use multicall to initialize a pool and mint liquidity
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1, ZERO_BYTES);
+        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1);
 
         config = PositionConfig({
             poolKey: key,

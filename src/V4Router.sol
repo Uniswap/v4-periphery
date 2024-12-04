@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -7,7 +7,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {BipsLibrary} from "@uniswap/v4-core/src/libraries/BipsLibrary.sol";
 
 import {PathKey, PathKeyLibrary} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
@@ -16,9 +15,10 @@ import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
+import {BipsLibrary} from "./libraries/BipsLibrary.sol";
 
 /// @title UniswapV4Router
-/// @notice Abstract contract that contains all internal logic needed for routing through Uniswap V4 pools
+/// @notice Abstract contract that contains all internal logic needed for routing through Uniswap v4 pools
 /// @dev the entry point to executing actions in this contract is calling `BaseActionsRouter._executeActions`
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
 abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
@@ -50,12 +50,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 return;
             }
         } else {
-            if (action == Actions.SETTLE_TAKE_PAIR) {
-                (Currency settleCurrency, Currency takeCurrency) = params.decodeCurrencyPair();
-                _settle(settleCurrency, msgSender(), _getFullDebt(settleCurrency));
-                _take(takeCurrency, msgSender(), _getFullCredit(takeCurrency));
-                return;
-            } else if (action == Actions.SETTLE_ALL) {
+            if (action == Actions.SETTLE_ALL) {
                 (Currency currency, uint256 maxAmount) = params.decodeCurrencyAndUint256();
                 uint256 amount = _getFullDebt(currency);
                 if (amount > maxAmount) revert V4TooMuchRequested(maxAmount, amount);
@@ -90,9 +85,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             amountIn =
                 _getFullCredit(params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1).toUint128();
         }
-        uint128 amountOut = _swap(
-            params.poolKey, params.zeroForOne, -int256(uint256(amountIn)), params.sqrtPriceLimitX96, params.hookData
-        ).toUint128();
+        uint128 amountOut =
+            _swap(params.poolKey, params.zeroForOne, -int256(uint256(amountIn)), params.hookData).toUint128();
         if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived(params.amountOutMinimum, amountOut);
     }
 
@@ -110,7 +104,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 pathKey = params.path[i];
                 (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(currencyIn);
                 // The output delta will always be positive, except for when interacting with certain hook pools
-                amountOut = _swap(poolKey, zeroForOne, -int256(uint256(amountIn)), 0, pathKey.hookData).toUint128();
+                amountOut = _swap(poolKey, zeroForOne, -int256(uint256(amountIn)), pathKey.hookData).toUint128();
 
                 amountIn = amountOut;
                 currencyIn = pathKey.intermediateCurrency;
@@ -127,17 +121,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 _getFullDebt(params.zeroForOne ? params.poolKey.currency1 : params.poolKey.currency0).toUint128();
         }
         uint128 amountIn = (
-            uint256(
-                -int256(
-                    _swap(
-                        params.poolKey,
-                        params.zeroForOne,
-                        int256(uint256(amountOut)),
-                        params.sqrtPriceLimitX96,
-                        params.hookData
-                    )
-                )
-            )
+            uint256(-int256(_swap(params.poolKey, params.zeroForOne, int256(uint256(amountOut)), params.hookData)))
         ).toUint128();
         if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
     }
@@ -159,9 +143,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 pathKey = params.path[i - 1];
                 (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
                 // The output delta will always be negative, except for when interacting with certain hook pools
-                amountIn = (
-                    uint256(-int256(_swap(poolKey, !oneForZero, int256(uint256(amountOut)), 0, pathKey.hookData)))
-                ).toUint128();
+                amountIn = (uint256(-int256(_swap(poolKey, !oneForZero, int256(uint256(amountOut)), pathKey.hookData))))
+                    .toUint128();
 
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;
@@ -170,22 +153,16 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         }
     }
 
-    function _swap(
-        PoolKey memory poolKey,
-        bool zeroForOne,
-        int256 amountSpecified,
-        uint160 sqrtPriceLimitX96,
-        bytes calldata hookData
-    ) private returns (int128 reciprocalAmount) {
+    function _swap(PoolKey memory poolKey, bool zeroForOne, int256 amountSpecified, bytes calldata hookData)
+        private
+        returns (int128 reciprocalAmount)
+    {
+        // for protection of exactOut swaps, sqrtPriceLimit is not exposed as a feature in this contract
         unchecked {
             BalanceDelta delta = poolManager.swap(
                 poolKey,
                 IPoolManager.SwapParams(
-                    zeroForOne,
-                    amountSpecified,
-                    sqrtPriceLimitX96 == 0
-                        ? (zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1)
-                        : sqrtPriceLimitX96
+                    zeroForOne, amountSpecified, zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
                 ),
                 hookData
             );
