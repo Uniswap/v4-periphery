@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import {ERC721Permit_v4} from "../../src/base/ERC721Permit_v4.sol";

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {ISubscriber} from "../interfaces/ISubscriber.sol";
@@ -9,7 +9,7 @@ import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 /// @notice Notifier is used to opt in to sending updates to external contracts about position modifications or transfers
 abstract contract Notifier is INotifier {
-    using CustomRevert for bytes4;
+    using CustomRevert for *;
 
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
 
@@ -29,6 +29,9 @@ abstract contract Notifier is INotifier {
     /// @param tokenId the tokenId of the position
     modifier onlyIfApproved(address caller, uint256 tokenId) virtual;
 
+    /// @notice Enforces that the PoolManager is locked.
+    modifier onlyIfPoolManagerLocked() virtual;
+
     function _setUnsubscribed(uint256 tokenId) internal virtual;
 
     function _setSubscribed(uint256 tokenId) internal virtual;
@@ -37,6 +40,7 @@ abstract contract Notifier is INotifier {
     function subscribe(uint256 tokenId, address newSubscriber, bytes calldata data)
         external
         payable
+        onlyIfPoolManagerLocked
         onlyIfApproved(msg.sender, tokenId)
     {
         ISubscriber _subscriber = subscriber[tokenId];
@@ -49,14 +53,19 @@ abstract contract Notifier is INotifier {
         bool success = _call(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, data)));
 
         if (!success) {
-            Wrap__SubscriptionReverted.selector.bubbleUpAndRevertWith(newSubscriber);
+            newSubscriber.bubbleUpAndRevertWith(ISubscriber.notifySubscribe.selector, SubscriptionReverted.selector);
         }
 
         emit Subscription(tokenId, newSubscriber);
     }
 
     /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId) external payable onlyIfApproved(msg.sender, tokenId) {
+    function unsubscribe(uint256 tokenId)
+        external
+        payable
+        onlyIfPoolManagerLocked
+        onlyIfApproved(msg.sender, tokenId)
+    {
         _unsubscribe(tokenId);
     }
 
@@ -79,27 +88,38 @@ abstract contract Notifier is INotifier {
         emit Unsubscription(tokenId, address(_subscriber));
     }
 
-    function _notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) internal {
-        ISubscriber _subscriber = subscriber[tokenId];
+    /// @dev note this function also deletes the subscriber address from the mapping
+    function _removeSubscriberAndNotifyBurn(
+        uint256 tokenId,
+        address owner,
+        PositionInfo info,
+        uint256 liquidity,
+        BalanceDelta feesAccrued
+    ) internal {
+        address _subscriber = address(subscriber[tokenId]);
 
-        bool success = _call(
-            address(_subscriber),
-            abi.encodeCall(ISubscriber.notifyModifyLiquidity, (tokenId, liquidityChange, feesAccrued))
-        );
+        // remove the subscriber
+        delete subscriber[tokenId];
+
+        bool success =
+            _call(_subscriber, abi.encodeCall(ISubscriber.notifyBurn, (tokenId, owner, info, liquidity, feesAccrued)));
 
         if (!success) {
-            Wrap__ModifyLiquidityNotificationReverted.selector.bubbleUpAndRevertWith(address(_subscriber));
+            _subscriber.bubbleUpAndRevertWith(ISubscriber.notifyBurn.selector, BurnNotificationReverted.selector);
         }
     }
 
-    function _notifyTransfer(uint256 tokenId, address previousOwner, address newOwner) internal {
-        ISubscriber _subscriber = subscriber[tokenId];
+    function _notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) internal {
+        address _subscriber = address(subscriber[tokenId]);
 
-        bool success =
-            _call(address(_subscriber), abi.encodeCall(ISubscriber.notifyTransfer, (tokenId, previousOwner, newOwner)));
+        bool success = _call(
+            _subscriber, abi.encodeCall(ISubscriber.notifyModifyLiquidity, (tokenId, liquidityChange, feesAccrued))
+        );
 
         if (!success) {
-            Wrap__TransferNotificationReverted.selector.bubbleUpAndRevertWith(address(_subscriber));
+            _subscriber.bubbleUpAndRevertWith(
+                ISubscriber.notifyModifyLiquidity.selector, ModifyLiquidityNotificationReverted.selector
+            );
         }
     }
 

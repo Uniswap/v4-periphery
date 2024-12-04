@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -54,14 +54,17 @@ contract PositionDescriptor is IPositionDescriptor {
         }
         (, int24 tick,,) = poolManager.getSlot0(poolKey.toId());
 
+        address currency0 = Currency.unwrap(poolKey.currency0);
+        address currency1 = Currency.unwrap(poolKey.currency1);
+
         // If possible, flip currencies to get the larger currency as the base currency, so that the price (quote/base) is more readable
         // flip if currency0 priority is greater than currency1 priority
-        bool _flipRatio = flipRatio(Currency.unwrap(poolKey.currency0), Currency.unwrap(poolKey.currency1));
+        bool _flipRatio = flipRatio(currency0, currency1);
 
         // If not flipped, quote currency is currency1, base currency is currency0
         // If flipped, quote currency is currency0, base currency is currency1
-        Currency quoteCurrency = !_flipRatio ? poolKey.currency1 : poolKey.currency0;
-        Currency baseCurrency = !_flipRatio ? poolKey.currency0 : poolKey.currency1;
+        address quoteCurrency = !_flipRatio ? currency1 : currency0;
+        address baseCurrency = !_flipRatio ? currency0 : currency1;
 
         return Descriptor.constructTokenURI(
             Descriptor.ConstructTokenURIParams({
@@ -115,8 +118,6 @@ contract PositionDescriptor is IPositionDescriptor {
                 return CurrencyRatioSortOrder.DENOMINATOR_MORE;
             } else if (currency == WBTC) {
                 return CurrencyRatioSortOrder.DENOMINATOR_MOST;
-            } else {
-                return 0;
             }
         }
         return 0;

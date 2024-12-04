@@ -31,7 +31,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         uint256 amountIn = 1 ether;
 
         IV4Router.ExactInputSingleParams memory params =
-            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, 0, bytes(""));
+            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
@@ -107,7 +107,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         uint256 amountIn = 1 ether;
 
         IV4Router.ExactInputSingleParams memory params =
-            IV4Router.ExactInputSingleParams(nativeKey, true, uint128(amountIn), 0, 0, bytes(""));
+            IV4Router.ExactInputSingleParams(nativeKey, true, uint128(amountIn), 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(nativeKey.currency0, nativeKey.currency1, ActionConstants.MSG_SENDER);
@@ -120,7 +120,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         uint256 amountIn = 1 ether;
 
         IV4Router.ExactInputSingleParams memory params =
-            IV4Router.ExactInputSingleParams(nativeKey, false, uint128(amountIn), 0, 0, bytes(""));
+            IV4Router.ExactInputSingleParams(nativeKey, false, uint128(amountIn), 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(nativeKey.currency1, nativeKey.currency0, ActionConstants.MSG_SENDER);
@@ -196,7 +196,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         uint256 amountOut = 1 ether;
 
         IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, true, uint128(amountOut), type(uint128).max, 0, bytes(""));
+            IV4Router.ExactOutputSingleParams(key0, true, uint128(amountOut), type(uint128).max, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
@@ -272,7 +272,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         uint256 amountOut = 1 ether;
 
         IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(nativeKey, true, uint128(amountOut), type(uint128).max, 0, bytes(""));
+            IV4Router.ExactOutputSingleParams(nativeKey, true, uint128(amountOut), type(uint128).max, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(nativeKey.currency0, nativeKey.currency1, ActionConstants.MSG_SENDER);
@@ -285,7 +285,7 @@ contract V4RouterTest is RoutingTestHelpers, GasSnapshot {
         uint256 amountOut = 1 ether;
 
         IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(nativeKey, false, uint128(amountOut), type(uint128).max, 0, bytes(""));
+            IV4Router.ExactOutputSingleParams(nativeKey, false, uint128(amountOut), type(uint128).max, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(nativeKey.currency1, nativeKey.currency0, ActionConstants.MSG_SENDER);
