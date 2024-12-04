@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";

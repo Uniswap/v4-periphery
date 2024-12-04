@@ -133,6 +133,47 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         assertGt(result.amount1(), 0);
     }
 
+    function test_multicall_initializePool_twice_andMint_succeeds() public {
+        key = PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 10, hooks: IHooks(address(0))});
+        manager.initialize(key, SQRT_PRICE_1_1);
+
+        // Use multicall to initialize the pool again.
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1);
+
+        config = PositionConfig({
+            poolKey: key,
+            tickLower: TickMath.minUsableTick(key.tickSpacing),
+            tickUpper: TickMath.maxUsableTick(key.tickSpacing)
+        });
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                100e18,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                ActionConstants.MSG_SENDER,
+                ZERO_BYTES
+            )
+        );
+        bytes memory actions = planner.finalizeModifyLiquidityWithClose(config.poolKey);
+
+        calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
+
+        IMulticall_v4(address(lpm)).multicall(calls);
+
+        // test swap, doesn't revert, showing the mint succeeded even after initialize reverted
+        int256 amountSpecified = -1e18;
+        BalanceDelta result = swap(key, true, amountSpecified, ZERO_BYTES);
+        assertEq(result.amount0(), amountSpecified);
+        assertGt(result.amount1(), 0);
+    }
+
     function test_multicall_initializePool_mint_native() public {
         key = PoolKey({
             currency0: CurrencyLibrary.ADDRESS_ZERO,
@@ -224,26 +265,6 @@ contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTest
         calls[0] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
         vm.expectRevert(IPoolManager.CurrencyNotSettled.selector);
-        lpm.multicall(calls);
-    }
-
-    // create a pool where tickSpacing is negative
-    // core's TickSpacingTooSmall(int24) should bubble up through Multicall
-    function test_multicall_bubbleRevert_core_args() public {
-        int24 tickSpacing = -10;
-        key = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: 0,
-            tickSpacing: tickSpacing,
-            hooks: IHooks(address(0))
-        });
-
-        // Use multicall to initialize a pool
-        bytes[] memory calls = new bytes[](1);
-        calls[0] = abi.encodeWithSelector(PoolInitializer.initializePool.selector, key, SQRT_PRICE_1_1);
-
-        vm.expectRevert(abi.encodeWithSelector(IPoolManager.TickSpacingTooSmall.selector, tickSpacing));
         lpm.multicall(calls);
     }
 
