@@ -376,7 +376,6 @@ contract TWAMM is BaseHook, ITWAMM {
                     if (orderPool0For1.sellRateCurrent != 0 && orderPool1For0.sellRateCurrent != 0) {
                         pool = _advanceToNewTimestamp(
                             self,
-                            manager,
                             key,
                             AdvanceParams(
                                 expirationInterval,
@@ -388,7 +387,6 @@ contract TWAMM is BaseHook, ITWAMM {
                     } else {
                         pool = _advanceTimestampForSinglePoolSell(
                             self,
-                            manager,
                             key,
                             AdvanceSingleParams(
                                 expirationInterval,
@@ -410,14 +408,12 @@ contract TWAMM is BaseHook, ITWAMM {
                 if (orderPool0For1.sellRateCurrent != 0 && orderPool1For0.sellRateCurrent != 0) {
                     pool = _advanceToNewTimestamp(
                         self,
-                        manager,
                         key,
                         AdvanceParams(expirationInterval, block.timestamp, block.timestamp - prevTimestamp, pool)
                     );
                 } else {
                     pool = _advanceTimestampForSinglePoolSell(
                         self,
-                        manager,
                         key,
                         AdvanceSingleParams(
                             expirationInterval,
@@ -443,12 +439,10 @@ contract TWAMM is BaseHook, ITWAMM {
         PoolParamsOnExecute pool;
     }
 
-    function _advanceToNewTimestamp(
-        State storage self,
-        IPoolManager manager,
-        PoolKey memory poolKey,
-        AdvanceParams memory params
-    ) private returns (PoolParamsOnExecute memory) {
+    function _advanceToNewTimestamp(State storage self, PoolKey memory poolKey, AdvanceParams memory params)
+        private
+        returns (PoolParamsOnExecute memory)
+    {
         uint160 finalSqrtPriceX96;
         uint256 secondsElapsedX96 = params.secondsElapsed * FixedPoint96.Q96;
 
@@ -467,15 +461,12 @@ contract TWAMM is BaseHook, ITWAMM {
             finalSqrtPriceX96 = TwammMath.getNewSqrtPriceX96(executionParams);
 
             (bool crossingInitializedTick, int24 tick) =
-                _isCrossingInitializedTick(params.pool, manager, poolKey, finalSqrtPriceX96);
+                _isCrossingInitializedTick(params.pool, poolKey, finalSqrtPriceX96);
             unchecked {
                 if (crossingInitializedTick) {
                     uint256 secondsUntilCrossingX96;
                     (params.pool, secondsUntilCrossingX96) = _advanceTimeThroughTickCrossing(
-                        self,
-                        manager,
-                        poolKey,
-                        TickCrossingParams(tick, params.nextTimestamp, secondsElapsedX96, params.pool)
+                        self, poolKey, TickCrossingParams(tick, params.nextTimestamp, secondsElapsedX96, params.pool)
                     );
                     secondsElapsedX96 = secondsElapsedX96 - secondsUntilCrossingX96;
                 } else {
@@ -508,7 +499,6 @@ contract TWAMM is BaseHook, ITWAMM {
 
     function _advanceTimestampForSinglePoolSell(
         State storage self,
-        IPoolManager manager,
         PoolKey memory poolKey,
         AdvanceSingleParams memory params
     ) private returns (PoolParamsOnExecute memory) {
@@ -523,7 +513,7 @@ contract TWAMM is BaseHook, ITWAMM {
             );
 
             (bool crossingInitializedTick, int24 tick) =
-                _isCrossingInitializedTick(params.pool, manager, poolKey, finalSqrtPriceX96);
+                _isCrossingInitializedTick(params.pool, poolKey, finalSqrtPriceX96);
 
             if (crossingInitializedTick) {
                 (, int128 liquidityNetAtTick) = manager.getTickLiquidity(poolKey.toId(), tick);
@@ -579,7 +569,6 @@ contract TWAMM is BaseHook, ITWAMM {
 
     function _advanceTimeThroughTickCrossing(
         State storage self,
-        IPoolManager manager,
         PoolKey memory poolKey,
         TickCrossingParams memory params
     ) private returns (PoolParamsOnExecute memory, uint256) {
@@ -622,7 +611,6 @@ contract TWAMM is BaseHook, ITWAMM {
 
     function _isCrossingInitializedTick(
         PoolParamsOnExecute memory pool,
-        IPoolManager manager,
         PoolKey memory poolKey,
         uint160 nextSqrtPriceX96
     ) internal view returns (bool crossingInitializedTick, int24 nextTickInit) {
