@@ -13,7 +13,7 @@ contract DeployV4Quoter is Script {
         vm.startBroadcast();
 
         // forge script --broadcast --sig 'run(address)' --rpc-url <RPC_URL> --private-key <PRIV_KEY> --verify script/DeployV4Quoter.s.sol:DeployV4Quoter <POOL_MANAGER_ADDR>
-        state = Deploy.v4Quoter(poolManager);
+        state = Deploy.v4Quoter(poolManager, hex"00");
         console2.log("V4Quoter", address(state));
         console2.log("PoolManager", address(state.poolManager()));
 

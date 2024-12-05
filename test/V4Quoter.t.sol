@@ -55,7 +55,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
     function setUp() public {
         deployFreshManagerAndRouters();
-        quoter = Deploy.v4Quoter(address(manager));
+        quoter = Deploy.v4Quoter(address(manager), hex"00");
         positionManager = new PoolModifyLiquidityTest(manager);
 
         // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)

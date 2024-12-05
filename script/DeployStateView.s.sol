@@ -13,7 +13,7 @@ contract DeployStateView is Script {
         vm.startBroadcast();
 
         // forge script --broadcast --sig 'run(address)' --rpc-url <RPC_URL> --private-key <PRIV_KEY> --verify script/DeployStateView.s.sol:DeployStateView <POOL_MANAGER_ADDR>
-        state = Deploy.stateView(poolManager);
+        state = Deploy.stateView(poolManager, hex"00");
         console2.log("StateView", address(state));
         console2.log("PoolManager", address(state.poolManager()));
 

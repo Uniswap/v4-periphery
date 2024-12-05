@@ -21,7 +21,7 @@ contract DeployPosmTest is Script {
     ) public returns (IPositionDescriptor positionDescriptor, IPositionManager posm) {
         vm.startBroadcast();
 
-        positionDescriptor = Deploy.positionDescriptor(poolManager, wrappedNative, nativeCurrencyLabel);
+        positionDescriptor = Deploy.positionDescriptor(poolManager, wrappedNative, nativeCurrencyLabel, hex"00");
         console2.log("PositionDescriptor", address(positionDescriptor));
 
         posm = Deploy.positionManager(

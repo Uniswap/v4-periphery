@@ -25,30 +25,32 @@ library Deploy {
         }
     }
 
-    function stateView(address poolManager) internal returns (IStateView stateView_) {
+    function stateView(address poolManager, bytes memory salt) internal returns (IStateView stateView_) {
         bytes memory args = abi.encode(poolManager);
         bytes memory initcode = abi.encodePacked(vm.getCode("StateView.sol:StateView"), args);
         assembly {
-            stateView_ := create(0, add(initcode, 0x20), mload(initcode))
+            stateView_ := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
     }
 
-    function v4Quoter(address poolManager) internal returns (IV4Quoter quoter) {
+    function v4Quoter(address poolManager, bytes memory salt) internal returns (IV4Quoter quoter) {
         bytes memory args = abi.encode(poolManager);
         bytes memory initcode = abi.encodePacked(vm.getCode("V4Quoter.sol:V4Quoter"), args);
         assembly {
-            quoter := create(0, add(initcode, 0x20), mload(initcode))
+            quoter := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
     }
 
-    function positionDescriptor(address poolManager, address wrappedNative, string memory nativeCurrencyLabel)
-        internal
-        returns (IPositionDescriptor descriptor)
-    {
+    function positionDescriptor(
+        address poolManager,
+        address wrappedNative,
+        string memory nativeCurrencyLabel,
+        bytes memory salt
+    ) internal returns (IPositionDescriptor descriptor) {
         bytes memory args = abi.encode(poolManager, wrappedNative, nativeCurrencyLabel);
         bytes memory initcode = abi.encodePacked(vm.getCode("PositionDescriptor.sol:PositionDescriptor"), args);
         assembly {
-            descriptor := create(0, add(initcode, 0x20), mload(initcode))
+            descriptor := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
     }
 }

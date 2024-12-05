@@ -68,7 +68,7 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
         positionDescriptor =
-            Deploy.positionDescriptor(address(poolManager), 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, "ETH");
+            Deploy.positionDescriptor(address(poolManager), 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, "ETH", hex"00");
         lpm = Deploy.positionManager(
             address(poolManager), address(permit2), 100_000, address(positionDescriptor), address(_WETH9), hex"03"
         );

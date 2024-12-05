@@ -39,7 +39,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
         poolId = key.toId();
         manager.initialize(key, SQRT_PRICE_1_1);
 
-        state = Deploy.stateView(address(manager));
+        state = Deploy.stateView(address(manager), hex"00");
     }
 
     function test_getSlot0() public {
