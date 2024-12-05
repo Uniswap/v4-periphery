@@ -34,7 +34,7 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
 
-contract NativeTokenPoolManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
+contract NativeTokenPositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using CurrencyLibrary for Currency;
     using Planner for Plan;

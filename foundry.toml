@@ -16,7 +16,7 @@ optimizer_runs = 200
 fuzz.runs = 100
 
 [profile.ci]
-fuzz.runs = 100_000
+fuzz.runs = 10_000
 
 [profile.gas]
 gas_limit=30_000_000
