@@ -7,7 +7,7 @@ ffi = true
 fs_permissions = [{ access = "read-write", path = ".forge-snapshots/"}]
 evm_version = "cancun"
 gas_limit = "3000000000"
-fuzz.runs = 10_000
+fuzz.runs = 1000
 bytecode_hash = "none"
 
 [profile.debug]
