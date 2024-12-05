@@ -31,6 +31,6 @@ contract TWAMMImplementation is TWAMM {
         PoolKey memory poolKey,
         uint160 nextSqrtPriceX96
     ) external view returns (bool crossingInitializedTick, int24 nextTickInit) {
-        return _isCrossingInitializedTick(pool, poolManager, poolKey, nextSqrtPriceX96);
+        return _isCrossingInitializedTick(pool, poolKey, nextSqrtPriceX96);
     }
 }
