@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 /// @notice Library to define different pool actions.
 /// @dev These are suggested common commands, however additional commands should be defined as required
+/// Some of these actions are not supported in the Router contracts or Position Manager contracts, but are left as they may be helpful commands for other peripheral contracts.
 library Actions {
     // pool actions
     // liquidity actions
@@ -18,7 +19,9 @@ library Actions {
     uint256 constant SWAP_EXACT_IN = 0x07;
     uint256 constant SWAP_EXACT_OUT_SINGLE = 0x08;
     uint256 constant SWAP_EXACT_OUT = 0x09;
+
     // donate
+    // note this is not supported in the position manager or router
     uint256 constant DONATE = 0x0a;
 
     // closing deltas on the pool manager
@@ -40,6 +43,7 @@ library Actions {
     uint256 constant UNWRAP = 0x16;
 
     // minting/burning 6909s to close deltas
+    // note this is not supported in the position manager or router
     uint256 constant MINT_6909 = 0x17;
     uint256 constant BURN_6909 = 0x18;
 }

@@ -110,8 +110,6 @@ contract PositionDescriptor is IPositionDescriptor {
                 return CurrencyRatioSortOrder.DENOMINATOR_MORE;
             } else if (currency == WBTC) {
                 return CurrencyRatioSortOrder.DENOMINATOR_MOST;
-            } else {
-                return 0;
             }
         }
         return 0;
