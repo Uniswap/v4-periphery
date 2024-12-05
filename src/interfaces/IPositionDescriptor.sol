@@ -23,6 +23,7 @@ interface IPositionDescriptor {
 
     /// @notice Returns the priority of a currency.
     /// For certain currencies on mainnet, the smaller the currency, the higher the priority
+    /// And those with the higher priority values (more positive values) will be in the numerator of the price ratio
     /// @param currency The currency address
     /// @return The priority of the currency
     function currencyRatioPriority(address currency) external view returns (int256);

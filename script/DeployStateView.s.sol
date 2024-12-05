@@ -4,7 +4,6 @@ pragma solidity ^0.8.20;
 import "forge-std/console2.sol";
 import "forge-std/Script.sol";
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deploy, IStateView} from "../test/shared/Deploy.sol";
 
 contract DeployStateView is Script {

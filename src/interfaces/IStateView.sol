@@ -9,6 +9,7 @@ import {IImmutableState} from "../interfaces/IImmutableState.sol";
 
 /// @title StateView Interface
 /// @notice A view only contract wrapping the StateLibrary.sol library for reading storage in v4-core.
+/// @dev The contract is intended for offchain clients. Use StateLibrary.sol directly if reading state onchain.
 interface IStateView is IImmutableState {
     /// @notice Get Slot0 of the pool: sqrtPriceX96, tick, protocolFee, lpFee
     /// @dev Corresponds to pools[poolId].slot0

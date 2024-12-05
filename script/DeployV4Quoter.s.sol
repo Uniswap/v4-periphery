@@ -4,7 +4,6 @@ pragma solidity ^0.8.20;
 import "forge-std/console2.sol";
 import "forge-std/Script.sol";
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Deploy, IV4Quoter} from "../test/shared/Deploy.sol";
 
 contract DeployV4Quoter is Script {

@@ -838,7 +838,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
     }
 
     struct BalanceDiff {
-        uint256 before;
+        uint256 _before;
         uint256 _after;
     }
 
@@ -918,6 +918,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         planner.add(Actions.TAKE_PAIR, abi.encode(fotKey.currency0, fotKey.currency1, ActionConstants.MSG_SENDER));
 
         // needed to remove variables because of stack too deep
+        // Read below as:
         // bool currency0IsFOT = fotKey.currency0 == Currency.wrap(address(fotToken));
         // bool positionIsEntirelyInOtherToken = currency0IsFOT
         //     ? tickUpper <= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
@@ -948,11 +949,11 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
                 bool currency0IsFOT = fotKey.currency0 == Currency.wrap(address(fotToken));
                 uint256 expectedFee = (currency0IsFOT ? amount0 : amount1).calculatePortion(bips);
                 (expected._0, expected._1) = currency0IsFOT
-                    ? (balance0.before - balance0._after - expectedFee, balance1.before - balance1._after)
-                    : (balance0.before - balance0._after, balance1.before - balance1._after - expectedFee);
+                    ? (balance0._before - balance0._after - expectedFee, balance1._before - balance1._after)
+                    : (balance0._before - balance0._after, balance1._before - balance1._after - expectedFee);
             }
-            assertEq(expected._0, balance0PM._after - balance0PM.before);
-            assertEq(expected._1, balance1PM._after - balance1PM.before);
+            assertEq(expected._0, balance0PM._after - balance0PM._before);
+            assertEq(expected._1, balance1PM._after - balance1PM._before);
             {
                 // the liquidity that was created is a diff of the balance change
                 uint128 expectedLiquidity = LiquidityAmounts.getLiquidityForAmounts(

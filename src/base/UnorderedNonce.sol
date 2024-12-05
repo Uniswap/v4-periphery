@@ -6,8 +6,6 @@ import {IUnorderedNonce} from "../interfaces/IUnorderedNonce.sol";
 /// @title Unordered Nonce
 /// @notice Contract state and methods for using unordered nonces in signatures
 contract UnorderedNonce is IUnorderedNonce {
-    /// @notice mapping of nonces consumed by each address, where a nonce is a single bit on the 256-bit bitmap
-    /// @dev word is at most type(uint248).max
     mapping(address owner => mapping(uint256 word => uint256 bitmap)) public nonces;
 
     /// @notice Consume a nonce, reverting if it has already been used
