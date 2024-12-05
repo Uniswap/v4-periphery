@@ -536,9 +536,6 @@ contract TWAMM is BaseHook, ITWAMM {
                     params.pool.sqrtPriceX96, initializedSqrtPrice, params.pool.liquidity, true
                 );
 
-                // params.pool.liquidity = params.zeroForOne
-                //     ? params.pool.liquidity - uint128(liquidityNetAtTick)
-                //     : params.pool.liquidity + uint128(-liquidityNetAtTick);
                 if (params.zeroForOne) liquidityNetAtTick = -liquidityNetAtTick;
                 params.pool.liquidity = LiquidityMath.addDelta(params.pool.liquidity, liquidityNetAtTick);
                 params.pool.sqrtPriceX96 = initializedSqrtPrice;
