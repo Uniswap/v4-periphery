@@ -2,13 +2,13 @@
 pragma solidity ^0.8.20;
 
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 
 /// @notice A subscriber contract that returns values from the subscriber entrypoints
 contract MockReturnDataSubscriber is ISubscriber {
-    PositionManager posm;
+    IPositionManager posm;
 
     uint256 public notifySubscribeCount;
     uint256 public notifyUnsubscribeCount;
@@ -20,7 +20,7 @@ contract MockReturnDataSubscriber is ISubscriber {
 
     uint256 memPtr;
 
-    constructor(PositionManager _posm) {
+    constructor(IPositionManager _posm) {
         posm = _posm;
     }
 
@@ -48,9 +48,7 @@ contract MockReturnDataSubscriber is ISubscriber {
         notifyModifyLiquidityCount++;
     }
 
-    function notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
-        external
-    {
+    function notifyBurn(uint256, address, PositionInfo, uint256, BalanceDelta) external pure {
         return;
     }
 
@@ -61,13 +59,13 @@ contract MockReturnDataSubscriber is ISubscriber {
 
 /// @notice A subscriber contract that returns values from the subscriber entrypoints
 contract MockRevertSubscriber is ISubscriber {
-    PositionManager posm;
+    IPositionManager posm;
 
     error NotAuthorizedNotifer(address sender);
 
     error TestRevert(string);
 
-    constructor(PositionManager _posm) {
+    constructor(IPositionManager _posm) {
         posm = _posm;
     }
 
@@ -92,9 +90,7 @@ contract MockRevertSubscriber is ISubscriber {
         revert TestRevert("notifyModifyLiquidity");
     }
 
-    function notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
-        external
-    {
+    function notifyBurn(uint256, address, PositionInfo, uint256, BalanceDelta) external pure {
         return;
     }
 

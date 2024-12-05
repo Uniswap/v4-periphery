@@ -20,12 +20,11 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
+import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 
 import {MockSubscriber} from "../mocks/MockSubscriber.sol";
@@ -250,7 +249,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // OZ 721 will revert if the token does not exist
         vm.expectRevert();
-        lpm.ownerOf(1);
+        IERC721(address(lpm)).ownerOf(1);
 
         // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
         assertApproxEqAbs(currency0.balanceOfSelf(), balance0Start, 1 wei);
@@ -308,7 +307,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // OZ 721 will revert if the token does not exist
         vm.expectRevert();
-        lpm.ownerOf(1);
+        IERC721(address(lpm)).ownerOf(1);
 
         // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
         assertApproxEqAbs(currency0.balanceOfSelf(), balance0Start, 1 wei);
@@ -356,7 +355,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // OZ 721 will revert if the token does not exist
         vm.expectRevert();
-        lpm.ownerOf(1);
+        IERC721(address(lpm)).ownerOf(1);
 
         // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
         assertApproxEqAbs(currency0.balanceOfSelf(), balance0Start, 1 wei);
@@ -409,7 +408,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // OZ 721 will revert if the token does not exist
         vm.expectRevert();
-        lpm.ownerOf(1);
+        IERC721(address(lpm)).ownerOf(1);
 
         // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
         assertApproxEqAbs(currency0.balanceOfSelf(), balance0Start, 1 wei);

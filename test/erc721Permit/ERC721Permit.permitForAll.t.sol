@@ -8,7 +8,7 @@ import {ERC721PermitHash} from "../../src/libraries/ERC721PermitHash.sol";
 import {MockERC721Permit} from "../mocks/MockERC721Permit.sol";
 import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
-import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
+import {IUnorderedNonce} from "../../src/interfaces/IUnorderedNonce.sol";
 
 contract ERC721PermitForAllTest is Test {
     MockERC721Permit erc721Permit;
@@ -141,7 +141,7 @@ contract ERC721PermitForAllTest is Test {
         bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.startPrank(alice);
-        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
         erc721Permit.permitForAll(alice, bob, true, block.timestamp, nonce, signature);
         vm.stopPrank();
     }
@@ -292,7 +292,7 @@ contract ERC721PermitForAllTest is Test {
 
         // Nonce does not work with permitForAll
         vm.startPrank(bob);
-        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
         erc721Permit.permitForAll(alice, bob, true, deadline, nonce, signature);
         vm.stopPrank();
     }
@@ -311,7 +311,7 @@ contract ERC721PermitForAllTest is Test {
 
         // Nonce does not work with permitForAll
         vm.startPrank(bob);
-        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
         erc721Permit.permitForAll(alice, bob, true, deadline, nonce, signature);
         vm.stopPrank();
     }
