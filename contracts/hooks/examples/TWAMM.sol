@@ -22,6 +22,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {LiquidityMath} from '@uniswap/v4-core/src/libraries/LiquidityMath.sol';
 
 contract TWAMM is BaseHook, ITWAMM {
     using TransferHelper for IERC20Minimal;
@@ -535,9 +536,11 @@ contract TWAMM is BaseHook, ITWAMM {
                     params.pool.sqrtPriceX96, initializedSqrtPrice, params.pool.liquidity, true
                 );
 
-                params.pool.liquidity = params.zeroForOne
-                    ? params.pool.liquidity - uint128(liquidityNetAtTick)
-                    : params.pool.liquidity + uint128(-liquidityNetAtTick);
+                // params.pool.liquidity = params.zeroForOne
+                //     ? params.pool.liquidity - uint128(liquidityNetAtTick)
+                //     : params.pool.liquidity + uint128(-liquidityNetAtTick);
+                if (params.zeroForOne) liquidityNetAtTick = -liquidityNetAtTick;
+                params.pool.liquidity = LiquidityMath.addDelta(params.pool.liquidity, liquidityNetAtTick);
                 params.pool.sqrtPriceX96 = initializedSqrtPrice;
 
                 unchecked {
