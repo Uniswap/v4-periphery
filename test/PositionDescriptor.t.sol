@@ -11,13 +11,12 @@ import {PositionConfig} from "./shared/PositionConfig.sol";
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 import {ActionConstants} from "../src/libraries/ActionConstants.sol";
 import {Base64} from "./base64.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SafeCurrencyMetadata} from "../src/libraries/SafeCurrencyMetadata.sol";
 import {AddressStringUtil} from "../src/libraries/AddressStringUtil.sol";
 import {Descriptor} from "../src/libraries/Descriptor.sol";
 
-contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
+contract PositionDescriptorTest is Test, PosmTestSetup {
     using Base64 for string;
     using CurrencyLibrary for Currency;
 
@@ -43,7 +42,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup, GasSnapshot {
     }
 
     function test_bytecodeSize_positionDescriptor() public {
-        snapSize("positionDescriptor bytecode size", address(positionDescriptor));
+        vm.snapshotValue("positionDescriptor bytecode size", address(positionDescriptor).code.length);
     }
 
     function test_setup_succeeds() public view {

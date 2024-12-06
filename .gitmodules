@@ -4,6 +4,3 @@
 [submodule "lib/permit2"]
 	path = lib/permit2
 	url = https://github.com/Uniswap/permit2
-[submodule "lib/forge-gas-snapshot"]
-	path = lib/forge-gas-snapshot
-	url = https://github.com/marktoda/forge-gas-snapshot
