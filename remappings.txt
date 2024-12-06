@@ -1,5 +1,4 @@
 @uniswap/v4-core/=lib/v4-core/
-forge-gas-snapshot/=lib/forge-gas-snapshot/src/
 ds-test/=lib/v4-core/lib/forge-std/lib/ds-test/src/
 forge-std/=lib/v4-core/lib/forge-std/src/
 openzeppelin-contracts/=lib/v4-core/lib/openzeppelin-contracts/
