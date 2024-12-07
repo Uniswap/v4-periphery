@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {ParseBytes} from "@uniswap/v4-core/src/libraries/ParseBytes.sol";

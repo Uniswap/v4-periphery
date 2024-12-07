@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -50,12 +50,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 return;
             }
         } else {
-            if (action == Actions.SETTLE_TAKE_PAIR) {
-                (Currency settleCurrency, Currency takeCurrency) = params.decodeCurrencyPair();
-                _settle(settleCurrency, msgSender(), _getFullDebt(settleCurrency));
-                _take(takeCurrency, msgSender(), _getFullCredit(takeCurrency));
-                return;
-            } else if (action == Actions.SETTLE_ALL) {
+            if (action == Actions.SETTLE_ALL) {
                 (Currency currency, uint256 maxAmount) = params.decodeCurrencyAndUint256();
                 uint256 amount = _getFullDebt(currency);
                 if (amount > maxAmount) revert V4TooMuchRequested(maxAmount, amount);

@@ -1,9 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
 import {PositionManager} from "../../src/PositionManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 
 /// @notice A subscriber contract that returns values from the subscriber entrypoints
 contract MockReturnDataSubscriber is ISubscriber {
@@ -12,7 +13,6 @@ contract MockReturnDataSubscriber is ISubscriber {
     uint256 public notifySubscribeCount;
     uint256 public notifyUnsubscribeCount;
     uint256 public notifyModifyLiquidityCount;
-    uint256 public notifyTransferCount;
 
     error NotAuthorizedNotifer(address sender);
 
@@ -48,8 +48,10 @@ contract MockReturnDataSubscriber is ISubscriber {
         notifyModifyLiquidityCount++;
     }
 
-    function notifyTransfer(uint256, address, address) external onlyByPosm {
-        notifyTransferCount++;
+    function notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
+        external
+    {
+        return;
     }
 
     function setReturnDataSize(uint256 _value) external {
@@ -90,8 +92,10 @@ contract MockRevertSubscriber is ISubscriber {
         revert TestRevert("notifyModifyLiquidity");
     }
 
-    function notifyTransfer(uint256, address, address) external view onlyByPosm {
-        revert TestRevert("notifyTransfer");
+    function notifyBurn(uint256 tokenId, address owner, PositionInfo info, uint256 liquidity, BalanceDelta feesAccrued)
+        external
+    {
+        return;
     }
 
     function setRevert(bool _shouldRevert) external {

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -14,6 +14,9 @@ interface IPositionManager is INotifier, IImmutableState {
     error NotApproved(address caller);
     /// @notice Thrown when the block.timestamp exceeds the user-provided deadline
     error DeadlinePassed(uint256 deadline);
+    /// @notice Thrown when calling transfer, subscribe, or unsubscribe when the PoolManager is unlocked.
+    /// @dev This is to prevent hooks from being able to trigger notifications at the same time the position is being modified.
+    error PoolManagerMustBeLocked();
 
     /// @notice Unlocks Uniswap v4 PoolManager and batches actions for modifying liquidity
     /// @dev This is the standard entrypoint for the PositionManager
