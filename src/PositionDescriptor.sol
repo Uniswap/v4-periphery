@@ -2,7 +2,7 @@
 pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -17,7 +17,6 @@ import {SafeCurrencyMetadata} from "./libraries/SafeCurrencyMetadata.sol";
 /// @notice Produces a string containing the data URI for a JSON metadata string
 contract PositionDescriptor is IPositionDescriptor {
     using StateLibrary for IPoolManager;
-    using CurrencyLibrary for Currency;
     using PositionInfoLibrary for PositionInfo;
 
     error InvalidTokenId(uint256 tokenId);

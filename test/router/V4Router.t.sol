@@ -9,7 +9,6 @@ import {Actions} from "../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 
 contract V4RouterTest is RoutingTestHelpers {
-    using CurrencyLibrary for Currency;
     using Planner for Plan;
 
     address alice = makeAddr("ALICE");

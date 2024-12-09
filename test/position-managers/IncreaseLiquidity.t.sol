@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
@@ -32,7 +32,6 @@ import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 
 contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     using FixedPointMathLib for uint256;
-    using CurrencyLibrary for Currency;
     using Planner for Plan;
     using FeeMath for IPositionManager;
     using StateLibrary for IPoolManager;

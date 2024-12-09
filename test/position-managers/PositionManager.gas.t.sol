@@ -27,7 +27,6 @@ import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 
 contract PosMGasTest is Test, PosmTestSetup {
     using FixedPointMathLib for uint256;
-    using CurrencyLibrary for Currency;
     using Planner for Plan;
 
     PoolId poolId;

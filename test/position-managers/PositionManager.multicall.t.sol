@@ -33,7 +33,6 @@ import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
 
 contract PositionManagerMulticallTest is Test, Permit2SignatureHelpers, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
-    using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
     using Planner for Plan;
     using StateLibrary for IPoolManager;
