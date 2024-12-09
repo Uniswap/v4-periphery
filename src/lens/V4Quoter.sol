@@ -7,12 +7,11 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IV4Quoter} from "../interfaces/IV4Quoter.sol";
-import {PathKey, PathKeyLibrary} from "../libraries/PathKey.sol";
+import {PathKey} from "../libraries/PathKey.sol";
 import {QuoterRevert} from "../libraries/QuoterRevert.sol";
 import {BaseV4Quoter} from "../base/BaseV4Quoter.sol";
 
 contract V4Quoter is IV4Quoter, BaseV4Quoter {
-    using PathKeyLibrary for PathKey;
     using QuoterRevert for *;
 
     constructor(IPoolManager _poolManager) BaseV4Quoter(_poolManager) {}
