@@ -36,7 +36,6 @@ import {PositionConfig} from "../shared/PositionConfig.sol";
 
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
-    using Planner for Plan;
     using StateLibrary for IPoolManager;
     using SafeCast for *;
 

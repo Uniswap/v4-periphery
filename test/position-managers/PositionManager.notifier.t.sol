@@ -24,7 +24,6 @@ import {MockReenterHook} from "../mocks/MockReenterHook.sol";
 
 contract PositionManagerNotifierTest is Test, PosmTestSetup {
     using StateLibrary for IPoolManager;
-    using Planner for Plan;
 
     MockSubscriber sub;
     MockReturnDataSubscriber badSubscriber;

@@ -5,13 +5,12 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
-import {Plan, Planner} from "../shared/Planner.sol";
+import {Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {BipsLibrary} from "../../src/libraries/BipsLibrary.sol";
 
 contract PaymentsTests is RoutingTestHelpers {
-    using Planner for Plan;
 
     address bob = makeAddr("BOB");
 

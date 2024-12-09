@@ -13,8 +13,9 @@ struct Plan {
     bytes[] params;
 }
 
+using Planner for Plan global;
+
 library Planner {
-    using Planner for Plan;
 
     function init() internal pure returns (Plan memory plan) {
         return Plan({actions: bytes(""), params: new bytes[](0)});

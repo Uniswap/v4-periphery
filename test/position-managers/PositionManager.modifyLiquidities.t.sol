@@ -34,13 +34,11 @@ import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
-import {Planner, Plan} from "../shared/Planner.sol";
 import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
 import {MockFOT} from "../mocks/MockFeeOnTransfer.sol";
 
 contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityFuzzers {
     using StateLibrary for IPoolManager;
-    using Planner for Plan;
     using BipsLibrary for uint256;
 
     PoolId poolId;

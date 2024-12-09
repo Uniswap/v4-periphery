@@ -37,7 +37,6 @@ import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
 
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
-    using Planner for Plan;
     using StateLibrary for IPoolManager;
 
     PoolId poolId;

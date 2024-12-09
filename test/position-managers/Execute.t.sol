@@ -29,7 +29,6 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
 contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
-    using Planner for Plan;
     using StateLibrary for IPoolManager;
 
     PoolId poolId;
