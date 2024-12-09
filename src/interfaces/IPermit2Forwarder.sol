@@ -3,8 +3,8 @@ pragma solidity ^0.8.0;
 
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
-/// @notice Permit2Forwarder allows permitting this contract as a spender on permit2
-/// @dev This contract does not enforce the spender to be this contract, but that is the intended use case
+/// @title IPermit2Forwarder
+/// @notice Interface for the Permit2Forwarder contract
 interface IPermit2Forwarder {
     /// @notice allows forwarding a single permit to permit2
     /// @dev this function is payable to allow multicall with NATIVE based actions
