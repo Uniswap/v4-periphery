@@ -5,12 +5,11 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {QuoterRevert} from "../libraries/QuoterRevert.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 abstract contract BaseV4Quoter is SafeCallback {
     using QuoterRevert for *;
-    using PoolIdLibrary for PoolId;
 
     error NotEnoughLiquidity(PoolId poolId);
     error NotSelf();

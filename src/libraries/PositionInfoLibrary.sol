@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 /**
  * @dev PositionInfo is a packed version of solidity structure.
@@ -31,7 +31,6 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 type PositionInfo is uint256;
 
 library PositionInfoLibrary {
-    using PoolIdLibrary for PoolKey;
 
     PositionInfo internal constant EMPTY_POSITION_INFO = PositionInfo.wrap(0);
 

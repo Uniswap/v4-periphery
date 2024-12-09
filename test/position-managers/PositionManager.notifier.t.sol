@@ -8,7 +8,6 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
@@ -24,7 +23,6 @@ import {PositionInfoLibrary, PositionInfo} from "../../src/libraries/PositionInf
 import {MockReenterHook} from "../mocks/MockReenterHook.sol";
 
 contract PositionManagerNotifierTest is Test, PosmTestSetup {
-    using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using Planner for Plan;
     using PositionInfoLibrary for PositionInfo;
