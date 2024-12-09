@@ -30,6 +30,8 @@ import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
  */
 type PositionInfo is uint256;
 
+using PositionInfoLibrary for PositionInfo global;
+
 library PositionInfoLibrary {
 
     PositionInfo internal constant EMPTY_POSITION_INFO = PositionInfo.wrap(0);

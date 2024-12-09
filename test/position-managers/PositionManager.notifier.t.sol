@@ -19,13 +19,12 @@ import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {INotifier} from "../../src/interfaces/INotifier.sol";
 import {MockReturnDataSubscriber, MockRevertSubscriber} from "../mocks/MockBadSubscribers.sol";
-import {PositionInfoLibrary, PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
+import {PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 import {MockReenterHook} from "../mocks/MockReenterHook.sol";
 
 contract PositionManagerNotifierTest is Test, PosmTestSetup {
     using StateLibrary for IPoolManager;
     using Planner for Plan;
-    using PositionInfoLibrary for PositionInfo;
 
     MockSubscriber sub;
     MockReturnDataSubscriber badSubscriber;

@@ -6,7 +6,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PositionInfo, PositionInfoLibrary, PoolId} from "../../src/libraries/PositionInfoLibrary.sol";
 
 contract PositionInfoLibraryTest is Test {
-    using PositionInfoLibrary for PositionInfo;
 
     function setUp() public {}
 

@@ -8,7 +8,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {IPositionDescriptor} from "./interfaces/IPositionDescriptor.sol";
-import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
+import {PositionInfo} from "./libraries/PositionInfoLibrary.sol";
 import {Descriptor} from "./libraries/Descriptor.sol";
 import {CurrencyRatioSortOrder} from "./libraries/CurrencyRatioSortOrder.sol";
 import {SafeCurrencyMetadata} from "./libraries/SafeCurrencyMetadata.sol";
@@ -17,7 +17,6 @@ import {SafeCurrencyMetadata} from "./libraries/SafeCurrencyMetadata.sol";
 /// @notice Produces a string containing the data URI for a JSON metadata string
 contract PositionDescriptor is IPositionDescriptor {
     using StateLibrary for IPoolManager;
-    using PositionInfoLibrary for PositionInfo;
 
     error InvalidTokenId(uint256 tokenId);
 
