@@ -15,7 +15,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {IPositionManager, IPoolInitializer} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager, IPoolInitializer_v4} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
 import {IMulticall_v4} from "../../src/interfaces/IMulticall_v4.sol";
@@ -395,7 +395,7 @@ contract PosMGasTest is Test, PosmTestSetup {
 
         // Use multicall to initialize a pool and mint liquidity
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(IPoolInitializer.initializePool.selector, key, SQRT_PRICE_1_1);
+        calls[0] = abi.encodeWithSelector(IPoolInitializer_v4.initializePool.selector, key, SQRT_PRICE_1_1);
 
         config = PositionConfig({
             poolKey: key,
