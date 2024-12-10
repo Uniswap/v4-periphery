@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {PositionDescriptor} from "../src/PositionDescriptor.sol";
+import {IPositionDescriptor} from "../src/interfaces/IPositionDescriptor.sol";
 import {CurrencyRatioSortOrder} from "../src/libraries/CurrencyRatioSortOrder.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
@@ -86,148 +86,163 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
     function test_tokenURI_succeeds() public {
         int24 tickLower = int24(key.tickSpacing);
         int24 tickUpper = int24(key.tickSpacing * 2);
-        uint256 amount0Desired = 100e18;
-        uint256 amount1Desired = 100e18;
-        uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
-            SQRT_PRICE_1_1,
-            TickMath.getSqrtPriceAtTick(tickLower),
-            TickMath.getSqrtPriceAtTick(tickUpper),
-            amount0Desired,
-            amount1Desired
-        );
-
-        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
         uint256 tokenId = lpm.nextTokenId();
-        mint(config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        Token memory token;
+        {
+            uint256 amount0Desired = 100e18;
+            uint256 amount1Desired = 100e18;
+            uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
+                SQRT_PRICE_1_1,
+                TickMath.getSqrtPriceAtTick(tickLower),
+                TickMath.getSqrtPriceAtTick(tickUpper),
+                amount0Desired,
+                amount1Desired
+            );
 
-        // The prefix length is calculated by converting the string to bytes and finding its length
-        uint256 prefixLength = bytes("data:application/json;base64,").length;
+            PositionConfig memory config = PositionConfig({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
+            mint(config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        string memory uri = positionDescriptor.tokenURI(lpm, tokenId);
-        // Convert the uri to bytes
-        bytes memory uriBytes = bytes(uri);
+            // The prefix length is calculated by converting the string to bytes and finding its length
+            uint256 prefixLength = bytes("data:application/json;base64,").length;
 
-        // Slice the uri to get only the base64-encoded part
-        bytes memory base64Part = new bytes(uriBytes.length - prefixLength);
+            string memory uri = positionDescriptor.tokenURI(lpm, tokenId);
+            // Convert the uri to bytes
+            bytes memory uriBytes = bytes(uri);
 
-        for (uint256 i = 0; i < base64Part.length; i++) {
-            base64Part[i] = uriBytes[i + prefixLength];
+            // Slice the uri to get only the base64-encoded part
+            bytes memory base64Part = new bytes(uriBytes.length - prefixLength);
+
+            for (uint256 i = 0; i < base64Part.length; i++) {
+                base64Part[i] = uriBytes[i + prefixLength];
+            }
+
+            // Decode the base64-encoded part
+            bytes memory decoded = Base64.decode(string(base64Part));
+            string memory json = string(decoded);
+
+            // decode json
+            bytes memory data = vm.parseJson(json);
+            token = abi.decode(data, (Token));
         }
-
-        // Decode the base64-encoded part
-        bytes memory decoded = Base64.decode(string(base64Part));
-        string memory json = string(decoded);
-
-        // decode json
-        bytes memory data = vm.parseJson(json);
-        Token memory token = abi.decode(data, (Token));
 
         // quote is currency1, base is currency0
         assertFalse(positionDescriptor.flipRatio(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1)));
 
         string memory symbol0 = SafeCurrencyMetadata.currencySymbol(Currency.unwrap(currency0), nativeCurrencyLabel);
         string memory symbol1 = SafeCurrencyMetadata.currencySymbol(Currency.unwrap(currency1), nativeCurrencyLabel);
-        string memory managerAddress = toHexString(address(manager));
-        string memory currency0Address = toHexString(Currency.unwrap(currency0));
-        string memory currency1Address = toHexString(Currency.unwrap(currency1));
-        string memory id = uintToString(tokenId);
-        string memory hookAddress = address(key.hooks) == address(0)
-            ? "No Hook"
-            : string(abi.encodePacked("0x", toHexString(address(key.hooks))));
         string memory fee = Descriptor.feeToPercentString(key.fee);
-        string memory tickToDecimal0 = Descriptor.tickToDecimalString(
-            tickLower,
-            key.tickSpacing,
-            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
-            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
-            false
-        );
-        string memory tickToDecimal1 = Descriptor.tickToDecimalString(
-            tickUpper,
-            key.tickSpacing,
-            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
-            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
-            false
-        );
+        {
+            string memory tickToDecimal0 = Descriptor.tickToDecimalString(
+                tickLower,
+                key.tickSpacing,
+                SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
+                SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
+                false
+            );
+            string memory tickToDecimal1 = Descriptor.tickToDecimalString(
+                tickUpper,
+                key.tickSpacing,
+                SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
+                SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
+                false
+            );
 
-        assertEq(
-            token.name,
-            string(
-                abi.encodePacked(
-                    "Uniswap - ", fee, " - ", symbol1, "/", symbol0, " - ", tickToDecimal0, "<>", tickToDecimal1
+            assertEq(
+                token.name,
+                string(
+                    abi.encodePacked(
+                        "Uniswap - ", fee, " - ", symbol1, "/", symbol0, " - ", tickToDecimal0, "<>", tickToDecimal1
+                    )
                 )
-            )
-        );
-        assertEq(
-            token.description,
-            string(
-                abi.encodePacked(
-                    unicode"This NFT represents a liquidity position in a Uniswap v4 ",
-                    symbol1,
-                    "-",
-                    symbol0,
-                    " pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: ",
-                    managerAddress,
-                    "\n",
-                    symbol1,
-                    " Address: ",
-                    currency1Address,
-                    "\n",
-                    symbol0,
-                    " Address: ",
-                    currency0Address,
-                    "\nHook Address: ",
-                    hookAddress,
-                    "\nFee Tier: ",
-                    fee,
-                    "\nToken ID: ",
-                    id,
-                    "\n\n",
-                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currency addresses match the expected currencies, as currency symbols may be imitated."
+            );
+        }
+        {
+            string memory managerAddress = toHexString(address(manager));
+            string memory currency0Address = toHexString(Currency.unwrap(currency0));
+            string memory currency1Address = toHexString(Currency.unwrap(currency1));
+            string memory id = uintToString(tokenId);
+            string memory hookAddress = address(key.hooks) == address(0)
+                ? "No Hook"
+                : string(abi.encodePacked("0x", toHexString(address(key.hooks))));
+
+            assertEq(
+                token.description,
+                string(
+                    abi.encodePacked(
+                        abi.encodePacked(
+                            unicode"This NFT represents a liquidity position in a Uniswap v4 ",
+                            symbol1,
+                            "-",
+                            symbol0,
+                            " pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: ",
+                            managerAddress,
+                            "\n",
+                            symbol1,
+                            " Address: ",
+                            currency1Address
+                        ),
+                        abi.encodePacked(
+                            "\n",
+                            symbol0,
+                            " Address: ",
+                            currency0Address,
+                            "\nHook Address: ",
+                            hookAddress,
+                            "\nFee Tier: ",
+                            fee,
+                            "\nToken ID: ",
+                            id,
+                            "\n\n",
+                            unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currency addresses match the expected currencies, as currency symbols may be imitated."
+                        )
+                    )
                 )
-            )
-        );
+            );
+        }
     }
 
     function test_native_tokenURI_succeeds() public {
         (nativeKey,) = initPool(CurrencyLibrary.ADDRESS_ZERO, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
         int24 tickLower = int24(nativeKey.tickSpacing);
         int24 tickUpper = int24(nativeKey.tickSpacing * 2);
-        uint256 amount0Desired = 100e18;
-        uint256 amount1Desired = 100e18;
-        uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
-            SQRT_PRICE_1_1,
-            TickMath.getSqrtPriceAtTick(tickLower),
-            TickMath.getSqrtPriceAtTick(tickUpper),
-            amount0Desired,
-            amount1Desired
-        );
-
-        PositionConfig memory config = PositionConfig({poolKey: nativeKey, tickLower: tickLower, tickUpper: tickUpper});
+        Token memory token;
         uint256 tokenId = lpm.nextTokenId();
-        mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        {
+            uint256 amount0Desired = 100e18;
+            uint256 amount1Desired = 100e18;
+            uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
+                SQRT_PRICE_1_1,
+                TickMath.getSqrtPriceAtTick(tickLower),
+                TickMath.getSqrtPriceAtTick(tickUpper),
+                amount0Desired,
+                amount1Desired
+            );
 
-        // The prefix length is calculated by converting the string to bytes and finding its length
-        uint256 prefixLength = bytes("data:application/json;base64,").length;
+            PositionConfig memory config =
+                PositionConfig({poolKey: nativeKey, tickLower: tickLower, tickUpper: tickUpper});
+            mintWithNative(SQRT_PRICE_1_1, config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
+            // The prefix length is calculated by converting the string to bytes and finding its length
+            uint256 prefixLength = bytes("data:application/json;base64,").length;
 
-        string memory uri = positionDescriptor.tokenURI(lpm, tokenId);
-        // Convert the uri to bytes
-        bytes memory uriBytes = bytes(uri);
+            string memory uri = positionDescriptor.tokenURI(lpm, tokenId);
+            // Convert the uri to bytes
+            bytes memory uriBytes = bytes(uri);
 
-        // Slice the uri to get only the base64-encoded part
-        bytes memory base64Part = new bytes(uriBytes.length - prefixLength);
+            // Slice the uri to get only the base64-encoded part
+            bytes memory base64Part = new bytes(uriBytes.length - prefixLength);
 
-        for (uint256 i = 0; i < base64Part.length; i++) {
-            base64Part[i] = uriBytes[i + prefixLength];
+            for (uint256 i = 0; i < base64Part.length; i++) {
+                base64Part[i] = uriBytes[i + prefixLength];
+            }
+
+            // Decode the base64-encoded part
+            bytes memory decoded = Base64.decode(string(base64Part));
+            string memory json = string(decoded);
+
+            // decode json
+            bytes memory data = vm.parseJson(json);
+            token = abi.decode(data, (Token));
         }
-
-        // Decode the base64-encoded part
-        bytes memory decoded = Base64.decode(string(base64Part));
-        string memory json = string(decoded);
-
-        // decode json
-        bytes memory data = vm.parseJson(json);
-        Token memory token = abi.decode(data, (Token));
 
         // quote is currency1, base is currency0
         assertFalse(
@@ -238,70 +253,79 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
             SafeCurrencyMetadata.currencySymbol(Currency.unwrap(nativeKey.currency0), nativeCurrencyLabel);
         string memory symbol1 =
             SafeCurrencyMetadata.currencySymbol(Currency.unwrap(nativeKey.currency1), nativeCurrencyLabel);
-        string memory managerAddress = toHexString(address(manager));
-        string memory currency0Address = Currency.unwrap(nativeKey.currency0) == address(0)
-            ? "Native"
-            : toHexString(Currency.unwrap(nativeKey.currency0));
-        string memory currency1Address = Currency.unwrap(nativeKey.currency1) == address(0)
-            ? "Native"
-            : toHexString(Currency.unwrap(nativeKey.currency1));
-        string memory id = uintToString(tokenId);
-        string memory hookAddress = address(nativeKey.hooks) == address(0)
-            ? "No Hook"
-            : string(abi.encodePacked("0x", toHexString(address(nativeKey.hooks))));
         string memory fee = Descriptor.feeToPercentString(nativeKey.fee);
-        string memory tickToDecimal0 = Descriptor.tickToDecimalString(
-            tickLower,
-            nativeKey.tickSpacing,
-            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
-            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
-            false
-        );
-        string memory tickToDecimal1 = Descriptor.tickToDecimalString(
-            tickUpper,
-            nativeKey.tickSpacing,
-            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
-            SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
-            false
-        );
+        {
+            string memory tickToDecimal0 = Descriptor.tickToDecimalString(
+                tickLower,
+                nativeKey.tickSpacing,
+                SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
+                SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
+                false
+            );
+            string memory tickToDecimal1 = Descriptor.tickToDecimalString(
+                tickUpper,
+                nativeKey.tickSpacing,
+                SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency0)),
+                SafeCurrencyMetadata.currencyDecimals(Currency.unwrap(currency1)),
+                false
+            );
 
-        assertEq(
-            token.name,
-            string(
-                abi.encodePacked(
-                    "Uniswap - ", fee, " - ", symbol1, "/", symbol0, " - ", tickToDecimal0, "<>", tickToDecimal1
+            assertEq(
+                token.name,
+                string(
+                    abi.encodePacked(
+                        "Uniswap - ", fee, " - ", symbol1, "/", symbol0, " - ", tickToDecimal0, "<>", tickToDecimal1
+                    )
                 )
-            )
-        );
-        assertEq(
-            token.description,
-            string(
-                abi.encodePacked(
-                    unicode"This NFT represents a liquidity position in a Uniswap v4 ",
-                    symbol1,
-                    "-",
-                    symbol0,
-                    " pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: ",
-                    managerAddress,
-                    "\n",
-                    symbol1,
-                    " Address: ",
-                    currency1Address,
-                    "\n",
-                    symbol0,
-                    " Address: ",
-                    currency0Address,
-                    "\nHook Address: ",
-                    hookAddress,
-                    "\nFee Tier: ",
-                    fee,
-                    "\nToken ID: ",
-                    id,
-                    "\n\n",
-                    unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currency addresses match the expected currencies, as currency symbols may be imitated."
+            );
+        }
+        {
+            string memory managerAddress = toHexString(address(manager));
+            string memory currency0Address = Currency.unwrap(nativeKey.currency0) == address(0)
+                ? "Native"
+                : toHexString(Currency.unwrap(nativeKey.currency0));
+            string memory currency1Address = Currency.unwrap(nativeKey.currency1) == address(0)
+                ? "Native"
+                : toHexString(Currency.unwrap(nativeKey.currency1));
+            string memory id = uintToString(tokenId);
+            string memory hookAddress = address(nativeKey.hooks) == address(0)
+                ? "No Hook"
+                : string(abi.encodePacked("0x", toHexString(address(nativeKey.hooks))));
+
+            assertEq(
+                token.description,
+                string(
+                    abi.encodePacked(
+                        abi.encodePacked(
+                            unicode"This NFT represents a liquidity position in a Uniswap v4 ",
+                            symbol1,
+                            "-",
+                            symbol0,
+                            " pool. The owner of this NFT can modify or redeem the position.\n\nPool Manager Address: ",
+                            managerAddress,
+                            "\n",
+                            symbol1,
+                            " Address: ",
+                            currency1Address,
+                            "\n",
+                            symbol0
+                        ),
+                        abi.encodePacked(
+                            " Address: ",
+                            currency0Address,
+                            "\nHook Address: ",
+                            hookAddress,
+                            "\nFee Tier: ",
+                            fee,
+                            "\nToken ID: ",
+                            id,
+                            "\n\n",
+                            unicode"⚠️ DISCLAIMER: Due diligence is imperative when assessing this NFT. Make sure currency addresses match the expected currencies, as currency symbols may be imitated."
+                        )
+                    )
                 )
-            )
-        );
+            );
+        }
     }
 
     function test_tokenURI_revertsWithInvalidTokenId() public {
@@ -321,7 +345,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        vm.expectRevert(abi.encodeWithSelector(PositionDescriptor.InvalidTokenId.selector, tokenId + 1));
+        vm.expectRevert(abi.encodeWithSelector(IPositionDescriptor.InvalidTokenId.selector, tokenId + 1));
 
         positionDescriptor.tokenURI(lpm, tokenId + 1);
     }

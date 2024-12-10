@@ -18,8 +18,6 @@ import {SafeCurrencyMetadata} from "./libraries/SafeCurrencyMetadata.sol";
 contract PositionDescriptor is IPositionDescriptor {
     using StateLibrary for IPoolManager;
 
-    error InvalidTokenId(uint256 tokenId);
-
     // mainnet addresses
     address private constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address private constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
@@ -84,18 +82,12 @@ contract PositionDescriptor is IPositionDescriptor {
         );
     }
 
-    /// @notice Returns true if currency0 has higher priority than currency1
-    /// @param currency0 The first currency address
-    /// @param currency1 The second currency address
-    /// @return flipRatio True if currency0 has higher priority than currency1
+    /// @inheritdoc IPositionDescriptor
     function flipRatio(address currency0, address currency1) public view returns (bool) {
         return currencyRatioPriority(currency0) > currencyRatioPriority(currency1);
     }
 
-    /// @notice Returns the priority of a currency.
-    /// For certain currencies on mainnet, the smaller the currency, the higher the priority
-    /// @param currency The currency address
-    /// @return priority The priority of the currency
+    /// @inheritdoc IPositionDescriptor
     function currencyRatioPriority(address currency) public view returns (int256) {
         // Currencies in order of priority on mainnet: USDC, USDT, DAI, (ETH, WETH), TBTC, WBTC
         // wrapped native is different address on different chains. passed in constructor

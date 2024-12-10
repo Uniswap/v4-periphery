@@ -14,7 +14,6 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LiquidityOperations} from "./LiquidityOperations.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";

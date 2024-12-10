@@ -5,10 +5,11 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {BaseTestHooks} from "@uniswap/v4-core/src/test/BaseTestHooks.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {IERC721} from "forge-std/interfaces/IERC721.sol";
 
 contract MockReenterHook is BaseTestHooks {
-    PositionManager posm;
+    IPositionManager posm;
 
     function beforeAddLiquidity(
         address,
@@ -21,8 +22,8 @@ contract MockReenterHook is BaseTestHooks {
         }
         (bytes4 selector, address owner, uint256 tokenId) = abi.decode(functionSelector, (bytes4, address, uint256));
 
-        if (selector == posm.transferFrom.selector) {
-            posm.transferFrom(owner, address(this), tokenId);
+        if (selector == IERC721(address(posm)).transferFrom.selector) {
+            IERC721(address(posm)).transferFrom(owner, address(this), tokenId);
         } else if (selector == posm.subscribe.selector) {
             posm.subscribe(tokenId, address(this), "");
         } else if (selector == posm.unsubscribe.selector) {
@@ -31,7 +32,7 @@ contract MockReenterHook is BaseTestHooks {
         return this.beforeAddLiquidity.selector;
     }
 
-    function setPosm(PositionManager _posm) external {
+    function setPosm(IPositionManager _posm) external {
         posm = _posm;
     }
 }
