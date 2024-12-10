@@ -9,7 +9,7 @@ import {IImmutableState} from "./IImmutableState.sol";
 import {IERC721Permit_v4} from "./IERC721Permit_v4.sol";
 import {IEIP712_v4} from "./IEIP712_v4.sol";
 import {IMulticall_v4} from "./IMulticall_v4.sol";
-import {IPoolInitializer} from "./IPoolInitializer.sol";
+import {IPoolInitializer_v4} from "./IPoolInitializer_v4.sol";
 import {IUnorderedNonce} from "./IUnorderedNonce.sol";
 import {IPermit2Forwarder} from "./IPermit2Forwarder.sol";
 
@@ -21,7 +21,7 @@ interface IPositionManager is
     IERC721Permit_v4,
     IEIP712_v4,
     IMulticall_v4,
-    IPoolInitializer,
+    IPoolInitializer_v4,
     IUnorderedNonce,
     IPermit2Forwarder
 {
