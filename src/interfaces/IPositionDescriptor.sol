@@ -4,7 +4,8 @@ pragma solidity ^0.8.24;
 import "./IPositionManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 
-/// @title Describes position NFT tokens via URI
+/// @title IPositionDescriptor
+/// @notice Interface for the PositionDescriptor contract
 interface IPositionDescriptor {
     error InvalidTokenId(uint256 tokenId);
 

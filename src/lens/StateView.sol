@@ -9,6 +9,7 @@ import {ImmutableState} from "../base/ImmutableState.sol";
 import {IStateView} from "../interfaces/IStateView.sol";
 
 /// @notice A view only contract wrapping the StateLibrary.sol library for reading storage in v4-core.
+/// @dev The contract is intended for offchain clients. Use StateLibrary.sol directly if reading state onchain.
 contract StateView is ImmutableState, IStateView {
     using StateLibrary for IPoolManager;
 
