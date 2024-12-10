@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-/// @title UniswapV4DeployerCompetition
-/// @notice A competition to deploy the UniswapV4 contract with the best address
+/// @title IUniswapV4DeployerCompetition
+/// @notice Interface for the UniswapV4DeployerCompetition contract
 interface IUniswapV4DeployerCompetition {
     event NewAddressFound(address indexed bestAddress, address indexed submitter, uint256 score);
 
