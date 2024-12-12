@@ -426,16 +426,13 @@ contract PositionManager is
         if (liquidity > 0) {
             BalanceDelta liquidityDelta;
             // do not use _modifyLiquidity as we do not need to notify on modification for burns.
-            (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
-                poolKey,
-                IPoolManager.ModifyLiquidityParams({
-                    tickLower: info.tickLower(),
-                    tickUpper: info.tickUpper(),
-                    liquidityDelta: -(liquidity.toInt256()),
-                    salt: bytes32(tokenId)
-                }),
-                hookData
-            );
+            IPoolManager.ModifyLiquidityParams memory params = IPoolManager.ModifyLiquidityParams({
+                tickLower: info.tickLower(),
+                tickUpper: info.tickUpper(),
+                liquidityDelta: -(liquidity.toInt256()),
+                salt: bytes32(tokenId)
+            });
+            (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(poolKey, params, hookData);
             // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
