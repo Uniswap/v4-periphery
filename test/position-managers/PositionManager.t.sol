@@ -61,6 +61,13 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         approvePosmFor(alice);
     }
 
+    function test_posm_initcodeHash() public {
+        vm.snapshotValue(
+            "position manager initcode hash (without constructor params, as uint256)",
+            uint256(keccak256(abi.encodePacked(vm.getCode("PositionManager.sol:PositionManager"))))
+        );
+    }
+
     function test_modifyLiquidities_reverts_deadlinePassed() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: 0, tickUpper: 60});
         bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, "");
