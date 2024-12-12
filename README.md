@@ -12,7 +12,6 @@ To utilize the contracts and deploy to a local testnet, you can install the code
 forge install https://github.com/Uniswap/v4-periphery
 ```
 
-If you are building hooks, it may be useful to inherit from the `BaseHook` contract:
 
 ```solidity
 
