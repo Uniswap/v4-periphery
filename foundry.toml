@@ -13,13 +13,15 @@ bytecode_hash = "none"
 additional_compiler_profiles = [
   { name = "posm", via_ir = true, optimizer_runs = 30000 },
   { name = "descriptor", via_ir = true, optimizer_runs = 1 },
-  { name = "test", via_ir = false }
+  { name = "test", via_ir = false },
+  { name = "posm-gas", via_ir = true, optimizer_runs = 30000 }
 ]
 
 compilation_restrictions = [
   { paths = "src/PositionManager.sol", optimizer_runs = 30000 },
   { paths = "src/PositionDescriptor.sol", optimizer_runs = 1 },
-  { paths = "test/**", via_ir = false }
+  { paths = "test/**/[!e][!r].*.sol", via_ir = false },
+  { paths = "test/position-managers/PositionManager.gas.t.sol", optimizer_runs = 30000 }
 ]
 
 [profile.debug]

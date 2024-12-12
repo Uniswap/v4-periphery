@@ -15,6 +15,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
+import {PositionManager} from "../../src/PositionManager.sol";
 import {IPositionManager, IPoolInitializer_v4} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
@@ -75,6 +76,13 @@ contract PosMGasTest is Test, PosmTestSetup {
 
     function test_bytecodeSize_positionManager() public {
         vm.snapshotValue("positionManager bytecode size", address(lpm).code.length);
+    }
+
+    function test_initcodeHash() public {
+        vm.snapshotValue(
+            "positionManager initcode hash (without constructor params, as uint256)",
+            uint256(keccak256(type(PositionManager).creationCode))
+        );
     }
 
     function test_gas_mint_withClose() public {
