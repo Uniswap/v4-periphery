@@ -11,12 +11,14 @@ fuzz_runs = 10_000
 bytecode_hash = "none"
 
 additional_compiler_profiles = [
+  { name = "posm", via_ir = false, optimizer_runs = 2000},
   { name = "descriptor", via_ir = true, optimizer_runs = 1 },
   { name = "test", via_ir = false }
 ]
 
 compilation_restrictions = [
-  { paths = "src/PositionDescriptor.sol", optimizer_runs = 1 },
+  { paths = "src/PositionManager.sol", via_ir = false, optimizer_runs = 2000},
+  { paths = "src/PositionDescriptor.sol", via_ir = true, optimizer_runs = 1 },
   { paths = "test/**", via_ir = false }
 ]
 
