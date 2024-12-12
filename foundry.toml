@@ -2,7 +2,7 @@
 out = 'foundry-out'
 solc_version = '0.8.26'
 optimizer_runs = 44444444
-via_ir = true
+via_ir = false
 ffi = true
 fs_permissions = [{ access = "read-write", path = ".forge-snapshots/" }, { access = "read", path = "foundry-out/" }]
 evm_version = "cancun"
@@ -11,13 +11,11 @@ fuzz_runs = 10_000
 bytecode_hash = "none"
 
 additional_compiler_profiles = [
-  { name = "posm", via_ir = true, optimizer_runs = 30000 },
   { name = "descriptor", via_ir = true, optimizer_runs = 1 },
   { name = "test", via_ir = false }
 ]
 
 compilation_restrictions = [
-  { paths = "src/PositionManager.sol", optimizer_runs = 30000 },
   { paths = "src/PositionDescriptor.sol", optimizer_runs = 1 },
   { paths = "test/**", via_ir = false }
 ]
