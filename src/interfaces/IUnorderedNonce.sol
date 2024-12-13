@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-/// @title UnorderedNonce Interface
+/// @title IUnorderedNonce
 /// @notice Interface for the UnorderedNonce contract
 interface IUnorderedNonce {
     error NonceAlreadyUsed();

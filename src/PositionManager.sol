@@ -17,7 +17,7 @@ import {ERC721Permit_v4} from "./base/ERC721Permit_v4.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {Multicall_v4} from "./base/Multicall_v4.sol";
-import {PoolInitializer} from "./base/PoolInitializer.sol";
+import {PoolInitializer_v4} from "./base/PoolInitializer_v4.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
@@ -99,7 +99,7 @@ import {IWETH9} from "./interfaces/external/IWETH9.sol";
 contract PositionManager is
     IPositionManager,
     ERC721Permit_v4,
-    PoolInitializer,
+    PoolInitializer_v4,
     Multicall_v4,
     DeltaResolver,
     ReentrancyLock,

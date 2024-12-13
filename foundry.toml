@@ -33,4 +33,10 @@ fuzz_runs = 100_000
 [profile.gas]
 gas_limit=30_000_000
 
+[rpc_endpoints]
+sepolia = "https://rpc.sepolia.org"
+unichain_sepolia = "https://sepolia.unichain.org"
+base_sepolia = "https://sepolia.base.org"
+arbitrum_sepolia = "https://sepolia-rollup.arbitrum.io/rpc"
+
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config

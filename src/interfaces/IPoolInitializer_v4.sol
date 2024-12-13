@@ -3,7 +3,9 @@ pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-interface IPoolInitializer {
+/// @title IPoolInitializer_v4
+/// @notice Interface for the PoolInitializer_v4 contract
+interface IPoolInitializer_v4 {
     /// @notice Initialize a Uniswap v4 Pool
     /// @dev If the pool is already initialized, this function will not revert and just return type(int24).max
     /// @param key The PoolKey of the pool to initialize

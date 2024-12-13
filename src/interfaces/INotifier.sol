@@ -3,7 +3,8 @@ pragma solidity ^0.8.0;
 
 import {ISubscriber} from "./ISubscriber.sol";
 
-/// @notice This interface is used to opt in to sending updates to external contracts about position modifications or transfers
+/// @title INotifier
+/// @notice Interface for the Notifier contract
 interface INotifier {
     /// @notice Thrown when unsubscribing without a subscriber
     error NotSubscribed();
