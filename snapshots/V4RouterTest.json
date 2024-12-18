@@ -23,5 +23,5 @@
   "V4Router_ExactOutputSingle": "133337",
   "V4Router_ExactOutputSingle_nativeIn_sweepETH": "126419",
   "V4Router_ExactOutputSingle_nativeOut": "119821",
-  "position manager initcode hash (without constructor params, as uint256)": "27545762869727400677117557485685740862616789454191614676777323590122002226479"
+  "router initcode hash (without constructor params, as uint256)": "27545762869727400677117557485685740862616789454191614676777323590122002226479"
 }

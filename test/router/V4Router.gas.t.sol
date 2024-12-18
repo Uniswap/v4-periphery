@@ -24,7 +24,7 @@ contract V4RouterTest is RoutingTestHelpers {
 
     function test_router_initcodeHash() public {
         vm.snapshotValue(
-            "position manager initcode hash (without constructor params, as uint256)",
+            "router initcode hash (without constructor params, as uint256)",
             uint256(keccak256(abi.encodePacked(vm.getCode("MockV4Router.sol:MockV4Router"))))
         );
     }
