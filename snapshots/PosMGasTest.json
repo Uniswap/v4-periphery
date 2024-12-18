@@ -38,5 +38,6 @@
   "PositionManager_permit_twice": "44975",
   "PositionManager_subscribe": "87968",
   "PositionManager_unsubscribe": "62697",
+  "position manager initcode hash (without constructor params, as uint256)": "81827502601055975118808937107769364319765058198432540518516360048852193272922",
   "positionManager bytecode size": "23877"
 }

@@ -22,6 +22,13 @@ contract V4RouterTest is RoutingTestHelpers {
         vm.snapshotValue("V4Router_Bytecode", address(router).code.length);
     }
 
+    function test_router_initcodeHash() public {
+        vm.snapshotValue(
+            "router initcode hash (without constructor params, as uint256)",
+            uint256(keccak256(abi.encodePacked(vm.getCode("MockV4Router.sol:MockV4Router"))))
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                         ERC20 -> ERC20 EXACT INPUT
     //////////////////////////////////////////////////////////////*/
