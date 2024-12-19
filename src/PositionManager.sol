@@ -3,7 +3,6 @@ pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
@@ -109,14 +108,12 @@ contract PositionManager is
     Permit2Forwarder,
     NativeWrapper
 {
-    using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
     using SafeCast for int256;
     using CalldataDecoder for bytes;
     using SlippageCheck for BalanceDelta;
-    using PositionInfoLibrary for PositionInfo;
 
     /// @inheritdoc IPositionManager
     /// @dev The ID of the next token that will be minted. Skips 0

@@ -6,7 +6,7 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -26,9 +26,6 @@ import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 
 contract PosMGasTest is Test, PosmTestSetup {
     using FixedPointMathLib for uint256;
-    using CurrencyLibrary for Currency;
-    using PoolIdLibrary for PoolKey;
-    using Planner for Plan;
 
     PoolId poolId;
     address alice;

@@ -13,6 +13,8 @@ struct PathKey {
     bytes hookData;
 }
 
+using PathKeyLibrary for PathKey global;
+
 /// @title PathKey Library
 /// @notice Functions for working with PathKeys
 library PathKeyLibrary {

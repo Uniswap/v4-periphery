@@ -8,7 +8,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
-import {PathKey, PathKeyLibrary} from "./libraries/PathKey.sol";
+import {PathKey} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
@@ -23,7 +23,6 @@ import {BipsLibrary} from "./libraries/BipsLibrary.sol";
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
 abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using SafeCast for *;
-    using PathKeyLibrary for PathKey;
     using CalldataDecoder for bytes;
     using BipsLibrary for uint256;
 
