@@ -40,6 +40,13 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
         deployAndApprovePosm(manager);
     }
 
+    function test_position_descriptor_initcodeHash() public {
+        vm.snapshotValue(
+            "position descriptor initcode hash (without constructor params, as uint256)",
+            uint256(keccak256(abi.encodePacked(vm.getCode("PositionDescriptor.sol:PositionDescriptor"))))
+        );
+    }
+
     function test_bytecodeSize_positionDescriptor() public {
         vm.snapshotValue("positionDescriptor bytecode size", address(positionDescriptor).code.length);
     }

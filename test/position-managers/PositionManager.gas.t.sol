@@ -70,6 +70,13 @@ contract PosMGasTest is Test, PosmTestSetup {
         sub = new MockSubscriber(lpm);
     }
 
+    function test_posm_initcodeHash() public {
+        vm.snapshotValue(
+            "position manager initcode hash (without constructor params, as uint256)",
+            uint256(keccak256(abi.encodePacked(vm.getCode("PositionManager.sol:PositionManager"))))
+        );
+    }
+
     function test_bytecodeSize_positionManager() public {
         vm.snapshotValue("positionManager bytecode size", address(lpm).code.length);
     }

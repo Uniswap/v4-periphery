@@ -306,16 +306,19 @@ contract PositionManager is
     {
         (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
 
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolKey.toId());
+        uint256 liquidity;
+        {
+            (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolKey.toId());
 
-        // Use the credit on the pool manager as the amounts for the mint.
-        uint256 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(info.tickLower()),
-            TickMath.getSqrtPriceAtTick(info.tickUpper()),
-            _getFullCredit(poolKey.currency0),
-            _getFullCredit(poolKey.currency1)
-        );
+            // Use the credit on the pool manager as the amounts for the mint.
+            liquidity = LiquidityAmounts.getLiquidityForAmounts(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(info.tickLower()),
+                TickMath.getSqrtPriceAtTick(info.tickUpper()),
+                _getFullCredit(poolKey.currency0),
+                _getFullCredit(poolKey.currency1)
+            );
+        }
 
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
@@ -420,16 +423,13 @@ contract PositionManager is
         if (liquidity > 0) {
             BalanceDelta liquidityDelta;
             // do not use _modifyLiquidity as we do not need to notify on modification for burns.
-            (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
-                poolKey,
-                IPoolManager.ModifyLiquidityParams({
-                    tickLower: info.tickLower(),
-                    tickUpper: info.tickUpper(),
-                    liquidityDelta: -(liquidity.toInt256()),
-                    salt: bytes32(tokenId)
-                }),
-                hookData
-            );
+            IPoolManager.ModifyLiquidityParams memory params = IPoolManager.ModifyLiquidityParams({
+                tickLower: info.tickLower(),
+                tickUpper: info.tickUpper(),
+                liquidityDelta: -(liquidity.toInt256()),
+                salt: bytes32(tokenId)
+            });
+            (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(poolKey, params, hookData);
             // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
