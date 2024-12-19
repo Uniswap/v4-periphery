@@ -19,7 +19,6 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {PositionManager} from "../../src/PositionManager.sol";
 import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
 import {SlippageCheck} from "../../src/libraries/SlippageCheck.sol";

@@ -15,7 +15,7 @@ import {SignatureVerification} from "permit2/src/libraries/SignatureVerification
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
 import {ERC721Permit_v4} from "../../src/base/ERC721Permit_v4.sol";
-import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
+import {IUnorderedNonce} from "../../src/interfaces/IUnorderedNonce.sol";
 
 import {PositionConfig} from "../shared/PositionConfig.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
@@ -234,7 +234,7 @@ contract PermitTest is Test, PosmTestSetup {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
         lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
     }
 

@@ -19,10 +19,10 @@ import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
+import {IERC721} from "forge-std/interfaces/IERC721.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
 import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
 import {SlippageCheck} from "../../src/libraries/SlippageCheck.sol";
@@ -124,7 +124,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         assertEq(tokenId, 1);
         assertEq(lpm.nextTokenId(), 2);
-        assertEq(lpm.ownerOf(tokenId), address(this));
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this));
 
         uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
@@ -159,7 +159,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1After = currency1.balanceOfSelf();
 
         assertEq(tokenId, 1);
-        assertEq(lpm.ownerOf(1), address(this));
+        assertEq(IERC721(address(lpm)).ownerOf(1), address(this));
 
         assertEq(uint256(int256(-delta.amount0())), amount0Desired);
         assertEq(uint256(int256(-delta.amount1())), amount1Desired);
@@ -194,7 +194,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 balance1After = currency1.balanceOfSelf();
 
         assertEq(tokenId, 1);
-        assertEq(lpm.ownerOf(1), alice);
+        assertEq(IERC721(address(lpm)).ownerOf(1), alice);
 
         assertEq(uint256(int256(-delta.amount0())), amount0Desired);
         assertEq(uint256(int256(-delta.amount1())), amount1Desired);
@@ -219,7 +219,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         BalanceDelta delta = getLastDelta();
 
         assertEq(tokenId, 1);
-        assertEq(lpm.ownerOf(tokenId), alice);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
 
         // alice was not the payer
         assertEq(balance0Before - currency0.balanceOfSelf(), uint256(int256(-delta.amount0())));
@@ -355,7 +355,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         PositionConfig memory config =
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         assertEq(tokenId, 1);
-        assertEq(lpm.ownerOf(1), address(this));
+        assertEq(IERC721(address(lpm)).ownerOf(1), address(this));
 
         uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
@@ -381,7 +381,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // 721 will revert if the token does not exist
         vm.expectRevert();
-        lpm.ownerOf(1);
+        IERC721(address(lpm)).ownerOf(1);
 
         // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
         // Potentially because we round down in core. I believe this is known in V3. But let's check!
@@ -399,7 +399,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         PositionConfig memory config =
             PositionConfig({poolKey: key, tickLower: params.tickLower, tickUpper: params.tickUpper});
         assertEq(tokenId, 1);
-        assertEq(lpm.ownerOf(1), address(this));
+        assertEq(IERC721(address(lpm)).ownerOf(1), address(this));
 
         uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
@@ -432,7 +432,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // OZ 721 will revert if the token does not exist
         vm.expectRevert();
-        lpm.ownerOf(1);
+        IERC721(address(lpm)).ownerOf(1);
 
         // no tokens were lost, TODO: fuzzer showing off by 1 sometimes
         // Potentially because we round down in core. I believe this is known in V3. But let's check!
@@ -750,7 +750,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         BalanceDelta mintDelta = getLastDelta();
 
         // transfer to alice
-        lpm.transferFrom(address(this), alice, tokenId);
+        IERC721(address(lpm)).transferFrom(address(this), alice, tokenId);
 
         // alice can burn the position
         bytes memory calls = getBurnEncoded(tokenId, config, ZERO_BYTES);
@@ -763,7 +763,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // token was burned and does not exist anymore
         vm.expectRevert();
-        lpm.ownerOf(tokenId);
+        IERC721(address(lpm)).ownerOf(tokenId);
 
         // alice received the principal liquidity
         assertApproxEqAbs(currency0.balanceOf(alice) - balance0BeforeAlice, uint128(-mintDelta.amount0()), 1 wei);
@@ -782,7 +782,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         donateRouter.donate(key, feeRevenue0, feeRevenue1, ZERO_BYTES);
 
         // transfer to alice
-        lpm.transferFrom(address(this), alice, tokenId);
+        IERC721(address(lpm)).transferFrom(address(this), alice, tokenId);
 
         // alice can collect the fees
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
@@ -806,7 +806,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         // transfer to alice
-        lpm.transferFrom(address(this), alice, tokenId);
+        IERC721(address(lpm)).transferFrom(address(this), alice, tokenId);
 
         // alice increases liquidity and is the payer
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
@@ -846,7 +846,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         donateRouter.donate(key, feeRevenue0, feeRevenue1, ZERO_BYTES);
 
         // transfer to alice
-        lpm.transferFrom(address(this), alice, tokenId);
+        IERC721(address(lpm)).transferFrom(address(this), alice, tokenId);
 
         {
             // alice decreases liquidity and is the recipient
@@ -980,7 +980,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(
             currency1.balanceOfSelf(), balanceBefore1 - uint256(-int256(deltaDecrease.amount1() + deltaMint.amount1()))
         );
-        assertEq(lpm.ownerOf(tokenIdMint), address(this));
+        assertEq(IERC721(address(lpm)).ownerOf(tokenIdMint), address(this));
         assertLt(currency1.balanceOfSelf(), balanceBefore1); // currency1 was owed
         assertLt(uint256(int256(deltaDecrease.amount1())), uint256(int256(-deltaMint.amount1()))); // amount1 in the second position was greater than amount1 in the first position
     }
