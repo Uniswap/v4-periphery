@@ -11,7 +11,6 @@ import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {BipsLibrary} from "../../src/libraries/BipsLibrary.sol";
 
 contract PaymentsTests is RoutingTestHelpers {
-
     address bob = makeAddr("BOB");
 
     function setUp() public {

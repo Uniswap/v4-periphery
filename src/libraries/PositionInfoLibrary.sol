@@ -33,7 +33,6 @@ type PositionInfo is uint256;
 using PositionInfoLibrary for PositionInfo global;
 
 library PositionInfoLibrary {
-
     PositionInfo internal constant EMPTY_POSITION_INFO = PositionInfo.wrap(0);
 
     uint256 internal constant MASK_UPPER_200_BITS = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000;

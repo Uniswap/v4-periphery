@@ -6,7 +6,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PositionInfo, PositionInfoLibrary, PoolId} from "../../src/libraries/PositionInfoLibrary.sol";
 
 contract PositionInfoLibraryTest is Test {
-
     function setUp() public {}
 
     function test_fuzz_initialize(PoolKey memory poolKey, int24 tickLower, int24 tickUpper) public pure {

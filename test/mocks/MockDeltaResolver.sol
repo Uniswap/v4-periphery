@@ -10,7 +10,6 @@ import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {Test} from "forge-std/Test.sol";
 
 contract MockDeltaResolver is Test, DeltaResolver, IUnlockCallback {
-
     uint256 public payCallCount;
 
     constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}

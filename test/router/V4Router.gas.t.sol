@@ -10,7 +10,6 @@ import {Actions} from "../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 
 contract V4RouterTest is RoutingTestHelpers {
-
     function setUp() public {
         setupRouterCurrenciesAndPoolsWithLiquidity();
         plan = Planner.init();

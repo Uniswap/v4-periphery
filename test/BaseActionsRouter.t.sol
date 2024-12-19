@@ -10,7 +10,6 @@ import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 
 contract BaseActionsRouterTest is Test, Deployers {
-
     MockBaseActionsRouter router;
 
     function setUp() public {
