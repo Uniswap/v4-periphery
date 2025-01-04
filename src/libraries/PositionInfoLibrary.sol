@@ -94,7 +94,7 @@ library PositionInfoLibrary {
         returns (PositionInfo info)
     {
         bytes25 _poolId = bytes25(PoolId.unwrap(_poolKey.toId()));
-        assembly {
+        assembly ("memory-safe") {
             info :=
                 or(
                     or(and(MASK_UPPER_200_BITS, _poolId), shl(TICK_UPPER_OFFSET, and(MASK_24_BITS, _tickUpper))),

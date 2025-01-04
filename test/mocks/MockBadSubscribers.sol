@@ -36,7 +36,7 @@ contract MockReturnDataSubscriber is ISubscriber {
     function notifyUnsubscribe(uint256) external onlyByPosm {
         notifyUnsubscribeCount++;
         uint256 _memPtr = memPtr;
-        assembly {
+        assembly ("memory-safe") {
             let fmp := mload(0x40)
             mstore(fmp, 0xBEEF)
             mstore(add(fmp, 0x20), 0xCAFE)

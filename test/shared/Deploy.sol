@@ -20,7 +20,7 @@ library Deploy {
     ) internal returns (IPositionManager manager) {
         bytes memory args = abi.encode(poolManager, permit2, unsubscribeGasLimit, positionDescriptor_, wrappedNative);
         bytes memory initcode = abi.encodePacked(vm.getCode("PositionManager.sol:PositionManager"), args);
-        assembly {
+        assembly ("memory-safe") {
             manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
     }
@@ -28,7 +28,7 @@ library Deploy {
     function stateView(address poolManager, bytes memory salt) internal returns (IStateView stateView_) {
         bytes memory args = abi.encode(poolManager);
         bytes memory initcode = abi.encodePacked(vm.getCode("StateView.sol:StateView"), args);
-        assembly {
+        assembly ("memory-safe") {
             stateView_ := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
     }
@@ -36,7 +36,7 @@ library Deploy {
     function v4Quoter(address poolManager, bytes memory salt) internal returns (IV4Quoter quoter) {
         bytes memory args = abi.encode(poolManager);
         bytes memory initcode = abi.encodePacked(vm.getCode("V4Quoter.sol:V4Quoter"), args);
-        assembly {
+        assembly ("memory-safe") {
             quoter := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
     }
@@ -49,7 +49,7 @@ library Deploy {
     ) internal returns (IPositionDescriptor descriptor) {
         bytes memory args = abi.encode(poolManager, wrappedNative, nativeCurrencyLabel);
         bytes memory initcode = abi.encodePacked(vm.getCode("PositionDescriptor.sol:PositionDescriptor"), args);
-        assembly {
+        assembly ("memory-safe") {
             descriptor := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
     }
