@@ -224,6 +224,8 @@ abstract contract LiquidityOperations is CommonBase {
             return getCollectEncoded(tokenId, config, hookData);
         } else if (seed % 5 == 4) {
             return getBurnEncoded(tokenId, config, hookData);
+        } else {
+            return "";
         }
     }
 }
