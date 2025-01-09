@@ -4,8 +4,7 @@ pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {PathKey} from "../src/libraries/PathKey.sol";
-import {IV4Quoter} from "../src/interfaces/IV4Quoter.sol";
-import {V4Quoter} from "../src/lens/V4Quoter.sol";
+import {Deploy, IV4Quoter} from "../test/shared/Deploy.sol";
 import {BaseV4Quoter} from "../src/base/BaseV4Quoter.sol";
 
 // v4-core
@@ -14,7 +13,7 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -26,7 +25,6 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 contract QuoterTest is Test, Deployers {
     using SafeCast for *;
-    using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
     // Min tick for full range with tick spacing of 60
@@ -39,7 +37,7 @@ contract QuoterTest is Test, Deployers {
 
     uint256 internal constant CONTROLLER_GAS_LIMIT = 500000;
 
-    V4Quoter quoter;
+    IV4Quoter quoter;
 
     PoolModifyLiquidityTest positionManager;
 
@@ -55,7 +53,7 @@ contract QuoterTest is Test, Deployers {
 
     function setUp() public {
         deployFreshManagerAndRouters();
-        quoter = new V4Quoter(IPoolManager(manager));
+        quoter = Deploy.v4Quoter(address(manager), hex"00");
         positionManager = new PoolModifyLiquidityTest(manager);
 
         // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)

@@ -2,13 +2,13 @@
 pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {IPositionDescriptor} from "./interfaces/IPositionDescriptor.sol";
-import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
+import {PositionInfo} from "./libraries/PositionInfoLibrary.sol";
 import {Descriptor} from "./libraries/Descriptor.sol";
 import {CurrencyRatioSortOrder} from "./libraries/CurrencyRatioSortOrder.sol";
 import {SafeCurrencyMetadata} from "./libraries/SafeCurrencyMetadata.sol";
@@ -17,11 +17,6 @@ import {SafeCurrencyMetadata} from "./libraries/SafeCurrencyMetadata.sol";
 /// @notice Produces a string containing the data URI for a JSON metadata string
 contract PositionDescriptor is IPositionDescriptor {
     using StateLibrary for IPoolManager;
-    using PoolIdLibrary for PoolKey;
-    using CurrencyLibrary for Currency;
-    using PositionInfoLibrary for PositionInfo;
-
-    error InvalidTokenId(uint256 tokenId);
 
     // mainnet addresses
     address private constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
@@ -87,18 +82,12 @@ contract PositionDescriptor is IPositionDescriptor {
         );
     }
 
-    /// @notice Returns true if currency0 has higher priority than currency1
-    /// @param currency0 The first currency address
-    /// @param currency1 The second currency address
-    /// @return flipRatio True if currency0 has higher priority than currency1
+    /// @inheritdoc IPositionDescriptor
     function flipRatio(address currency0, address currency1) public view returns (bool) {
         return currencyRatioPriority(currency0) > currencyRatioPriority(currency1);
     }
 
-    /// @notice Returns the priority of a currency.
-    /// For certain currencies on mainnet, the smaller the currency, the higher the priority
-    /// @param currency The currency address
-    /// @return priority The priority of the currency
+    /// @inheritdoc IPositionDescriptor
     function currencyRatioPriority(address currency) public view returns (int256) {
         // Currencies in order of priority on mainnet: USDC, USDT, DAI, (ETH, WETH), TBTC, WBTC
         // wrapped native is different address on different chains. passed in constructor

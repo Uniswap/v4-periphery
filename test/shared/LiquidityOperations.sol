@@ -9,16 +9,16 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
-import {PositionManager, Actions} from "../../src/PositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 import {PositionConfig} from "./PositionConfig.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {HookSavesDelta} from "./HookSavesDelta.sol";
 
 abstract contract LiquidityOperations is CommonBase {
-    using Planner for Plan;
     using SafeCast for *;
 
-    PositionManager lpm;
+    IPositionManager lpm;
 
     uint256 _deadline = block.timestamp + 1;
 

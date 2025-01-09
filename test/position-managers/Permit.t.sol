@@ -5,8 +5,8 @@ import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
@@ -15,7 +15,7 @@ import {SignatureVerification} from "permit2/src/libraries/SignatureVerification
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
 import {ERC721Permit_v4} from "../../src/base/ERC721Permit_v4.sol";
-import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
+import {IUnorderedNonce} from "../../src/interfaces/IUnorderedNonce.sol";
 
 import {PositionConfig} from "../shared/PositionConfig.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
@@ -24,8 +24,6 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
 contract PermitTest is Test, PosmTestSetup {
     using FixedPointMathLib for uint256;
-    using CurrencyLibrary for Currency;
-    using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
     PoolId poolId;
@@ -234,7 +232,7 @@ contract PermitTest is Test, PosmTestSetup {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
 
-        vm.expectRevert(UnorderedNonce.NonceAlreadyUsed.selector);
+        vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
         lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
     }
 

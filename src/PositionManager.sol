@@ -3,7 +3,6 @@ pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
@@ -18,7 +17,7 @@ import {ERC721Permit_v4} from "./base/ERC721Permit_v4.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {Multicall_v4} from "./base/Multicall_v4.sol";
-import {PoolInitializer} from "./base/PoolInitializer.sol";
+import {PoolInitializer_v4} from "./base/PoolInitializer_v4.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {BaseActionsRouter} from "./base/BaseActionsRouter.sol";
 import {Actions} from "./libraries/Actions.sol";
@@ -100,7 +99,7 @@ import {IWETH9} from "./interfaces/external/IWETH9.sol";
 contract PositionManager is
     IPositionManager,
     ERC721Permit_v4,
-    PoolInitializer,
+    PoolInitializer_v4,
     Multicall_v4,
     DeltaResolver,
     ReentrancyLock,
@@ -109,14 +108,12 @@ contract PositionManager is
     Permit2Forwarder,
     NativeWrapper
 {
-    using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
     using SafeCast for int256;
     using CalldataDecoder for bytes;
     using SlippageCheck for BalanceDelta;
-    using PositionInfoLibrary for PositionInfo;
 
     /// @inheritdoc IPositionManager
     /// @dev The ID of the next token that will be minted. Skips 0
@@ -309,16 +306,19 @@ contract PositionManager is
     {
         (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
 
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolKey.toId());
+        uint256 liquidity;
+        {
+            (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolKey.toId());
 
-        // Use the credit on the pool manager as the amounts for the mint.
-        uint256 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(info.tickLower()),
-            TickMath.getSqrtPriceAtTick(info.tickUpper()),
-            _getFullCredit(poolKey.currency0),
-            _getFullCredit(poolKey.currency1)
-        );
+            // Use the credit on the pool manager as the amounts for the mint.
+            liquidity = LiquidityAmounts.getLiquidityForAmounts(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(info.tickLower()),
+                TickMath.getSqrtPriceAtTick(info.tickUpper()),
+                _getFullCredit(poolKey.currency0),
+                _getFullCredit(poolKey.currency1)
+            );
+        }
 
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
         (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) =
@@ -423,16 +423,13 @@ contract PositionManager is
         if (liquidity > 0) {
             BalanceDelta liquidityDelta;
             // do not use _modifyLiquidity as we do not need to notify on modification for burns.
-            (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
-                poolKey,
-                IPoolManager.ModifyLiquidityParams({
-                    tickLower: info.tickLower(),
-                    tickUpper: info.tickUpper(),
-                    liquidityDelta: -(liquidity.toInt256()),
-                    salt: bytes32(tokenId)
-                }),
-                hookData
-            );
+            IPoolManager.ModifyLiquidityParams memory params = IPoolManager.ModifyLiquidityParams({
+                tickLower: info.tickLower(),
+                tickUpper: info.tickUpper(),
+                liquidityDelta: -(liquidity.toInt256()),
+                salt: bytes32(tokenId)
+            });
+            (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(poolKey, params, hookData);
             // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }

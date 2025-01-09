@@ -6,7 +6,7 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -15,9 +15,8 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager, IPoolInitializer_v4} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
 import {IMulticall_v4} from "../../src/interfaces/IMulticall_v4.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
@@ -27,9 +26,6 @@ import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 
 contract PosMGasTest is Test, PosmTestSetup {
     using FixedPointMathLib for uint256;
-    using CurrencyLibrary for Currency;
-    using PoolIdLibrary for PoolKey;
-    using Planner for Plan;
 
     PoolId poolId;
     address alice;
@@ -72,6 +68,13 @@ contract PosMGasTest is Test, PosmTestSetup {
         configNative = PositionConfig({poolKey: nativeKey, tickLower: -300, tickUpper: 300});
 
         sub = new MockSubscriber(lpm);
+    }
+
+    function test_posm_initcodeHash() public {
+        vm.snapshotValue(
+            "position manager initcode hash (without constructor params, as uint256)",
+            uint256(keccak256(abi.encodePacked(vm.getCode("PositionManager.sol:PositionManager"))))
+        );
     }
 
     function test_bytecodeSize_positionManager() public {
@@ -396,7 +399,7 @@ contract PosMGasTest is Test, PosmTestSetup {
 
         // Use multicall to initialize a pool and mint liquidity
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1);
+        calls[0] = abi.encodeWithSelector(IPoolInitializer_v4.initializePool.selector, key, SQRT_PRICE_1_1);
 
         config = PositionConfig({
             poolKey: key,
