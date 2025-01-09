@@ -5,8 +5,8 @@ import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
@@ -15,17 +15,15 @@ import {SignatureVerification} from "permit2/src/libraries/SignatureVerification
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {IERC721Permit_v4} from "../../src/interfaces/IERC721Permit_v4.sol";
 import {ERC721Permit_v4} from "../../src/base/ERC721Permit_v4.sol";
-import {UnorderedNonce} from "../../src/base/UnorderedNonce.sol";
+import {IUnorderedNonce} from "../../src/interfaces/IUnorderedNonce.sol";
 
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {PositionConfig} from "../shared/PositionConfig.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
 contract PermitTest is Test, PosmTestSetup {
     using FixedPointMathLib for uint256;
-    using CurrencyLibrary for Currency;
-    using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
     PoolId poolId;
@@ -43,7 +41,7 @@ contract PermitTest is Test, PosmTestSetup {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
@@ -64,7 +62,7 @@ contract PermitTest is Test, PosmTestSetup {
             keccak256(
                 abi.encode(
                     keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)"),
-                    keccak256("Uniswap V4 Positions NFT"), // storage is private on EIP712.sol so we need to hardcode these
+                    keccak256("Uniswap v4 Positions NFT"), // storage is private on EIP712.sol so we need to hardcode these
                     block.chainid,
                     address(lpm)
                 )
@@ -88,7 +86,7 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
 
         // alice's position increased liquidity
-        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice);
 
         assertEq(liquidity, liquidityAlice + liquidityToAdd);
     }
@@ -109,7 +107,7 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
 
         // alice's position decreased liquidity
-        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice);
 
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
@@ -217,6 +215,27 @@ contract PermitTest is Test, PosmTestSetup {
         vm.stopPrank();
     }
 
+    /// @notice revoking a nonce prevents it from being used in permit()
+    function test_fuzz_noPermit_revokeRevert(uint256 nonce) public {
+        uint256 liquidityAlice = 1e18;
+        vm.prank(alice);
+        mint(config, liquidityAlice, alice, ZERO_BYTES);
+        uint256 tokenIdAlice = lpm.nextTokenId() - 1;
+
+        // alice revokes the nonce
+        vm.prank(alice);
+        lpm.revokeNonce(nonce);
+
+        // alice gives bob spender permissions
+        bytes32 digest = getDigest(bob, tokenIdAlice, nonce, block.timestamp + 1);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        vm.expectRevert(IUnorderedNonce.NonceAlreadyUsed.selector);
+        lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
+    }
+
     // Bob can use alice's signature to permit & decrease liquidity
     function test_permit_operatorSelfPermit() public {
         uint256 liquidityAlice = 1e18;
@@ -241,7 +260,7 @@ contract PermitTest is Test, PosmTestSetup {
         decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }
 
@@ -270,7 +289,7 @@ contract PermitTest is Test, PosmTestSetup {
         decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
         vm.stopPrank();
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenId, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, liquidityAlice - liquidityToRemove);
     }

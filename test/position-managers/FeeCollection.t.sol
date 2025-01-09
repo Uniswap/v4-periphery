@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
@@ -13,8 +13,7 @@ import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {PositionManager} from "../../src/PositionManager.sol";
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
+import {PositionConfig} from "../shared/PositionConfig.sol";
 
 import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
@@ -23,7 +22,6 @@ import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 
 contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
-    using CurrencyLibrary for Currency;
     using FeeMath for IPositionManager;
 
     PoolId poolId;
@@ -40,7 +38,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         // This is needed to receive return deltas from modifyLiquidity calls.
         deployPosmHookSavesDelta();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.

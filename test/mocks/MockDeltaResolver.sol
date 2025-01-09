@@ -1,7 +1,7 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
@@ -10,8 +10,6 @@ import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {Test} from "forge-std/Test.sol";
 
 contract MockDeltaResolver is Test, DeltaResolver, IUnlockCallback {
-    using CurrencyLibrary for Currency;
-
     uint256 public payCallCount;
 
     constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}
@@ -22,7 +20,7 @@ contract MockDeltaResolver is Test, DeltaResolver, IUnlockCallback {
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         (Currency currency, address caller, uint256 amount) = abi.decode(data, (Currency, address, uint256));
-        address recipient = (currency.isNative()) ? address(this) : caller;
+        address recipient = (currency.isAddressZero()) ? address(this) : caller;
 
         uint256 balanceBefore = currency.balanceOf(recipient);
         _take(currency, recipient, amount);

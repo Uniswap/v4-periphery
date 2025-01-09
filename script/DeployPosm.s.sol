@@ -1,21 +1,32 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "forge-std/console2.sol";
 import "forge-std/Script.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {StateView} from "../src/lens/StateView.sol";
-import {PositionManager} from "../src/PositionManager.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {Deploy, IPositionDescriptor, IPositionManager} from "../test/shared/Deploy.sol";
+import {IWETH9} from "../src/interfaces/external/IWETH9.sol";
 
 contract DeployPosmTest is Script {
     function setUp() public {}
 
-    function run(address poolManager, address permit2) public returns (PositionManager posm) {
+    function run(
+        address poolManager,
+        address permit2,
+        uint256 unsubscribeGasLimit,
+        address wrappedNative,
+        string memory nativeCurrencyLabel
+    ) public returns (IPositionDescriptor positionDescriptor, IPositionManager posm) {
         vm.startBroadcast();
 
-        posm = new PositionManager{salt: hex"03"}(IPoolManager(poolManager), IAllowanceTransfer(permit2));
+        positionDescriptor = Deploy.positionDescriptor(poolManager, wrappedNative, nativeCurrencyLabel, hex"00");
+        console2.log("PositionDescriptor", address(positionDescriptor));
+
+        posm = Deploy.positionManager(
+            poolManager, permit2, unsubscribeGasLimit, address(positionDescriptor), wrappedNative, hex"03"
+        );
         console2.log("PositionManager", address(posm));
 
         vm.stopBroadcast();

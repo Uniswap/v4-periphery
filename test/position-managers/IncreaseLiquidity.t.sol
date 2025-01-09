@@ -5,8 +5,8 @@ import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
@@ -19,10 +19,9 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {PositionManager} from "../../src/PositionManager.sol";
 import {DeltaResolver} from "../../src/base/DeltaResolver.sol";
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {SlippageCheckLibrary} from "../../src/libraries/SlippageCheck.sol";
+import {PositionConfig} from "../shared/PositionConfig.sol";
+import {SlippageCheck} from "../../src/libraries/SlippageCheck.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
@@ -32,9 +31,6 @@ import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 
 contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
     using FixedPointMathLib for uint256;
-    using CurrencyLibrary for Currency;
-    using PoolIdLibrary for PoolKey;
-    using Planner for Plan;
     using FeeMath for IPositionManager;
     using StateLibrary for IPoolManager;
 
@@ -57,7 +53,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         // This is needed to receive return deltas from modifyLiquidity calls.
         deployPosmHookSavesDelta();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+        (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1);
         FEE_WAD = uint256(key.fee).mulDivDown(FixedPointMathLib.WAD, 1_000_000);
 
         // Requires currency0 and currency1 to be set in base Deployers contract.
@@ -122,12 +118,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         planner.add(
             Actions.INCREASE_LIQUIDITY,
             abi.encode(
-                tokenIdAlice,
-                config,
-                liquidityDelta,
-                feesOwedAlice.amount0() / 2,
-                feesOwedAlice.amount1() / 2,
-                ZERO_BYTES
+                tokenIdAlice, liquidityDelta, feesOwedAlice.amount0() / 2, feesOwedAlice.amount1() / 2, ZERO_BYTES
             )
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(alice));
@@ -189,9 +180,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(
-                tokenIdAlice, config, liquidityDelta, feesOwedAlice.amount0(), feesOwedAlice.amount1(), ZERO_BYTES
-            )
+            abi.encode(tokenIdAlice, liquidityDelta, feesOwedAlice.amount0(), feesOwedAlice.amount1(), ZERO_BYTES)
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.startPrank(alice);
@@ -248,7 +237,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, 18 wei)); // alice is willing to forfeit 18 wei
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, 18 wei));
@@ -351,7 +340,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenIdAlice, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, 1 wei)); // alice is willing to forfeit 1 wei
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, 1 wei));
@@ -540,9 +529,16 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
+        uint128 newLiquidity = 100e18;
+        (uint256 amount0,) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            newLiquidity
+        );
         // revert since amount0Max is too low
-        bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, 1 wei, type(uint128).max, ZERO_BYTES);
-        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, 1 wei, type(uint128).max, ZERO_BYTES);
+        vm.expectRevert(abi.encodeWithSelector(SlippageCheck.MaximumAmountExceeded.selector, 1 wei, amount0 + 1));
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -551,9 +547,16 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
+        uint128 newLiquidity = 100e18;
+        (, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            newLiquidity
+        );
         // revert since amount1Max is too low
-        bytes memory calls = getIncreaseEncoded(tokenId, config, 100e18, type(uint128).max, 1 wei, ZERO_BYTES);
-        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, type(uint128).max, 1 wei, ZERO_BYTES);
+        vm.expectRevert(abi.encodeWithSelector(SlippageCheck.MaximumAmountExceeded.selector, 1 wei, amount1 + 1));
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -601,7 +604,9 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         swap(key, true, -10e18, ZERO_BYTES);
 
         bytes memory calls = getIncreaseEncoded(tokenId, config, newLiquidity, slippage, slippage, ZERO_BYTES);
-        vm.expectRevert(SlippageCheckLibrary.MaximumAmountExceeded.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(SlippageCheck.MaximumAmountExceeded.selector, slippage, 299996249439153403)
+        );
         lpm.modifyLiquidities(calls, _deadline);
     }
 
@@ -611,7 +616,16 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                liquidityAlice,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                alice,
+                ZERO_BYTES
+            )
         );
         planner.add(Actions.SETTLE, abi.encode(currency0, ActionConstants.OPEN_DELTA, false));
         planner.add(Actions.SETTLE, abi.encode(currency1, ActionConstants.OPEN_DELTA, false));
@@ -653,7 +667,16 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.MINT_POSITION,
-            abi.encode(config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, alice, ZERO_BYTES)
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                liquidityAlice,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                alice,
+                ZERO_BYTES
+            )
         );
         planner.add(Actions.SETTLE, abi.encode(currency0, ActionConstants.OPEN_DELTA, false));
         planner.add(Actions.SETTLE, abi.encode(currency1, ActionConstants.OPEN_DELTA, false));
@@ -691,14 +714,14 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         mint(config, liquidityAlice, alice, ZERO_BYTES);
         uint256 tokenIdAlice = lpm.nextTokenId() - 1;
 
-        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
+        uint256 liquidity = lpm.getPositionLiquidity(tokenIdAlice);
         assertEq(liquidity, liquidityAlice);
 
         // alice increases with the balance in the position manager
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenIdAlice, config, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenIdAlice, liquidityAlice, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         planner.add(Actions.SETTLE, abi.encode(currency0, ActionConstants.OPEN_DELTA, false));
         planner.add(Actions.SETTLE, abi.encode(currency1, ActionConstants.OPEN_DELTA, false));
@@ -726,7 +749,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         uint256 amount0 = uint128(-delta.amount0());
         uint256 amount1 = uint128(-delta.amount1());
 
-        liquidity = lpm.getPositionLiquidity(tokenIdAlice, config);
+        liquidity = lpm.getPositionLiquidity(tokenIdAlice);
         assertEq(liquidity, 2 * liquidityAlice);
 
         // The balances were swept back to this address.
@@ -763,7 +786,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenId, config, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenId, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, maxClear));
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, maxClear));
@@ -792,7 +815,7 @@ contract IncreaseLiquidityTest is Test, PosmTestSetup, Fuzzers {
         Plan memory planner = Planner.init();
         planner.add(
             Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenId, config, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            abi.encode(tokenId, 100e18, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
         );
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency0, type(uint256).max));
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(config.poolKey.currency1, type(uint256).max));

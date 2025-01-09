@@ -69,13 +69,14 @@ contract HookModifyLiquidities is HookSavesDelta {
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata liqParams,
         BalanceDelta delta,
+        BalanceDelta feesAccrued,
         bytes calldata hookData
     ) public override returns (bytes4 selector, BalanceDelta returnDelta) {
         if (hookData.length > 0) {
             (bytes memory actions, bytes[] memory params) = abi.decode(hookData, (bytes, bytes[]));
             posm.modifyLiquiditiesWithoutUnlock(actions, params);
         }
-        (selector, returnDelta) = super.afterAddLiquidity(sender, key, liqParams, delta, hookData);
+        (selector, returnDelta) = super.afterAddLiquidity(sender, key, liqParams, delta, feesAccrued, hookData);
     }
 
     function afterRemoveLiquidity(
@@ -83,13 +84,14 @@ contract HookModifyLiquidities is HookSavesDelta {
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata liqParams,
         BalanceDelta delta,
+        BalanceDelta feesAccrued,
         bytes calldata hookData
     ) public override returns (bytes4 selector, BalanceDelta returnDelta) {
         if (hookData.length > 0) {
             (bytes memory actions, bytes[] memory params) = abi.decode(hookData, (bytes, bytes[]));
             posm.modifyLiquiditiesWithoutUnlock(actions, params);
         }
-        (selector, returnDelta) = super.afterRemoveLiquidity(sender, key, liqParams, delta, hookData);
+        (selector, returnDelta) = super.afterRemoveLiquidity(sender, key, liqParams, delta, feesAccrued, hookData);
     }
 
     function approvePosmCurrency(Currency currency) internal {

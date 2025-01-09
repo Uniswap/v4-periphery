@@ -1,19 +1,18 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
-import {PositionConfig} from "../../src/libraries/PositionConfig.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 
 /// @notice A subscriber contract that returns values from the subscriber entrypoints
 contract MockReturnDataSubscriber is ISubscriber {
-    PositionManager posm;
+    IPositionManager posm;
 
     uint256 public notifySubscribeCount;
     uint256 public notifyUnsubscribeCount;
     uint256 public notifyModifyLiquidityCount;
-    uint256 public notifyTransferCount;
 
     error NotAuthorizedNotifer(address sender);
 
@@ -21,7 +20,7 @@ contract MockReturnDataSubscriber is ISubscriber {
 
     uint256 memPtr;
 
-    constructor(PositionManager _posm) {
+    constructor(IPositionManager _posm) {
         posm = _posm;
     }
 
@@ -30,11 +29,11 @@ contract MockReturnDataSubscriber is ISubscriber {
         _;
     }
 
-    function notifySubscribe(uint256, PositionConfig memory, bytes memory) external onlyByPosm {
+    function notifySubscribe(uint256, bytes memory) external onlyByPosm {
         notifySubscribeCount++;
     }
 
-    function notifyUnsubscribe(uint256, PositionConfig memory, bytes memory) external onlyByPosm {
+    function notifyUnsubscribe(uint256) external onlyByPosm {
         notifyUnsubscribeCount++;
         uint256 _memPtr = memPtr;
         assembly {
@@ -45,12 +44,12 @@ contract MockReturnDataSubscriber is ISubscriber {
         }
     }
 
-    function notifyModifyLiquidity(uint256, PositionConfig memory, int256, BalanceDelta) external onlyByPosm {
+    function notifyModifyLiquidity(uint256, int256, BalanceDelta) external onlyByPosm {
         notifyModifyLiquidityCount++;
     }
 
-    function notifyTransfer(uint256, address, address) external onlyByPosm {
-        notifyTransferCount++;
+    function notifyBurn(uint256, address, PositionInfo, uint256, BalanceDelta) external pure {
+        return;
     }
 
     function setReturnDataSize(uint256 _value) external {
@@ -60,13 +59,13 @@ contract MockReturnDataSubscriber is ISubscriber {
 
 /// @notice A subscriber contract that returns values from the subscriber entrypoints
 contract MockRevertSubscriber is ISubscriber {
-    PositionManager posm;
+    IPositionManager posm;
 
     error NotAuthorizedNotifer(address sender);
 
     error TestRevert(string);
 
-    constructor(PositionManager _posm) {
+    constructor(IPositionManager _posm) {
         posm = _posm;
     }
 
@@ -77,22 +76,22 @@ contract MockRevertSubscriber is ISubscriber {
         _;
     }
 
-    function notifySubscribe(uint256, PositionConfig memory, bytes memory) external view onlyByPosm {
+    function notifySubscribe(uint256, bytes memory) external view onlyByPosm {
         if (shouldRevert) {
             revert TestRevert("notifySubscribe");
         }
     }
 
-    function notifyUnsubscribe(uint256, PositionConfig memory, bytes memory) external view onlyByPosm {
+    function notifyUnsubscribe(uint256) external view onlyByPosm {
         revert TestRevert("notifyUnsubscribe");
     }
 
-    function notifyModifyLiquidity(uint256, PositionConfig memory, int256, BalanceDelta) external view onlyByPosm {
+    function notifyModifyLiquidity(uint256, int256, BalanceDelta) external view onlyByPosm {
         revert TestRevert("notifyModifyLiquidity");
     }
 
-    function notifyTransfer(uint256, address, address) external view onlyByPosm {
-        revert TestRevert("notifyTransfer");
+    function notifyBurn(uint256, address, PositionInfo, uint256, BalanceDelta) external pure {
+        return;
     }
 
     function setRevert(bool _shouldRevert) external {
