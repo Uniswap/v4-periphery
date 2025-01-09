@@ -57,10 +57,10 @@ library Deploy {
     function positionDescriptor(
         address poolManager,
         address wrappedNative,
-        string memory nativeCurrencyLabel,
+        bytes32 nativeCurrencyLabelBytes,
         bytes memory salt
     ) internal returns (IPositionDescriptor descriptor) {
-        bytes memory args = abi.encode(poolManager, wrappedNative, nativeCurrencyLabel);
+        bytes memory args = abi.encode(poolManager, wrappedNative, nativeCurrencyLabelBytes);
         bytes memory initcode = abi.encodePacked(vm.getCode("PositionDescriptor.sol:PositionDescriptor"), args);
         assembly {
             descriptor := create2(0, add(initcode, 0x20), mload(initcode), salt)

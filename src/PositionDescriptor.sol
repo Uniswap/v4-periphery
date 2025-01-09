@@ -26,14 +26,27 @@ contract PositionDescriptor is IPositionDescriptor {
     address private constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
 
     address public immutable wrappedNative;
-    string public nativeCurrencyLabel;
+    bytes32 public immutable nativeCurrencyLabelBytes;
 
     IPoolManager public immutable poolManager;
 
-    constructor(IPoolManager _poolManager, address _wrappedNative, string memory _nativeCurrencyLabel) {
+    constructor(IPoolManager _poolManager, address _wrappedNative, bytes32 _nativeCurrencyLabelBytes) {
         poolManager = _poolManager;
         wrappedNative = _wrappedNative;
-        nativeCurrencyLabel = _nativeCurrencyLabel;
+        nativeCurrencyLabelBytes = _nativeCurrencyLabelBytes;
+    }
+
+    /// @notice Returns the native currency label as a string
+    function nativeCurrencyLabel() public view returns (string memory) {
+        uint256 len = 0;
+        while (len < 32 && nativeCurrencyLabelBytes[len] != 0) {
+            len++;
+        }
+        bytes memory b = new bytes(len);
+        for (uint256 i = 0; i < len; i++) {
+            b[i] = nativeCurrencyLabelBytes[i];
+        }
+        return string(b);
     }
 
     /// @inheritdoc IPositionDescriptor
@@ -66,8 +79,8 @@ contract PositionDescriptor is IPositionDescriptor {
                 tokenId: tokenId,
                 quoteCurrency: quoteCurrency,
                 baseCurrency: baseCurrency,
-                quoteCurrencySymbol: SafeCurrencyMetadata.currencySymbol(quoteCurrency, nativeCurrencyLabel),
-                baseCurrencySymbol: SafeCurrencyMetadata.currencySymbol(baseCurrency, nativeCurrencyLabel),
+                quoteCurrencySymbol: SafeCurrencyMetadata.currencySymbol(quoteCurrency, nativeCurrencyLabel()),
+                baseCurrencySymbol: SafeCurrencyMetadata.currencySymbol(baseCurrency, nativeCurrencyLabel()),
                 quoteCurrencyDecimals: SafeCurrencyMetadata.currencyDecimals(quoteCurrency),
                 baseCurrencyDecimals: SafeCurrencyMetadata.currencyDecimals(baseCurrency),
                 flipRatio: _flipRatio,
