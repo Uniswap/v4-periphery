@@ -34,7 +34,7 @@
   "PositionManager_mint_withSettlePair": "420939",
   "PositionManager_multicall_initialize_mint": "458237",
   "PositionManager_permit": "79175",
-  "PositionManager_permit_secondPosition": "62063",
+  "PositionManager_permit_secondPosition": "62075",
   "PositionManager_permit_twice": "44975",
   "PositionManager_subscribe": "87968",
   "PositionManager_unsubscribe": "62697",

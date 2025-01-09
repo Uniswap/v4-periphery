@@ -22,6 +22,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {SortTokens} from "@uniswap/v4-core/test/utils/SortTokens.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
@@ -29,9 +30,12 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
 
     IAllowanceTransfer permit2;
     IPositionDescriptor public positionDescriptor;
+    TransparentUpgradeableProxy proxy;
+    IPositionDescriptor proxyAsImplementation;
     HookSavesDelta hook;
     address hookAddr = address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
     IWETH9 public _WETH9 = IWETH9(address(new WETH()));
+    address governance = address(0xABCD);
 
     HookModifyLiquidities hookModifyLiquidities;
     address hookModifyLiquiditiesAddr = address(
@@ -69,9 +73,11 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
         permit2 = IAllowanceTransfer(deployPermit2());
         positionDescriptor =
             Deploy.positionDescriptor(address(poolManager), 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, "ETH", hex"00");
+        proxy = Deploy.transparentUpgradeableProxy(address(positionDescriptor), governance, "", hex"03");
         lpm = Deploy.positionManager(
-            address(poolManager), address(permit2), 100_000, address(positionDescriptor), address(_WETH9), hex"03"
+            address(poolManager), address(permit2), 100_000, address(proxy), address(_WETH9), hex"03"
         );
+        proxyAsImplementation = IPositionDescriptor(address(proxy));
     }
 
     function seedBalance(address to) internal {

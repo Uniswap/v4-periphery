@@ -48,46 +48,46 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
     }
 
     function test_bytecodeSize_positionDescriptor() public {
-        vm.snapshotValue("positionDescriptor bytecode size", address(positionDescriptor).code.length);
+        vm.snapshotValue("positionDescriptor bytecode size", address(proxyAsImplementation).code.length);
     }
 
     function test_setup_succeeds() public view {
-        assertEq(address(positionDescriptor.poolManager()), address(manager));
-        assertEq(positionDescriptor.wrappedNative(), WETH9);
-        assertEq(positionDescriptor.nativeCurrencyLabel(), nativeCurrencyLabel);
+        assertEq(address(proxyAsImplementation.poolManager()), address(manager));
+        assertEq(proxyAsImplementation.wrappedNative(), WETH9);
+        assertEq(proxyAsImplementation.nativeCurrencyLabel(), nativeCurrencyLabel);
     }
 
     function test_currencyRatioPriority_mainnet_succeeds() public {
         vm.chainId(1);
-        assertEq(positionDescriptor.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.currencyRatioPriority(address(0)), CurrencyRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.currencyRatioPriority(USDC), CurrencyRatioSortOrder.NUMERATOR_MOST);
-        assertEq(positionDescriptor.currencyRatioPriority(USDT), CurrencyRatioSortOrder.NUMERATOR_MORE);
-        assertEq(positionDescriptor.currencyRatioPriority(DAI), CurrencyRatioSortOrder.NUMERATOR);
-        assertEq(positionDescriptor.currencyRatioPriority(TBTC), CurrencyRatioSortOrder.DENOMINATOR_MORE);
-        assertEq(positionDescriptor.currencyRatioPriority(WBTC), CurrencyRatioSortOrder.DENOMINATOR_MOST);
-        assertEq(positionDescriptor.currencyRatioPriority(makeAddr("ALICE")), 0);
+        assertEq(proxyAsImplementation.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR);
+        assertEq(proxyAsImplementation.currencyRatioPriority(address(0)), CurrencyRatioSortOrder.DENOMINATOR);
+        assertEq(proxyAsImplementation.currencyRatioPriority(USDC), CurrencyRatioSortOrder.NUMERATOR_MOST);
+        assertEq(proxyAsImplementation.currencyRatioPriority(USDT), CurrencyRatioSortOrder.NUMERATOR_MORE);
+        assertEq(proxyAsImplementation.currencyRatioPriority(DAI), CurrencyRatioSortOrder.NUMERATOR);
+        assertEq(proxyAsImplementation.currencyRatioPriority(TBTC), CurrencyRatioSortOrder.DENOMINATOR_MORE);
+        assertEq(proxyAsImplementation.currencyRatioPriority(WBTC), CurrencyRatioSortOrder.DENOMINATOR_MOST);
+        assertEq(proxyAsImplementation.currencyRatioPriority(makeAddr("ALICE")), 0);
     }
 
     function test_currencyRatioPriority_notMainnet_succeeds() public {
-        assertEq(positionDescriptor.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.currencyRatioPriority(address(0)), CurrencyRatioSortOrder.DENOMINATOR);
-        assertEq(positionDescriptor.currencyRatioPriority(USDC), 0);
-        assertEq(positionDescriptor.currencyRatioPriority(USDT), 0);
-        assertEq(positionDescriptor.currencyRatioPriority(DAI), 0);
-        assertEq(positionDescriptor.currencyRatioPriority(TBTC), 0);
-        assertEq(positionDescriptor.currencyRatioPriority(WBTC), 0);
-        assertEq(positionDescriptor.currencyRatioPriority(makeAddr("ALICE")), 0);
+        assertEq(proxyAsImplementation.currencyRatioPriority(WETH9), CurrencyRatioSortOrder.DENOMINATOR);
+        assertEq(proxyAsImplementation.currencyRatioPriority(address(0)), CurrencyRatioSortOrder.DENOMINATOR);
+        assertEq(proxyAsImplementation.currencyRatioPriority(USDC), 0);
+        assertEq(proxyAsImplementation.currencyRatioPriority(USDT), 0);
+        assertEq(proxyAsImplementation.currencyRatioPriority(DAI), 0);
+        assertEq(proxyAsImplementation.currencyRatioPriority(TBTC), 0);
+        assertEq(proxyAsImplementation.currencyRatioPriority(WBTC), 0);
+        assertEq(proxyAsImplementation.currencyRatioPriority(makeAddr("ALICE")), 0);
     }
 
     function test_flipRatio_succeeds() public {
         vm.chainId(1);
         // bc price = token1/token0
-        assertTrue(positionDescriptor.flipRatio(USDC, WETH9));
-        assertFalse(positionDescriptor.flipRatio(DAI, USDC));
-        assertFalse(positionDescriptor.flipRatio(WBTC, WETH9));
-        assertFalse(positionDescriptor.flipRatio(WBTC, USDC));
-        assertFalse(positionDescriptor.flipRatio(WBTC, DAI));
+        assertTrue(proxyAsImplementation.flipRatio(USDC, WETH9));
+        assertFalse(proxyAsImplementation.flipRatio(DAI, USDC));
+        assertFalse(proxyAsImplementation.flipRatio(WBTC, WETH9));
+        assertFalse(proxyAsImplementation.flipRatio(WBTC, USDC));
+        assertFalse(proxyAsImplementation.flipRatio(WBTC, DAI));
     }
 
     function test_tokenURI_succeeds() public {
@@ -112,7 +112,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
             // The prefix length is calculated by converting the string to bytes and finding its length
             uint256 prefixLength = bytes("data:application/json;base64,").length;
 
-            string memory uri = positionDescriptor.tokenURI(lpm, tokenId);
+            string memory uri = proxyAsImplementation.tokenURI(lpm, tokenId);
             // Convert the uri to bytes
             bytes memory uriBytes = bytes(uri);
 
@@ -133,7 +133,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
         }
 
         // quote is currency1, base is currency0
-        assertFalse(positionDescriptor.flipRatio(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1)));
+        assertFalse(proxyAsImplementation.flipRatio(Currency.unwrap(key.currency0), Currency.unwrap(key.currency1)));
 
         string memory symbol0 = SafeCurrencyMetadata.currencySymbol(Currency.unwrap(currency0), nativeCurrencyLabel);
         string memory symbol1 = SafeCurrencyMetadata.currencySymbol(Currency.unwrap(currency1), nativeCurrencyLabel);
@@ -231,7 +231,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
             // The prefix length is calculated by converting the string to bytes and finding its length
             uint256 prefixLength = bytes("data:application/json;base64,").length;
 
-            string memory uri = positionDescriptor.tokenURI(lpm, tokenId);
+            string memory uri = proxyAsImplementation.tokenURI(lpm, tokenId);
             // Convert the uri to bytes
             bytes memory uriBytes = bytes(uri);
 
@@ -253,7 +253,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
 
         // quote is currency1, base is currency0
         assertFalse(
-            positionDescriptor.flipRatio(Currency.unwrap(nativeKey.currency0), Currency.unwrap(nativeKey.currency1))
+            proxyAsImplementation.flipRatio(Currency.unwrap(nativeKey.currency0), Currency.unwrap(nativeKey.currency1))
         );
 
         string memory symbol0 =
@@ -354,7 +354,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
 
         vm.expectRevert(abi.encodeWithSelector(IPositionDescriptor.InvalidTokenId.selector, tokenId + 1));
 
-        positionDescriptor.tokenURI(lpm, tokenId + 1);
+        proxyAsImplementation.tokenURI(lpm, tokenId + 1);
     }
 
     // Helper functions for testing purposes
