@@ -48,7 +48,11 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
     }
 
     function test_bytecodeSize_positionDescriptor() public {
-        vm.snapshotValue("positionDescriptor bytecode size", address(proxyAsImplementation).code.length);
+        vm.snapshotValue("positionDescriptor bytecode size", address(positionDescriptor).code.length);
+    }
+
+    function test_bytecodeSize_proxy() public {
+        vm.snapshotValue("proxy bytecode size", address(proxyAsImplementation).code.length);
     }
 
     function test_setup_succeeds() public view {

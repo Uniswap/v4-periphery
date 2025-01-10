@@ -1,4 +1,5 @@
 {
   "position descriptor initcode hash (without constructor params, as uint256)": "90002686278379416913385532438840669828848441637921711710845035729125835578244",
-  "positionDescriptor bytecode size": "1488"
+  "positionDescriptor bytecode size": "24138",
+  "proxy bytecode size": "1488"
 }
