@@ -26,6 +26,7 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
     address public TBTC = 0x8dAEBADE922dF735c38C80C7eBD708Af50815fAa;
     address public WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
     string public nativeCurrencyLabel = "ETH";
+    bytes32 public nativeCurrencyLabelBytes = "ETH";
 
     struct Token {
         string description;
@@ -58,6 +59,10 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
     function test_setup_succeeds() public view {
         assertEq(address(proxyAsImplementation.poolManager()), address(manager));
         assertEq(proxyAsImplementation.wrappedNative(), WETH9);
+        assertEq(proxyAsImplementation.nativeCurrencyLabelBytes(), nativeCurrencyLabelBytes);
+    }
+
+    function test_nativeCurrencyLabel_succeeds() public view {
         assertEq(proxyAsImplementation.nativeCurrencyLabel(), nativeCurrencyLabel);
     }
 
