@@ -51,6 +51,10 @@ contract SingleSidedTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1);
 
+        // tick is 0
+        (, int24 tick,,) = manager.getSlot0(poolId);
+        require(tick == 0);
+
         // Requires currency0 and currency1 to be set in base Deployers contract.
         deployAndApprovePosm(manager);
 
