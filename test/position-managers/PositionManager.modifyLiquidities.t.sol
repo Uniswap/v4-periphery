@@ -919,14 +919,14 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // bool currency0IsFOT = fotKey.currency0 == Currency.wrap(address(fotToken));
         // bool positionIsEntirelyInOtherToken = currency0IsFOT
         //     ? tickUpper <= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
-        //     : tickLower > TickMath.getTickAtSqrtPrice(sqrtPriceX96);
+        //     : tickLower >= TickMath.getTickAtSqrtPrice(sqrtPriceX96);
         // if (bips == 10000 && !positionIsEntirelyInOtherToken) {
         if (
             bips == 10000
                 && !(
                     fotKey.currency0 == Currency.wrap(address(fotToken))
                         ? tickUpper <= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
-                        : tickLower > TickMath.getTickAtSqrtPrice(sqrtPriceX96)
+                        : tickLower >= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
                 )
         ) {
             vm.expectRevert(Position.CannotUpdateEmptyPosition.selector);
