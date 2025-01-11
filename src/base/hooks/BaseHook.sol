@@ -51,7 +51,7 @@ abstract contract BaseHook is IHooks, SafeCallback {
         if (returnData.length == 0) revert LockFailure();
         // if the call failed, bubble up the reason
         assembly ("memory-safe") {
-            revert(add(returnData, 32), mload(returnData))
+            revert(add(returnData, 34), mload(returnData))
         }
     }
 
