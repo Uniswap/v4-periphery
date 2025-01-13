@@ -71,7 +71,7 @@ abstract contract DeltaResolver is ImmutableState {
     function _getFullCredit(Currency currency) internal view returns (uint256 amount) {
         int256 _amount = poolManager.currencyDelta(address(this), currency);
         // If the amount is negative, it should be settled not taken.
-        if (_amount < 0) revert DeltaNotPositive(currency);
+        if (_amount < 1) revert DeltaNotPositive(currency);
         amount = uint256(_amount);
     }
 
