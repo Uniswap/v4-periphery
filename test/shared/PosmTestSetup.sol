@@ -71,13 +71,17 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     function deployPosm(IPoolManager poolManager) internal {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
-        positionDescriptor =
-            Deploy.positionDescriptor(address(poolManager), 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, "ETH", hex"00");
-        proxy = Deploy.transparentUpgradeableProxy(address(positionDescriptor), governance, "", hex"03");
+        proxyAsImplementation = deployDescriptor(poolManager, "ETH");
         lpm = Deploy.positionManager(
-            address(poolManager), address(permit2), 100_000, address(proxy), address(_WETH9), hex"03"
+            address(poolManager), address(permit2), 100_000, address(proxyAsImplementation), address(_WETH9), hex"03"
         );
-        proxyAsImplementation = IPositionDescriptor(address(proxy));
+    }
+
+    function deployDescriptor(IPoolManager poolManager, bytes32 label) internal returns (IPositionDescriptor) {
+        positionDescriptor =
+            Deploy.positionDescriptor(address(poolManager), 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, label, hex"00");
+        proxy = Deploy.transparentUpgradeableProxy(address(positionDescriptor), governance, "", hex"03");
+        return IPositionDescriptor(address(proxy));
     }
 
     function seedBalance(address to) internal {

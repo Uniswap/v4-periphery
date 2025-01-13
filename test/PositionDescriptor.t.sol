@@ -62,8 +62,14 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
         assertEq(proxyAsImplementation.nativeCurrencyLabelBytes(), nativeCurrencyLabelBytes);
     }
 
-    function test_nativeCurrencyLabel_succeeds() public view {
+    function test_nativeCurrencyLabel_succeeds() public {
         assertEq(proxyAsImplementation.nativeCurrencyLabel(), nativeCurrencyLabel);
+        IPositionDescriptor polDescriptor = deployDescriptor(manager, "POL");
+        assertEq(polDescriptor.nativeCurrencyLabel(), "POL");
+        IPositionDescriptor bnbDescriptor = deployDescriptor(manager, "BNB");
+        assertEq(bnbDescriptor.nativeCurrencyLabel(), "BNB");
+        IPositionDescriptor avaxDescriptor = deployDescriptor(manager, "AVAX");
+        assertEq(avaxDescriptor.nativeCurrencyLabel(), "AVAX");
     }
 
     function test_currencyRatioPriority_mainnet_succeeds() public {
