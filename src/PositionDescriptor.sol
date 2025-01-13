@@ -26,7 +26,7 @@ contract PositionDescriptor is IPositionDescriptor {
     address private constant WBTC = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
 
     address public immutable wrappedNative;
-    bytes32 public immutable nativeCurrencyLabelBytes;
+    bytes32 private immutable nativeCurrencyLabelBytes;
 
     IPoolManager public immutable poolManager;
 

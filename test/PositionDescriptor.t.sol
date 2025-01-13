@@ -59,7 +59,6 @@ contract PositionDescriptorTest is Test, PosmTestSetup {
     function test_setup_succeeds() public view {
         assertEq(address(proxyAsImplementation.poolManager()), address(manager));
         assertEq(proxyAsImplementation.wrappedNative(), WETH9);
-        assertEq(proxyAsImplementation.nativeCurrencyLabelBytes(), nativeCurrencyLabelBytes);
     }
 
     function test_nativeCurrencyLabel_succeeds() public {

@@ -32,9 +32,6 @@ interface IPositionDescriptor {
     /// @return The wrapped native token for this descriptor
     function wrappedNative() external view returns (address);
 
-    /// @return The native currency label bytes for this descriptor
-    function nativeCurrencyLabelBytes() external view returns (bytes32);
-
     /// @return The native currency label for this descriptor
     function nativeCurrencyLabel() external view returns (string memory);
 
