@@ -68,9 +68,9 @@ contract SingleSidedTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         uint256 balance0Before = key.currency0.balanceOfSelf();
         uint256 balance1Before = key.currency1.balanceOfSelf();
-        
+
         lpm.modifyLiquidities(calls, vm.getBlockTimestamp());
-        
+
         uint256 balance0After = key.currency0.balanceOfSelf();
         uint256 balance1After = key.currency1.balanceOfSelf();
 
@@ -87,9 +87,9 @@ contract SingleSidedTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         uint256 balance0Before = key.currency0.balanceOfSelf();
         uint256 balance1Before = key.currency1.balanceOfSelf();
-        
+
         lpm.modifyLiquidities(calls, vm.getBlockTimestamp());
-        
+
         uint256 balance0After = key.currency0.balanceOfSelf();
         uint256 balance1After = key.currency1.balanceOfSelf();
 
@@ -98,5 +98,45 @@ contract SingleSidedTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // paid currency1
         assertGt(balance1Before - balance1After, 0);
+    }
+
+    function test_singleSided_withdraw() public {
+        // Create position0 on range [0, 60] with token0
+        PositionConfig memory config0 = PositionConfig({poolKey: key, tickLower: 0, tickUpper: 60});
+        bytes memory calls0 = getMintEncoded(config0, 1e18, ActionConstants.MSG_SENDER, "");
+        uint256 tokenId0 = lpm.nextTokenId();
+        lpm.modifyLiquidities(calls0, vm.getBlockTimestamp());
+
+        // Create position1 on range [-60, 0] with token1
+        PositionConfig memory config1 = PositionConfig({poolKey: key, tickLower: -60, tickUpper: 0});
+        bytes memory calls1 = getMintEncoded(config1, 1e18, ActionConstants.MSG_SENDER, "");
+        uint256 tokenId1 = lpm.nextTokenId();
+        lpm.modifyLiquidities(calls1, vm.getBlockTimestamp());
+
+        // withdraw position0, receiving only currency0
+        uint256 balance0Before = key.currency0.balanceOfSelf();
+        uint256 balance1Before = key.currency1.balanceOfSelf();
+        bytes memory burn0 = getBurnEncoded(tokenId0, config0, "");
+        lpm.modifyLiquidities(burn0, vm.getBlockTimestamp());
+        uint256 balance0After = key.currency0.balanceOfSelf();
+        uint256 balance1After = key.currency1.balanceOfSelf();
+
+        // received currency0
+        assertGt(balance0After - balance0Before, 0);
+        // did not receive currency1
+        assertEq(balance1Before, balance1After);
+
+        // withdraw position1, receiving only currency1
+        balance0Before = key.currency0.balanceOfSelf();
+        balance1Before = key.currency1.balanceOfSelf();
+        bytes memory burn1 = getBurnEncoded(tokenId1, config1, "");
+        lpm.modifyLiquidities(burn1, vm.getBlockTimestamp());
+        balance0After = key.currency0.balanceOfSelf();
+        balance1After = key.currency1.balanceOfSelf();
+
+        // did not receive currency0
+        assertEq(balance0Before, balance0After);
+        // received currency1
+        assertGt(balance1After - balance1Before, 0);
     }
 }
