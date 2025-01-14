@@ -918,15 +918,15 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // Read below as:
         // bool currency0IsFOT = fotKey.currency0 == Currency.wrap(address(fotToken));
         // bool positionIsEntirelyInOtherToken = currency0IsFOT
-        //     ? tickUpper <= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
-        //     : tickLower >= TickMath.getTickAtSqrtPrice(sqrtPriceX96);
+        //     ? TickMath.getSqrtPriceAtTick(tickUpper) <= sqrtPriceX96
+        //     : TickMath.getSqrtPriceAtTick(tickLower) >= sqrtPriceX96;
         // if (bips == 10000 && !positionIsEntirelyInOtherToken) {
         if (
             bips == 10000
                 && !(
                     fotKey.currency0 == Currency.wrap(address(fotToken))
-                        ? tickUpper <= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
-                        : tickLower >= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
+                        ? TickMath.getSqrtPriceAtTick(tickUpper) <= sqrtPriceX96
+                        : TickMath.getSqrtPriceAtTick(tickLower) >= sqrtPriceX96
                 )
         ) {
             vm.expectRevert(Position.CannotUpdateEmptyPosition.selector);
@@ -1054,13 +1054,13 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // Read below as:
         // bool currency0IsFOT = fotKey.currency0 == Currency.wrap(address(fotToken));
         // bool positionIsEntirelyInOtherToken = currency0IsFOT
-        //     ? tickUpper <= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
-        //     : tickLower >= TickMath.getTickAtSqrtPrice(sqrtPriceX96);
+        //     ? TickMath.getSqrtPriceAtTick(tickUpper) <= sqrtPriceX96
+        //     : TickMath.getSqrtPriceAtTick(tickLower) >= sqrtPriceX96;
         // if (positionIsEntirelyInOtherToken) {
         if (
             fotKey.currency0 == Currency.wrap(address(fotToken))
-                ? tickUpper <= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
-                : tickLower >= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
+                ? TickMath.getSqrtPriceAtTick(tickUpper) <= sqrtPriceX96
+                : TickMath.getSqrtPriceAtTick(tickLower) >= sqrtPriceX96
         ) {
             // MINT FROM DELTAS.
             lpm.modifyLiquidities(planner.encode(), _deadline);
