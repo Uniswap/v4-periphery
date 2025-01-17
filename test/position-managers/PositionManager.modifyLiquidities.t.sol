@@ -806,7 +806,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
 
         // Set the fee on transfer amount 1% higher.
         (uint256 amount0, uint256 amount1) =
-            fotKey.currency0 == Currency.wrap(address(fotToken)) ? (100e18, 99e18) : (99e19, 100e18);
+            fotKey.currency0 == Currency.wrap(address(fotToken)) ? (100e18, 99e18) : (99e18, 100e18);
 
         Plan memory planner = Planner.init();
         planner.add(Actions.SETTLE, abi.encode(fotKey.currency0, amount0, true));
@@ -821,7 +821,7 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         lpm.modifyLiquidities(actions, _deadline);
 
         (uint256 amount0AfterTransfer, uint256 amount1AfterTransfer) =
-            fotKey.currency0 == Currency.wrap(address(fotToken)) ? (99e18, 100e18) : (100e18, 99e19);
+            fotKey.currency0 == Currency.wrap(address(fotToken)) ? (99e18, 100e18) : (100e18, 99e18);
 
         uint128 newLiquidity = LiquidityAmounts.getLiquidityForAmounts(
             SQRT_PRICE_1_1,
@@ -918,15 +918,15 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // Read below as:
         // bool currency0IsFOT = fotKey.currency0 == Currency.wrap(address(fotToken));
         // bool positionIsEntirelyInOtherToken = currency0IsFOT
-        //     ? tickUpper <= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
-        //     : tickLower > TickMath.getTickAtSqrtPrice(sqrtPriceX96);
+        //     ? TickMath.getSqrtPriceAtTick(tickUpper) <= sqrtPriceX96
+        //     : TickMath.getSqrtPriceAtTick(tickLower) >= sqrtPriceX96;
         // if (bips == 10000 && !positionIsEntirelyInOtherToken) {
         if (
             bips == 10000
                 && !(
                     fotKey.currency0 == Currency.wrap(address(fotToken))
-                        ? tickUpper <= TickMath.getTickAtSqrtPrice(sqrtPriceX96)
-                        : tickLower > TickMath.getTickAtSqrtPrice(sqrtPriceX96)
+                        ? TickMath.getSqrtPriceAtTick(tickUpper) <= sqrtPriceX96
+                        : TickMath.getSqrtPriceAtTick(tickLower) >= sqrtPriceX96
                 )
         ) {
             vm.expectRevert(Position.CannotUpdateEmptyPosition.selector);
