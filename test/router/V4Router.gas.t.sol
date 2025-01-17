@@ -5,14 +5,11 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
-import {Plan, Planner} from "../shared/Planner.sol";
+import {Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 
 contract V4RouterTest is RoutingTestHelpers {
-    using CurrencyLibrary for Currency;
-    using Planner for Plan;
-
     function setUp() public {
         setupRouterCurrenciesAndPoolsWithLiquidity();
         plan = Planner.init();

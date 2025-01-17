@@ -6,6 +6,7 @@ import {IPositionDescriptor} from "../../src/interfaces/IPositionDescriptor.sol"
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {IV4Quoter} from "../../src/interfaces/IV4Quoter.sol";
 import {IStateView} from "../../src/interfaces/IStateView.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 library Deploy {
     Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
@@ -41,13 +42,25 @@ library Deploy {
         }
     }
 
+    function transparentUpgradeableProxy(address implementation, address admin, bytes memory data, bytes memory salt)
+        internal
+        returns (TransparentUpgradeableProxy proxy)
+    {
+        bytes memory args = abi.encode(implementation, admin, data);
+        bytes memory initcode =
+            abi.encodePacked(vm.getCode("TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy"), args);
+        assembly {
+            proxy := create2(0, add(initcode, 0x20), mload(initcode), salt)
+        }
+    }
+
     function positionDescriptor(
         address poolManager,
         address wrappedNative,
-        string memory nativeCurrencyLabel,
+        bytes32 nativeCurrencyLabelBytes,
         bytes memory salt
     ) internal returns (IPositionDescriptor descriptor) {
-        bytes memory args = abi.encode(poolManager, wrappedNative, nativeCurrencyLabel);
+        bytes memory args = abi.encode(poolManager, wrappedNative, nativeCurrencyLabelBytes);
         bytes memory initcode = abi.encodePacked(vm.getCode("PositionDescriptor.sol:PositionDescriptor"), args);
         assembly {
             descriptor := create2(0, add(initcode, 0x20), mload(initcode), salt)

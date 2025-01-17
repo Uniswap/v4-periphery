@@ -10,8 +10,6 @@ import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {MockDeltaResolver} from "./mocks/MockDeltaResolver.sol";
 
 contract DeltaResolverTest is Test, Deployers {
-    using CurrencyLibrary for Currency;
-
     MockDeltaResolver resolver;
 
     function setUp() public {

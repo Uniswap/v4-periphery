@@ -16,7 +16,6 @@ import {Planner, Plan} from "../shared/Planner.sol";
 import {HookSavesDelta} from "./HookSavesDelta.sol";
 
 abstract contract LiquidityOperations is CommonBase {
-    using Planner for Plan;
     using SafeCast for *;
 
     IPositionManager lpm;

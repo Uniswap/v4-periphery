@@ -17,11 +17,11 @@ contract DeployPosmTest is Script {
         address permit2,
         uint256 unsubscribeGasLimit,
         address wrappedNative,
-        string memory nativeCurrencyLabel
+        bytes32 nativeCurrencyLabelBytes
     ) public returns (IPositionDescriptor positionDescriptor, IPositionManager posm) {
         vm.startBroadcast();
 
-        positionDescriptor = Deploy.positionDescriptor(poolManager, wrappedNative, nativeCurrencyLabel, hex"00");
+        positionDescriptor = Deploy.positionDescriptor(poolManager, wrappedNative, nativeCurrencyLabelBytes, hex"00");
         console2.log("PositionDescriptor", address(positionDescriptor));
 
         posm = Deploy.positionManager(
