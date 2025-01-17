@@ -495,7 +495,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         vm.expectRevert();
