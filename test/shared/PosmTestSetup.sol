@@ -34,7 +34,10 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     IPositionDescriptor proxyAsImplementation;
     HookSavesDelta hook;
     address hookAddr = address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
-    IWETH9 public _WETH9 = IWETH9(address(new WETH()));
+
+    WETH wethImpl = new WETH();
+    IWETH9 public _WETH9;
+
     address governance = address(0xABCD);
 
     HookModifyLiquidities hookModifyLiquidities;
@@ -71,15 +74,21 @@ contract PosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
     function deployPosm(IPoolManager poolManager) internal {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
+        _WETH9 = deployWETH();
         proxyAsImplementation = deployDescriptor(poolManager, "ETH");
         lpm = Deploy.positionManager(
             address(poolManager), address(permit2), 100_000, address(proxyAsImplementation), address(_WETH9), hex"03"
         );
     }
 
+    function deployWETH() internal returns (IWETH9) {
+        address wethAddr = makeAddr("WETH");
+        vm.etch(wethAddr, address(wethImpl).code);
+        return IWETH9(wethAddr);
+    }
+
     function deployDescriptor(IPoolManager poolManager, bytes32 label) internal returns (IPositionDescriptor) {
-        positionDescriptor =
-            Deploy.positionDescriptor(address(poolManager), 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, label, hex"00");
+        positionDescriptor = Deploy.positionDescriptor(address(poolManager), address(_WETH9), label, hex"00");
         proxy = Deploy.transparentUpgradeableProxy(address(positionDescriptor), governance, "", hex"03");
         return IPositionDescriptor(address(proxy));
     }
