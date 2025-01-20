@@ -13,7 +13,6 @@ import {BaseV4Quoter} from "../base/BaseV4Quoter.sol";
 
 /// @title V4Quoter
 /// @notice Supports quoting the delta amounts for exact input or exact output swaps.
-/// @notice For each pool also tells you the sqrt price of the pool after the swap.
 /// @dev These functions are not marked view because they rely on calling non-view functions and reverting
 /// to compute the result. They are also not gas efficient and should not be called on-chain.
 contract V4Quoter is IV4Quoter, BaseV4Quoter {
