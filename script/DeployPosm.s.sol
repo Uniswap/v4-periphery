@@ -5,11 +5,8 @@ import "forge-std/console2.sol";
 import "forge-std/Script.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {StateView} from "../src/lens/StateView.sol";
-import {PositionManager} from "../src/PositionManager.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {IPositionDescriptor} from "../src/interfaces/IPositionDescriptor.sol";
-import {PositionDescriptor} from "../src/PositionDescriptor.sol";
+import {Deploy, IPositionDescriptor, IPositionManager} from "../test/shared/Deploy.sol";
 import {IWETH9} from "../src/interfaces/external/IWETH9.sol";
 
 contract DeployPosmTest is Script {
@@ -20,19 +17,15 @@ contract DeployPosmTest is Script {
         address permit2,
         uint256 unsubscribeGasLimit,
         address wrappedNative,
-        string memory nativeCurrencyLabel
-    ) public returns (PositionDescriptor positionDescriptor, PositionManager posm) {
+        bytes32 nativeCurrencyLabelBytes
+    ) public returns (IPositionDescriptor positionDescriptor, IPositionManager posm) {
         vm.startBroadcast();
 
-        positionDescriptor = new PositionDescriptor(IPoolManager(poolManager), wrappedNative, nativeCurrencyLabel);
+        positionDescriptor = Deploy.positionDescriptor(poolManager, wrappedNative, nativeCurrencyLabelBytes, hex"00");
         console2.log("PositionDescriptor", address(positionDescriptor));
 
-        posm = new PositionManager{salt: hex"03"}(
-            IPoolManager(poolManager),
-            IAllowanceTransfer(permit2),
-            unsubscribeGasLimit,
-            IPositionDescriptor(address(positionDescriptor)),
-            IWETH9(wrappedNative)
+        posm = Deploy.positionManager(
+            poolManager, permit2, unsubscribeGasLimit, address(positionDescriptor), wrappedNative, hex"03"
         );
         console2.log("PositionManager", address(posm));
 

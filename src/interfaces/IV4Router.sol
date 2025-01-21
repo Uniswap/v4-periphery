@@ -7,7 +7,7 @@ import {PathKey} from "../libraries/PathKey.sol";
 import {IImmutableState} from "./IImmutableState.sol";
 
 /// @title IV4Router
-/// @notice Interface containing all the structs and errors for different v4 swap types
+/// @notice Interface for the V4Router contract
 interface IV4Router is IImmutableState {
     /// @notice Emitted when an exactInput swap does not receive its minAmountOut
     error V4TooLittleReceived(uint256 minAmountOutReceived, uint256 amountReceived);

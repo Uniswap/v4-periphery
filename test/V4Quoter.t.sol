@@ -4,10 +4,8 @@ pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {PathKey} from "../src/libraries/PathKey.sol";
-import {IV4Quoter} from "../src/interfaces/IV4Quoter.sol";
-import {V4Quoter} from "../src/lens/V4Quoter.sol";
+import {Deploy, IV4Quoter} from "../test/shared/Deploy.sol";
 import {BaseV4Quoter} from "../src/base/BaseV4Quoter.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 
 // v4-core
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
@@ -15,7 +13,7 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolModifyLiquidityTest} from "@uniswap/v4-core/src/test/PoolModifyLiquidityTest.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -25,9 +23,8 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 // solmate
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
-contract QuoterTest is Test, Deployers, GasSnapshot {
+contract QuoterTest is Test, Deployers {
     using SafeCast for *;
-    using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
     // Min tick for full range with tick spacing of 60
@@ -40,7 +37,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
     uint256 internal constant CONTROLLER_GAS_LIMIT = 500000;
 
-    V4Quoter quoter;
+    IV4Quoter quoter;
 
     PoolModifyLiquidityTest positionManager;
 
@@ -56,7 +53,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
     function setUp() public {
         deployFreshManagerAndRouters();
-        quoter = new V4Quoter(IPoolManager(manager));
+        quoter = Deploy.v4Quoter(address(manager), hex"00");
         positionManager = new PoolModifyLiquidityTest(manager);
 
         // salts are chosen so that address(token0) < address(token1) && address(token1) < address(token2)
@@ -93,7 +90,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
                 hookData: ZERO_BYTES
             })
         );
-        snapLastCall("Quoter_exactInputSingle_zeroForOne_multiplePositions");
+        vm.snapshotGasLastCall("Quoter_exactInputSingle_zeroForOne_multiplePositions");
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
@@ -112,7 +109,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
                 hookData: ZERO_BYTES
             })
         );
-        snapLastCall("Quoter_exactInputSingle_oneForZero_multiplePositions");
+        vm.snapshotGasLastCall("Quoter_exactInputSingle_oneForZero_multiplePositions");
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
@@ -156,7 +153,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
-        snapLastCall("Quoter_quoteExactInput_oneHop_1TickLoaded");
+        vm.snapshotGasLastCall("Quoter_quoteExactInput_oneHop_1TickLoaded");
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
@@ -210,7 +207,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
-        snapLastCall("Quoter_quoteExactInput_oneHop_initializedAfter");
+        vm.snapshotGasLastCall("Quoter_quoteExactInput_oneHop_initializedAfter");
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
@@ -226,7 +223,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
         // Tick 0 initialized. Tick after = 1
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
-        snapLastCall("Quoter_quoteExactInput_oneHop_startingInitialized");
+        vm.snapshotGasLastCall("Quoter_quoteExactInput_oneHop_startingInitialized");
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
@@ -265,7 +262,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInput(params);
 
-        snapLastCall("Quoter_quoteExactInput_twoHops");
+        vm.snapshotGasLastCall("Quoter_quoteExactInput_twoHops");
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
@@ -282,7 +279,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
                 hookData: ZERO_BYTES
             })
         );
-        snapLastCall("Quoter_exactOutputSingle_zeroForOne");
+        vm.snapshotGasLastCall("Quoter_exactOutputSingle_zeroForOne");
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
@@ -299,7 +296,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
                 hookData: ZERO_BYTES
             })
         );
-        snapLastCall("Quoter_exactOutputSingle_oneForZero");
+        vm.snapshotGasLastCall("Quoter_exactOutputSingle_oneForZero");
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
@@ -313,7 +310,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
-        snapLastCall("Quoter_quoteExactOutput_oneHop_2TicksLoaded");
+        vm.snapshotGasLastCall("Quoter_quoteExactOutput_oneHop_2TicksLoaded");
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
         assertEq(amountIn, 15273);
@@ -327,7 +324,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
-        snapLastCall("Quoter_quoteExactOutput_oneHop_initializedAfter");
+        vm.snapshotGasLastCall("Quoter_quoteExactOutput_oneHop_initializedAfter");
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
         assertEq(amountIn, 6200);
@@ -341,7 +338,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
-        snapLastCall("Quoter_quoteExactOutput_oneHop_1TickLoaded");
+        vm.snapshotGasLastCall("Quoter_quoteExactOutput_oneHop_1TickLoaded");
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
         assertEq(amountIn, 4029);
@@ -356,7 +353,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         // Tick 0 initialized. Tick after = 1
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
-        snapLastCall("Quoter_quoteExactOutput_oneHop_startingInitialized");
+        vm.snapshotGasLastCall("Quoter_quoteExactOutput_oneHop_startingInitialized");
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
@@ -435,7 +432,7 @@ contract QuoterTest is Test, Deployers, GasSnapshot {
 
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutput(params);
 
-        snapLastCall("Quoter_quoteExactOutput_twoHops");
+        vm.snapshotGasLastCall("Quoter_quoteExactOutput_twoHops");
 
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);

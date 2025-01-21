@@ -3,13 +3,9 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PositionInfo, PositionInfoLibrary, PoolId} from "../../src/libraries/PositionInfoLibrary.sol";
 
 contract PositionInfoLibraryTest is Test {
-    using PositionInfoLibrary for PositionInfo;
-    using PoolIdLibrary for PoolKey;
-
     function setUp() public {}
 
     function test_fuzz_initialize(PoolKey memory poolKey, int24 tickLower, int24 tickUpper) public pure {

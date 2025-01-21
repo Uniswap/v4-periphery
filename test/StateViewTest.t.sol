@@ -3,7 +3,6 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
@@ -11,25 +10,23 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {TickBitmap} from "@uniswap/v4-core/src/libraries/TickBitmap.sol";
 import {FixedPoint128} from "@uniswap/v4-core/src/libraries/FixedPoint128.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {Fuzzers} from "@uniswap/v4-core/src/test/Fuzzers.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
-
-import {StateView} from "../src/lens/StateView.sol";
+import {Deploy, IStateView} from "./shared/Deploy.sol";
 
 /// This test was taken from StateLibrary.t.sol in v4-core and adapted to use the StateView contract instead.
-contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
+contract StateViewTest is Test, Deployers, Fuzzers {
     using FixedPointMathLib for uint256;
-    using PoolIdLibrary for PoolKey;
 
     PoolId poolId;
 
-    StateView state;
+    IStateView state;
 
     function setUp() public {
         deployFreshManagerAndRouters();
@@ -40,7 +37,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
         poolId = key.toId();
         manager.initialize(key, SQRT_PRICE_1_1);
 
-        state = new StateView(manager);
+        state = Deploy.stateView(address(manager), hex"00");
     }
 
     function test_getSlot0() public {
@@ -57,7 +54,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
         uint256 swapAmount = 100 ether;
         swap(key, true, -int256(swapAmount), ZERO_BYTES);
         (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 swapFee) = state.getSlot0(poolId);
-        snapLastCall("StateView_extsload_getSlot0");
+        vm.snapshotGasLastCall("StateView_extsload_getSlot0");
         assertEq(tick, -139);
 
         // magic number verified against a native getter
@@ -71,7 +68,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
         modifyLiquidityRouter.modifyLiquidity(key, IPoolManager.ModifyLiquidityParams(-60, 60, 10 ether, 0), ZERO_BYTES);
 
         (uint128 liquidityGrossLower, int128 liquidityNetLower) = state.getTickLiquidity(poolId, -60);
-        snapLastCall("StateView_extsload_getTickLiquidity");
+        vm.snapshotGasLastCall("StateView_extsload_getTickLiquidity");
         assertEq(liquidityGrossLower, 10 ether);
         assertEq(liquidityNetLower, 10 ether);
 
@@ -182,7 +179,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
         swap(key, true, -int256(swapAmount), ZERO_BYTES);
 
         (feeGrowthGlobal0, feeGrowthGlobal1) = state.getFeeGrowthGlobals(poolId);
-        snapLastCall("StateView_extsload_getFeeGrowthGlobals");
+        vm.snapshotGasLastCall("StateView_extsload_getFeeGrowthGlobals");
 
         uint256 feeGrowthGlobalCalc = swapAmount.mulWadDown(0.003e18).mulDivDown(FixedPoint128.Q128, liquidity);
         assertEq(feeGrowthGlobal0, feeGrowthGlobalCalc);
@@ -218,7 +215,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
         );
 
         uint128 liquidity = state.getLiquidity(poolId);
-        snapLastCall("StateView_extsload_getLiquidity");
+        vm.snapshotGasLastCall("StateView_extsload_getLiquidity");
         assertEq(liquidity, 20 ether);
     }
 
@@ -246,7 +243,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
 
         (int16 wordPos, uint8 bitPos) = TickBitmap.position(tickLower / key.tickSpacing);
         uint256 tickBitmap = state.getTickBitmap(poolId, wordPos);
-        snapLastCall("StateView_extsload_getTickBitmap");
+        vm.snapshotGasLastCall("StateView_extsload_getTickBitmap");
         assertNotEq(tickBitmap, 0);
         assertEq(tickBitmap, 1 << bitPos);
 
@@ -294,7 +291,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
 
         (uint128 liquidity, uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) =
             state.getPositionInfo(poolId, positionId);
-        snapLastCall("StateView_extsload_getPositionInfo");
+        vm.snapshotGasLastCall("StateView_extsload_getPositionInfo");
 
         assertEq(liquidity, 10_000 ether);
 
@@ -361,7 +358,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
 
         int24 tick = -60;
         (uint256 feeGrowthOutside0X128, uint256 feeGrowthOutside1X128) = state.getTickFeeGrowthOutside(poolId, tick);
-        snapLastCall("StateView_extsload_getTickFeeGrowthOutside");
+        vm.snapshotGasLastCall("StateView_extsload_getTickFeeGrowthOutside");
 
         // magic number verified against a native getter on PoolManager
         assertEq(feeGrowthOutside0X128, 3076214778951936192155253373200636);
@@ -393,7 +390,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
         int24 tick = -60;
         (uint128 liquidityGross, int128 liquidityNet, uint256 feeGrowthOutside0X128, uint256 feeGrowthOutside1X128) =
             state.getTickInfo(poolId, tick);
-        snapLastCall("StateView_extsload_getTickInfo");
+        vm.snapshotGasLastCall("StateView_extsload_getTickInfo");
 
         (uint128 liquidityGross_, int128 liquidityNet_) = state.getTickLiquidity(poolId, tick);
         (uint256 feeGrowthOutside0X128_, uint256 feeGrowthOutside1X128_) = state.getTickFeeGrowthOutside(poolId, tick);
@@ -426,7 +423,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
 
         // calculated live
         (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) = state.getFeeGrowthInside(poolId, -60, 60);
-        snapLastCall("StateView_extsload_getFeeGrowthInside");
+        vm.snapshotGasLastCall("StateView_extsload_getFeeGrowthInside");
 
         // poke the LP so that fees are updated
         modifyLiquidityRouter.modifyLiquidity(key, IPoolManager.ModifyLiquidityParams(-60, 60, 0, 0), ZERO_BYTES);
@@ -483,7 +480,7 @@ contract StateViewTest is Test, Deployers, Fuzzers, GasSnapshot {
             Position.calculatePositionKey(address(modifyLiquidityRouter), int24(-60), int24(60), bytes32(0));
 
         uint128 liquidity = state.getPositionLiquidity(poolId, positionId);
-        snapLastCall("StateView_extsload_getPositionLiquidity");
+        vm.snapshotGasLastCall("StateView_extsload_getPositionLiquidity");
 
         assertEq(liquidity, 10_000 ether);
     }
