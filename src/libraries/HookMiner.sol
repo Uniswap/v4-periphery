@@ -24,7 +24,7 @@ library HookMiner {
     {
         flags = flags & FLAG_MASK; // mask for only the bottom 14 bits
         bytes memory creationCodeWithArgs = abi.encodePacked(creationCode, constructorArgs);
-        
+
         address hookAddress;
         for (uint256 salt; salt < MAX_LOOP; salt++) {
             hookAddress = computeAddress(deployer, salt, creationCodeWithArgs);
