@@ -8,7 +8,7 @@ library HookMiner {
     uint160 constant FLAG_MASK = 0x3FFF; // 0000 ... 0000 0011 1111 1111 1111
 
     // Maximum number of iterations to find a salt, avoid infinite loops or MemoryOOG
-    uint256 constant MAX_LOOP = 144_444;
+    uint256 constant MAX_LOOP = 160_444;
 
     /// @notice Find a salt that produces a hook address with the desired `flags`
     /// @param deployer The address that will deploy the hook. In `forge test`, this will be the test contract `address(this)` or the pranking address
