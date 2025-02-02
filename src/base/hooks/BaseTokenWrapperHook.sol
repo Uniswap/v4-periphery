@@ -111,40 +111,23 @@ abstract contract BaseTokenWrapperHook is BaseHook {
     {
         bool isWrapping = _isWrapping(poolKey, params.zeroForOne);
         bool isExactInput = params.amountSpecified > 0;
-        uint256 amount = isExactInput ? uint256(params.amountSpecified) : uint256(-params.amountSpecified);
+
+        uint256 inputAmount = isExactInput
+            ? uint256(params.amountSpecified)
+            : _getInputRequired(uint256(-params.amountSpecified), isWrapping);
 
         if (isWrapping) {
-            if (isExactInput) {
-                // Take underlying tokens, wrap them, and settle wrapped tokens
-                poolManager.take(underlyingCurrency, address(this), amount);
-                uint256 wrappedAmount = deposit(amount);
-                _settle(wrapperCurrency, wrappedAmount);
-                swapDelta = toBeforeSwapDelta(-int128(int256(amount)), int128(int256(wrappedAmount)));
-            } else {
-                // For exact output, we need the exact amount of wrapped tokens requested
-                uint256 wrappedAmount = amount;
-                // Take the same amount of underlying (1:1 ratio)
-                poolManager.take(underlyingCurrency, address(this), amount);
-                deposit(amount);
-                _settle(wrapperCurrency, wrappedAmount);
-                swapDelta = toBeforeSwapDelta(int128(int256(amount)), -int128(int256(wrappedAmount)));
-            }
+            poolManager.take(underlyingCurrency, address(this), inputAmount);
+            uint256 wrappedAmount = deposit(inputAmount);
+            _settle(wrapperCurrency, wrappedAmount);
+            int128 amountUnspecified = isExactInput ? int128(int256(wrappedAmount)) : -int128(int256(inputAmount));
+            swapDelta = toBeforeSwapDelta(-int128(params.amountSpecified), amountUnspecified);
         } else {
-            if (isExactInput) {
-                // Take wrapper tokens, unwrap them, and settle underlying tokens
-                poolManager.take(wrapperCurrency, address(this), amount);
-                uint256 unwrappedAmount = withdraw(amount);
-                _settle(underlyingCurrency, unwrappedAmount);
-                swapDelta = toBeforeSwapDelta(-int128(int256(amount)), int128(int256(unwrappedAmount)));
-            } else {
-                // For exact output, we need the exact amount of underlying tokens requested
-                uint256 unwrappedAmount = amount;
-                // Take the same amount of wrapped tokens (1:1 ratio)
-                poolManager.take(wrapperCurrency, address(this), amount);
-                withdraw(amount);
-                _settle(underlyingCurrency, unwrappedAmount);
-                swapDelta = toBeforeSwapDelta(int128(int256(amount)), -int128(int256(unwrappedAmount)));
-            }
+            poolManager.take(wrapperCurrency, address(this), inputAmount);
+            uint256 unwrappedAmount = withdraw(inputAmount);
+            _settle(underlyingCurrency, unwrappedAmount);
+            int128 amountUnspecified = isExactInput ? int128(int256(unwrappedAmount)) : -int128(int256(inputAmount));
+            swapDelta = toBeforeSwapDelta(-int128(params.amountSpecified), amountUnspecified);
         }
 
         return (IHooks.beforeSwap.selector, swapDelta, 0);
@@ -163,6 +146,18 @@ abstract contract BaseTokenWrapperHook is BaseHook {
     /// @dev Implementing contracts should handle the unwrapping operation
     ///      The base contract will handle settling tokens with the pool manager
     function withdraw(uint256 wrapperAmount) internal virtual returns (uint256 underlyingAmount);
+
+    /// @notice Calculates the required input amount for a desired output amount
+    /// @param amountOut The desired output amount
+    /// @param isWrapping True if wrapping (underlying -> wrapper), false if unwrapping
+    /// @return The required input amount
+    /// @dev Default implementation assumes 1:1 ratio between wrapper and underlying
+    /// @dev Override this function for wrappers with different exchange rates
+    /// @dev Used for exact output swaps to determine how much input is needed
+    function _getInputRequired(uint256 amountOut, bool isWrapping) internal view virtual returns (uint256) {
+        // default to 1:1 ratio
+        return amountOut;
+    }
 
     /// @notice Helper function to determine if the swap is wrapping underlying to wrapper tokens
     /// @param poolKey The pool being used for the swap
@@ -188,7 +183,4 @@ abstract contract BaseTokenWrapperHook is BaseHook {
             poolManager.settle();
         }
     }
-
-    // TODO: for exact output
-    // funcion precalculateSwap
 }
