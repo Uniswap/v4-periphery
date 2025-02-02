@@ -4,3 +4,12 @@
 [submodule "lib/permit2"]
 	path = lib/permit2
 	url = https://github.com/Uniswap/permit2
+[submodule "lib/briefcase"]
+	path = lib/briefcase
+	url = https://github.com/uniswap/briefcase
+[submodule "lib/universal-router"]
+	path = lib/universal-router
+	url = https://github.com/uniswap/universal-router
+[submodule "lib/openzeppelin-contracts"]
+	path = lib/openzeppelin-contracts
+	url = https://github.com/openzeppelin/openzeppelin-contracts
