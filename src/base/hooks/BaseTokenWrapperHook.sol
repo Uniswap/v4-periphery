@@ -108,23 +108,24 @@ abstract contract BaseTokenWrapperHook is BaseHook {
         returns (bytes4 selector, BeforeSwapDelta swapDelta, uint24 lpFeeOverride)
     {
         bool isWrapping = _isWrapping(poolKey, params.zeroForOne);
-        bool isExactInput = params.amountSpecified > 0;
-
-        uint256 inputAmount = isExactInput
-            ? uint256(params.amountSpecified)
-            : _getInputRequired(uint256(-params.amountSpecified), isWrapping);
+        bool isExactInput = params.amountSpecified < 0;
 
         if (isWrapping) {
+            uint256 inputAmount =
+                isExactInput ? uint256(-params.amountSpecified) : _getWrapInputRequired(uint256(params.amountSpecified));
             poolManager.take(underlyingCurrency, address(this), inputAmount);
             uint256 wrappedAmount = deposit(inputAmount);
             _settle(wrapperCurrency, wrappedAmount);
-            int128 amountUnspecified = isExactInput ? int128(int256(wrappedAmount)) : -int128(int256(inputAmount));
+            int128 amountUnspecified = isExactInput ? -int128(int256(wrappedAmount)) : int128(int256(inputAmount));
             swapDelta = toBeforeSwapDelta(-int128(params.amountSpecified), amountUnspecified);
         } else {
+            uint256 inputAmount = isExactInput
+                ? uint256(-params.amountSpecified)
+                : _getUnwrapInputRequired(uint256(params.amountSpecified));
             poolManager.take(wrapperCurrency, address(this), inputAmount);
             uint256 unwrappedAmount = withdraw(inputAmount);
             _settle(underlyingCurrency, unwrappedAmount);
-            int128 amountUnspecified = isExactInput ? int128(int256(unwrappedAmount)) : -int128(int256(inputAmount));
+            int128 amountUnspecified = isExactInput ? -int128(int256(unwrappedAmount)) : int128(int256(inputAmount));
             swapDelta = toBeforeSwapDelta(-int128(params.amountSpecified), amountUnspecified);
         }
 
@@ -133,28 +134,34 @@ abstract contract BaseTokenWrapperHook is BaseHook {
 
     /// @notice Deposits underlying tokens to receive wrapper tokens
     /// @param underlyingAmount The amount of underlying tokens to deposit
-    /// @return wrapperAmount The amount of wrapper tokens received
+    /// @return wrappedAmount The amount of wrapper tokens received
     /// @dev Implementing contracts should handle the wrapping operation
     ///      The base contract will handle settling tokens with the pool manager
-    function deposit(uint256 underlyingAmount) internal virtual returns (uint256 wrapperAmount);
+    function deposit(uint256 underlyingAmount) internal virtual returns (uint256 wrappedAmount);
 
     /// @notice Withdraws wrapper tokens to receive underlying tokens
-    /// @param wrapperAmount The amount of wrapper tokens to withdraw
+    /// @param wrappedAmount The amount of wrapper tokens to withdraw
     /// @return underlyingAmount The amount of underlying tokens received
     /// @dev Implementing contracts should handle the unwrapping operation
     ///      The base contract will handle settling tokens with the pool manager
-    function withdraw(uint256 wrapperAmount) internal virtual returns (uint256 underlyingAmount);
+    function withdraw(uint256 wrappedAmount) internal virtual returns (uint256 underlyingAmount);
 
-    /// @notice Calculates the required input amount for a desired output amount
-    /// @param amountOut The desired output amount
-    /// @param isWrapping True if wrapping (underlying -> wrapper), false if unwrapping
-    /// @return The required input amount
-    /// @dev Default implementation assumes 1:1 ratio between wrapper and underlying
-    /// @dev Override this function for wrappers with different exchange rates
-    /// @dev Used for exact output swaps to determine how much input is needed
-    function _getInputRequired(uint256 amountOut, bool isWrapping) internal view virtual returns (uint256) {
-        // default to 1:1 ratio
-        return amountOut;
+    /// @notice Calculates underlying tokens needed to receive desired wrapper tokens
+    /// @param wrappedAmount The desired amount of wrapper tokens
+    /// @return The required amount of underlying tokens
+    /// @dev Default implementation assumes 1:1 ratio
+    /// @dev Override for wrappers with different exchange rates
+    function _getWrapInputRequired(uint256 wrappedAmount) internal view virtual returns (uint256) {
+        return wrappedAmount;
+    }
+
+    /// @notice Calculates wrapper tokens needed to receive desired underlying tokens
+    /// @param underlyingAmount The desired amount of underlying tokens
+    /// @return The required amount of wrapper tokens
+    /// @dev Default implementation assumes 1:1 ratio
+    /// @dev Override for wrappers with different exchange rates
+    function _getUnwrapInputRequired(uint256 underlyingAmount) internal view virtual returns (uint256) {
+        return underlyingAmount;
     }
 
     /// @notice Helper function to determine if the swap is wrapping underlying to wrapper tokens
