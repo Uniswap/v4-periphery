@@ -104,7 +104,7 @@ contract WETHHookTest is Test, Deployers {
             poolKey,
             IPoolManager.SwapParams({
                 zeroForOne: true, // ETH (0) to WETH (1)
-                amountSpecified: int256(wrapAmount),
+                amountSpecified: -int256(wrapAmount),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             testSettings,
@@ -146,7 +146,7 @@ contract WETHHookTest is Test, Deployers {
             poolKey,
             IPoolManager.SwapParams({
                 zeroForOne: false, // WETH (1) to ETH (0)
-                amountSpecified: int256(unwrapAmount),
+                amountSpecified: -int256(unwrapAmount),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
             }),
             testSettings,
@@ -185,7 +185,7 @@ contract WETHHookTest is Test, Deployers {
             poolKey,
             IPoolManager.SwapParams({
                 zeroForOne: true, // ETH (0) to WETH (1)
-                amountSpecified: -int256(wrapAmount), // Negative for exact output
+                amountSpecified: int256(wrapAmount), // Negative for exact output
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
             testSettings,
@@ -226,7 +226,7 @@ contract WETHHookTest is Test, Deployers {
             poolKey,
             IPoolManager.SwapParams({
                 zeroForOne: false, // WETH (1) to ETH (0)
-                amountSpecified: -int256(unwrapAmount), // Negative for exact output
+                amountSpecified: int256(unwrapAmount), // Negative for exact output
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
             }),
             testSettings,
