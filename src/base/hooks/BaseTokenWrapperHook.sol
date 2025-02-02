@@ -15,8 +15,6 @@ import {BaseHook} from "./BaseHook.sol";
 /// @dev This contract provides the base functionality for wrapping/unwrapping tokens through V4 pools
 /// @dev All liquidity operations are blocked as liquidity is managed through the underlying token wrapper
 /// @dev Implementing contracts must provide deposit() and withdraw() functions
-/// @dev This base wrapper should only be used for wrappers that are 1:1.
-///   Support for moving rate can be added with additional handling for exact output trades
 abstract contract BaseTokenWrapperHook is BaseHook {
     using CurrencyLibrary for Currency;
 
