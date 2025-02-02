@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {HookMiner} from "../../src/libraries/HookMiner.sol";
 
 contract Blank {
@@ -13,7 +14,7 @@ contract Blank {
 }
 
 contract HookMinerTest is Test {
-    function test_hookMiner(uint16 flags, uint256 number) public {
+    function test_fuzz_hookMiner(uint16 flags, uint256 number) public {
         (address addr, bytes32 salt) =
             HookMiner.find(address(this), uint160(flags), type(Blank).creationCode, abi.encode(number));
 
@@ -26,7 +27,10 @@ contract HookMinerTest is Test {
         assertEq(uint160(address(c)) & HookMiner.FLAG_MASK, flags & HookMiner.FLAG_MASK);
     }
 
-    function test_hookMiner_addressCollision(uint16 flags, uint256 number) public {
+    /// @dev not fuzzed because there are certain flags where two unique salts cannot be found in the 160k iterations
+    function test_hookMiner_addressCollision() public {
+        uint16 flags = uint16(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
+        uint256 number = 100;
         (address addr, bytes32 salt) =
             HookMiner.find(address(this), uint160(flags), type(Blank).creationCode, abi.encode(number));
         Blank c = new Blank{salt: salt}(number);
@@ -36,28 +40,20 @@ contract HookMinerTest is Test {
         // address of the contract has the desired flags
         assertEq(uint160(address(c)) & HookMiner.FLAG_MASK, flags & HookMiner.FLAG_MASK);
 
-        // count the number of bits in flags
-        uint256 bitCount;
-        for (uint256 i = 0; i < 14; i++) {
-            if ((flags >> i) & 1 == 1) {
-                bitCount++;
-            }
-        }
+        // despite using the same `.find()` parameters, the library skips any addresses with bytecode
+        (address newAddress, bytes32 otherSalt) =
+            HookMiner.find(address(this), uint160(flags), type(Blank).creationCode, abi.encode(number));
+        
+        // different salt / address was found
+        assertNotEq(newAddress, addr);
+        assertNotEq(otherSalt, salt);
 
-        // only check for collision, if there are less than 8 bits
-        // (HookMiner struggles to find two valid salts within 160k iterations)
-        if (bitCount <= 8) {
-            // despite using the same `.find()` parameters, the library skips any addresses with bytecode
-            (address newAddress, bytes32 otherSalt) =
-                HookMiner.find(address(this), uint160(flags), type(Blank).creationCode, abi.encode(number));
-            assertNotEq(newAddress, addr);
-            assertNotEq(otherSalt, salt);
-            Blank d = new Blank{salt: otherSalt}(number);
-            assertEq(address(d), newAddress);
-            assertEq(d.num(), number);
+        // second contract deploys successfully with the unique salt
+        Blank d = new Blank{salt: otherSalt}(number);
+        assertEq(address(d), newAddress);
+        assertEq(d.num(), number);
 
-            // address of the contract has the desired flags
-            assertEq(uint160(address(d)) & HookMiner.FLAG_MASK, flags & HookMiner.FLAG_MASK);
-        }
+        // address of the contract has the desired flags
+        assertEq(uint160(address(d)) & HookMiner.FLAG_MASK, flags & HookMiner.FLAG_MASK);
     }
 }

@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.21;
 
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+
 /// @title HookMiner
 /// @notice a minimal library for mining hook addresses
 library HookMiner {
     // mask to slice out the bottom 14 bit of the address
-    uint160 constant FLAG_MASK = 0x3FFF; // 0000 ... 0000 0011 1111 1111 1111
+    uint160 constant FLAG_MASK = Hooks.ALL_HOOK_MASK; // 0000 ... 0000 0011 1111 1111 1111
 
     // Maximum number of iterations to find a salt, avoid infinite loops or MemoryOOG
+    // (arbitrarily set)
     uint256 constant MAX_LOOP = 160_444;
 
     /// @notice Find a salt that produces a hook address with the desired `flags`
