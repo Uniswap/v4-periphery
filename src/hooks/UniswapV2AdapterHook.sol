@@ -47,9 +47,8 @@ contract UniswapV2AdapterHook is BaseHook {
     /// @notice Fee tier matching V2's 0.3% fee (30 bps)
     uint24 public constant V2_POOL_FEE = 3000;
 
-    /// @notice Fixed tick spacing for V2 adapter pools
+    /// @notice Fixed tick spacing sentinel for V2 adapter pools
     /// @dev Uses minimal spacing since V2 has continuous pricing
-    int24 public constant V2_TICK_SPACING = 1;
     int24 public constant V2_TICK_SPACING = 1;
 
     /// @notice Creates a new V2 adapter hook
