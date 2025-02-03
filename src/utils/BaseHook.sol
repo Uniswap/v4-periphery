@@ -7,7 +7,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {SafeCallback} from "../SafeCallback.sol";
+import {SafeCallback} from "../base/SafeCallback.sol";
 
 /// @title Base Hook
 /// @notice abstract contract for hook implementations
