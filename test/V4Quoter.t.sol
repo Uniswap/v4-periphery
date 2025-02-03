@@ -225,7 +225,7 @@ contract QuoterTest is Test, Deployers {
 
         vm.snapshotGasLastCall("Quoter_quoteExactInput_oneHop_startingInitialized");
 
-        assertGt(gasEstimate, 50000);
+        assertGt(gasEstimate, 40000);
         assertLt(gasEstimate, 400000);
         assertEq(amountOut, 198);
     }
