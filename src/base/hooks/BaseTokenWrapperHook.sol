@@ -5,6 +5,7 @@ import {
 } from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -18,6 +19,8 @@ import {DeltaResolver} from "../DeltaResolver.sol";
 /// @dev Implementing contracts must provide deposit() and withdraw() functions
 abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
     using CurrencyLibrary for Currency;
+    using SafeCast for int256;
+    using SafeCast for uint256;
 
     /// @notice Thrown when attempting to add or remove liquidity
     /// @dev Liquidity operations are blocked since all liquidity is managed by the token wrapper
@@ -115,8 +118,9 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
             _take(underlyingCurrency, address(this), inputAmount);
             uint256 wrappedAmount = deposit(inputAmount);
             _settle(wrapperCurrency, address(this), wrappedAmount);
-            int128 amountUnspecified = isExactInput ? -int128(int256(wrappedAmount)) : int128(int256(inputAmount));
-            swapDelta = toBeforeSwapDelta(-int128(params.amountSpecified), amountUnspecified);
+            int128 amountUnspecified =
+                isExactInput ? -wrappedAmount.toInt256().toInt128() : inputAmount.toInt256().toInt128();
+            swapDelta = toBeforeSwapDelta(-params.amountSpecified.toInt128(), amountUnspecified);
         } else {
             // we are unwrapping
             uint256 inputAmount = isExactInput
@@ -125,8 +129,9 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
             _take(wrapperCurrency, address(this), inputAmount);
             uint256 unwrappedAmount = withdraw(inputAmount);
             _settle(underlyingCurrency, address(this), unwrappedAmount);
-            int128 amountUnspecified = isExactInput ? -int128(int256(unwrappedAmount)) : int128(int256(inputAmount));
-            swapDelta = toBeforeSwapDelta(-int128(params.amountSpecified), amountUnspecified);
+            int128 amountUnspecified =
+                isExactInput ? -unwrappedAmount.toInt256().toInt128() : inputAmount.toInt256().toInt128();
+            swapDelta = toBeforeSwapDelta(-params.amountSpecified.toInt128(), amountUnspecified);
         }
 
         return (IHooks.beforeSwap.selector, swapDelta, 0);
