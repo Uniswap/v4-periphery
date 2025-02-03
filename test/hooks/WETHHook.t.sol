@@ -46,8 +46,8 @@ contract WETHHookTest is Test, Deployers {
                 address(
                     uint160(
                         type(uint160).max & clearAllHookPermissionsMask | Hooks.BEFORE_SWAP_FLAG
-                            | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
-                            | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_INITIALIZE_FLAG
+                            | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+                            | Hooks.BEFORE_INITIALIZE_FLAG
                     )
                 )
             )
@@ -262,29 +262,6 @@ contract WETHHookTest is Test, Deployers {
                 tickLower: -120,
                 tickUpper: 120,
                 liquidityDelta: 1000e18,
-                salt: bytes32(0)
-            }),
-            ""
-        );
-    }
-
-    function test_revertRemoveLiquidity() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CustomRevert.WrappedError.selector,
-                address(hook),
-                IHooks.beforeRemoveLiquidity.selector,
-                abi.encodeWithSelector(BaseTokenWrapperHook.LiquidityNotAllowed.selector),
-                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
-            )
-        );
-
-        modifyLiquidityRouter.modifyLiquidity(
-            poolKey,
-            IPoolManager.ModifyLiquidityParams({
-                tickLower: -120,
-                tickUpper: 120,
-                liquidityDelta: -1000e18,
                 salt: bytes32(0)
             }),
             ""

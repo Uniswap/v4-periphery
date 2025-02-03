@@ -51,11 +51,11 @@ abstract contract BaseTokenWrapperHook is BaseHook {
         return Hooks.Permissions({
             beforeInitialize: true,
             beforeAddLiquidity: true,
-            beforeRemoveLiquidity: true,
             beforeSwap: true,
             beforeSwapReturnDelta: true,
             afterSwap: false,
             afterInitialize: false,
+            beforeRemoveLiquidity: false,
             afterAddLiquidity: false,
             afterRemoveLiquidity: false,
             beforeDonate: false,
@@ -85,16 +85,6 @@ abstract contract BaseTokenWrapperHook is BaseHook {
         override
         returns (bytes4)
     {
-        revert LiquidityNotAllowed();
-    }
-
-    /// @inheritdoc IHooks
-    function beforeRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external pure override returns (bytes4) {
         revert LiquidityNotAllowed();
     }
 
