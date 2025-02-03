@@ -13,7 +13,6 @@ import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 abstract contract BaseHook is IHooks {
     error NotSelf();
     error InvalidPool();
-    error LockFailure();
     error HookNotImplemented();
 
     constructor() {
