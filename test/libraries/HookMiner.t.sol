@@ -43,7 +43,7 @@ contract HookMinerTest is Test {
         // despite using the same `.find()` parameters, the library skips any addresses with bytecode
         (address newAddress, bytes32 otherSalt) =
             HookMiner.find(address(this), uint160(flags), type(Blank).creationCode, abi.encode(number));
-        
+
         // different salt / address was found
         assertNotEq(newAddress, addr);
         assertNotEq(otherSalt, salt);
