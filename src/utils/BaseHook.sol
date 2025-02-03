@@ -7,17 +7,16 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BeforeSwapDelta} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {SafeCallback} from "../base/SafeCallback.sol";
 
 /// @title Base Hook
 /// @notice abstract contract for hook implementations
-abstract contract BaseHook is IHooks, SafeCallback {
+abstract contract BaseHook is IHooks {
     error NotSelf();
     error InvalidPool();
     error LockFailure();
     error HookNotImplemented();
 
-    constructor(IPoolManager _manager) SafeCallback(_manager) {
+    constructor() {
         validateHookAddress(this);
     }
 
@@ -43,16 +42,6 @@ abstract contract BaseHook is IHooks, SafeCallback {
     /// and then etch the bytecode into the correct address
     function validateHookAddress(BaseHook _this) internal pure virtual {
         Hooks.validateHookPermissions(_this, getHookPermissions());
-    }
-
-    function _unlockCallback(bytes calldata data) internal virtual override returns (bytes memory) {
-        (bool success, bytes memory returnData) = address(this).call(data);
-        if (success) return returnData;
-        if (returnData.length == 0) revert LockFailure();
-        // if the call failed, bubble up the reason
-        assembly ("memory-safe") {
-            revert(add(returnData, 32), mload(returnData))
-        }
     }
 
     /// @inheritdoc IHooks
