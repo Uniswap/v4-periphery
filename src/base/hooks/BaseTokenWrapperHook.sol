@@ -9,13 +9,14 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BaseHook} from "./BaseHook.sol";
+import {DeltaResolver} from "../DeltaResolver.sol";
 
 /// @title Base Token Wrapper Hook
 /// @notice Abstract base contract for implementing token wrapper hooks in Uniswap V4
 /// @dev This contract provides the base functionality for wrapping/unwrapping tokens through V4 pools
 /// @dev All liquidity operations are blocked as liquidity is managed through the underlying token wrapper
 /// @dev Implementing contracts must provide deposit() and withdraw() functions
-abstract contract BaseTokenWrapperHook is BaseHook {
+abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
     using CurrencyLibrary for Currency;
 
     /// @notice Thrown when attempting to add or remove liquidity
@@ -36,6 +37,13 @@ abstract contract BaseTokenWrapperHook is BaseHook {
     /// @notice The underlying token currency (e.g., ETH)
     Currency public immutable underlyingCurrency;
 
+    /// @notice Indicates whether wrapping occurs when swapping from token0 to token1
+    /// @dev This is determined by the relative ordering of the wrapper and underlying tokens
+    /// @dev If true: token0 is underlying (e.g. ETH) and token1 is wrapper (e.g. WETH)
+    /// @dev If false: token0 is wrapper (e.g. WETH) and token1 is underlying (e.g. ETH)
+    /// @dev This is set in the constructor based on the token addresses to ensure consistent behavior
+    bool public immutable wrapZeroForOne;
+
     /// @notice Creates a new token wrapper hook
     /// @param _manager The Uniswap V4 pool manager
     /// @param _wrapper The wrapped token currency (e.g., WETH)
@@ -43,6 +51,7 @@ abstract contract BaseTokenWrapperHook is BaseHook {
     constructor(IPoolManager _manager, Currency _wrapper, Currency _underlying) BaseHook(_manager) {
         wrapperCurrency = _wrapper;
         underlyingCurrency = _underlying;
+        wrapZeroForOne = _underlying < _wrapper;
     }
 
     /// @notice Returns a struct of permissions to signal which hook functions are to be implemented
@@ -92,34 +101,40 @@ abstract contract BaseTokenWrapperHook is BaseHook {
     /// @notice Handles the wrapping/unwrapping of tokens during a swap
     /// @dev Takes input tokens from sender, performs wrap/unwrap, and settles output tokens
     /// @dev No fees are charged on these operations
-    function beforeSwap(address, PoolKey calldata poolKey, IPoolManager.SwapParams calldata params, bytes calldata)
+    function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata params, bytes calldata)
         external
         override
         returns (bytes4 selector, BeforeSwapDelta swapDelta, uint24 lpFeeOverride)
     {
-        bool isWrapping = _isWrapping(poolKey, params.zeroForOne);
         bool isExactInput = params.amountSpecified < 0;
 
-        if (isWrapping) {
+        if (wrapZeroForOne == params.zeroForOne) {
+            // we are wrapping
             uint256 inputAmount =
                 isExactInput ? uint256(-params.amountSpecified) : _getWrapInputRequired(uint256(params.amountSpecified));
-            poolManager.take(underlyingCurrency, address(this), inputAmount);
+            _take(underlyingCurrency, address(this), inputAmount);
             uint256 wrappedAmount = deposit(inputAmount);
-            _settle(wrapperCurrency, wrappedAmount);
+            _settle(wrapperCurrency, address(this), wrappedAmount);
             int128 amountUnspecified = isExactInput ? -int128(int256(wrappedAmount)) : int128(int256(inputAmount));
             swapDelta = toBeforeSwapDelta(-int128(params.amountSpecified), amountUnspecified);
         } else {
+            // we are unwrapping
             uint256 inputAmount = isExactInput
                 ? uint256(-params.amountSpecified)
                 : _getUnwrapInputRequired(uint256(params.amountSpecified));
-            poolManager.take(wrapperCurrency, address(this), inputAmount);
+            _take(wrapperCurrency, address(this), inputAmount);
             uint256 unwrappedAmount = withdraw(inputAmount);
-            _settle(underlyingCurrency, unwrappedAmount);
+            _settle(underlyingCurrency, address(this), unwrappedAmount);
             int128 amountUnspecified = isExactInput ? -int128(int256(unwrappedAmount)) : int128(int256(inputAmount));
             swapDelta = toBeforeSwapDelta(-int128(params.amountSpecified), amountUnspecified);
         }
 
         return (IHooks.beforeSwap.selector, swapDelta, 0);
+    }
+
+    /// @inheritdoc DeltaResolver
+    function _pay(Currency token, address, uint256 amount) internal override {
+        token.transfer(address(poolManager), amount);
     }
 
     /// @notice Deposits underlying tokens to receive wrapper tokens
@@ -152,30 +167,5 @@ abstract contract BaseTokenWrapperHook is BaseHook {
     /// @dev Override for wrappers with different exchange rates
     function _getUnwrapInputRequired(uint256 underlyingAmount) internal view virtual returns (uint256) {
         return underlyingAmount;
-    }
-
-    /// @notice Helper function to determine if the swap is wrapping underlying to wrapper tokens
-    /// @param poolKey The pool being used for the swap
-    /// @param zeroForOne The direction of the swap
-    /// @return True if swapping underlying to wrapper, false if unwrapping
-    function _isWrapping(PoolKey calldata poolKey, bool zeroForOne) internal view returns (bool) {
-        Currency inputCurrency = zeroForOne ? poolKey.currency0 : poolKey.currency1;
-        return inputCurrency == underlyingCurrency;
-    }
-
-    /// @notice Settles tokens with the pool manager after a wrap/unwrap operation
-    /// @param currency The currency being settled (wrapper or underlying)
-    /// @param amount The amount of tokens to settle
-    /// @dev Handles both native currency (ETH) and ERC20 tokens:
-    ///      - For native currency: Uses settle with value
-    ///      - For ERC20: Syncs pool state, transfers tokens, then settles
-    function _settle(Currency currency, uint256 amount) internal {
-        if (currency.isAddressZero()) {
-            poolManager.settle{value: amount}();
-        } else {
-            poolManager.sync(currency);
-            currency.transfer(address(poolManager), amount);
-            poolManager.settle();
-        }
     }
 }
