@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 
 import {SafeCallback} from "../src/base/SafeCallback.sol";
+import {ImmutableState} from "../src/base/ImmutableState.sol";
 import {MockSafeCallback} from "./mocks/MockSafeCallback.sol";
 
 contract SafeCallbackTest is Test, Deployers {
@@ -26,7 +27,7 @@ contract SafeCallbackTest is Test, Deployers {
 
     function test_unlockRevert(address caller, bytes calldata data) public {
         vm.startPrank(caller);
-        if (caller != address(manager)) vm.expectRevert(SafeCallback.NotPoolManager.selector);
+        if (caller != address(manager)) vm.expectRevert(ImmutableState.NotPoolManager.selector);
         safeCallback.unlockCallback(data);
         vm.stopPrank();
     }
