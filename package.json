@@ -8,11 +8,16 @@
   },
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/Uniswap/v4-periphery/issues"
+    "url": "https://uniswap.org/bug-bounty"
   },
   "homepage": "https://github.com/Uniswap/v4-periphery#readme",
   "publishConfig": {
     "access": "public",
     "provenance": true
-  }
+  },
+  "keywords": [
+    "uniswap",
+    "periphery",
+    "v4"
+  ]
 }
