@@ -10,7 +10,7 @@ contract ImmutableState is IImmutableState {
     /// @inheritdoc IImmutableState
     IPoolManager public immutable poolManager;
 
-    /// @notice Thrown when calling unlockCallback where the caller is not PoolManager
+    /// @notice Thrown when the caller is not PoolManager
     error NotPoolManager();
 
     /// @notice Only allow calls from the PoolManager contract
