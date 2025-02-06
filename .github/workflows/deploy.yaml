@@ -42,7 +42,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          yarn install --immutable --immutable-cache
           git submodule update --init --recursive
 
       - name: Compile
