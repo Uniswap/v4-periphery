@@ -16,18 +16,6 @@ abstract contract BaseHook is IHooks, ImmutableState {
     error InvalidPool();
     error HookNotImplemented();
 
-    /// @dev Only this address may call this function
-    modifier selfOnly() {
-        if (msg.sender != address(this)) revert NotSelf();
-        _;
-    }
-
-    /// @dev Only pools with hooks set to this contract may call this function
-    modifier onlyValidPools(IHooks hooks) {
-        if (hooks != this) revert InvalidPool();
-        _;
-    }
-
     constructor(IPoolManager _manager) ImmutableState(_manager) {
         validateHookAddress(this);
     }
