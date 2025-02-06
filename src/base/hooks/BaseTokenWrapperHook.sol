@@ -9,7 +9,7 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {BaseHook} from "./BaseHook.sol";
+import {BaseHook} from "../../utils/BaseHook.sol";
 import {DeltaResolver} from "../DeltaResolver.sol";
 
 /// @title Base Token Wrapper Hook
@@ -57,8 +57,7 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
         wrapZeroForOne = _underlying < _wrapper;
     }
 
-    /// @notice Returns a struct of permissions to signal which hook functions are to be implemented
-    /// @dev Used at deployment to validate the address correctly represents the expected permissions
+    /// @inheritdoc BaseHook
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: true,
@@ -78,8 +77,11 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
         });
     }
 
-    /// @inheritdoc IHooks
-    function beforeInitialize(address, PoolKey calldata poolKey, uint160) external view override returns (bytes4) {
+    /// @notice Validates pool initialization parameters
+    /// @dev Ensures pool contains wrapper and underlying tokens with zero fee
+    /// @param poolKey The pool configuration including tokens and fee
+    /// @return The function selector if validation passes
+    function _beforeInitialize(address, PoolKey calldata poolKey, uint160) internal view override returns (bytes4) {
         // ensure pool tokens are the wrapper currency and underlying currency
         bool isValidPair = (poolKey.currency0 == wrapperCurrency && poolKey.currency1 == underlyingCurrency)
             || (poolKey.currency0 == underlyingCurrency && poolKey.currency1 == wrapperCurrency);
@@ -90,9 +92,10 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
         return IHooks.beforeInitialize.selector;
     }
 
-    /// @inheritdoc IHooks
-    function beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
-        external
+    /// @notice Prevents liquidity operations on wrapper pools
+    /// @dev Always reverts as liquidity is managed through the token wrapper
+    function _beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
+        internal
         pure
         override
         returns (bytes4)
@@ -100,12 +103,14 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
         revert LiquidityNotAllowed();
     }
 
-    /// @inheritdoc IHooks
-    /// @notice Handles the wrapping/unwrapping of tokens during a swap
-    /// @dev Takes input tokens from sender, performs wrap/unwrap, and settles output tokens
-    /// @dev No fees are charged on these operations
-    function beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata params, bytes calldata)
-        external
+    /// @notice Handles token wrapping and unwrapping during swaps
+    /// @dev Processes both exact input (amountSpecified < 0) and exact output (amountSpecified > 0) swaps
+    /// @param params The swap parameters including direction and amount
+    /// @return selector The function selector
+    /// @return swapDelta The input/output token amounts for pool accounting
+    /// @return lpFeeOverride The fee override (always 0 for wrapper pools)
+    function _beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata params, bytes calldata)
+        internal
         override
         returns (bytes4 selector, BeforeSwapDelta swapDelta, uint24 lpFeeOverride)
     {
@@ -137,6 +142,9 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
         return (IHooks.beforeSwap.selector, swapDelta, 0);
     }
 
+    /// @notice Transfers tokens to the pool manager
+    /// @param token The token to transfer
+    /// @param amount The amount to transfer
     /// @inheritdoc DeltaResolver
     function _pay(Currency token, address, uint256 amount) internal override {
         token.transfer(address(poolManager), amount);
