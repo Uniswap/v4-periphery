@@ -12,8 +12,6 @@ import {ImmutableState} from "../base/ImmutableState.sol";
 /// @title Base Hook
 /// @notice abstract contract for hook implementations
 abstract contract BaseHook is IHooks, ImmutableState {
-    error NotSelf();
-    error InvalidPool();
     error HookNotImplemented();
 
     constructor(IPoolManager _manager) ImmutableState(_manager) {
