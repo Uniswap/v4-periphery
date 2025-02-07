@@ -83,8 +83,9 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
     /// @return The function selector if validation passes
     function _beforeInitialize(address, PoolKey calldata poolKey, uint160) internal view override returns (bytes4) {
         // ensure pool tokens are the wrapper currency and underlying currency
-        bool isValidPair = (poolKey.currency0 == wrapperCurrency && poolKey.currency1 == underlyingCurrency)
-            || (poolKey.currency0 == underlyingCurrency && poolKey.currency1 == wrapperCurrency);
+        bool isValidPair = wrapZeroForOne
+            ? (poolKey.currency0 == wrapperCurrency && poolKey.currency1 == underlyingCurrency)
+            : (poolKey.currency0 == underlyingCurrency && poolKey.currency1 == wrapperCurrency);
 
         if (!isValidPair) revert InvalidPoolToken();
         if (poolKey.fee != 0) revert InvalidPoolFee();
