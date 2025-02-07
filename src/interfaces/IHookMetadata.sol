@@ -2,60 +2,85 @@
 pragma solidity ^0.8.0;
 
 interface IHookMetadata {
-    // Struct representing the auditor of a smart contract
+    /// @notice Represents the auditor 
+    /// @param name The name of the auditor.
+    /// @param uri The URI with additional information about the auditor.
+    /// @param authors List of authors responsible for the audit.
     struct Auditor {
-        string name;       // Name of the auditor
-        string uri;        // URI with additional information about the auditor
-        string[] authors;  // List of authors who are responsible for the audit
+        string name;
+        string uri;
+        string[] authors;
     }
 
-    // Struct representing a summary of the audit
+
+    /// @notice Represents a summary of the audit.
+    /// @param auditor The auditor who performed the audit.
+    /// @param issuedAt The timestamp at which the audit was issued.
+    /// @param ercs List of ERC standards that were covered in the audit.
+    /// @param bytecodeHash Hash of the audited smart contract bytecode.
+    /// @param auditHash Hash of the audit document.
+    /// @param auditUri URI with additional information or the full audit report.
     struct AuditSummary {
-        Auditor auditor;         // The auditor who performed the audit
-        uint256 issuedAt;        // The timestamp at which the audit was issued
-        uint256[] ercs;          // List of ERC standards that were covered in the audit
-        bytes32 codeHash;        // Hash of the audited smart contract code
-        bytes32 auditHash;       // Hash of the audit document
-        string auditUri;         // URI with additional information or the full audit report
+        Auditor auditor;
+        uint256 issuedAt;
+        uint256[] ercs;
+        bytes32 bytecodeHash;
+        bytes32 auditHash;
+        string auditUri;
     }
 
-    // Struct representing the EIP712 domain, which is used for signatures
-    struct EIP712Domain {
-        string name;        // Name of the domain
-        string version;     // Version of the domain
-    }
 
-    // Enum defining different types of signature standards
+    /// @notice Defines different types of signature standards.
     enum SignatureType {
-        SECP256K1,  // Standard ECDSA signature using secp256k1 curve
-        BLS,        // BLS signature
-        ERC1271,    // Signature type for smart contract based signatures (EIP-1271)
-        SECP256R1   // ECDSA signature using secp256r1 curve
+        SECP256K1,
+        BLS,
+        ERC1271,
+        SECP256R1
     }
 
-    // Struct representing a cryptographic signature
+    /// @notice Represents a cryptographic signature.
+    /// @param signatureType The type of the signature (e.g., SECP256K1, BLS, etc.).
+    /// @param data The actual signature data.
     struct Signature {
-        SignatureType signatureType; // Type of the signature (e.g., SECP256K1, BLS, etc.)
-        bytes data;                  // Actual signature data
+        SignatureType signatureType;
+        bytes data;
     }
 
-    // Struct representing a signed audit summary
+    /// @notice Represents a signed audit summary.
+    /// @param summary The audit summary being signed.
+    /// @param signedAt Timestamp indicating when the audit summary was signed.
+    /// @param auditorSignature Signature of the auditor for authenticity.
     struct SignedAuditSummary {
-        AuditSummary auditSummary;       // The audit summary being signed
-        uint256 signedAt;                // Timestamp indicating when the audit summary was signed
-        Signature auditorSignature;      // Signature of the auditor for authenticity
+        AuditSummary summary;
+        uint256 signedAt;
+        Signature auditorSignature;
     }
 
-    // These are external functions that must be implemented by any contract that implements this interface
+    /// @notice Returns the name of the hook.
+    /// @return The hook's name as a string.
+    function name() external view returns (string memory);
 
-    function name() external view returns (string memory); // Returns the name of the hook
-    function repository() external view returns (string memory); // Returns the repository URI for the smart contract code
-    function logoURI() external view returns (string memory); // Returns the URI for the hook's logo
-    function description() external view returns (string memory); // Returns a description of the hook
-    function version() external view returns (bytes32); // Returns the version of the hook
-    function auditSummary() external view returns (AuditSummary memory); // Returns the audit summary of the hook
-    function eip712Domain() external view returns (EIP712Domain memory); // Returns the EIP712 domain details for signing purposes
-    function signatureType() external view returns (SignatureType[] memory); // Returns the list of supported signature types
-    function signature() external view returns (Signature memory); // Returns the signature details of a specific audit
-    function signedAuditSummary() external view returns (SignedAuditSummary memory); // Returns a signed audit summary of the hook
+    /// @notice Returns the repository URI for the smart contract code.
+    /// @return The repository URI.
+    function repository() external view returns (string memory);
+
+    /// @notice Returns the URI for the hook's logo.
+    /// @return The logo URI.
+    function logoURI() external view returns (string memory);
+
+    /// @notice Returns the URI for the hook's website.
+    /// @return The website URI.
+    function websiteURI() external view returns (string memory);
+
+    /// @notice Returns a description of the hook.
+    /// @return The hook's description.
+    function description() external view returns (string memory);
+
+    /// @notice Returns the version of the hook.
+    /// @return The version identifier as bytes32.
+    function version() external view returns (bytes32);
+
+    /// @notice Returns all audit records of the hook.
+    /// @return An array of SignedAuditSummary structs containing audit summary and signature details.
+    function audits() external view returns (SignedAuditSummary[] memory);
 }
