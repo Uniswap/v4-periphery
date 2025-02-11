@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 interface IHookMetadata {
-    /// @notice Represents the auditor 
+    /// @notice Represents the auditor
     /// @param name The name of the auditor.
     /// @param uri The URI with additional information about the auditor.
     /// @param authors List of authors responsible for the audit.
@@ -11,7 +11,6 @@ interface IHookMetadata {
         string uri;
         string[] authors;
     }
-
 
     /// @notice Represents a summary of the audit.
     /// @param auditor The auditor who performed the audit.
@@ -28,7 +27,6 @@ interface IHookMetadata {
         bytes32 auditHash;
         string auditUri;
     }
-
 
     /// @notice Defines different types of signature standards.
     enum SignatureType {
