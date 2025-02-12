@@ -26,8 +26,8 @@ contract DeployHookScript is Script {
         );
 
         bytes memory constructorArgs = abi.encode(POOLMANAGER);
- 
-         // Mine a salt that will produce a hook address with the correct flags
+
+        // Mine a salt that will produce a hook address with the correct flags
         (address hookAddress, bytes32 salt) =
             HookMiner.find(CREATE2_DEPLOYER, flags, type(MockCounterHook).creationCode, constructorArgs);
 
