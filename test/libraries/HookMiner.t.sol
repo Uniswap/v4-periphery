@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {HookMiner} from "../../src/libraries/HookMiner.sol";
+import {HookMiner} from "../../src/utils/HookMiner.sol";
 import {MockBlankHook} from "../mocks/MockBlankHook.sol";
 
 contract HookMinerTest is Test {

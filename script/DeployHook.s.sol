@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import "forge-std/Script.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {HookMiner} from "../src/libraries/HookMiner.sol";
+import {HookMiner} from "../src/utils/HookMiner.sol";
 
 /// @dev Replace import with your own hook
 import {MockCounterHook} from "../test/mocks/MockCounterHook.sol";
