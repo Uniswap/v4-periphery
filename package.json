@@ -1,0 +1,23 @@
+{
+  "name": "@uniswap/v4-periphery",
+  "version": "1.0.1",
+  "description": "🦄 Peripheral smart contracts for interacting with Uniswap v4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Uniswap/v4-periphery.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://uniswap.org/bug-bounty"
+  },
+  "homepage": "https://github.com/Uniswap/v4-periphery#readme",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "keywords": [
+    "uniswap",
+    "periphery",
+    "v4"
+  ]
+}
