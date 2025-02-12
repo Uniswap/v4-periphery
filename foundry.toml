@@ -1,6 +1,6 @@
 [profile.default]
 out = 'foundry-out'
-solc_version = '0.8.26'
+solc_version = '0.8.28'
 optimizer_runs = 44444444
 via_ir = true
 ffi = true
