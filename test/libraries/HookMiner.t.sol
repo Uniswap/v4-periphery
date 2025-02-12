@@ -29,8 +29,12 @@ contract HookMinerTest is Test {
     function test_hookMiner_addressCollision() public {
         uint16 flags = uint16(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG);
         uint256 number = 100;
-        (address addr, bytes32 salt) =
-            HookMiner.find(address(this), uint160(flags), type(MockBlankHook).creationCode, abi.encode(IPoolManager(address(0)), number, flags));
+        (address addr, bytes32 salt) = HookMiner.find(
+            address(this),
+            uint160(flags),
+            type(MockBlankHook).creationCode,
+            abi.encode(IPoolManager(address(0)), number, flags)
+        );
         MockBlankHook c = new MockBlankHook{salt: salt}(IPoolManager(address(0)), number, flags);
         c.forceValidateAddress();
         assertEq(address(c), addr);
@@ -40,8 +44,12 @@ contract HookMinerTest is Test {
         assertEq(uint160(address(c)) & HookMiner.FLAG_MASK, flags & HookMiner.FLAG_MASK);
 
         // despite using the same `.find()` parameters, the library skips any addresses with bytecode
-        (address newAddress, bytes32 otherSalt) =
-            HookMiner.find(address(this), uint160(flags), type(MockBlankHook).creationCode, abi.encode(IPoolManager(address(0)), number, flags));
+        (address newAddress, bytes32 otherSalt) = HookMiner.find(
+            address(this),
+            uint160(flags),
+            type(MockBlankHook).creationCode,
+            abi.encode(IPoolManager(address(0)), number, flags)
+        );
 
         // different salt / address was found
         assertNotEq(newAddress, addr);
