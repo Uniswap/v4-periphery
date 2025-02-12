@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {BaseHook} from "../../src/base/hooks/BaseHook.sol";
+import {BaseHook} from "../../src/utils/BaseHook.sol";
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -40,8 +40,8 @@ contract MockCounterHook is BaseHook {
         });
     }
 
-    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
-        external
+    function _beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
+        internal
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
@@ -49,8 +49,8 @@ contract MockCounterHook is BaseHook {
         return (BaseHook.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
-    function afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
-        external
+    function _afterSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, BalanceDelta, bytes calldata)
+        internal
         override
         returns (bytes4, int128)
     {
@@ -58,22 +58,22 @@ contract MockCounterHook is BaseHook {
         return (BaseHook.afterSwap.selector, 0);
     }
 
-    function beforeAddLiquidity(
+    function _beforeAddLiquidity(
         address,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
-    ) external override returns (bytes4) {
+    ) internal override returns (bytes4) {
         beforeAddLiquidityCount[key.toId()]++;
         return BaseHook.beforeAddLiquidity.selector;
     }
 
-    function beforeRemoveLiquidity(
+    function _beforeRemoveLiquidity(
         address,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
-    ) external override returns (bytes4) {
+    ) internal override returns (bytes4) {
         beforeRemoveLiquidityCount[key.toId()]++;
         return BaseHook.beforeRemoveLiquidity.selector;
     }
