@@ -14,6 +14,7 @@ contract BipsLibraryTest is Test {
         BLOCK_GAS_LIMIT = block.gaslimit;
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     function test_fuzz_calculatePortion(uint256 amount, uint256 bips) public {
         amount = bound(amount, 0, uint256(type(uint128).max));
         if (bips > BipsLibrary.BPS_DENOMINATOR) {
@@ -24,6 +25,7 @@ contract BipsLibraryTest is Test {
         }
     }
 
+    /// forge-config: default.allow_internal_expect_revert = true
     function test_fuzz_gasLimit(uint256 bips) public {
         if (bips > BipsLibrary.BPS_DENOMINATOR) {
             vm.expectRevert(BipsLibrary.InvalidBips.selector);
