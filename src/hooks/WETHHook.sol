@@ -29,13 +29,13 @@ contract WETHHook is BaseTokenWrapperHook {
     }
 
     /// @inheritdoc BaseTokenWrapperHook
-    function _deposit(uint256 underlyingAmount) internal override returns (uint256 wrapperAmount) {
+    function _deposit(uint256 underlyingAmount) internal override returns (uint256) {
         weth.deposit{value: underlyingAmount}();
         return underlyingAmount; // 1:1 ratio
     }
 
     /// @inheritdoc BaseTokenWrapperHook
-    function _withdraw(uint256 wrapperAmount) internal override returns (uint256 underlyingAmount) {
+    function _withdraw(uint256 wrapperAmount) internal override returns (uint256) {
         weth.withdraw(wrapperAmount);
         return wrapperAmount; // 1:1 ratio
     }
