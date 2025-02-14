@@ -52,7 +52,7 @@ contract WETHHookTest is Test, Deployers {
                 )
             )
         );
-        deployCodeTo("./foundry-out/WETHHook.sol/WETHHook.default.json", abi.encode(manager, weth), address(hook));
+        deployCodeTo("WETHHook", abi.encode(manager, weth), address(hook));
 
         // Create pool key for ETH/WETH
         poolKey = PoolKey({
