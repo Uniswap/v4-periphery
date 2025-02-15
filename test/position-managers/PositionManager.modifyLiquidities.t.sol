@@ -853,24 +853,8 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
     ) public {
         bips = bound(bips, 1, 10_000);
         MockFOT(address(fotToken)).setFee(bips);
-        tickLower = int24(
-            bound(
-                tickLower,
-                fotKey.tickSpacing * (TickMath.MIN_TICK / fotKey.tickSpacing),
-                fotKey.tickSpacing * (TickMath.MAX_TICK / fotKey.tickSpacing)
-            )
-        );
-        tickUpper = int24(
-            bound(
-                tickUpper,
-                fotKey.tickSpacing * (TickMath.MIN_TICK / fotKey.tickSpacing),
-                fotKey.tickSpacing * (TickMath.MAX_TICK / fotKey.tickSpacing)
-            )
-        );
 
-        tickLower = fotKey.tickSpacing * (tickLower / fotKey.tickSpacing);
-        tickUpper = fotKey.tickSpacing * (tickUpper / fotKey.tickSpacing);
-        vm.assume(tickUpper > tickLower);
+        (tickLower, tickUpper) = boundTicks(fotKey, tickLower, tickUpper);
 
         (uint160 sqrtPriceX96,,,) = manager.getSlot0(fotKey.toId());
         {
