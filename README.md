@@ -18,7 +18,7 @@ If you are building hooks, it may be useful to inherit from the `BaseHook` contr
 
 ```solidity
 
-import {BaseHook} from 'v4-periphery/src/base/hooks/BaseHook.sol';
+import {BaseHook} from 'v4-periphery/src/utils/BaseHook.sol';
 
 contract CoolHook is BaseHook {
     // Override the hook callbacks you want on your hook
