@@ -13,8 +13,6 @@ contract WETHHook is BaseTokenWrapperHook {
     /// @notice The WETH9 contract
     WETH public immutable weth;
 
-    error WithdrawFailed();
-
     /// @notice Creates a new WETH wrapper hook
     /// @param _manager The Uniswap V4 pool manager
     /// @param _weth The WETH9 contract address

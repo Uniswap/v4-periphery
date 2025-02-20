@@ -8,13 +8,10 @@ import {BaseTokenWrapperHook} from "../base/hooks/BaseTokenWrapperHook.sol";
 import {IWstETH} from "../interfaces/external/IWstETH.sol";
 
 /// @title Wrapped Staked ETH (wstETH) Hook
-/// @notice Hook for wrapping/unwrapping stETH to wstETH in Uniswap V4 pools
+/// @notice Hook for wrapping/unwrapping stETH/wstETH in Uniswap V4 pools
 /// @dev Implements dynamic exchange rate wrapping/unwrapping between stETH and wstETH
 /// @dev wstETH represents stETH with accrued staking rewards, maintaining a dynamic exchange rate
 contract WstETHHook is BaseTokenWrapperHook {
-    /// @notice Thrown when unwrapping wstETH to stETH fails
-    error WithdrawFailed();
-
     /// @notice The wstETH contract used for wrapping/unwrapping operations
     IWstETH public immutable wstETH;
 
