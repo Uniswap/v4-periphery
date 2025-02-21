@@ -63,8 +63,4 @@ contract WstETHHook is BaseTokenWrapperHook {
     function _getUnwrapInputRequired(uint256 underlyingAmount) internal view override returns (uint256) {
         return wstETH.getWstETHByStETH(underlyingAmount);
     }
-
-    /// @notice Required to receive ETH from unwrapping operations
-    /// @dev Needed for protocol integrations that might send ETH to this contract
-    receive() external payable {}
 }
