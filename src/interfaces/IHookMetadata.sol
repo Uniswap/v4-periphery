@@ -1,7 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-interface IHookMetadata {
+import "./IEIP712_v4.sol";
+
+/// @title IHookMetadata
+/// @notice Metadata interface for the hook implementing EIP-7512 for on‑chain audit representation
+/// @dev https://eips.ethereum.org/EIPS/eip-7512
+interface IHookMetadata is IEIP712_v4 {
+    /// @notice Defines different types of signature standards.
+    enum SignatureType {
+        SECP256K1,
+        BLS,
+        ERC1271,
+        SECP256R1
+    }
+
     /// @notice Represents the auditor
     /// @param name The name of the auditor.
     /// @param uri The URI with additional information about the auditor.
@@ -28,14 +41,6 @@ interface IHookMetadata {
         string auditUri;
     }
 
-    /// @notice Defines different types of signature standards.
-    enum SignatureType {
-        SECP256K1,
-        BLS,
-        ERC1271,
-        SECP256R1
-    }
-
     /// @notice Represents a cryptographic signature.
     /// @param signatureType The type of the signature (e.g., SECP256K1, BLS, etc.).
     /// @param data The actual signature data.
@@ -53,6 +58,13 @@ interface IHookMetadata {
         uint256 signedAt;
         Signature auditorSignature;
     }
+
+    /// @notice Emitted when a new audit summary is registered.
+    /// @dev This event must be emitted so that all indexing services can index the newly added audit record.
+    /// @param auditId The identifier for the audit record.
+    /// @param auditHash The hash of the audit document.
+    /// @param auditUri The URI pointing to additional audit information or the full report.
+    event AuditSummaryRegistered(uint256 indexed auditId, bytes32 auditHash, string auditUri);
 
     /// @notice Returns the name of the hook.
     /// @return The hook's name as a string.
@@ -78,7 +90,8 @@ interface IHookMetadata {
     /// @return The version identifier as bytes32.
     function version() external view returns (bytes32);
 
-    /// @notice Returns all audit records of the hook.
-    /// @return An array of SignedAuditSummary structs containing audit summary and signature details.
-    function audits() external view returns (SignedAuditSummary[] memory);
+    /// @notice Returns the audit summary record for a given audit ID.
+    /// @param auditId The identifier used to look up a specific SignedAuditSummary.
+    /// @return summary A `SignedAuditSummary` struct containing the audit details and signature.
+    function auditSummaries(uint256 auditId) external view returns (SignedAuditSummary memory);
 }
