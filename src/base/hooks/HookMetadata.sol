@@ -24,7 +24,8 @@ abstract contract HookMetadata is IHookMetadata {
 
     /// @notice An internal method that registers a new signed audit summury and emits an event that may be useful for
     ///         external indexing services to discover and display essential information about a Uniswap V4 hook.
-    /// @dev This internal method should be called in the child hook contract whenever new audit summary is registered.
+    /// @dev This internal method should be called in the child hook contract whenever new audit summary is registered
+    ///      (for example, in the constructor or in the custom owner/admin/DAO controlled method).
     /// @param signedAuditSummary A new signed audit summury to register.
     /// @return A new signed audit summary ID.
     function _registerAuditSummary(SignedAuditSummary calldata signedAuditSummary) internal returns (uint256) {
