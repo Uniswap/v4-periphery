@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IHookMetadata} from "../../interfaces/IHookMetadata.sol";
+import {IHookMetadata} from "../interfaces/IHookMetadata.sol";
 
 /**
  * @title HookMetadata
