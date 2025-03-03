@@ -2,14 +2,14 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
@@ -19,21 +19,23 @@ import {Plan, Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {INotifier} from "../../src/interfaces/INotifier.sol";
 import {MockReturnDataSubscriber, MockRevertSubscriber} from "../mocks/MockBadSubscribers.sol";
-import {PositionInfoLibrary, PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
+import {PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
+import {MockReenterHook} from "../mocks/MockReenterHook.sol";
+import {IERC721} from "forge-std/interfaces/IERC721.sol";
 
-contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
-    using PoolIdLibrary for PoolKey;
+contract PositionManagerNotifierTest is Test, PosmTestSetup {
     using StateLibrary for IPoolManager;
-    using Planner for Plan;
-    using PositionInfoLibrary for PositionInfo;
 
     MockSubscriber sub;
     MockReturnDataSubscriber badSubscriber;
     PositionConfig config;
     MockRevertSubscriber revertSubscriber;
+    MockReenterHook reenterHook;
 
     address alice = makeAddr("ALICE");
     address bob = makeAddr("BOB");
+
+    PositionConfig reenterConfig;
 
     function setUp() public {
         deployFreshManagerAndRouters();
@@ -48,6 +50,17 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         badSubscriber = new MockReturnDataSubscriber(lpm);
         revertSubscriber = new MockRevertSubscriber(lpm);
         config = PositionConfig({poolKey: key, tickLower: -300, tickUpper: 300});
+
+        // set the reenter hook
+        MockReenterHook impl = new MockReenterHook();
+        address hookAddr = payable(address(uint160(Hooks.BEFORE_ADD_LIQUIDITY_FLAG)));
+        vm.etch(hookAddr, address(impl).code);
+        reenterHook = MockReenterHook(hookAddr);
+        reenterHook.setPosm(lpm);
+
+        PoolKey memory reenterKey = PoolKey(currency0, currency1, 3000, 60, IHooks(reenterHook));
+        manager.initialize(reenterKey, SQRT_PRICE_1_1);
+        reenterConfig = PositionConfig({poolKey: reenterKey, tickLower: -60, tickUpper: 60});
 
         // TODO: Test NATIVE poolKey
     }
@@ -74,7 +87,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -93,7 +106,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         vm.expectRevert(INotifier.NoCodeSubscriber.selector);
@@ -106,7 +119,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         // successfully subscribe
@@ -125,7 +138,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -154,7 +167,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -181,7 +194,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -198,13 +211,13 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(int256(sub.feesAccrued().amount1()), int256(feeRevenue1) - 1 wei);
     }
 
-    function test_notifyTransfer_withTransferFrom_succeeds() public {
+    function test_transferFrom_unsubscribes() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -212,18 +225,20 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
 
-        lpm.transferFrom(alice, bob, tokenId);
+        IERC721(address(lpm)).transferFrom(alice, bob, tokenId);
 
-        assertEq(sub.notifyTransferCount(), 1);
+        assertEq(sub.notifyUnsubscribeCount(), 1);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), false);
+        assertEq(address(lpm.subscriber(tokenId)), address(0));
     }
 
-    function test_notifyTransfer_withTransferFrom_selfDestruct_revert() public {
+    function test_transferFrom_unsubscribes_selfDestruct() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -233,17 +248,20 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         // simulate selfdestruct by etching the bytecode to 0
         vm.etch(address(sub), ZERO_BYTES);
 
-        vm.expectRevert(INotifier.NoCodeSubscriber.selector);
-        lpm.transferFrom(alice, bob, tokenId);
+        // unsubscribe happens anyway
+        IERC721(address(lpm)).transferFrom(alice, bob, tokenId);
+
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), false);
+        assertEq(address(lpm.subscriber(tokenId)), address(0));
     }
 
-    function test_notifyTransfer_withSafeTransferFrom_succeeds() public {
+    function test_safeTransferFrom_unsubscribes() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -251,18 +269,20 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
 
-        lpm.safeTransferFrom(alice, bob, tokenId);
+        IERC721(address(lpm)).safeTransferFrom(alice, bob, tokenId);
 
-        assertEq(sub.notifyTransferCount(), 1);
+        assertEq(sub.notifyUnsubscribeCount(), 1);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), false);
+        assertEq(address(lpm.subscriber(tokenId)), address(0));
     }
 
-    function test_notifyTransfer_withSafeTransferFrom_selfDestruct_revert() public {
+    function test_safeTransferFrom_unsubscribes_selfDestruct() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -272,17 +292,20 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         // simulate selfdestruct by etching the bytecode to 0
         vm.etch(address(sub), ZERO_BYTES);
 
-        vm.expectRevert(INotifier.NoCodeSubscriber.selector);
-        lpm.safeTransferFrom(alice, bob, tokenId);
+        // unsubscribe happens anyway
+        IERC721(address(lpm)).safeTransferFrom(alice, bob, tokenId);
+
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), false);
+        assertEq(address(lpm.subscriber(tokenId)), address(0));
     }
 
-    function test_notifyTransfer_withSafeTransferFromData_succeeds() public {
+    function test_safeTransferFrom_unsubscribes_withData() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -290,9 +313,11 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(address(lpm.subscriber(tokenId)), address(sub));
 
-        lpm.safeTransferFrom(alice, bob, tokenId, "");
+        IERC721(address(lpm)).safeTransferFrom(alice, bob, tokenId, "");
 
-        assertEq(sub.notifyTransferCount(), 1);
+        assertEq(sub.notifyUnsubscribeCount(), 1);
+        assertEq(lpm.positionInfo(tokenId).hasSubscriber(), false);
+        assertEq(address(lpm.subscriber(tokenId)), address(0));
     }
 
     function test_unsubscribe_succeeds() public {
@@ -301,7 +326,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -319,7 +344,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(badSubscriber), ZERO_BYTES);
@@ -339,7 +364,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -439,7 +464,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         vm.expectRevert(INotifier.NotSubscribed.selector);
@@ -452,7 +477,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -471,7 +496,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), subData);
@@ -488,16 +513,18 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         revertSubscriber.setRevert(true);
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                INotifier.Wrap__SubscriptionReverted.selector,
+                CustomRevert.WrappedError.selector,
                 address(revertSubscriber),
-                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifySubscribe")
+                ISubscriber.notifySubscribe.selector,
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifySubscribe"),
+                abi.encodeWithSelector(INotifier.SubscriptionReverted.selector)
             )
         );
         lpm.subscribe(tokenId, address(revertSubscriber), ZERO_BYTES);
@@ -509,7 +536,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(revertSubscriber), ZERO_BYTES);
@@ -525,79 +552,18 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = plan.finalizeModifyLiquidityWithSettlePair(config.poolKey);
         vm.expectRevert(
             abi.encodeWithSelector(
-                INotifier.Wrap__ModifyLiquidityNotificationReverted.selector,
+                CustomRevert.WrappedError.selector,
                 address(revertSubscriber),
-                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyModifyLiquidity")
+                ISubscriber.notifyModifyLiquidity.selector,
+                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyModifyLiquidity"),
+                abi.encodeWithSelector(INotifier.ModifyLiquidityNotificationReverted.selector)
             )
         );
         lpm.modifyLiquidities(calls, _deadline);
     }
 
-    function test_notifyTransfer_withTransferFrom_wraps_revert() public {
-        uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, alice, ZERO_BYTES);
-
-        // approve this contract to operate on alices liq
-        vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
-        vm.stopPrank();
-
-        lpm.subscribe(tokenId, address(revertSubscriber), ZERO_BYTES);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                INotifier.Wrap__TransferNotificationReverted.selector,
-                address(revertSubscriber),
-                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer")
-            )
-        );
-        lpm.transferFrom(alice, bob, tokenId);
-    }
-
-    function test_notifyTransfer_withSafeTransferFrom_wraps_revert() public {
-        uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, alice, ZERO_BYTES);
-
-        // approve this contract to operate on alices liq
-        vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
-        vm.stopPrank();
-
-        lpm.subscribe(tokenId, address(revertSubscriber), ZERO_BYTES);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                INotifier.Wrap__TransferNotificationReverted.selector,
-                address(revertSubscriber),
-                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer")
-            )
-        );
-        lpm.safeTransferFrom(alice, bob, tokenId);
-    }
-
-    function test_notifyTransfer_withSafeTransferFromData_wraps_revert() public {
-        uint256 tokenId = lpm.nextTokenId();
-        mint(config, 100e18, alice, ZERO_BYTES);
-
-        // approve this contract to operate on alices liq
-        vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
-        vm.stopPrank();
-
-        lpm.subscribe(tokenId, address(revertSubscriber), ZERO_BYTES);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                INotifier.Wrap__TransferNotificationReverted.selector,
-                address(revertSubscriber),
-                abi.encodeWithSelector(MockRevertSubscriber.TestRevert.selector, "notifyTransfer")
-            )
-        );
-        lpm.safeTransferFrom(alice, bob, tokenId, "");
-    }
-
-    /// @notice burning a position will automatically notify unsubscribe
-    function test_burn_unsubscribe() public {
+    /// @notice burning a position will automatically notify burn
+    function test_notifyBurn_succeeds() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
 
@@ -605,7 +571,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), subData);
@@ -613,12 +579,13 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
         assertEq(lpm.positionInfo(tokenId).hasSubscriber(), true);
         assertEq(sub.notifyUnsubscribeCount(), 0);
 
-        // burn the position, causing an unsubscribe
+        // burn the position, causing a notifyBurn
         burn(tokenId, config, ZERO_BYTES);
 
         // position is now unsubscribed
         assertEq(lpm.positionInfo(tokenId).hasSubscriber(), false);
-        assertEq(sub.notifyUnsubscribeCount(), 1);
+        assertEq(sub.notifyUnsubscribeCount(), 0);
+        assertEq(sub.notifyBurnCount(), 1);
     }
 
     /// @notice Test that users cannot forcibly avoid unsubscribe logic via gas limits
@@ -631,7 +598,7 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
 
         // approve this contract to operate on alices liq
         vm.startPrank(alice);
-        lpm.approve(address(this), tokenId);
+        IERC721(address(lpm)).approve(address(this), tokenId);
         vm.stopPrank();
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
@@ -646,5 +613,76 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup, GasSnapshot {
             lpm.unsubscribe{gas: gasLimit}(tokenId);
             assertEq(sub.notifyUnsubscribeCount(), beforeUnsubCount + 1);
         }
+    }
+
+    function test_unsubscribe_reverts_PoolManagerMustBeLocked() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(reenterConfig, 10e18, address(this), ZERO_BYTES);
+
+        bytes memory hookData = abi.encode(lpm.unsubscribe.selector, address(this), tokenId);
+        bytes memory actions = getMintEncoded(reenterConfig, 10e18, address(this), hookData);
+
+        // approve hook as it should not revert because it does not have permissions
+        IERC721(address(lpm)).approve(address(reenterHook), tokenId);
+        // subscribe as it should not revert because there is no subscriber
+        lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
+
+        // should revert since the pool manager is unlocked
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(reenterHook),
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
+        );
+        lpm.modifyLiquidities(actions, _deadline);
+    }
+
+    function test_subscribe_reverts_PoolManagerMustBeLocked() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(reenterConfig, 10e18, address(this), ZERO_BYTES);
+
+        bytes memory hookData = abi.encode(lpm.subscribe.selector, address(this), tokenId);
+        bytes memory actions = getMintEncoded(reenterConfig, 10e18, address(this), hookData);
+
+        // approve hook as it should not revert because it does not have permissions
+        IERC721(address(lpm)).approve(address(reenterHook), tokenId);
+
+        // should revert since the pool manager is unlocked
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(reenterHook),
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
+        );
+        lpm.modifyLiquidities(actions, _deadline);
+    }
+
+    function test_transferFrom_reverts_PoolManagerMustBeLocked() public {
+        uint256 tokenId = lpm.nextTokenId();
+        mint(reenterConfig, 10e18, address(this), ZERO_BYTES);
+
+        bytes memory hookData = abi.encode(IERC721(address(lpm)).transferFrom.selector, address(this), tokenId);
+        bytes memory actions = getMintEncoded(reenterConfig, 10e18, address(this), hookData);
+
+        // approve hook as it should not revert because it does not have permissions
+        IERC721(address(lpm)).approve(address(reenterHook), tokenId);
+
+        // should revert since the pool manager is unlocked
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(reenterHook),
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(IPositionManager.PoolManagerMustBeLocked.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
+        );
+        lpm.modifyLiquidities(actions, _deadline);
     }
 }

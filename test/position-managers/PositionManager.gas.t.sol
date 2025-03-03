@@ -2,12 +2,11 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
@@ -16,9 +15,8 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {IPositionManager, IPoolInitializer_v4} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
 import {IMulticall_v4} from "../../src/interfaces/IMulticall_v4.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
@@ -26,11 +24,8 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {MockSubscriber} from "../mocks/MockSubscriber.sol";
 
-contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
+contract PosMGasTest is Test, PosmTestSetup {
     using FixedPointMathLib for uint256;
-    using CurrencyLibrary for Currency;
-    using PoolIdLibrary for PoolKey;
-    using Planner for Plan;
 
     PoolId poolId;
     address alice;
@@ -75,6 +70,17 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         sub = new MockSubscriber(lpm);
     }
 
+    function test_posm_initcodeHash() public {
+        vm.snapshotValue(
+            "position manager initcode hash (without constructor params, as uint256)",
+            uint256(keccak256(abi.encodePacked(vm.getCode("PositionManager.sol:PositionManager"))))
+        );
+    }
+
+    function test_bytecodeSize_positionManager() public {
+        vm.snapshotValue("positionManager bytecode size", address(lpm).code.length);
+    }
+
     function test_gas_mint_withClose() public {
         Plan memory planner = Planner.init().add(
             Actions.MINT_POSITION,
@@ -91,7 +97,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_mint_withClose");
+        vm.snapshotGasLastCall("PositionManager_mint_withClose");
     }
 
     function test_gas_mint_withSettlePair() public {
@@ -110,7 +116,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         );
         bytes memory calls = planner.finalizeModifyLiquidityWithSettlePair(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_mint_withSettlePair");
+        vm.snapshotGasLastCall("PositionManager_mint_withSettlePair");
     }
 
     function test_gas_mint_differentRanges() public {
@@ -136,7 +142,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_mint_warmedPool_differentRange");
+        vm.snapshotGasLastCall("PositionManager_mint_warmedPool_differentRange");
     }
 
     function test_gas_mint_sameTickLower() public {
@@ -162,7 +168,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_mint_onSameTickLower");
+        vm.snapshotGasLastCall("PositionManager_mint_onSameTickLower");
     }
 
     function test_gas_mint_sameTickUpper() public {
@@ -188,7 +194,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_mint_onSameTickUpper");
+        vm.snapshotGasLastCall("PositionManager_mint_onSameTickUpper");
     }
 
     function test_gas_increaseLiquidity_erc20_withClose() public {
@@ -202,7 +208,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_increaseLiquidity_erc20_withClose");
+        vm.snapshotGasLastCall("PositionManager_increaseLiquidity_erc20_withClose");
     }
 
     function test_gas_increaseLiquidity_erc20_withSettlePair() public {
@@ -216,7 +222,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = planner.finalizeModifyLiquidityWithSettlePair(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_increaseLiquidity_erc20_withSettlePair");
+        vm.snapshotGasLastCall("PositionManager_increaseLiquidity_erc20_withSettlePair");
     }
 
     function test_gas_autocompound_exactUnclaimedFees() public {
@@ -262,7 +268,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_increase_autocompoundExactUnclaimedFees");
+        vm.snapshotGasLastCall("PositionManager_increase_autocompoundExactUnclaimedFees");
     }
 
     function test_gas_autocompound_clearExcess() public {
@@ -311,7 +317,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_increase_autocompound_clearExcess");
+        vm.snapshotGasLastCall("PositionManager_increase_autocompound_clearExcess");
     }
 
     // Autocompounding but the excess fees are taken to the user
@@ -357,7 +363,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_increase_autocompoundExcessFeesCredit");
+        vm.snapshotGasLastCall("PositionManager_increase_autocompoundExcessFeesCredit");
     }
 
     function test_gas_decreaseLiquidity_withClose() public {
@@ -371,7 +377,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_decreaseLiquidity_withClose");
+        vm.snapshotGasLastCall("PositionManager_decreaseLiquidity_withClose");
     }
 
     function test_gas_decreaseLiquidity_withTakePair() public {
@@ -385,7 +391,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_decreaseLiquidity_withTakePair");
+        vm.snapshotGasLastCall("PositionManager_decreaseLiquidity_withTakePair");
     }
 
     function test_gas_multicall_initialize_mint() public {
@@ -393,7 +399,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         // Use multicall to initialize a pool and mint liquidity
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeWithSelector(lpm.initializePool.selector, key, SQRT_PRICE_1_1);
+        calls[0] = abi.encodeWithSelector(IPoolInitializer_v4.initializePool.selector, key, SQRT_PRICE_1_1);
 
         config = PositionConfig({
             poolKey: key,
@@ -420,7 +426,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         calls[1] = abi.encodeWithSelector(IPositionManager.modifyLiquidities.selector, actions, _deadline);
 
         IMulticall_v4(lpm).multicall(calls);
-        snapLastCall("PositionManager_multicall_initialize_mint");
+        vm.snapshotGasLastCall("PositionManager_multicall_initialize_mint");
     }
 
     function test_gas_collect_withClose() public {
@@ -437,7 +443,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_collect_withClose");
+        vm.snapshotGasLastCall("PositionManager_collect_withClose");
     }
 
     function test_gas_collect_withTakePair() public {
@@ -454,7 +460,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_collect_withTakePair");
+        vm.snapshotGasLastCall("PositionManager_collect_withTakePair");
     }
 
     // same-range gas tests
@@ -477,7 +483,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_mint_sameRange");
+        vm.snapshotGasLastCall("PositionManager_mint_sameRange");
     }
 
     function test_gas_sameRange_decrease() public {
@@ -496,7 +502,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_decrease_sameRange_allLiquidity");
+        vm.snapshotGasLastCall("PositionManager_decrease_sameRange_allLiquidity");
     }
 
     function test_gas_sameRange_collect() public {
@@ -517,7 +523,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_collect_sameRange");
+        vm.snapshotGasLastCall("PositionManager_collect_sameRange");
     }
 
     function test_gas_burn_nonEmptyPosition_withClose() public {
@@ -530,7 +536,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_burn_nonEmpty_withClose");
+        vm.snapshotGasLastCall("PositionManager_burn_nonEmpty_withClose");
     }
 
     function test_gas_burn_nonEmptyPosition_withTakePair() public {
@@ -543,7 +549,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
 
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_burn_nonEmpty_withTakePair");
+        vm.snapshotGasLastCall("PositionManager_burn_nonEmpty_withTakePair");
     }
 
     function test_gas_burnEmpty() public {
@@ -558,7 +564,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_burn_empty");
+        vm.snapshotGasLastCall("PositionManager_burn_empty");
     }
 
     function test_gas_decrease_burnEmpty_batch() public {
@@ -578,7 +584,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         // We must include CLOSE commands.
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_decrease_burnEmpty");
+        vm.snapshotGasLastCall("PositionManager_decrease_burnEmpty");
     }
 
     // TODO: ERC6909 Support.
@@ -597,7 +603,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             uint128(liquidityToAdd)
         );
         lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
-        snapLastCall("PositionManager_mint_native");
+        vm.snapshotGasLastCall("PositionManager_mint_native");
     }
 
     function test_gas_mint_native_excess_withClose() public {
@@ -630,7 +636,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         );
         // overpay on the native token
         lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline);
-        snapLastCall("PositionManager_mint_nativeWithSweep_withClose");
+        vm.snapshotGasLastCall("PositionManager_mint_nativeWithSweep_withClose");
     }
 
     function test_gas_mint_native_excess_withSettlePair() public {
@@ -662,7 +668,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         );
         // overpay on the native token
         lpm.modifyLiquidities{value: amount0 * 2}(calls, _deadline);
-        snapLastCall("PositionManager_mint_nativeWithSweep_withSettlePair");
+        vm.snapshotGasLastCall("PositionManager_mint_nativeWithSweep_withSettlePair");
     }
 
     function test_gas_increase_native() public {
@@ -678,7 +684,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
             uint128(liquidityToAdd)
         );
         lpm.modifyLiquidities{value: amount0 + 1}(calls, _deadline);
-        snapLastCall("PositionManager_increaseLiquidity_native");
+        vm.snapshotGasLastCall("PositionManager_increaseLiquidity_native");
     }
 
     function test_gas_decrease_native() public {
@@ -688,7 +694,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         uint256 liquidityToRemove = 10_000 ether;
         bytes memory calls = getDecreaseEncoded(tokenId, configNative, liquidityToRemove, ZERO_BYTES);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_decreaseLiquidity_native");
+        vm.snapshotGasLastCall("PositionManager_decreaseLiquidity_native");
     }
 
     function test_gas_collect_native() public {
@@ -700,7 +706,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         bytes memory calls = getCollectEncoded(tokenId, configNative, ZERO_BYTES);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_collect_native");
+        vm.snapshotGasLastCall("PositionManager_collect_native");
     }
 
     function test_gas_burn_nonEmptyPosition_native_withClose() public {
@@ -713,7 +719,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(configNative.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_burn_nonEmpty_native_withClose");
+        vm.snapshotGasLastCall("PositionManager_burn_nonEmpty_native_withClose");
     }
 
     function test_gas_burn_nonEmptyPosition_native_withTakePair() public {
@@ -726,7 +732,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(configNative.poolKey, address(this));
 
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_burn_nonEmpty_native_withTakePair");
+        vm.snapshotGasLastCall("PositionManager_burn_nonEmpty_native_withTakePair");
     }
 
     function test_gas_burnEmpty_native() public {
@@ -741,7 +747,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_burn_empty_native");
+        vm.snapshotGasLastCall("PositionManager_burn_empty_native");
     }
 
     function test_gas_decrease_burnEmpty_batch_native() public {
@@ -759,7 +765,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         // We must include CLOSE commands.
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(configNative.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_decrease_burnEmpty_native");
+        vm.snapshotGasLastCall("PositionManager_decrease_burnEmpty_native");
     }
 
     function test_gas_permit() public {
@@ -779,7 +785,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.prank(bob);
         lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
-        snapLastCall("PositionManager_permit");
+        vm.snapshotGasLastCall("PositionManager_permit");
     }
 
     function test_gas_permit_secondPosition() public {
@@ -813,7 +819,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.prank(bob);
         lpm.permit(bob, tokenIdAlice, block.timestamp + 1, nonce, signature);
-        snapLastCall("PositionManager_permit_secondPosition");
+        vm.snapshotGasLastCall("PositionManager_permit_secondPosition");
     }
 
     function test_gas_permit_twice() public {
@@ -843,7 +849,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.prank(bob);
         lpm.permit(charlie, tokenIdAlice, block.timestamp + 1, nonce, signature);
-        snapLastCall("PositionManager_permit_twice");
+        vm.snapshotGasLastCall("PositionManager_permit_twice");
     }
 
     function test_gas_mint_settleWithBalance_sweep() public {
@@ -875,7 +881,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
 
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_mint_settleWithBalance_sweep");
+        vm.snapshotGasLastCall("PositionManager_mint_settleWithBalance_sweep");
     }
 
     // Does not encode a take pair
@@ -891,7 +897,7 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         bytes memory calls = plan.finalizeModifyLiquidityWithTake(config.poolKey, ActionConstants.MSG_SENDER);
 
         lpm.modifyLiquidities(calls, _deadline);
-        snapLastCall("PositionManager_decrease_take_take");
+        vm.snapshotGasLastCall("PositionManager_decrease_take_take");
     }
 
     function test_gas_subscribe_unsubscribe() public {
@@ -899,9 +905,9 @@ contract PosMGasTest is Test, PosmTestSetup, GasSnapshot {
         mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         lpm.subscribe(tokenId, address(sub), ZERO_BYTES);
-        snapLastCall("PositionManager_subscribe");
+        vm.snapshotGasLastCall("PositionManager_subscribe");
 
         lpm.unsubscribe(tokenId);
-        snapLastCall("PositionManager_unsubscribe");
+        vm.snapshotGasLastCall("PositionManager_unsubscribe");
     }
 }

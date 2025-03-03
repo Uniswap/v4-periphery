@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-/// @title ERC721 with permit
-/// @notice Extension to ERC721 that includes a permit function for signature based approvals
+/// @title IERC721Permit_v4
+/// @notice Interface for the ERC721Permit_v4 contract
 interface IERC721Permit_v4 {
     error SignatureDeadlineExpired();
     error NoSelfPermit();

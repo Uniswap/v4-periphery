@@ -1,4 +1,4 @@
-//SPDX-License-Identifier: UNLICENSED
+//SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
 import {MockBaseActionsRouter} from "./mocks/MockBaseActionsRouter.sol";
@@ -8,11 +8,8 @@ import {ActionConstants} from "../src/libraries/ActionConstants.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Test} from "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
-import {GasSnapshot} from "forge-gas-snapshot/GasSnapshot.sol";
 
-contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
-    using Planner for Plan;
-
+contract BaseActionsRouterTest is Test, Deployers {
     MockBaseActionsRouter router;
 
     function setUp() public {
@@ -31,7 +28,7 @@ contract BaseActionsRouterTest is Test, Deployers, GasSnapshot {
         assertEq(router.swapCount(), 0);
 
         router.executeActions(data);
-        snapLastCall("BaseActionsRouter_mock10commands");
+        vm.snapshotGasLastCall("BaseActionsRouter_mock10commands");
         assertEq(router.swapCount(), 10);
     }
 

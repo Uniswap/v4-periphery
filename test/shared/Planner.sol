@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
-import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
@@ -13,9 +12,9 @@ struct Plan {
     bytes[] params;
 }
 
-library Planner {
-    using Planner for Plan;
+using Planner for Plan global;
 
+library Planner {
     function init() internal pure returns (Plan memory plan) {
         return Plan({actions: bytes(""), params: new bytes[](0)});
     }
@@ -86,7 +85,9 @@ library Planner {
         returns (bytes memory)
     {
         if (takeRecipient == ActionConstants.MSG_SENDER) {
-            plan = plan.add(Actions.SETTLE_TAKE_PAIR, abi.encode(inputCurrency, outputCurrency));
+            // blindly settling and taking all, without slippage checks, isnt recommended in prod
+            plan = plan.add(Actions.SETTLE_ALL, abi.encode(inputCurrency, type(uint256).max));
+            plan = plan.add(Actions.TAKE_ALL, abi.encode(outputCurrency, 0));
         } else {
             plan = plan.add(Actions.SETTLE, abi.encode(inputCurrency, ActionConstants.OPEN_DELTA, true));
             plan = plan.add(Actions.TAKE, abi.encode(outputCurrency, takeRecipient, ActionConstants.OPEN_DELTA));

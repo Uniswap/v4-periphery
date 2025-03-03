@@ -1,18 +1,18 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import {ISubscriber} from "../../src/interfaces/ISubscriber.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PositionInfo} from "../../src/libraries/PositionInfoLibrary.sol";
 
 /// @notice A subscriber contract that returns values from the subscriber entrypoints
 contract MockReturnDataSubscriber is ISubscriber {
-    PositionManager posm;
+    IPositionManager posm;
 
     uint256 public notifySubscribeCount;
     uint256 public notifyUnsubscribeCount;
     uint256 public notifyModifyLiquidityCount;
-    uint256 public notifyTransferCount;
 
     error NotAuthorizedNotifer(address sender);
 
@@ -20,7 +20,7 @@ contract MockReturnDataSubscriber is ISubscriber {
 
     uint256 memPtr;
 
-    constructor(PositionManager _posm) {
+    constructor(IPositionManager _posm) {
         posm = _posm;
     }
 
@@ -48,8 +48,8 @@ contract MockReturnDataSubscriber is ISubscriber {
         notifyModifyLiquidityCount++;
     }
 
-    function notifyTransfer(uint256, address, address) external onlyByPosm {
-        notifyTransferCount++;
+    function notifyBurn(uint256, address, PositionInfo, uint256, BalanceDelta) external pure {
+        return;
     }
 
     function setReturnDataSize(uint256 _value) external {
@@ -59,13 +59,13 @@ contract MockReturnDataSubscriber is ISubscriber {
 
 /// @notice A subscriber contract that returns values from the subscriber entrypoints
 contract MockRevertSubscriber is ISubscriber {
-    PositionManager posm;
+    IPositionManager posm;
 
     error NotAuthorizedNotifer(address sender);
 
     error TestRevert(string);
 
-    constructor(PositionManager _posm) {
+    constructor(IPositionManager _posm) {
         posm = _posm;
     }
 
@@ -90,8 +90,8 @@ contract MockRevertSubscriber is ISubscriber {
         revert TestRevert("notifyModifyLiquidity");
     }
 
-    function notifyTransfer(uint256, address, address) external view onlyByPosm {
-        revert TestRevert("notifyTransfer");
+    function notifyBurn(uint256, address, PositionInfo, uint256, BalanceDelta) external pure {
+        return;
     }
 
     function setRevert(bool _shouldRevert) external {

@@ -5,8 +5,8 @@ import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
@@ -16,9 +16,9 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
+import {IERC721} from "forge-std/interfaces/IERC721.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
-import {PositionManager} from "../../src/PositionManager.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
@@ -29,9 +29,6 @@ import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 
 contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
-    using CurrencyLibrary for Currency;
-    using PoolIdLibrary for PoolKey;
-    using Planner for Plan;
     using StateLibrary for IPoolManager;
 
     PoolId poolId;
@@ -232,7 +229,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
         // old position was burned
         vm.expectRevert();
-        lpm.ownerOf(tokenId);
+        IERC721(address(lpm)).ownerOf(tokenId);
 
         {
             // old position has no liquidity
@@ -241,7 +238,7 @@ contract ExecuteTest is Test, PosmTestSetup, LiquidityFuzzers {
 
             // new token was minted
             uint256 newTokenId = lpm.nextTokenId() - 1;
-            assertEq(lpm.ownerOf(newTokenId), address(this));
+            assertEq(IERC721(address(lpm)).ownerOf(newTokenId), address(this));
 
             // new token has expected liquidity
 

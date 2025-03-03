@@ -1,4 +1,4 @@
-//SPDX-License-Identifier: UNLICENSED
+//SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -12,6 +12,8 @@ struct PathKey {
     IHooks hooks;
     bytes hookData;
 }
+
+using PathKeyLibrary for PathKey global;
 
 /// @title PathKey Library
 /// @notice Functions for working with PathKeys

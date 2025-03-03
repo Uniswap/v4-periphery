@@ -12,8 +12,6 @@ import {Actions} from "../../../src/libraries/Actions.sol";
 import {Planner, Plan} from "../../shared/Planner.sol";
 
 contract LiquidityFuzzers is Fuzzers {
-    using Planner for Plan;
-
     uint128 constant _MAX_SLIPPAGE_INCREASE = type(uint128).max;
 
     function addFuzzyLiquidity(

@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 /**
  * @dev PositionInfo is a packed version of solidity structure.
@@ -30,9 +30,9 @@ import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
  */
 type PositionInfo is uint256;
 
-library PositionInfoLibrary {
-    using PoolIdLibrary for PoolKey;
+using PositionInfoLibrary for PositionInfo global;
 
+library PositionInfoLibrary {
     PositionInfo internal constant EMPTY_POSITION_INFO = PositionInfo.wrap(0);
 
     uint256 internal constant MASK_UPPER_200_BITS = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000;
