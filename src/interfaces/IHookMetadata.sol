@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./IEIP712_v4.sol";
+import {IEIP712_v4} from "./IEIP712_v4.sol";
+import {IEIP7512} from "./IEIP7512.sol";
 
 /**
  * @title IHookMetadata
- * @dev This interface is designed so that external indexing services can discover
- *      and display essential information about a Uniswap v4 hook. It extends the
- *      on-chain audit representation outlined in EIP‑7512, thereby allowing the hook
- *      to store and provide signed audit summaries for third-party verification.
+ * @notice This interface is designed so that external indexing services can discover
+ *         and display essential information about a Uniswap v4 hook. It extends the
+ *         on-chain audit representation outlined in EIP‑7512, thereby allowing the hook
+ *         to store and provide signed audit summaries for third-party verification.
  *
  * ----------------------------------------------------------------------------
  * HOOK METADATA FLOW
@@ -48,58 +49,9 @@ import "./IEIP712_v4.sol";
  * - EIP‑7512: https://eips.ethereum.org/EIPS/eip-7512
  * - EIP‑712:  https://eips.ethereum.org/EIPS/eip-712
  */
-interface IHookMetadata is IEIP712_v4 {
-    /// @notice Defines different types of signature standards.
-    enum SignatureType {
-        SECP256K1,
-        BLS,
-        ERC1271,
-        SECP256R1
-    }
-
-    /// @notice Represents the auditor.
-    /// @param name The name of the auditor.
-    /// @param uri The URI with additional information about the auditor.
-    /// @param authors List of authors responsible for the audit.
-    struct Auditor {
-        string name;
-        string uri;
-        string[] authors;
-    }
-
-    /// @notice Represents a summary of the audit.
-    /// @param auditor The auditor who performed the audit.
-    /// @param issuedAt The timestamp at which the audit was issued.
-    /// @param ercs List of ERC standards that were covered in the audit.
-    /// @param bytecodeHash Hash of the audited smart contract bytecode.
-    /// @param auditHash Hash of the audit document.
-    /// @param auditUri URI with additional information or the full audit report.
-    struct AuditSummary {
-        Auditor auditor;
-        uint256 issuedAt;
-        uint256[] ercs;
-        bytes32 bytecodeHash;
-        bytes32 auditHash;
-        string auditUri;
-    }
-
-    /// @notice Represents a cryptographic signature.
-    /// @param signatureType The type of the signature (e.g., SECP256K1, BLS, etc.).
-    /// @param data The actual signature data.
-    struct Signature {
-        SignatureType signatureType;
-        bytes data;
-    }
-
-    /// @notice Represents a signed audit summary.
-    /// @param summary The audit summary being signed.
-    /// @param signedAt Timestamp indicating when the audit summary was signed.
-    /// @param auditorSignature Signature of the auditor for authenticity.
-    struct SignedAuditSummary {
-        AuditSummary summary;
-        uint256 signedAt;
-        Signature auditorSignature;
-    }
+interface IHookMetadata is IEIP712_v4, IEIP7512 {
+    /// @notice An error emitted when a wrong audit ID is used.
+    error WrongAuditId();
 
     /// @notice Emitted when a new audit summary is registered.
     /// @dev This event must be emitted so that all indexing services can
