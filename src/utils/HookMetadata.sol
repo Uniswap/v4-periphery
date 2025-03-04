@@ -28,7 +28,7 @@ abstract contract HookMetadata is IHookMetadata {
     ///      (for example, in the constructor or in the custom owner/admin/DAO controlled method).
     /// @param signedAuditSummary A new signed audit summury to register.
     /// @return A new signed audit summary ID.
-    function _registerAuditSummary(SignedAuditSummary calldata signedAuditSummary) internal returns (uint256) {
+    function _registerAuditSummary(SignedAuditSummary memory signedAuditSummary) internal returns (uint256) {
         uint256 _auditsCount = auditsCount;
 
         signedAuditsSummaries[_auditsCount] = signedAuditSummary;
