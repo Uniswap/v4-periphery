@@ -16,8 +16,7 @@ abstract contract HookMetadata is IHookMetadata {
     /// @dev Throws an error in case of wrong audit ID.
     /// @param auditId An ID of the audit to retrieve information about.
     function auditSummaries(uint256 auditId) external view returns (SignedAuditSummary memory) {
-        if (auditId < auditsCount)
-            return signedAuditsSummaries[auditId];
+        if (auditId < auditsCount) return signedAuditsSummaries[auditId];
 
         revert IHookMetadata.WrongAuditId();
     }

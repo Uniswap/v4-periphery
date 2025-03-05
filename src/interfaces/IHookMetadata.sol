@@ -67,7 +67,7 @@ interface IHookMetadata is IEIP712_v4, IEIP7512 {
 
     /// @notice Returns the repository URI for the hook's source code.
     /// @return The repository URI.
-    function repository() external view returns (string memory);
+    function repositoryURI() external view returns (string memory);
 
     /// @notice Returns the URI for the hook's logo.
     /// @return The logo URI.
