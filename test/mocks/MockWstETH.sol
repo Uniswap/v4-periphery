@@ -54,20 +54,12 @@ contract MockWstETH is MockERC20, IWstETH {
 
     function getWstETHByStETH(uint256 _stETHAmount) public pure returns (uint256) {
         if (_stETHAmount == 0) return 0;
-        // Multiply first to maintain precision
-        uint256 numerator = _stETHAmount * 1e18;
-        // Add half the denominator for proper rounding
-        uint256 rounded = (numerator + EXCHANGE_RATE / 2) / EXCHANGE_RATE;
-        return rounded;
+        return (_stETHAmount * 1e18) / EXCHANGE_RATE;
     }
 
     function getStETHByWstETH(uint256 _wstETHAmount) public pure returns (uint256) {
         if (_wstETHAmount == 0) return 0;
-        // Multiply first to maintain precision
-        uint256 numerator = _wstETHAmount * EXCHANGE_RATE;
-        // Add half the denominator for proper rounding
-        uint256 rounded = (numerator + 1e18 / 2) / 1e18;
-        return rounded;
+        return (_wstETHAmount * EXCHANGE_RATE) / 1e18;
     }
 
     /// @notice Returns stETH per wstETH exchange rate

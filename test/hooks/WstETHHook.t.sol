@@ -6,7 +6,6 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
@@ -20,6 +19,7 @@ import {BaseTokenWrapperHook} from "../../src/base/hooks/BaseTokenWrapperHook.so
 import {WstETHHook} from "../../src/hooks/WstETHHook.sol";
 import {IWstETH} from "../../src/interfaces/external/IWstETH.sol";
 import {MockWstETH} from "../mocks/MockWstETH.sol";
+import {TestRouter} from "../shared/TestRouter.sol";
 
 contract WstETHHookTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -28,6 +28,7 @@ contract WstETHHookTest is Test, Deployers {
     WstETHHook public hook;
     MockWstETH public wstETH;
     MockERC20 public stETH;
+    TestRouter public router;
     PoolKey poolKey;
     uint160 initSqrtPriceX96;
 
@@ -39,6 +40,7 @@ contract WstETHHookTest is Test, Deployers {
 
     function setUp() public {
         deployFreshManagerAndRouters();
+        router = new TestRouter(manager);
 
         // Deploy mock stETH and wstETH
         stETH = new MockERC20("Liquid staked Ether", "stETH", 18);
@@ -95,23 +97,20 @@ contract WstETHHookTest is Test, Deployers {
         uint256 expectedOutput = wstETH.getWstETHByStETH(wrapAmount);
 
         vm.startPrank(alice);
-        stETH.approve(address(swapRouter), type(uint256).max);
+        stETH.approve(address(router), type(uint256).max);
 
         uint256 aliceStethBefore = stETH.balanceOf(alice);
         uint256 aliceWstethBefore = wstETH.balanceOf(alice);
         uint256 managerStethBefore = stETH.balanceOf(address(manager));
         uint256 managerWstethBefore = wstETH.balanceOf(address(manager));
 
-        PoolSwapTest.TestSettings memory testSettings =
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
-        swapRouter.swap(
+        router.swap(
             poolKey,
             IPoolManager.SwapParams({
                 zeroForOne: true, // stETH (0) to wstETH (1)
                 amountSpecified: -int256(wrapAmount),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            testSettings,
             ""
         );
 
@@ -128,23 +127,20 @@ contract WstETHHookTest is Test, Deployers {
         uint256 expectedOutput = wstETH.getStETHByWstETH(unwrapAmount);
 
         vm.startPrank(alice);
-        wstETH.approve(address(swapRouter), type(uint256).max);
+        wstETH.approve(address(router), type(uint256).max);
 
         uint256 aliceStethBefore = stETH.balanceOf(alice);
         uint256 aliceWstethBefore = wstETH.balanceOf(alice);
         uint256 managerStethBefore = stETH.balanceOf(address(manager));
         uint256 managerWstethBefore = wstETH.balanceOf(address(manager));
 
-        PoolSwapTest.TestSettings memory testSettings =
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
-        swapRouter.swap(
+        router.swap(
             poolKey,
             IPoolManager.SwapParams({
                 zeroForOne: false, // wstETH (1) to stETH (0)
                 amountSpecified: -int256(unwrapAmount),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
             }),
-            testSettings,
             ""
         );
 
@@ -161,23 +157,20 @@ contract WstETHHookTest is Test, Deployers {
         uint256 expectedInput = wstETH.getStETHByWstETH(wrapAmount);
 
         vm.startPrank(alice);
-        stETH.approve(address(swapRouter), type(uint256).max);
+        stETH.approve(address(router), type(uint256).max);
 
         uint256 aliceStethBefore = stETH.balanceOf(alice);
         uint256 aliceWstethBefore = wstETH.balanceOf(alice);
         uint256 managerStethBefore = stETH.balanceOf(address(manager));
         uint256 managerWstethBefore = wstETH.balanceOf(address(manager));
 
-        PoolSwapTest.TestSettings memory testSettings =
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
-        swapRouter.swap(
+        router.swap(
             poolKey,
             IPoolManager.SwapParams({
                 zeroForOne: true, // stETH (0) to wstETH (1)
                 amountSpecified: int256(wrapAmount),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
             }),
-            testSettings,
             ""
         );
 
@@ -194,30 +187,27 @@ contract WstETHHookTest is Test, Deployers {
         uint256 expectedInput = wstETH.getWstETHByStETH(unwrapAmount);
 
         vm.startPrank(alice);
-        wstETH.approve(address(swapRouter), type(uint256).max);
+        wstETH.approve(address(router), type(uint256).max);
 
         uint256 aliceStethBefore = stETH.balanceOf(alice);
         uint256 aliceWstethBefore = wstETH.balanceOf(alice);
         uint256 managerStethBefore = stETH.balanceOf(address(manager));
         uint256 managerWstethBefore = wstETH.balanceOf(address(manager));
 
-        PoolSwapTest.TestSettings memory testSettings =
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
-        swapRouter.swap(
+        router.swap(
             poolKey,
             IPoolManager.SwapParams({
                 zeroForOne: false, // wstETH (1) to stETH (0)
                 amountSpecified: int256(unwrapAmount),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
             }),
-            testSettings,
             ""
         );
 
         vm.stopPrank();
 
         assertEq(stETH.balanceOf(alice) - aliceStethBefore, unwrapAmount);
-        assertEq(aliceWstethBefore - wstETH.balanceOf(alice), expectedInput);
+        assertApproxEqAbs(aliceWstethBefore - wstETH.balanceOf(alice), expectedInput, 1);
         assertEq(managerStethBefore, stETH.balanceOf(address(manager)));
         assertEq(managerWstethBefore, wstETH.balanceOf(address(manager)));
     }

@@ -122,22 +122,18 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
             // we are wrapping
             uint256 inputAmount =
                 isExactInput ? uint256(-params.amountSpecified) : _getWrapInputRequired(uint256(params.amountSpecified));
-            _take(underlyingCurrency, address(this), inputAmount);
-            uint256 wrappedAmount = _deposit(inputAmount);
-            _settle(wrapperCurrency, address(this), wrappedAmount);
+            (uint256 actualUnderlyingAmount, uint256 wrappedAmount) = _deposit(inputAmount);
             int128 amountUnspecified =
-                isExactInput ? -wrappedAmount.toInt256().toInt128() : inputAmount.toInt256().toInt128();
+                isExactInput ? -wrappedAmount.toInt256().toInt128() : actualUnderlyingAmount.toInt256().toInt128();
             swapDelta = toBeforeSwapDelta(-params.amountSpecified.toInt128(), amountUnspecified);
         } else {
             // we are unwrapping
             uint256 inputAmount = isExactInput
                 ? uint256(-params.amountSpecified)
                 : _getUnwrapInputRequired(uint256(params.amountSpecified));
-            _take(wrapperCurrency, address(this), inputAmount);
-            uint256 unwrappedAmount = _withdraw(inputAmount);
-            _settle(underlyingCurrency, address(this), unwrappedAmount);
+            (uint256 actualWrappedAmount, uint256 unwrappedAmount) = _withdraw(inputAmount);
             int128 amountUnspecified =
-                isExactInput ? -unwrappedAmount.toInt256().toInt128() : inputAmount.toInt256().toInt128();
+                isExactInput ? -unwrappedAmount.toInt256().toInt128() : actualWrappedAmount.toInt256().toInt128();
             swapDelta = toBeforeSwapDelta(-params.amountSpecified.toInt128(), amountUnspecified);
         }
 
@@ -154,17 +150,29 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
 
     /// @notice Deposits underlying tokens to receive wrapper tokens
     /// @param underlyingAmount The amount of underlying tokens to deposit
+    /// @return actualUnderlyingAmount the actual number of underlying tokens used, i.e. to account for rebasing rounding errors
     /// @return wrappedAmount The amount of wrapper tokens received
-    /// @dev Implementing contracts should handle the wrapping operation
-    ///      The base contract will handle settling tokens with the pool manager
-    function _deposit(uint256 underlyingAmount) internal virtual returns (uint256 wrappedAmount);
+    /// @dev Implementing contracts should handle:
+    //    - taking tokens from PoolManager
+    //    - performing the wrapping operation
+    //    - settling tokens on PoolManager
+    function _deposit(uint256 underlyingAmount)
+        internal
+        virtual
+        returns (uint256 actualUnderlyingAmount, uint256 wrappedAmount);
 
     /// @notice Withdraws wrapper tokens to receive underlying tokens
     /// @param wrappedAmount The amount of wrapper tokens to withdraw
+    /// @return actualWrappedAmount the actual number of wrapped tokens used, i.e. to account for rebasing rounding errors
     /// @return underlyingAmount The amount of underlying tokens received
-    /// @dev Implementing contracts should handle the unwrapping operation
-    ///      The base contract will handle settling tokens with the pool manager
-    function _withdraw(uint256 wrappedAmount) internal virtual returns (uint256 underlyingAmount);
+    /// @dev Implementing contracts should handle:
+    //    - taking tokens from PoolManager
+    //    - performing the unwrapping operation
+    //    - settling tokens on PoolManager
+    function _withdraw(uint256 wrappedAmount)
+        internal
+        virtual
+        returns (uint256 actualWrappedAmount, uint256 underlyingAmount);
 
     /// @notice Calculates underlying tokens needed to receive desired wrapper tokens
     /// @param wrappedAmount The desired amount of wrapper tokens
