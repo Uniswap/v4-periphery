@@ -10,6 +10,7 @@ import {IV4Quoter} from "../interfaces/IV4Quoter.sol";
 import {PathKey} from "../libraries/PathKey.sol";
 import {QuoterRevert} from "../libraries/QuoterRevert.sol";
 import {BaseV4Quoter} from "../base/BaseV4Quoter.sol";
+import {Locker} from "../libraries/Locker.sol";
 
 /// @title V4Quoter
 /// @notice Supports quoting the delta amounts for exact input or exact output swaps.
@@ -23,6 +24,7 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
     /// @inheritdoc IV4Quoter
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
         external
+        setMsgSender
         returns (uint256 amountOut, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
@@ -37,6 +39,7 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
     /// @inheritdoc IV4Quoter
     function quoteExactInput(QuoteExactParams memory params)
         external
+        setMsgSender
         returns (uint256 amountOut, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
@@ -51,6 +54,7 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
     /// @inheritdoc IV4Quoter
     function quoteExactOutputSingle(QuoteExactSingleParams memory params)
         external
+        setMsgSender
         returns (uint256 amountIn, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
@@ -65,6 +69,7 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
     /// @inheritdoc IV4Quoter
     function quoteExactOutput(QuoteExactParams memory params)
         external
+        setMsgSender
         returns (uint256 amountIn, uint256 gasEstimate)
     {
         uint256 gasBefore = gasleft();
@@ -137,5 +142,16 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
         // the input delta of a swap is negative so we must flip it
         uint256 amountIn = params.zeroForOne ? uint128(-swapDelta.amount0()) : uint128(-swapDelta.amount1());
         amountIn.revertQuote();
+    }
+
+    function msgSender() external view returns (address) {
+        // despite using the Locker library, V4Quoter does not have a reentrancy lock
+        return Locker.get();
+    }
+
+    modifier setMsgSender() {
+        Locker.set(msg.sender);
+        _; // execute the function
+        Locker.set(address(0)); // reset the locker
     }
 }
