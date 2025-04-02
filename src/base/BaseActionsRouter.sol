@@ -5,10 +5,11 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {SafeCallback} from "./SafeCallback.sol";
 import {CalldataDecoder} from "../libraries/CalldataDecoder.sol";
 import {ActionConstants} from "../libraries/ActionConstants.sol";
+import {IMsgSender} from "../interfaces/IMsgSender.sol";
 
 /// @notice Abstract contract for performing a combination of actions on Uniswap v4.
 /// @dev Suggested uint256 action values are defined in Actions.sol, however any definition can be used
-abstract contract BaseActionsRouter is SafeCallback {
+abstract contract BaseActionsRouter is IMsgSender, SafeCallback {
     using CalldataDecoder for bytes;
 
     /// @notice emitted when different numbers of parameters and actions are provided
