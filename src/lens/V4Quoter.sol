@@ -11,6 +11,7 @@ import {PathKey} from "../libraries/PathKey.sol";
 import {QuoterRevert} from "../libraries/QuoterRevert.sol";
 import {BaseV4Quoter} from "../base/BaseV4Quoter.sol";
 import {Locker} from "../libraries/Locker.sol";
+import {IMsgSender} from "../interfaces/IMsgSender.sol";
 
 /// @title V4Quoter
 /// @notice Supports quoting the delta amounts for exact input or exact output swaps.
@@ -20,6 +21,12 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
     using QuoterRevert for *;
 
     constructor(IPoolManager _poolManager) BaseV4Quoter(_poolManager) {}
+
+    modifier setMsgSender() {
+        Locker.set(msg.sender);
+        _; // execute the function
+        Locker.set(address(0)); // reset the locker
+    }
 
     /// @inheritdoc IV4Quoter
     function quoteExactInputSingle(QuoteExactSingleParams memory params)
@@ -144,14 +151,9 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
         amountIn.revertQuote();
     }
 
+    /// @inheritdoc IMsgSender
     function msgSender() external view returns (address) {
         // despite using the Locker library, V4Quoter does not have a reentrancy lock
         return Locker.get();
-    }
-
-    modifier setMsgSender() {
-        Locker.set(msg.sender);
-        _; // execute the function
-        Locker.set(address(0)); // reset the locker
     }
 }
