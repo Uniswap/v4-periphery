@@ -176,9 +176,8 @@ contract WstETHHookTest is Test, Deployers {
 
         vm.stopPrank();
 
-        // Use approximate equality to account for rounding
-        assertApproxEqAbs(aliceStethBefore - stETH.balanceOf(alice), expectedInput, 1);
-        assertApproxEqAbs(wstETH.balanceOf(alice) - aliceWstethBefore, wrapAmount, 1);
+        assertEq(aliceStethBefore - stETH.balanceOf(alice), expectedInput);
+        assertEq(wstETH.balanceOf(alice) - aliceWstethBefore, wrapAmount);
         assertEq(managerStethBefore, stETH.balanceOf(address(manager)));
         assertEq(managerWstethBefore, wstETH.balanceOf(address(manager)));
     }
