@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {console2} from "forge-std/console2.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BaseTokenWrapperHook} from "../base/hooks/BaseTokenWrapperHook.sol";
 import {IWstETH, IStETH} from "../interfaces/external/IWstETH.sol";
+import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 
 /// @title Wrapped Staked ETH (wstETH) Hook
 /// @notice Hook for wrapping/unwrapping stETH/wstETH in Uniswap V4 pools
@@ -15,6 +15,7 @@ import {IWstETH, IStETH} from "../interfaces/external/IWstETH.sol";
 /// @dev wstETH represents stETH with accrued staking rewards, maintaining a dynamic exchange rate
 contract WstETHHook is BaseTokenWrapperHook {
     using FixedPointMathLib for uint256;
+    using SafeTransferLib for ERC20;
 
     /// @notice The wstETH contract used for wrapping/unwrapping operations
     IWstETH public immutable wstETH;
@@ -26,12 +27,12 @@ contract WstETHHook is BaseTokenWrapperHook {
     constructor(IPoolManager _manager, IWstETH _wsteth)
         BaseTokenWrapperHook(
             _manager,
-            Currency.wrap(address(_wsteth)), // wrapper token is wsteth
+            Currency.wrap(address(_wsteth)), // wrapper token is wstETH
             Currency.wrap(_wsteth.stETH()) // underlying token is stETH
         )
     {
         wstETH = _wsteth;
-        ERC20(Currency.unwrap(underlyingCurrency)).approve(address(wstETH), type(uint256).max);
+        ERC20(Currency.unwrap(underlyingCurrency)).safeApprove(address(wstETH), type(uint256).max);
     }
 
     /// @inheritdoc BaseTokenWrapperHook
@@ -55,27 +56,10 @@ contract WstETHHook is BaseTokenWrapperHook {
         override
         returns (uint256 actualWrappedAmount, uint256 unwrappedAmount)
     {
-        // 8.371175337994158040
-        console2.log("withdraw amount of wstETH", wrapperAmount);
-        // take wsteth into this hook contract
         _take(wrapperCurrency, address(this), wrapperAmount);
         actualWrappedAmount = wrapperAmount;
         unwrappedAmount = wstETH.unwrap(actualWrappedAmount);
-        // 9.999999999999999999
-        console2.log("unwrapped amount of stETH", unwrappedAmount);
-
-        // For unwrapping, we need to settle exactly what we got
-        // To ensure precision, we could work with shares
-        IStETH stETH = IStETH(Currency.unwrap(underlyingCurrency));
-        // Get our current shares balance
-        uint256 sharesBalance = stETH.sharesOf(address(this));
-
-        // Use transferShares when settling to avoid rounding errors
-        poolManager.sync(underlyingCurrency);
-        stETH.transferShares(address(poolManager), sharesBalance);
-        uint256 a = poolManager.settle();
-        // 9999999999999999998
-        console2.log("settled amount of stETH", a);
+        _settle(underlyingCurrency, address(this), unwrappedAmount);
     }
 
     /// @inheritdoc BaseTokenWrapperHook
@@ -84,7 +68,7 @@ contract WstETHHook is BaseTokenWrapperHook {
     /// @return Amount of stETH required
     /// @dev Uses current stETH/wstETH exchange rate for calculation
     function _getWrapInputRequired(uint256 wrappedAmount) internal view override returns (uint256) {
-        return (wrappedAmount * 1 ether).unsafeDivUp(wstETH.tokensPerStEth());
+        return wrappedAmount.divWadUp(wstETH.tokensPerStEth());
     }
 
     /// @inheritdoc BaseTokenWrapperHook
@@ -94,5 +78,10 @@ contract WstETHHook is BaseTokenWrapperHook {
     /// @dev Uses current stETH/wstETH exchange rate for calculation
     function _getUnwrapInputRequired(uint256 underlyingAmount) internal view override returns (uint256) {
         return wstETH.getWstETHByStETH(underlyingAmount);
+    }
+
+    /// @inheritdoc BaseTokenWrapperHook
+    function _supportsExactOutput() internal pure override returns (bool) {
+        return false;
     }
 }

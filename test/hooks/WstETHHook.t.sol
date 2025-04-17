@@ -152,64 +152,38 @@ contract WstETHHookTest is Test, Deployers {
         assertEq(managerWstethBefore, wstETH.balanceOf(address(manager)));
     }
 
-    function test_wrap_exactOutput() public {
-        uint256 wrapAmount = 1 ether;
-        uint256 expectedInput = wstETH.getStETHByWstETH(wrapAmount);
-
-        vm.startPrank(alice);
-        stETH.approve(address(router), type(uint256).max);
-
-        uint256 aliceStethBefore = stETH.balanceOf(alice);
-        uint256 aliceWstethBefore = wstETH.balanceOf(alice);
-        uint256 managerStethBefore = stETH.balanceOf(address(manager));
-        uint256 managerWstethBefore = wstETH.balanceOf(address(manager));
-
-        router.swap(
-            poolKey,
-            IPoolManager.SwapParams({
-                zeroForOne: true, // stETH (0) to wstETH (1)
-                amountSpecified: int256(wrapAmount),
-                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
-            }),
-            ""
-        );
-
-        vm.stopPrank();
-
-        assertEq(aliceStethBefore - stETH.balanceOf(alice), expectedInput);
-        assertEq(wstETH.balanceOf(alice) - aliceWstethBefore, wrapAmount);
-        assertEq(managerStethBefore, stETH.balanceOf(address(manager)));
-        assertEq(managerWstethBefore, wstETH.balanceOf(address(manager)));
-    }
-
-    function test_unwrap_exactOutput() public {
-        uint256 unwrapAmount = 1 ether;
-        uint256 expectedInput = wstETH.getWstETHByStETH(unwrapAmount);
-
+    function test_revert_wrap_exactOutput() public {
         vm.startPrank(alice);
         wstETH.approve(address(router), type(uint256).max);
-
-        uint256 aliceStethBefore = stETH.balanceOf(alice);
-        uint256 aliceWstethBefore = wstETH.balanceOf(alice);
-        uint256 managerStethBefore = stETH.balanceOf(address(manager));
-        uint256 managerWstethBefore = wstETH.balanceOf(address(manager));
-
-        router.swap(
-            poolKey,
-            IPoolManager.SwapParams({
-                zeroForOne: false, // wstETH (1) to stETH (0)
-                amountSpecified: int256(unwrapAmount),
-                sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
-            }),
-            ""
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(hook),
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(BaseTokenWrapperHook.ExactOutputNotSupported.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
         );
+        router.swap(
+            poolKey, IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: 0}), ""
+        );
+    }
 
-        vm.stopPrank();
-
-        assertEq(stETH.balanceOf(alice) - aliceStethBefore, unwrapAmount);
-        assertApproxEqAbs(aliceWstethBefore - wstETH.balanceOf(alice), expectedInput, 1);
-        assertEq(managerStethBefore, stETH.balanceOf(address(manager)));
-        assertEq(managerWstethBefore, wstETH.balanceOf(address(manager)));
+    function test_revert_unwrap_exactOutput() public {
+        vm.startPrank(alice);
+        stETH.approve(address(router), type(uint256).max);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(hook),
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(BaseTokenWrapperHook.ExactOutputNotSupported.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
+        );
+        router.swap(
+            poolKey, IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 1 ether, sqrtPriceLimitX96: 0}), ""
+        );
     }
 
     function test_revertAddLiquidity() public {

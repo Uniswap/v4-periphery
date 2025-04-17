@@ -35,6 +35,12 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
     /// @dev Fee must be 0 as wrapper pools don't charge fees
     error InvalidPoolFee();
 
+    /// @notice Thrown when exact input swaps are not supported
+    error ExactInputNotSupported();
+
+    /// @notice Thrown when exact output swaps are not supported
+    error ExactOutputNotSupported();
+
     /// @notice The wrapped token currency (e.g., WETH)
     Currency public immutable wrapperCurrency;
 
@@ -117,6 +123,8 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
         returns (bytes4 selector, BeforeSwapDelta swapDelta, uint24 lpFeeOverride)
     {
         bool isExactInput = params.amountSpecified < 0;
+        if (isExactInput && !_supportsExactInput()) revert ExactInputNotSupported();
+        if (!isExactInput && !_supportsExactOutput()) revert ExactOutputNotSupported();
 
         if (wrapZeroForOne == params.zeroForOne) {
             // we are wrapping
@@ -190,5 +198,19 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
     /// @dev Override for wrappers with different exchange rates
     function _getUnwrapInputRequired(uint256 underlyingAmount) internal view virtual returns (uint256) {
         return underlyingAmount;
+    }
+
+    /// @notice Indicates whether the hook supports exact output swaps
+    /// @dev Default implementation returns true
+    /// @dev Override for wrappers that cannot support exact output swaps
+    function _supportsExactOutput() internal view virtual returns (bool) {
+        return true;
+    }
+
+    /// @notice Indicates whether the hook supports exact input swaps
+    /// @dev Default implementation returns true
+    /// @dev Override for wrappers that cannot support exact input swaps
+    function _supportsExactInput() internal view virtual returns (bool) {
+        return true;
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-import {console2} from "forge-std/console2.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
@@ -72,31 +71,8 @@ contract TestRouter is PoolTestBase, DeltaResolver {
                 data.hookData
             );
 
-            // console2.log("full debt pre", _getFullDebt(inputCurrency));
             _settle(inputCurrency, data.sender, _getFullDebt(inputCurrency));
-            // console2.log("full credit pre", _getFullCredit(outputCurrency));
             _take(outputCurrency, data.sender, _getFullCredit(outputCurrency));
-            // console2.log("full debt post", _getFullDebt(inputCurrency));
-            // console2.log("full credit post", _getFullCredit(outputCurrency));
-            // int256 _deltaInput = poolManager.currencyDelta(address(this), inputCurrency);
-            // int256 _deltaOutput = poolManager.currencyDelta(address(this), outputCurrency);
-            // console2.log("delta input", _deltaInput);
-            // console2.log("delta output", _deltaOutput);
-            // int256 _aliceDeltaInput = poolManager.currencyDelta(address(data.sender), inputCurrency);
-            // int256 _aliceDeltaOutput = poolManager.currencyDelta(address(data.sender), outputCurrency);
-            // console2.log("alice delta input", _aliceDeltaInput);
-            // console2.log("alice delta output", _aliceDeltaOutput);
-            int256 _hookDeltaInput = poolManager.currencyDelta(address(data.key.hooks), inputCurrency);
-            int256 _hookDeltaOutput = poolManager.currencyDelta(address(data.key.hooks), outputCurrency);
-            console2.log("hook delta input", _hookDeltaInput);
-            console2.log("hook delta output", _hookDeltaOutput);
-            console2.log("alice balance diff input", aliceBalancePreInput - inputCurrency.balanceOf(data.sender));
-            console2.log("alice balance diff output", outputCurrency.balanceOf(data.sender) - aliceBalancePreOutput);
-            console2.log("pool balance diff input", poolBalancePreInput - inputCurrency.balanceOf(address(manager)));
-            console2.log("pool balance diff output", poolBalancePreOutput - outputCurrency.balanceOf(address(manager)));
-            console2.log("hook balance input", inputCurrency.balanceOf(address(data.key.hooks)));
-            console2.log("hook balance output", outputCurrency.balanceOf(address(data.key.hooks)));
-            console2.log("NonzeroDeltas", manager.getNonzeroDeltaCount());
         }
 
         return abi.encode(delta);
