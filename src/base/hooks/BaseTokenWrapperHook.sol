@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.26;
 
 import {
     toBeforeSwapDelta, BeforeSwapDelta, BeforeSwapDeltaLibrary
@@ -114,7 +114,7 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
     function _beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata params, bytes calldata)
         internal
         override
-        returns (bytes4 selector, BeforeSwapDelta swapDelta, uint24 lpFeeOverride)
+        returns (bytes4, BeforeSwapDelta, uint24)
     {
         bool isExactInput = params.amountSpecified < 0;
 
