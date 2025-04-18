@@ -46,10 +46,6 @@ contract TestRouter is PoolTestBase, DeltaResolver {
         BalanceDelta delta;
         (Currency inputCurrency, Currency outputCurrency) =
             data.params.zeroForOne ? (data.key.currency0, data.key.currency1) : (data.key.currency1, data.key.currency0);
-        (uint256 aliceBalancePreInput, uint256 poolBalancePreInput,) =
-            _fetchBalances(inputCurrency, data.sender, address(this));
-        (uint256 aliceBalancePreOutput, uint256 poolBalancePreOutput,) =
-            _fetchBalances(outputCurrency, data.sender, address(this));
 
         if (data.params.amountSpecified < 0) {
             // exact input
