@@ -27,11 +27,12 @@ contract WETHHook is BaseTokenWrapperHook {
     }
 
     /// @inheritdoc BaseTokenWrapperHook
+    /// @dev Note the WETH deposit relies on the WETH wrapper having a receive function that mints WETH to msg.sender
     function _deposit(uint256 underlyingAmount) internal override returns (uint256, uint256) {
         // Sync WETH on PoolManager
         poolManager.sync(wrapperCurrency);
-        // deposit ETH directly into the WETH contract
-        // this will mint WETH to PoolManager
+        // take ETH from PoolManager and deposit directly into the WETH contract
+        // this will mint WETH to msg.sender (PoolManager in this case)
         _take(underlyingCurrency, address(weth), underlyingAmount);
         // Settle on PoolManager which will take into account the new weth
         poolManager.settle();
