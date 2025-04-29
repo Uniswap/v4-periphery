@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {PathKey} from "../src/libraries/PathKey.sol";
 import {Deploy, IV4Quoter} from "../test/shared/Deploy.sol";
 import {BaseV4Quoter} from "../src/base/BaseV4Quoter.sol";
+import {MockMsgSenderHook} from "./mocks/MockMsgSenderHook.sol";
 
 // v4-core
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
@@ -19,6 +20,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 // solmate
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
@@ -48,6 +50,7 @@ contract QuoterTest is Test, Deployers {
     PoolKey key01;
     PoolKey key02;
     PoolKey key12;
+    PoolKey key01Hook;
 
     MockERC20[] tokenPath;
 
@@ -70,11 +73,18 @@ contract QuoterTest is Test, Deployers {
         token2 = MockERC20(address(0x3333));
         token2.mint(address(this), 2 ** 128);
 
+        // deploy a hook that reads msgSender
+        MockMsgSenderHook msgSenderHook = new MockMsgSenderHook();
+        address mockMsgSenderHookAddr = address(uint160(Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG));
+        vm.etch(mockMsgSenderHookAddr, address(msgSenderHook).code);
+
         key01 = createPoolKey(token0, token1, address(0));
         key02 = createPoolKey(token0, token2, address(0));
         key12 = createPoolKey(token1, token2, address(0));
+        key01Hook = createPoolKey(token0, token1, mockMsgSenderHookAddr);
         setupPool(key01);
         setupPool(key12);
+        setupPool(key01Hook);
         setupPoolMultiplePositions(key02);
     }
 
@@ -437,6 +447,24 @@ contract QuoterTest is Test, Deployers {
         assertGt(gasEstimate, 50000);
         assertLt(gasEstimate, 400000);
         assertEq(amountIn, 10000);
+    }
+
+    function test_fuzz_quoter_msgSender(address pranker, bool zeroForOne, bool exactInput) public {
+        IV4Quoter.QuoteExactSingleParams memory params = IV4Quoter.QuoteExactSingleParams({
+            poolKey: key01Hook,
+            zeroForOne: zeroForOne,
+            exactAmount: 10000,
+            hookData: ZERO_BYTES
+        });
+
+        vm.expectEmit(true, true, true, true);
+        emit MockMsgSenderHook.BeforeSwapMsgSender(pranker);
+
+        vm.expectEmit(true, true, true, true);
+        emit MockMsgSenderHook.AfterSwapMsgSender(pranker);
+
+        vm.prank(pranker);
+        exactInput ? quoter.quoteExactInputSingle(params) : quoter.quoteExactOutputSingle(params);
     }
 
     function createPoolKey(MockERC20 tokenA, MockERC20 tokenB, address hookAddr)
