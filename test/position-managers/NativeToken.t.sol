@@ -32,6 +32,7 @@ import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {Planner, Plan} from "../shared/Planner.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -61,7 +62,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         vm.deal(address(this), type(uint256).max);
     }
 
-    function test_fuzz_mint_native(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_mint_native(ModifyLiquidityParams memory params) public {
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
 
@@ -94,7 +95,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     // minting with excess native tokens are returned to caller
-    function test_fuzz_mint_native_excess_withClose(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_mint_native_excess_withClose(ModifyLiquidityParams memory params) public {
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
 
@@ -149,7 +150,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
     }
 
-    function test_fuzz_mint_native_excess_withSettlePair(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_mint_native_excess_withSettlePair(ModifyLiquidityParams memory params) public {
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
 
@@ -203,7 +204,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
     }
 
-    function test_fuzz_burn_native_emptyPosition_withClose(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_burn_native_emptyPosition_withClose(ModifyLiquidityParams memory params) public {
         uint256 balance0Start = address(this).balance;
         uint256 balance1Start = currency1.balanceOfSelf();
 
@@ -254,7 +255,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
     }
 
-    function test_fuzz_burn_native_emptyPosition_withTakePair(IPoolManager.ModifyLiquidityParams memory params)
+    function test_fuzz_burn_native_emptyPosition_withTakePair(ModifyLiquidityParams memory params)
         public
     {
         uint256 balance0Start = address(this).balance;
@@ -312,7 +313,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
     }
 
-    function test_fuzz_burn_native_nonEmptyPosition_withClose(IPoolManager.ModifyLiquidityParams memory params)
+    function test_fuzz_burn_native_nonEmptyPosition_withClose(ModifyLiquidityParams memory params)
         public
     {
         uint256 balance0Start = address(this).balance;
@@ -360,7 +361,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
     }
 
-    function test_fuzz_burn_native_nonEmptyPosition_withTakePair(IPoolManager.ModifyLiquidityParams memory params)
+    function test_fuzz_burn_native_nonEmptyPosition_withTakePair(ModifyLiquidityParams memory params)
         public
     {
         uint256 balance0Start = address(this).balance;
@@ -413,7 +414,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
     }
 
-    function test_fuzz_increaseLiquidity_native(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_increaseLiquidity_native(ModifyLiquidityParams memory params) public {
         // fuzz for the range
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < -60 && 60 < params.tickUpper); // two-sided liquidity
@@ -453,7 +454,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     // overpaying native tokens on increase liquidity is returned to caller
-    function test_fuzz_increaseLiquidity_native_excess_withClose(IPoolManager.ModifyLiquidityParams memory params)
+    function test_fuzz_increaseLiquidity_native_excess_withClose(ModifyLiquidityParams memory params)
         public
     {
         // fuzz for the range
@@ -504,7 +505,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
     }
 
-    function test_fuzz_increaseLiquidity_native_excess_withSettlePair(IPoolManager.ModifyLiquidityParams memory params)
+    function test_fuzz_increaseLiquidity_native_excess_withSettlePair(ModifyLiquidityParams memory params)
         public
     {
         // fuzz for the range
@@ -555,7 +556,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_decreaseLiquidity_native_withClose(
-        IPoolManager.ModifyLiquidityParams memory params,
+        ModifyLiquidityParams memory params,
         uint256 decreaseLiquidityDelta
     ) public {
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
@@ -592,7 +593,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_decreaseLiquidity_native_withTakePair(
-        IPoolManager.ModifyLiquidityParams memory params,
+        ModifyLiquidityParams memory params,
         uint256 decreaseLiquidityDelta
     ) public {
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
@@ -634,7 +635,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOfSelf() - balance1Before, uint128(delta.amount1()));
     }
 
-    function test_fuzz_collect_native_withClose(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_collect_native_withClose(ModifyLiquidityParams memory params) public {
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
 
@@ -660,7 +661,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOfSelf() - balance1Before, uint128(delta.amount1()));
     }
 
-    function test_fuzz_collect_native_withTakePair(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_collect_native_withTakePair(ModifyLiquidityParams memory params) public {
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // two-sided liquidity
 
@@ -691,7 +692,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOfSelf() - balance1Before, uint128(delta.amount1()));
     }
 
-    function test_fuzz_collect_native_withTakePair_addressRecipient(IPoolManager.ModifyLiquidityParams memory params)
+    function test_fuzz_collect_native_withTakePair_addressRecipient(ModifyLiquidityParams memory params)
         public
     {
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);
@@ -734,7 +735,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOf(alice) - aliceBalance1Before, uint128(delta.amount1()));
     }
 
-    function test_fuzz_collect_native_withTakePair_msgSenderRecipient(IPoolManager.ModifyLiquidityParams memory params)
+    function test_fuzz_collect_native_withTakePair_msgSenderRecipient(ModifyLiquidityParams memory params)
         public
     {
         params = createFuzzyLiquidityParams(nativeKey, params, SQRT_PRICE_1_1);

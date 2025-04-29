@@ -2,7 +2,6 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -20,6 +19,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {BaseTokenWrapperHook} from "../../src/base/hooks/BaseTokenWrapperHook.sol";
 import {WETHHook} from "../../src/hooks/WETHHook.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 contract WETHHookTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -102,7 +102,7 @@ contract WETHHookTest is Test, Deployers {
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
         swapRouter.swap{value: wrapAmount}(
             poolKey,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: true, // ETH (0) to WETH (1)
                 amountSpecified: -int256(wrapAmount),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
@@ -144,7 +144,7 @@ contract WETHHookTest is Test, Deployers {
 
         swapRouter.swap(
             poolKey,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: false, // WETH (1) to ETH (0)
                 amountSpecified: -int256(unwrapAmount),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
@@ -183,7 +183,7 @@ contract WETHHookTest is Test, Deployers {
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
         swapRouter.swap{value: wrapAmount}(
             poolKey,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: true, // ETH (0) to WETH (1)
                 amountSpecified: int256(wrapAmount), // Negative for exact output
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
@@ -224,7 +224,7 @@ contract WETHHookTest is Test, Deployers {
 
         swapRouter.swap(
             poolKey,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: false, // WETH (1) to ETH (0)
                 amountSpecified: int256(unwrapAmount), // Negative for exact output
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
@@ -258,7 +258,7 @@ contract WETHHookTest is Test, Deployers {
 
         modifyLiquidityRouter.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams({
+            ModifyLiquidityParams({
                 tickLower: -120,
                 tickUpper: 120,
                 liquidityDelta: 1000e18,
@@ -328,7 +328,7 @@ contract WETHHookTest is Test, Deployers {
         weth.approve(address(modifyLiquidityRouter), type(uint256).max);
         modifyLiquidityRouter.modifyLiquidity{value: 100 ether}(
             unrelatedPoolKey,
-            IPoolManager.ModifyLiquidityParams({
+            ModifyLiquidityParams({
                 tickLower: -120,
                 tickUpper: 120,
                 liquidityDelta: 1000e18,

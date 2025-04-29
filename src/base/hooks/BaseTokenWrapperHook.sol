@@ -12,6 +12,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BaseHook} from "../../utils/BaseHook.sol";
 import {DeltaResolver} from "../DeltaResolver.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 /// @title Base Token Wrapper Hook
 /// @notice Abstract base contract for implementing token wrapper hooks in Uniswap V4
@@ -96,7 +97,7 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
 
     /// @notice Prevents liquidity operations on wrapper pools
     /// @dev Always reverts as liquidity is managed through the token wrapper
-    function _beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
+    function _beforeAddLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
         internal
         pure
         override
@@ -111,7 +112,7 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
     /// @return selector The function selector
     /// @return swapDelta The input/output token amounts for pool accounting
     /// @return lpFeeOverride The fee override (always 0 for wrapper pools)
-    function _beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata params, bytes calldata)
+    function _beforeSwap(address, PoolKey calldata, SwapParams calldata params, bytes calldata)
         internal
         override
         returns (bytes4, BeforeSwapDelta swapDelta, uint24)

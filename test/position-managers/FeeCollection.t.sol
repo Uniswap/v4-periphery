@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -19,6 +18,7 @@ import {LiquidityFuzzers} from "../shared/fuzz/LiquidityFuzzers.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {FeeMath} from "../shared/FeeMath.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -70,7 +70,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertApproxEqAbs(uint128(expectedFees.amount1()), feeRevenue1, 1 wei);
     }
 
-    function test_fuzz_collect_erc20(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_collect_erc20(ModifyLiquidityParams memory params) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
@@ -101,7 +101,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_collect_sameRange_erc20(
-        IPoolManager.ModifyLiquidityParams memory params,
+        ModifyLiquidityParams memory params,
         uint256 liquidityDeltaBob
     ) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);

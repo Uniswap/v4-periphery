@@ -8,12 +8,13 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {BaseTestHooks} from "@uniswap/v4-core/src/test/BaseTestHooks.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {IMsgSender} from "../../src/interfaces/IMsgSender.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 contract MockMsgSenderHook is BaseTestHooks {
     event BeforeSwapMsgSender(address msgSender);
     event AfterSwapMsgSender(address msgSender);
 
-    function beforeSwap(address periphery, PoolKey calldata, IPoolManager.SwapParams calldata, bytes calldata)
+    function beforeSwap(address periphery, PoolKey calldata, SwapParams calldata, bytes calldata)
         external
         override
         returns (bytes4, BeforeSwapDelta, uint24)
@@ -25,7 +26,7 @@ contract MockMsgSenderHook is BaseTestHooks {
     function afterSwap(
         address periphery,
         PoolKey calldata,
-        IPoolManager.SwapParams calldata,
+        SwapParams calldata,
         BalanceDelta,
         bytes calldata
     ) external override returns (bytes4, int128) {

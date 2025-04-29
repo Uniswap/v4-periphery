@@ -8,6 +8,7 @@ import {QuoterRevert} from "../libraries/QuoterRevert.sol";
 import {SafeCallback} from "../base/SafeCallback.sol";
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 abstract contract BaseV4Quoter is SafeCallback {
     using QuoterRevert for *;
@@ -41,7 +42,7 @@ abstract contract BaseV4Quoter is SafeCallback {
     {
         swapDelta = poolManager.swap(
             poolKey,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: zeroForOne,
                 amountSpecified: amountSpecified,
                 sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1

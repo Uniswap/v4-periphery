@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {BaseTestHooks} from "@uniswap/v4-core/src/test/BaseTestHooks.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 contract MockReenterHook is BaseTestHooks {
     IPositionManager posm;
@@ -14,7 +14,7 @@ contract MockReenterHook is BaseTestHooks {
     function beforeAddLiquidity(
         address,
         PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
+        ModifyLiquidityParams calldata,
         bytes calldata functionSelector
     ) external override returns (bytes4) {
         if (functionSelector.length == 0) {

@@ -3,7 +3,6 @@ pragma solidity ^0.8.24;
 
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -13,6 +12,7 @@ import {HookSavesDelta} from "./HookSavesDelta.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 /// @notice This contract is NOT a production use contract. It is meant to be used in testing to verify that external contracts can modify liquidity without a lock (IPositionManager.modifyLiquiditiesWithoutUnlock)
 /// @dev a hook that can modify liquidity in beforeSwap
@@ -28,7 +28,7 @@ contract HookModifyLiquidities is HookSavesDelta {
     function beforeSwap(
         address, /* sender **/
         PoolKey calldata key, /* key **/
-        IPoolManager.SwapParams calldata, /* params **/
+        SwapParams calldata, /* params **/
         bytes calldata hookData
     ) external override returns (bytes4, BeforeSwapDelta, uint24) {
         approvePosmCurrency(key.currency0);
@@ -42,7 +42,7 @@ contract HookModifyLiquidities is HookSavesDelta {
     function beforeAddLiquidity(
         address, /* sender **/
         PoolKey calldata, /* key **/
-        IPoolManager.ModifyLiquidityParams calldata, /* params **/
+        ModifyLiquidityParams calldata, /* params **/
         bytes calldata hookData
     ) external override returns (bytes4) {
         if (hookData.length > 0) {
@@ -55,7 +55,7 @@ contract HookModifyLiquidities is HookSavesDelta {
     function beforeRemoveLiquidity(
         address, /* sender **/
         PoolKey calldata, /* key **/
-        IPoolManager.ModifyLiquidityParams calldata, /* params **/
+        ModifyLiquidityParams calldata, /* params **/
         bytes calldata hookData
     ) external override returns (bytes4) {
         if (hookData.length > 0) {
