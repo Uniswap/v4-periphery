@@ -5,10 +5,11 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PathKey} from "../libraries/PathKey.sol";
 import {IImmutableState} from "./IImmutableState.sol";
+import {IMsgSender} from "./IMsgSender.sol";
 
 /// @title IV4Quoter
 /// @notice Interface for the V4Quoter contract
-interface IV4Quoter is IImmutableState {
+interface IV4Quoter is IImmutableState, IMsgSender {
     struct QuoteExactSingleParams {
         PoolKey poolKey;
         bool zeroForOne;

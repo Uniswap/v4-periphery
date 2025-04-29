@@ -120,7 +120,7 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
     function _beforeSwap(address, PoolKey calldata, IPoolManager.SwapParams calldata params, bytes calldata)
         internal
         override
-        returns (bytes4 selector, BeforeSwapDelta swapDelta, uint24 lpFeeOverride)
+        returns (bytes4, BeforeSwapDelta swapDelta, uint24)
     {
         bool isExactInput = params.amountSpecified < 0;
         if (isExactInput && !_supportsExactInput()) revert ExactInputNotSupported();
