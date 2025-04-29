@@ -86,12 +86,11 @@ abstract contract BaseHook is IHooks, ImmutableState {
         return _beforeRemoveLiquidity(sender, key, params, hookData);
     }
 
-    function _beforeRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        ModifyLiquidityParams calldata,
-        bytes calldata
-    ) internal virtual returns (bytes4) {
+    function _beforeRemoveLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
+        internal
+        virtual
+        returns (bytes4)
+    {
         revert HookNotImplemented();
     }
 
@@ -142,12 +141,11 @@ abstract contract BaseHook is IHooks, ImmutableState {
     }
 
     /// @inheritdoc IHooks
-    function beforeSwap(
-        address sender,
-        PoolKey calldata key,
-        SwapParams calldata params,
-        bytes calldata hookData
-    ) external onlyPoolManager returns (bytes4, BeforeSwapDelta, uint24) {
+    function beforeSwap(address sender, PoolKey calldata key, SwapParams calldata params, bytes calldata hookData)
+        external
+        onlyPoolManager
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
         return _beforeSwap(sender, key, params, hookData);
     }
 

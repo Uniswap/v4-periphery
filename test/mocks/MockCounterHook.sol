@@ -59,22 +59,20 @@ contract MockCounterHook is BaseHook {
         return (BaseHook.afterSwap.selector, 0);
     }
 
-    function _beforeAddLiquidity(
-        address,
-        PoolKey calldata key,
-        ModifyLiquidityParams calldata,
-        bytes calldata
-    ) internal override returns (bytes4) {
+    function _beforeAddLiquidity(address, PoolKey calldata key, ModifyLiquidityParams calldata, bytes calldata)
+        internal
+        override
+        returns (bytes4)
+    {
         beforeAddLiquidityCount[key.toId()]++;
         return BaseHook.beforeAddLiquidity.selector;
     }
 
-    function _beforeRemoveLiquidity(
-        address,
-        PoolKey calldata key,
-        ModifyLiquidityParams calldata,
-        bytes calldata
-    ) internal override returns (bytes4) {
+    function _beforeRemoveLiquidity(address, PoolKey calldata key, ModifyLiquidityParams calldata, bytes calldata)
+        internal
+        override
+        returns (bytes4)
+    {
         beforeRemoveLiquidityCount[key.toId()]++;
         return BaseHook.beforeRemoveLiquidity.selector;
     }

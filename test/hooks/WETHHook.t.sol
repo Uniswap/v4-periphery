@@ -258,12 +258,7 @@ contract WETHHookTest is Test, Deployers {
 
         modifyLiquidityRouter.modifyLiquidity(
             poolKey,
-            ModifyLiquidityParams({
-                tickLower: -120,
-                tickUpper: 120,
-                liquidityDelta: 1000e18,
-                salt: bytes32(0)
-            }),
+            ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: 1000e18, salt: bytes32(0)}),
             ""
         );
     }
@@ -328,12 +323,7 @@ contract WETHHookTest is Test, Deployers {
         weth.approve(address(modifyLiquidityRouter), type(uint256).max);
         modifyLiquidityRouter.modifyLiquidity{value: 100 ether}(
             unrelatedPoolKey,
-            ModifyLiquidityParams({
-                tickLower: -120,
-                tickUpper: 120,
-                liquidityDelta: 1000e18,
-                salt: bytes32(0)
-            }),
+            ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: 1000e18, salt: bytes32(0)}),
             ""
         );
     }

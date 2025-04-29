@@ -544,9 +544,7 @@ contract QuoterTest is Test, Deployers {
         );
         positionManager.modifyLiquidity(
             poolKey,
-            ModifyLiquidityParams(
-                0, 60, calculateLiquidityFromAmounts(SQRT_PRICE_1_1, 0, 60, 100, 100).toInt256(), 0
-            ),
+            ModifyLiquidityParams(0, 60, calculateLiquidityFromAmounts(SQRT_PRICE_1_1, 0, 60, 100, 100).toInt256(), 0),
             ZERO_BYTES
         );
         positionManager.modifyLiquidity(

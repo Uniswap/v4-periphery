@@ -235,12 +235,7 @@ contract WstETHHookTest is Test, Deployers {
 
         modifyLiquidityRouter.modifyLiquidity(
             poolKey,
-            ModifyLiquidityParams({
-                tickLower: -120,
-                tickUpper: 120,
-                liquidityDelta: 1000e18,
-                salt: bytes32(0)
-            }),
+            ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: 1000e18, salt: bytes32(0)}),
             ""
         );
     }
@@ -303,12 +298,7 @@ contract WstETHHookTest is Test, Deployers {
         wstETH.approve(address(modifyLiquidityRouter), type(uint256).max);
         modifyLiquidityRouter.modifyLiquidity(
             unrelatedPoolKey,
-            ModifyLiquidityParams({
-                tickLower: -120,
-                tickUpper: 120,
-                liquidityDelta: 1000e18,
-                salt: bytes32(0)
-            }),
+            ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: 1000e18, salt: bytes32(0)}),
             ""
         );
     }

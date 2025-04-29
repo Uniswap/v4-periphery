@@ -100,10 +100,7 @@ contract FeeCollectionTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(uint256(int256(delta.amount1())), currency1.balanceOfSelf() - balance1Before);
     }
 
-    function test_fuzz_collect_sameRange_erc20(
-        ModifyLiquidityParams memory params,
-        uint256 liquidityDeltaBob
-    ) public {
+    function test_fuzz_collect_sameRange_erc20(ModifyLiquidityParams memory params, uint256 liquidityDeltaBob) public {
         params.liquidityDelta = bound(params.liquidityDelta, 10e18, 10_000e18);
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity

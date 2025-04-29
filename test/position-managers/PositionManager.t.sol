@@ -102,9 +102,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         lpm.modifyLiquidities(calls, block.timestamp + 1);
     }
 
-    function test_fuzz_mint_withLiquidityDelta(ModifyLiquidityParams memory params, uint160 sqrtPriceX96)
-        public
-    {
+    function test_fuzz_mint_withLiquidityDelta(ModifyLiquidityParams memory params, uint160 sqrtPriceX96) public {
         bound(sqrtPriceX96, MIN_PRICE_LIMIT, MAX_PRICE_LIMIT);
         params = createFuzzyLiquidityParams(key, params, sqrtPriceX96);
         // liquidity is a uint
@@ -503,10 +501,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         lpm.modifyLiquidities(calls, _deadline);
     }
 
-    function test_fuzz_decreaseLiquidity(
-        ModifyLiquidityParams memory params,
-        uint256 decreaseLiquidityDelta
-    ) public {
+    function test_fuzz_decreaseLiquidity(ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta) public {
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, ActionConstants.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         decreaseLiquidityDelta = uint256(bound(int256(decreaseLiquidityDelta), 0, params.liquidityDelta));
@@ -527,10 +522,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     /// @dev Clearing on decrease liquidity is allowed
-    function test_fuzz_decreaseLiquidity_clear(
-        ModifyLiquidityParams memory params,
-        uint256 decreaseLiquidityDelta
-    ) public {
+    function test_fuzz_decreaseLiquidity_clear(ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta)
+        public
+    {
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         decreaseLiquidityDelta = uint256(bound(int256(decreaseLiquidityDelta), 0, params.liquidityDelta));
@@ -559,9 +553,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     /// @dev Clearing on decrease will take tokens if the amount exceeds the clear limit
-    function test_fuzz_decreaseLiquidity_clearExceedsThenTake(ModifyLiquidityParams memory params)
-        public
-    {
+    function test_fuzz_decreaseLiquidity_clearExceedsThenTake(ModifyLiquidityParams memory params) public {
         // use fuzzer for tick range
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
@@ -604,10 +596,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOfSelf(), balance1Before + amount1);
     }
 
-    function test_decreaseLiquidity_collectFees(
-        ModifyLiquidityParams memory params,
-        uint256 decreaseLiquidityDelta
-    ) public {
+    function test_decreaseLiquidity_collectFees(ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta)
+        public
+    {
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, ActionConstants.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
