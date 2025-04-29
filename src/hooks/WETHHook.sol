@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.26;
 
 import {WETH} from "solmate/src/tokens/WETH.sol";
 import {BaseTokenWrapperHook} from "../base/hooks/BaseTokenWrapperHook.sol";

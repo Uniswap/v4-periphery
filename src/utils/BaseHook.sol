@@ -20,6 +20,7 @@ abstract contract BaseHook is IHooks, ImmutableState {
 
     /// @notice Returns a struct of permissions to signal which hook functions are to be implemented
     /// @dev Used at deployment to validate the address correctly represents the expected permissions
+    /// @return Permissions struct
     function getHookPermissions() public pure virtual returns (Hooks.Permissions memory);
 
     /// @notice Validates the deployed hook address agrees with the expected permissions of the hook
