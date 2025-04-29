@@ -34,6 +34,7 @@ import {Planner, Plan} from "../shared/Planner.sol";
 import {PosmTestSetup} from "../shared/PosmTestSetup.sol";
 import {ReentrantToken} from "../mocks/ReentrantToken.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -101,9 +102,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         lpm.modifyLiquidities(calls, block.timestamp + 1);
     }
 
-    function test_fuzz_mint_withLiquidityDelta(IPoolManager.ModifyLiquidityParams memory params, uint160 sqrtPriceX96)
-        public
-    {
+    function test_fuzz_mint_withLiquidityDelta(ModifyLiquidityParams memory params, uint160 sqrtPriceX96) public {
         bound(sqrtPriceX96, MIN_PRICE_LIMIT, MAX_PRICE_LIMIT);
         params = createFuzzyLiquidityParams(key, params, sqrtPriceX96);
         // liquidity is a uint
@@ -199,8 +198,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
     }
 
-    function test_fuzz_mint_recipient(IPoolManager.ModifyLiquidityParams memory seedParams) public {
-        IPoolManager.ModifyLiquidityParams memory params = createFuzzyLiquidityParams(key, seedParams, SQRT_PRICE_1_1);
+    function test_fuzz_mint_recipient(ModifyLiquidityParams memory seedParams) public {
+        ModifyLiquidityParams memory params = createFuzzyLiquidityParams(key, seedParams, SQRT_PRICE_1_1);
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
 
@@ -226,8 +225,8 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     /// @dev clear cannot be used on mint (negative delta)
-    function test_fuzz_mint_clear_revert(IPoolManager.ModifyLiquidityParams memory seedParams) public {
-        IPoolManager.ModifyLiquidityParams memory params = createFuzzyLiquidityParams(key, seedParams, SQRT_PRICE_1_1);
+    function test_fuzz_mint_clear_revert(ModifyLiquidityParams memory seedParams) public {
+        ModifyLiquidityParams memory params = createFuzzyLiquidityParams(key, seedParams, SQRT_PRICE_1_1);
         uint256 liquidityToAdd =
             params.liquidityDelta < 0 ? uint256(-params.liquidityDelta) : uint256(params.liquidityDelta);
 
@@ -342,7 +341,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         lpm.modifyLiquidities(calls, _deadline);
     }
 
-    function test_fuzz_burn_emptyPosition(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_burn_emptyPosition(ModifyLiquidityParams memory params) public {
         uint256 balance0Start = currency0.balanceOfSelf();
         uint256 balance1Start = currency1.balanceOfSelf();
 
@@ -386,7 +385,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertApproxEqAbs(currency1.balanceOfSelf(), balance1Start, 1 wei);
     }
 
-    function test_fuzz_burn_nonEmptyPosition(IPoolManager.ModifyLiquidityParams memory params) public {
+    function test_fuzz_burn_nonEmptyPosition(ModifyLiquidityParams memory params) public {
         uint256 balance0Start = currency0.balanceOfSelf();
         uint256 balance1Start = currency1.balanceOfSelf();
 
@@ -502,10 +501,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         lpm.modifyLiquidities(calls, _deadline);
     }
 
-    function test_fuzz_decreaseLiquidity(
-        IPoolManager.ModifyLiquidityParams memory params,
-        uint256 decreaseLiquidityDelta
-    ) public {
+    function test_fuzz_decreaseLiquidity(ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta) public {
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, ActionConstants.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         decreaseLiquidityDelta = uint256(bound(int256(decreaseLiquidityDelta), 0, params.liquidityDelta));
@@ -526,10 +522,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     /// @dev Clearing on decrease liquidity is allowed
-    function test_fuzz_decreaseLiquidity_clear(
-        IPoolManager.ModifyLiquidityParams memory params,
-        uint256 decreaseLiquidityDelta
-    ) public {
+    function test_fuzz_decreaseLiquidity_clear(ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta)
+        public
+    {
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, address(this), key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         decreaseLiquidityDelta = uint256(bound(int256(decreaseLiquidityDelta), 0, params.liquidityDelta));
@@ -558,9 +553,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     /// @dev Clearing on decrease will take tokens if the amount exceeds the clear limit
-    function test_fuzz_decreaseLiquidity_clearExceedsThenTake(IPoolManager.ModifyLiquidityParams memory params)
-        public
-    {
+    function test_fuzz_decreaseLiquidity_clearExceedsThenTake(ModifyLiquidityParams memory params) public {
         // use fuzzer for tick range
         params = createFuzzyLiquidityParams(key, params, SQRT_PRICE_1_1);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
@@ -603,10 +596,9 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertEq(currency1.balanceOfSelf(), balance1Before + amount1);
     }
 
-    function test_decreaseLiquidity_collectFees(
-        IPoolManager.ModifyLiquidityParams memory params,
-        uint256 decreaseLiquidityDelta
-    ) public {
+    function test_decreaseLiquidity_collectFees(ModifyLiquidityParams memory params, uint256 decreaseLiquidityDelta)
+        public
+    {
         uint256 tokenId;
         (tokenId, params) = addFuzzyLiquidity(lpm, ActionConstants.MSG_SENDER, key, params, SQRT_PRICE_1_1, ZERO_BYTES);
         vm.assume(params.tickLower < 0 && 0 < params.tickUpper); // require two-sided liquidity
@@ -708,7 +700,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_fuzz_decreaseLiquidity_assertCollectedBalance(
-        IPoolManager.ModifyLiquidityParams memory params,
+        ModifyLiquidityParams memory params,
         uint256 decreaseLiquidityDelta
     ) public {
         uint256 tokenId;

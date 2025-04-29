@@ -11,13 +11,13 @@ import {PathKey} from "../../src/libraries/PathKey.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LiquidityOperations} from "./LiquidityOperations.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the router.
 contract RoutingTestHelpers is Test, Deployers {
@@ -76,7 +76,7 @@ contract RoutingTestHelpers is Test, Deployers {
         manager.initialize(_key, SQRT_PRICE_1_1);
         MockERC20(Currency.unwrap(currencyA)).approve(address(positionManager), type(uint256).max);
         MockERC20(Currency.unwrap(currencyB)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyLiquidity(_key, IPoolManager.ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x");
+        positionManager.modifyLiquidity(_key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x");
     }
 
     function createNativePoolWithLiquidity(Currency currency, address hookAddr)
@@ -88,7 +88,7 @@ contract RoutingTestHelpers is Test, Deployers {
         manager.initialize(_key, SQRT_PRICE_1_1);
         MockERC20(Currency.unwrap(currency)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity{value: 200 ether}(
-            _key, IPoolManager.ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x"
+            _key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x"
         );
     }
 

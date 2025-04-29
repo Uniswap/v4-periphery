@@ -21,6 +21,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 // solmate
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
@@ -482,7 +483,7 @@ contract QuoterTest is Test, Deployers {
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams(
+            ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
                 calculateLiquidityFromAmounts(SQRT_PRICE_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
@@ -498,7 +499,7 @@ contract QuoterTest is Test, Deployers {
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams(
+            ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
                 calculateLiquidityFromAmounts(SQRT_PRICE_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
@@ -508,14 +509,14 @@ contract QuoterTest is Test, Deployers {
         );
         positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams(
+            ModifyLiquidityParams(
                 -60, 60, calculateLiquidityFromAmounts(SQRT_PRICE_1_1, -60, 60, 100, 100).toInt256(), 0
             ),
             ZERO_BYTES
         );
         positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams(
+            ModifyLiquidityParams(
                 -120, 120, calculateLiquidityFromAmounts(SQRT_PRICE_1_1, -120, 120, 100, 100).toInt256(), 0
             ),
             ZERO_BYTES
@@ -533,7 +534,7 @@ contract QuoterTest is Test, Deployers {
         MockERC20(Currency.unwrap(poolKey.currency1)).approve(address(positionManager), type(uint256).max);
         positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams(
+            ModifyLiquidityParams(
                 MIN_TICK,
                 MAX_TICK,
                 calculateLiquidityFromAmounts(SQRT_PRICE_1_1, MIN_TICK, MAX_TICK, 1000000, 1000000).toInt256(),
@@ -543,14 +544,12 @@ contract QuoterTest is Test, Deployers {
         );
         positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams(
-                0, 60, calculateLiquidityFromAmounts(SQRT_PRICE_1_1, 0, 60, 100, 100).toInt256(), 0
-            ),
+            ModifyLiquidityParams(0, 60, calculateLiquidityFromAmounts(SQRT_PRICE_1_1, 0, 60, 100, 100).toInt256(), 0),
             ZERO_BYTES
         );
         positionManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams(
+            ModifyLiquidityParams(
                 -120, 0, calculateLiquidityFromAmounts(SQRT_PRICE_1_1, -120, 0, 100, 100).toInt256(), 0
             ),
             ZERO_BYTES
