@@ -11,6 +11,7 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 import {IPositionDescriptor} from "./interfaces/IPositionDescriptor.sol";
 import {ERC721Permit_v4} from "./base/ERC721Permit_v4.sol";
@@ -423,7 +424,7 @@ contract PositionManager is
         if (liquidity > 0) {
             BalanceDelta liquidityDelta;
             // do not use _modifyLiquidity as we do not need to notify on modification for burns.
-            IPoolManager.ModifyLiquidityParams memory params = IPoolManager.ModifyLiquidityParams({
+            ModifyLiquidityParams memory params = ModifyLiquidityParams({
                 tickLower: info.tickLower(),
                 tickUpper: info.tickUpper(),
                 liquidityDelta: -(liquidity.toInt256()),
@@ -496,7 +497,7 @@ contract PositionManager is
     ) internal returns (BalanceDelta liquidityDelta, BalanceDelta feesAccrued) {
         (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
             poolKey,
-            IPoolManager.ModifyLiquidityParams({
+            ModifyLiquidityParams({
                 tickLower: info.tickLower(),
                 tickUpper: info.tickUpper(),
                 liquidityDelta: liquidityChange,

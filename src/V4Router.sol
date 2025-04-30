@@ -16,6 +16,7 @@ import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
 import {BipsLibrary} from "./libraries/BipsLibrary.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 /// @title UniswapV4Router
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap v4 pools
@@ -160,7 +161,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         unchecked {
             BalanceDelta delta = poolManager.swap(
                 poolKey,
-                IPoolManager.SwapParams(
+                SwapParams(
                     zeroForOne, amountSpecified, zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
                 ),
                 hookData
