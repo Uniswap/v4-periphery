@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Test, console2} from "forge-std/Test.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -127,7 +128,7 @@ contract WstETHHookForkTest is Test, Deployers {
 
         router.swap(
             poolKey,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: false, // wstETH (0) to stETH (1)
                 amountSpecified: -int256(wrapAmount),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
@@ -153,7 +154,7 @@ contract WstETHHookForkTest is Test, Deployers {
 
         router.swap(
             poolKey,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: true, // stETH (1) to wstETH (0)
                 amountSpecified: -int256(unwrapAmount),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
@@ -183,7 +184,7 @@ contract WstETHHookForkTest is Test, Deployers {
         );
         router.swap(
             poolKey,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: false, // wstETH (0) to stETH (1)
                 amountSpecified: int256(wrapAmount),
                 sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
@@ -209,7 +210,7 @@ contract WstETHHookForkTest is Test, Deployers {
         );
         router.swap(
             poolKey,
-            IPoolManager.SwapParams({
+            SwapParams({
                 zeroForOne: true, // stETH (1) to wstETH (0)
                 amountSpecified: int256(unwrapAmount),
                 sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1

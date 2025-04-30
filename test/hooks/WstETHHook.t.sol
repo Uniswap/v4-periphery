@@ -164,9 +164,7 @@ contract WstETHHookTest is Test, Deployers {
                 abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
-        router.swap(
-            poolKey, IPoolManager.SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: 0}), ""
-        );
+        router.swap(poolKey, SwapParams({zeroForOne: true, amountSpecified: 1 ether, sqrtPriceLimitX96: 0}), "");
     }
 
     function test_revert_unwrap_exactOutput() public {
@@ -181,9 +179,7 @@ contract WstETHHookTest is Test, Deployers {
                 abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
-        router.swap(
-            poolKey, IPoolManager.SwapParams({zeroForOne: false, amountSpecified: 1 ether, sqrtPriceLimitX96: 0}), ""
-        );
+        router.swap(poolKey, SwapParams({zeroForOne: false, amountSpecified: 1 ether, sqrtPriceLimitX96: 0}), "");
     }
 
     function test_revertAddLiquidity() public {

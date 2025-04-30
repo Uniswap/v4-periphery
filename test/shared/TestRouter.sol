@@ -5,6 +5,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {PoolTestBase} from "@uniswap/v4-core/src/test/PoolTestBase.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
@@ -23,11 +24,11 @@ contract TestRouter is PoolTestBase, DeltaResolver {
     struct CallbackData {
         address sender;
         PoolKey key;
-        IPoolManager.SwapParams params;
+        SwapParams params;
         bytes hookData;
     }
 
-    function swap(PoolKey memory key, IPoolManager.SwapParams memory params, bytes memory hookData)
+    function swap(PoolKey memory key, SwapParams memory params, bytes memory hookData)
         external
         payable
         returns (BalanceDelta delta)
@@ -53,7 +54,7 @@ contract TestRouter is PoolTestBase, DeltaResolver {
             uint256 amountIn = _getFullCredit(inputCurrency);
             delta = manager.swap(
                 data.key,
-                IPoolManager.SwapParams(data.params.zeroForOne, -int256(amountIn), data.params.sqrtPriceLimitX96),
+                SwapParams(data.params.zeroForOne, -int256(amountIn), data.params.sqrtPriceLimitX96),
                 data.hookData
             );
             _take(outputCurrency, data.sender, _getFullCredit(outputCurrency));
@@ -61,9 +62,7 @@ contract TestRouter is PoolTestBase, DeltaResolver {
             // exact output
             delta = manager.swap(
                 data.key,
-                IPoolManager.SwapParams(
-                    data.params.zeroForOne, int256(data.params.amountSpecified), data.params.sqrtPriceLimitX96
-                ),
+                SwapParams(data.params.zeroForOne, int256(data.params.amountSpecified), data.params.sqrtPriceLimitX96),
                 data.hookData
             );
 
