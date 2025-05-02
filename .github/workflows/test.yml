@@ -26,3 +26,4 @@ jobs:
         env:
           FOUNDRY_PROFILE: ci
           FORGE_SNAPSHOT_CHECK: true
+          INFURA_API_KEY: ${{ secrets.INFURA_API_KEY }}

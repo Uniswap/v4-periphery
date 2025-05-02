@@ -94,7 +94,7 @@ contract WETHHookTest is Test, Deployers {
 
         vm.startPrank(alice);
         vm.expectEmit(true, true, true, true);
-        emit Transfer(address(0), address(hook), wrapAmount);
+        emit Transfer(address(0), address(manager), wrapAmount);
         vm.expectEmit(true, true, true, true);
         emit Transfer(address(manager), address(alice), wrapAmount);
 
@@ -175,7 +175,7 @@ contract WETHHookTest is Test, Deployers {
 
         vm.startPrank(alice);
         vm.expectEmit(true, true, true, true);
-        emit Transfer(address(0), address(hook), wrapAmount);
+        emit Transfer(address(0), address(manager), wrapAmount);
         vm.expectEmit(true, true, true, true);
         emit Transfer(address(manager), address(alice), wrapAmount);
 

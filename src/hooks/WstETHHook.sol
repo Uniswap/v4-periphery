@@ -3,15 +3,20 @@ pragma solidity 0.8.26;
 
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {BaseTokenWrapperHook} from "../base/hooks/BaseTokenWrapperHook.sol";
-import {IWstETH} from "../interfaces/external/IWstETH.sol";
+import {IWstETH, IStETH} from "../interfaces/external/IWstETH.sol";
+import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 
 /// @title Wrapped Staked ETH (wstETH) Hook
 /// @notice Hook for wrapping/unwrapping stETH/wstETH in Uniswap V4 pools
 /// @dev Implements dynamic exchange rate wrapping/unwrapping between stETH and wstETH
 /// @dev wstETH represents stETH with accrued staking rewards, maintaining a dynamic exchange rate
 contract WstETHHook is BaseTokenWrapperHook {
+    using FixedPointMathLib for uint256;
+    using SafeTransferLib for ERC20;
+
     /// @notice The wstETH contract used for wrapping/unwrapping operations
     IWstETH public immutable wstETH;
 
@@ -22,28 +27,39 @@ contract WstETHHook is BaseTokenWrapperHook {
     constructor(IPoolManager _manager, IWstETH _wsteth)
         BaseTokenWrapperHook(
             _manager,
-            Currency.wrap(address(_wsteth)), // wrapper token is wsteth
+            Currency.wrap(address(_wsteth)), // wrapper token is wstETH
             Currency.wrap(_wsteth.stETH()) // underlying token is stETH
         )
     {
         wstETH = _wsteth;
-        ERC20(Currency.unwrap(underlyingCurrency)).approve(address(wstETH), type(uint256).max);
+        ERC20(Currency.unwrap(underlyingCurrency)).safeApprove(address(wstETH), type(uint256).max);
     }
 
     /// @inheritdoc BaseTokenWrapperHook
-    /// @notice Wraps stETH to wstETH
-    /// @param underlyingAmount Amount of stETH to wrap
-    /// @return Amount of wstETH received
-    function _deposit(uint256 underlyingAmount) internal override returns (uint256) {
-        return wstETH.wrap(underlyingAmount);
+    function _deposit(uint256 underlyingAmount)
+        internal
+        override
+        returns (uint256 actualUnderlyingAmount, uint256 wrappedAmount)
+    {
+        _take(underlyingCurrency, address(this), underlyingAmount);
+        // For wrapping, the key is ensuring we wrap exactly what we got
+        actualUnderlyingAmount = IStETH(Currency.unwrap(underlyingCurrency)).balanceOf(address(this));
+
+        // Wrap exactly what we have (which might be 1-2 wei less than requested)
+        wrappedAmount = wstETH.wrap(actualUnderlyingAmount);
+        _settle(wrapperCurrency, address(this), wrappedAmount);
     }
 
     /// @inheritdoc BaseTokenWrapperHook
-    /// @notice Unwraps wstETH to stETH
-    /// @param wrapperAmount Amount of wstETH to unwrap
-    /// @return Amount of stETH received
-    function _withdraw(uint256 wrapperAmount) internal override returns (uint256) {
-        return wstETH.unwrap(wrapperAmount);
+    function _withdraw(uint256 wrapperAmount)
+        internal
+        override
+        returns (uint256 actualWrappedAmount, uint256 unwrappedAmount)
+    {
+        _take(wrapperCurrency, address(this), wrapperAmount);
+        actualWrappedAmount = wrapperAmount;
+        unwrappedAmount = wstETH.unwrap(actualWrappedAmount);
+        _settle(underlyingCurrency, address(this), unwrappedAmount);
     }
 
     /// @inheritdoc BaseTokenWrapperHook
@@ -52,7 +68,7 @@ contract WstETHHook is BaseTokenWrapperHook {
     /// @return Amount of stETH required
     /// @dev Uses current stETH/wstETH exchange rate for calculation
     function _getWrapInputRequired(uint256 wrappedAmount) internal view override returns (uint256) {
-        return wstETH.getStETHByWstETH(wrappedAmount);
+        return wrappedAmount.divWadUp(wstETH.tokensPerStEth());
     }
 
     /// @inheritdoc BaseTokenWrapperHook
@@ -62,5 +78,10 @@ contract WstETHHook is BaseTokenWrapperHook {
     /// @dev Uses current stETH/wstETH exchange rate for calculation
     function _getUnwrapInputRequired(uint256 underlyingAmount) internal view override returns (uint256) {
         return wstETH.getWstETHByStETH(underlyingAmount);
+    }
+
+    /// @inheritdoc BaseTokenWrapperHook
+    function _supportsExactOutput() internal pure override returns (bool) {
+        return false;
     }
 }
