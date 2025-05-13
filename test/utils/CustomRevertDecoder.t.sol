@@ -9,30 +9,43 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 library CustomRevertDecoder {
-    function decode(bytes memory data)
+    function decode(bytes memory err)
         internal
         pure
         returns (
             bytes4 wrappedErrorSelector,
-            address originAddress,
-            bytes4 originFunction,
-            bytes4 reasonSelector,
-            bytes memory reason,
-            bytes4 detailsSelector
+            address revertingContract,
+            bytes4 revertingFunctionSelector,
+            bytes4 revertReasonSelector,
+            bytes memory revertReason,
+            bytes4 additionalContextSelector
         )
     {
         assembly {
-            wrappedErrorSelector := mload(add(data, 32))
-            originAddress := mload(add(data, 36))
-            originFunction := mload(add(data, 68)) // 36 + 32
+            wrappedErrorSelector := mload(add(err, 0x20))
+            revertingContract := mload(add(err, 0x24))
+            revertingFunctionSelector := mload(add(err, 0x44))
 
-            let reasonSelectorOffset := mload(add(data, 100)) // 68 + 32
-            let detailsSelectorOffset := mload(add(data, 132)) // 100 + 32
-            let reasonOffset := mload(add(data, 164)) // 132 + 32
+            let offsetRevertReason := mload(add(err, 0x64))
+            let offsetAdditionalContext := mload(add(err, 0x84))
+            let sizeRevertReason := mload(add(err, add(offsetRevertReason, 0x24)))
 
-            reasonSelector := mload(add(data, add(68, reasonSelectorOffset))) // 68 + offset
-            detailsSelector := mload(add(data, add(68, detailsSelectorOffset))) // 68 + offset + offset
-            reason := mload(add(data, add(36, add(reasonSelectorOffset, reasonOffset)))) // 68 + offset + offset + offset
+            revertReasonSelector := mload(add(err, add(offsetRevertReason, 0x44)))
+            additionalContextSelector := mload(add(err, add(offsetAdditionalContext, 0x44)))
+
+            let ptr := mload(0x40)
+            revertReason := ptr
+            mstore(revertReason, sizeRevertReason)
+
+            let w := not(0x1f)
+
+            for { let s := and(add(sizeRevertReason, 0x20), w) } 1 {} {
+                mstore(add(revertReason, s), mload(add(err, add(offsetRevertReason, add(0x24, s)))))
+                s := add(s, w)
+                if iszero(s) { break }
+            }
+
+            mstore(0x40, add(ptr, add(0x20, sizeRevertReason)))
         }
     }
 }
