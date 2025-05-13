@@ -21,6 +21,10 @@ jobs:
         with:
           version: stable
 
+      - name: Show Forge version
+        run: |
+          forge --version
+
       - name: Run tests
         run: forge test --isolate -vvv
         env:
