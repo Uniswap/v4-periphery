@@ -46,4 +46,6 @@ library Actions {
     // note this is not supported in the position manager or router
     uint256 internal constant MINT_6909 = 0x17;
     uint256 internal constant BURN_6909 = 0x18;
+
+    uint256 internal constant SWAP_EXACT_IN_RAW = 0x19;
 }
