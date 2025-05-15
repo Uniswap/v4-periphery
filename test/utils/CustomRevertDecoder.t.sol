@@ -80,7 +80,7 @@ contract CustomRevertDecoderTest is Test {
     //         bytes4 _decodedWrapSelector,
     //         address _decodedRevertingContract,
     //         bytes4 _decodedRevertingFunctionSelector,
-    //         bytes4 _decodedrevertReasonSelector,
+    //         bytes4 _decodedRevertReasonSelector,
     //         bytes memory _decodedReason,
     //         bytes4 _decodedAdditionalContextSelector
     //     ) = CustomRevertDecoder.decode(data);
@@ -89,7 +89,7 @@ contract CustomRevertDecoderTest is Test {
     //     assertEq(_decodedWrapSelector, wrappedErrorSelector);
     //     assertEq(_decodedRevertingContract, revertingContract);
     //     assertEq(_decodedRevertingFunctionSelector, revertingFunctionSelector);
-    //     assertEq(_decodedrevertReasonSelector, revertReasonSelector);
+    //     assertEq(_decodedRevertReasonSelector, revertReasonSelector);
     //     assertEq(_decodedReason, "");
     //     assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
     // }
@@ -114,7 +114,7 @@ contract CustomRevertDecoderTest is Test {
             bytes4 _decodedWrapSelector,
             address _decodedRevertingContract,
             bytes4 _decodedRevertingFunctionSelector,
-            bytes4 _decodedrevertReasonSelector,
+            bytes4 _decodedRevertReasonSelector,
             bytes memory _decodedRevertReason,
             bytes4 _decodedAdditionalContextSelector
         ) = CustomRevertDecoder.decode(data);
@@ -123,7 +123,7 @@ contract CustomRevertDecoderTest is Test {
         assertEq(_decodedWrapSelector, wrappedErrorSelector);
         assertEq(_decodedRevertingContract, revertingContract);
         assertEq(_decodedRevertingFunctionSelector, revertingFunctionSelector);
-        assertEq(_decodedrevertReasonSelector, revertReasonSelector);
+        assertEq(_decodedRevertReasonSelector, revertReasonSelector);
         assertEq(_decodedRevertReason, abi.encodeWithSelector(revertReasonSelector, reasonData));
         assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
     }
@@ -147,7 +147,7 @@ contract CustomRevertDecoderTest is Test {
             bytes4 _decodedWrapSelector,
             address _decodedRevertingContract,
             bytes4 _decodedRevertingFunctionSelector,
-            bytes4 _decodedrevertReasonSelector,
+            bytes4 _decodedRevertReasonSelector,
             bytes memory _decodedReason,
             bytes4 _decodedAdditionalContextSelector
         ) = CustomRevertDecoder.decode(data);
@@ -156,7 +156,7 @@ contract CustomRevertDecoderTest is Test {
         assertEq(_decodedWrapSelector, wrappedErrorSelector);
         assertEq(_decodedRevertingContract, revertingContract);
         assertEq(_decodedRevertingFunctionSelector, revertingFunctionSelector);
-        assertEq(_decodedrevertReasonSelector, bytes4(0));
+        assertEq(_decodedRevertReasonSelector, bytes4(0));
         assertEq(_decodedReason, abi.encode(reason));
         assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
     }
@@ -180,7 +180,7 @@ contract CustomRevertDecoderTest is Test {
             bytes4 _decodedWrapSelector,
             address _decodedRevertingContract,
             bytes4 _decodedRevertingFunctionSelector,
-            bytes4 _decodedrevertReasonSelector,
+            bytes4 _decodedRevertReasonSelector,
             bytes memory _decodedReason,
             bytes4 _decodedAdditionalContextSelector
         ) = CustomRevertDecoder.decode(data);
@@ -189,7 +189,7 @@ contract CustomRevertDecoderTest is Test {
         assertEq(_decodedWrapSelector, wrappedErrorSelector);
         assertEq(_decodedRevertingContract, revertingContract);
         assertEq(_decodedRevertingFunctionSelector, revertingFunctionSelector);
-        assertEq(_decodedrevertReasonSelector, revertReasonSelector);
+        assertEq(_decodedRevertReasonSelector, revertReasonSelector);
         assertEq(_decodedReason, abi.encodeWithSelector(revertReasonSelector));
         assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
     }
