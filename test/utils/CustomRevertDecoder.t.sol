@@ -23,9 +23,6 @@ library CustomRevertDecoder {
             bytes4 additionalContextSelector
         )
     {
-        console2.logBytes(err);
-        bytes32 x;
-        bytes32 y;
         assembly {
             wrappedErrorSelector := mload(add(err, 0x20))
             revertingContract := mload(add(err, 0x24))
@@ -52,47 +49,77 @@ library CustomRevertDecoder {
 
             mstore(0x40, add(ptr, add(0x20, sizeRevertReason)))
         }
-        console2.logBytes32(y);
-        console2.logBytes32(x);
     }
 }
 
 contract CustomRevertDecoderTest is Test {
     function setUp() public {}
 
-    // function test_decode_empty() public pure {
-    //     bytes4 wrappedErrorSelector = CustomRevert.WrappedError.selector;
-    //     address revertingContract = address(0x1111);
-    //     bytes4 revertingFunctionSelector = bytes4(0);
-    //     bytes4 revertReasonSelector = bytes4(0);
-    //     // bytes memory reason = abi.encode(uint24(10000));
-    //     bytes4 additionalContextSelector = CurrencyLibrary.NativeTransferFailed.selector;
+    function test_fuzz_decode_customRevert(
+        bytes4 wrappedErrorSelector,
+        address revertingContract,
+        bytes4 revertingFunctionSelector,
+        bytes4 revertReasonSelector,
+        bytes memory reasonData,
+        bytes4 additionalContextSelector
+    ) public pure {
+        bytes memory data = abi.encodeWithSelector(
+            wrappedErrorSelector,
+            revertingContract,
+            revertingFunctionSelector,
+            abi.encodeWithSelector(revertReasonSelector, reasonData),
+            abi.encodeWithSelector(additionalContextSelector)
+        );
 
-    //     bytes memory data = abi.encodeWithSelector(
-    //         wrappedErrorSelector,
-    //         revertingContract,
-    //         revertingFunctionSelector,
-    //         abi.encodeWithSelector(revertReasonSelector),
-    //         abi.encodeWithSelector(additionalContextSelector)
-    //     );
+        (
+            bytes4 _decodedWrapSelector,
+            address _decodedRevertingContract,
+            bytes4 _decodedRevertingFunctionSelector,
+            bytes4 _decodedRevertReasonSelector,
+            bytes memory _decodedReason,
+            bytes4 _decodedAdditionalContextSelector
+        ) = CustomRevertDecoder.decode(data);
 
-    //     (
-    //         bytes4 _decodedWrapSelector,
-    //         address _decodedRevertingContract,
-    //         bytes4 _decodedRevertingFunctionSelector,
-    //         bytes4 _decodedRevertReasonSelector,
-    //         bytes memory _decodedReason,
-    //         bytes4 _decodedAdditionalContextSelector
-    //     ) = CustomRevertDecoder.decode(data);
+        assertEq(_decodedWrapSelector, wrappedErrorSelector);
+        assertEq(_decodedRevertingContract, revertingContract);
+        assertEq(_decodedRevertingFunctionSelector, revertingFunctionSelector);
+        assertEq(_decodedRevertReasonSelector, revertReasonSelector);
+        assertEq(_decodedReason, abi.encodeWithSelector(revertReasonSelector, reasonData));
+        assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
+    }
 
-    //     // assert original values against decoded values
-    //     assertEq(_decodedWrapSelector, wrappedErrorSelector);
-    //     assertEq(_decodedRevertingContract, revertingContract);
-    //     assertEq(_decodedRevertingFunctionSelector, revertingFunctionSelector);
-    //     assertEq(_decodedRevertReasonSelector, revertReasonSelector);
-    //     assertEq(_decodedReason, "");
-    //     assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
-    // }
+    function test_decode_empty() public pure {
+        bytes4 wrappedErrorSelector = CustomRevert.WrappedError.selector;
+        address revertingContract = address(0x1111);
+        bytes4 revertingFunctionSelector = bytes4(0);
+        bytes4 revertReasonSelector = bytes4(0);
+        bytes4 additionalContextSelector = CurrencyLibrary.NativeTransferFailed.selector;
+
+        bytes memory data = abi.encodeWithSelector(
+            wrappedErrorSelector,
+            revertingContract,
+            revertingFunctionSelector,
+            abi.encodeWithSelector(revertReasonSelector),
+            abi.encodeWithSelector(additionalContextSelector)
+        );
+
+        (
+            bytes4 _decodedWrapSelector,
+            address _decodedRevertingContract,
+            bytes4 _decodedRevertingFunctionSelector,
+            bytes4 _decodedRevertReasonSelector,
+            bytes memory _decodedReason,
+            bytes4 _decodedAdditionalContextSelector
+        ) = CustomRevertDecoder.decode(data);
+
+        // assert original values against decoded values
+        assertEq(_decodedWrapSelector, wrappedErrorSelector);
+        assertEq(_decodedRevertingContract, revertingContract);
+        assertEq(_decodedRevertingFunctionSelector, revertingFunctionSelector);
+        assertEq(_decodedRevertReasonSelector, revertReasonSelector);
+        assertEq(_decodedReason, abi.encodeWithSelector(revertReasonSelector));
+        assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
+    }
 
     function test_decode_singleParameter() public pure {
         bytes4 wrappedErrorSelector = CustomRevert.WrappedError.selector;
