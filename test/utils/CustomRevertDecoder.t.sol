@@ -3,9 +3,11 @@ pragma solidity ^0.8.24;
 
 import "forge-std/console2.sol";
 import {Test} from "forge-std/Test.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 library CustomRevertDecoder {
@@ -21,6 +23,9 @@ library CustomRevertDecoder {
             bytes4 additionalContextSelector
         )
     {
+        console2.logBytes(err);
+        bytes32 x;
+        bytes32 y;
         assembly {
             wrappedErrorSelector := mload(add(err, 0x20))
             revertingContract := mload(add(err, 0x24))
@@ -47,25 +52,61 @@ library CustomRevertDecoder {
 
             mstore(0x40, add(ptr, add(0x20, sizeRevertReason)))
         }
+        console2.logBytes32(y);
+        console2.logBytes32(x);
     }
 }
 
 contract CustomRevertDecoderTest is Test {
     function setUp() public {}
 
-    function test_decode() public pure {
+    // function test_decode_empty() public pure {
+    //     bytes4 wrappedErrorSelector = CustomRevert.WrappedError.selector;
+    //     address originAddress = address(0x1111);
+    //     bytes4 originFunction = bytes4(0);
+    //     bytes4 reasonSelector = bytes4(0);
+    //     // bytes memory reason = abi.encode(uint24(10000));
+    //     bytes4 detailsSelector = CurrencyLibrary.NativeTransferFailed.selector;
+
+    //     bytes memory data = abi.encodeWithSelector(
+    //         wrappedErrorSelector,
+    //         originAddress,
+    //         originFunction,
+    //         abi.encodeWithSelector(reasonSelector),
+    //         abi.encodeWithSelector(detailsSelector)
+    //     );
+
+    //     (
+    //         bytes4 _decodedWrapSelector,
+    //         address _decodedOriginAddress,
+    //         bytes4 _decodedOriginFunction,
+    //         bytes4 _decodedReasonSelector,
+    //         bytes memory _decodedReason,
+    //         bytes4 _decodedDetailsSelector
+    //     ) = CustomRevertDecoder.decode(data);
+
+    //     // assert original values against decoded values
+    //     assertEq(_decodedWrapSelector, wrappedErrorSelector);
+    //     assertEq(_decodedOriginAddress, originAddress);
+    //     assertEq(_decodedOriginFunction, originFunction);
+    //     assertEq(_decodedReasonSelector, reasonSelector);
+    //     assertEq(_decodedReason, "");
+    //     assertEq(_decodedDetailsSelector, detailsSelector);
+    // }
+
+    function test_decode_singleParameter() public pure {
         bytes4 wrappedErrorSelector = CustomRevert.WrappedError.selector;
         address originAddress = address(0x1111);
         bytes4 originFunction = IHooks.afterInitialize.selector;
         bytes4 reasonSelector = LPFeeLibrary.LPFeeTooLarge.selector;
-        // bytes memory reason = abi.encode(uint24(10000));
+        uint24 reasonData = uint24(10000);
         bytes4 detailsSelector = Hooks.HookCallFailed.selector;
 
         bytes memory data = abi.encodeWithSelector(
             wrappedErrorSelector,
             originAddress,
             originFunction,
-            abi.encodeWithSelector(reasonSelector, uint24(10000)),
+            abi.encodeWithSelector(reasonSelector, reasonData),
             abi.encodeWithSelector(detailsSelector)
         );
 
@@ -74,7 +115,7 @@ contract CustomRevertDecoderTest is Test {
             address _decodedOriginAddress,
             bytes4 _decodedOriginFunction,
             bytes4 _decodedReasonSelector,
-            ,
+            bytes memory _decodedRevertReason,
             bytes4 _decodedDetailsSelector
         ) = CustomRevertDecoder.decode(data);
 
@@ -83,6 +124,73 @@ contract CustomRevertDecoderTest is Test {
         assertEq(_decodedOriginAddress, originAddress);
         assertEq(_decodedOriginFunction, originFunction);
         assertEq(_decodedReasonSelector, reasonSelector);
+        assertEq(_decodedRevertReason, abi.encodeWithSelector(reasonSelector, reasonData));
+        assertEq(_decodedDetailsSelector, detailsSelector);
+    }
+
+    function test_decode_noReasonSelector() public pure {
+        bytes4 wrappedErrorSelector = CustomRevert.WrappedError.selector;
+        address originAddress = address(0x1111);
+        bytes4 originFunction = IHooks.afterInitialize.selector;
+        bytes32 reason = bytes32(0);
+        bytes4 detailsSelector = CurrencyLibrary.ERC20TransferFailed.selector;
+
+        bytes memory data = abi.encodeWithSelector(
+            wrappedErrorSelector,
+            originAddress,
+            originFunction,
+            abi.encode(reason),
+            abi.encodeWithSelector(detailsSelector)
+        );
+
+        (
+            bytes4 _decodedWrapSelector,
+            address _decodedOriginAddress,
+            bytes4 _decodedOriginFunction,
+            bytes4 _decodedReasonSelector,
+            bytes memory _decodedReason,
+            bytes4 _decodedDetailsSelector
+        ) = CustomRevertDecoder.decode(data);
+
+        // assert original values against decoded values
+        assertEq(_decodedWrapSelector, wrappedErrorSelector);
+        assertEq(_decodedOriginAddress, originAddress);
+        assertEq(_decodedOriginFunction, originFunction);
+        assertEq(_decodedReasonSelector, bytes4(0));
+        assertEq(_decodedReason, abi.encode(reason));
+        assertEq(_decodedDetailsSelector, detailsSelector);
+    }
+
+    function test_decode_noReason() public pure {
+        bytes4 wrappedErrorSelector = CustomRevert.WrappedError.selector;
+        address originAddress = address(0x1111);
+        bytes4 originFunction = IHooks.afterInitialize.selector;
+        bytes4 reasonSelector = IPoolManager.UnauthorizedDynamicLPFeeUpdate.selector;
+        bytes4 detailsSelector = Hooks.HookCallFailed.selector;
+
+        bytes memory data = abi.encodeWithSelector(
+            wrappedErrorSelector,
+            originAddress,
+            originFunction,
+            abi.encodeWithSelector(reasonSelector),
+            abi.encodeWithSelector(detailsSelector)
+        );
+
+        (
+            bytes4 _decodedWrapSelector,
+            address _decodedOriginAddress,
+            bytes4 _decodedOriginFunction,
+            bytes4 _decodedReasonSelector,
+            bytes memory _decodedReason,
+            bytes4 _decodedDetailsSelector
+        ) = CustomRevertDecoder.decode(data);
+
+        // assert original values against decoded values
+        assertEq(_decodedWrapSelector, wrappedErrorSelector);
+        assertEq(_decodedOriginAddress, originAddress);
+        assertEq(_decodedOriginFunction, originFunction);
+        assertEq(_decodedReasonSelector, reasonSelector);
+        assertEq(_decodedReason, abi.encodeWithSelector(reasonSelector));
         assertEq(_decodedDetailsSelector, detailsSelector);
     }
 }
