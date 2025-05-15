@@ -20,24 +20,37 @@ contract CustomRevertDecoderTest is Test {
         bytes4 revertingFunctionSelector,
         bytes4 revertReasonSelector,
         bytes memory reasonData,
-        bytes4 additionalContextSelector
+        bytes4 additionalContextSelector,
+        bytes memory additionalContextData
     ) public pure {
-        bytes memory data = abi.encodeWithSelector(
-            wrappedErrorSelector,
-            revertingContract,
-            revertingFunctionSelector,
-            abi.encodeWithSelector(revertReasonSelector, reasonData),
-            abi.encodeWithSelector(additionalContextSelector)
-        );
+        bytes4 _decodedWrapSelector;
+        address _decodedRevertingContract;
+        bytes4 _decodedRevertingFunctionSelector;
+        bytes4 _decodedRevertReasonSelector;
+        bytes memory _decodedReason;
+        bytes4 _decodedAdditionalContextSelector;
+        bytes memory _decodedAdditionalContextReason;
 
-        (
-            bytes4 _decodedWrapSelector,
-            address _decodedRevertingContract,
-            bytes4 _decodedRevertingFunctionSelector,
-            bytes4 _decodedRevertReasonSelector,
-            bytes memory _decodedReason,
-            bytes4 _decodedAdditionalContextSelector
-        ) = CustomRevertDecoder.decode(data);
+        // scoped to avoid stack too deep error
+        {
+            bytes memory data = abi.encodeWithSelector(
+                wrappedErrorSelector,
+                revertingContract,
+                revertingFunctionSelector,
+                abi.encodeWithSelector(revertReasonSelector, reasonData),
+                abi.encodeWithSelector(additionalContextSelector, additionalContextData)
+            );
+
+            (
+                _decodedWrapSelector,
+                _decodedRevertingContract,
+                _decodedRevertingFunctionSelector,
+                _decodedRevertReasonSelector,
+                _decodedReason,
+                _decodedAdditionalContextSelector,
+                _decodedAdditionalContextReason
+            ) = CustomRevertDecoder.decode(data);
+        }
 
         assertEq(_decodedWrapSelector, wrappedErrorSelector);
         assertEq(_decodedRevertingContract, revertingContract);
@@ -45,6 +58,9 @@ contract CustomRevertDecoderTest is Test {
         assertEq(_decodedRevertReasonSelector, revertReasonSelector);
         assertEq(_decodedReason, abi.encodeWithSelector(revertReasonSelector, reasonData));
         assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
+        assertEq(
+            _decodedAdditionalContextReason, abi.encodeWithSelector(additionalContextSelector, additionalContextData)
+        );
     }
 
     function test_decode_empty() public pure {
@@ -68,7 +84,8 @@ contract CustomRevertDecoderTest is Test {
             bytes4 _decodedRevertingFunctionSelector,
             bytes4 _decodedRevertReasonSelector,
             bytes memory _decodedReason,
-            bytes4 _decodedAdditionalContextSelector
+            bytes4 _decodedAdditionalContextSelector,
+            bytes memory _decodedAdditionalContextReason
         ) = CustomRevertDecoder.decode(data);
 
         // assert original values against decoded values
@@ -78,6 +95,7 @@ contract CustomRevertDecoderTest is Test {
         assertEq(_decodedRevertReasonSelector, revertReasonSelector);
         assertEq(_decodedReason, abi.encodeWithSelector(revertReasonSelector));
         assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
+        assertEq(_decodedAdditionalContextReason, abi.encodeWithSelector(additionalContextSelector));
     }
 
     function test_decode_singleParameter() public pure {
@@ -102,7 +120,8 @@ contract CustomRevertDecoderTest is Test {
             bytes4 _decodedRevertingFunctionSelector,
             bytes4 _decodedRevertReasonSelector,
             bytes memory _decodedRevertReason,
-            bytes4 _decodedAdditionalContextSelector
+            bytes4 _decodedAdditionalContextSelector,
+            bytes memory _decodedAdditionalContextReason
         ) = CustomRevertDecoder.decode(data);
 
         // assert original values against decoded values
@@ -112,6 +131,7 @@ contract CustomRevertDecoderTest is Test {
         assertEq(_decodedRevertReasonSelector, revertReasonSelector);
         assertEq(_decodedRevertReason, abi.encodeWithSelector(revertReasonSelector, reasonData));
         assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
+        assertEq(_decodedAdditionalContextReason, abi.encodeWithSelector(additionalContextSelector));
     }
 
     function test_decode_norevertReasonSelector() public pure {
@@ -135,7 +155,8 @@ contract CustomRevertDecoderTest is Test {
             bytes4 _decodedRevertingFunctionSelector,
             bytes4 _decodedRevertReasonSelector,
             bytes memory _decodedReason,
-            bytes4 _decodedAdditionalContextSelector
+            bytes4 _decodedAdditionalContextSelector,
+            bytes memory _decodedAdditionalContextReason
         ) = CustomRevertDecoder.decode(data);
 
         // assert original values against decoded values
@@ -145,6 +166,7 @@ contract CustomRevertDecoderTest is Test {
         assertEq(_decodedRevertReasonSelector, bytes4(0));
         assertEq(_decodedReason, abi.encode(reason));
         assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
+        assertEq(_decodedAdditionalContextReason, abi.encodeWithSelector(additionalContextSelector));
     }
 
     function test_decode_noReason() public pure {
@@ -168,7 +190,8 @@ contract CustomRevertDecoderTest is Test {
             bytes4 _decodedRevertingFunctionSelector,
             bytes4 _decodedRevertReasonSelector,
             bytes memory _decodedReason,
-            bytes4 _decodedAdditionalContextSelector
+            bytes4 _decodedAdditionalContextSelector,
+            bytes memory _decodedAdditionalContextReason
         ) = CustomRevertDecoder.decode(data);
 
         // assert original values against decoded values
@@ -178,5 +201,6 @@ contract CustomRevertDecoderTest is Test {
         assertEq(_decodedRevertReasonSelector, revertReasonSelector);
         assertEq(_decodedReason, abi.encodeWithSelector(revertReasonSelector));
         assertEq(_decodedAdditionalContextSelector, additionalContextSelector);
+        assertEq(_decodedAdditionalContextReason, abi.encodeWithSelector(additionalContextSelector));
     }
 }

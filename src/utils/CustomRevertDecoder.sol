@@ -21,7 +21,8 @@ library CustomRevertDecoder {
             bytes4 revertingFunctionSelector,
             bytes4 revertReasonSelector,
             bytes memory revertReason,
-            bytes4 additionalContextSelector
+            bytes4 additionalContextSelector,
+            bytes memory additionalContextReason
         )
     {
         assembly {
@@ -32,10 +33,12 @@ library CustomRevertDecoder {
             let offsetRevertReason := mload(add(err, 0x64))
             let offsetAdditionalContext := mload(add(err, 0x84))
             let sizeRevertReason := mload(add(err, add(offsetRevertReason, 0x24)))
+            let sizeAdditionalContext := mload(add(err, add(offsetAdditionalContext, 0x24)))
 
             revertReasonSelector := mload(add(err, add(offsetRevertReason, 0x44)))
             additionalContextSelector := mload(add(err, add(offsetAdditionalContext, 0x44)))
 
+            // Decode the revert reason
             let ptr := mload(0x40)
             revertReason := ptr
             mstore(revertReason, sizeRevertReason)
@@ -49,6 +52,22 @@ library CustomRevertDecoder {
             }
 
             mstore(0x40, add(ptr, add(0x20, sizeRevertReason)))
+            // ------
+
+            // Decode the additional context
+            ptr := mload(0x40)
+            additionalContextReason := ptr
+            mstore(additionalContextReason, sizeAdditionalContext)
+
+            w := not(0x1f)
+
+            for { let s := and(add(sizeAdditionalContext, 0x20), w) } 1 {} {
+                mstore(add(additionalContextReason, s), mload(add(err, add(offsetAdditionalContext, add(0x24, s)))))
+                s := add(s, w)
+                if iszero(s) { break }
+            }
+
+            mstore(0x40, add(ptr, add(0x20, sizeAdditionalContext)))
         }
     }
 }
