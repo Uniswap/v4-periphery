@@ -488,6 +488,20 @@ contract PositionManagerNotifierTest is Test, PosmTestSetup {
         lpm.unsubscribe(tokenId);
     }
 
+    function test_subscribe_revertsOnEOA() public {
+        uint256 tokenId = lpm.nextTokenId();
+        address subEOA = makeAddr("SUBSCRIBER");
+        mint(config, 100e18, alice, ZERO_BYTES);
+
+        // approve this contract to operate on alices liq
+        vm.startPrank(alice);
+        IERC721(address(lpm)).approve(address(this), tokenId);
+        vm.stopPrank();
+
+        vm.expectRevert();
+        lpm.subscribe(tokenId, subEOA, ZERO_BYTES);
+    }
+
     function test_subscribe_withData() public {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 100e18, alice, ZERO_BYTES);
