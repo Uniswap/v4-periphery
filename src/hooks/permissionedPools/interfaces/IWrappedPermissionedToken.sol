@@ -49,7 +49,7 @@ interface IWrappedPermissionedToken is IERC20 {
     function allowListChecker() external view returns (IAllowlistChecker);
 
     /// @notice Returns the allowed wrappers that can wrap the permissioned token
-    /// @dev e.g., the permissioned pool manager, quoters or the universal router
+    /// @dev e.g., the permissioned pool manager, quoters or the swap router
     function allowedWrappers(address wrapper) external view returns (bool);
 
     /// @notice Returns the Uniswap v4 pool manager
