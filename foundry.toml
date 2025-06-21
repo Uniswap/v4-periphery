@@ -13,12 +13,14 @@ bytecode_hash = "none"
 additional_compiler_profiles = [
   { name = "posm", via_ir = true, optimizer_runs = 30000 },
   { name = "descriptor", via_ir = true, optimizer_runs = 1 },
-  { name = "test", via_ir = false }
+  { name = "test", via_ir = false },
+  { name = "permissioned-posm", via_ir = true, optimizer_runs = 1000 },
 ]
 
 compilation_restrictions = [
-  { paths = "src/PositionManager.sol", optimizer_runs = 30000 },
+  { paths = "src/PositionManager.sol", max_optimizer_runs = 30000 },
   { paths = "src/PositionDescriptor.sol", optimizer_runs = 1 },
+  { paths = "src/hooks/permissionedPools/PermissionedPositionManager.sol", optimizer_runs = 1000 },
   { paths = "test/**", via_ir = false }
 ]
 
