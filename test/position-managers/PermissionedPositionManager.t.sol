@@ -42,7 +42,7 @@ import {MockAllowList} from "../mocks/MockAllowList.sol";
 import {IAllowlistChecker} from "../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
 import {WrappedPermissionedToken, IERC20} from "../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
 import {WrappedPermissionedTokenFactory} from "../../src/hooks/permissionedPools/WrappedPermissionedTokenFactory.sol";
-
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -60,33 +60,36 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     
     // CREATE3 variables for deterministic deployment
     bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
-    bytes32 public constant PERMISSIONED_SWAP_ROUTER_SALT = keccak256("PERMISSIONED_SWAP_ROUTER_TEST");
     bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
     
     function setUp() public {
         // Calculate predicted address for PermissionedPositionManager using CREATE3
-        
         address predictedPermissionedPosmAddress = CREATE3.getDeployed(PERMISSIONED_POSM_SALT);
+       // address predictedPermissionedSwapRouterAddress = 0x315CaDb0212e178307e363F31D9B5d51d46e8880;
         address predictedPermissionedSwapRouterAddress = CREATE3.getDeployed(PERMISSIONED_SWAP_ROUTER_SALT);
         address predictedWrappedTokenFactoryAddress = CREATE3.getDeployed(WRAPPED_TOKEN_FACTORY_SALT);
         CREATE3.deploy(WRAPPED_TOKEN_FACTORY_SALT, abi.encodePacked(vm.getCode("src/hooks/permissionedPools/WrappedPermissionedTokenFactory.sol:WrappedPermissionedTokenFactory"), abi.encode(address(manager))), 0);
       
         wrappedTokenFactory = WrappedPermissionedTokenFactory(predictedWrappedTokenFactoryAddress);
+        
+        // Initialize permit2 first since it's needed by deployFreshManagerAndRoutersPermissioned
+        permit2 = IAllowanceTransfer(deployPermit2());
         deployFreshManagerAndRoutersPermissioned(address(permit2), address(wrappedTokenFactory), predictedPermissionedPosmAddress);
         (currency0, currency1) = deployMintAndApprove2Currencies();
 
         // This is needed to receive return deltas from modifyLiquidity calls.
         deployPosmHookSavesDelta();
-
         // Set up permissioned components
         setupPermissionedComponents();
 
-        (key, poolId) = initPool(currency0, currency1, IHooks(hook), 3000, SQRT_PRICE_1_1);
+       
+        (key, poolId) = initPool(currency0, currency1, IHooks(predictedPermissionedSwapRouterAddress), 3000, SQRT_PRICE_1_1);
         // TODO: get precalculated address for permissioned swap router and permissioned posm
         // Deploy permissioned position manager instead of regular one
-        deployAndApprovePosm(manager, address(wrappedTokenFactory), predictedPermissionedSwapRouterAddress);
+        deployAndApprovePosm(manager, address(wrappedTokenFactory), predictedPermissionedSwapRouterAddress, PERMISSIONED_POSM_SALT);
         seedBalance(alice);
         approvePosmFor(alice);
+
     }
 
     function setupPermissionedComponents() internal {
@@ -141,8 +144,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         // Set up approvals for the reentrant token
         approvePosmCurrency(reentrantToken);
-
-        (key, poolId) = initPool(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
+        address predictedPermissionedSwapRouterAddress = CREATE3.getDeployed(PERMISSIONED_SWAP_ROUTER_SALT);
+        (key, poolId) = initPool(currency0, currency1, IHooks(predictedPermissionedSwapRouterAddress), 3000, SQRT_PRICE_1_1);
 
         // Try to add liquidity at that range, but the token reenters posm
         PositionConfig memory config =
@@ -165,10 +168,12 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-
+        uint256 balance0ManagerBefore = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerBefore = currency1.balanceOf(address(manager));
         uint256 tokenId = lpm.nextTokenId();
         mint(config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
-        BalanceDelta delta = getLastDelta();
+        uint256 balance0ManagerAfter = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerAfter = currency1.balanceOf(address(manager));
 
         assertEq(tokenId, 1);
         assertEq(lpm.nextTokenId(), 2);
@@ -177,8 +182,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         uint256 liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, uint256(params.liquidityDelta));
-        assertEq(balance0Before - currency0.balanceOfSelf(), uint256(int256(-delta.amount0())), "incorrect amount0");
-        assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())), "incorrect amount1");
+        assertEq(balance0Before - currency0.balanceOfSelf(), balance0ManagerAfter - balance0ManagerBefore, "incorrect amount0");
+        assertEq(balance1Before - currency1.balanceOfSelf(), balance1ManagerAfter - balance1ManagerBefore, "incorrect amount1");
     }
 
     function test_mint_exactTokenRatios() public {
@@ -193,26 +198,24 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             amount0Desired,
             amount1Desired
         );
-
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
-
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
+        uint256 balance0ManagerBefore = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerBefore = currency1.balanceOf(address(manager));
 
         uint256 tokenId = lpm.nextTokenId();
         mint(config, liquidityToAdd, ActionConstants.MSG_SENDER, ZERO_BYTES);
-        BalanceDelta delta = getLastDelta();
-
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
-
+        uint256 balance0ManagerAfter = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerAfter = currency1.balanceOf(address(manager));
+        
+        
         assertEq(tokenId, 1);
         assertEq(IERC721(address(lpm)).ownerOf(1), address(this));
-
-        assertEq(uint256(int256(-delta.amount0())), amount0Desired);
-        assertEq(uint256(int256(-delta.amount1())), amount1Desired);
-        assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())));
-        assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
+        assertEq(balance0Before - balance0After, balance0ManagerAfter - balance0ManagerBefore);
+        assertEq(balance1Before - balance1After, balance1ManagerAfter - balance1ManagerBefore);
     }
 
     function test_mint_toRecipient() public {
@@ -232,22 +235,21 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         uint256 balance0Before = currency0.balanceOfSelf();
         uint256 balance1Before = currency1.balanceOfSelf();
-
+        uint256 balance0ManagerBefore = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerBefore = currency1.balanceOf(address(manager));
         uint256 tokenId = lpm.nextTokenId();
         // mint to specific recipient, not using the recipient constants
         mint(config, liquidityToAdd, alice, ZERO_BYTES);
-        BalanceDelta delta = getLastDelta();
 
         uint256 balance0After = currency0.balanceOfSelf();
         uint256 balance1After = currency1.balanceOfSelf();
-
+        uint256 balance0ManagerAfter = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerAfter = currency1.balanceOf(address(manager));
         assertEq(tokenId, 1);
         assertEq(IERC721(address(lpm)).ownerOf(1), alice);
 
-        assertEq(uint256(int256(-delta.amount0())), amount0Desired);
-        assertEq(uint256(int256(-delta.amount1())), amount1Desired);
-        assertEq(balance0Before - balance0After, uint256(int256(-delta.amount0())));
-        assertEq(balance1Before - balance1After, uint256(int256(-delta.amount1())));
+        assertEq(balance0Before - balance0After, balance0ManagerAfter - balance0ManagerBefore);
+        assertEq(balance1Before - balance1After, balance1ManagerAfter - balance1ManagerBefore);
     }
 
     function test_fuzz_mint_recipient(ModifyLiquidityParams memory seedParams) public {
@@ -263,15 +265,17 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         uint256 balance1Before = currency1.balanceOfSelf();
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1.balanceOf(alice);
+        uint256 balance0ManagerBefore = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerBefore = currency1.balanceOf(address(manager));
         mint(config, liquidityToAdd, alice, ZERO_BYTES);
-        BalanceDelta delta = getLastDelta();
-
+        uint256 balance0ManagerAfter = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerAfter = currency1.balanceOf(address(manager));
         assertEq(tokenId, 1);
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
 
         // alice was not the payer
-        assertEq(balance0Before - currency0.balanceOfSelf(), uint256(int256(-delta.amount0())));
-        assertEq(balance1Before - currency1.balanceOfSelf(), uint256(int256(-delta.amount1())));
+        assertEq(balance0Before - currency0.balanceOfSelf(), balance0ManagerAfter - balance0ManagerBefore);
+        assertEq(balance1Before - currency1.balanceOfSelf(), balance1ManagerAfter - balance1ManagerBefore);
         assertEq(currency0.balanceOf(alice), balance0BeforeAlice);
         assertEq(currency1.balanceOf(alice), balance1BeforeAlice);
     }
@@ -348,7 +352,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     function test_mint_slippage_exactDoesNotRevert() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
-
+        uint256 balance0ManagerBefore = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerBefore = currency1.balanceOf(address(manager));
         uint256 liquidity = 1e18;
         (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
             SQRT_PRICE_1_1,
@@ -362,9 +367,10 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         bytes memory calls =
             getMintEncoded(config, liquidity, slippage, slippage, ActionConstants.MSG_SENDER, ZERO_BYTES);
         lpm.modifyLiquidities(calls, _deadline);
-        BalanceDelta delta = getLastDelta();
-        assertEq(uint256(int256(-delta.amount0())), slippage);
-        assertEq(uint256(int256(-delta.amount1())), slippage);
+        uint256 balance0ManagerAfter = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerAfter = currency1.balanceOf(address(manager));
+        assertEq(balance0ManagerAfter - balance0ManagerBefore, slippage);
+        assertEq(balance1ManagerAfter - balance1ManagerBefore, slippage);
     }
 
     function test_mint_slippage_revert_swap() public {
@@ -380,13 +386,10 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         );
         assertEq(amount0, amount1); // symmetric liquidity
         uint128 slippage = uint128(amount0) + 1;
-
         bytes memory calls =
             getMintEncoded(config, liquidity, slippage, slippage, ActionConstants.MSG_SENDER, ZERO_BYTES);
-
         // swap to move the price and cause a slippage revert
         swap(key, true, -1e18, ZERO_BYTES);
-
         vm.expectRevert(
             abi.encodeWithSelector(SlippageCheck.MaximumAmountExceeded.selector, slippage, 1199947202932782783)
         );
@@ -434,7 +437,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         
         // This should revert because the user is not in the allowlist
         vm.expectRevert();
-        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        mint(config, liquidity, unauthorizedUser, ZERO_BYTES);
         
         vm.stopPrank();
     }
@@ -461,9 +464,11 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         // burn liquidity
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
-
+        uint256 balance0ManagerBefore = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerBefore = currency1.balanceOf(address(manager));
         decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
-        BalanceDelta deltaDecrease = getLastDelta();
+        uint256 balance0ManagerAfter = currency0.balanceOf(address(manager));
+        uint256 balance1ManagerAfter = currency1.balanceOf(address(manager));
         uint256 numDeltas = hook.numberDeltasReturned();
         // No decrease/modifyLiq call will actually happen on the call to burn so the deltas array will be the same length.
         burn(tokenId, config, ZERO_BYTES);
@@ -473,8 +478,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         assertEq(liquidity, 0);
 
-        assertEq(currency0.balanceOfSelf(), balance0BeforeBurn + uint256(int256(deltaDecrease.amount0())));
-        assertEq(currency1.balanceOfSelf(), balance1BeforeBurn + uint256(uint128(deltaDecrease.amount1())));
+        assertEq(currency0.balanceOfSelf(), balance0BeforeBurn + balance0ManagerBefore - balance0ManagerAfter);
+        assertEq(currency1.balanceOfSelf(), balance1BeforeBurn + balance1ManagerBefore - balance1ManagerAfter);
 
         // 721 will revert if the token does not exist
         vm.expectRevert();

@@ -7,7 +7,6 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 import {LiquidityOperations} from "./LiquidityOperations.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
@@ -24,9 +23,10 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PositionConfig} from "../shared/PositionConfig.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
+import {PermissionedDeployers} from "./PermissionedDeployers.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
-contract PermissionedPosmTestSetup is Test, Deployers, DeployPermit2, LiquidityOperations {
+contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2, LiquidityOperations {
     uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
 
     IAllowanceTransfer permit2;
@@ -67,18 +67,18 @@ contract PermissionedPosmTestSetup is Test, Deployers, DeployPermit2, LiquidityO
         hookModifyLiquidities.setAddresses(lpm, permit2);
     }
 
-    function deployAndApprovePosm(IPoolManager poolManager, address wrappedTokenFactory, address permissionedSwapRouter) public {
-        deployPermissionedPosm(poolManager, wrappedTokenFactory, permissionedSwapRouter);
+    function deployAndApprovePosm(IPoolManager poolManager, address wrappedTokenFactory, address permissionedSwapRouter, bytes32 salt) public {
+        deployPermissionedPosm(poolManager, wrappedTokenFactory, permissionedSwapRouter, salt);
         approvePosm();
     }
 
-    function deployPermissionedPosm(IPoolManager poolManager, address wrappedTokenFactory, address permissionedSwapRouter) internal {
+    function deployPermissionedPosm(IPoolManager poolManager, address wrappedTokenFactory, address permissionedSwapRouter, bytes32 salt) internal {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
         _WETH9 = deployWETH();
         proxyAsImplementation = deployDescriptor(poolManager, "ETH");
-        lpm = Deploy.permissionedPositionManager(
-            address(poolManager), address(permit2), 100_000, address(proxyAsImplementation), address(_WETH9), wrappedTokenFactory, permissionedSwapRouter, hex"03"
+        lpm = Deploy.permissionedPositionManagerCreate3(
+            address(poolManager), address(permit2), 100_000, address(proxyAsImplementation), address(_WETH9), wrappedTokenFactory, permissionedSwapRouter, salt
         );
     }
 
@@ -178,7 +178,8 @@ contract PermissionedPosmTestSetup is Test, Deployers, DeployPermit2, LiquidityO
     }
 
     function getLastDelta() internal view returns (BalanceDelta delta) {
-        delta = hook.deltas(hook.numberDeltasReturned() - 1); // just want the most recently written delta
+        uint256 numDeltas = hook.numberDeltasReturned();
+        delta = hook.deltas(numDeltas - 1); // just want the most recently written delta
     }
 
     function getNetDelta() internal view returns (BalanceDelta delta) {

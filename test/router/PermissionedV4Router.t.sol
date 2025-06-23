@@ -15,17 +15,49 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
+
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     MockAllowList public mockAllowList;
     IAllowlistChecker public allowListChecker;
     WrappedPermissionedToken public wrappedToken0;
     WrappedPermissionedToken public wrappedToken1;
+    address public authorizedUser;
     function setUp() public {
+        authorizedUser = makeAddr("AUTHORIZED"); // This is the user that will be authorized to swap
+
         setupPermissionedRouterCurrenciesAndPoolsWithLiquidity();
         plan = Planner.init();
-        
         // Setup permissioned components
         setupPermissionedTokens();
+        
+        mockAllowList.addToAllowList(authorizedUser);
+        mockAllowList.addToAllowList(address(permissionedRouter));
+        mockAllowList.addToAllowList(address(positionManager));
+        mockAllowList.addToAllowList(address(manager));
+        mockAllowList.addToAllowList(address(permit2));
+        IERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint160).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint160).max);
+        IERC20(Currency.unwrap(currency0)).approve(address(permissionedRouter), type(uint160).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(permissionedRouter), type(uint160).max);
+        IERC20(Currency.unwrap(currency0)).approve(address(positionManager), type(uint160).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(positionManager), type(uint160).max);
+        permit2.approve(Currency.unwrap(currency0), address(permissionedRouter), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency1), address(permissionedRouter), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency0), address(positionManager), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency1), address(positionManager), type(uint160).max, 2**47);
+       
+        vm.startPrank(address(authorizedUser));
+        IERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint160).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint160).max);
+        IERC20(Currency.unwrap(currency0)).approve(address(permissionedRouter), type(uint160).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(permissionedRouter), type(uint160).max);
+        IERC20(Currency.unwrap(currency0)).approve(address(positionManager), type(uint160).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(positionManager), type(uint160).max);
+        permit2.approve(Currency.unwrap(currency0), address(permissionedRouter), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency1), address(permissionedRouter), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency0), address(positionManager), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency1), address(positionManager), type(uint160).max, 2**47);
+        vm.stopPrank();
     }
 
     function setupPermissionedTokens() internal {
@@ -50,10 +82,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 allowListChecker
             )
         );
-
-        // Approve wrapped tokens for the router
         wrappedToken0.approve(address(permissionedRouter), type(uint256).max);
         wrappedToken1.approve(address(permissionedRouter), type(uint256).max);
+        wrappedToken0.approve(address(positionManager), type(uint256).max);
+        wrappedToken1.approve(address(positionManager), type(uint256).max);
     }
 
     function test_gas_bytecodeSize() public {
@@ -63,7 +95,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     function test_router_initcodeHash() public {
         vm.snapshotValue(
             "permissioned router initcode hash (without constructor params, as uint256)",
-            uint256(keccak256(abi.encodePacked(vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"))))
+            uint256(keccak256(abi.encodePacked(vm.getCode("src/hooks/permissionedPools/PermissionedV4Router.sol:PermissionedV4Router"))))
         );
     }
 
@@ -192,11 +224,9 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     }
 
     function test_swap_succeeds_authorized_user() public {
-        address authorizedUser = makeAddr("AUTHORIZED");
-        
-        // Add authorized user to allowlist
-        mockAllowList.addToAllowList(authorizedUser);
-        
+        IERC20(Currency.unwrap(currency0)).transfer(authorizedUser, 2 ether);
+        IERC20(Currency.unwrap(currency1)).transfer(authorizedUser, 2 ether);
+       
         uint256 amountIn = 1 ether;
         
         PoolKey memory wrappedKey = PoolKey(currency0, currency1, 3000, 60, IHooks(address(0)));
@@ -209,5 +239,24 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         vm.prank(authorizedUser);
         permissionedRouter.execute(data); // Should succeed
+    }
+    function test_swap_fails_unauthorized_user() public {
+        address unauthorizedUser = makeAddr("UNAUTHORIZED");
+        IERC20(Currency.unwrap(currency0)).transfer(authorizedUser, 2 ether);
+        IERC20(Currency.unwrap(currency1)).transfer(authorizedUser, 2 ether);
+       
+        uint256 amountIn = 1 ether;
+        
+        PoolKey memory wrappedKey = PoolKey(currency0, currency1, 3000, 60, IHooks(address(0)));
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(wrappedKey, true, uint128(amountIn), 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(currency0, currency1, ActionConstants.MSG_SENDER);
+
+        vm.prank(unauthorizedUser);
+        vm.expectRevert(); // Should revert due to unauthorized access
+        permissionedRouter.execute(data); 
     }
 } 

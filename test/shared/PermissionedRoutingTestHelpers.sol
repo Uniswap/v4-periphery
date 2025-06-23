@@ -25,8 +25,9 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {IWrappedPermissionedTokenFactory} from "../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IPositionDescriptor} from "../../src/interfaces/IPositionDescriptor.sol";
+import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the permissioned router.
-contract PermissionedRoutingTestHelpers is Test, Deployers {
+contract PermissionedRoutingTestHelpers is Test, Deployers, DeployPermit2 {
     PermissionedPoolModifyLiquidityTest positionManager;
     PermissionedV4Router permissionedRouter;
     
@@ -39,7 +40,7 @@ contract PermissionedRoutingTestHelpers is Test, Deployers {
     uint256 MIN_TAKE_AMOUNT = 0;
 
     // CREATE3 salts for deterministic deployment
-    bytes32 public constant PERMISSIONED_ROUTER_SALT = keccak256("PERMISSIONED_ROUTER_TEST");
+    bytes32 public constant PERMISSIONED_ROUTER_SALT = 0x0000000000000000000000000000000000000000000000000000000000005fcb;
     bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
     bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
 
@@ -62,15 +63,20 @@ contract PermissionedRoutingTestHelpers is Test, Deployers {
         vm.etch(wethAddr, address(wethImpl).code);
         IWETH9 weth9 = IWETH9(wethAddr);
         IPositionDescriptor tokenDescriptor = Deploy.positionDescriptor(address(manager), address(weth9), "ETH", hex"00");
-        address tokenDescriptorAddr = address(tokenDescriptor);
         // Deploy Permit2
-        permit2 = IAllowanceTransfer(deployCode("permit2/src/Permit2.sol:Permit2"));
+        
+        permit2 = IAllowanceTransfer(deployPermit2());
+
         CREATE3.deploy(WRAPPED_TOKEN_FACTORY_SALT, abi.encodePacked(vm.getCode("src/hooks/permissionedPools/WrappedPermissionedTokenFactory.sol:WrappedPermissionedTokenFactory"), abi.encode(address(manager))), 0);
+        wrappedTokenFactory = IWrappedPermissionedTokenFactory(CREATE3.getDeployed(WRAPPED_TOKEN_FACTORY_SALT));
+      
         // Get predicted addresses
         address predictedPositionManager = CREATE3.getDeployed(PERMISSIONED_POSM_SALT);
         address predictedPermissionedRouter = CREATE3.getDeployed(PERMISSIONED_ROUTER_SALT);
 
-        CREATE3.deploy(PERMISSIONED_ROUTER_SALT, abi.encodePacked(vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"), abi.encode(manager, permit2, wrappedTokenFactory, predictedPositionManager)  ), 0);
+        CREATE3.deploy(PERMISSIONED_ROUTER_SALT, abi.encodePacked(vm.getCode("src/hooks/permissionedPools/PermissionedV4Router.sol:PermissionedV4Router"), abi.encode(manager, permit2, wrappedTokenFactory, predictedPositionManager)  ), 0);
+
+        permissionedRouter = PermissionedV4Router(CREATE3.getDeployed(PERMISSIONED_ROUTER_SALT));
         positionManager = new PermissionedPoolModifyLiquidityTest(manager, permit2, address(tokenDescriptor), address(weth9), wrappedTokenFactory, predictedPermissionedRouter);
 
         MockERC20[] memory tokens = deployTokensMintAndApprove(4);
@@ -80,6 +86,16 @@ contract PermissionedRoutingTestHelpers is Test, Deployers {
         currency2 = Currency.wrap(address(tokens[2]));
         currency3 = Currency.wrap(address(tokens[3]));
 
+        permit2.approve(Currency.unwrap(currency0), address(permissionedRouter), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency1), address(permissionedRouter), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency2), address(permissionedRouter), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency3), address(permissionedRouter), type(uint160).max, 2**47);
+       
+        permit2.approve(Currency.unwrap(currency0), address(permissionedPositionManager), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency1), address(permissionedPositionManager), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency2), address(permissionedPositionManager), type(uint160).max, 2**47);
+        permit2.approve(Currency.unwrap(currency3), address(permissionedPositionManager), type(uint160).max, 2**47);
+       
         nativeKey = createNativePoolWithLiquidity(currency0, address(0));
         key0 = createPoolWithLiquidity(currency0, currency1, address(0));
         key1 = createPoolWithLiquidity(currency1, currency2, address(0));
