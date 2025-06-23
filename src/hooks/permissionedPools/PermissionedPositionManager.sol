@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {
-    PositionManager,
-    PoolKey,
-    IPoolManager,
-    IAllowanceTransfer,
-    IPositionDescriptor,
-    IWETH9,
-    Currency
-} from "../../PositionManager.sol";
+import {PositionManager} from "../../PositionManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IPositionDescriptor} from "../../interfaces/IPositionDescriptor.sol";
+import {IWETH9} from "../../interfaces/external/IWETH9.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {
     IWrappedPermissionedTokenFactory,
     IWrappedPermissionedToken

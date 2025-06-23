@@ -26,6 +26,23 @@ library Deploy {
         }
     }
 
+    function permissionedPositionManager(
+        address poolManager,
+        address permit2,
+        uint256 unsubscribeGasLimit,
+        address positionDescriptor_,
+        address wrappedNative,
+        address wrappedTokenFactory,
+        address permissionedSwapRouter,
+        bytes memory salt
+    ) internal returns (IPositionManager manager) {
+        bytes memory args = abi.encode(poolManager, permit2, unsubscribeGasLimit, positionDescriptor_, wrappedNative, wrappedTokenFactory, permissionedSwapRouter);
+        bytes memory initcode = abi.encodePacked(vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args);
+        assembly {
+            manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
+        }
+    }
+
     function stateView(address poolManager, bytes memory salt) internal returns (IStateView stateView_) {
         bytes memory args = abi.encode(poolManager);
         bytes memory initcode = abi.encodePacked(vm.getCode("StateView.sol:StateView"), args);
