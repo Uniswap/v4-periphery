@@ -22,7 +22,8 @@ library Deploy {
         bytes memory salt
     ) internal returns (IPositionManager manager) {
         bytes memory args = abi.encode(poolManager, permit2, unsubscribeGasLimit, positionDescriptor_, wrappedNative);
-        bytes memory initcode = abi.encodePacked(vm.getCode("src/hooks/permissionedPools/PositionManager.sol:PositionManager"), args);
+        bytes memory initcode =
+            abi.encodePacked(vm.getCode("src/hooks/permissionedPools/PositionManager.sol:PositionManager"), args);
         assembly {
             manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
@@ -38,12 +39,23 @@ library Deploy {
         address permissionedSwapRouter,
         bytes memory salt
     ) internal returns (IPositionManager manager) {
-        bytes memory args = abi.encode(poolManager, permit2, unsubscribeGasLimit, positionDescriptor_, wrappedNative, wrappedTokenFactory, permissionedSwapRouter);
-        bytes memory initcode = abi.encodePacked(vm.getCode("src/hooks/permissionedPools/PermissionedPositionManager.sol:PermissionedPositionManager"), args);
+        bytes memory args = abi.encode(
+            poolManager,
+            permit2,
+            unsubscribeGasLimit,
+            positionDescriptor_,
+            wrappedNative,
+            wrappedTokenFactory,
+            permissionedSwapRouter
+        );
+        bytes memory initcode = abi.encodePacked(
+            vm.getCode("src/hooks/permissionedPools/PermissionedPositionManager.sol:PermissionedPositionManager"), args
+        );
         assembly {
             manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
     }
+
     function permissionedPositionManagerCreate3(
         address poolManager,
         address permit2,
@@ -54,8 +66,18 @@ library Deploy {
         address permissionedSwapRouter,
         bytes32 salt
     ) internal returns (IPositionManager manager) {
-        bytes memory args = abi.encode(poolManager, permit2, unsubscribeGasLimit, positionDescriptor_, wrappedNative, wrappedTokenFactory, permissionedSwapRouter);
-        bytes memory initcode = abi.encodePacked(vm.getCode("src/hooks/permissionedPools/PermissionedPositionManager.sol:PermissionedPositionManager"), args);
+        bytes memory args = abi.encode(
+            poolManager,
+            permit2,
+            unsubscribeGasLimit,
+            positionDescriptor_,
+            wrappedNative,
+            wrappedTokenFactory,
+            permissionedSwapRouter
+        );
+        bytes memory initcode = abi.encodePacked(
+            vm.getCode("src/hooks/permissionedPools/PermissionedPositionManager.sol:PermissionedPositionManager"), args
+        );
         return IPositionManager(CREATE3.deploy(salt, initcode, 0));
     }
 
@@ -80,8 +102,12 @@ library Deploy {
         returns (TransparentUpgradeableProxy proxy)
     {
         bytes memory args = abi.encode(implementation, admin, data);
-        bytes memory initcode =
-            abi.encodePacked(vm.getCode("lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy"), args);
+        bytes memory initcode = abi.encodePacked(
+            vm.getCode(
+                "lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy"
+            ),
+            args
+        );
         assembly {
             proxy := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }

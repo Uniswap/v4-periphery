@@ -14,7 +14,8 @@ import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {IWrappedPermissionedTokenFactory} from "../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
+import {IWrappedPermissionedTokenFactory} from
+    "../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
 
 contract PermissionedPoolModifyLiquidityTest is Test, PoolTestBase {
@@ -28,7 +29,7 @@ contract PermissionedPoolModifyLiquidityTest is Test, PoolTestBase {
     IWrappedPermissionedTokenFactory public wrappedTokenFactory;
 
     bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
-    
+
     constructor(
         IPoolManager _manager,
         IAllowanceTransfer _permit2,
@@ -39,7 +40,7 @@ contract PermissionedPoolModifyLiquidityTest is Test, PoolTestBase {
     ) PoolTestBase(_manager) {
         permit2 = _permit2;
         wrappedTokenFactory = _wrappedTokenFactory;
-       
+
         // Deploy permissioned position manager using CREATE3
         bytes memory posmBytecode = abi.encodePacked(
             vm.getCode("src/hooks/permissionedPools/PermissionedPositionManager.sol:PermissionedPositionManager"),
@@ -126,4 +127,4 @@ contract PermissionedPoolModifyLiquidityTest is Test, PoolTestBase {
     function getPermissionedPositionManager() external view returns (address) {
         return permissionedPositionManager;
     }
-} 
+}

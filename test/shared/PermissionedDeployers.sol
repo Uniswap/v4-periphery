@@ -33,7 +33,8 @@ import {ActionsRouter} from "@uniswap/v4-core/src/test/ActionsRouter.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {IWrappedPermissionedTokenFactory} from "../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
+import {IWrappedPermissionedTokenFactory} from
+    "../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
 import {PermissionedV4Router} from "../../src/hooks/permissionedPools/PermissionedV4Router.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
 
@@ -87,8 +88,10 @@ contract PermissionedDeployers is Test {
     uint160 hookPermissionCount = 14;
     uint160 clearAllHookPermissionsMask = ~uint160(0) << (hookPermissionCount);
 
-     // Has propoer hook flags
-    bytes32 public constant PERMISSIONED_SWAP_ROUTER_SALT = 0x0000000000000000000000000000000000000000000000000000000000005fcb;
+    // Has propoer hook flags
+    bytes32 public constant PERMISSIONED_SWAP_ROUTER_SALT =
+        0x0000000000000000000000000000000000000000000000000000000000005fcb;
+
     modifier noIsolate() {
         if (msg.sender != address(this)) {
             (bool success,) = address(this).call(msg.data);
@@ -124,21 +127,26 @@ contract PermissionedDeployers is Test {
         address _permissionedPositionManager
     ) internal {
         deployFreshManager();
-        
+
         // Deploy PermissionedV4Router to an address with the correct hook flags
         // The router needs BEFORE_SWAP_FLAG and BEFORE_ADD_LIQUIDITY_FLAG
         // BEFORE_SWAP_FLAG = 1 << 7 = 128
         // BEFORE_ADD_LIQUIDITY_FLAG = 1 << 11 = 2048
         // Combined: 128 | 2048 = 2176
-         // Use the salt that produces an address ending in 0880
+        // Use the salt that produces an address ending in 0880
         bytes32 routerSalt = 0x0000000000000000000000000000000000000000000000000000000000005fcb;
-       
+
         // Create the bytecode for the router with constructor arguments
         bytes memory routerBytecode = abi.encodePacked(
             vm.getCode("src/hooks/permissionedPools/PermissionedV4Router.sol:PermissionedV4Router"),
-            abi.encode(manager, IAllowanceTransfer(_permit2), IWrappedPermissionedTokenFactory(_wrappedTokenFactory), _permissionedPositionManager)
+            abi.encode(
+                manager,
+                IAllowanceTransfer(_permit2),
+                IWrappedPermissionedTokenFactory(_wrappedTokenFactory),
+                _permissionedPositionManager
+            )
         );
-         
+
         address deployedAddr = CREATE3.deploy(routerSalt, routerBytecode, 0);
         permissionedSwapRouter = PermissionedV4Router(deployedAddr);
         swapRouter = PoolSwapTest(deployedAddr);
@@ -273,36 +281,35 @@ contract PermissionedDeployers is Test {
         uint256 value = isNativeInput ? uint256(-amountSpecified) : 0;
         bytes memory data = getSwapData(_key, uint256(-amountSpecified), zeroForOne);
         permissionedSwapRouter.execute{value: value}(data);
-        
     }
 
     function getSwapData(PoolKey memory poolKey, uint256 amountIn, bool zeroForOne) internal returns (bytes memory) {
-    // Initialize the plan
-    Plan memory plan = Planner.init();
-    
-    // Create swap parameters
-    IV4Router.ExactInputSingleParams memory params = IV4Router.ExactInputSingleParams(
-        poolKey,           // The pool to swap in
-        zeroForOne,        // Direction of swap
-        uint128(amountIn), // Amount to swap in
-        0,                 // Minimum amount out (0 = no slippage protection)
-        bytes("")          // Hook data
-    );
-    
-    // Add the swap action to the plan
-    plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-    
-    // Finalize the plan - this adds SETTLE and TAKE actions
-    bytes memory data = plan.finalizeSwap(
-        zeroForOne ? poolKey.currency0 : poolKey.currency1,  // Input currency
-        zeroForOne ? poolKey.currency1 : poolKey.currency0,  // Output currency
-        ActionConstants.MSG_SENDER                           // Take recipient
-    );
-    
-    // Calculate ETH value if needed
-    uint256 value = (zeroForOne && poolKey.currency0.isAddressZero()) ? amountIn : 0;
-    return data;
-}
+        // Initialize the plan
+        Plan memory plan = Planner.init();
+
+        // Create swap parameters
+        IV4Router.ExactInputSingleParams memory params = IV4Router.ExactInputSingleParams(
+            poolKey, // The pool to swap in
+            zeroForOne, // Direction of swap
+            uint128(amountIn), // Amount to swap in
+            0, // Minimum amount out (0 = no slippage protection)
+            bytes("") // Hook data
+        );
+
+        // Add the swap action to the plan
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+
+        // Finalize the plan - this adds SETTLE and TAKE actions
+        bytes memory data = plan.finalizeSwap(
+            zeroForOne ? poolKey.currency0 : poolKey.currency1, // Input currency
+            zeroForOne ? poolKey.currency1 : poolKey.currency0, // Output currency
+            ActionConstants.MSG_SENDER // Take recipient
+        );
+
+        // Calculate ETH value if needed
+        uint256 value = (zeroForOne && poolKey.currency0.isAddressZero()) ? amountIn : 0;
+        return data;
+    }
 
     /// @notice Helper function to increase balance of pool manager.
     /// Uses default LIQUIDITY_PARAMS range.
@@ -348,4 +355,4 @@ contract PermissionedDeployers is Test {
             hookData
         );
     }
-} 
+}

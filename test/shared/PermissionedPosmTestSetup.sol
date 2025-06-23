@@ -67,22 +67,44 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
         hookModifyLiquidities.setAddresses(lpm, permit2);
     }
 
-    function deployAndApprovePosm(IPoolManager poolManager, address wrappedTokenFactory, address permissionedSwapRouter, bytes32 salt) public {
+    function deployAndApprovePosm(
+        IPoolManager poolManager,
+        address wrappedTokenFactory,
+        address permissionedSwapRouter,
+        bytes32 salt
+    ) public {
         deployPermissionedPosm(poolManager, wrappedTokenFactory, permissionedSwapRouter, salt);
         approvePosm();
     }
 
-    function deployPermissionedPosm(IPoolManager poolManager, address wrappedTokenFactory, address permissionedSwapRouter, bytes32 salt) internal {
+    function deployPermissionedPosm(
+        IPoolManager poolManager,
+        address wrappedTokenFactory,
+        address permissionedSwapRouter,
+        bytes32 salt
+    ) internal {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
         _WETH9 = deployWETH();
         proxyAsImplementation = deployDescriptor(poolManager, "ETH");
         lpm = Deploy.permissionedPositionManagerCreate3(
-            address(poolManager), address(permit2), 100_000, address(proxyAsImplementation), address(_WETH9), wrappedTokenFactory, permissionedSwapRouter, salt
+            address(poolManager),
+            address(permit2),
+            100_000,
+            address(proxyAsImplementation),
+            address(_WETH9),
+            wrappedTokenFactory,
+            permissionedSwapRouter,
+            salt
         );
     }
 
-     function deployPermissionedPosmCreate3(IPoolManager poolManager, address wrappedTokenFactory, address permissionedSwapRouter, bytes32 salt) internal {
+    function deployPermissionedPosmCreate3(
+        IPoolManager poolManager,
+        address wrappedTokenFactory,
+        address permissionedSwapRouter,
+        bytes32 salt
+    ) internal {
         // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
         _WETH9 = deployWETH();
@@ -90,10 +112,17 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
         bytes memory bytecode = abi.encodePacked(
             vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"),
             abi.encode(
-                address(poolManager), address(permit2), 100_000, address(proxyAsImplementation), address(_WETH9), wrappedTokenFactory, permissionedSwapRouter, hex"03"
+                address(poolManager),
+                address(permit2),
+                100_000,
+                address(proxyAsImplementation),
+                address(_WETH9),
+                wrappedTokenFactory,
+                permissionedSwapRouter,
+                hex"03"
             )
         );
-        CREATE3.deploy(salt, bytecode, 0);  
+        CREATE3.deploy(salt, bytecode, 0);
     }
 
     function deployWETH() internal returns (IWETH9) {
