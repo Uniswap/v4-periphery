@@ -45,4 +45,8 @@ interface IWrappedPermissionedTokenFactory {
     /// @return permissionedToken The verified permissioned token
     /// @dev A reverse lookup of the permissioned token is required, otherwise anyone could create a wrapped token for a non-permissioned token
     function verifiedPermissionedTokenOf(address wrappedToken) external view returns (address permissionedToken);
+
+    /// @notice Returns the v4 pool manager
+    /// @return poolManager The v4 pool manager
+    function POOL_MANAGER() external view returns (address poolManager);
 }
