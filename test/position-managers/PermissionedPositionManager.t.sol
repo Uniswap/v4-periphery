@@ -43,13 +43,14 @@ import {IAllowlistChecker} from "../../src/hooks/permissionedPools/interfaces/IA
 import {WrappedPermissionedToken, IERC20} from "../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
 import {WrappedPermissionedTokenFactory} from "../../src/hooks/permissionedPools/WrappedPermissionedTokenFactory.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {SortTokens} from "@uniswap/v4-core/test/utils/SortTokens.sol";
 
 contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using StateLibrary for IPoolManager;
 
-    PoolId poolId;
     address alice = makeAddr("ALICE");
+    PoolId poolId;
 
     // Permissioned components
     MockAllowList public mockAllowList;
@@ -57,27 +58,21 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     WrappedPermissionedToken public wrappedToken0;
     MockERC20 public originalToken0;
     WrappedPermissionedTokenFactory public wrappedTokenFactory;
+    Currency public orderedCurrency0;
+    Currency public orderedCurrency1;
+    address public predictedPermissionedSwapRouterAddress;
+    address public predictedPermissionedPosmAddress;
+    address public predictedWrappedTokenFactoryAddress;
 
     // CREATE3 variables for deterministic deployment
     bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
     bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
 
     function setUp() public {
-        // Calculate predicted address for PermissionedPositionManager using CREATE3
-        address predictedPermissionedPosmAddress = CREATE3.getDeployed(PERMISSIONED_POSM_SALT);
-        // address predictedPermissionedSwapRouterAddress = 0x315CaDb0212e178307e363F31D9B5d51d46e8880;
-        address predictedPermissionedSwapRouterAddress = CREATE3.getDeployed(PERMISSIONED_SWAP_ROUTER_SALT);
-        address predictedWrappedTokenFactoryAddress = CREATE3.getDeployed(WRAPPED_TOKEN_FACTORY_SALT);
-        CREATE3.deploy(
-            WRAPPED_TOKEN_FACTORY_SALT,
-            abi.encodePacked(
-                vm.getCode(
-                    "src/hooks/permissionedPools/WrappedPermissionedTokenFactory.sol:WrappedPermissionedTokenFactory"
-                ),
-                abi.encode(address(manager))
-            ),
-            0
-        );
+        // Calculate predicted addresses for contracts using CREATE3
+        predictedPermissionedPosmAddress = CREATE3.getDeployed(PERMISSIONED_POSM_SALT);
+        predictedPermissionedSwapRouterAddress = CREATE3.getDeployed(PERMISSIONED_SWAP_ROUTER_SALT);
+        predictedWrappedTokenFactoryAddress = CREATE3.getDeployed(WRAPPED_TOKEN_FACTORY_SALT);
 
         wrappedTokenFactory = WrappedPermissionedTokenFactory(predictedWrappedTokenFactoryAddress);
 
@@ -86,20 +81,31 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         deployFreshManagerAndRoutersPermissioned(
             address(permit2), address(wrappedTokenFactory), predictedPermissionedPosmAddress
         );
+        CREATE3.deploy(
+            WRAPPED_TOKEN_FACTORY_SALT,
+            abi.encodePacked(
+                vm.getCode(
+                    "src/hooks/permissionedPools/WrappedPermissionedTokenFactory.sol:WrappedPermissionedTokenFactory"
+                ),
+                abi.encode(address(predictedPermissionedPosmAddress))
+            ),
+            0
+        );
         (currency0, currency1) = deployMintAndApprove2Currencies();
 
-        // This is needed to receive return deltas from modifyLiquidity calls.
-        deployPosmHookSavesDelta();
         // Set up permissioned components
         setupPermissionedComponents();
-
-        (key, poolId) =
-            initPool(currency0, currency1, IHooks(predictedPermissionedSwapRouterAddress), 3000, SQRT_PRICE_1_1);
-        // TODO: get precalculated address for permissioned swap router and permissioned posm
         // Deploy permissioned position manager instead of regular one
         deployAndApprovePosm(
             manager, address(wrappedTokenFactory), predictedPermissionedSwapRouterAddress, PERMISSIONED_POSM_SALT
         );
+        (orderedCurrency0, orderedCurrency1) =
+            SortTokens.sort(MockERC20(address(wrappedToken0)), MockERC20(Currency.unwrap(currency1)));
+
+        (key, poolId) = initPool(
+            orderedCurrency0, orderedCurrency1, IHooks(predictedPermissionedSwapRouterAddress), 3000, SQRT_PRICE_1_1
+        );
+
         seedBalance(alice);
         approvePosmFor(alice);
     }
@@ -107,8 +113,11 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     function setupPermissionedComponents() internal {
         // Deploy mock allow list
         mockAllowList = new MockAllowList();
-        mockAllowList.addToAllowList(alice);
         mockAllowList.addToAllowList(address(this));
+        mockAllowList.addToAllowList(alice);
+        mockAllowList.addToAllowList(address(predictedPermissionedPosmAddress));
+        mockAllowList.addToAllowList(address(wrappedTokenFactory));
+        mockAllowList.addToAllowList(address(predictedPermissionedSwapRouterAddress));
         allowListChecker = IAllowlistChecker(address(mockAllowList));
 
         // Create wrapped token from original token0
@@ -118,7 +127,11 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
                 IERC20(address(originalToken0)), address(this), allowListChecker
             )
         );
+        currency0.transfer(address(wrappedToken0), 1);
+        wrappedToken0.updateAllowedWrapper(address(manager), true);
+        wrappedToken0.updateAllowedWrapper(address(predictedPermissionedPosmAddress), true);
 
+        wrappedTokenFactory.verifyWrappedToken(address(wrappedToken0));
         // Sort currencies again after wrapping
         (currency0, currency1) =
             (Currency.unwrap(currency0) < Currency.unwrap(currency1)) ? (currency0, currency1) : (currency1, currency0);
@@ -407,7 +420,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         bytes memory calls =
             getMintEncoded(config, liquidity, slippage, slippage, ActionConstants.MSG_SENDER, ZERO_BYTES);
         // swap to move the price and cause a slippage revert
-        swap(key, true, -1e18, ZERO_BYTES);
+        swap(key, true, -1e18);
         vm.expectRevert(
             abi.encodeWithSelector(SlippageCheck.MaximumAmountExceeded.selector, slippage, 1199947202932782783)
         );
@@ -418,12 +431,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     function test_permissioned_mint_allowed_user() public {
         // Alice is in the allowlist, so she should be able to mint
         vm.startPrank(alice);
-
-        // Alice needs to approve the wrapped token for the position manager
-        wrappedToken0.approve(address(permit2), type(uint256).max);
-        MockERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
-        permit2.approve(address(wrappedToken0), address(lpm), type(uint160).max, type(uint48).max);
-        permit2.approve(Currency.unwrap(currency1), address(lpm), type(uint160).max, type(uint48).max);
 
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 liquidity = 1e18;
@@ -459,9 +466,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         vm.stopPrank();
     }
-
-    // Continue with the rest of the tests from PositionManager.t.sol...
-    // (I'll include a few more key tests, but you can add the rest as needed)
 
     function test_fuzz_burn_emptyPosition(ModifyLiquidityParams memory params) public {
         uint256 balance0Start = currency0.balanceOfSelf();

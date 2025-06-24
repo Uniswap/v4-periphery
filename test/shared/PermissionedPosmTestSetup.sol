@@ -51,22 +51,6 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
 
     PoolKey wethKey;
 
-    function deployPosmHookSavesDelta() public {
-        HookSavesDelta impl = new HookSavesDelta();
-        vm.etch(hookAddr, address(impl).code);
-        hook = HookSavesDelta(hookAddr);
-    }
-
-    /// @dev deploys a special test hook where beforeSwap hookData is used to modify liquidity
-    function deployPosmHookModifyLiquidities() public {
-        HookModifyLiquidities impl = new HookModifyLiquidities();
-        vm.etch(hookModifyLiquiditiesAddr, address(impl).code);
-        hookModifyLiquidities = HookModifyLiquidities(hookModifyLiquiditiesAddr);
-
-        // set posm address since constructor args are not easily copied by vm.etch
-        hookModifyLiquidities.setAddresses(lpm, permit2);
-    }
-
     function deployAndApprovePosm(
         IPoolManager poolManager,
         address wrappedTokenFactory,
@@ -151,7 +135,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
         // Because POSM uses permit2, we must execute 2 permits/approvals.
         // 1. First, the caller must approve permit2 on the token.
         IERC20(Currency.unwrap(currency)).approve(address(permit2), type(uint256).max);
-        // 2. Then, the caller must approve POSM as a spender of permit2. TODO: This could also be a signature.
+        // 2. Then, the caller must approve POSM as a spender of permit2.
         permit2.approve(Currency.unwrap(currency), address(lpm), type(uint160).max, type(uint48).max);
     }
 

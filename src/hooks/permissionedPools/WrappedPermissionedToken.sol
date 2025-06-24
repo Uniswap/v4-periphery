@@ -10,7 +10,6 @@ import {IAllowlistChecker} from "./interfaces/IAllowlistChecker.sol";
 contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedToken {
     /// @inheritdoc IWrappedPermissionedToken
     address public immutable POOL_MANAGER;
-
     /// @inheritdoc IWrappedPermissionedToken
     IERC20 public immutable PERMISSIONED_TOKEN;
 
@@ -72,6 +71,11 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     /// - When `take` is called on the pool manager, the token is automatically unwrapped when the pool manager transfers the token to the recipient
     /// - Enforces that the pool manager is the only holder of the wrapped token
     function _update(address from, address to, uint256 amount) internal override {
+        if (to == address(0)) {
+            // prevents infinite loop when burning
+            super._update(from, to, amount);
+            return;
+        }
         if (from == address(0)) {
             assert(to == POOL_MANAGER);
             // token is being wrapped
@@ -81,17 +85,21 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
             // if the pool manager is the sender, the token is automatically unwrapped, skip the checks
             revert InvalidTransfer(from, to);
         }
-        super._update(from, to, amount);
-        if (from == POOL_MANAGER) {
-            _unwrap(to, amount);
-        }
         // the pool manager must always be the only holder of the wrapped token
         assert(balanceOf(POOL_MANAGER) == totalSupply());
     }
 
     function _unwrap(address account, uint256 amount) internal {
-        _burn(POOL_MANAGER, amount);
+        _burn(account, amount);
         PERMISSIONED_TOKEN.transfer(account, amount);
+    }
+
+    /// @dev Avoids infinite recursion when burning the pool manager's balance
+    function _protected_burn(address account, uint256 value) internal {
+        if (account == address(0)) {
+            revert ERC20InvalidSender(address(0));
+        }
+        super._update(account, address(0), value);
     }
 
     function _getName(IERC20 permissionedToken) private view returns (string memory) {

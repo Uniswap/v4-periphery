@@ -14,6 +14,7 @@ import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/Pool
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IMsgSender} from "../../interfaces/IMsgSender.sol";
+import {console2} from "forge-std/console2.sol";
 
 contract PermissionedV4Router is V4Router, ReentrancyLock, IHooks {
     IAllowanceTransfer public immutable PERMIT2;
@@ -101,6 +102,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock, IHooks {
             }
             return;
         }
+
         // token is permissioned, wrap the token and transfer it to the pool manager
         IWrappedPermissionedToken wrappedPermissionedToken = IWrappedPermissionedToken(Currency.unwrap(currency));
         if (payer == address(this)) {

@@ -24,11 +24,8 @@ contract PermissionedPoolModifyLiquidityTest is Test, PoolTestBase {
     using LPFeeLibrary for uint24;
     using StateLibrary for IPoolManager;
 
-    address public permissionedPositionManager;
     IAllowanceTransfer public permit2;
     IWrappedPermissionedTokenFactory public wrappedTokenFactory;
-
-    bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
 
     constructor(
         IPoolManager _manager,
@@ -40,14 +37,6 @@ contract PermissionedPoolModifyLiquidityTest is Test, PoolTestBase {
     ) PoolTestBase(_manager) {
         permit2 = _permit2;
         wrappedTokenFactory = _wrappedTokenFactory;
-
-        // Deploy permissioned position manager using CREATE3
-        bytes memory posmBytecode = abi.encodePacked(
-            vm.getCode("src/hooks/permissionedPools/PermissionedPositionManager.sol:PermissionedPositionManager"),
-            abi.encode(manager, permit2, 1e18, tokenDescriptor, weth9, wrappedTokenFactory, predictedSwapRouter)
-        );
-        CREATE3.deploy(PERMISSIONED_POSM_SALT, posmBytecode, 0);
-        permissionedPositionManager = CREATE3.getDeployed(PERMISSIONED_POSM_SALT);
     }
 
     struct CallbackData {
@@ -121,10 +110,5 @@ contract PermissionedPoolModifyLiquidityTest is Test, PoolTestBase {
         if (delta1 > 0) data.key.currency1.take(manager, data.sender, uint256(delta1), data.takeClaims);
 
         return abi.encode(delta);
-    }
-
-    /// @notice Get the permissioned position manager address
-    function getPermissionedPositionManager() external view returns (address) {
-        return permissionedPositionManager;
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "forge-std/Test.sol";
 import {Deploy} from "./Deploy.sol";
 import {PermissionedPoolModifyLiquidityTest} from "./PermissionedPoolModifyLiquidityTest.sol";
 import {PermissionedV4Router} from "../../src/hooks/permissionedPools/PermissionedV4Router.sol";
@@ -16,7 +15,7 @@ import {WETH} from "solmate/src/tokens/WETH.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
-import {IERC20} from "forge-std/interfaces/IERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LiquidityOperations} from "./LiquidityOperations.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
@@ -27,23 +26,30 @@ import {IWrappedPermissionedTokenFactory} from
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IPositionDescriptor} from "../../src/interfaces/IPositionDescriptor.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
+import {WrappedPermissionedToken} from "../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
+import {MockAllowList} from "../mocks/MockAllowList.sol";
+import {IAllowlistChecker} from "../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
+import "forge-std/console2.sol";
+import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the permissioned router.
 
-contract PermissionedRoutingTestHelpers is Test, Deployers, DeployPermit2 {
-    PermissionedPoolModifyLiquidityTest positionManager;
+contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
+    address public positionManager;
     PermissionedV4Router permissionedRouter;
 
     // Permissioned components
     IAllowanceTransfer public permit2;
     IWrappedPermissionedTokenFactory public wrappedTokenFactory;
-    address public permissionedPositionManager;
+    MockAllowList public mockAllowList;
+    IAllowlistChecker public allowListChecker;
 
     uint256 MAX_SETTLE_AMOUNT = type(uint256).max;
     uint256 MIN_TAKE_AMOUNT = 0;
 
     // CREATE3 salts for deterministic deployment
     bytes32 public constant PERMISSIONED_ROUTER_SALT =
-        0x0000000000000000000000000000000000000000000000000000000000005fcb;
+        0x0000000000000000000000000000000000000000000000000000000000026385;
     bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
     bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
 
@@ -56,10 +62,13 @@ contract PermissionedRoutingTestHelpers is Test, Deployers, DeployPermit2 {
     Currency currency2;
     Currency currency3;
 
+    WrappedPermissionedToken public wrappedToken0;
+    WrappedPermissionedToken public wrappedToken1;
+
     Currency[] tokenPath;
     Plan plan;
 
-    function setupPermissionedRouterCurrenciesAndPoolsWithLiquidity() public {
+    function setupPermissionedRouterCurrenciesAndPoolsWithLiquidity(address alice) public {
         deployFreshManager();
         WETH wethImpl = new WETH();
         address wethAddr = makeAddr("WETH");
@@ -70,7 +79,6 @@ contract PermissionedRoutingTestHelpers is Test, Deployers, DeployPermit2 {
         // Deploy Permit2
 
         permit2 = IAllowanceTransfer(deployPermit2());
-
         CREATE3.deploy(
             WRAPPED_TOKEN_FACTORY_SALT,
             abi.encodePacked(
@@ -82,11 +90,9 @@ contract PermissionedRoutingTestHelpers is Test, Deployers, DeployPermit2 {
             0
         );
         wrappedTokenFactory = IWrappedPermissionedTokenFactory(CREATE3.getDeployed(WRAPPED_TOKEN_FACTORY_SALT));
-
         // Get predicted addresses
         address predictedPositionManager = CREATE3.getDeployed(PERMISSIONED_POSM_SALT);
         address predictedPermissionedRouter = CREATE3.getDeployed(PERMISSIONED_ROUTER_SALT);
-
         CREATE3.deploy(
             PERMISSIONED_ROUTER_SALT,
             abi.encodePacked(
@@ -95,33 +101,102 @@ contract PermissionedRoutingTestHelpers is Test, Deployers, DeployPermit2 {
             ),
             0
         );
-
         permissionedRouter = PermissionedV4Router(CREATE3.getDeployed(PERMISSIONED_ROUTER_SALT));
-        positionManager = new PermissionedPoolModifyLiquidityTest(
-            manager, permit2, address(tokenDescriptor), address(weth9), wrappedTokenFactory, predictedPermissionedRouter
-        );
 
+        bytes memory posmBytecode = abi.encodePacked(
+            vm.getCode("src/hooks/permissionedPools/PermissionedPositionManager.sol:PermissionedPositionManager"),
+            abi.encode(
+                manager,
+                permit2,
+                1e18,
+                address(tokenDescriptor),
+                address(weth9),
+                wrappedTokenFactory,
+                predictedPermissionedRouter
+            )
+        );
+        positionManager = CREATE3.deploy(PERMISSIONED_POSM_SALT, posmBytecode, 0);
+        console2.log("permissionedRouter", address(permissionedRouter));
+        console2.log("predictedPermissionedRouter", predictedPermissionedRouter);
         MockERC20[] memory tokens = deployTokensMintAndApprove(4);
 
         currency0 = Currency.wrap(address(tokens[0]));
         currency1 = Currency.wrap(address(tokens[1]));
         currency2 = Currency.wrap(address(tokens[2]));
         currency3 = Currency.wrap(address(tokens[3]));
+        setupPermissionedTokens(predictedPositionManager, predictedPermissionedRouter);
+        approveAllCurrencies(tokens);
+        vm.startPrank(alice);
+        approveAllCurrencies(tokens);
+        vm.stopPrank();
+        nativeKey = createNativePoolWithLiquidity(Currency.wrap(address(wrappedToken0)), predictedPermissionedRouter);
+        key0 = createPoolWithLiquidity(
+            Currency.wrap(address(wrappedToken0)), Currency.wrap(address(wrappedToken1)), predictedPermissionedRouter
+        );
+        key1 = createPoolWithLiquidity(Currency.wrap(address(wrappedToken1)), currency2, predictedPermissionedRouter);
+        key2 = createPoolWithLiquidity(currency2, currency3, predictedPermissionedRouter);
+    }
 
-        permit2.approve(Currency.unwrap(currency0), address(permissionedRouter), type(uint160).max, 2 ** 47);
-        permit2.approve(Currency.unwrap(currency1), address(permissionedRouter), type(uint160).max, 2 ** 47);
-        permit2.approve(Currency.unwrap(currency2), address(permissionedRouter), type(uint160).max, 2 ** 47);
-        permit2.approve(Currency.unwrap(currency3), address(permissionedRouter), type(uint160).max, 2 ** 47);
+    function approveAllCurrencies(MockERC20[] memory currencies) internal {
+        for (uint256 i = 0; i < currencies.length; i++) {
+            approveAllContracts(address(currencies[i]));
+        }
+    }
 
-        permit2.approve(Currency.unwrap(currency0), address(permissionedPositionManager), type(uint160).max, 2 ** 47);
-        permit2.approve(Currency.unwrap(currency1), address(permissionedPositionManager), type(uint160).max, 2 ** 47);
-        permit2.approve(Currency.unwrap(currency2), address(permissionedPositionManager), type(uint160).max, 2 ** 47);
-        permit2.approve(Currency.unwrap(currency3), address(permissionedPositionManager), type(uint160).max, 2 ** 47);
+    function approveAllContracts(address token) internal {
+        approveBoth(token, address(permissionedRouter));
+        approveBoth(token, address(positionManager));
+        approveBoth(token, address(manager));
+        approveBoth(token, address(permit2));
+    }
 
-        nativeKey = createNativePoolWithLiquidity(currency0, address(0));
-        key0 = createPoolWithLiquidity(currency0, currency1, address(0));
-        key1 = createPoolWithLiquidity(currency1, currency2, address(0));
-        key2 = createPoolWithLiquidity(currency2, currency3, address(0));
+    function approveBoth(address token, address approved) internal {
+        permit2.approve(token, address(approved), type(uint160).max, 2 ** 47);
+        IERC20(token).approve(address(approved), type(uint256).max);
+    }
+
+    function setupPermissionedTokens(address predictedPositionManager, address predictedPermissionedRouter) internal {
+        mockAllowList = new MockAllowList();
+        mockAllowList.addToAllowList(address(this));
+        mockAllowList.addToAllowList(address(permissionedRouter));
+        mockAllowList.addToAllowList(address(positionManager));
+        mockAllowList.addToAllowList(address(wrappedTokenFactory));
+        mockAllowList.addToAllowList(address(manager));
+        mockAllowList.addToAllowList(address(permit2));
+        allowListChecker = IAllowlistChecker(address(mockAllowList));
+
+        wrappedToken0 = WrappedPermissionedToken(
+            wrappedTokenFactory.createWrappedPermissionedToken(
+                IERC20(Currency.unwrap(currency0)), address(this), allowListChecker
+            )
+        );
+        wrappedToken1 = WrappedPermissionedToken(
+            wrappedTokenFactory.createWrappedPermissionedToken(
+                IERC20(Currency.unwrap(currency1)), address(this), allowListChecker
+            )
+        );
+        // Transfer some underlying tokens to the wrapped tokens for verification
+        IERC20(Currency.unwrap(currency0)).transfer(address(wrappedToken0), 1);
+        IERC20(Currency.unwrap(currency1)).transfer(address(wrappedToken1), 1);
+
+        wrappedTokenFactory.verifyWrappedToken(address(wrappedToken0));
+        wrappedTokenFactory.verifyWrappedToken(address(wrappedToken1));
+
+        // Add position manager as allowed wrapper
+        wrappedToken0.updateAllowedWrapper(positionManager, true);
+        wrappedToken1.updateAllowedWrapper(positionManager, true);
+        wrappedToken0.updateAllowedWrapper(address(permissionedRouter), true);
+        wrappedToken1.updateAllowedWrapper(address(permissionedRouter), true);
+        wrappedToken0.updateAllowedWrapper(address(manager), true);
+        wrappedToken1.updateAllowedWrapper(address(manager), true);
+        console2.log("wrappedToken0", address(wrappedToken0));
+        console2.log("wrappedToken1", address(wrappedToken1));
+        wrappedToken0.approve(address(predictedPermissionedRouter), type(uint256).max);
+        wrappedToken1.approve(address(predictedPermissionedRouter), type(uint256).max);
+        wrappedToken0.approve(address(predictedPositionManager), type(uint256).max);
+        wrappedToken1.approve(address(predictedPositionManager), type(uint256).max);
+        wrappedToken0.approve(address(manager), type(uint256).max);
+        wrappedToken1.approve(address(manager), type(uint256).max);
     }
 
     function deployTokensMintAndApprove(uint8 count) internal returns (MockERC20[] memory) {
@@ -138,11 +213,10 @@ contract PermissionedRoutingTestHelpers is Test, Deployers, DeployPermit2 {
     {
         if (Currency.unwrap(currencyA) > Currency.unwrap(currencyB)) (currencyA, currencyB) = (currencyB, currencyA);
         _key = PoolKey(currencyA, currencyB, 3000, 60, IHooks(hookAddr));
-
         manager.initialize(_key, SQRT_PRICE_1_1);
-        MockERC20(Currency.unwrap(currencyA)).approve(address(positionManager), type(uint256).max);
-        MockERC20(Currency.unwrap(currencyB)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyLiquidity(_key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x");
+        MockERC20(Currency.unwrap(currencyA)).approve(positionManager, type(uint256).max);
+        MockERC20(Currency.unwrap(currencyB)).approve(positionManager, type(uint256).max);
+        modifyLiquidity(_key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x", 0);
     }
 
     function createNativePoolWithLiquidity(Currency currency, address hookAddr)
@@ -150,12 +224,9 @@ contract PermissionedRoutingTestHelpers is Test, Deployers, DeployPermit2 {
         returns (PoolKey memory _key)
     {
         _key = PoolKey(CurrencyLibrary.ADDRESS_ZERO, currency, 3000, 60, IHooks(hookAddr));
-
         manager.initialize(_key, SQRT_PRICE_1_1);
-        MockERC20(Currency.unwrap(currency)).approve(address(positionManager), type(uint256).max);
-        positionManager.modifyLiquidity{value: 200 ether}(
-            _key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x"
-        );
+        MockERC20(Currency.unwrap(currency)).approve(positionManager, type(uint256).max);
+        modifyLiquidity(_key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x", 200 ether);
     }
 
     function _getExactInputParams(Currency[] memory _tokenPath, uint256 amountIn)
@@ -261,13 +332,69 @@ contract PermissionedRoutingTestHelpers is Test, Deployers, DeployPermit2 {
         return address(permissionedRouter);
     }
 
-    /// @notice Get the permissioned position manager address
-    function getPermissionedPositionManager() external view returns (address) {
-        return permissionedPositionManager;
-    }
-
     /// @notice Get the permissioned position manager test contract address
     function getPermissionedPositionManagerTest() external view returns (address) {
-        return address(positionManager);
+        return positionManager;
+    }
+
+    function modifyLiquidity(
+        PoolKey memory key,
+        ModifyLiquidityParams memory params,
+        bytes memory hookData,
+        uint256 value
+    ) public {
+        // Create a plan with the mint position action
+        Plan memory plan = Planner.init();
+        plan = plan.add(
+            Actions.MINT_POSITION,
+            abi.encode(key, params.tickLower, params.tickUpper, 20000, 100000, 100000, msg.sender, hookData)
+        );
+
+        // Finalize the plan with proper settlement
+        bytes memory unlockData = plan.finalizeModifyLiquidityWithSettlePair(key);
+        uint256 deadline = block.timestamp + 3600;
+
+        // Call modifyLiquidities with the properly encoded data
+        IPositionManager(positionManager).modifyLiquidities{value: value}(unlockData, deadline);
+    }
+
+    function _finalizeAndExecuteSwap(
+        Currency inputCurrency,
+        Currency outputCurrency,
+        uint256 amountIn,
+        address takeRecipient
+    )
+        internal
+        returns (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        )
+    {
+        inputBalanceBefore = inputCurrency.balanceOfSelf();
+        outputBalanceBefore = outputCurrency.balanceOfSelf();
+
+        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, takeRecipient);
+
+        uint256 value = (inputCurrency.isAddressZero()) ? amountIn : 0;
+
+        // otherwise just execute as normal
+        permissionedRouter.execute{value: value}(data);
+
+        inputBalanceAfter = inputCurrency.balanceOfSelf();
+        outputBalanceAfter = outputCurrency.balanceOfSelf();
+    }
+
+    function _finalizeAndExecuteSwap(Currency inputCurrency, Currency outputCurrency, uint256 amountIn)
+        internal
+        returns (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        )
+    {
+        return _finalizeAndExecuteSwap(inputCurrency, outputCurrency, amountIn, ActionConstants.MSG_SENDER);
     }
 }

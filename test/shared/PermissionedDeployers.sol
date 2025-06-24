@@ -90,7 +90,7 @@ contract PermissionedDeployers is Test {
 
     // Has propoer hook flags
     bytes32 public constant PERMISSIONED_SWAP_ROUTER_SALT =
-        0x0000000000000000000000000000000000000000000000000000000000005fcb;
+        0x0000000000000000000000000000000000000000000000000000000000026385;
 
     modifier noIsolate() {
         if (msg.sender != address(this)) {
@@ -134,7 +134,7 @@ contract PermissionedDeployers is Test {
         // BEFORE_ADD_LIQUIDITY_FLAG = 1 << 11 = 2048
         // Combined: 128 | 2048 = 2176
         // Use the salt that produces an address ending in 0880
-        bytes32 routerSalt = 0x0000000000000000000000000000000000000000000000000000000000005fcb;
+        bytes32 routerSalt = 0x0000000000000000000000000000000000000000000000000000000000026385;
 
         // Create the bytecode for the router with constructor arguments
         bytes memory routerBytecode = abi.encodePacked(
@@ -270,10 +270,7 @@ contract PermissionedDeployers is Test {
     }
 
     /// @notice Helper function for a simple ERC20 swaps that allows for unlimited price impact
-    function swap(PoolKey memory _key, bool zeroForOne, int256 amountSpecified, bytes memory hookData)
-        internal
-        returns (BalanceDelta)
-    {
+    function swap(PoolKey memory _key, bool zeroForOne, int256 amountSpecified) internal {
         // allow native input for exact-input, guide users to the `swapNativeInput` function
         bool isNativeInput = zeroForOne && _key.currency0.isAddressZero();
         if (isNativeInput) require(0 > amountSpecified, "Use swapNativeInput() for native-token exact-output swaps");
@@ -283,7 +280,11 @@ contract PermissionedDeployers is Test {
         permissionedSwapRouter.execute{value: value}(data);
     }
 
-    function getSwapData(PoolKey memory poolKey, uint256 amountIn, bool zeroForOne) internal returns (bytes memory) {
+    function getSwapData(PoolKey memory poolKey, uint256 amountIn, bool zeroForOne)
+        internal
+        pure
+        returns (bytes memory)
+    {
         // Initialize the plan
         Plan memory plan = Planner.init();
 
@@ -306,8 +307,6 @@ contract PermissionedDeployers is Test {
             ActionConstants.MSG_SENDER // Take recipient
         );
 
-        // Calculate ETH value if needed
-        uint256 value = (zeroForOne && poolKey.currency0.isAddressZero()) ? amountIn : 0;
         return data;
     }
 
