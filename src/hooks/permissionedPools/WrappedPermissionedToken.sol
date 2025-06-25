@@ -71,11 +71,6 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     /// - When `take` is called on the pool manager, the token is automatically unwrapped when the pool manager transfers the token to the recipient
     /// - Enforces that the pool manager is the only holder of the wrapped token
     function _update(address from, address to, uint256 amount) internal override {
-        if (to == address(0)) {
-            // prevents infinite loop when burning
-            super._update(from, to, amount);
-            return;
-        }
         if (from == address(0)) {
             assert(to == POOL_MANAGER);
             // token is being wrapped
@@ -84,13 +79,20 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
         } else if (from != POOL_MANAGER) {
             // if the pool manager is the sender, the token is automatically unwrapped, skip the checks
             revert InvalidTransfer(from, to);
+        } else if (from == POOL_MANAGER) {
+            // When transferring from PoolManager, don't actually transfer wrapped tokens
+            // Instead, directly unwrap and transfer underlying tokens
+            _unwrap(to, amount);
+            return;
         }
+        super._update(from, to, amount);
+
         // the pool manager must always be the only holder of the wrapped token
         assert(balanceOf(POOL_MANAGER) == totalSupply());
     }
 
     function _unwrap(address account, uint256 amount) internal {
-        _burn(account, amount);
+        _protected_burn(POOL_MANAGER, amount);
         PERMISSIONED_TOKEN.transfer(account, amount);
     }
 
