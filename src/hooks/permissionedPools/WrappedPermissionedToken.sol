@@ -51,7 +51,7 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
 
     /// @inheritdoc IWrappedPermissionedToken
     function isAllowed(address account) public view returns (bool) {
-        return allowListChecker.checkAllowList(account);
+        return allowListChecker.checkAllowlist(account);
     }
 
     function _updateAllowListChecker(IAllowlistChecker newAllowListChecker) internal {
@@ -105,5 +105,9 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
 
     function _getSymbol(IERC20 permissionedToken) private view returns (string memory) {
         return string.concat("uw", ERC20(address(permissionedToken)).symbol());
+    }
+
+    function decimals() public view override returns (uint8) {
+        return ERC20(address(PERMISSIONED_TOKEN)).decimals();
     }
 }
