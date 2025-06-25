@@ -108,7 +108,7 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         IERC20(token).approve(address(approved), type(uint256).max);
     }
 
-    function setupPermissionedTokens(address predictedPositionManager, address predictedPermissionedRouter) internal {
+    function setupPermissionedTokens() internal {
         _setupMockAllowList();
 
         wrappedToken0 = WrappedPermissionedToken(
@@ -239,7 +239,7 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         uint256 value
     ) public {
         // Create a plan with the mint position action
-        Plan memory plan = Planner.init();
+        plan = Planner.init();
         plan = plan.add(
             Actions.MINT_POSITION,
             abi.encode(key, params.tickLower, params.tickUpper, 20000, 100000, 100000, msg.sender, hookData)
@@ -365,7 +365,7 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
     }
 
     function _setupPermissionedTokens() private {
-        setupPermissionedTokens(address(positionManager), address(permissionedRouter));
+        setupPermissionedTokens();
     }
 
     function _setupApprovals(MockERC20[] memory tokens, address alice) private {

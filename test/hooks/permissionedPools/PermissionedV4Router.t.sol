@@ -203,12 +203,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
             getInputAndOutputBalances(key0, true, address(manager));
 
         uint256 aliceOutputBalanceAfter = getPermissionedCurrency(key0.currency1).balanceOf(alice);
-        console2.log("aliceOutputBalanceAfter", aliceOutputBalanceAfter);
-        console2.log("aliceOutputBalanceBefore", aliceOutputBalanceBefore);
-        console2.log("expectedAmountOut", expectedAmountOut);
-        console2.log("inputBalanceAfter", inputBalanceAfter);
-        console2.log("aliceOutputBalanceAfter", aliceOutputBalanceAfter);
-        console2.log("aliceOutputBalanceBefore", aliceOutputBalanceBefore);
+        
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
         assertEq(aliceOutputBalanceAfter - aliceOutputBalanceBefore, expectedAmountOut);
@@ -334,9 +329,6 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(wrappedCurrency0);
         IV4Router.ExactInputParams memory params =
             _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter));
-
-        uint256 wrappedCurrency0BalanceBefore = wrappedCurrency0.balanceOf(address(manager));
-        uint256 wrappedCurrency1BalanceBefore = wrappedCurrency1.balanceOf(address(manager));
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
 
