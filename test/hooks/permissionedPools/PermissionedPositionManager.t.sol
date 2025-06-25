@@ -166,7 +166,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         // Set up approvals for the reentrant token
         approvePosmCurrency(reentrantToken);
-        address predictedPermissionedSwapRouterAddress = CREATE3.getDeployed(PERMISSIONED_SWAP_ROUTER_SALT);
         (key, poolId) =
             initPool(currency0, currency1, IHooks(predictedPermissionedSwapRouterAddress), 3000, SQRT_PRICE_1_1);
 

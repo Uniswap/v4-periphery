@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IAllowlistChecker} from "../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
-import {BaseAllowlistChecker} from "../../src/hooks/permissionedPools/BaseAllowlistChecker.sol";
+import {IAllowlistChecker} from "src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
+import {BaseAllowlistChecker} from "src/hooks/permissionedPools/BaseAllowlistChecker.sol";
 
 contract MockAllowList is BaseAllowlistChecker {
     // Mapping to track allowed addresses
