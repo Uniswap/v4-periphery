@@ -89,8 +89,7 @@ contract PermissionedDeployers is Test {
     uint160 clearAllHookPermissionsMask = ~uint160(0) << (hookPermissionCount);
 
     // Has propoer hook flags
-    bytes32 public constant PERMISSIONED_SWAP_ROUTER_SALT =
-        0x0000000000000000000000000000000000000000000000000000000000026385;
+    bytes32 public constant PERMISSIONED_SWAP_ROUTER_SALT = keccak256("salt-43086");
 
     modifier noIsolate() {
         if (msg.sender != address(this)) {
@@ -128,14 +127,6 @@ contract PermissionedDeployers is Test {
     ) internal {
         deployFreshManager();
 
-        // Deploy PermissionedV4Router to an address with the correct hook flags
-        // The router needs BEFORE_SWAP_FLAG and BEFORE_ADD_LIQUIDITY_FLAG
-        // BEFORE_SWAP_FLAG = 1 << 7 = 128
-        // BEFORE_ADD_LIQUIDITY_FLAG = 1 << 11 = 2048
-        // Combined: 128 | 2048 = 2176
-        // Use the salt that produces an address ending in 0880
-        bytes32 routerSalt = 0x0000000000000000000000000000000000000000000000000000000000026385;
-
         // Create the bytecode for the router with constructor arguments
         bytes memory routerBytecode = abi.encodePacked(
             vm.getCode("src/hooks/permissionedPools/PermissionedV4Router.sol:PermissionedV4Router"),
@@ -147,7 +138,7 @@ contract PermissionedDeployers is Test {
             )
         );
 
-        address deployedAddr = CREATE3.deploy(routerSalt, routerBytecode, 0);
+        address deployedAddr = CREATE3.deploy(PERMISSIONED_SWAP_ROUTER_SALT, routerBytecode, 0);
         permissionedSwapRouter = PermissionedV4Router(deployedAddr);
         swapRouter = PoolSwapTest(deployedAddr);
         swapRouterNoChecks = new SwapRouterNoChecks(manager);

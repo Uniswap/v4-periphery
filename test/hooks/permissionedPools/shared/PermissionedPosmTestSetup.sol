@@ -27,29 +27,19 @@ import {PermissionedDeployers} from "test/shared/PermissionedDeployers.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2, LiquidityOperations {
-    uint256 constant STARTING_USER_BALANCE = 10_000_000 ether;
+    uint256 private constant STARTING_USER_BALANCE = 10_000_000 ether;
 
-    IAllowanceTransfer permit2;
+    IAllowanceTransfer public permit2;
     IPositionDescriptor public positionDescriptor;
-    TransparentUpgradeableProxy proxy;
-    IPositionDescriptor proxyAsImplementation;
-    HookSavesDelta hook;
-    address hookAddr = address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG));
-
-    WETH wethImpl = new WETH();
+    TransparentUpgradeableProxy public proxy;
+    IPositionDescriptor public proxyAsImplementation;
+    HookModifyLiquidities public hookModifyLiquidities;
+    WETH public wethImpl = new WETH();
     IWETH9 public _WETH9;
 
-    address governance = address(0xABCD);
+    address public constant governance = address(0xABCD);
 
-    HookModifyLiquidities hookModifyLiquidities;
-    address hookModifyLiquiditiesAddr = address(
-        uint160(
-            Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
-                | Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG
-        )
-    );
-
-    PoolKey wethKey;
+    PoolKey public wethKey;
 
     function deployAndApprovePosm(
         IPoolManager poolManager,
@@ -188,17 +178,5 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
                 keccak256(abi.encode(ERC721PermitHash.PERMIT_TYPEHASH, spender, tokenId, nonce, deadline))
             )
         );
-    }
-
-    function getLastDelta() internal view returns (BalanceDelta delta) {
-        uint256 numDeltas = hook.numberDeltasReturned();
-        delta = hook.deltas(numDeltas - 1); // just want the most recently written delta
-    }
-
-    function getNetDelta() internal view returns (BalanceDelta delta) {
-        uint256 numDeltas = hook.numberDeltasReturned();
-        for (uint256 i = 0; i < numDeltas; i++) {
-            delta = delta + hook.deltas(i);
-        }
     }
 }

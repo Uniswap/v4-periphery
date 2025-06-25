@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Script.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
+import {LibString} from "solmate/src/utils/LibString.sol";
 
 contract FindHookAddress is Script {
     // Hook permissions we need: beforeSwap (0x80) + beforeAddLiquidity (0x800) = 0x880
@@ -14,7 +15,7 @@ contract FindHookAddress is Script {
 
         // Try different salts until we find one that produces the right address
         for (uint256 i = 0; i < 100000; i++) {
-            bytes32 salt = bytes32(i);
+            bytes32 salt = keccak256(abi.encodePacked("salt-", (LibString.toString(i))));
             // default forge deployer address
             address predicted = CREATE3.getDeployed(salt, address(0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496));
 
