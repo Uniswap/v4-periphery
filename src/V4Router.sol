@@ -17,7 +17,6 @@ import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
 import {BipsLibrary} from "./libraries/BipsLibrary.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {console2} from "forge-std/console2.sol";
 /// @title UniswapV4Router
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap v4 pools
 /// @dev the entry point to executing actions in this contract is calling `BaseActionsRouter._executeActions`
@@ -58,7 +57,6 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 _settle(currency, msgSender(), amount);
                 return;
             } else if (action == Actions.TAKE_ALL) {
-                console2.log("taking all");
                 (Currency currency, uint256 minAmount) = params.decodeCurrencyAndUint256();
                 uint256 amount = _getFullCredit(currency);
                 if (amount < minAmount) revert V4TooLittleReceived(minAmount, amount);
@@ -69,12 +67,10 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 _settle(currency, _mapPayer(payerIsUser), _mapSettleAmount(amount, currency));
                 return;
             } else if (action == Actions.TAKE) {
-                console2.log("taking");
                 (Currency currency, address recipient, uint256 amount) = params.decodeCurrencyAddressAndUint256();
                 _take(currency, _mapRecipient(recipient), _mapTakeAmount(amount, currency));
                 return;
             } else if (action == Actions.TAKE_PORTION) {
-                console2.log("taking portion");
                 (Currency currency, address recipient, uint256 bips) = params.decodeCurrencyAddressAndUint256();
                 _take(currency, _mapRecipient(recipient), _getFullCredit(currency).calculatePortion(bips));
                 return;

@@ -67,6 +67,8 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
     Currency[] tokenPath;
     Plan plan;
 
+    mapping(Currency wrappedCurrency => Currency permissionedCurrency) public wrappedToPermissioned;
+
     function setupPermissionedRouterCurrenciesAndPoolsWithLiquidity(address alice) public {
         deployFreshManager();
         WETH wethImpl = new WETH();
@@ -122,6 +124,8 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         currency2 = Currency.wrap(address(tokens[2]));
         currency3 = Currency.wrap(address(tokens[3]));
         setupPermissionedTokens(predictedPositionManager, predictedPermissionedRouter);
+        wrappedToPermissioned[Currency.wrap(address(wrappedToken0))] = currency0;
+        wrappedToPermissioned[Currency.wrap(address(wrappedToken1))] = currency1;
         approveAllCurrencies(tokens);
         vm.startPrank(alice);
         approveAllCurrencies(tokens);
