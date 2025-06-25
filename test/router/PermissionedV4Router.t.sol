@@ -690,7 +690,7 @@ assertEq(wrappedCurrency1BalanceAfter-wrappedCurrency1BalanceBefore, amountIn);
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
-        _finalizeAndExecuteSwap(wrappedCurrency0, currency2, expectedAmountIn, address(permissionedRouter));
+        _finalizeAndExecuteSwap(wrappedCurrency0, currency2, expectedAmountIn);
 
         assertEq(intermediateBalanceBefore, currency0.balanceOfSelf());
         assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
