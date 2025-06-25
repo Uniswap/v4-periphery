@@ -203,7 +203,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
             getInputAndOutputBalances(key0, true, address(manager));
 
         uint256 aliceOutputBalanceAfter = getPermissionedCurrency(key0.currency1).balanceOf(alice);
-        
+
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
         assertEq(aliceOutputBalanceAfter - aliceOutputBalanceBefore, expectedAmountOut);
