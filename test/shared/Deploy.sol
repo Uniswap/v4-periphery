@@ -23,7 +23,7 @@ library Deploy {
     ) internal returns (IPositionManager manager) {
         bytes memory args = abi.encode(poolManager, permit2, unsubscribeGasLimit, positionDescriptor_, wrappedNative);
         bytes memory initcode =
-            abi.encodePacked(vm.getCode("src/hooks/permissionedPools/PositionManager.sol:PositionManager"), args);
+            abi.encodePacked(vm.getCode("PositionManager.sol:PositionManager"), args);
         assembly {
             manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
@@ -49,7 +49,7 @@ library Deploy {
             permissionedSwapRouter
         );
         bytes memory initcode = abi.encodePacked(
-            vm.getCode("src/hooks/permissionedPools/PermissionedPositionManager.sol:PermissionedPositionManager"), args
+            vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args
         );
         assembly {
             manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
@@ -76,14 +76,14 @@ library Deploy {
             permissionedSwapRouter
         );
         bytes memory initcode = abi.encodePacked(
-            vm.getCode("src/hooks/permissionedPools/PermissionedPositionManager.sol:PermissionedPositionManager"), args
+            vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args
         );
         return IPositionManager(CREATE3.deploy(salt, initcode, 0));
     }
 
     function stateView(address poolManager, bytes memory salt) internal returns (IStateView stateView_) {
         bytes memory args = abi.encode(poolManager);
-        bytes memory initcode = abi.encodePacked(vm.getCode("src/lens/StateView.sol:StateView"), args);
+        bytes memory initcode = abi.encodePacked(vm.getCode("StateView.sol:StateView"), args);
         assembly {
             stateView_ := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
@@ -91,7 +91,7 @@ library Deploy {
 
     function v4Quoter(address poolManager, bytes memory salt) internal returns (IV4Quoter quoter) {
         bytes memory args = abi.encode(poolManager);
-        bytes memory initcode = abi.encodePacked(vm.getCode("src/lens/V4Quoter.sol:V4Quoter"), args);
+        bytes memory initcode = abi.encodePacked(vm.getCode("V4Quoter.sol:V4Quoter"), args);
         assembly {
             quoter := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
@@ -104,7 +104,7 @@ library Deploy {
         bytes memory args = abi.encode(implementation, admin, data);
         bytes memory initcode = abi.encodePacked(
             vm.getCode(
-                "lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy"
+                "TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy"
             ),
             args
         );
@@ -120,7 +120,7 @@ library Deploy {
         bytes memory salt
     ) internal returns (IPositionDescriptor descriptor) {
         bytes memory args = abi.encode(poolManager, wrappedNative, nativeCurrencyLabelBytes);
-        bytes memory initcode = abi.encodePacked(vm.getCode("src/PositionDescriptor.sol:PositionDescriptor"), args);
+        bytes memory initcode = abi.encodePacked(vm.getCode("PositionDescriptor.sol:PositionDescriptor"), args);
         assembly {
             descriptor := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
