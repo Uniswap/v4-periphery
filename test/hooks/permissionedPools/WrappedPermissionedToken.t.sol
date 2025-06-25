@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import {
     IWrappedPermissionedToken,
     IAllowlistChecker
-} from "src/hooks/permissionedPools/interfaces/IWrappedPermissionedToken.sol";
+} from "../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedToken.sol";
 import {IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {PermissionedPoolsBase, MockAllowlistChecker} from "./PermissionedPoolsBase.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -124,7 +124,9 @@ contract WrappedPermissionedTokenTest is PermissionedPoolsBase {
     }
 
     function test_UnwrapOnPoolManagerTransfer(uint256 mintAmount, uint256 transferAmount, address recipient) public {
-        vm.assume(recipient != address(0));
+        vm.assume(
+            recipient != address(0) && recipient != mockPoolManager && recipient != address(wrappedPermissionedToken)
+        );
         assertEq(permissionedToken.balanceOf(recipient), 0);
         permissionedToken.setAllowlist(recipient, true);
         transferAmount = bound(transferAmount, 0, mintAmount);

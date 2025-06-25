@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {IAllowlistChecker, IERC165} from "src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
+import {BaseAllowlistChecker} from "../../../src/hooks/permissionedPools/BaseAllowListChecker.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract MockToken is ERC20 {
@@ -36,19 +36,15 @@ contract MockPermissionedToken is MockToken {
     }
 }
 
-contract MockAllowlistChecker is IAllowlistChecker {
+contract MockAllowlistChecker is BaseAllowlistChecker {
     MockPermissionedToken public token;
 
     constructor(MockPermissionedToken token_) {
         token = token_;
     }
 
-    function checkAllowlist(address account) public view returns (bool) {
+    function checkAllowlist(address account) public view override returns (bool) {
         return token.isAllowed(account);
-    }
-
-    function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
-        return interfaceId == type(IAllowlistChecker).interfaceId || interfaceId == type(IERC165).interfaceId;
     }
 }
 

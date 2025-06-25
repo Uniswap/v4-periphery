@@ -4,9 +4,9 @@ pragma solidity ^0.8.20;
 import {
     IWrappedPermissionedToken,
     IAllowlistChecker
-} from "src/hooks/permissionedPools/interfaces/IWrappedPermissionedToken.sol";
+} from "../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedToken.sol";
 import {IWrappedPermissionedTokenFactory} from
-    "src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
+    "../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
 import {IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {PermissionedPoolsBase, MockAllowlistChecker} from "./PermissionedPoolsBase.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
