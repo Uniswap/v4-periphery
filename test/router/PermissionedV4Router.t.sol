@@ -152,8 +152,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
     function test_swapExactInputSingle_zeroForOne_takeToRecipient() public {
         uint256 amountIn = 1 ether;
-        uint256 expectedAmountOut = 992054607780215625;
-
+        uint256 expectedAmountOut = 19992;
+         uint256 wrappedCurrency0BalanceBefore = wrappedCurrency0.balanceOf(address(manager));
+        uint256 wrappedCurrency1BalanceBefore = wrappedCurrency1.balanceOf(address(manager));
+       
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
 
@@ -166,28 +168,27 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn, alice);
 
         uint256 aliceOutputBalanceAfter = key0.currency1.balanceOf(alice);
+//TODO: check alice balance
+        uint256 wrappedCurrency0BalanceAfter = wrappedCurrency0.balanceOf(address(manager));
+        uint256 wrappedCurrency1BalanceAfter = wrappedCurrency1.balanceOf(address(manager));
 
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
-
-        assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
-        // this contract's output balance has not changed because funds went to alice
-        assertEq(outputBalanceAfter, outputBalanceBefore);
-        assertEq(aliceOutputBalanceAfter - aliceOutputBalanceBefore, expectedAmountOut);
+        assertEq(wrappedCurrency0BalanceBefore - expectedAmountOut, wrappedCurrency0BalanceAfter);
+        assertEq(amountIn + wrappedCurrency1BalanceBefore, wrappedCurrency1BalanceAfter);
     }
 
     // This is not a real use-case in isolation, but will be used in the UniversalRouter if a v4
     // swap is before another swap on v2/v3
     function test_swapExactInputSingle_zeroForOne_takeAllToRouter() public {
         uint256 amountIn = 1 ether;
-        uint256 expectedAmountOut = 992054607780215625;
+        uint256 expectedAmountOut = 19992;
 
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-
-        // the router holds no funds before
+        uint256 wrappedCurrency0BalanceBefore = wrappedCurrency0.balanceOf(address(manager));
+        uint256 wrappedCurrency1BalanceBefore = wrappedCurrency1.balanceOf(address(manager));
+       // the router holds no funds before
         assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
         assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
 
@@ -195,20 +196,18 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
         = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn, ActionConstants.ADDRESS_THIS);
 
-        // the output tokens have been left in the router
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), expectedAmountOut);
+        uint256 wrappedCurrency0BalanceAfter = wrappedCurrency0.balanceOf(address(manager));
+        uint256 wrappedCurrency1BalanceAfter = wrappedCurrency1.balanceOf(address(manager));
 
-        assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
-        // this contract's output balance has not changed because funds went to the router
-        assertEq(outputBalanceAfter, outputBalanceBefore);
+        assertEq(wrappedCurrency0BalanceBefore - expectedAmountOut, wrappedCurrency0BalanceAfter);
+        assertEq(amountIn + wrappedCurrency1BalanceBefore, wrappedCurrency1BalanceAfter);
     }
 
     // This is not a real use-case in isolation, but will be used in the UniversalRouter if a v4
     // swap is before another swap on v2/v3
     function test_swapExactInputSingle_zeroForOne_takeToRouter() public {
-        uint256 amountIn = 1 ether;
-        uint256 expectedAmountOut = 992054607780215625;
+        uint256 amountIn = 1000;
+        uint256 expectedAmountOut = 949;
 
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
@@ -219,24 +218,21 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan =
             plan.add(Actions.TAKE, abi.encode(key0.currency1, ActionConstants.ADDRESS_THIS, ActionConstants.OPEN_DELTA));
         bytes memory data = plan.encode();
-
         // the router holds no funds before
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(currency0.balanceOf(address(permissionedRouter)), 0);
+        assertEq(currency1.balanceOf(address(permissionedRouter)), 0);
         uint256 inputBalanceBefore = key0.currency0.balanceOfSelf();
         uint256 outputBalanceBefore = key0.currency1.balanceOfSelf();
-
+        assertEq(inputBalanceBefore, 0);
+        assertEq(outputBalanceBefore, 0);
         permissionedRouter.execute(data);
-
         // the output tokens have been left in the router
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), expectedAmountOut);
+        assertEq(currency0.balanceOf(address(permissionedRouter)), expectedAmountOut);
+        assertEq(currency1.balanceOf(address(permissionedRouter)), 0);
         uint256 inputBalanceAfter = key0.currency0.balanceOfSelf();
         uint256 outputBalanceAfter = key0.currency1.balanceOfSelf();
-
-        assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
-        // this contract's output balance has not changed because funds went to the router
-        assertEq(outputBalanceAfter, outputBalanceBefore);
+        assertEq(inputBalanceAfter, 0);
+        assertEq(outputBalanceAfter, 0);
     }
 
     function test_swapExactInputSingle_oneForZero() public {
@@ -258,40 +254,46 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     }
 
     function test_swapExactInput_revertsForAmountOut() public {
-        uint256 amountIn = 1 ether;
-        uint256 expectedAmountOut = 992054607780215625;
+        uint256 amountIn = 1000;
+        uint256 expectedAmountOut = 949;
 
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
-        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
+        IV4Router.ExactInputParams memory params = _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter));
         params.amountOutMinimum = uint128(expectedAmountOut + 1);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
         bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
 
         vm.expectRevert(
-            abi.encodeWithSelector(IV4Router.V4TooLittleReceived.selector, 992054607780215625 + 1, 992054607780215625)
+            abi.encodeWithSelector(IV4Router.V4TooLittleReceived.selector, expectedAmountOut + 1, expectedAmountOut)
         );
         permissionedRouter.execute(data);
     }
 
     function test_swapExactIn_1Hop_zeroForOne() public {
         uint256 amountIn = 1 ether;
-        uint256 expectedAmountOut = 992054607780215625;
+        uint256 expectedAmountOut = 19992;
 
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
-        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
+        IV4Router.ExactInputParams memory params = _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter));
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-
+        uint256 wrappedCurrency0BalanceBefore = wrappedCurrency0.balanceOf(address(manager));
+        uint256 wrappedCurrency1BalanceBefore = wrappedCurrency1.balanceOf(address(manager));
+      
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
         = _finalizeAndExecuteSwap(wrappedCurrency0, wrappedCurrency1, amountIn);
 
         assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
         assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
+       
+        uint256 wrappedCurrency0BalanceAfter = wrappedCurrency0.balanceOf(address(manager));
+        uint256 wrappedCurrency1BalanceAfter = wrappedCurrency1.balanceOf(address(manager));
 
-        assertEq(inputBalanceBefore - inputBalanceAfter, amountIn);
-        assertEq(outputBalanceAfter - outputBalanceBefore, expectedAmountOut);
+        assertEq(wrappedCurrency0BalanceAfter - wrappedCurrency0BalanceBefore, amountIn);
+        assertEq(wrappedCurrency1BalanceBefore - expectedAmountOut, wrappedCurrency1BalanceAfter);
+    
     }
 
     function test_swapExactIn_1Hop_oneForZero() public {

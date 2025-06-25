@@ -245,6 +245,22 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         params.amountOutMinimum = 0;
     }
 
+    function _getExactInputParamsWithHook(Currency[] memory _tokenPath, uint256 amountIn, address hookAddr)
+        internal
+        pure
+        returns (IV4Router.ExactInputParams memory params)
+    {
+        PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
+        for (uint256 i = 0; i < _tokenPath.length - 1; i++) {
+            path[i] = PathKey(_tokenPath[i + 1], 3000, 60, IHooks(hookAddr), bytes(""));
+        }
+
+        params.currencyIn = _tokenPath[0];
+        params.path = path;
+        params.amountIn = uint128(amountIn);
+        params.amountOutMinimum = 0;
+    }
+
     function _getExactOutputParams(Currency[] memory _tokenPath, uint256 amountOut)
         internal
         pure
