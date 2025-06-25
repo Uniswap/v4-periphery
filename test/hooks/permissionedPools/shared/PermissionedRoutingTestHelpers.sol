@@ -232,82 +232,6 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         params.amountInMaximum = type(uint128).max;
     }
 
-    function _finalizeAndExecutePermissionedSwap(
-        Currency inputCurrency,
-        Currency outputCurrency,
-        uint256 amountIn,
-        address takeRecipient
-    )
-        internal
-        returns (
-            uint256 inputBalanceBefore,
-            uint256 outputBalanceBefore,
-            uint256 inputBalanceAfter,
-            uint256 outputBalanceAfter
-        )
-    {
-        inputBalanceBefore = inputCurrency.balanceOfSelf();
-        outputBalanceBefore = outputCurrency.balanceOfSelf();
-
-        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, takeRecipient);
-
-        uint256 value = (inputCurrency.isAddressZero()) ? amountIn : 0;
-
-        // Execute using the permissioned router
-        permissionedRouter.execute{value: value}(data);
-
-        inputBalanceAfter = inputCurrency.balanceOfSelf();
-        outputBalanceAfter = outputCurrency.balanceOfSelf();
-    }
-
-    function _finalizeAndExecutePermissionedSwap(Currency inputCurrency, Currency outputCurrency, uint256 amountIn)
-        internal
-        returns (
-            uint256 inputBalanceBefore,
-            uint256 outputBalanceBefore,
-            uint256 inputBalanceAfter,
-            uint256 outputBalanceAfter
-        )
-    {
-        return _finalizeAndExecutePermissionedSwap(inputCurrency, outputCurrency, amountIn, ActionConstants.MSG_SENDER);
-    }
-
-    function _finalizeAndExecutePermissionedNativeInputExactOutputSwap(
-        Currency inputCurrency,
-        Currency outputCurrency,
-        uint256 expectedAmountIn
-    )
-        internal
-        returns (
-            uint256 inputBalanceBefore,
-            uint256 outputBalanceBefore,
-            uint256 inputBalanceAfter,
-            uint256 outputBalanceAfter
-        )
-    {
-        inputBalanceBefore = inputCurrency.balanceOfSelf();
-        outputBalanceBefore = outputCurrency.balanceOfSelf();
-
-        bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, ActionConstants.MSG_SENDER);
-
-        // send too much ETH to mimic slippage
-        uint256 value = expectedAmountIn + 0.1 ether;
-        permissionedRouter.execute{value: value}(data);
-
-        inputBalanceAfter = inputCurrency.balanceOfSelf();
-        outputBalanceAfter = outputCurrency.balanceOfSelf();
-    }
-
-    /// @notice Get the permissioned router address
-    function getPermissionedRouter() external view returns (address) {
-        return address(permissionedRouter);
-    }
-
-    /// @notice Get the permissioned position manager test contract address
-    function getPermissionedPositionManagerTest() external view returns (address) {
-        return positionManager;
-    }
-
     function modifyLiquidity(
         PoolKey memory key,
         ModifyLiquidityParams memory params,
@@ -350,7 +274,6 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
 
         uint256 value = (inputCurrency.isAddressZero()) ? amountIn : 0;
 
-        // otherwise just execute as normal
         permissionedRouter.execute{value: value}(data);
 
         inputBalanceAfter = inputCurrency.balanceOfSelf();
