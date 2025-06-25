@@ -2,14 +2,14 @@
 pragma solidity ^0.8.19;
 
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {IV4Router} from "../../src/interfaces/IV4Router.sol";
-import {PermissionedRoutingTestHelpers} from "../shared/PermissionedRoutingTestHelpers.sol";
-import {Planner} from "../shared/Planner.sol";
-import {Actions} from "../../src/libraries/Actions.sol";
-import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
-import {MockAllowList} from "../mocks/MockAllowList.sol";
-import {IAllowlistChecker} from "../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
-import {WrappedPermissionedToken} from "../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
+import {IV4Router} from "src/interfaces/IV4Router.sol";
+import {PermissionedRoutingTestHelpers} from "./shared/PermissionedRoutingTestHelpers.sol";
+import {Planner} from "../../shared/Planner.sol";
+import {Actions} from "src/libraries/Actions.sol";
+import {ActionConstants} from "src/libraries/ActionConstants.sol";
+import {MockAllowList} from "../../mocks/MockAllowList.sol";
+import {IAllowlistChecker} from "src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
+import {WrappedPermissionedToken} from "src/hooks/permissionedPools/WrappedPermissionedToken.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
