@@ -66,8 +66,6 @@ contract PermissionedPositionManager is PositionManager {
 
     /// @dev When paying to settle, if the currency is a permissioned token, wrap the token and transfer it to the pool manager.
     function _pay(Currency currency, address payer, uint256 amount) internal virtual override {
-        console2.log("reached _pay on PermissionedPositionManager");
-        console2.log("currency", Currency.unwrap(currency));
         address permissionedToken = WRAPPED_TOKEN_FACTORY.verifiedPermissionedTokenOf(Currency.unwrap(currency));
         if (permissionedToken == address(0)) {
             // token is not a permissioned token, use the default implementation
@@ -75,7 +73,6 @@ contract PermissionedPositionManager is PositionManager {
             return;
         }
 
-        console2.log("permissionedToken", permissionedToken);
         // token is permissioned, wrap the token and transfer it to the pool manager
         IWrappedPermissionedToken wrappedPermissionedToken = IWrappedPermissionedToken(Currency.unwrap(currency));
         if (payer == address(this)) {
@@ -87,10 +84,8 @@ contract PermissionedPositionManager is PositionManager {
             wrappedPermissionedToken.wrapToPoolManager(amount);
         } else {
             // token is a permissioned token, wrap the token
-            permit2.transferFrom(payer, address(wrappedPermissionedToken), uint160(amount), permissionedToken);
-            console2.log("transferred underlying to wrappedToken");
+           permit2.transferFrom(payer, address(wrappedPermissionedToken), uint160(amount), permissionedToken);
             wrappedPermissionedToken.wrapToPoolManager(amount);
-            console2.log("transfered to pool manager");
         }
     }
 }
