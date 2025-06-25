@@ -116,8 +116,6 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
             )
         );
         positionManager = CREATE3.deploy(PERMISSIONED_POSM_SALT, posmBytecode, 0);
-        console2.log("permissionedRouter", address(permissionedRouter));
-        console2.log("predictedPermissionedRouter", predictedPermissionedRouter);
         MockERC20[] memory tokens = deployTokensMintAndApprove(4);
 
         currency0 = Currency.wrap(address(tokens[0]));
@@ -189,8 +187,6 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         wrappedToken1.updateAllowedWrapper(address(permissionedRouter), true);
         wrappedToken0.updateAllowedWrapper(address(manager), true);
         wrappedToken1.updateAllowedWrapper(address(manager), true);
-        console2.log("wrappedToken0", address(wrappedToken0));
-        console2.log("wrappedToken1", address(wrappedToken1));
         wrappedToken0.approve(address(predictedPermissionedRouter), type(uint256).max);
         wrappedToken1.approve(address(predictedPermissionedRouter), type(uint256).max);
         wrappedToken0.approve(address(predictedPositionManager), type(uint256).max);

@@ -219,9 +219,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     function test_mint_exactTokenRatios() public {
-        console2.log("wrappedToken0", address(wrappedToken0));
-        console2.log("currency0", Currency.unwrap(currency0));
-        console2.log("manager", address(manager));
         int24 tickLower = -int24(key.tickSpacing);
         int24 tickUpper = int24(key.tickSpacing);
         uint256 amount0Desired = 100e18;

@@ -32,7 +32,6 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
 
     function _handleAction(uint256 action, bytes calldata params) internal override {
         // swap actions and payment actions in different blocks for gas efficiency
-        console2.log("_handleAction starting", action);
         if (action < Actions.SETTLE) {
             if (action == Actions.SWAP_EXACT_IN) {
                 IV4Router.ExactInputParams calldata swapParams = params.decodeSwapExactInParams();
