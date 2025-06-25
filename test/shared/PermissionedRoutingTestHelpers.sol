@@ -273,7 +273,7 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         params.amountInMaximum = type(uint128).max;
     }
 
-function _getExactOutputParamsWithHook(Currency[] memory _tokenPath, uint256 amountOut, address hookAddr)
+    function _getExactOutputParamsWithHook(Currency[] memory _tokenPath, uint256 amountOut, address hookAddr)
         internal
         pure
         returns (IV4Router.ExactOutputParams memory params)
@@ -288,6 +288,7 @@ function _getExactOutputParamsWithHook(Currency[] memory _tokenPath, uint256 amo
         params.amountOut = uint128(amountOut);
         params.amountInMaximum = type(uint128).max;
     }
+
     function _finalizeAndExecutePermissionedSwap(
         Currency inputCurrency,
         Currency outputCurrency,

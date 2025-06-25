@@ -84,7 +84,7 @@ contract PermissionedPositionManager is PositionManager {
             wrappedPermissionedToken.wrapToPoolManager(amount);
         } else {
             // token is a permissioned token, wrap the token
-           permit2.transferFrom(payer, address(wrappedPermissionedToken), uint160(amount), permissionedToken);
+            permit2.transferFrom(payer, address(wrappedPermissionedToken), uint160(amount), permissionedToken);
             wrappedPermissionedToken.wrapToPoolManager(amount);
         }
     }

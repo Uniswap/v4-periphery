@@ -2,11 +2,10 @@
 pragma solidity ^0.8.20;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-
 import {Actions} from "../../src/libraries/Actions.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
-import "forge-std/console2.sol";
+
 struct Plan {
     bytes actions;
     bytes[] params;
@@ -84,7 +83,6 @@ library Planner {
         pure
         returns (bytes memory)
     {
-        console2.log("finalizeSwap");
         if (takeRecipient == ActionConstants.MSG_SENDER) {
             // blindly settling and taking all, without slippage checks, isnt recommended in prod
             plan = plan.add(Actions.SETTLE_ALL, abi.encode(inputCurrency, type(uint256).max));

@@ -490,7 +490,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         assertEq(liquidity, 0);
         // 721 will revert if the token does not exist
-       assertEq(currency0.balanceOfSelf(), balance0BeforeBurn + balance0ManagerBefore - balance0ManagerAfter);
+        assertEq(currency0.balanceOfSelf(), balance0BeforeBurn + balance0ManagerBefore - balance0ManagerAfter);
         assertEq(currency1.balanceOfSelf(), balance1BeforeBurn + balance1ManagerBefore - balance1ManagerAfter);
 
         IERC721(address(lpm)).ownerOf(1);
