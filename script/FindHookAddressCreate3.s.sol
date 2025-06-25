@@ -9,7 +9,7 @@ contract FindHookAddress is Script {
     // Hook permissions we need: beforeSwap (0x80) + beforeAddLiquidity (0x800) = 0x880
     uint160 constant REQUIRED_BITS = 0x0880;
 
-    function run() pure external {
+    function run() external pure {
         console2.log("Finding CREATE3 salt for address ending in 0880...");
         console2.log("Required bits:", REQUIRED_BITS);
 
