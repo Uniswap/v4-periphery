@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Deploy} from "test/shared/Deploy.sol";
-import {PermissionedV4Router} from "src/hooks/permissionedPools/PermissionedV4Router.sol";
+import {MockPermissionedV4Router} from "../mocks/MockPermissionedV4Router.sol";
 import {Plan, Planner} from "../../../shared/Planner.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -33,7 +33,7 @@ import {IPositionManager} from "../../../../src/interfaces/IPositionManager.sol"
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the permissioned router.
 contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
     address public positionManager;
-    PermissionedV4Router permissionedRouter;
+    MockPermissionedV4Router permissionedRouter;
 
     // Permissioned components
     IAllowanceTransfer public permit2;
@@ -81,9 +81,9 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         _deployPositionDescriptor();
         _deployPermit2();
         _deployWrappedTokenFactory();
-        _deployPermissionedRouter();
+        _deployMockPermissionedRouter();
         _deployPositionManager();
-        MockERC20[] memory tokens = deployTokensMintAndApprove(4);
+        MockERC20[] memory tokens = deployTokensMintAndApprove(5);
         _deployAndSetupTokens(tokens);
         _setupPermissionedTokens();
         _setupApprovals(tokens, alice);
@@ -137,6 +137,8 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         wrappedTokenFactory.verifyWrappedToken(address(wrappedToken1));
 
         // Add position manager as allowed wrapper
+        wrappedToken0.updateAllowedWrapper(address(this), true);
+        wrappedToken1.updateAllowedWrapper(address(this), true);
         wrappedToken0.updateAllowedWrapper(positionManager, true);
         wrappedToken1.updateAllowedWrapper(positionManager, true);
         wrappedToken0.updateAllowedWrapper(address(permissionedRouter), true);
@@ -224,11 +226,12 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         params.amountInMaximum = type(uint128).max;
     }
 
-    function _getExactOutputParamsWithHook(Currency[] memory _tokenPath, uint256 amountOut, address hookAddr)
-        internal
-        pure
-        returns (IV4Router.ExactOutputParams memory params)
-    {
+    function _getExactOutputParamsWithHook(
+        Currency[] memory _tokenPath,
+        uint256 amountOut,
+        address hookAddr,
+        uint256 amountInMaximum
+    ) internal pure returns (IV4Router.ExactOutputParams memory params) {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
         for (uint256 i = _tokenPath.length - 1; i > 0; i--) {
             path[i - 1] = PathKey(_tokenPath[i - 1], 3000, 60, IHooks(hookAddr), bytes(""));
@@ -237,7 +240,7 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         params.currencyOut = _tokenPath[_tokenPath.length - 1];
         params.path = path;
         params.amountOut = uint128(amountOut);
-        params.amountInMaximum = type(uint128).max;
+        params.amountInMaximum = uint128(amountInMaximum);
     }
 
     function modifyLiquidity(
@@ -325,9 +328,7 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         CREATE3.deploy(
             WRAPPED_TOKEN_FACTORY_SALT,
             abi.encodePacked(
-                vm.getCode(
-                    "src/hooks/permissionedPools/WrappedPermissionedTokenFactory.sol:WrappedPermissionedTokenFactory"
-                ),
+                vm.getCode("WrappedPermissionedTokenFactory.sol:WrappedPermissionedTokenFactory"),
                 abi.encode(address(manager))
             ),
             0
@@ -335,23 +336,23 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         wrappedTokenFactory = IWrappedPermissionedTokenFactory(CREATE3.getDeployed(WRAPPED_TOKEN_FACTORY_SALT));
     }
 
-    function _deployPermissionedRouter() private {
+    function _deployMockPermissionedRouter() private {
         // Get predicted addresses
 
         CREATE3.deploy(
             PERMISSIONED_ROUTER_SALT,
             abi.encodePacked(
-                vm.getCode("src/hooks/permissionedPools/PermissionedV4Router.sol:PermissionedV4Router"),
+                vm.getCode("MockPermissionedV4Router.sol:MockPermissionedV4Router"),
                 abi.encode(manager, permit2, wrappedTokenFactory, predictedPositionManager)
             ),
             0
         );
-        permissionedRouter = PermissionedV4Router(CREATE3.getDeployed(PERMISSIONED_ROUTER_SALT));
+        permissionedRouter = MockPermissionedV4Router(payable(CREATE3.getDeployed(PERMISSIONED_ROUTER_SALT)));
     }
 
     function _deployPositionManager() private {
         bytes memory posmBytecode = abi.encodePacked(
-            vm.getCode("src/hooks/permissionedPools/PermissionedPositionManager.sol:PermissionedPositionManager"),
+            vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"),
             abi.encode(
                 manager,
                 permit2,

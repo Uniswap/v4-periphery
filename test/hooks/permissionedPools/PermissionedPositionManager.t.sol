@@ -332,10 +332,10 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         planner.add(Actions.CLEAR_OR_TAKE, abi.encode(key.currency1, type(uint256).max));
         bytes memory calls = planner.encode();
 
-        Currency negativeDeltaCurrency = Currency.wrap(address(wrappedToken0));
+        Currency negativeDeltaCurrency = key.currency0;
         // because we're fuzzing the range, single-sided mint with currency1 means currency0Delta = 0 and currency1Delta < 0
         if (config.tickUpper <= 0) {
-            negativeDeltaCurrency = currency1;
+            negativeDeltaCurrency = key.currency1;
         }
         vm.expectRevert(abi.encodeWithSelector(DeltaResolver.DeltaNotPositive.selector, (negativeDeltaCurrency)));
         lpm.modifyLiquidities(calls, _deadline);
