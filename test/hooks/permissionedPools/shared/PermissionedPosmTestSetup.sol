@@ -28,6 +28,7 @@ import {PermissionedDeployers} from "./PermissionedDeployers.sol";
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2, LiquidityOperations {
     uint256 private constant STARTING_USER_BALANCE = 10_000_000 ether;
+    address public constant governance = address(0xABCD);
 
     IAllowanceTransfer public permit2;
     IPositionDescriptor public positionDescriptor;
@@ -36,8 +37,6 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
     HookModifyLiquidities public hookModifyLiquidities;
     WETH public wethImpl = new WETH();
     IWETH9 public _WETH9;
-
-    address public constant governance = address(0xABCD);
 
     PoolKey public wethKey;
 
@@ -57,7 +56,6 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
         address permissionedSwapRouter,
         bytes32 salt
     ) internal {
-        // We use deployPermit2() to prevent having to use via-ir in this repository.
         permit2 = IAllowanceTransfer(deployPermit2());
         _WETH9 = deployWETH();
         proxyAsImplementation = deployDescriptor(poolManager, "ETH");
@@ -71,32 +69,6 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             permissionedSwapRouter,
             salt
         );
-    }
-
-    function deployPermissionedPosmCreate3(
-        IPoolManager poolManager,
-        address wrappedTokenFactory,
-        address permissionedSwapRouter,
-        bytes32 salt
-    ) internal {
-        // We use deployPermit2() to prevent having to use via-ir in this repository.
-        permit2 = IAllowanceTransfer(deployPermit2());
-        _WETH9 = deployWETH();
-        proxyAsImplementation = deployDescriptor(poolManager, "ETH");
-        bytes memory bytecode = abi.encodePacked(
-            vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"),
-            abi.encode(
-                address(poolManager),
-                address(permit2),
-                100_000,
-                address(proxyAsImplementation),
-                address(_WETH9),
-                wrappedTokenFactory,
-                permissionedSwapRouter,
-                hex"03"
-            )
-        );
-        CREATE3.deploy(salt, bytecode, 0);
     }
 
     function deployWETH() internal returns (IWETH9) {
@@ -130,40 +102,11 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
     }
 
     // Does the same approvals as approvePosm, but for a specific address.
+    /// @dev Should not be in a prank when calling this function
     function approvePosmFor(address addr) internal {
         vm.startPrank(addr);
         approvePosm();
         vm.stopPrank();
-    }
-
-    function seedWeth(address to) internal {
-        vm.deal(address(this), STARTING_USER_BALANCE);
-        _WETH9.deposit{value: STARTING_USER_BALANCE}();
-        _WETH9.transfer(to, STARTING_USER_BALANCE);
-    }
-
-    function seedToken(MockERC20 token, address to) internal {
-        token.mint(to, STARTING_USER_BALANCE);
-    }
-
-    function initPoolUnsorted(Currency currencyA, Currency currencyB, IHooks hooks, uint24 fee, uint160 sqrtPriceX96)
-        internal
-        returns (PoolKey memory poolKey)
-    {
-        (Currency _currency0, Currency _currency1) =
-            SortTokens.sort(MockERC20(Currency.unwrap(currencyA)), MockERC20(Currency.unwrap(currencyB)));
-
-        (poolKey,) = initPool(_currency0, _currency1, hooks, fee, sqrtPriceX96);
-    }
-
-    function permit(uint256 privateKey, uint256 tokenId, address operator, uint256 nonce) internal {
-        bytes32 digest = getDigest(operator, tokenId, 1, block.timestamp + 1);
-
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
-        bytes memory signature = abi.encodePacked(r, s, v);
-
-        vm.prank(operator);
-        lpm.permit(operator, tokenId, block.timestamp + 1, nonce, signature);
     }
 
     function getDigest(address spender, uint256 tokenId, uint256 nonce, uint256 deadline)

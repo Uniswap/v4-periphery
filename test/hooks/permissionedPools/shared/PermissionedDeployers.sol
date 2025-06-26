@@ -161,7 +161,6 @@ contract PermissionedDeployers is Test {
         internal
         returns (Currency, Currency)
     {
-        bool isMatching = false;
         while (true) {
             Currency _currencyA;
             Currency _currencyB;
@@ -179,9 +178,10 @@ contract PermissionedDeployers is Test {
             (currency0, currency1) =
                 SortTokens.sort(MockERC20(Currency.unwrap(_currencyA)), MockERC20(Currency.unwrap(_currencyB)));
             if (currency0 == _currencyA && currency1 == _currencyB) {
-                return (currency0, currency1);
+                break;
             }
         }
+        return (currency0, currency1);
     }
 
     function deployMintAndApproveCurrency(bool isPermissioned) internal returns (Currency currency) {
@@ -268,21 +268,6 @@ contract PermissionedDeployers is Test {
         modifyLiquidityRouter.modifyLiquidity{value: msgValue}(_key, LIQUIDITY_PARAMS, ZERO_BYTES);
     }
 
-    // Deploys the manager, all test routers, and sets up 2 pools: with and without native
-    function initializeManagerRoutersAndPoolsWithLiq(IHooks hooks) internal {
-        deployFreshManagerAndRouters();
-        // sets the global currencies and key
-        deployMintAndApprove2Currencies(true, true);
-        (key,) = initPoolAndAddLiquidity(currency0, currency1, hooks, 3000, SQRT_PRICE_1_1);
-        nestedActionRouter.executor().setKey(key);
-        (nativeKey,) =
-            initPoolAndAddLiquidityETH(CurrencyLibrary.ADDRESS_ZERO, currency1, hooks, 3000, SQRT_PRICE_1_1, 1 ether);
-        uninitializedKey = key;
-        uninitializedNativeKey = nativeKey;
-        uninitializedKey.fee = 100;
-        uninitializedNativeKey.fee = 100;
-    }
-
     /// @notice Helper function for a simple ERC20 swaps that allows for unlimited price impact
     function swap(PoolKey memory _key, bool zeroForOne, int256 amountSpecified) internal {
         // allow native input for exact-input, guide users to the `swapNativeInput` function
@@ -322,50 +307,5 @@ contract PermissionedDeployers is Test {
         );
 
         return data;
-    }
-
-    /// @notice Helper function to increase balance of pool manager.
-    /// Uses default LIQUIDITY_PARAMS range.
-    function seedMoreLiquidity(PoolKey memory _key, uint256 amount0, uint256 amount1) internal {
-        (uint160 sqrtPriceX96,,,) = manager.getSlot0(_key.toId());
-        uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(LIQUIDITY_PARAMS.tickLower),
-            TickMath.getSqrtPriceAtTick(LIQUIDITY_PARAMS.tickUpper),
-            amount0,
-            amount1
-        );
-
-        ModifyLiquidityParams memory params = ModifyLiquidityParams({
-            tickLower: LIQUIDITY_PARAMS.tickLower,
-            tickUpper: LIQUIDITY_PARAMS.tickUpper,
-            liquidityDelta: int128(liquidityDelta),
-            salt: 0
-        });
-
-        modifyLiquidityRouter.modifyLiquidity(_key, params, ZERO_BYTES);
-    }
-
-    /// @notice Helper function for a simple Native-token swap that allows for unlimited price impact
-    function swapNativeInput(
-        PoolKey memory _key,
-        bool zeroForOne,
-        int256 amountSpecified,
-        bytes memory hookData,
-        uint256 msgValue
-    ) internal returns (BalanceDelta) {
-        require(_key.currency0.isAddressZero(), "currency0 is not native. Use swap() instead");
-        if (zeroForOne == false) require(msgValue == 0, "msgValue must be 0 for oneForZero swaps");
-
-        return swapRouter.swap{value: msgValue}(
-            _key,
-            SwapParams({
-                zeroForOne: zeroForOne,
-                amountSpecified: amountSpecified,
-                sqrtPriceLimitX96: zeroForOne ? MIN_PRICE_LIMIT : MAX_PRICE_LIMIT
-            }),
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
-            hookData
-        );
     }
 }
