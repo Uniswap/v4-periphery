@@ -42,7 +42,7 @@ contract MockAllowList is BaseAllowlistChecker {
      * @param account The address to check
      * @return True if the address is allowed, false otherwise
      */
-    function checkAllowList(address account) public view override returns (bool) {
+    function checkAllowlist(address account) public view override returns (bool) {
         return allowedAddresses[account];
     }
 

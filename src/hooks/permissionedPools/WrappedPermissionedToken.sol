@@ -50,7 +50,7 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
 
     /// @inheritdoc IWrappedPermissionedToken
     function isAllowed(address account) public view returns (bool) {
-        return allowListChecker.checkAllowList(account);
+        return allowListChecker.checkAllowlist(account);
     }
 
     function _updateAllowListChecker(IAllowlistChecker newAllowListChecker) internal {
