@@ -108,6 +108,14 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         IERC20(token).approve(address(approved), type(uint256).max);
     }
 
+    function getPermissionedCurrency(Currency currency) public view returns (Currency) {
+        Currency permissionedCurrency = wrappedToPermissioned[currency];
+        if (permissionedCurrency == Currency.wrap(address(0))) {
+            return currency;
+        }
+        return permissionedCurrency;
+    }
+
     function setupPermissionedTokens() internal {
         _setupMockAllowList();
 

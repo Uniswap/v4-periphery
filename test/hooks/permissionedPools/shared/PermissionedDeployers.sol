@@ -2,11 +2,14 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import {Planner} from "./Planner.sol";
-import {Plan} from "./Planner.sol";
-import {IV4Router} from "src/interfaces/IV4Router.sol";
-import {Actions} from "src/libraries/Actions.sol";
-import {ActionConstants} from "src/libraries/ActionConstants.sol";
+import {Planner} from "../../../shared/Planner.sol";
+import {Plan} from "../../../shared/Planner.sol";
+import {IV4Router} from "../../../../src/interfaces/IV4Router.sol";
+import {Actions} from "../../../../src/libraries/Actions.sol";
+import {ActionConstants} from "../../../../src/libraries/ActionConstants.sol";
+import {IWrappedPermissionedTokenFactory} from
+    "../../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
+import {PermissionedV4Router} from "../../../../src/hooks/permissionedPools/PermissionedV4Router.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -33,9 +36,6 @@ import {ActionsRouter} from "@uniswap/v4-core/src/test/ActionsRouter.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {IWrappedPermissionedTokenFactory} from
-    "../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
-import {PermissionedV4Router} from "../../src/hooks/permissionedPools/PermissionedV4Router.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
 
 /// @notice A contract that provides permissioned deployment functionality for tests

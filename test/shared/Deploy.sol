@@ -22,8 +22,7 @@ library Deploy {
         bytes memory salt
     ) internal returns (IPositionManager manager) {
         bytes memory args = abi.encode(poolManager, permit2, unsubscribeGasLimit, positionDescriptor_, wrappedNative);
-        bytes memory initcode =
-            abi.encodePacked(vm.getCode("PositionManager.sol:PositionManager"), args);
+        bytes memory initcode = abi.encodePacked(vm.getCode("PositionManager.sol:PositionManager"), args);
         assembly {
             manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
@@ -48,9 +47,8 @@ library Deploy {
             wrappedTokenFactory,
             permissionedSwapRouter
         );
-        bytes memory initcode = abi.encodePacked(
-            vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args
-        );
+        bytes memory initcode =
+            abi.encodePacked(vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args);
         assembly {
             manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
@@ -75,9 +73,8 @@ library Deploy {
             wrappedTokenFactory,
             permissionedSwapRouter
         );
-        bytes memory initcode = abi.encodePacked(
-            vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args
-        );
+        bytes memory initcode =
+            abi.encodePacked(vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args);
         return IPositionManager(CREATE3.deploy(salt, initcode, 0));
     }
 
@@ -102,12 +99,8 @@ library Deploy {
         returns (TransparentUpgradeableProxy proxy)
     {
         bytes memory args = abi.encode(implementation, admin, data);
-        bytes memory initcode = abi.encodePacked(
-            vm.getCode(
-                "TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy"
-            ),
-            args
-        );
+        bytes memory initcode =
+            abi.encodePacked(vm.getCode("TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy"), args);
         assembly {
             proxy := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
