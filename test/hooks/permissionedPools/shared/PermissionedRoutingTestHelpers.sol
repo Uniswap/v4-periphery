@@ -13,7 +13,6 @@ import {WETH} from "solmate/src/tokens/WETH.sol";
 
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LiquidityOperations} from "../../../shared/LiquidityOperations.sol";
 import {IV4Router} from "../../../../src/interfaces/IV4Router.sol";
@@ -26,19 +25,18 @@ import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
 import {IPositionDescriptor} from "../../../../src/interfaces/IPositionDescriptor.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {WrappedPermissionedToken} from "../../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
-import {MockAllowList} from "../mocks/MockAllowList.sol";
+import {MockAllowlistChecker, MockPermissionedToken} from "../PermissionedPoolsBase.sol";
 import {IAllowlistChecker} from "../../../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
 import {IPositionManager} from "../../../../src/interfaces/IPositionManager.sol";
+import {PermissionedDeployers} from "./PermissionedDeployers.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the permissioned router.
-contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
-    address public positionManager;
-    MockPermissionedV4Router permissionedRouter;
-
+contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 {
     // Permissioned components
+    MockPermissionedV4Router public permissionedRouter;
     IAllowanceTransfer public permit2;
     IWrappedPermissionedTokenFactory public wrappedTokenFactory;
-    MockAllowList public mockAllowList;
+    MockAllowlistChecker public mockAllowlistChecker;
     IAllowlistChecker public allowListChecker;
     IPositionDescriptor public tokenDescriptor;
     IWETH9 public weth9;
@@ -49,8 +47,7 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
     // CREATE3 salts for deterministic deployment
     bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
     bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
-    // Needs to be a specific salt to indicate proper hook permissions
-    //TODO: find keccak256 salt which yields the same permissions
+    // This specific salt indicates proper hook permissions
     bytes32 public constant PERMISSIONED_ROUTER_SALT = keccak256("salt-43086");
 
     // nativeKey is already defined in Deployers.sol
@@ -68,12 +65,13 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
     Currency[] tokenPath;
     Plan plan;
 
-    address predictedPositionManager;
-    address predictedPermissionedRouter;
+    address public predictedPositionManager;
+    address public predictedPermissionedRouter;
+    address public positionManager;
 
     mapping(Currency wrappedCurrency => Currency permissionedCurrency) public wrappedToPermissioned;
 
-    function setupPermissionedRouterCurrenciesAndPoolsWithLiquidity(address alice) public {
+    function setupPermissionedRouterCurrenciesAndPoolsWithLiquidity(address spender) public {
         predictedPositionManager = CREATE3.getDeployed(PERMISSIONED_POSM_SALT);
         predictedPermissionedRouter = CREATE3.getDeployed(PERMISSIONED_ROUTER_SALT);
         _deployFreshManager();
@@ -83,10 +81,10 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         _deployWrappedTokenFactory();
         _deployMockPermissionedRouter();
         _deployPositionManager();
-        MockERC20[] memory tokens = deployTokensMintAndApprove(5);
+        MockERC20[] memory tokens = deployTokensMintAndApprove(5, 2);
         _deployAndSetupTokens(tokens);
-        _setupPermissionedTokens();
-        _setupApprovals(tokens, alice);
+        _setupPermissionedTokens(spender);
+        _setupApprovals(tokens, spender);
         _createPoolsWithLiquidity();
     }
 
@@ -116,42 +114,59 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         return permissionedCurrency;
     }
 
-    function setupPermissionedTokens() internal {
-        _setupMockAllowList();
+    function setupPermissionedTokens(address spender) internal {
+        _setupMockAllowList(currency0, spender);
+        _setupMockAllowList(currency1, spender);
 
         wrappedToken0 = WrappedPermissionedToken(
             wrappedTokenFactory.createWrappedPermissionedToken(
-                IERC20(Currency.unwrap(currency0)), address(this), allowListChecker
+                IERC20(Currency.unwrap(currency0)), address(this), mockAllowlistChecker
             )
         );
         wrappedToken1 = WrappedPermissionedToken(
             wrappedTokenFactory.createWrappedPermissionedToken(
-                IERC20(Currency.unwrap(currency1)), address(this), allowListChecker
+                IERC20(Currency.unwrap(currency1)), address(this), mockAllowlistChecker
             )
         );
+
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(wrappedToken0), true);
+        MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(address(wrappedToken1), true);
+        
         // Transfer some underlying tokens to the wrapped tokens for verification
         IERC20(Currency.unwrap(currency0)).transfer(address(wrappedToken0), 1);
         IERC20(Currency.unwrap(currency1)).transfer(address(wrappedToken1), 1);
 
+        verifyTokensAndAddWrappers();
+
+        wrappedToPermissioned[Currency.wrap(address(wrappedToken0))] = currency0;
+        wrappedToPermissioned[Currency.wrap(address(wrappedToken1))] = currency1;
+    }
+
+    function verifyTokensAndAddWrappers() private {
         wrappedTokenFactory.verifyWrappedToken(address(wrappedToken0));
         wrappedTokenFactory.verifyWrappedToken(address(wrappedToken1));
 
-        // Add position manager as allowed wrapper
         wrappedToken0.updateAllowedWrapper(address(this), true);
         wrappedToken1.updateAllowedWrapper(address(this), true);
         wrappedToken0.updateAllowedWrapper(positionManager, true);
         wrappedToken1.updateAllowedWrapper(positionManager, true);
         wrappedToken0.updateAllowedWrapper(address(permissionedRouter), true);
         wrappedToken1.updateAllowedWrapper(address(permissionedRouter), true);
-
-        wrappedToPermissioned[Currency.wrap(address(wrappedToken0))] = currency0;
-        wrappedToPermissioned[Currency.wrap(address(wrappedToken1))] = currency1;
     }
 
-    function deployTokensMintAndApprove(uint8 count) internal returns (MockERC20[] memory) {
-        MockERC20[] memory tokens = deployTokens(count, 2 ** 128);
+    function deployTokensMintAndApprove(uint8 count, uint8 permissionedCount) internal returns (MockERC20[] memory) {
+        MockERC20[] memory permissionedTokens = deployTokens(permissionedCount, 2 ** 128, true);
+        MockERC20[] memory unpermissionedTokens = deployTokens(count - permissionedCount, 2 ** 128, false);
+        MockERC20[] memory tokens = new MockERC20[](count);
+        for (uint256 i = 0; i < permissionedCount; i++) {
+            tokens[i] = permissionedTokens[i];
+        }
+        for (uint256 i = 0; i < count - permissionedCount; i++) {
+            tokens[i + permissionedCount] = unpermissionedTokens[i];
+        }
         for (uint256 i = 0; i < count; i++) {
             tokens[i].approve(address(permissionedRouter), type(uint256).max);
+            tokens[i].approve(address(positionManager), type(uint256).max);
         }
         return tokens;
     }
@@ -199,6 +214,15 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         pure
         returns (IV4Router.ExactInputParams memory params)
     {
+        return _getExactInputParamsWithHook(_tokenPath, amountIn, hookAddr, 0);
+    }
+
+    function _getExactInputParamsWithHook(
+        Currency[] memory _tokenPath,
+        uint256 amountIn,
+        address hookAddr,
+        uint256 amountOutMinimum
+    ) internal pure returns (IV4Router.ExactInputParams memory params) {
         PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
         for (uint256 i = 0; i < _tokenPath.length - 1; i++) {
             path[i] = PathKey(_tokenPath[i + 1], 3000, 60, IHooks(hookAddr), bytes(""));
@@ -207,7 +231,7 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         params.currencyIn = _tokenPath[0];
         params.path = path;
         params.amountIn = uint128(amountIn);
-        params.amountOutMinimum = 0;
+        params.amountOutMinimum = uint128(amountOutMinimum);
     }
 
     function _getExactOutputParams(Currency[] memory _tokenPath, uint256 amountOut)
@@ -215,15 +239,7 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         pure
         returns (IV4Router.ExactOutputParams memory params)
     {
-        PathKey[] memory path = new PathKey[](_tokenPath.length - 1);
-        for (uint256 i = _tokenPath.length - 1; i > 0; i--) {
-            path[i - 1] = PathKey(_tokenPath[i - 1], 3000, 60, IHooks(address(0)), bytes(""));
-        }
-
-        params.currencyOut = _tokenPath[_tokenPath.length - 1];
-        params.path = path;
-        params.amountOut = uint128(amountOut);
-        params.amountInMaximum = type(uint128).max;
+        return _getExactOutputParamsWithHook(_tokenPath, amountOut, address(0), type(uint128).max);
     }
 
     function _getExactOutputParamsWithHook(
@@ -373,8 +389,8 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         currency3 = Currency.wrap(address(tokens[3]));
     }
 
-    function _setupPermissionedTokens() private {
-        setupPermissionedTokens();
+    function _setupPermissionedTokens(address spender) private {
+        setupPermissionedTokens(spender);
     }
 
     function _setupApprovals(MockERC20[] memory tokens, address alice) private {
@@ -393,14 +409,15 @@ contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
         key2 = createPoolWithLiquidity(currency2, currency3, address(permissionedRouter));
     }
 
-    function _setupMockAllowList() private {
-        mockAllowList = new MockAllowList();
-        mockAllowList.addToAllowList(address(this));
-        mockAllowList.addToAllowList(address(permissionedRouter));
-        mockAllowList.addToAllowList(address(positionManager));
-        mockAllowList.addToAllowList(address(wrappedTokenFactory));
-        mockAllowList.addToAllowList(address(manager));
-        mockAllowList.addToAllowList(address(permit2));
-        allowListChecker = IAllowlistChecker(address(mockAllowList));
+    function _setupMockAllowList(Currency currency, address spender) private {
+        MockPermissionedToken mockPermissionedToken = MockPermissionedToken(Currency.unwrap(currency));
+        mockAllowlistChecker = new MockAllowlistChecker(mockPermissionedToken);
+        mockPermissionedToken.setAllowlist(address(this), true);
+        mockPermissionedToken.setAllowlist(address(permissionedRouter), true);
+        mockPermissionedToken.setAllowlist(address(positionManager), true);
+        mockPermissionedToken.setAllowlist(address(wrappedTokenFactory), true);
+        mockPermissionedToken.setAllowlist(address(manager), true);
+        mockPermissionedToken.setAllowlist(address(permit2), true);
+        mockPermissionedToken.setAllowlist(spender, true);
     }
 }

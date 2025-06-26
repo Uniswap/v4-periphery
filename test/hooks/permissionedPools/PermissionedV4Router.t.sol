@@ -7,12 +7,12 @@ import {PermissionedRoutingTestHelpers} from "./shared/PermissionedRoutingTestHe
 import {Planner} from "../../shared/Planner.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../../src/libraries/ActionConstants.sol";
-import {MockAllowList} from "./mocks/MockAllowList.sol";
 import {IAllowlistChecker} from "../../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
 import {WrappedPermissionedToken} from "../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {MockPermissionedToken} from "./PermissionedPoolsBase.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     address public alice = makeAddr("ALICE");
@@ -24,14 +24,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         wrappedCurrency0 = Currency.wrap(address(wrappedToken0));
         wrappedCurrency1 = Currency.wrap(address(wrappedToken1));
         plan = Planner.init();
-        // Setup permissions and approvals
         setupPermissionsAndApprovals();
     }
 
     function setupPermissionsAndApprovals() internal {
-        // Add addresses to allowlist
-        mockAllowList.addToAllowList(alice);
-
         // Setup approvals for test contract
         _setupApprovals();
 
@@ -101,8 +97,13 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
     function test_swap_reverts_unauthorized_user() public {
         address unauthorizedUser = makeAddr("UNAUTHORIZED");
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, true);
+        MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(unauthorizedUser, true);
         IERC20(Currency.unwrap(currency0)).transfer(unauthorizedUser, 2 ether);
         IERC20(Currency.unwrap(currency1)).transfer(unauthorizedUser, 2 ether);
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, false);
+        MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(unauthorizedUser, false);
+
         uint256 amountIn = 1 ether;
 
         PoolKey memory wrappedKey = PoolKey(currency0, currency1, 3000, 60, IHooks(address(permissionedRouter)));
@@ -278,7 +279,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
         IV4Router.ExactInputParams memory params =
-            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter));
+            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter), expectedAmountOut);
         params.amountOutMinimum = uint128(expectedAmountOut + 1);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
@@ -297,7 +298,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
         IV4Router.ExactInputParams memory params =
-            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter));
+            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter), expectedAmountOut);
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
@@ -319,7 +320,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(wrappedCurrency1);
         tokenPath.push(wrappedCurrency0);
         IV4Router.ExactInputParams memory params =
-            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter));
+            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter), expectedAmountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
 
@@ -344,7 +345,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(wrappedCurrency1);
         tokenPath.push(currency2);
         IV4Router.ExactInputParams memory params =
-            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter));
+            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter), expectedAmountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
 
@@ -374,7 +375,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(currency2);
         tokenPath.push(currency3);
         IV4Router.ExactInputParams memory params =
-            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter));
+            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter), expectedAmountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
 
@@ -465,14 +466,12 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     function test_nativeOut_swapExactIn_1Hop() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 19992;
-
         tokenPath.push(nativeKey.currency1);
         tokenPath.push(CurrencyLibrary.ADDRESS_ZERO);
         IV4Router.ExactInputParams memory params =
             _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedRouter));
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-
         (uint256 inputBalanceBefore,, uint256 ethBalanceBefore) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
         _finalizeAndExecuteSwap(nativeKey.currency1, CurrencyLibrary.ADDRESS_ZERO, amountIn);
@@ -855,4 +854,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         assertEq(ethBalanceAfter - ethBalanceBefore, amountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, expectedAmountIn);
     }
+
+    receive() external payable {}
+    fallback() external {}
 }

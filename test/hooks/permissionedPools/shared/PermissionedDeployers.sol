@@ -37,6 +37,7 @@ import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
+import {MockPermissionedToken} from "../PermissionedPoolsBase.sol";
 
 /// @notice A contract that provides permissioned deployment functionality for tests
 /// This moves the deployFreshManagerAndRoutersPermissioned function from v4-core to the test folder
@@ -129,7 +130,7 @@ contract PermissionedDeployers is Test {
 
         // Create the bytecode for the router with constructor arguments
         bytes memory routerBytecode = abi.encodePacked(
-            vm.getCode("src/hooks/permissionedPools/PermissionedV4Router.sol:PermissionedV4Router"),
+            vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
             abi.encode(
                 manager,
                 IAllowanceTransfer(_permit2),
@@ -156,17 +157,35 @@ contract PermissionedDeployers is Test {
 
     // You must have first initialised the routers with deployFreshManagerAndRouters
     // If you only need the currencies (and not approvals) call deployAndMint2Currencies
-    function deployMintAndApprove2Currencies() internal returns (Currency, Currency) {
-        Currency _currencyA = deployMintAndApproveCurrency();
-        Currency _currencyB = deployMintAndApproveCurrency();
+    function deployMintAndApprove2Currencies(bool isPermissioned0, bool isPermissioned1)
+        internal
+        returns (Currency, Currency)
+    {
+        bool isMatching = false;
+        while (true) {
+            Currency _currencyA;
+            Currency _currencyB;
+            if (isPermissioned0) {
+                _currencyA = deployMintAndApproveCurrency(true);
+            } else {
+                _currencyA = deployMintAndApproveCurrency(false);
+            }
+            if (isPermissioned1) {
+                _currencyB = deployMintAndApproveCurrency(true);
+            } else {
+                _currencyB = deployMintAndApproveCurrency(false);
+            }
 
-        (currency0, currency1) =
-            SortTokens.sort(MockERC20(Currency.unwrap(_currencyA)), MockERC20(Currency.unwrap(_currencyB)));
-        return (currency0, currency1);
+            (currency0, currency1) =
+                SortTokens.sort(MockERC20(Currency.unwrap(_currencyA)), MockERC20(Currency.unwrap(_currencyB)));
+            if (currency0 == _currencyA && currency1 == _currencyB) {
+                return (currency0, currency1);
+            }
+        }
     }
 
-    function deployMintAndApproveCurrency() internal returns (Currency currency) {
-        MockERC20 token = deployTokens(1, 2 ** 255)[0];
+    function deployMintAndApproveCurrency(bool isPermissioned) internal returns (Currency currency) {
+        MockERC20 token = deployTokens(1, 2 ** 255, isPermissioned)[0];
 
         address[9] memory toApprove = [
             address(swapRouter),
@@ -187,16 +206,20 @@ contract PermissionedDeployers is Test {
         return Currency.wrap(address(token));
     }
 
-    function deployAndMint2Currencies() internal returns (Currency, Currency) {
-        MockERC20[] memory tokens = deployTokens(2, 2 ** 255);
-        return SortTokens.sort(tokens[0], tokens[1]);
-    }
-
-    function deployTokens(uint8 count, uint256 totalSupply) internal returns (MockERC20[] memory tokens) {
+    function deployTokens(uint8 count, uint256 totalSupply, bool arePermissioned)
+        internal
+        returns (MockERC20[] memory tokens)
+    {
         tokens = new MockERC20[](count);
         for (uint8 i = 0; i < count; i++) {
-            tokens[i] = new MockERC20("TEST", "TEST", 18);
-            tokens[i].mint(address(this), totalSupply);
+            if (arePermissioned) {
+                tokens[i] = MockERC20(address(new MockPermissionedToken()));
+                MockPermissionedToken(address(tokens[i])).setAllowlist(address(this), true);
+                tokens[i].mint(address(this), totalSupply);
+            } else {
+                tokens[i] = new MockERC20("TEST", "TEST", 18);
+                tokens[i].mint(address(this), totalSupply);
+            }
         }
     }
 
@@ -249,7 +272,7 @@ contract PermissionedDeployers is Test {
     function initializeManagerRoutersAndPoolsWithLiq(IHooks hooks) internal {
         deployFreshManagerAndRouters();
         // sets the global currencies and key
-        deployMintAndApprove2Currencies();
+        deployMintAndApprove2Currencies(true, true);
         (key,) = initPoolAndAddLiquidity(currency0, currency1, hooks, 3000, SQRT_PRICE_1_1);
         nestedActionRouter.executor().setKey(key);
         (nativeKey,) =
