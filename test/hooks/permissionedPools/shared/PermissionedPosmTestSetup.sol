@@ -8,22 +8,22 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
-import {LiquidityOperations} from "test/shared/LiquidityOperations.sol";
+import {LiquidityOperations} from "../../../shared/LiquidityOperations.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
-import {HookSavesDelta} from "test/shared/HookSavesDelta.sol";
-import {HookModifyLiquidities} from "test/shared/HookModifyLiquidities.sol";
-import {Deploy, IPositionDescriptor} from "test/shared/Deploy.sol";
-import {ERC721PermitHash} from "src/libraries/ERC721PermitHash.sol";
-import {IWETH9} from "src/interfaces/external/IWETH9.sol";
+import {HookSavesDelta} from "../../../shared/HookSavesDelta.sol";
+import {HookModifyLiquidities} from "../../../shared/HookModifyLiquidities.sol";
+import {Deploy, IPositionDescriptor} from "../../../shared/Deploy.sol";
+import {ERC721PermitHash} from "../../../../src/libraries/ERC721PermitHash.sol";
+import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
 import {WETH} from "solmate/src/tokens/WETH.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {SortTokens} from "@uniswap/v4-core/test/utils/SortTokens.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {PositionConfig} from "test/shared/PositionConfig.sol";
+import {PositionConfig} from "../../../shared/PositionConfig.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
-import {PermissionedDeployers} from "test/shared/PermissionedDeployers.sol";
+import {PermissionedDeployers} from "../../../shared/PermissionedDeployers.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2, LiquidityOperations {
