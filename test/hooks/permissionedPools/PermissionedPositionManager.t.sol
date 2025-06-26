@@ -22,25 +22,25 @@ import {CREATE3} from "solmate/src/utils/CREATE3.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 
-import {IPositionManager} from "src/interfaces/IPositionManager.sol";
-import {Actions} from "src/libraries/Actions.sol";
-import {DeltaResolver} from "src/base/DeltaResolver.sol";
+import {IPositionManager} from "../../../src/interfaces/IPositionManager.sol";
+import {Actions} from "../../../src/libraries/Actions.sol";
+import {DeltaResolver} from "../../../src/base/DeltaResolver.sol";
 import {PositionConfig} from "test/shared/PositionConfig.sol";
-import {SlippageCheck} from "src/libraries/SlippageCheck.sol";
-import {BaseActionsRouter} from "src/base/BaseActionsRouter.sol";
-import {ActionConstants} from "src/libraries/ActionConstants.sol";
+import {SlippageCheck} from "../../../src/libraries/SlippageCheck.sol";
+import {BaseActionsRouter} from "../../../src/base/BaseActionsRouter.sol";
+import {ActionConstants} from "../../../src/libraries/ActionConstants.sol";
 
-import {LiquidityFuzzers} from "test/shared/fuzz/LiquidityFuzzers.sol";
-import {Planner, Plan} from "test/shared/Planner.sol";
+import {LiquidityFuzzers} from "../../shared/fuzz/LiquidityFuzzers.sol";
+import {Planner, Plan} from "../../shared/Planner.sol";
 import {PermissionedPosmTestSetup} from "./shared/PermissionedPosmTestSetup.sol";
-import {ReentrantToken} from "test/mocks/ReentrantToken.sol";
-import {ReentrancyLock} from "src/base/ReentrancyLock.sol";
+import {ReentrantToken} from "../../mocks/ReentrantToken.sol";
+import {ReentrancyLock} from "../../../src/base/ReentrancyLock.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
-import {MockAllowList} from "test/mocks/MockAllowList.sol";
-import {IAllowlistChecker} from "src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
-import {WrappedPermissionedToken, IERC20} from "src/hooks/permissionedPools/WrappedPermissionedToken.sol";
-import {WrappedPermissionedTokenFactory} from "src/hooks/permissionedPools/WrappedPermissionedTokenFactory.sol";
+import {MockAllowList} from "../../mocks/MockAllowList.sol";
+import {IAllowlistChecker} from "../../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
+import {WrappedPermissionedToken, IERC20} from "../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
+import {WrappedPermissionedTokenFactory} from "../../../src/hooks/permissionedPools/WrappedPermissionedTokenFactory.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {SortTokens} from "@uniswap/v4-core/test/utils/SortTokens.sol";
 

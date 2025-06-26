@@ -3,11 +3,11 @@ pragma solidity ^0.8.24;
 
 import {Deploy} from "test/shared/Deploy.sol";
 import {PermissionedV4Router} from "src/hooks/permissionedPools/PermissionedV4Router.sol";
-import {Plan, Planner} from "test/shared/Planner.sol";
+import {Plan, Planner} from "../../../shared/Planner.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {PathKey} from "src/libraries/PathKey.sol";
-import {Actions} from "src/libraries/Actions.sol";
+import {PathKey} from "../../../../src/libraries/PathKey.sol";
+import {Actions} from "../../../../src/libraries/Actions.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
 import {WETH} from "solmate/src/tokens/WETH.sol";
 
@@ -15,20 +15,20 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {LiquidityOperations} from "test/shared/LiquidityOperations.sol";
-import {IV4Router} from "src/interfaces/IV4Router.sol";
-import {ActionConstants} from "src/libraries/ActionConstants.sol";
+import {LiquidityOperations} from "../../../shared/LiquidityOperations.sol";
+import {IV4Router} from "../../../../src/interfaces/IV4Router.sol";
+import {ActionConstants} from "../../../../src/libraries/ActionConstants.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IWrappedPermissionedTokenFactory} from
-    "src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
-import {IWETH9} from "src/interfaces/external/IWETH9.sol";
-import {IPositionDescriptor} from "src/interfaces/IPositionDescriptor.sol";
+    "../../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
+import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
+import {IPositionDescriptor} from "../../../../src/interfaces/IPositionDescriptor.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
-import {WrappedPermissionedToken} from "src/hooks/permissionedPools/WrappedPermissionedToken.sol";
-import {MockAllowList} from "test/mocks/MockAllowList.sol";
-import {IAllowlistChecker} from "src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
-import {IPositionManager} from "src/interfaces/IPositionManager.sol";
+import {WrappedPermissionedToken} from "../../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
+import {MockAllowList} from "../../../mocks/MockAllowList.sol";
+import {IAllowlistChecker} from "../../../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
+import {IPositionManager} from "../../../../src/interfaces/IPositionManager.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the permissioned router.
 contract PermissionedRoutingTestHelpers is Deployers, DeployPermit2 {
