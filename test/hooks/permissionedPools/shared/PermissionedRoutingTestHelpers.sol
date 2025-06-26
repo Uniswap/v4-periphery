@@ -26,7 +26,7 @@ import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
 import {IPositionDescriptor} from "../../../../src/interfaces/IPositionDescriptor.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {WrappedPermissionedToken} from "../../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
-import {MockAllowList} from "../../../mocks/MockAllowList.sol";
+import {MockAllowList} from "../mocks/MockAllowList.sol";
 import {IAllowlistChecker} from "../../../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
 import {IPositionManager} from "../../../../src/interfaces/IPositionManager.sol";
 
