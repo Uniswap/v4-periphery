@@ -139,7 +139,7 @@ contract PermissionedDeployers is Test {
         );
 
         address deployedAddr = CREATE3.deploy(PERMISSIONED_SWAP_ROUTER_SALT, routerBytecode, 0);
-        permissionedSwapRouter = PermissionedV4Router(deployedAddr);
+        permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
         swapRouter = PoolSwapTest(deployedAddr);
         swapRouterNoChecks = new SwapRouterNoChecks(manager);
         modifyLiquidityRouter = new PoolModifyLiquidityTest(manager);
