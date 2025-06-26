@@ -7,7 +7,7 @@ import {PermissionedRoutingTestHelpers} from "./shared/PermissionedRoutingTestHe
 import {Planner} from "../../shared/Planner.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../../src/libraries/ActionConstants.sol";
-import {MockAllowList} from "../../mocks/MockAllowList.sol";
+import {MockAllowList} from "./mocks/MockAllowList.sol";
 import {IAllowlistChecker} from "../../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
 import {WrappedPermissionedToken} from "../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";

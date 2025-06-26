@@ -37,7 +37,7 @@ import {ReentrantToken} from "../../mocks/ReentrantToken.sol";
 import {ReentrancyLock} from "../../../src/base/ReentrancyLock.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
-import {MockAllowList} from "../../mocks/MockAllowList.sol";
+import {MockAllowList} from "./mocks/MockAllowList.sol";
 import {IAllowlistChecker} from "../../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
 import {WrappedPermissionedToken, IERC20} from "../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
 import {WrappedPermissionedTokenFactory} from "../../../src/hooks/permissionedPools/WrappedPermissionedTokenFactory.sol";
