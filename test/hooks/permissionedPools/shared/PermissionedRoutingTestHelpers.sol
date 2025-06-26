@@ -131,7 +131,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
 
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(wrappedToken0), true);
         MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(address(wrappedToken1), true);
-        
+
         // Transfer some underlying tokens to the wrapped tokens for verification
         IERC20(Currency.unwrap(currency0)).transfer(address(wrappedToken0), 1);
         IERC20(Currency.unwrap(currency1)).transfer(address(wrappedToken1), 1);
