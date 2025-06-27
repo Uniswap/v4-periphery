@@ -32,6 +32,12 @@ import {PermissionedDeployers} from "./PermissionedDeployers.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the permissioned router.
 contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 {
+    // CREATE3 salts for deterministic deployment
+    bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
+    bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
+    // This specific salt indicates proper hook permissions
+    bytes32 public constant PERMISSIONED_ROUTER_SALT = keccak256("salt-43086");
+
     // Permissioned components
     MockPermissionedV4Router public permissionedRouter;
     IAllowanceTransfer public permit2;
@@ -43,12 +49,6 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
 
     uint256 MAX_SETTLE_AMOUNT = type(uint256).max;
     uint256 MIN_TAKE_AMOUNT = 0;
-
-    // CREATE3 salts for deterministic deployment
-    bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
-    bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
-    // This specific salt indicates proper hook permissions
-    bytes32 public constant PERMISSIONED_ROUTER_SALT = keccak256("salt-43086");
 
     // nativeKey is already defined in Deployers.sol
     PoolKey key0;

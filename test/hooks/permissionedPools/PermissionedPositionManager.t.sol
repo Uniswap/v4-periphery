@@ -47,7 +47,10 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     using FixedPointMathLib for uint256;
     using StateLibrary for IPoolManager;
 
-    address alice = makeAddr("ALICE");
+    // CREATE3 variables for deterministic deployment
+    bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
+    bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
+
     PoolId poolId;
 
     // Permissioned components
@@ -59,9 +62,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     address public predictedPermissionedPosmAddress;
     address public predictedWrappedTokenFactoryAddress;
 
-    // CREATE3 variables for deterministic deployment
-    bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
-    bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
+    // Test User
+    address alice = makeAddr("ALICE");
 
     function setUp() public {
         // Calculate predicted addresses for contracts using CREATE3

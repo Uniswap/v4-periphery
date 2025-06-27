@@ -15,9 +15,11 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {MockPermissionedToken} from "./PermissionedPoolsBase.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
-    address public alice = makeAddr("ALICE");
     Currency wrappedCurrency0;
     Currency wrappedCurrency1;
+
+    // Test User
+    address public alice = makeAddr("ALICE");
 
     function setUp() public {
         setupPermissionedRouterCurrenciesAndPoolsWithLiquidity(alice);
