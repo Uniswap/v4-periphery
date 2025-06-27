@@ -28,7 +28,7 @@ import {PermissionedDeployers} from "./PermissionedDeployers.sol";
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2, LiquidityOperations {
     uint256 private constant STARTING_USER_BALANCE = 10_000_000 ether;
-    address public constant governance = address(0xABCD);
+    address public constant GOVERNANCE = address(0xABCD);
 
     IAllowanceTransfer public permit2;
     IPositionDescriptor public positionDescriptor;
@@ -79,7 +79,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
 
     function deployDescriptor(IPoolManager poolManager, bytes32 label) internal returns (IPositionDescriptor) {
         positionDescriptor = Deploy.positionDescriptor(address(poolManager), address(_WETH9), label, hex"00");
-        proxy = Deploy.transparentUpgradeableProxy(address(positionDescriptor), governance, "", hex"03");
+        proxy = Deploy.transparentUpgradeableProxy(address(positionDescriptor), GOVERNANCE, "", hex"03");
         return IPositionDescriptor(address(proxy));
     }
 
