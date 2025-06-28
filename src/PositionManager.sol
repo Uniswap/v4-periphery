@@ -30,6 +30,7 @@ import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {NativeWrapper} from "./base/NativeWrapper.sol";
 import {IWETH9} from "./interfaces/external/IWETH9.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 //                                           444444444
 //                                444444444444      444444
@@ -115,9 +116,28 @@ contract PositionManager is
     using SafeCast for int256;
     using CalldataDecoder for bytes;
     using SlippageCheck for BalanceDelta;
+    using CustomRevert for bytes4;
 
     /// @notice Thrown when a zero address is provided for a critical parameter
     error ZeroAddress(string parameter);
+    
+    /// @notice Thrown when token ID would overflow
+    error TokenIdOverflow();
+    
+    /// @notice Thrown when the from address is incorrect
+    error WrongFrom();
+    
+    /// @notice Thrown when recipient is zero address
+    error InvalidRecipient();
+    
+    /// @notice Thrown when caller is not authorized for token transfer
+    error NotAuthorized();
+    
+    /// @notice Thrown when balance would underflow
+    error InsufficientBalance();
+    
+    /// @notice Thrown when balance would overflow  
+    error BalanceOverflow();
 
     /// @inheritdoc IPositionManager
     /// @dev The ID of the next token that will be minted. Skips 0
@@ -367,7 +387,7 @@ contract PositionManager is
         // mint receipt token
         uint256 tokenId;
         // Add overflow protection for nextTokenId
-        if (nextTokenId >= type(uint256).max) revert("Token ID overflow");
+        if (nextTokenId >= type(uint256).max) revert TokenIdOverflow();
         
         // tokenId is assigned to current nextTokenId before incrementing it
         unchecked {
@@ -552,19 +572,18 @@ contract PositionManager is
         
         // Perform the same authorization checks as the parent ERC721 contract
         // but using the correct caller context for the locked pool manager scenario
-        require(from == _ownerOf[id], "WRONG_FROM");
-        require(to != address(0), "INVALID_RECIPIENT");
+        if (from != _ownerOf[id]) WrongFrom.selector.revertWith();
+        if (to == address(0)) InvalidRecipient.selector.revertWith();
         
         // Critical authorization check: caller must be authorized to transfer this token
-        require(
-            caller == from || isApprovedForAll[from][caller] || caller == getApproved[id],
-            "NOT_AUTHORIZED"
-        );
+        if (!(caller == from || isApprovedForAll[from][caller] || caller == getApproved[id])) {
+            NotAuthorized.selector.revertWith();
+        }
         
         // Replicate the transfer logic from solmate ERC721 to avoid parent authorization conflicts
         // Add validation to prevent underflow/overflow in balance updates
-        require(_balanceOf[from] > 0, "Insufficient balance");
-        require(_balanceOf[to] < type(uint256).max, "Balance overflow");
+        if (_balanceOf[from] == 0) InsufficientBalance.selector.revertWith();
+        if (_balanceOf[to] >= type(uint256).max) BalanceOverflow.selector.revertWith();
         
         // Underflow of the sender's balance is impossible because we check for
         // ownership above and the recipient's balance can't realistically overflow.
