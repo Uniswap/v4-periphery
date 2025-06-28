@@ -54,6 +54,10 @@ abstract contract Notifier is INotifier {
 
     function _setSubscribed(uint256 tokenId) internal virtual;
 
+    /// @notice Returns the address of the caller that should be used for authorization
+    /// @dev Must be implemented by inheriting contracts - should return the actual caller context
+    function msgSender() public view virtual returns (address);
+
     /// @notice Internal function to set up reentrancy guard
     function _notifierNonReentrantBefore() private {
         // On the first call to nonReentrant, _status will be _NOT_ENTERED
@@ -77,7 +81,7 @@ abstract contract Notifier is INotifier {
         external
         payable
         onlyIfPoolManagerLocked
-        onlyIfApproved(msg.sender, tokenId)
+        onlyIfApproved(msgSender(), tokenId)
         notifierNonReentrant
     {
         // Validate newSubscriber is not zero address
@@ -109,7 +113,7 @@ abstract contract Notifier is INotifier {
         external
         payable
         onlyIfPoolManagerLocked
-        onlyIfApproved(msg.sender, tokenId)
+        onlyIfApproved(msgSender(), tokenId)
         notifierNonReentrant
     {
         _unsubscribe(tokenId);
