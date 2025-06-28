@@ -20,8 +20,11 @@ library LiquidityAmounts {
         pure
         returns (uint128 liquidity)
     {
+        if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+        // Add protection against invalid price ranges
+        if (sqrtPriceBX96 <= sqrtPriceAX96) revert("Invalid price range");
+        
         unchecked {
-            if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
             uint256 intermediate = FullMath.mulDiv(sqrtPriceAX96, sqrtPriceBX96, FixedPoint96.Q96);
             return FullMath.mulDiv(amount0, intermediate, sqrtPriceBX96 - sqrtPriceAX96).toUint128();
         }
@@ -38,8 +41,11 @@ library LiquidityAmounts {
         pure
         returns (uint128 liquidity)
     {
+        if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+        // Add protection against invalid price ranges  
+        if (sqrtPriceBX96 <= sqrtPriceAX96) revert("Invalid price range");
+        
         unchecked {
-            if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
             return FullMath.mulDiv(amount1, FixedPoint96.Q96, sqrtPriceBX96 - sqrtPriceAX96).toUint128();
         }
     }

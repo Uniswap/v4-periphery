@@ -60,7 +60,7 @@ import {IWETH9} from "./interfaces/external/IWETH9.sol";
 //                 4444   44  44444        44444444444             444444444444444444444    44444444
 //                     44444   4444        4444444444             444444444444444444444444     44444
 //                 44444 44444 444         444444                4444444444444444444444444       44444
-//                       4444 44         44                     4 44444444444444444444444444   444 44444
+//                       4444 44         44                     4 44444444444444444444444444   444 444444
 //                   44444444 444  44   4    4         444444  4 44444444444444444444444444444   4444444
 //                        444444    44       44444444444       44444444444444 444444444444444      444444
 //                     444444 44   4444      44444       44     44444444444444444444444 4444444      44444
@@ -366,6 +366,9 @@ contract PositionManager is
     ) internal {
         // mint receipt token
         uint256 tokenId;
+        // Add overflow protection for nextTokenId
+        if (nextTokenId >= type(uint256).max) revert("Token ID overflow");
+        
         // tokenId is assigned to current nextTokenId before incrementing it
         unchecked {
             tokenId = nextTokenId++;
@@ -559,6 +562,10 @@ contract PositionManager is
         );
         
         // Replicate the transfer logic from solmate ERC721 to avoid parent authorization conflicts
+        // Add validation to prevent underflow/overflow in balance updates
+        require(_balanceOf[from] > 0, "Insufficient balance");
+        require(_balanceOf[to] < type(uint256).max, "Balance overflow");
+        
         // Underflow of the sender's balance is impossible because we check for
         // ownership above and the recipient's balance can't realistically overflow.
         unchecked {
