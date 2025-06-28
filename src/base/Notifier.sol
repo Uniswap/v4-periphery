@@ -80,6 +80,9 @@ abstract contract Notifier is INotifier {
         onlyIfApproved(msg.sender, tokenId)
         notifierNonReentrant
     {
+        // Validate newSubscriber is not zero address
+        if (newSubscriber == address(0)) revert NoCodeSubscriber.selector.revertWith();
+        
         ISubscriber _subscriber = subscriber[tokenId];
 
         if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(tokenId, address(_subscriber));

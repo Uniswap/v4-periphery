@@ -18,6 +18,9 @@ import {SafeCurrencyMetadata} from "./libraries/SafeCurrencyMetadata.sol";
 contract PositionDescriptor is IPositionDescriptor {
     using StateLibrary for IPoolManager;
 
+    /// @notice Thrown when a zero address is provided for a critical parameter
+    error ZeroAddress(string parameter);
+
     // mainnet addresses
     address private constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address private constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
@@ -31,6 +34,10 @@ contract PositionDescriptor is IPositionDescriptor {
     IPoolManager public immutable poolManager;
 
     constructor(IPoolManager _poolManager, address _wrappedNative, bytes32 _nativeCurrencyLabelBytes) {
+        // Zero address validation for critical parameters
+        if (address(_poolManager) == address(0)) revert ZeroAddress("poolManager");
+        if (_wrappedNative == address(0)) revert ZeroAddress("wrappedNative");
+        
         poolManager = _poolManager;
         wrappedNative = _wrappedNative;
         nativeCurrencyLabelBytes = _nativeCurrencyLabelBytes;

@@ -12,6 +12,9 @@ contract ImmutableState is IImmutableState {
 
     /// @notice Thrown when the caller is not PoolManager
     error NotPoolManager();
+    
+    /// @notice Thrown when a zero address is provided for a critical parameter
+    error ZeroAddress(string parameter);
 
     /// @notice Only allow calls from the PoolManager contract
     modifier onlyPoolManager() {
@@ -20,6 +23,7 @@ contract ImmutableState is IImmutableState {
     }
 
     constructor(IPoolManager _poolManager) {
+        if (address(_poolManager) == address(0)) revert ZeroAddress("poolManager");
         poolManager = _poolManager;
     }
 }

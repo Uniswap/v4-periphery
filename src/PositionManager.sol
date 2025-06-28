@@ -116,6 +116,9 @@ contract PositionManager is
     using CalldataDecoder for bytes;
     using SlippageCheck for BalanceDelta;
 
+    /// @notice Thrown when a zero address is provided for a critical parameter
+    error ZeroAddress(string parameter);
+
     /// @inheritdoc IPositionManager
     /// @dev The ID of the next token that will be minted. Skips 0
     uint256 public nextTokenId = 1;
@@ -138,6 +141,12 @@ contract PositionManager is
         Notifier(_unsubscribeGasLimit)
         NativeWrapper(_weth9)
     {
+        // Comprehensive zero address validation for critical parameters
+        if (address(_poolManager) == address(0)) revert ZeroAddress("poolManager");
+        if (address(_permit2) == address(0)) revert ZeroAddress("permit2");
+        if (address(_tokenDescriptor) == address(0)) revert ZeroAddress("tokenDescriptor");
+        if (address(_weth9) == address(0)) revert ZeroAddress("weth9");
+        
         tokenDescriptor = _tokenDescriptor;
     }
 

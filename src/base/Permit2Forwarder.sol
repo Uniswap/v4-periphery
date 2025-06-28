@@ -8,8 +8,12 @@ import {IPermit2Forwarder, IAllowanceTransfer} from "../interfaces/IPermit2Forwa
 contract Permit2Forwarder is IPermit2Forwarder {
     /// @notice the Permit2 contract to forward approvals
     IAllowanceTransfer public immutable permit2;
+    
+    /// @notice Thrown when a zero address is provided for a critical parameter
+    error ZeroAddress(string parameter);
 
     constructor(IAllowanceTransfer _permit2) {
+        if (address(_permit2) == address(0)) revert ZeroAddress("permit2");
         permit2 = _permit2;
     }
 
