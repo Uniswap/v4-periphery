@@ -50,6 +50,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     // CREATE3 variables for deterministic deployment
     bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
     bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
+    bytes32 public constant SECONDARY_POSM_SALT = keccak256("SECONDARY_POSM_TEST");
 
     PoolId poolId;
 
@@ -58,8 +59,12 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     WrappedPermissionedToken public wrappedToken0;
     MockERC20 public originalToken0;
     WrappedPermissionedTokenFactory public wrappedTokenFactory;
+    IPositionManager public secondaryPosm;
+
+    // Predicted addresses
     address public predictedPermissionedSwapRouterAddress;
     address public predictedPermissionedPosmAddress;
+    address public predictedSecondaryPosmAddress;
     address public predictedWrappedTokenFactoryAddress;
 
     // Test User
@@ -68,6 +73,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     function setUp() public {
         // Calculate predicted addresses for contracts using CREATE3
         predictedPermissionedPosmAddress = CREATE3.getDeployed(PERMISSIONED_POSM_SALT);
+        predictedSecondaryPosmAddress = CREATE3.getDeployed(SECONDARY_POSM_SALT);
         predictedPermissionedSwapRouterAddress = CREATE3.getDeployed(PERMISSIONED_SWAP_ROUTER_SALT);
         predictedWrappedTokenFactoryAddress = CREATE3.getDeployed(WRAPPED_TOKEN_FACTORY_SALT);
 
@@ -90,6 +96,9 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         deployAndApprovePosm(
             manager, address(wrappedTokenFactory), predictedPermissionedSwapRouterAddress, PERMISSIONED_POSM_SALT
         );
+        secondaryPosm = deployAndApprovePosmOnly(
+            manager, address(wrappedTokenFactory), predictedPermissionedSwapRouterAddress, SECONDARY_POSM_SALT
+        );
         setupPool();
         seedBalance(alice);
         approvePosmFor(alice);
@@ -109,6 +118,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(this), true);
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, true);
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(predictedPermissionedPosmAddress), true);
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(predictedSecondaryPosmAddress), true);
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(wrappedTokenFactory), true);
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(
             address(predictedPermissionedSwapRouterAddress), true
@@ -124,6 +134,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(wrappedToken0), true);
         currency0.transfer(address(wrappedToken0), 1);
         wrappedToken0.updateAllowedWrapper(address(manager), true);
+        wrappedToken0.updateAllowedWrapper(address(predictedSecondaryPosmAddress), true);
         wrappedToken0.updateAllowedWrapper(address(predictedPermissionedPosmAddress), true);
 
         wrappedTokenFactory.verifyWrappedToken(address(wrappedToken0));
@@ -415,7 +426,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         lpm.modifyLiquidities(calls, _deadline);
     }
 
-    // Add a test to verify permissioned functionality works
     function test_permissioned_mint_allowed_user() public {
         // Alice is in the allowlist, so she should be able to mint
         vm.startPrank(alice);
@@ -430,7 +440,20 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.stopPrank();
     }
 
-    function test_permissioned_mint_disallowed_user() public {
+    function test_permissioned_mint_secondary_posm_reverts() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = secondaryPosm.nextTokenId();
+
+        vm.prank(alice);
+
+        // Call function directly rather than use helper, so we can choose which position manager to use
+        bytes memory calls = getMintEncoded(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        vm.expectRevert();
+        secondaryPosm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
+    function test_permissioned_mint_disallowed_user_reverts() public {
         address unauthorizedUser = makeAddr("UNAUTHORIZED");
 
         // Add some tokens to unauthorized user
@@ -445,12 +468,130 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         MockERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
         permit2.approve(address(originalToken0), address(lpm), type(uint160).max, type(uint48).max);
         permit2.approve(Currency.unwrap(currency1), address(lpm), type(uint160).max, type(uint48).max);
+
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 liquidity = 1e18;
 
         // This should revert because the user is not in the allowlist
         vm.expectRevert();
         mint(config, liquidity, unauthorizedUser, ZERO_BYTES);
+
+        vm.stopPrank();
+    }
+
+    function test_permissioned_mint_increase_allowed_user() public {
+        vm.startPrank(alice);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
+        tokenId = lpm.nextTokenId();
+        // Increase liquidity
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
+        vm.stopPrank();
+    }
+
+    function test_permissioned_mint_increase_disallowed_user_reverts() public {
+        vm.startPrank(alice);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
+
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, false);
+
+        tokenId = lpm.nextTokenId();
+        // Increasing liquidity should revert because the user is no longer in the allowlist
+        vm.expectRevert();
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        vm.stopPrank();
+    }
+
+    function test_unpermissioned_sided_mint_disallowed_user_reverts() public {
+        address unauthorizedUser = makeAddr("UNAUTHORIZED");
+
+        // Add some tokens to unauthorized user
+        MockERC20(Currency.unwrap(currency1)).mint(unauthorizedUser, 1000e18);
+
+        vm.startPrank(unauthorizedUser);
+        // Approve tokens for the position manager and permit2
+        MockERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
+        permit2.approve(Currency.unwrap(currency1), address(lpm), type(uint160).max, type(uint48).max);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: 60, tickUpper: 180});
+        uint256 liquidity = 1e18;
+
+        // This should revert because the user is not in the allowlist
+        vm.expectRevert();
+        mint(config, liquidity, unauthorizedUser, ZERO_BYTES);
+
+        vm.stopPrank();
+    }
+
+    function test_unpermissioned_sided_mint_allowed_user() public {
+        vm.startPrank(alice);
+        // Approve tokens for the position manager and permit2
+        MockERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
+        permit2.approve(Currency.unwrap(currency1), address(lpm), type(uint160).max, type(uint48).max);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: 60, tickUpper: 180});
+        uint256 liquidity = 1e18;
+
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidity, alice, ZERO_BYTES);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
+
+        vm.stopPrank();
+    }
+
+    function test_permissioned_sided_mint_disallowed_user_reverts() public {
+        address unauthorizedUser = makeAddr("UNAUTHORIZED");
+
+        // Add some tokens to unauthorized user
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, true);
+        MockPermissionedToken(Currency.unwrap(currency0)).mint(unauthorizedUser, 1000e18);
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, false);
+
+        vm.startPrank(unauthorizedUser);
+        // Approve tokens for the position manager and permit2
+        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint256).max);
+        permit2.approve(Currency.unwrap(currency0), address(lpm), type(uint160).max, type(uint48).max);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -180, tickUpper: -60});
+        uint256 liquidity = 1e18;
+
+        // This should revert because the user is not in the allowlist
+        vm.expectRevert();
+        mint(config, liquidity, unauthorizedUser, ZERO_BYTES);
+
+        vm.stopPrank();
+    }
+
+    function test_permissioned_single_sided_mint_allowed_user() public {
+        vm.startPrank(alice);
+        // Approve tokens for the position manager and permit2
+        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint256).max);
+        permit2.approve(Currency.unwrap(currency0), address(lpm), type(uint160).max, type(uint48).max);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -180, tickUpper: -60});
+        uint256 liquidity = 1e18;
+
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidity, alice, ZERO_BYTES);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
 
         vm.stopPrank();
     }
@@ -471,14 +612,16 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         assertEq(liquidity, uint256(params.liquidityDelta));
 
-        // burn liquidity
         uint256 balance0BeforeBurn = currency0.balanceOfSelf();
         uint256 balance1BeforeBurn = currency1.balanceOfSelf();
         uint256 balance0ManagerBefore = wrappedToken0.balanceOf(address(manager));
         uint256 balance1ManagerBefore = currency1.balanceOf(address(manager));
+        // burn liquidity
         decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+
         uint256 balance0ManagerAfter = wrappedToken0.balanceOf(address(manager));
         uint256 balance1ManagerAfter = currency1.balanceOf(address(manager));
+
         liquidity = lpm.getPositionLiquidity(tokenId);
 
         assertEq(liquidity, 0);
@@ -518,5 +661,21 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(tick, TickMath.getTickAtSqrtPrice(sqrtPrice));
         assertEq(protocolFee, 0);
         assertEq(lpFee, fee);
+    }
+
+    function test_liquidity_token_transfer_reverts() public {
+        vm.startPrank(alice);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
+        vm.expectRevert();
+        IERC721(address(lpm)).transferFrom(alice, address(this), tokenId);
+
+        vm.stopPrank();
     }
 }

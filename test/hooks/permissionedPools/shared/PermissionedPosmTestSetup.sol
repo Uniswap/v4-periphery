@@ -24,6 +24,7 @@ import {PositionConfig} from "../../../shared/PositionConfig.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
 import {PermissionedDeployers} from "./PermissionedDeployers.sol";
+import {IPositionManager} from "../../../../src/interfaces/IPositionManager.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic liquidity operations on posm.
 contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2, LiquidityOperations {
@@ -43,17 +44,36 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
     function deployAndApprovePosm(
         IPoolManager poolManager,
         address wrappedTokenFactory,
-        address permissionedSwapRouter,
+        address permissionedSwapRouter_,
         bytes32 salt
     ) public {
-        deployPermissionedPosm(poolManager, wrappedTokenFactory, permissionedSwapRouter, salt);
+        deployPermissionedPosm(poolManager, wrappedTokenFactory, permissionedSwapRouter_, salt);
+        approvePosm();
+    }
+
+    function deployAndApprovePosmOnly(
+        IPoolManager poolManager,
+        address wrappedTokenFactory,
+        address permissionedSwapRouter_,
+        bytes32 salt
+    ) public returns (IPositionManager secondaryPosm) {
+        secondaryPosm = Deploy.permissionedPositionManagerCreate3(
+            address(poolManager),
+            address(permit2),
+            100_000,
+            address(proxyAsImplementation),
+            address(_WETH9),
+            wrappedTokenFactory,
+            permissionedSwapRouter_,
+            salt
+        );
         approvePosm();
     }
 
     function deployPermissionedPosm(
         IPoolManager poolManager,
         address wrappedTokenFactory,
-        address permissionedSwapRouter,
+        address permissionedSwapRouter_,
         bytes32 salt
     ) internal {
         permit2 = IAllowanceTransfer(deployPermit2());
@@ -66,7 +86,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             address(proxyAsImplementation),
             address(_WETH9),
             wrappedTokenFactory,
-            permissionedSwapRouter,
+            permissionedSwapRouter_,
             salt
         );
     }
@@ -77,8 +97,8 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
         return IWETH9(wethAddr);
     }
 
-    function deployDescriptor(IPoolManager poolManager, bytes32 label) internal returns (IPositionDescriptor) {
-        positionDescriptor = Deploy.positionDescriptor(address(poolManager), address(_WETH9), label, hex"00");
+    function deployDescriptor(IPoolManager poolManager_, bytes32 label) internal returns (IPositionDescriptor) {
+        positionDescriptor = Deploy.positionDescriptor(address(poolManager_), address(_WETH9), label, hex"00");
         proxy = Deploy.transparentUpgradeableProxy(address(positionDescriptor), GOVERNANCE, "", hex"03");
         return IPositionDescriptor(address(proxy));
     }

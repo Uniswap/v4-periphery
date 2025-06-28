@@ -126,7 +126,6 @@ contract PermissionedDeployers is Test {
         address _permissionedPositionManager
     ) internal {
         deployFreshManager();
-
         // Create the bytecode for the router with constructor arguments
         bytes memory routerBytecode = abi.encodePacked(
             vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),

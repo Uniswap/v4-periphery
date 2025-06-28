@@ -48,7 +48,7 @@ library Deploy {
             permissionedSwapRouter
         );
         bytes memory initcode =
-            abi.encodePacked(vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args);
+            abi.encodePacked(vm.getCode("BasePermissionedPositionManager.sol:BasePermissionedPositionManager"), args);
         assembly {
             manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
@@ -74,7 +74,7 @@ library Deploy {
             permissionedSwapRouter
         );
         bytes memory initcode =
-            abi.encodePacked(vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args);
+            abi.encodePacked(vm.getCode("BasePermissionedPositionManager.sol:BasePermissionedPositionManager"), args);
         return IPositionManager(CREATE3.deploy(salt, initcode, 0));
     }
 
