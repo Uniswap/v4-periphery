@@ -532,9 +532,37 @@ contract PositionManager is
     }
 
     /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
-    /// @dev will revert if pool manager is locked
+    /// @dev will revert if pool manager is unlocked
+    /// @dev requires proper authorization: caller must be owner, approved for all, or approved for specific token
     function transferFrom(address from, address to, uint256 id) public virtual override onlyIfPoolManagerLocked {
-        super.transferFrom(from, to, id);
+        // Get the correct caller context (locker when pool is locked, msg.sender otherwise)
+        address caller = msgSender();
+        
+        // Perform the same authorization checks as the parent ERC721 contract
+        // but using the correct caller context for the locked pool manager scenario
+        require(from == _ownerOf[id], "WRONG_FROM");
+        require(to != address(0), "INVALID_RECIPIENT");
+        
+        // Critical authorization check: caller must be authorized to transfer this token
+        require(
+            caller == from || isApprovedForAll[from][caller] || caller == getApproved[id],
+            "NOT_AUTHORIZED"
+        );
+        
+        // Replicate the transfer logic from solmate ERC721 to avoid parent authorization conflicts
+        // Underflow of the sender's balance is impossible because we check for
+        // ownership above and the recipient's balance can't realistically overflow.
+        unchecked {
+            _balanceOf[from]--;
+            _balanceOf[to]++;
+        }
+
+        _ownerOf[id] = to;
+        delete getApproved[id];
+        
+        emit Transfer(from, to, id);
+        
+        // Handle subscriber notifications after successful transfer
         if (positionInfo[id].hasSubscriber()) _unsubscribe(id);
     }
 
