@@ -13,9 +13,13 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {MockPermissionedToken} from "./PermissionedPoolsBase.sol";
-import {console2} from "forge-std/console2.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
+    // To allow testing without importing MockPermissionedV4Router
+    error HookNotImplemented();
+
     Currency wrappedCurrency0;
     Currency wrappedCurrency1;
 
@@ -45,11 +49,15 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         IERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint160).max);
         IERC20(Currency.unwrap(currency0)).approve(address(permissionedRouter), type(uint160).max);
         IERC20(Currency.unwrap(currency1)).approve(address(permissionedRouter), type(uint160).max);
+        IERC20(Currency.unwrap(currency0)).approve(address(delegateRouter), type(uint160).max);
+        IERC20(Currency.unwrap(currency1)).approve(address(delegateRouter), type(uint160).max);
         IERC20(Currency.unwrap(currency0)).approve(address(positionManager), type(uint160).max);
         IERC20(Currency.unwrap(currency1)).approve(address(positionManager), type(uint160).max);
 
         permit2.approve(Currency.unwrap(currency0), address(permissionedRouter), type(uint160).max, 2 ** 47);
         permit2.approve(Currency.unwrap(currency1), address(permissionedRouter), type(uint160).max, 2 ** 47);
+        permit2.approve(Currency.unwrap(currency0), address(delegateRouter), type(uint160).max, 2 ** 47);
+        permit2.approve(Currency.unwrap(currency1), address(delegateRouter), type(uint160).max, 2 ** 47);
         permit2.approve(Currency.unwrap(currency0), address(positionManager), type(uint160).max, 2 ** 47);
         permit2.approve(Currency.unwrap(currency1), address(positionManager), type(uint160).max, 2 ** 47);
     }
@@ -90,7 +98,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
 
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
         vm.snapshotGasLastCall("PermissionedV4Router_ExactInputSingle_PermissionedTokens");
     }
 
@@ -119,7 +127,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         vm.prank(unauthorizedUser);
         vm.expectRevert();
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
     }
 
     function test_swap_succeeds_authorized_user() public {
@@ -127,7 +135,6 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
 
         uint256 amountIn = 100;
-
         PoolKey memory wrappedKey =
             PoolKey(wrappedCurrency1, wrappedCurrency0, 3000, 60, IHooks(address(permissionedRouter)));
 
@@ -138,15 +145,15 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
 
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
     }
 
-    function test_swap_alternate_router_reverts() public {
+    function test_swap_authorized_router() public {
         IERC20(Currency.unwrap(currency0)).transfer(alice, 2 ether);
         IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
 
         uint256 amountIn = 100;
-
+        uint256 expectedAmountOut = 98;
         PoolKey memory wrappedKey =
             PoolKey(wrappedCurrency1, wrappedCurrency0, 3000, 60, IHooks(address(permissionedRouter)));
 
@@ -156,9 +163,34 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
 
+        (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
+            getInputAndOutputBalances(wrappedKey, true, address(manager));
+        vm.prank(alice);
+        delegateRouter.execute(data);
+        (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
+            getInputAndOutputBalances(wrappedKey, true, address(manager));
+
+        assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
+        assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
+    }
+
+    function test_swap_unauthorized_router_reverts() public {
+        IERC20(Currency.unwrap(currency0)).transfer(alice, 2 ether);
+        IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
+
+        uint256 amountIn = 100;
+        PoolKey memory wrappedKey =
+            PoolKey(wrappedCurrency1, wrappedCurrency0, 3000, 60, IHooks(address(permissionedRouter)));
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(wrappedKey, true, uint128(amountIn), 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
+        permissionedRouter.setDelegateRouter(address(4));
         vm.prank(alice);
         vm.expectRevert();
-        secondaryRouter.execute(data);
+        delegateRouter.execute(data);
     }
 
     function test_swap_succeeds_authorized_user_mixed_entry() public {
@@ -186,7 +218,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key1, zeroToOne, address(manager));
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key1, zeroToOne, address(manager));
 
@@ -221,7 +253,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key1, zeroToOne, address(manager));
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key1, zeroToOne, address(manager));
 
@@ -251,7 +283,6 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(unauthorizedUser, false);
 
         uint256 amountIn = 100;
-        uint256 expectedAmountOut = 98;
 
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key1, zeroToOne, uint128(amountIn), 0, bytes(""));
@@ -261,7 +292,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         vm.prank(unauthorizedUser);
         vm.expectRevert();
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
     }
 
     function test_swap_succeeds_unauthorized_user_mixed_exit() public {
@@ -291,7 +322,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         vm.prank(unauthorizedUser);
         vm.expectRevert();
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -311,7 +342,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         vm.expectRevert(
             abi.encodeWithSelector(IV4Router.V4TooLittleReceived.selector, expectedAmountOut + 1, expectedAmountOut)
         );
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
     }
 
     function test_swapExactInputSingle_zeroForOne_takeToMsgSender() public {
@@ -324,10 +355,17 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key0, true, address(manager));
-        _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key0, true, address(manager));
 
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
     }
@@ -336,15 +374,15 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 19992;
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
-            getInputAndOutputBalances(key0, true, address(manager));
-
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
 
         uint256 aliceOutputBalanceBefore = getPermissionedCurrency(key0.currency1).balanceOf(alice);
+
+        (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
+            getInputAndOutputBalances(key0, true, address(manager));
         // swap with alice as the take recipient
         _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn, alice);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
@@ -369,8 +407,8 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
 
         // the router holds no funds before
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key0, true, address(manager));
         // swap with the router as the take recipient
@@ -400,12 +438,12 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
             plan.add(Actions.TAKE, abi.encode(key0.currency1, ActionConstants.ADDRESS_THIS, ActionConstants.OPEN_DELTA));
         bytes memory data = plan.encode();
         // the router holds no funds before
-        assertEq(inputCurrency.balanceOf(address(permissionedRouter)), 0);
-        assertEq(outputCurrency.balanceOf(address(permissionedRouter)), 0);
-        permissionedRouter.execute(data);
+        assertEq(inputCurrency.balanceOf(address(delegateRouter)), 0);
+        assertEq(outputCurrency.balanceOf(address(delegateRouter)), 0);
+        delegateRouter.execute(data);
         // the output tokens have been left in the router
-        assertEq(outputCurrency.balanceOf(address(permissionedRouter)), expectedAmountOut);
-        assertEq(inputCurrency.balanceOf(address(permissionedRouter)), 0);
+        assertEq(outputCurrency.balanceOf(address(delegateRouter)), expectedAmountOut);
+        assertEq(inputCurrency.balanceOf(address(delegateRouter)), 0);
     }
 
     function test_swapExactInputSingle_oneForZero() public {
@@ -417,13 +455,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key0, zeroForOne, address(manager));
-        _finalizeAndExecuteSwap(key0.currency1, key0.currency0, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency1, key0.currency0, amountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key0, zeroForOne, address(manager));
 
-        assertEq(key0.currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(key0.currency1.balanceOf(address(permissionedRouter)), 0);
-
+        assertEq(key0.currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(key0.currency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
     }
@@ -444,7 +488,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         vm.expectRevert(
             abi.encodeWithSelector(IV4Router.V4TooLittleReceived.selector, expectedAmountOut + 1, expectedAmountOut)
         );
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
     }
 
     function test_swapExactIn_1Hop_zeroForOne() public {
@@ -458,13 +502,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(wrappedCurrency0, wrappedCurrency1, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(wrappedCurrency0, wrappedCurrency1, amountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
-
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
     }
@@ -482,13 +532,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(wrappedCurrency1, wrappedCurrency0, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(wrappedCurrency1, wrappedCurrency0, amountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
-
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
     }
@@ -509,15 +565,22 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(wrappedCurrency0, currency2, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(wrappedCurrency0, currency2, amountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
         // check intermediate token balances
         assertEq(intermediateBalanceBefore, currency1.balanceOfSelf());
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
-        assertEq(currency2.balanceOf(address(permissionedRouter)), 0);
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(currency2.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
     }
@@ -537,15 +600,22 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(wrappedCurrency0, currency3, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(wrappedCurrency0, currency3, amountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
         // check intermediate tokens werent left in the router
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
-        assertEq(currency2.balanceOf(address(permissionedRouter)), 0);
-        assertEq(currency3.balanceOf(address(permissionedRouter)), 0);
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(currency2.balanceOf(address(delegateRouter)), 0);
+        assertEq(currency3.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
     }
@@ -565,12 +635,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (, uint256 outputBalanceBefore, uint256 ethBalanceBefore) =
             getInputAndOutputBalances(nativeKey, true, address(manager));
-        _finalizeAndExecuteSwap(nativeKey.currency0, nativeKey.currency1, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(nativeKey.currency0, nativeKey.currency1, amountIn);
         (, uint256 outputBalanceAfter, uint256 ethBalanceAfter) =
             getInputAndOutputBalances(nativeKey, true, address(manager));
 
-        assertEq(nativeKey.currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(nativeKey.currency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(nativeKey.currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(nativeKey.currency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
         assertEq(ethBalanceBefore - ethBalanceAfter, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
     }
@@ -587,12 +664,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore,, uint256 ethBalanceBefore) =
             getInputAndOutputBalances(nativeKey, zeroForOne, address(manager));
-        _finalizeAndExecuteSwap(nativeKey.currency1, nativeKey.currency0, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(nativeKey.currency1, nativeKey.currency0, amountIn);
         (uint256 inputBalanceAfter,, uint256 ethBalanceAfter) =
             getInputAndOutputBalances(nativeKey, zeroForOne, address(manager));
 
-        assertEq(nativeKey.currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(nativeKey.currency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(nativeKey.currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(nativeKey.currency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
         assertEq(ethBalanceAfter - ethBalanceBefore, expectedAmountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
     }
@@ -609,12 +693,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (, uint256 outputBalanceBefore, uint256 ethBalanceBefore) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(CurrencyLibrary.ADDRESS_ZERO, nativeKey.currency1, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(CurrencyLibrary.ADDRESS_ZERO, nativeKey.currency1, amountIn);
         (, uint256 outputBalanceAfter, uint256 ethBalanceAfter) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
-        assertEq(nativeKey.currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(nativeKey.currency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(nativeKey.currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(nativeKey.currency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
         assertEq(ethBalanceBefore - ethBalanceAfter, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
     }
@@ -630,12 +721,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
         (uint256 inputBalanceBefore,, uint256 ethBalanceBefore) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(nativeKey.currency1, CurrencyLibrary.ADDRESS_ZERO, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(nativeKey.currency1, CurrencyLibrary.ADDRESS_ZERO, amountIn);
         (uint256 inputBalanceAfter,, uint256 ethBalanceAfter) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
-        assertEq(nativeKey.currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(nativeKey.currency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(nativeKey.currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(nativeKey.currency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
         assertEq(ethBalanceAfter - ethBalanceBefore, expectedAmountOut);
     }
@@ -656,16 +754,22 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         uint256 intermediateBalanceBefore = currency0.balanceOfSelf();
         (, uint256 outputBalanceBefore, uint256 ethBalanceBefore) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(CurrencyLibrary.ADDRESS_ZERO, wrappedCurrency1, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(CurrencyLibrary.ADDRESS_ZERO, wrappedCurrency1, amountIn);
         (, uint256 outputBalanceAfter, uint256 ethBalanceAfter) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
         // check intermediate token balances
         assertEq(intermediateBalanceBefore, currency0.balanceOfSelf());
-
-        assertEq(nativeKey.currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(nativeKey.currency1.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
+        assertEq(nativeKey.currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(nativeKey.currency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
         assertEq(ethBalanceBefore - ethBalanceAfter, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
     }
@@ -687,15 +791,22 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore,, uint256 ethBalanceBefore) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(wrappedCurrency1, CurrencyLibrary.ADDRESS_ZERO, amountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(wrappedCurrency1, CurrencyLibrary.ADDRESS_ZERO, amountIn);
         (uint256 inputBalanceAfter,, uint256 ethBalanceAfter) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
         // check intermediate token balances
         assertEq(intermediateBalanceBefore, currency0.balanceOfSelf());
-        assertEq(nativeKey.currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(nativeKey.currency1.balanceOf(address(permissionedRouter)), 0);
-        assertEq(currency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, amountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, expectedAmountOut);
+        assertEq(nativeKey.currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(nativeKey.currency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(currency1.balanceOf(address(delegateRouter)), 0);
         assertEq(ethBalanceAfter - ethBalanceBefore, expectedAmountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
     }
@@ -705,7 +816,8 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         uint256 expectedAmountOut = 949;
         bool zeroForOne = true;
 
-        nativeKey.currency0.transfer(address(permissionedRouter), amountIn);
+        nativeKey.currency0.transfer(address(delegateRouter), amountIn);
+
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(nativeKey, zeroForOne, ActionConstants.OPEN_DELTA, 0, bytes(""));
 
@@ -715,13 +827,14 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         bytes memory data = plan.encode();
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
+        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 ethBalanceBefore) =
             getInputAndOutputBalances(nativeKey, zeroForOne, address(manager));
-        permissionedRouter.execute(data);
-        (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
+        delegateRouter.execute(data);
+        (uint256 inputBalanceAfter, uint256 outputBalanceAfter, uint256 ethBalanceAfter) =
             getInputAndOutputBalances(nativeKey, zeroForOne, address(manager));
 
         // caller didnt pay, router paid, caller received the output
+        assertEq(ethBalanceBefore, ethBalanceAfter);
         assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
         assertEq(outputBalanceBefore - outputBalanceAfter, expectedAmountOut);
     }
@@ -745,7 +858,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 IV4Router.V4TooMuchRequested.selector, expectedAmountIn - 1, 369070324193623892281288
             )
         );
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
     }
 
     function test_swapExactOutputSingle_zeroForOne() public {
@@ -760,14 +873,21 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key0, zeroForOne, address(manager));
-        _finalizeAndExecuteSwap(key0.currency0, key0.currency1, expectedAmountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, expectedAmountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key0, zeroForOne, address(manager));
 
-        assertEq(key0.currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(key0.currency1.balanceOf(address(permissionedRouter)), 0);
-        assertEq(currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(currency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(key0.currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(key0.currency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(currency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, expectedAmountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, amountOut);
         assertEq(outputBalanceBefore - outputBalanceAfter, amountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, expectedAmountIn);
     }
@@ -784,13 +904,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key0, zeroForOne, address(manager));
-        _finalizeAndExecuteSwap(key0.currency1, key0.currency0, expectedAmountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency1, key0.currency0, expectedAmountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key0, zeroForOne, address(manager));
 
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
-
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, expectedAmountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, amountOut);
         assertEq(outputBalanceBefore - outputBalanceAfter, amountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, expectedAmountIn);
     }
@@ -811,7 +937,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         vm.expectRevert(
             abi.encodeWithSelector(IV4Router.V4TooMuchRequested.selector, expectedAmountIn - 1, expectedAmountIn)
         );
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
     }
 
     function test_swapExactOut_1Hop_zeroForOne() public {
@@ -826,13 +952,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(key0.currency0, key0.currency1, expectedAmountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, expectedAmountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
-
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, expectedAmountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, amountOut);
         assertEq(outputBalanceBefore - outputBalanceAfter, amountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, expectedAmountIn);
     }
@@ -849,12 +981,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(wrappedCurrency0, key0.currency0, expectedAmountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(wrappedCurrency0, key0.currency0, expectedAmountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, expectedAmountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, amountOut);
         assertEq(outputBalanceBefore - outputBalanceAfter, amountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, expectedAmountIn);
     }
@@ -874,14 +1013,21 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(wrappedCurrency0, currency2, expectedAmountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(wrappedCurrency0, currency2, expectedAmountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
         assertEq(intermediateBalanceBefore, currency1.balanceOfSelf());
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
-        assertEq(currency2.balanceOf(address(permissionedRouter)), 0);
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(currency2.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, expectedAmountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, amountOut);
         assertEq(outputBalanceBefore - outputBalanceAfter, amountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, expectedAmountIn);
     }
@@ -902,14 +1048,21 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(key0.currency1, currency3, expectedAmountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency1, currency3, expectedAmountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
-        assertEq(currency2.balanceOf(address(permissionedRouter)), 0);
-        assertEq(currency3.balanceOf(address(permissionedRouter)), 0);
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(currency2.balanceOf(address(delegateRouter)), 0);
+        assertEq(currency3.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, expectedAmountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, amountOut);
         assertEq(outputBalanceBefore - outputBalanceAfter, amountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, expectedAmountIn);
     }
@@ -930,19 +1083,25 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(currency4, currency2, expectedAmountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(currency4, currency2, expectedAmountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
-        assertEq(currency4.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
-        assertEq(currency2.balanceOf(address(permissionedRouter)), 0);
+        assertEq(currency4.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(currency2.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, expectedAmountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, amountOut);
         assertEq(outputBalanceBefore - outputBalanceAfter, amountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, expectedAmountIn);
     }
 
-    /* TODO: add this functionality
     function test_swapExactOut_3Hops_mmiddle_unauthorized_reverts() public {
         address unauthorizedUser = makeAddr("UNAUTHORIZED");
         uint256 amountOut = 100;
@@ -963,11 +1122,11 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
+        bytes memory data = plan.finalizeSwap(currency4, currency2, ActionConstants.MSG_SENDER);
         vm.prank(unauthorizedUser);
         vm.expectRevert();
-        _finalizeAndExecuteSwap(currency4, currency2, expectedAmountIn);
+        delegateRouter.execute{value: 0}(data);
     }
-    */
 
     function test_swapExactOut_native_3Hops_permissioned_middle() public {
         uint256 amountOut = 100;
@@ -985,19 +1144,25 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(nativeKey.currency0, currency2, expectedAmountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(nativeKey.currency0, currency2, expectedAmountIn);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
-        assertEq(nativeKey.currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
-        assertEq(currency2.balanceOf(address(permissionedRouter)), 0);
+        assertEq(nativeKey.currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(wrappedCurrency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(currency2.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, expectedAmountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, amountOut);
         assertEq(outputBalanceBefore - outputBalanceAfter, amountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, expectedAmountIn);
     }
 
-    /* TODO: add this functionality
     function test_swapExactOut_native_3Hops_mmiddle_unauthorized_reverts() public {
         address unauthorizedUser = makeAddr("UNAUTHORIZED");
         uint256 amountOut = 100;
@@ -1015,11 +1180,12 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
+        bytes memory data = plan.finalizeSwap(nativeKey.currency0, currency2, ActionConstants.MSG_SENDER);
+        uint256 value = (nativeKey.currency0.isAddressZero()) ? expectedAmountIn : 0;
         vm.prank(unauthorizedUser);
         vm.expectRevert();
-        _finalizeAndExecuteSwap(nativeKey.currency0, currency2, expectedAmountIn);
+        delegateRouter.execute{value: value}(data);
     }
-    */
 
     function test_swapExactOutputSingle_swapOpenDelta() public {
         uint256 expectedAmountIn = 946;
@@ -1037,7 +1203,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key0, true, address(manager));
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key0, true, address(manager));
 
@@ -1062,7 +1228,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        permissionedRouter.execute(data);
+        delegateRouter.execute(data);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
@@ -1086,12 +1252,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore,, uint256 ethBalanceBefore) =
             getInputAndOutputBalances(nativeKey, zeroForOne, address(manager));
-        _finalizeAndExecuteSwap(nativeKey.currency1, nativeKey.currency0, expectedAmountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(nativeKey.currency1, nativeKey.currency0, expectedAmountIn);
         (uint256 inputBalanceAfter,, uint256 ethBalanceAfter) =
             getInputAndOutputBalances(nativeKey, zeroForOne, address(manager));
 
-        assertEq(nativeKey.currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(nativeKey.currency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(nativeKey.currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(nativeKey.currency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, expectedAmountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, amountOut);
         assertEq(ethBalanceAfter - ethBalanceBefore, amountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, expectedAmountIn);
     }
@@ -1108,14 +1281,136 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
         (uint256 inputBalanceBefore,, uint256 ethBalanceBefore) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        _finalizeAndExecuteSwap(nativeKey.currency1, CurrencyLibrary.ADDRESS_ZERO, expectedAmountIn);
+        (
+            uint256 userInputBalanceBefore,
+            uint256 userOutputBalanceBefore,
+            uint256 userInputBalanceAfter,
+            uint256 userOutputBalanceAfter
+        ) = _finalizeAndExecuteSwap(nativeKey.currency1, CurrencyLibrary.ADDRESS_ZERO, expectedAmountIn);
         (uint256 inputBalanceAfter,, uint256 ethBalanceAfter) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
-        assertEq(nativeKey.currency0.balanceOf(address(permissionedRouter)), 0);
-        assertEq(nativeKey.currency1.balanceOf(address(permissionedRouter)), 0);
+        assertEq(nativeKey.currency0.balanceOf(address(delegateRouter)), 0);
+        assertEq(nativeKey.currency1.balanceOf(address(delegateRouter)), 0);
+        assertEq(userInputBalanceBefore - userInputBalanceAfter, expectedAmountIn);
+        assertEq(userOutputBalanceAfter - userOutputBalanceBefore, amountOut);
         assertEq(ethBalanceAfter - ethBalanceBefore, amountOut);
         assertEq(inputBalanceAfter - inputBalanceBefore, expectedAmountIn);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                ROUTER SELF-PAYMENT COVERAGE TEST
+    //////////////////////////////////////////////////////////////*/
+
+    function test_router_self_payment() public {
+        uint256 amountIn = 100000;
+
+        IERC20(Currency.unwrap(key2.currency0)).transfer(address(delegateRouter), amountIn);
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key2, true, uint128(amountIn), 0, bytes(""));
+
+        plan = plan.add(Actions.SETTLE, abi.encode(key2.currency0, ActionConstants.CONTRACT_BALANCE, false));
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode(key2.currency1, 0));
+
+        bytes memory data = plan.encode();
+
+        (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
+            getInputAndOutputBalances(key2, true, address(manager));
+
+        // Execute the swap - this should trigger the _pay function with payer == address(this) and permissionedToken == address(0)
+        delegateRouter.execute(data);
+
+        (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
+            getInputAndOutputBalances(key2, true, address(manager));
+
+        assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
+        assertGt(outputBalanceBefore - outputBalanceAfter, 0);
+        // Verify the router's balance was used (it should be 0 after the swap)
+        assertEq(key2.currency0.balanceOf(address(delegateRouter)), 0);
+    }
+
+    function test_router_self_payment_permissioned_token() public {
+        uint256 amountIn = 100000;
+
+        IERC20(Currency.unwrap(getPermissionedCurrency(key0.currency0))).transfer(address(delegateRouter), amountIn);
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
+
+        plan = plan.add(Actions.SETTLE, abi.encode((key0.currency0), ActionConstants.CONTRACT_BALANCE, false));
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode((key0.currency1), 0));
+
+        bytes memory data = plan.encode();
+
+        (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
+            getInputAndOutputBalances(key0, true, address(manager));
+
+        // Execute the swap - this should trigger the _pay function with payer == address(this) and permissionedToken != address(0)
+        delegateRouter.execute(data);
+
+        (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
+            getInputAndOutputBalances(key0, true, address(manager));
+
+        assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
+        assertGt(outputBalanceBefore - outputBalanceAfter, 0);
+        // Verify the router's balance was used (it should be 0 after the swap)
+        assertEq(getPermissionedCurrency(key0.currency0).balanceOf(address(delegateRouter)), 0);
+    }
+
+    function test_router_self_payment_permissioned_token_unauthorized_reverts() public {
+        address unauthorizedUser = makeAddr("UNAUTHORIZED");
+        uint256 amountIn = 100000;
+        MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(key0.currency0))).setAllowlist(
+            unauthorizedUser, true
+        );
+        IERC20(Currency.unwrap(getPermissionedCurrency(key0.currency0))).transfer(address(unauthorizedUser), amountIn);
+        vm.prank(unauthorizedUser);
+        IERC20(Currency.unwrap(getPermissionedCurrency(key0.currency0))).transfer(address(delegateRouter), amountIn);
+        MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(key0.currency0))).setAllowlist(
+            unauthorizedUser, false
+        );
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
+
+        plan = plan.add(Actions.SETTLE, abi.encode((key0.currency0), ActionConstants.CONTRACT_BALANCE, false));
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        plan = plan.add(Actions.TAKE_ALL, abi.encode((key0.currency1), 0));
+
+        bytes memory data = plan.encode();
+
+        vm.prank(unauthorizedUser);
+        vm.expectRevert();
+        delegateRouter.execute(data);
+    }
+
+    function test_hooks() public {
+        SwapParams memory swapParams = SwapParams({zeroForOne: true, amountSpecified: 100000, sqrtPriceLimitX96: 0});
+        ModifyLiquidityParams memory modifyLiquidityParams =
+            ModifyLiquidityParams({tickLower: 0, tickUpper: 0, liquidityDelta: 0, salt: bytes32(0)});
+        BalanceDelta balanceDelta = BalanceDelta.wrap(0);
+        vm.startPrank(alice);
+        vm.expectRevert(HookNotImplemented.selector);
+        delegateRouter.afterSwap(address(this), key0, swapParams, balanceDelta, bytes(""));
+        vm.expectRevert(HookNotImplemented.selector);
+        delegateRouter.beforeInitialize(address(this), key0, 0);
+        vm.expectRevert(HookNotImplemented.selector);
+        delegateRouter.afterInitialize(address(this), key0, 0, 0);
+        vm.expectRevert(HookNotImplemented.selector);
+        delegateRouter.beforeRemoveLiquidity(address(this), key0, modifyLiquidityParams, bytes(""));
+        vm.expectRevert(HookNotImplemented.selector);
+        delegateRouter.afterRemoveLiquidity(
+            address(this), key0, modifyLiquidityParams, balanceDelta, balanceDelta, bytes("")
+        );
+        vm.expectRevert(HookNotImplemented.selector);
+        delegateRouter.afterAddLiquidity(
+            address(this), key0, modifyLiquidityParams, balanceDelta, balanceDelta, bytes("")
+        );
+        vm.expectRevert(HookNotImplemented.selector);
+        delegateRouter.beforeDonate(address(this), key0, 0, 0, bytes(""));
+        vm.expectRevert(HookNotImplemented.selector);
+        delegateRouter.afterDonate(address(this), key0, 0, 0, bytes(""));
     }
 
     receive() external payable {}

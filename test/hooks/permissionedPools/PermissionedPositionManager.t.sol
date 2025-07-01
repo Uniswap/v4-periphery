@@ -42,6 +42,7 @@ import {WrappedPermissionedToken, IERC20} from "../../../src/hooks/permissionedP
 import {WrappedPermissionedTokenFactory} from "../../../src/hooks/permissionedPools/WrappedPermissionedTokenFactory.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {SortTokens} from "@uniswap/v4-core/test/utils/SortTokens.sol";
+import {MockV4Router} from "../../mocks/MockV4Router.sol";
 
 contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -53,16 +54,21 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     bytes32 public constant SECONDARY_POSM_SALT = keccak256("SECONDARY_POSM_TEST");
 
     PoolId poolId;
+    PoolId poolIdFake;
 
     // Permissioned components
     MockAllowlistChecker public mockAllowListChecker;
     WrappedPermissionedToken public wrappedToken0;
+    WrappedPermissionedToken public wrappedToken2;
     MockERC20 public originalToken0;
+    MockERC20 public originalToken2;
     WrappedPermissionedTokenFactory public wrappedTokenFactory;
     IPositionManager public secondaryPosm;
+    Currency currency2;
 
     // Predicted addresses
     address public predictedPermissionedSwapRouterAddress;
+    address public predictedSecondaryPermissionedSwapRouterAddress;
     address public predictedPermissionedPosmAddress;
     address public predictedSecondaryPosmAddress;
     address public predictedWrappedTokenFactoryAddress;
@@ -76,11 +82,15 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         predictedSecondaryPosmAddress = CREATE3.getDeployed(SECONDARY_POSM_SALT);
         predictedPermissionedSwapRouterAddress = CREATE3.getDeployed(PERMISSIONED_SWAP_ROUTER_SALT);
         predictedWrappedTokenFactoryAddress = CREATE3.getDeployed(WRAPPED_TOKEN_FACTORY_SALT);
+        predictedSecondaryPermissionedSwapRouterAddress = CREATE3.getDeployed(SECONDARY_PERMISSIONED_SWAP_ROUTER_SALT);
 
         wrappedTokenFactory = WrappedPermissionedTokenFactory(predictedWrappedTokenFactoryAddress);
         permit2 = IAllowanceTransfer(deployPermit2());
         deployFreshManagerAndRoutersPermissioned(
-            address(permit2), address(wrappedTokenFactory), predictedPermissionedPosmAddress
+            address(permit2),
+            address(wrappedTokenFactory),
+            predictedPermissionedPosmAddress,
+            predictedSecondaryPermissionedSwapRouterAddress
         );
         CREATE3.deploy(
             WRAPPED_TOKEN_FACTORY_SALT,
@@ -91,13 +101,13 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             0
         );
         (currency0, currency1) = deployMintAndApprove2Currencies(true, false);
-
+        currency2 = deployMintAndApproveCurrency(true);
         setupPermissionedComponents();
         deployAndApprovePosm(
             manager, address(wrappedTokenFactory), predictedPermissionedSwapRouterAddress, PERMISSIONED_POSM_SALT
         );
         secondaryPosm = deployAndApprovePosmOnly(
-            manager, address(wrappedTokenFactory), predictedPermissionedSwapRouterAddress, SECONDARY_POSM_SALT
+            manager, address(wrappedTokenFactory), predictedSecondaryPermissionedSwapRouterAddress, SECONDARY_POSM_SALT
         );
         setupPool();
         seedBalance(alice);
@@ -110,37 +120,79 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         (key, poolId) = initPool(
             orderedCurrency0, orderedCurrency1, IHooks(predictedPermissionedSwapRouterAddress), 3000, SQRT_PRICE_1_1
         );
+        (keyFake, poolIdFake) = initPoolFake(
+            manager,
+            currency1,
+            Currency.wrap(address(wrappedToken2)),
+            IHooks(predictedSecondaryPermissionedSwapRouterAddress),
+            3000,
+            SQRT_PRICE_1_1
+        );
     }
 
     function setupPermissionedComponents() internal {
-        // Deploy mock allow list
         mockAllowListChecker = new MockAllowlistChecker(MockPermissionedToken(Currency.unwrap(currency0)));
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(this), true);
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, true);
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(predictedPermissionedPosmAddress), true);
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(predictedSecondaryPosmAddress), true);
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(wrappedTokenFactory), true);
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(
+        setUpFirstToken();
+        setUpSecondToken();
+    }
+
+    function setUpFirstToken() internal {
+        setUpAllowlist(currency0);
+        originalToken0 = MockERC20(Currency.unwrap(currency0));
+        while (true) {
+            wrappedToken0 = WrappedPermissionedToken(
+                wrappedTokenFactory.createWrappedPermissionedToken(
+                    IERC20(address(originalToken0)), address(this), mockAllowListChecker
+                )
+            );
+            if (address(wrappedToken0) < Currency.unwrap(currency1)) {
+                break;
+            }
+        }
+        setUpWrappedToken(wrappedToken0, currency0);
+    }
+
+    function setUpSecondToken() internal {
+        setUpAllowlist(currency2);
+        originalToken2 = MockERC20(Currency.unwrap(currency2));
+        while (true) {
+            wrappedToken2 = WrappedPermissionedToken(
+                wrappedTokenFactory.createWrappedPermissionedToken(
+                    IERC20(address(originalToken2)), address(this), mockAllowListChecker
+                )
+            );
+            if (Currency.unwrap(currency1) < address(wrappedToken2)) {
+                break;
+            }
+        }
+
+        setUpWrappedToken(wrappedToken2, currency2);
+    }
+
+    function setUpAllowlist(Currency currency) internal {
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(this), true);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(alice, true);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(predictedPermissionedPosmAddress), true);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(predictedSecondaryPosmAddress), true);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(wrappedTokenFactory), true);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(lpm), true);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(manager), true);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
             address(predictedPermissionedSwapRouterAddress), true
         );
-        // Create wrapped token from original token0
-        originalToken0 = MockERC20(Currency.unwrap(currency0));
-        wrappedToken0 = WrappedPermissionedToken(
-            wrappedTokenFactory.createWrappedPermissionedToken(
-                IERC20(address(originalToken0)), address(this), mockAllowListChecker
-            )
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(
+            address(predictedSecondaryPermissionedSwapRouterAddress), true
         );
-        MockPermissionedToken(Currency.unwrap(currency0)).mint(address(this), 1000 ether);
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(wrappedToken0), true);
-        currency0.transfer(address(wrappedToken0), 1);
-        wrappedToken0.updateAllowedWrapper(address(manager), true);
-        wrappedToken0.updateAllowedWrapper(address(predictedSecondaryPosmAddress), true);
-        wrappedToken0.updateAllowedWrapper(address(predictedPermissionedPosmAddress), true);
+    }
 
-        wrappedTokenFactory.verifyWrappedToken(address(wrappedToken0));
-        // Sort currencies again after wrapping
-        (currency0, currency1) =
-            (Currency.unwrap(currency0) < Currency.unwrap(currency1)) ? (currency0, currency1) : (currency1, currency0);
+    function setUpWrappedToken(WrappedPermissionedToken wrappedToken, Currency currency) internal {
+        MockPermissionedToken(Currency.unwrap(currency)).mint(address(this), 1000 ether);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(wrappedToken), true);
+        currency.transfer(address(wrappedToken), 1);
+        wrappedToken.updateAllowedWrapper(address(manager), true);
+        wrappedToken.updateAllowedWrapper(address(predictedSecondaryPosmAddress), true);
+        wrappedToken.updateAllowedWrapper(address(predictedPermissionedPosmAddress), true);
+        wrappedTokenFactory.verifyWrappedToken(address(wrappedToken));
     }
 
     function test_modifyLiquidities_reverts_deadlinePassed() public {
@@ -443,7 +495,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     function test_permissioned_mint_secondary_posm_reverts() public {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
         uint256 liquidity = 1e18;
-        uint256 tokenId = secondaryPosm.nextTokenId();
 
         vm.prank(alice);
 
@@ -581,10 +632,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     function test_permissioned_single_sided_mint_allowed_user() public {
         vm.startPrank(alice);
-        // Approve tokens for the position manager and permit2
-        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint256).max);
-        permit2.approve(Currency.unwrap(currency0), address(lpm), type(uint160).max, type(uint48).max);
-
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -180, tickUpper: -60});
         uint256 liquidity = 1e18;
 
@@ -594,6 +641,17 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
 
         vm.stopPrank();
+    }
+
+    struct MintParams {
+        PoolKey poolKey;
+        int24 tickLower;
+        int24 tickUpper;
+        uint256 liquidity;
+        uint128 amount0Max;
+        uint128 amount1Max;
+        address owner;
+        bytes hookData;
     }
 
     function test_fuzz_burn_emptyPosition(ModifyLiquidityParams memory params) public {
@@ -677,5 +735,173 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         IERC721(address(lpm)).transferFrom(alice, address(this), tokenId);
 
         vm.stopPrank();
+    }
+
+    function test_safe_transfer_from_reverts() public {
+        bytes memory encodedCall =
+            abi.encodeWithSignature("safeTransferFrom(address,address,uint256)", alice, address(this), 1);
+
+        address target = address(lpm);
+
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encode("Transfer disabled"));
+
+        bool success;
+        assembly ("memory-safe") {
+            success := call(gas(), target, 0, add(encodedCall, 0x20), mload(encodedCall), 0, 0)
+        }
+    }
+
+    function test_safe_transfer_from_with_bytes_reverts() public {
+        bytes memory encodedCall =
+            abi.encodeWithSignature("safeTransferFrom(address,address,uint256,bytes)", alice, address(this), 1, "abcd");
+        address target = address(lpm);
+
+        vm.startPrank(alice);
+        vm.expectRevert(abi.encode("Transfer disabled"));
+
+        bool success;
+        assembly ("memory-safe") {
+            success := call(gas(), target, 0, add(encodedCall, 0x20), mload(encodedCall), 0, 0)
+        }
+    }
+
+    function test_mint_from_contract_balance() public {
+        // First, transfer some tokens to the PermissionedPositionManager contract
+        uint256 amount0ToTransfer = 100e18;
+        uint256 amount1ToTransfer = 100e18;
+
+        // Transfer tokens to the contract
+        currency0.transfer(address(lpm), amount0ToTransfer);
+        currency1.transfer(address(lpm), amount1ToTransfer);
+
+        // Verify the contract has the tokens
+        assertEq(currency0.balanceOf(address(lpm)), amount0ToTransfer);
+        assertEq(currency1.balanceOf(address(lpm)), amount1ToTransfer);
+
+        // Calculate liquidity for the desired amounts
+        int24 tickLower = -int24(key.tickSpacing);
+        int24 tickUpper = int24(key.tickSpacing);
+        uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            amount0ToTransfer,
+            amount1ToTransfer
+        );
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
+
+        // Record balances before minting
+        uint256 balance0Before = currency0.balanceOf(address(lpm));
+        uint256 balance1Before = currency1.balanceOf(address(lpm));
+        uint256 balance0ManagerBefore = wrappedToken0.balanceOf(address(manager));
+        uint256 balance1ManagerBefore = currency1.balanceOf(address(manager));
+
+        // Create a plan that uses the contract's balance instead of the caller's
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                liquidityToAdd,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                address(this), // recipient
+                ZERO_BYTES // hookData
+            )
+        );
+
+        // Add actions to settle from the contract's balance
+        planner.add(Actions.SETTLE, abi.encode(key.currency0, ActionConstants.OPEN_DELTA, false)); // false = payer is contract
+        planner.add(Actions.SETTLE, abi.encode(key.currency1, ActionConstants.OPEN_DELTA, false)); // false = payer is contract
+
+        bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
+
+        // Execute the mint
+        uint256 tokenId = lpm.nextTokenId();
+        lpm.modifyLiquidities(calls, _deadline);
+
+        // Verify the position was created
+        assertEq(tokenId, 1);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this));
+
+        // Verify the contract's balance decreased
+        uint256 balance0After = currency0.balanceOf(address(lpm));
+        uint256 balance1After = currency1.balanceOf(address(lpm));
+        uint256 balance0ManagerAfter = wrappedToken0.balanceOf(address(manager));
+        uint256 balance1ManagerAfter = currency1.balanceOf(address(manager));
+
+        assertGt(balance0Before, balance0After);
+        assertGt(balance1Before, balance1After);
+
+        assertEq(balance0Before - balance0After, balance0ManagerAfter - balance0ManagerBefore);
+        assertEq(balance1Before - balance1After, balance1ManagerAfter - balance1ManagerBefore);
+
+        // Verify the position has the expected liquidity
+        uint256 liquidity = lpm.getPositionLiquidity(tokenId);
+        assertEq(liquidity, liquidityToAdd);
+    }
+
+    function test_mint_from_contract_balance_disallowed_revert() public {
+        address unauthorized = makeAddr("UNAUTHORIZED");
+        // First, transfer some tokens to the PermissionedPositionManager contract
+        uint256 amount0ToTransfer = 100e18;
+        uint256 amount1ToTransfer = 100e18;
+
+        // Transfer tokens to the contract
+        currency1.transfer(address(secondaryPosm), amount0ToTransfer);
+        currency2.transfer(address(secondaryPosm), amount1ToTransfer);
+
+        // Verify the contract has the tokens
+        assertEq(currency1.balanceOf(address(secondaryPosm)), amount0ToTransfer);
+        assertEq(currency2.balanceOf(address(secondaryPosm)), amount1ToTransfer);
+
+        // Calculate liquidity for the desired amounts
+        int24 tickLower = -int24(keyFake.tickSpacing);
+        int24 tickUpper = int24(keyFake.tickSpacing);
+        uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            amount0ToTransfer,
+            amount1ToTransfer
+        );
+
+        PositionConfig memory config = PositionConfig({poolKey: keyFake, tickLower: tickLower, tickUpper: tickUpper});
+
+        // Record balances before minting
+        uint256 balance0Before = currency1.balanceOf(address(secondaryPosm));
+        uint256 balance1Before = currency2.balanceOf(address(secondaryPosm));
+        uint256 balance0ManagerBefore = currency1.balanceOf(address(manager));
+        uint256 balance1ManagerBefore = wrappedToken2.balanceOf(address(manager));
+
+        // Create a plan that uses the contract's balance instead of the caller's
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                liquidityToAdd,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                address(this), // recipient
+                ZERO_BYTES // hookData
+            )
+        );
+
+        // Add actions to settle from the contract's balance
+        planner.add(Actions.SETTLE, abi.encode(keyFake.currency0, ActionConstants.OPEN_DELTA, false)); // false = payer is contract
+        planner.add(Actions.SETTLE, abi.encode(keyFake.currency1, ActionConstants.OPEN_DELTA, false)); // false = payer is contract
+
+        bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
+
+        vm.startPrank(unauthorized);
+        vm.expectRevert();
+        secondaryPosm.modifyLiquidities(calls, _deadline);
     }
 }

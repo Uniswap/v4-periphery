@@ -14,11 +14,14 @@ import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/Pool
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IMsgSender} from "../../interfaces/IMsgSender.sol";
+import {ActionConstants} from "../../libraries/ActionConstants.sol";
 
 contract PermissionedV4Router is V4Router, ReentrancyLock, IHooks {
     IAllowanceTransfer public immutable PERMIT2;
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
     address public immutable PERMISSIONED_POSITION_MANAGER;
+
+    address public delegateRouter;
 
     error Unauthorized();
     error HookNotImplemented();
@@ -29,15 +32,19 @@ contract PermissionedV4Router is V4Router, ReentrancyLock, IHooks {
         IPoolManager poolManager_,
         IAllowanceTransfer _permit2,
         IWrappedPermissionedTokenFactory wrappedTokenFactory,
-        address permissionedPositionManager // address needs to be calculated in advance using create3
+        address permissionedPositionManager, // address needs to be calculated in advance using create3
+        address delegateRouter_
     ) V4Router(poolManager_) {
         PERMIT2 = _permit2;
         WRAPPED_TOKEN_FACTORY = wrappedTokenFactory;
         PERMISSIONED_POSITION_MANAGER = permissionedPositionManager;
+        delegateRouter = delegateRouter_;
         Hooks.validateHookPermissions(this, getHookPermissions());
     }
 
     function execute(bytes calldata input) public payable isNotLocked {
+        // TODO: remove once we seperate hooks from router
+        if (delegateRouter != address(0) && msg.sender != delegateRouter) revert Unauthorized();
         _executeActions(input);
     }
 
@@ -59,7 +66,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock, IHooks {
         view
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        if (sender != address(this)) revert Unauthorized();
+        if (sender != delegateRouter) revert Unauthorized();
         _verifyAllowlist(IMsgSender(sender), key);
         return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
@@ -108,13 +115,22 @@ contract PermissionedV4Router is V4Router, ReentrancyLock, IHooks {
             if (!wrappedPermissionedToken.isAllowed(msgSender())) {
                 revert Unauthorized();
             }
-            currency.transfer(address(wrappedPermissionedToken), amount);
+            Currency.wrap(permissionedToken).transfer(address(wrappedPermissionedToken), amount);
             wrappedPermissionedToken.wrapToPoolManager(amount);
         } else {
             // token is a permissioned token, wrap the token
             PERMIT2.transferFrom(payer, address(wrappedPermissionedToken), uint160(amount), permissionedToken);
             wrappedPermissionedToken.wrapToPoolManager(amount);
         }
+    }
+
+    /// @notice Calculates the amount for a settle action
+    function _mapSettleAmount(uint256 amount, Currency currency) internal view override returns (uint256) {
+        address permissionedToken = WRAPPED_TOKEN_FACTORY.verifiedPermissionedTokenOf(Currency.unwrap(currency));
+        if (permissionedToken == address(0) || amount != ActionConstants.CONTRACT_BALANCE) {
+            return super._mapSettleAmount(amount, currency);
+        }
+        return Currency.wrap(permissionedToken).balanceOfSelf();
     }
 
     /// @inheritdoc IHooks

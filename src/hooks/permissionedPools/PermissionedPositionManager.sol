@@ -80,7 +80,7 @@ contract PermissionedPositionManager is PositionManager {
             if (!wrappedPermissionedToken.isAllowed(msgSender())) {
                 revert Unauthorized();
             }
-            currency.transfer(address(wrappedPermissionedToken), amount);
+            Currency.wrap(permissionedToken).transfer(address(wrappedPermissionedToken), amount);
             wrappedPermissionedToken.wrapToPoolManager(amount);
         } else {
             // token is a permissioned token, wrap the token

@@ -38,6 +38,8 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
 import {MockPermissionedToken} from "../PermissionedPoolsBase.sol";
+import {MockPermissionedV4Router} from "../mocks/MockPermissionedV4Router.sol";
+import {MockV4Router} from "../../../mocks/MockV4Router.sol";
 
 /// @notice A contract that provides permissioned deployment functionality for tests
 /// This moves the deployFreshManagerAndRoutersPermissioned function from v4-core to the test folder
@@ -57,6 +59,7 @@ contract PermissionedDeployers is Test {
     uint160 public constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
     // Has propoer hook flags
     bytes32 public constant PERMISSIONED_SWAP_ROUTER_SALT = keccak256("salt-43086");
+    bytes32 public constant SECONDARY_PERMISSIONED_SWAP_ROUTER_SALT = keccak256("salt-135191");
 
     ModifyLiquidityParams public LIQUIDITY_PARAMS =
         ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: 1e18, salt: 0});
@@ -68,11 +71,13 @@ contract PermissionedDeployers is Test {
     // Global variables
     Currency internal currency0;
     Currency internal currency1;
+
     IPoolManager manager;
     PoolModifyLiquidityTest modifyLiquidityRouter;
     PoolModifyLiquidityTestNoChecks modifyLiquidityNoChecks;
     SwapRouterNoChecks swapRouterNoChecks;
     PermissionedV4Router permissionedSwapRouter;
+    PermissionedV4Router secondaryPermissionedSwapRouter;
     PoolSwapTest swapRouter;
     PoolDonateTest donateRouter;
     PoolTakeTest takeRouter;
@@ -86,6 +91,7 @@ contract PermissionedDeployers is Test {
     PoolKey nativeKey;
     PoolKey uninitializedKey;
     PoolKey uninitializedNativeKey;
+    PoolKey keyFake;
 
     // Update this value when you add a new hook flag.
     uint160 hookPermissionCount = 14;
@@ -123,7 +129,8 @@ contract PermissionedDeployers is Test {
     function deployFreshManagerAndRoutersPermissioned(
         address _permit2,
         address _wrappedTokenFactory,
-        address _permissionedPositionManager
+        address _permissionedPositionManager,
+        address _secondaryPermissionedPositionManager
     ) internal {
         deployFreshManager();
         // Create the bytecode for the router with constructor arguments
@@ -133,12 +140,18 @@ contract PermissionedDeployers is Test {
                 manager,
                 IAllowanceTransfer(_permit2),
                 IWrappedPermissionedTokenFactory(_wrappedTokenFactory),
-                _permissionedPositionManager
+                _permissionedPositionManager,
+                address(0)
             )
         );
 
         address deployedAddr = CREATE3.deploy(PERMISSIONED_SWAP_ROUTER_SALT, routerBytecode, 0);
+        bytes memory secondaryRouterBytecode =
+            abi.encodePacked(vm.getCode("MockPermissionedV4Router.sol:MockV4Router"), abi.encode(manager));
+        address secondaryDeployedAddr =
+            CREATE3.deploy(SECONDARY_PERMISSIONED_SWAP_ROUTER_SALT, secondaryRouterBytecode, 0);
         permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
+        secondaryPermissionedSwapRouter = PermissionedV4Router(payable(secondaryDeployedAddr));
         swapRouter = PoolSwapTest(deployedAddr);
         swapRouterNoChecks = new SwapRouterNoChecks(manager);
         modifyLiquidityRouter = new PoolModifyLiquidityTest(manager);
@@ -228,6 +241,19 @@ contract PermissionedDeployers is Test {
         _key = PoolKey(_currency0, _currency1, fee, fee.isDynamicFee() ? int24(60) : int24(fee / 100 * 2), hooks);
         id = _key.toId();
         manager.initialize(_key, sqrtPriceX96);
+    }
+
+    function initPoolFake(
+        IPoolManager managerFake,
+        Currency _currency0,
+        Currency _currency1,
+        IHooks hooks,
+        uint24 fee,
+        uint160 sqrtPriceX96
+    ) internal returns (PoolKey memory _key, PoolId id) {
+        _key = PoolKey(_currency0, _currency1, fee, fee.isDynamicFee() ? int24(60) : int24(fee / 100 * 2), hooks);
+        id = _key.toId();
+        managerFake.initialize(_key, sqrtPriceX96);
     }
 
     function initPool(

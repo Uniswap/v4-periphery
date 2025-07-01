@@ -37,11 +37,11 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
     // This specific salt indicates proper hook permissions
     bytes32 public constant PERMISSIONED_ROUTER_SALT = keccak256("salt-43086");
-    bytes32 public constant SECONDARY_PERMISSIONED_ROUTER_SALT = keccak256("salt-135191");
+    bytes32 public constant DELEGATE_ROUTER_SALT = keccak256("salt-135191");
 
     // Permissioned components
     MockPermissionedV4Router public permissionedRouter;
-    MockPermissionedV4Router public secondaryRouter;
+    MockPermissionedV4Router public delegateRouter;
     IAllowanceTransfer public permit2;
     IWrappedPermissionedTokenFactory public wrappedTokenFactory;
     MockAllowlistChecker public mockAllowlistChecker;
@@ -71,6 +71,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
 
     address public predictedPositionManager;
     address public predictedPermissionedRouter;
+    address public predicteddelegateRouter;
     address public positionManager;
 
     mapping(Currency wrappedCurrency => Currency permissionedCurrency) public wrappedToPermissioned;
@@ -78,13 +79,14 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     function setupPermissionedRouterCurrenciesAndPoolsWithLiquidity(address spender) public {
         predictedPositionManager = CREATE3.getDeployed(PERMISSIONED_POSM_SALT);
         predictedPermissionedRouter = CREATE3.getDeployed(PERMISSIONED_ROUTER_SALT);
+        predicteddelegateRouter = CREATE3.getDeployed(DELEGATE_ROUTER_SALT);
         _deployFreshManager();
         _deployWETH();
         _deployPositionDescriptor();
         _deployPermit2();
         _deployWrappedTokenFactory();
         _deployMockPermissionedRouter();
-        _deploySecondaryMockPermissionedRouter();
+        _deployDelegateMockPermissionedRouter();
         _deployPositionManager();
         MockERC20[] memory tokens = deployTokensMintAndApprove(5, 2);
         _deployAndSetupTokens(tokens);
@@ -101,6 +103,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
 
     function approveAllContracts(address token) internal {
         approveBoth(token, address(permissionedRouter));
+        approveBoth(token, address(delegateRouter));
         approveBoth(token, address(positionManager));
         approveBoth(token, address(manager));
         approveBoth(token, address(permit2));
@@ -157,8 +160,8 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         wrappedToken1.updateAllowedWrapper(positionManager, true);
         wrappedToken0.updateAllowedWrapper(address(permissionedRouter), true);
         wrappedToken1.updateAllowedWrapper(address(permissionedRouter), true);
-        wrappedToken0.updateAllowedWrapper(address(secondaryRouter), true);
-        wrappedToken1.updateAllowedWrapper(address(secondaryRouter), true);
+        wrappedToken0.updateAllowedWrapper(address(delegateRouter), true);
+        wrappedToken1.updateAllowedWrapper(address(delegateRouter), true);
     }
 
     function deployTokensMintAndApprove(uint8 count, uint8 permissionedCount) internal returns (MockERC20[] memory) {
@@ -301,17 +304,17 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
             uint256 outputBalanceAfter
         )
     {
-        inputBalanceBefore = inputCurrency.balanceOfSelf();
-        outputBalanceBefore = outputCurrency.balanceOfSelf();
+        inputBalanceBefore = getPermissionedCurrency(inputCurrency).balanceOfSelf();
+        outputBalanceBefore = getPermissionedCurrency(outputCurrency).balanceOfSelf();
 
         bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, takeRecipient);
 
         uint256 value = (inputCurrency.isAddressZero()) ? amountIn : 0;
 
-        permissionedRouter.execute{value: value}(data);
+        delegateRouter.execute{value: value}(data);
 
-        inputBalanceAfter = inputCurrency.balanceOfSelf();
-        outputBalanceAfter = outputCurrency.balanceOfSelf();
+        inputBalanceAfter = getPermissionedCurrency(inputCurrency).balanceOfSelf();
+        outputBalanceAfter = getPermissionedCurrency(outputCurrency).balanceOfSelf();
     }
 
     function _finalizeAndExecuteSwap(Currency inputCurrency, Currency outputCurrency, uint256 amountIn)
@@ -364,23 +367,23 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
             PERMISSIONED_ROUTER_SALT,
             abi.encodePacked(
                 vm.getCode("MockPermissionedV4Router.sol:MockPermissionedV4Router"),
-                abi.encode(manager, permit2, wrappedTokenFactory, predictedPositionManager)
+                abi.encode(manager, permit2, wrappedTokenFactory, predictedPositionManager, predicteddelegateRouter)
             ),
             0
         );
         permissionedRouter = MockPermissionedV4Router(payable(CREATE3.getDeployed(PERMISSIONED_ROUTER_SALT)));
     }
 
-    function _deploySecondaryMockPermissionedRouter() private {
+    function _deployDelegateMockPermissionedRouter() private {
         CREATE3.deploy(
-            SECONDARY_PERMISSIONED_ROUTER_SALT,
+            DELEGATE_ROUTER_SALT,
             abi.encodePacked(
                 vm.getCode("MockPermissionedV4Router.sol:MockPermissionedV4Router"),
-                abi.encode(manager, permit2, wrappedTokenFactory, predictedPositionManager)
+                abi.encode(manager, permit2, wrappedTokenFactory, predictedPositionManager, address(0))
             ),
             0
         );
-        secondaryRouter = MockPermissionedV4Router(payable(CREATE3.getDeployed(SECONDARY_PERMISSIONED_ROUTER_SALT)));
+        delegateRouter = MockPermissionedV4Router(payable(CREATE3.getDeployed(DELEGATE_ROUTER_SALT)));
     }
 
     function _deployPositionManager() private {
@@ -433,6 +436,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         mockAllowlistChecker = new MockAllowlistChecker(mockPermissionedToken);
         mockPermissionedToken.setAllowlist(address(this), true);
         mockPermissionedToken.setAllowlist(address(permissionedRouter), true);
+        mockPermissionedToken.setAllowlist(address(delegateRouter), true);
         mockPermissionedToken.setAllowlist(address(positionManager), true);
         mockPermissionedToken.setAllowlist(address(wrappedTokenFactory), true);
         mockPermissionedToken.setAllowlist(address(manager), true);
