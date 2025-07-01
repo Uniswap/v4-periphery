@@ -10,9 +10,12 @@ import {ActionConstants} from "../../../../src/libraries/ActionConstants.sol";
 import {IWrappedPermissionedTokenFactory} from
     "../../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
 import {PermissionedV4Router} from "../../../../src/hooks/permissionedPools/PermissionedV4Router.sol";
+import {MockPermissionedToken} from "../PermissionedPoolsBase.sol";
+import {MockPermissionedV4Router} from "../mocks/MockPermissionedV4Router.sol";
+import {MockV4Router} from "../../../mocks/MockV4Router.sol";
+import {MockHooks} from "../mocks/MockHooks.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
-import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
@@ -20,7 +23,6 @@ import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/Pool
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
 import {SortTokens} from "@uniswap/v4-core/test/utils/SortTokens.sol";
@@ -33,14 +35,9 @@ import {PoolNestedActionsTest} from "@uniswap/v4-core/src/test/PoolNestedActions
 import {PoolTakeTest} from "@uniswap/v4-core/src/test/PoolTakeTest.sol";
 import {PoolClaimsTest} from "@uniswap/v4-core/src/test/PoolClaimsTest.sol";
 import {ActionsRouter} from "@uniswap/v4-core/src/test/ActionsRouter.sol";
-import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
-import {MockPermissionedToken} from "../PermissionedPoolsBase.sol";
-import {MockPermissionedV4Router} from "../mocks/MockPermissionedV4Router.sol";
-import {MockV4Router} from "../../../mocks/MockV4Router.sol";
-import {MockHooks} from "../mocks/MockHooks.sol";
 
 /// @notice A contract that provides permissioned deployment functionality for tests
 /// This moves the deployFreshManagerAndRoutersPermissioned function from v4-core to the test folder
@@ -73,30 +70,27 @@ contract PermissionedDeployers is Test {
     Currency internal currency0;
     Currency internal currency1;
 
-    IPoolManager manager;
-    PoolModifyLiquidityTest modifyLiquidityRouter;
-    PoolModifyLiquidityTestNoChecks modifyLiquidityNoChecks;
-    SwapRouterNoChecks swapRouterNoChecks;
-    PermissionedV4Router permissionedSwapRouter;
-    PoolSwapTest swapRouter;
-    PoolDonateTest donateRouter;
-    PoolTakeTest takeRouter;
-    ActionsRouter actionsRouter;
-    IHooks permissionedHooks;
+    IPoolManager public manager;
+    PoolModifyLiquidityTest public modifyLiquidityRouter;
+    PoolModifyLiquidityTestNoChecks public modifyLiquidityNoChecks;
+    SwapRouterNoChecks public swapRouterNoChecks;
+    PermissionedV4Router public permissionedSwapRouter;
+    PoolSwapTest public swapRouter;
+    PoolDonateTest public donateRouter;
+    PoolTakeTest public takeRouter;
+    ActionsRouter public actionsRouter;
+    IHooks public permissionedHooks;
 
-    PoolClaimsTest claimsRouter;
-    PoolNestedActionsTest nestedActionRouter;
-    address feeController;
+    PoolClaimsTest public claimsRouter;
+    PoolNestedActionsTest public nestedActionRouter;
 
-    PoolKey key;
-    PoolKey nativeKey;
-    PoolKey uninitializedKey;
-    PoolKey uninitializedNativeKey;
-    PoolKey keyFake;
+    address public feeController;
 
-    // Update this value when you add a new hook flag.
-    uint160 hookPermissionCount = 14;
-    uint160 clearAllHookPermissionsMask = ~uint160(0) << (hookPermissionCount);
+    PoolKey public key;
+    PoolKey public nativeKey;
+    PoolKey public uninitializedKey;
+    PoolKey public uninitializedNativeKey;
+    PoolKey public keyFake;
 
     modifier noIsolate() {
         if (msg.sender != address(this)) {
@@ -113,7 +107,12 @@ contract PermissionedDeployers is Test {
 
     function deployFreshManagerAndRouters() internal {
         deployFreshManager();
+
         swapRouter = new PoolSwapTest(manager);
+        deployMiscRouters();
+    }
+
+    function deployMiscRouters() internal {
         swapRouterNoChecks = new SwapRouterNoChecks(manager);
         modifyLiquidityRouter = new PoolModifyLiquidityTest(manager);
         modifyLiquidityNoChecks = new PoolModifyLiquidityTestNoChecks(manager);
@@ -123,17 +122,14 @@ contract PermissionedDeployers is Test {
         nestedActionRouter = new PoolNestedActionsTest(manager);
         feeController = makeAddr("feeController");
         actionsRouter = new ActionsRouter(manager);
-
         manager.setProtocolFeeController(feeController);
     }
 
-    function deployFreshManagerAndRoutersPermissioned(
-        address permit2,
+    function deployPermissionedHooks(
         address wrappedTokenFactory,
         address permissionedPositionManager,
         address permissionedSwapRouter_
     ) internal {
-        deployFreshManager();
         CREATE3.deploy(
             PERMISSIONED_HOOKS_SALT,
             abi.encodePacked(
@@ -147,57 +143,64 @@ contract PermissionedDeployers is Test {
             0
         );
         permissionedHooks = IHooks(payable(CREATE3.getDeployed(PERMISSIONED_HOOKS_SALT)));
-        // Create the bytecode for the router with constructor arguments
+    }
+
+    function deployPermissionedV4Router(
+        address permit2_,
+        address wrappedTokenFactory,
+        address permissionedPositionManager
+    ) internal returns (address deployedAddr) {
         bytes memory routerBytecode = abi.encodePacked(
             vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
             abi.encode(
                 manager,
-                IAllowanceTransfer(permit2),
+                IAllowanceTransfer(permit2_),
                 IWrappedPermissionedTokenFactory(wrappedTokenFactory),
                 permissionedPositionManager,
                 address(permissionedHooks)
             )
         );
 
-        address deployedAddr = CREATE3.deploy(PERMISSIONED_SWAP_ROUTER_SALT, routerBytecode, 0);
-        permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
-        swapRouter = PoolSwapTest(deployedAddr);
-        swapRouterNoChecks = new SwapRouterNoChecks(manager);
-        modifyLiquidityRouter = new PoolModifyLiquidityTest(manager);
-        modifyLiquidityNoChecks = new PoolModifyLiquidityTestNoChecks(manager);
-        donateRouter = new PoolDonateTest(manager);
-        takeRouter = new PoolTakeTest(manager);
-        claimsRouter = new PoolClaimsTest(manager);
-        nestedActionRouter = new PoolNestedActionsTest(manager);
-        feeController = makeAddr("feeController");
-        actionsRouter = new ActionsRouter(manager);
-
-        manager.setProtocolFeeController(feeController);
+        deployedAddr = CREATE3.deploy(PERMISSIONED_SWAP_ROUTER_SALT, routerBytecode, 0);
     }
 
-    // You must have first initialised the routers with deployFreshManagerAndRouters
-    // If you only need the currencies (and not approvals) call deployAndMint2Currencies
+    function deployFreshManagerAndRoutersPermissioned(
+        address permit2_,
+        address wrappedTokenFactory,
+        address permissionedPositionManager,
+        address permissionedSwapRouter_
+    ) internal {
+        deployFreshManager();
+        deployPermissionedHooks(wrappedTokenFactory, permissionedPositionManager, permissionedSwapRouter_);
+        address deployedAddr = deployPermissionedV4Router(permit2_, wrappedTokenFactory, permissionedPositionManager);
+        permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
+        swapRouter = PoolSwapTest(deployedAddr);
+        deployMiscRouters();
+    }
+
+    /// @dev You must have first initialised the routers with deployFreshManagerAndRouters
+    /// If you only need the currencies (and not approvals) call deployAndMint2Currencies
     function deployMintAndApprove2Currencies(bool isPermissioned0, bool isPermissioned1)
         internal
         returns (Currency, Currency)
     {
         while (true) {
-            Currency _currencyA;
-            Currency _currencyB;
+            Currency _currency0;
+            Currency _currency1;
             if (isPermissioned0) {
-                _currencyA = deployMintAndApproveCurrency(true);
+                _currency0 = deployMintAndApproveCurrency(true);
             } else {
-                _currencyA = deployMintAndApproveCurrency(false);
+                _currency0 = deployMintAndApproveCurrency(false);
             }
             if (isPermissioned1) {
-                _currencyB = deployMintAndApproveCurrency(true);
+                _currency1 = deployMintAndApproveCurrency(true);
             } else {
-                _currencyB = deployMintAndApproveCurrency(false);
+                _currency1 = deployMintAndApproveCurrency(false);
             }
 
             (currency0, currency1) =
-                SortTokens.sort(MockERC20(Currency.unwrap(_currencyA)), MockERC20(Currency.unwrap(_currencyB)));
-            if (currency0 == _currencyA && currency1 == _currencyB) {
+                SortTokens.sort(MockERC20(Currency.unwrap(_currency0)), MockERC20(Currency.unwrap(_currency1)));
+            if (currency0 == _currency0 && currency1 == _currency1) {
                 break;
             }
         }
@@ -247,22 +250,9 @@ contract PermissionedDeployers is Test {
         internal
         returns (PoolKey memory _key, PoolId id)
     {
-        _key = PoolKey(_currency0, _currency1, fee, fee.isDynamicFee() ? int24(60) : int24(fee / 100 * 2), hooks);
-        id = _key.toId();
-        manager.initialize(_key, sqrtPriceX96);
-    }
-
-    function initPoolFake(
-        IPoolManager managerFake,
-        Currency _currency0,
-        Currency _currency1,
-        IHooks hooks,
-        uint24 fee,
-        uint160 sqrtPriceX96
-    ) internal returns (PoolKey memory _key, PoolId id) {
-        _key = PoolKey(_currency0, _currency1, fee, fee.isDynamicFee() ? int24(60) : int24(fee / 100 * 2), hooks);
-        id = _key.toId();
-        managerFake.initialize(_key, sqrtPriceX96);
+        return initPool(
+            _currency0, _currency1, hooks, fee, fee.isDynamicFee() ? int24(60) : int24(fee / 100 * 2), sqrtPriceX96
+        );
     }
 
     function initPool(
@@ -276,29 +266,6 @@ contract PermissionedDeployers is Test {
         _key = PoolKey(_currency0, _currency1, fee, tickSpacing, hooks);
         id = _key.toId();
         manager.initialize(_key, sqrtPriceX96);
-    }
-
-    function initPoolAndAddLiquidity(
-        Currency _currency0,
-        Currency _currency1,
-        IHooks hooks,
-        uint24 fee,
-        uint160 sqrtPriceX96
-    ) internal returns (PoolKey memory _key, PoolId id) {
-        (_key, id) = initPool(_currency0, _currency1, hooks, fee, sqrtPriceX96);
-        modifyLiquidityRouter.modifyLiquidity{value: msg.value}(_key, LIQUIDITY_PARAMS, ZERO_BYTES);
-    }
-
-    function initPoolAndAddLiquidityETH(
-        Currency _currency0,
-        Currency _currency1,
-        IHooks hooks,
-        uint24 fee,
-        uint160 sqrtPriceX96,
-        uint256 msgValue
-    ) internal returns (PoolKey memory _key, PoolId id) {
-        (_key, id) = initPool(_currency0, _currency1, hooks, fee, sqrtPriceX96);
-        modifyLiquidityRouter.modifyLiquidity{value: msgValue}(_key, LIQUIDITY_PARAMS, ZERO_BYTES);
     }
 
     /// @notice Helper function for a simple ERC20 swaps that allows for unlimited price impact

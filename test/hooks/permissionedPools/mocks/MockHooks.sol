@@ -20,6 +20,7 @@ contract MockHooks is PermissionedHooks {
     }
 }
 
+/// @notice This contract is used in the testing of security for the permissioned pool manager
 contract MockInsecureHooks {
     function beforeAddLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
         external

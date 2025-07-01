@@ -1,22 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {V4Router, IPoolManager, Currency} from "../../V4Router.sol";
+import {IMsgSender} from "../../interfaces/IMsgSender.sol";
+import {ActionConstants} from "../../libraries/ActionConstants.sol";
 import {ReentrancyLock} from "../../base/ReentrancyLock.sol";
+import {V4Router, IPoolManager, Currency} from "../../V4Router.sol";
 import {
     IWrappedPermissionedTokenFactory,
     IWrappedPermissionedToken
 } from "./interfaces/IWrappedPermissionedTokenFactory.sol";
+import {PermissionedHooks} from "./PermissionedHooks.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {IMsgSender} from "../../interfaces/IMsgSender.sol";
-import {ActionConstants} from "../../libraries/ActionConstants.sol";
-import {PermissionedHooks} from "./PermissionedHooks.sol";
-import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks, IHooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 contract PermissionedV4Router is V4Router, ReentrancyLock {
     IAllowanceTransfer public immutable PERMIT2;
@@ -30,12 +29,12 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
     /// to be deployed using create3 to create deterministic addresses that do not depend on the constructor arguments
     constructor(
         IPoolManager poolManager_,
-        IAllowanceTransfer _permit2,
+        IAllowanceTransfer permit2,
         IWrappedPermissionedTokenFactory wrappedTokenFactory,
         address permissionedPositionManager, // address needs to be calculated in advance using create3
         address permissionedHooks
     ) V4Router(poolManager_) {
-        PERMIT2 = _permit2;
+        PERMIT2 = permit2;
         WRAPPED_TOKEN_FACTORY = wrappedTokenFactory;
         PERMISSIONED_POSITION_MANAGER = permissionedPositionManager;
         Hooks.validateHookPermissions(
@@ -85,6 +84,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
     /// @notice Calculates the amount for a settle action
     function _mapSettleAmount(uint256 amount, Currency currency) internal view override returns (uint256) {
         address permissionedToken = WRAPPED_TOKEN_FACTORY.verifiedPermissionedTokenOf(Currency.unwrap(currency));
+        // use the default implementation unless the currency is a permissioned token with a balance on the router
         if (permissionedToken == address(0) || amount != ActionConstants.CONTRACT_BALANCE) {
             return super._mapSettleAmount(amount, currency);
         }

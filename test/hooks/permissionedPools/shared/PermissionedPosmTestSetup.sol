@@ -36,8 +36,9 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
     TransparentUpgradeableProxy public proxy;
     IPositionDescriptor public proxyAsImplementation;
     HookModifyLiquidities public hookModifyLiquidities;
-    WETH public wethImpl = new WETH();
     IWETH9 public _WETH9;
+
+    WETH public wethImpl = new WETH();
 
     PoolKey public wethKey;
 
@@ -48,25 +49,6 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
         bytes32 salt
     ) public {
         deployPermissionedPosm(poolManager, wrappedTokenFactory, permissionedHooks_, salt);
-        approvePosm();
-    }
-
-    function deployAndApprovePosmOnly(
-        IPoolManager poolManager,
-        address wrappedTokenFactory,
-        address permissionedHooks_,
-        bytes32 salt
-    ) public returns (IPositionManager secondaryPosm) {
-        secondaryPosm = Deploy.permissionedPositionManagerCreate3(
-            address(poolManager),
-            address(permit2),
-            100_000,
-            address(proxyAsImplementation),
-            address(_WETH9),
-            wrappedTokenFactory,
-            permissionedHooks_,
-            salt
-        );
         approvePosm();
     }
 
@@ -89,6 +71,25 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             permissionedHooks_,
             salt
         );
+    }
+
+    function deployAndApprovePosmOnly(
+        IPoolManager poolManager,
+        address wrappedTokenFactory,
+        address permissionedHooks_,
+        bytes32 salt
+    ) public returns (IPositionManager secondaryPosm) {
+        secondaryPosm = Deploy.permissionedPositionManagerCreate3(
+            address(poolManager),
+            address(permit2),
+            100_000,
+            address(proxyAsImplementation),
+            address(_WETH9),
+            wrappedTokenFactory,
+            permissionedHooks_,
+            salt
+        );
+        approvePosm();
     }
 
     function deployWETH() internal returns (IWETH9) {

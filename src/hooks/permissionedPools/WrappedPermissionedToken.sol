@@ -10,6 +10,7 @@ import {IAllowlistChecker} from "./interfaces/IAllowlistChecker.sol";
 contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedToken {
     /// @inheritdoc IWrappedPermissionedToken
     address public immutable POOL_MANAGER;
+
     /// @inheritdoc IWrappedPermissionedToken
     IERC20 public immutable PERMISSIONED_TOKEN;
 

@@ -38,6 +38,7 @@ contract PermissionedHooks is IHooks, ReentrancyLock {
         Hooks.validateHookPermissions(this, getHookPermissions());
     }
 
+    /// @dev Returns the hook permissions configuration for this contract
     function getHookPermissions() public pure returns (Hooks.Permissions memory permissions) {
         permissions.beforeSwap = true;
         permissions.beforeAddLiquidity = true;
@@ -65,6 +66,7 @@ contract PermissionedHooks is IHooks, ReentrancyLock {
         return IHooks.beforeAddLiquidity.selector;
     }
 
+    /// @dev checks if the sender is allowed to access both tokens in the pool
     function _verifyAllowlist(IMsgSender sender, PoolKey calldata poolKey) internal view {
         _isAllowed(Currency.unwrap(poolKey.currency0), sender.msgSender());
         _isAllowed(Currency.unwrap(poolKey.currency1), sender.msgSender());

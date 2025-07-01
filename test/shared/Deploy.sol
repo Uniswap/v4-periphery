@@ -6,9 +6,9 @@ import {IPositionDescriptor} from "../../src/interfaces/IPositionDescriptor.sol"
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {IV4Quoter} from "../../src/interfaces/IV4Quoter.sol";
 import {IStateView} from "../../src/interfaces/IStateView.sol";
+import {PermissionedV4Router} from "../../src/hooks/permissionedPools/PermissionedV4Router.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
-import {PermissionedV4Router} from "../../src/hooks/permissionedPools/PermissionedV4Router.sol";
 
 library Deploy {
     Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
@@ -48,7 +48,7 @@ library Deploy {
             permissionedSwapRouter
         );
         bytes memory initcode =
-            abi.encodePacked(vm.getCode("BasePermissionedPositionManager.sol:BasePermissionedPositionManager"), args);
+            abi.encodePacked(vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args);
         assembly {
             manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
@@ -74,7 +74,7 @@ library Deploy {
             permissionedHooks
         );
         bytes memory initcode =
-            abi.encodePacked(vm.getCode("BasePermissionedPositionManager.sol:BasePermissionedPositionManager"), args);
+            abi.encodePacked(vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args);
         return IPositionManager(CREATE3.deploy(salt, initcode, 0));
     }
 

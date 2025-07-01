@@ -2,41 +2,43 @@
 pragma solidity ^0.8.19;
 
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IV4Router} from "../../../src/interfaces/IV4Router.sol";
 import {PermissionedRoutingTestHelpers} from "./shared/PermissionedRoutingTestHelpers.sol";
 import {Planner} from "../../shared/Planner.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../../src/libraries/ActionConstants.sol";
-import {IAllowlistChecker} from "../../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
 import {WrappedPermissionedToken} from "../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {MockPermissionedToken} from "./PermissionedPoolsBase.sol";
-import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {MockHooks} from "./mocks/MockHooks.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     // To allow testing without importing MockPermissionedV4Router
     error HookNotImplemented();
 
-    Currency wrappedCurrency0;
-    Currency wrappedCurrency1;
+    Currency public wrappedCurrency0;
+    Currency public wrappedCurrency1;
 
-    // Test User
+    // Test Users
     address public alice = makeAddr("ALICE");
+    address public unauthorizedUser = makeAddr("UNAUTHORIZED");
 
     function setUp() public {
         setupPermissionedRouterCurrenciesAndPoolsWithLiquidity(alice);
+
         wrappedCurrency0 = Currency.wrap(address(wrappedToken0));
         wrappedCurrency1 = Currency.wrap(address(wrappedToken1));
+
         plan = Planner.init();
+
         setupPermissionsAndApprovals();
     }
 
     function setupPermissionsAndApprovals() internal {
-        // Setup approvals for test contract
+        // Setup approvals for test address
         _setupApprovals();
 
         // Setup approvals for authorized user
@@ -107,7 +109,6 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     //////////////////////////////////////////////////////////////*/
 
     function test_swap_reverts_unauthorized_user() public {
-        address unauthorizedUser = makeAddr("UNAUTHORIZED");
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, true);
         MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(unauthorizedUser, true);
         IERC20(Currency.unwrap(currency0)).transfer(unauthorizedUser, 2 ether);
@@ -116,7 +117,6 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(unauthorizedUser, false);
 
         uint256 amountIn = 1 ether;
-
         PoolKey memory wrappedKey = PoolKey(currency0, currency1, 3000, 60, permissionedHooks);
 
         IV4Router.ExactInputSingleParams memory params =
@@ -184,7 +184,9 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
+
         MockHooks(address(permissionedHooks)).setPermissionedRouter(address(4));
+
         vm.prank(alice);
         vm.expectRevert();
         permissionedRouter.execute(data);
@@ -196,6 +198,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bool zeroToOne = wrappedCurrency1 == key1.currency0;
         Currency inputCurrency;
         Currency outputCurrency;
+
         if (zeroToOne) {
             inputCurrency = key1.currency0;
             outputCurrency = key1.currency1;
@@ -226,9 +229,12 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     function test_swap_succeeds_authorized_user_mixed_exit() public {
         IERC20(Currency.unwrap(currency2)).transfer(alice, 2 ether);
 
+        uint256 amountIn = 100;
+        uint256 expectedAmountOut = 98;
         bool zeroToOne = !(wrappedCurrency1 == key1.currency0);
         Currency inputCurrency;
         Currency outputCurrency;
+
         if (zeroToOne) {
             inputCurrency = key1.currency0;
             outputCurrency = key1.currency1;
@@ -239,8 +245,6 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
             IERC20(Currency.unwrap(key1.currency1)).transfer(alice, 2 ether);
         }
 
-        uint256 amountIn = 100;
-        uint256 expectedAmountOut = 98;
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key1, zeroToOne, uint128(amountIn), 0, bytes(""));
 
@@ -259,11 +263,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     }
 
     function test_swap_succeeds_unauthorized_user_mixed_entry() public {
-        address unauthorizedUser = makeAddr("UNAUTHORIZED");
-
         bool zeroToOne = wrappedCurrency1 == key1.currency0;
         Currency inputCurrency;
         Currency outputCurrency;
+
         if (zeroToOne) {
             inputCurrency = key1.currency0;
             outputCurrency = key1.currency1;
@@ -293,11 +296,13 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     }
 
     function test_swap_succeeds_unauthorized_user_mixed_exit() public {
-        address unauthorizedUser = makeAddr("UNAUTHORIZED");
+        IERC20(Currency.unwrap(currency2)).transfer(unauthorizedUser, 2 ether);
 
+        uint256 amountIn = 100;
         bool zeroToOne = !(wrappedCurrency1 == key1.currency0);
         Currency inputCurrency;
         Currency outputCurrency;
+
         if (zeroToOne) {
             inputCurrency = key1.currency0;
             outputCurrency = key1.currency1;
@@ -308,9 +313,6 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
             IERC20(Currency.unwrap(key1.currency1)).transfer(alice, 2 ether);
         }
 
-        IERC20(Currency.unwrap(currency2)).transfer(unauthorizedUser, 2 ether);
-
-        uint256 amountIn = 100;
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key1, zeroToOne, uint128(amountIn), 0, bytes(""));
 
@@ -406,6 +408,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         // the router holds no funds before
         assertEq(wrappedCurrency0.balanceOf(address(permissionedRouter)), 0);
         assertEq(wrappedCurrency1.balanceOf(address(permissionedRouter)), 0);
+
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key0, true, address(manager));
         // swap with the router as the take recipient
@@ -423,10 +426,11 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         uint256 amountIn = 1000;
         uint256 expectedAmountOut = 949;
 
-        Currency inputCurrency = getPermissionedCurrency(key0.currency0);
-        Currency outputCurrency = getPermissionedCurrency(key0.currency1);
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
+
+        Currency inputCurrency = getPermissionedCurrency(key0.currency0);
+        Currency outputCurrency = getPermissionedCurrency(key0.currency1);
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, expectedAmountOut * 12 / 10));
@@ -437,6 +441,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         // the router holds no funds before
         assertEq(inputCurrency.balanceOf(address(permissionedRouter)), 0);
         assertEq(outputCurrency.balanceOf(address(permissionedRouter)), 0);
+
         permissionedRouter.execute(data);
         // the output tokens have been left in the router
         assertEq(outputCurrency.balanceOf(address(permissionedRouter)), expectedAmountOut);
@@ -447,9 +452,12 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 19992;
         bool zeroForOne = false;
+
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, zeroForOne, uint128(amountIn), 0, bytes(""));
+
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key0, zeroForOne, address(manager));
         (
@@ -475,6 +483,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
+
         IV4Router.ExactInputParams memory params =
             _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedHooks), expectedAmountOut);
         params.amountOutMinimum = uint128(expectedAmountOut + 1);
@@ -494,8 +503,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
+
         IV4Router.ExactInputParams memory params =
             _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedHooks), expectedAmountOut);
+
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
@@ -522,6 +533,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         tokenPath.push(wrappedCurrency1);
         tokenPath.push(wrappedCurrency0);
+
         IV4Router.ExactInputParams memory params =
             _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedHooks), expectedAmountOut);
 
@@ -553,6 +565,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
         tokenPath.push(currency2);
+
         IV4Router.ExactInputParams memory params =
             _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedHooks), expectedAmountOut);
 
@@ -590,6 +603,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(wrappedCurrency1);
         tokenPath.push(currency2);
         tokenPath.push(currency3);
+
         IV4Router.ExactInputParams memory params =
             _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedHooks), expectedAmountOut);
 
@@ -653,6 +667,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 19992;
         bool zeroForOne = false;
+
         // native output means we need !zeroForOne
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(nativeKey, zeroForOne, uint128(amountIn), 0, bytes(""));
@@ -684,8 +699,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         tokenPath.push(CurrencyLibrary.ADDRESS_ZERO);
         tokenPath.push(nativeKey.currency1);
+
         IV4Router.ExactInputParams memory params =
             _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedHooks));
+
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
 
         (, uint256 outputBalanceBefore, uint256 ethBalanceBefore) =
@@ -710,12 +727,15 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     function test_nativeOut_swapExactIn_1Hop() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 19992;
+
         tokenPath.push(nativeKey.currency1);
         tokenPath.push(CurrencyLibrary.ADDRESS_ZERO);
+
         IV4Router.ExactInputParams memory params =
             _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedHooks));
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
+
         (uint256 inputBalanceBefore,, uint256 ethBalanceBefore) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
         (
@@ -743,6 +763,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(CurrencyLibrary.ADDRESS_ZERO);
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
+
         IV4Router.ExactInputParams memory params =
             _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedHooks));
 
@@ -779,6 +800,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(wrappedCurrency1);
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(CurrencyLibrary.ADDRESS_ZERO);
+
         IV4Router.ExactInputParams memory params =
             _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedHooks));
 
@@ -862,6 +884,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         uint256 amountOut = 19992;
         uint256 expectedAmountIn = 434604409;
         bool zeroForOne = true;
+
         IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
             key0, zeroForOne, uint128(amountOut), uint128(expectedAmountIn + 1), bytes("")
         );
@@ -893,6 +916,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         uint256 amountOut = 19992;
         uint256 expectedAmountIn = 433302557;
         bool zeroForOne = false;
+
         IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
             key0, zeroForOne, uint128(amountOut), uint128(expectedAmountIn + 1), bytes("")
         );
@@ -924,6 +948,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
+
         IV4Router.ExactOutputParams memory params =
             _getExactOutputParamsWithHook(tokenPath, amountOut, address(permissionedHooks), expectedAmountIn);
         params.amountInMaximum = uint128(expectedAmountIn - 1);
@@ -943,6 +968,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         tokenPath.push(wrappedCurrency1);
         tokenPath.push(wrappedCurrency0);
+
         IV4Router.ExactOutputParams memory params =
             _getExactOutputParamsWithHook(tokenPath, amountOut, address(permissionedHooks), expectedAmountIn);
 
@@ -972,6 +998,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
+
         IV4Router.ExactOutputParams memory params =
             _getExactOutputParamsWithHook(tokenPath, amountOut, address(permissionedHooks), expectedAmountIn);
 
@@ -1002,6 +1029,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
         tokenPath.push(currency2);
+
         IV4Router.ExactOutputParams memory params =
             _getExactOutputParamsWithHook(tokenPath, amountOut, address(permissionedHooks), expectedAmountIn);
 
@@ -1100,7 +1128,6 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     }
 
     function test_swapExactOut_3Hops_mmiddle_unauthorized_reverts() public {
-        address unauthorizedUser = makeAddr("UNAUTHORIZED");
         uint256 amountOut = 100;
         uint256 expectedAmountIn = 106;
 
@@ -1120,6 +1147,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
         bytes memory data = plan.finalizeSwap(currency4, currency2, ActionConstants.MSG_SENDER);
+
         vm.prank(unauthorizedUser);
         vm.expectRevert();
         permissionedRouter.execute{value: 0}(data);
@@ -1161,14 +1189,16 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     }
 
     function test_swapExactOut_native_3Hops_mmiddle_unauthorized_reverts() public {
-        address unauthorizedUser = makeAddr("UNAUTHORIZED");
+        nativeKey.currency0.transfer(unauthorizedUser, 1000);
+
         uint256 amountOut = 100;
         uint256 expectedAmountIn = 106;
-        nativeKey.currency0.transfer(unauthorizedUser, 1000);
+
         tokenPath.push(nativeKey.currency0);
         tokenPath.push(wrappedCurrency0);
         tokenPath.push(wrappedCurrency1);
         tokenPath.push(currency2);
+
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, false);
         MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(unauthorizedUser, false);
 
@@ -1178,10 +1208,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
         bytes memory data = plan.finalizeSwap(nativeKey.currency0, currency2, ActionConstants.MSG_SENDER);
-        uint256 value = (nativeKey.currency0.isAddressZero()) ? expectedAmountIn : 0;
+
         vm.prank(unauthorizedUser);
         vm.expectRevert();
-        permissionedRouter.execute{value: value}(data);
+        permissionedRouter.execute{value: (nativeKey.currency0.isAddressZero()) ? expectedAmountIn : 0}(data);
     }
 
     function test_swapExactOutputSingle_swapOpenDelta() public {
@@ -1211,8 +1241,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     function test_swapExactOut_swapOpenDelta() public {
         uint256 expectedAmountIn = 1057;
         uint256 expectedOutput = 1000;
+
         tokenPath.push(wrappedCurrency1);
         tokenPath.push(wrappedCurrency0);
+
         IV4Router.ExactOutputParams memory params = _getExactOutputParamsWithHook(
             tokenPath, ActionConstants.OPEN_DELTA, address(permissionedHooks), expectedAmountIn
         );
@@ -1241,6 +1273,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         uint256 amountOut = 19992;
         uint256 expectedAmountIn = 433302557;
         bool zeroForOne = false;
+
         IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
             nativeKey, zeroForOne, uint128(amountOut), uint128(expectedAmountIn + 1), bytes("")
         );
@@ -1272,6 +1305,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         tokenPath.push(nativeKey.currency1);
         tokenPath.push(CurrencyLibrary.ADDRESS_ZERO);
+
         IV4Router.ExactOutputParams memory params =
             _getExactOutputParamsWithHook(tokenPath, amountOut, address(permissionedHooks), expectedAmountIn);
 
@@ -1322,16 +1356,17 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key2, true, address(manager));
 
-        assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
-        assertGt(outputBalanceBefore - outputBalanceAfter, 0);
         // Verify the router's balance was used (it should be 0 after the swap)
         assertEq(key2.currency0.balanceOf(address(permissionedRouter)), 0);
+        assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
+        assertGt(outputBalanceBefore - outputBalanceAfter, 0);
     }
 
     function test_router_self_payment_permissioned_token() public {
         uint256 amountIn = 100000;
 
         IERC20(Currency.unwrap(getPermissionedCurrency(key0.currency0))).transfer(address(permissionedRouter), amountIn);
+
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
 
@@ -1350,24 +1385,27 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key0, true, address(manager));
 
-        assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
-        assertGt(outputBalanceBefore - outputBalanceAfter, 0);
         // Verify the router's balance was used (it should be 0 after the swap)
         assertEq(getPermissionedCurrency(key0.currency0).balanceOf(address(permissionedRouter)), 0);
+        assertEq(inputBalanceAfter - inputBalanceBefore, amountIn);
+        assertGt(outputBalanceBefore - outputBalanceAfter, 0);
     }
 
     function test_router_self_payment_permissioned_token_unauthorized_reverts() public {
-        address unauthorizedUser = makeAddr("UNAUTHORIZED");
         uint256 amountIn = 100000;
+
         MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(key0.currency0))).setAllowlist(
             unauthorizedUser, true
         );
         IERC20(Currency.unwrap(getPermissionedCurrency(key0.currency0))).transfer(address(unauthorizedUser), amountIn);
+
         vm.prank(unauthorizedUser);
         IERC20(Currency.unwrap(getPermissionedCurrency(key0.currency0))).transfer(address(permissionedRouter), amountIn);
+
         MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(key0.currency0))).setAllowlist(
             unauthorizedUser, false
         );
+
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
 
@@ -1387,6 +1425,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         ModifyLiquidityParams memory modifyLiquidityParams =
             ModifyLiquidityParams({tickLower: 0, tickUpper: 0, liquidityDelta: 0, salt: bytes32(0)});
         BalanceDelta balanceDelta = BalanceDelta.wrap(0);
+
         vm.startPrank(alice);
         vm.expectRevert(HookNotImplemented.selector);
         permissionedHooks.afterSwap(address(this), key0, swapParams, balanceDelta, bytes(""));
