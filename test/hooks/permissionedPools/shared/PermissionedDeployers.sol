@@ -40,6 +40,7 @@ import {CREATE3} from "solmate/src/utils/CREATE3.sol";
 import {MockPermissionedToken} from "../PermissionedPoolsBase.sol";
 import {MockPermissionedV4Router} from "../mocks/MockPermissionedV4Router.sol";
 import {MockV4Router} from "../../../mocks/MockV4Router.sol";
+import {MockHooks} from "../mocks/MockHooks.sol";
 
 /// @notice A contract that provides permissioned deployment functionality for tests
 /// This moves the deployFreshManagerAndRoutersPermissioned function from v4-core to the test folder
@@ -58,8 +59,8 @@ contract PermissionedDeployers is Test {
     uint160 public constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
     uint160 public constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
     // Has propoer hook flags
-    bytes32 public constant PERMISSIONED_SWAP_ROUTER_SALT = keccak256("salt-43086");
-    bytes32 public constant SECONDARY_PERMISSIONED_SWAP_ROUTER_SALT = keccak256("salt-135191");
+    bytes32 public constant PERMISSIONED_SWAP_ROUTER_SALT = keccak256("SWAP_ROUTER_SALT");
+    bytes32 public constant PERMISSIONED_HOOKS_SALT = keccak256("salt-43086");
 
     ModifyLiquidityParams public LIQUIDITY_PARAMS =
         ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: 1e18, salt: 0});
@@ -77,11 +78,11 @@ contract PermissionedDeployers is Test {
     PoolModifyLiquidityTestNoChecks modifyLiquidityNoChecks;
     SwapRouterNoChecks swapRouterNoChecks;
     PermissionedV4Router permissionedSwapRouter;
-    PermissionedV4Router secondaryPermissionedSwapRouter;
     PoolSwapTest swapRouter;
     PoolDonateTest donateRouter;
     PoolTakeTest takeRouter;
     ActionsRouter actionsRouter;
+    IHooks permissionedHooks;
 
     PoolClaimsTest claimsRouter;
     PoolNestedActionsTest nestedActionRouter;
@@ -127,31 +128,39 @@ contract PermissionedDeployers is Test {
     }
 
     function deployFreshManagerAndRoutersPermissioned(
-        address _permit2,
-        address _wrappedTokenFactory,
-        address _permissionedPositionManager,
-        address _secondaryPermissionedPositionManager
+        address permit2,
+        address wrappedTokenFactory,
+        address permissionedPositionManager,
+        address permissionedSwapRouter_
     ) internal {
         deployFreshManager();
+        CREATE3.deploy(
+            PERMISSIONED_HOOKS_SALT,
+            abi.encodePacked(
+                vm.getCode("MockHooks.sol:MockHooks"),
+                abi.encode(
+                    IWrappedPermissionedTokenFactory(wrappedTokenFactory),
+                    permissionedPositionManager,
+                    permissionedSwapRouter_
+                )
+            ),
+            0
+        );
+        permissionedHooks = IHooks(payable(CREATE3.getDeployed(PERMISSIONED_HOOKS_SALT)));
         // Create the bytecode for the router with constructor arguments
         bytes memory routerBytecode = abi.encodePacked(
             vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
             abi.encode(
                 manager,
-                IAllowanceTransfer(_permit2),
-                IWrappedPermissionedTokenFactory(_wrappedTokenFactory),
-                _permissionedPositionManager,
-                address(0)
+                IAllowanceTransfer(permit2),
+                IWrappedPermissionedTokenFactory(wrappedTokenFactory),
+                permissionedPositionManager,
+                address(permissionedHooks)
             )
         );
 
         address deployedAddr = CREATE3.deploy(PERMISSIONED_SWAP_ROUTER_SALT, routerBytecode, 0);
-        bytes memory secondaryRouterBytecode =
-            abi.encodePacked(vm.getCode("MockPermissionedV4Router.sol:MockV4Router"), abi.encode(manager));
-        address secondaryDeployedAddr =
-            CREATE3.deploy(SECONDARY_PERMISSIONED_SWAP_ROUTER_SALT, secondaryRouterBytecode, 0);
         permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
-        secondaryPermissionedSwapRouter = PermissionedV4Router(payable(secondaryDeployedAddr));
         swapRouter = PoolSwapTest(deployedAddr);
         swapRouterNoChecks = new SwapRouterNoChecks(manager);
         modifyLiquidityRouter = new PoolModifyLiquidityTest(manager);

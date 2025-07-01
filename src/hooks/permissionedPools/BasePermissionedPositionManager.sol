@@ -4,6 +4,7 @@ pragma solidity ^0.8.25;
 import {IPoolManager, IAllowanceTransfer, IPositionDescriptor, IWETH9} from "../../PositionManager.sol";
 import {IWrappedPermissionedTokenFactory} from "./interfaces/IWrappedPermissionedTokenFactory.sol";
 import {PermissionedPositionManager} from "./PermissionedPositionManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 contract BasePermissionedPositionManager is PermissionedPositionManager {
     constructor(
@@ -13,7 +14,7 @@ contract BasePermissionedPositionManager is PermissionedPositionManager {
         IPositionDescriptor _tokenDescriptor,
         IWETH9 _weth9,
         IWrappedPermissionedTokenFactory _wrappedTokenFactory,
-        address _permissionedSwapRouter
+        IHooks _permissionedHooks
     )
         PermissionedPositionManager(
             _poolManager,
@@ -22,7 +23,7 @@ contract BasePermissionedPositionManager is PermissionedPositionManager {
             _tokenDescriptor,
             _weth9,
             _wrappedTokenFactory,
-            _permissionedSwapRouter
+            _permissionedHooks
         )
     {}
 }

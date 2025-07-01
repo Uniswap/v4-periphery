@@ -44,17 +44,17 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
     function deployAndApprovePosm(
         IPoolManager poolManager,
         address wrappedTokenFactory,
-        address permissionedSwapRouter_,
+        address permissionedHooks_,
         bytes32 salt
     ) public {
-        deployPermissionedPosm(poolManager, wrappedTokenFactory, permissionedSwapRouter_, salt);
+        deployPermissionedPosm(poolManager, wrappedTokenFactory, permissionedHooks_, salt);
         approvePosm();
     }
 
     function deployAndApprovePosmOnly(
         IPoolManager poolManager,
         address wrappedTokenFactory,
-        address permissionedSwapRouter_,
+        address permissionedHooks_,
         bytes32 salt
     ) public returns (IPositionManager secondaryPosm) {
         secondaryPosm = Deploy.permissionedPositionManagerCreate3(
@@ -64,7 +64,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             address(proxyAsImplementation),
             address(_WETH9),
             wrappedTokenFactory,
-            permissionedSwapRouter_,
+            permissionedHooks_,
             salt
         );
         approvePosm();
@@ -73,7 +73,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
     function deployPermissionedPosm(
         IPoolManager poolManager,
         address wrappedTokenFactory,
-        address permissionedSwapRouter_,
+        address permissionedHooks_,
         bytes32 salt
     ) internal {
         permit2 = IAllowanceTransfer(deployPermit2());
@@ -86,7 +86,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             address(proxyAsImplementation),
             address(_WETH9),
             wrappedTokenFactory,
-            permissionedSwapRouter_,
+            permissionedHooks_,
             salt
         );
     }

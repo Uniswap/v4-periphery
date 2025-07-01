@@ -61,7 +61,7 @@ library Deploy {
         address positionDescriptor_,
         address wrappedNative,
         address wrappedTokenFactory,
-        address permissionedSwapRouter,
+        address permissionedHooks,
         bytes32 salt
     ) internal returns (IPositionManager manager) {
         bytes memory args = abi.encode(
@@ -71,7 +71,7 @@ library Deploy {
             positionDescriptor_,
             wrappedNative,
             wrappedTokenFactory,
-            permissionedSwapRouter
+            permissionedHooks
         );
         bytes memory initcode =
             abi.encodePacked(vm.getCode("BasePermissionedPositionManager.sol:BasePermissionedPositionManager"), args);

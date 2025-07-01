@@ -24,12 +24,10 @@ contract MockPermissionedV4Router is PermissionedV4Router {
         IAllowanceTransfer _permit2,
         IWrappedPermissionedTokenFactory wrappedTokenFactory,
         address permissionedPositionManager,
-        address delegateRouter_
-    ) PermissionedV4Router(poolManager_, _permit2, wrappedTokenFactory, permissionedPositionManager, delegateRouter_) {}
-
-    function setDelegateRouter(address _delegateRouter) public {
-        delegateRouter = _delegateRouter;
-    }
+        address permissionedHooks
+    )
+        PermissionedV4Router(poolManager_, _permit2, wrappedTokenFactory, permissionedPositionManager, permissionedHooks)
+    {}
 
     function executeActionsAndSweepExcessETH(bytes calldata params) external payable isNotLocked {
         execute(params);
@@ -42,53 +40,4 @@ contract MockPermissionedV4Router is PermissionedV4Router {
 
     receive() external payable {}
     fallback() external payable {}
-}
-
-contract MockV4Router is V4Router, ReentrancyLock {
-    using SafeTransferLib for *;
-
-    constructor(IPoolManager _poolManager) V4Router(_poolManager) {}
-
-    function executeActions(bytes calldata params) external payable isNotLocked {
-        _executeActions(params);
-    }
-
-    function executeActionsAndSweepExcessETH(bytes calldata params) external payable isNotLocked {
-        _executeActions(params);
-
-        uint256 balance = address(this).balance;
-        if (balance > 0) {
-            msg.sender.safeTransferETH(balance);
-        }
-    }
-
-    function _pay(Currency token, address payer, uint256 amount) internal override {
-        if (payer == address(this)) {
-            token.transfer(address(poolManager), amount);
-        } else {
-            ERC20(Currency.unwrap(token)).safeTransferFrom(payer, address(poolManager), amount);
-        }
-    }
-
-    function msgSender() public view override returns (address) {
-        return _getLocker();
-    }
-
-    function beforeAddLiquidity(address sender, PoolKey calldata key, ModifyLiquidityParams calldata, bytes calldata)
-        external
-        view
-        returns (bytes4)
-    {
-        return IHooks.beforeAddLiquidity.selector;
-    }
-
-    function beforeSwap(address sender, PoolKey calldata key, SwapParams calldata, bytes calldata)
-        external
-        view
-        returns (bytes4)
-    {
-        return IHooks.beforeSwap.selector;
-    }
-
-    receive() external payable {}
 }

@@ -68,10 +68,10 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     // Predicted addresses
     address public predictedPermissionedSwapRouterAddress;
-    address public predictedSecondaryPermissionedSwapRouterAddress;
     address public predictedPermissionedPosmAddress;
     address public predictedSecondaryPosmAddress;
     address public predictedWrappedTokenFactoryAddress;
+    address public predictedHooksAddress;
 
     // Test User
     address alice = makeAddr("ALICE");
@@ -82,15 +82,16 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         predictedSecondaryPosmAddress = CREATE3.getDeployed(SECONDARY_POSM_SALT);
         predictedPermissionedSwapRouterAddress = CREATE3.getDeployed(PERMISSIONED_SWAP_ROUTER_SALT);
         predictedWrappedTokenFactoryAddress = CREATE3.getDeployed(WRAPPED_TOKEN_FACTORY_SALT);
-        predictedSecondaryPermissionedSwapRouterAddress = CREATE3.getDeployed(SECONDARY_PERMISSIONED_SWAP_ROUTER_SALT);
+        predictedHooksAddress = CREATE3.getDeployed(PERMISSIONED_HOOKS_SALT);
 
         wrappedTokenFactory = WrappedPermissionedTokenFactory(predictedWrappedTokenFactoryAddress);
         permit2 = IAllowanceTransfer(deployPermit2());
+
         deployFreshManagerAndRoutersPermissioned(
             address(permit2),
             address(wrappedTokenFactory),
             predictedPermissionedPosmAddress,
-            predictedSecondaryPermissionedSwapRouterAddress
+            predictedPermissionedSwapRouterAddress
         );
         CREATE3.deploy(
             WRAPPED_TOKEN_FACTORY_SALT,
@@ -103,12 +104,9 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         (currency0, currency1) = deployMintAndApprove2Currencies(true, false);
         currency2 = deployMintAndApproveCurrency(true);
         setupPermissionedComponents();
-        deployAndApprovePosm(
-            manager, address(wrappedTokenFactory), predictedPermissionedSwapRouterAddress, PERMISSIONED_POSM_SALT
-        );
-        secondaryPosm = deployAndApprovePosmOnly(
-            manager, address(wrappedTokenFactory), predictedSecondaryPermissionedSwapRouterAddress, SECONDARY_POSM_SALT
-        );
+        deployAndApprovePosm(manager, address(wrappedTokenFactory), predictedHooksAddress, PERMISSIONED_POSM_SALT);
+        secondaryPosm =
+            deployAndApprovePosmOnly(manager, address(wrappedTokenFactory), predictedHooksAddress, SECONDARY_POSM_SALT);
         setupPool();
         seedBalance(alice);
         approvePosmFor(alice);
@@ -117,14 +115,13 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     function setupPool() internal {
         (Currency orderedCurrency0, Currency orderedCurrency1) =
             SortTokens.sort(MockERC20(address(wrappedToken0)), MockERC20(Currency.unwrap(currency1)));
-        (key, poolId) = initPool(
-            orderedCurrency0, orderedCurrency1, IHooks(predictedPermissionedSwapRouterAddress), 3000, SQRT_PRICE_1_1
-        );
+        (key, poolId) =
+            initPool(orderedCurrency0, orderedCurrency1, IHooks(predictedHooksAddress), 3000, SQRT_PRICE_1_1);
         (keyFake, poolIdFake) = initPoolFake(
             manager,
             currency1,
             Currency.wrap(address(wrappedToken2)),
-            IHooks(predictedSecondaryPermissionedSwapRouterAddress),
+            IHooks(predictedHooksAddress),
             3000,
             SQRT_PRICE_1_1
         );
@@ -180,9 +177,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
             address(predictedPermissionedSwapRouterAddress), true
         );
-        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(
-            address(predictedSecondaryPermissionedSwapRouterAddress), true
-        );
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(address(predictedHooksAddress), true);
     }
 
     function setUpWrappedToken(WrappedPermissionedToken wrappedToken, Currency currency) internal {
@@ -225,8 +220,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         // Set up approvals for the reentrant token
         approvePosmCurrency(reentrantToken);
-        (key, poolId) =
-            initPool(currency0, currency1, IHooks(predictedPermissionedSwapRouterAddress), 3000, SQRT_PRICE_1_1);
+        (key, poolId) = initPool(currency0, currency1, IHooks(predictedHooksAddress), 3000, SQRT_PRICE_1_1);
 
         // Try to add liquidity at that range, but the token reenters posm
         PositionConfig memory config =
@@ -871,12 +865,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         );
 
         PositionConfig memory config = PositionConfig({poolKey: keyFake, tickLower: tickLower, tickUpper: tickUpper});
-
-        // Record balances before minting
-        uint256 balance0Before = currency1.balanceOf(address(secondaryPosm));
-        uint256 balance1Before = currency2.balanceOf(address(secondaryPosm));
-        uint256 balance0ManagerBefore = currency1.balanceOf(address(manager));
-        uint256 balance1ManagerBefore = wrappedToken2.balanceOf(address(manager));
 
         // Create a plan that uses the contract's balance instead of the caller's
         Plan memory planner = Planner.init();

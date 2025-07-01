@@ -8,20 +8,20 @@ import {
     IWrappedPermissionedToken
 } from "./interfaces/IWrappedPermissionedTokenFactory.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {Hooks, IHooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IMsgSender} from "../../interfaces/IMsgSender.sol";
 import {ActionConstants} from "../../libraries/ActionConstants.sol";
+import {PermissionedHooks} from "./PermissionedHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
-contract PermissionedV4Router is V4Router, ReentrancyLock, IHooks {
+contract PermissionedV4Router is V4Router, ReentrancyLock {
     IAllowanceTransfer public immutable PERMIT2;
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
     address public immutable PERMISSIONED_POSITION_MANAGER;
-
-    address public delegateRouter;
 
     error Unauthorized();
     error HookNotImplemented();
@@ -33,18 +33,17 @@ contract PermissionedV4Router is V4Router, ReentrancyLock, IHooks {
         IAllowanceTransfer _permit2,
         IWrappedPermissionedTokenFactory wrappedTokenFactory,
         address permissionedPositionManager, // address needs to be calculated in advance using create3
-        address delegateRouter_
+        address permissionedHooks
     ) V4Router(poolManager_) {
         PERMIT2 = _permit2;
         WRAPPED_TOKEN_FACTORY = wrappedTokenFactory;
         PERMISSIONED_POSITION_MANAGER = permissionedPositionManager;
-        delegateRouter = delegateRouter_;
-        Hooks.validateHookPermissions(this, getHookPermissions());
+        Hooks.validateHookPermissions(
+            IHooks(permissionedHooks), PermissionedHooks(permissionedHooks).getHookPermissions()
+        );
     }
 
     function execute(bytes calldata input) public payable isNotLocked {
-        // TODO: remove once we seperate hooks from router
-        if (delegateRouter != address(0) && msg.sender != delegateRouter) revert Unauthorized();
         _executeActions(input);
     }
 
@@ -53,47 +52,6 @@ contract PermissionedV4Router is V4Router, ReentrancyLock, IHooks {
     /// @dev overrides BaseActionsRouter.msgSender in V4Router
     function msgSender() public view override returns (address) {
         return _getLocker();
-    }
-
-    function getHookPermissions() public pure returns (Hooks.Permissions memory permissions) {
-        permissions.beforeSwap = true;
-        permissions.beforeAddLiquidity = true;
-    }
-
-    /// @inheritdoc IHooks
-    function beforeSwap(address sender, PoolKey calldata key, SwapParams calldata, bytes calldata)
-        external
-        view
-        returns (bytes4, BeforeSwapDelta, uint24)
-    {
-        if (sender != delegateRouter) revert Unauthorized();
-        _verifyAllowlist(IMsgSender(sender), key);
-        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
-    }
-
-    /// @inheritdoc IHooks
-    function beforeAddLiquidity(address sender, PoolKey calldata key, ModifyLiquidityParams calldata, bytes calldata)
-        external
-        view
-        returns (bytes4)
-    {
-        if (sender != PERMISSIONED_POSITION_MANAGER) revert Unauthorized();
-        _verifyAllowlist(IMsgSender(sender), key);
-        return IHooks.beforeAddLiquidity.selector;
-    }
-
-    function _verifyAllowlist(IMsgSender sender, PoolKey calldata poolKey) internal view {
-        _isAllowed(Currency.unwrap(poolKey.currency0), sender.msgSender());
-        _isAllowed(Currency.unwrap(poolKey.currency1), sender.msgSender());
-    }
-
-    /// @dev checks if the provided token is a wrapped token by checking if it has a verified permissioned token, if yes, check the allowlist
-    function _isAllowed(address wrappedToken, address sender) internal view {
-        address permissionedToken = WRAPPED_TOKEN_FACTORY.verifiedPermissionedTokenOf(wrappedToken);
-        if (permissionedToken == address(0)) return;
-        if (!IWrappedPermissionedToken(wrappedToken).isAllowed(sender)) {
-            revert Unauthorized();
-        }
     }
 
     function _pay(Currency currency, address payer, uint256 amount) internal override {
@@ -131,67 +89,5 @@ contract PermissionedV4Router is V4Router, ReentrancyLock, IHooks {
             return super._mapSettleAmount(amount, currency);
         }
         return Currency.wrap(permissionedToken).balanceOfSelf();
-    }
-
-    /// @inheritdoc IHooks
-    function beforeInitialize(address, PoolKey calldata, uint160) external pure returns (bytes4) {
-        revert HookNotImplemented();
-    }
-
-    /// @inheritdoc IHooks
-    function afterInitialize(address, PoolKey calldata, uint160, int24) external pure returns (bytes4) {
-        revert HookNotImplemented();
-    }
-
-    /// @inheritdoc IHooks
-    function afterAddLiquidity(
-        address,
-        PoolKey calldata,
-        ModifyLiquidityParams calldata,
-        BalanceDelta,
-        BalanceDelta,
-        bytes calldata
-    ) external pure returns (bytes4, BalanceDelta) {
-        revert HookNotImplemented();
-    }
-
-    /// @inheritdoc IHooks
-    function beforeRemoveLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
-        external
-        pure
-        returns (bytes4)
-    {
-        revert HookNotImplemented();
-    }
-
-    /// @inheritdoc IHooks
-    function afterRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        ModifyLiquidityParams calldata,
-        BalanceDelta,
-        BalanceDelta,
-        bytes calldata
-    ) external pure returns (bytes4, BalanceDelta) {
-        revert HookNotImplemented();
-    }
-
-    /// @inheritdoc IHooks
-    function afterSwap(address, PoolKey calldata, SwapParams calldata, BalanceDelta, bytes calldata)
-        external
-        pure
-        returns (bytes4, int128)
-    {
-        revert HookNotImplemented();
-    }
-
-    /// @inheritdoc IHooks
-    function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata) external pure returns (bytes4) {
-        revert HookNotImplemented();
-    }
-
-    /// @inheritdoc IHooks
-    function afterDonate(address, PoolKey calldata, uint256, uint256, bytes calldata) external pure returns (bytes4) {
-        revert HookNotImplemented();
     }
 }
