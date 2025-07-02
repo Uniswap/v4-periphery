@@ -2,19 +2,6 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import {Planner} from "../../../shared/Planner.sol";
-import {Plan} from "../../../shared/Planner.sol";
-import {IV4Router} from "../../../../src/interfaces/IV4Router.sol";
-import {Actions} from "../../../../src/libraries/Actions.sol";
-import {ActionConstants} from "../../../../src/libraries/ActionConstants.sol";
-import {IWrappedPermissionedTokenFactory} from
-    "../../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
-import {PermissionedV4Router} from "../../../../src/hooks/permissionedPools/PermissionedV4Router.sol";
-import {MockPermissionedToken} from "../PermissionedPoolsBase.sol";
-import {MockPermissionedV4Router} from "../mocks/MockPermissionedV4Router.sol";
-import {MockV4Router} from "../../../mocks/MockV4Router.sol";
-import {MockHooks} from "../mocks/MockHooks.sol";
-import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -38,6 +25,20 @@ import {ActionsRouter} from "@uniswap/v4-core/src/test/ActionsRouter.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {CREATE3} from "solmate/src/utils/CREATE3.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+
+import {Planner} from "../../../shared/Planner.sol";
+import {Plan} from "../../../shared/Planner.sol";
+import {IV4Router} from "../../../../src/interfaces/IV4Router.sol";
+import {Actions} from "../../../../src/libraries/Actions.sol";
+import {ActionConstants} from "../../../../src/libraries/ActionConstants.sol";
+import {IWrappedPermissionedTokenFactory} from
+    "../../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
+import {PermissionedV4Router} from "../../../../src/hooks/permissionedPools/PermissionedV4Router.sol";
+import {MockPermissionedToken} from "../PermissionedPoolsBase.sol";
+import {MockPermissionedV4Router} from "../mocks/MockPermissionedV4Router.sol";
+import {MockV4Router} from "../../../mocks/MockV4Router.sol";
+import {MockHooks} from "../mocks/MockHooks.sol";
 
 /// @notice A contract that provides permissioned deployment functionality for tests
 /// This moves the deployFreshManagerAndRoutersPermissioned function from v4-core to the test folder
@@ -46,18 +47,19 @@ contract PermissionedDeployers is Test {
     using StateLibrary for IPoolManager;
 
     // Helpful test constants
-    bytes constant ZERO_BYTES = Constants.ZERO_BYTES;
-    uint160 constant SQRT_PRICE_1_1 = Constants.SQRT_PRICE_1_1;
-    uint160 constant SQRT_PRICE_1_2 = Constants.SQRT_PRICE_1_2;
-    uint160 constant SQRT_PRICE_2_1 = Constants.SQRT_PRICE_2_1;
-    uint160 constant SQRT_PRICE_1_4 = Constants.SQRT_PRICE_1_4;
-    uint160 constant SQRT_PRICE_4_1 = Constants.SQRT_PRICE_4_1;
+    bytes public constant ZERO_BYTES = Constants.ZERO_BYTES;
+    uint160 public constant SQRT_PRICE_1_1 = Constants.SQRT_PRICE_1_1;
+    uint160 public constant SQRT_PRICE_1_2 = Constants.SQRT_PRICE_1_2;
+    uint160 public constant SQRT_PRICE_2_1 = Constants.SQRT_PRICE_2_1;
+    uint160 public constant SQRT_PRICE_1_4 = Constants.SQRT_PRICE_1_4;
+    uint160 public constant SQRT_PRICE_4_1 = Constants.SQRT_PRICE_4_1;
 
     uint160 public constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
     uint160 public constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
     // Has propoer hook flags
     bytes32 public constant PERMISSIONED_SWAP_ROUTER_SALT = keccak256("SWAP_ROUTER_SALT");
     bytes32 public constant PERMISSIONED_HOOKS_SALT = keccak256("salt-43086");
+    bytes32 public constant SECONDARY_HOOKS_SALT = keccak256("salt-135191");
 
     ModifyLiquidityParams public LIQUIDITY_PARAMS =
         ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: 1e18, salt: 0});
@@ -86,11 +88,9 @@ contract PermissionedDeployers is Test {
 
     address public feeController;
 
-    PoolKey public key;
     PoolKey public nativeKey;
     PoolKey public uninitializedKey;
     PoolKey public uninitializedNativeKey;
-    PoolKey public keyFake;
 
     modifier noIsolate() {
         if (msg.sender != address(this)) {
@@ -145,6 +145,25 @@ contract PermissionedDeployers is Test {
         permissionedHooks = IHooks(payable(CREATE3.getDeployed(PERMISSIONED_HOOKS_SALT)));
     }
 
+    function deploySecondaryPermissionedHooks(
+        address wrappedTokenFactory,
+        address permissionedPositionManager,
+        address permissionedSwapRouter_
+    ) internal {
+        CREATE3.deploy(
+            SECONDARY_HOOKS_SALT,
+            abi.encodePacked(
+                vm.getCode("MockHooks.sol:MockHooks"),
+                abi.encode(
+                    IWrappedPermissionedTokenFactory(wrappedTokenFactory),
+                    permissionedPositionManager,
+                    permissionedSwapRouter_
+                )
+            ),
+            0
+        );
+    }
+
     function deployPermissionedV4Router(
         address permit2_,
         address wrappedTokenFactory,
@@ -168,10 +187,14 @@ contract PermissionedDeployers is Test {
         address permit2_,
         address wrappedTokenFactory,
         address permissionedPositionManager,
+        address secondaryPermissionedPositionManager,
         address permissionedSwapRouter_
     ) internal {
         deployFreshManager();
         deployPermissionedHooks(wrappedTokenFactory, permissionedPositionManager, permissionedSwapRouter_);
+        deploySecondaryPermissionedHooks(
+            wrappedTokenFactory, secondaryPermissionedPositionManager, permissionedSwapRouter_
+        );
         address deployedAddr = deployPermissionedV4Router(permit2_, wrappedTokenFactory, permissionedPositionManager);
         permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
         swapRouter = PoolSwapTest(deployedAddr);

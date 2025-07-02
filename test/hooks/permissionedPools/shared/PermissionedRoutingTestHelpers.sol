@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
+import {CREATE3} from "solmate/src/utils/CREATE3.sol";
+import {WETH} from "solmate/src/tokens/WETH.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+
 import {Deploy} from "test/shared/Deploy.sol";
 import {MockPermissionedV4Router} from "../mocks/MockPermissionedV4Router.sol";
 import {Plan, Planner} from "../../../shared/Planner.sol";
@@ -14,29 +25,19 @@ import {IWrappedPermissionedTokenFactory} from
     "../../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
 import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
 import {IPositionDescriptor} from "../../../../src/interfaces/IPositionDescriptor.sol";
-import {LiquidityOperations} from "../../../shared/LiquidityOperations.sol";
 import {IV4Router} from "../../../../src/interfaces/IV4Router.sol";
 import {ActionConstants} from "../../../../src/libraries/ActionConstants.sol";
 import {PermissionedDeployers} from "./PermissionedDeployers.sol";
-
-import {CREATE3} from "solmate/src/utils/CREATE3.sol";
-import {WETH} from "solmate/src/tokens/WETH.sol";
-import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the permissioned router.
 contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 {
     // CREATE3 salts for deterministic deployment
     bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
     bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
-    // This specific salt indicates proper hook permissions
     bytes32 public constant PERMISSIONED_ROUTER_SALT = keccak256("PERMISSIONED_ROUTER_TEST");
+
+    uint256 public constant MAX_SETTLE_AMOUNT = type(uint256).max;
+    uint256 public constant MIN_TAKE_AMOUNT = 0;
 
     // Permissioned components
     MockPermissionedV4Router public permissionedRouter;
@@ -47,25 +48,22 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     IPositionDescriptor public tokenDescriptor;
     IWETH9 public weth9;
 
-    uint256 MAX_SETTLE_AMOUNT = type(uint256).max;
-    uint256 MIN_TAKE_AMOUNT = 0;
-
     // nativeKey is already defined in Deployers.sol
-    PoolKey key0;
-    PoolKey key1;
-    PoolKey key2;
-    PoolKey key3;
+    PoolKey public key0;
+    PoolKey public key1;
+    PoolKey public key2;
+    PoolKey public key3;
 
     // currency0 and currency1 are defined in Deployers.sol
-    Currency currency2;
-    Currency currency3;
-    Currency currency4;
+    Currency public currency2;
+    Currency public currency3;
+    Currency public currency4;
 
     WrappedPermissionedToken public wrappedToken0;
     WrappedPermissionedToken public wrappedToken1;
 
-    Currency[] tokenPath;
-    Plan plan;
+    Currency[] public tokenPath;
+    Plan public plan;
 
     address public predictedPositionManager;
     address public predictedPermissionedHooks;

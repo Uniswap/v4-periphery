@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {PermissionedHooks} from "../../../../src/hooks/permissionedPools/PermissionedHooks.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IWrappedPermissionedTokenFactory} from
     "../../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {PermissionedHooks} from "../../../../src/hooks/permissionedPools/PermissionedHooks.sol";
 
 contract MockHooks is PermissionedHooks {
     constructor(
