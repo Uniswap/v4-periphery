@@ -267,6 +267,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     function test_modifyLiquidities_reverts_reentrancy() public {
         PoolKey memory key;
+        
         // Create a reentrant token and initialize the pool
         Currency reentrantToken = Currency.wrap(address(new ReentrantToken(lpm)));
         (currency0, currency1) = (Currency.unwrap(reentrantToken) < Currency.unwrap(currency1))

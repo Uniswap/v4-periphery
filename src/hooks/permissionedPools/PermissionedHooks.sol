@@ -6,15 +6,15 @@ import {
     IWrappedPermissionedTokenFactory,
     IWrappedPermissionedToken
 } from "./interfaces/IWrappedPermissionedTokenFactory.sol";
+import {IMsgSender} from "../../interfaces/IMsgSender.sol";
+import {ActionConstants} from "../../libraries/ActionConstants.sol";
+import {ReentrancyLock} from "../../base/ReentrancyLock.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {Hooks, IHooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {IMsgSender} from "../../interfaces/IMsgSender.sol";
-import {ActionConstants} from "../../libraries/ActionConstants.sol";
-import {ReentrancyLock} from "../../base/ReentrancyLock.sol";
 
 contract PermissionedHooks is IHooks, ReentrancyLock {
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
