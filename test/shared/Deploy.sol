@@ -8,7 +8,6 @@ import {IV4Quoter} from "../../src/interfaces/IV4Quoter.sol";
 import {IStateView} from "../../src/interfaces/IStateView.sol";
 import {PermissionedV4Router} from "../../src/hooks/permissionedPools/PermissionedV4Router.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import {CREATE3} from "solmate/src/utils/CREATE3.sol";
 
 library Deploy {
     Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
@@ -35,34 +34,8 @@ library Deploy {
         address positionDescriptor_,
         address wrappedNative,
         address wrappedTokenFactory,
-        address permissionedSwapRouter,
-        bytes memory salt
-    ) internal returns (IPositionManager manager) {
-        bytes memory args = abi.encode(
-            poolManager,
-            permit2,
-            unsubscribeGasLimit,
-            positionDescriptor_,
-            wrappedNative,
-            wrappedTokenFactory,
-            permissionedSwapRouter
-        );
-        bytes memory initcode =
-            abi.encodePacked(vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args);
-        assembly {
-            manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
-        }
-    }
-
-    function permissionedPositionManagerCreate3(
-        address poolManager,
-        address permit2,
-        uint256 unsubscribeGasLimit,
-        address positionDescriptor_,
-        address wrappedNative,
-        address wrappedTokenFactory,
         address permissionedHooks,
-        bytes32 salt
+        bytes memory salt
     ) internal returns (IPositionManager manager) {
         bytes memory args = abi.encode(
             poolManager,
@@ -75,7 +48,9 @@ library Deploy {
         );
         bytes memory initcode =
             abi.encodePacked(vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args);
-        return IPositionManager(CREATE3.deploy(salt, initcode, 0));
+        assembly {
+            manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
+        }
     }
 
     function stateView(address poolManager, bytes memory salt) internal returns (IStateView stateView_) {
@@ -116,6 +91,18 @@ library Deploy {
         bytes memory initcode = abi.encodePacked(vm.getCode("PositionDescriptor.sol:PositionDescriptor"), args);
         assembly {
             descriptor := create2(0, add(initcode, 0x20), mload(initcode), salt)
+        }
+    }
+
+    function create2(bytes memory initcode, bytes32 salt) internal returns (address contractAddress) {
+        assembly {
+            contractAddress := create2(0, add(initcode, 32), mload(initcode), salt)
+            if iszero(contractAddress) {
+                let ptr := mload(0x40)
+                let errorSize := returndatasize()
+                returndatacopy(ptr, 0, errorSize)
+                revert(ptr, errorSize)
+            }
         }
     }
 }

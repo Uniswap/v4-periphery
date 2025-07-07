@@ -10,6 +10,8 @@ import {
     IWrappedPermissionedToken
 } from "./interfaces/IWrappedPermissionedTokenFactory.sol";
 import {PermissionedHooks} from "./PermissionedHooks.sol";
+import {IWETH9} from "../../interfaces/external/IWETH9.sol";
+
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
@@ -20,26 +22,21 @@ import {Hooks, IHooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 contract PermissionedV4Router is V4Router, ReentrancyLock {
     IAllowanceTransfer public immutable PERMIT2;
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
-    address public immutable PERMISSIONED_POSITION_MANAGER;
+    IWETH9 public immutable WETH9;
 
     error Unauthorized();
     error HookNotImplemented();
+    error InvalidEthSender();
 
-    /// @dev as this contract and the swap router rely on each others addresses in the constructor, both contracts need
-    /// to be deployed using create3 to create deterministic addresses that do not depend on the constructor arguments
     constructor(
         IPoolManager poolManager_,
         IAllowanceTransfer permit2,
         IWrappedPermissionedTokenFactory wrappedTokenFactory,
-        address permissionedPositionManager, // address needs to be calculated in advance using create3
-        address permissionedHooks
+        IWETH9 weth9
     ) V4Router(poolManager_) {
         PERMIT2 = permit2;
         WRAPPED_TOKEN_FACTORY = wrappedTokenFactory;
-        PERMISSIONED_POSITION_MANAGER = permissionedPositionManager;
-        Hooks.validateHookPermissions(
-            IHooks(permissionedHooks), PermissionedHooks(permissionedHooks).getHookPermissions()
-        );
+        WETH9 = weth9;
     }
 
     function execute(bytes calldata input) public payable isNotLocked {
@@ -89,5 +86,10 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
             return super._mapSettleAmount(amount, currency);
         }
         return Currency.wrap(permissionedToken).balanceOfSelf();
+    }
+
+    /// @notice To receive ETH from WETH
+    receive() external payable {
+        if (msg.sender != address(WETH9) && msg.sender != address(poolManager)) revert InvalidEthSender();
     }
 }

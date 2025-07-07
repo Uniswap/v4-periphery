@@ -71,7 +71,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
         permit2 = IAllowanceTransfer(deployPermit2());
         _WETH9 = deployWETH();
         proxyAsImplementation = deployDescriptor(poolManager, "ETH");
-        lpm = Deploy.permissionedPositionManagerCreate3(
+        lpm = Deploy.permissionedPositionManager(
             address(poolManager),
             address(permit2),
             100_000,
@@ -79,7 +79,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             address(_WETH9),
             wrappedTokenFactory,
             permissionedHooks_,
-            salt
+            abi.encode(salt)
         );
     }
 
@@ -89,7 +89,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
         address permissionedHooks_,
         bytes32 salt
     ) public returns (IPositionManager secondaryPosm) {
-        secondaryPosm = Deploy.permissionedPositionManagerCreate3(
+        secondaryPosm = Deploy.permissionedPositionManager(
             address(poolManager),
             address(permit2),
             100_000,
@@ -97,7 +97,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             address(_WETH9),
             wrappedTokenFactory,
             permissionedHooks_,
-            salt
+            abi.encode(salt)
         );
         approvePosm();
     }

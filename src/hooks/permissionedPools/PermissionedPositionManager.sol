@@ -22,8 +22,7 @@ contract PermissionedPositionManager is PositionManager {
 
     error InvalidHook();
 
-    /// @dev as this contract and the swap router rely on each others addresses in the constructor, both contracts need
-    /// to be deployed using create3 to create deterministic addresses that do not depend on the constructor arguments
+    /// @dev as this contract must know the hooks address in advance, it must be passed in as a constructor argument
     constructor(
         IPoolManager _poolManager,
         IAllowanceTransfer _permit2,
@@ -31,7 +30,7 @@ contract PermissionedPositionManager is PositionManager {
         IPositionDescriptor _tokenDescriptor,
         IWETH9 _weth9,
         IWrappedPermissionedTokenFactory _wrappedTokenFactory,
-        IHooks _permissionedHooks // address needs to be calculated in advance using create3
+        IHooks _permissionedHooks
     ) PositionManager(_poolManager, _permit2, _unsubscribeGasLimit, _tokenDescriptor, _weth9) {
         WRAPPED_TOKEN_FACTORY = _wrappedTokenFactory;
         PERMISSIONED_HOOKS = _permissionedHooks;

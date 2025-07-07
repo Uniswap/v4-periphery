@@ -24,7 +24,6 @@ import {PoolClaimsTest} from "@uniswap/v4-core/src/test/PoolClaimsTest.sol";
 import {ActionsRouter} from "@uniswap/v4-core/src/test/ActionsRouter.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {CREATE3} from "solmate/src/utils/CREATE3.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {Planner} from "../../../shared/Planner.sol";
@@ -36,9 +35,11 @@ import {IWrappedPermissionedTokenFactory} from
     "../../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
 import {PermissionedV4Router} from "../../../../src/hooks/permissionedPools/PermissionedV4Router.sol";
 import {MockPermissionedToken} from "../PermissionedPoolsBase.sol";
-import {MockPermissionedV4Router} from "../mocks/MockPermissionedV4Router.sol";
 import {MockV4Router} from "../../../mocks/MockV4Router.sol";
 import {MockHooks} from "../mocks/MockHooks.sol";
+import {Deploy} from "../../../../test/shared/Deploy.sol";
+import {HookMiner} from "../../../../src/utils/HookMiner.sol";
+import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
 
 /// @notice A contract that provides permissioned deployment functionality for tests
 /// This moves the deployFreshManagerAndRoutersPermissioned function from v4-core to the test folder
@@ -56,10 +57,6 @@ contract PermissionedDeployers is Test {
 
     uint160 public constant MIN_PRICE_LIMIT = TickMath.MIN_SQRT_PRICE + 1;
     uint160 public constant MAX_PRICE_LIMIT = TickMath.MAX_SQRT_PRICE - 1;
-    // Has propoer hook flags
-    bytes32 public constant PERMISSIONED_SWAP_ROUTER_SALT = keccak256("SWAP_ROUTER_SALT");
-    bytes32 public constant PERMISSIONED_HOOKS_SALT = keccak256("salt-43086");
-    bytes32 public constant SECONDARY_HOOKS_SALT = keccak256("salt-135191");
 
     ModifyLiquidityParams public LIQUIDITY_PARAMS =
         ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: 1e18, salt: 0});
@@ -82,6 +79,8 @@ contract PermissionedDeployers is Test {
     PoolTakeTest public takeRouter;
     ActionsRouter public actionsRouter;
     IHooks public permissionedHooks;
+    IHooks public secondaryPermissionedHooks;
+    IWrappedPermissionedTokenFactory public wrappedTokenFactory;
 
     PoolClaimsTest public claimsRouter;
     PoolNestedActionsTest public nestedActionRouter;
@@ -125,77 +124,55 @@ contract PermissionedDeployers is Test {
         manager.setProtocolFeeController(feeController);
     }
 
-    function deployPermissionedHooks(
-        address wrappedTokenFactory,
-        address permissionedPositionManager,
-        address permissionedSwapRouter_
-    ) internal {
-        CREATE3.deploy(
-            PERMISSIONED_HOOKS_SALT,
+    function deployPermissionedHooks(address wrappedTokenFactory_) internal returns (address deployedHooksAddr) {
+        uint160 flags = (1 << 11) | (1 << 7);
+        (address calculatedAddr, bytes32 salt) = HookMiner.find(
+            address(this),
+            flags,
+            vm.getCode("MockHooks.sol:MockHooks"),
+            abi.encode(IWrappedPermissionedTokenFactory(wrappedTokenFactory_))
+        );
+        address addr = Deploy.create2(
             abi.encodePacked(
                 vm.getCode("MockHooks.sol:MockHooks"),
-                abi.encode(
-                    IWrappedPermissionedTokenFactory(wrappedTokenFactory),
-                    permissionedPositionManager,
-                    permissionedSwapRouter_
-                )
+                abi.encode(IWrappedPermissionedTokenFactory(wrappedTokenFactory_))
             ),
-            0
+            salt
         );
-        permissionedHooks = IHooks(payable(CREATE3.getDeployed(PERMISSIONED_HOOKS_SALT)));
+        assertEq(addr, calculatedAddr);
+        deployedHooksAddr = calculatedAddr;
     }
 
-    function deploySecondaryPermissionedHooks(
-        address wrappedTokenFactory,
-        address permissionedPositionManager,
-        address permissionedSwapRouter_
-    ) internal {
-        CREATE3.deploy(
-            SECONDARY_HOOKS_SALT,
-            abi.encodePacked(
-                vm.getCode("MockHooks.sol:MockHooks"),
-                abi.encode(
-                    IWrappedPermissionedTokenFactory(wrappedTokenFactory),
-                    permissionedPositionManager,
-                    permissionedSwapRouter_
-                )
-            ),
-            0
-        );
-    }
-
-    function deployPermissionedV4Router(
-        address permit2_,
-        address wrappedTokenFactory,
-        address permissionedPositionManager
-    ) internal returns (address deployedAddr) {
+    function deployPermissionedV4Router(address permit2_, address wrappedTokenFactory_, address weth9)
+        internal
+        returns (address deployedAddr)
+    {
         bytes memory routerBytecode = abi.encodePacked(
             vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
             abi.encode(
                 manager,
                 IAllowanceTransfer(permit2_),
-                IWrappedPermissionedTokenFactory(wrappedTokenFactory),
-                permissionedPositionManager,
-                address(permissionedHooks)
+                IWrappedPermissionedTokenFactory(wrappedTokenFactory_),
+                IWETH9(address(weth9))
             )
         );
 
-        deployedAddr = CREATE3.deploy(PERMISSIONED_SWAP_ROUTER_SALT, routerBytecode, 0);
+        deployedAddr = Deploy.create2(routerBytecode, keccak256("permissionedSwapRouter"));
     }
 
-    function deployFreshManagerAndRoutersPermissioned(
-        address permit2_,
-        address wrappedTokenFactory,
-        address permissionedPositionManager,
-        address secondaryPermissionedPositionManager,
-        address permissionedSwapRouter_
-    ) internal {
+    function deployFreshManagerAndRoutersPermissioned(address permit2_, address weth9) internal {
         deployFreshManager();
-        deployPermissionedHooks(wrappedTokenFactory, permissionedPositionManager, permissionedSwapRouter_);
-        deploySecondaryPermissionedHooks(
-            wrappedTokenFactory, secondaryPermissionedPositionManager, permissionedSwapRouter_
+        address wrappedTokenFactoryAddress = Deploy.create2(
+            abi.encodePacked(
+                vm.getCode("WrappedPermissionedTokenFactory.sol:WrappedPermissionedTokenFactory"),
+                abi.encode(address(manager))
+            ),
+            keccak256("wrappedTokenFactory")
         );
-        address deployedAddr = deployPermissionedV4Router(permit2_, wrappedTokenFactory, permissionedPositionManager);
+        wrappedTokenFactory = IWrappedPermissionedTokenFactory(wrappedTokenFactoryAddress);
+        permissionedHooks = IHooks(deployPermissionedHooks(wrappedTokenFactoryAddress));
+        secondaryPermissionedHooks = IHooks(deployPermissionedHooks(wrappedTokenFactoryAddress));
+        address deployedAddr = deployPermissionedV4Router(permit2_, wrappedTokenFactoryAddress, weth9);
         permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
         swapRouter = PoolSwapTest(deployedAddr);
         deployMiscRouters();

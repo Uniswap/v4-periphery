@@ -18,23 +18,12 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 
 contract PermissionedHooks is IHooks, ReentrancyLock {
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
-    address public immutable PERMISSIONED_POSITION_MANAGER;
-
-    address public PERMISSIONED_ROUTER;
 
     error Unauthorized();
     error HookNotImplemented();
 
-    /// @dev as this contract and the swap router rely on each others addresses in the constructor, both contracts need
-    /// to be deployed using create3 to create deterministic addresses that do not depend on the constructor arguments
-    constructor(
-        IWrappedPermissionedTokenFactory wrappedTokenFactory,
-        address permissionedPositionManager, // address needs to be calculated in advance using create3
-        address permissionedRouter
-    ) {
+    constructor(IWrappedPermissionedTokenFactory wrappedTokenFactory) {
         WRAPPED_TOKEN_FACTORY = wrappedTokenFactory;
-        PERMISSIONED_POSITION_MANAGER = permissionedPositionManager;
-        PERMISSIONED_ROUTER = permissionedRouter;
         Hooks.validateHookPermissions(this, getHookPermissions());
     }
 
@@ -50,7 +39,6 @@ contract PermissionedHooks is IHooks, ReentrancyLock {
         view
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        if (sender != PERMISSIONED_ROUTER) revert Unauthorized();
         _verifyAllowlist(IMsgSender(sender), key);
         return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
@@ -61,22 +49,24 @@ contract PermissionedHooks is IHooks, ReentrancyLock {
         view
         returns (bytes4)
     {
-        if (sender != PERMISSIONED_POSITION_MANAGER) revert Unauthorized();
         _verifyAllowlist(IMsgSender(sender), key);
         return IHooks.beforeAddLiquidity.selector;
     }
 
     /// @dev checks if the sender is allowed to access both tokens in the pool
     function _verifyAllowlist(IMsgSender sender, PoolKey calldata poolKey) internal view {
-        _isAllowed(Currency.unwrap(poolKey.currency0), sender.msgSender());
-        _isAllowed(Currency.unwrap(poolKey.currency1), sender.msgSender());
+        _isAllowed(Currency.unwrap(poolKey.currency0), sender.msgSender(), address(sender));
+        _isAllowed(Currency.unwrap(poolKey.currency1), sender.msgSender(), address(sender));
     }
 
     /// @dev checks if the provided token is a wrapped token by checking if it has a verified permissioned token, if yes, check the allowlist
-    function _isAllowed(address wrappedToken, address sender) internal view {
+    function _isAllowed(address wrappedToken, address sender, address router) internal view {
         address permissionedToken = WRAPPED_TOKEN_FACTORY.verifiedPermissionedTokenOf(wrappedToken);
         if (permissionedToken == address(0)) return;
-        if (!IWrappedPermissionedToken(wrappedToken).isAllowed(sender)) {
+        if (
+            !IWrappedPermissionedToken(wrappedToken).isAllowed(sender)
+                || !IWrappedPermissionedToken(wrappedToken).allowedWrappers(router)
+        ) {
             revert Unauthorized();
         }
     }
