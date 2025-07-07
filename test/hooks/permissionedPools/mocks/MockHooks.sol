@@ -9,15 +9,7 @@ import {IWrappedPermissionedTokenFactory} from
 import {PermissionedHooks} from "../../../../src/hooks/permissionedPools/PermissionedHooks.sol";
 
 contract MockHooks is PermissionedHooks {
-    constructor(
-        IWrappedPermissionedTokenFactory wrappedTokenFactory,
-        address permissionedPositionManager,
-        address permissionedRouter
-    ) PermissionedHooks(wrappedTokenFactory, permissionedPositionManager, permissionedRouter) {}
-
-    function setPermissionedRouter(address permissionedRouter) public {
-        PERMISSIONED_ROUTER = permissionedRouter;
-    }
+    constructor(IWrappedPermissionedTokenFactory wrappedTokenFactory) PermissionedHooks(wrappedTokenFactory) {}
 }
 
 /// @notice This contract is used in the testing of security for the permissioned pool manager

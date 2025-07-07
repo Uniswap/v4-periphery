@@ -8,12 +8,11 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
-import {CREATE3} from "solmate/src/utils/CREATE3.sol";
 import {WETH} from "solmate/src/tokens/WETH.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {Deploy} from "test/shared/Deploy.sol";
-import {MockPermissionedV4Router} from "../mocks/MockPermissionedV4Router.sol";
+import {PermissionedV4Router} from "../../../../src/hooks/permissionedPools/PermissionedV4Router.sol";
 import {Plan, Planner} from "../../../shared/Planner.sol";
 import {PathKey} from "../../../../src/libraries/PathKey.sol";
 import {Actions} from "../../../../src/libraries/Actions.sol";
@@ -31,18 +30,12 @@ import {PermissionedDeployers} from "./PermissionedDeployers.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the permissioned router.
 contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 {
-    // CREATE3 salts for deterministic deployment
-    bytes32 public constant PERMISSIONED_POSM_SALT = keccak256("PERMISSIONED_POSM_TEST");
-    bytes32 public constant WRAPPED_TOKEN_FACTORY_SALT = keccak256("WRAPPED_TOKEN_FACTORY_TEST");
-    bytes32 public constant PERMISSIONED_ROUTER_SALT = keccak256("PERMISSIONED_ROUTER_TEST");
-
     uint256 public constant MAX_SETTLE_AMOUNT = type(uint256).max;
     uint256 public constant MIN_TAKE_AMOUNT = 0;
 
     // Permissioned components
-    MockPermissionedV4Router public permissionedRouter;
+    PermissionedV4Router public permissionedRouter;
     IAllowanceTransfer public permit2;
-    IWrappedPermissionedTokenFactory public wrappedTokenFactory;
     MockAllowlistChecker public mockAllowlistChecker;
     IAllowlistChecker public allowListChecker;
     IPositionDescriptor public tokenDescriptor;
@@ -65,17 +58,11 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     Currency[] public tokenPath;
     Plan public plan;
 
-    address public predictedPositionManager;
-    address public predictedPermissionedHooks;
-    address public predictedPermissionedRouter;
     address public positionManager;
 
     mapping(Currency wrappedCurrency => Currency permissionedCurrency) public wrappedToPermissioned;
 
     function setupPermissionedRouterCurrenciesAndPoolsWithLiquidity(address spender) public {
-        predictedPositionManager = CREATE3.getDeployed(PERMISSIONED_POSM_SALT);
-        predictedPermissionedHooks = CREATE3.getDeployed(PERMISSIONED_HOOKS_SALT);
-        predictedPermissionedRouter = CREATE3.getDeployed(PERMISSIONED_ROUTER_SALT);
         _deployFreshManager();
         _deployWETH();
         _deployPositionDescriptor();
@@ -121,18 +108,21 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     function setupPermissionedTokens(address spender) internal {
         _setupMockAllowList(currency0, spender);
         _setupMockAllowList(currency1, spender);
-
-        wrappedToken0 = WrappedPermissionedToken(
-            wrappedTokenFactory.createWrappedPermissionedToken(
-                IERC20(Currency.unwrap(currency0)), address(this), mockAllowlistChecker
-            )
-        );
-        wrappedToken1 = WrappedPermissionedToken(
-            wrappedTokenFactory.createWrappedPermissionedToken(
-                IERC20(Currency.unwrap(currency1)), address(this), mockAllowlistChecker
-            )
-        );
-
+        while (true) {
+            wrappedToken0 = WrappedPermissionedToken(
+                wrappedTokenFactory.createWrappedPermissionedToken(
+                    IERC20(Currency.unwrap(currency0)), address(this), mockAllowlistChecker
+                )
+            );
+            wrappedToken1 = WrappedPermissionedToken(
+                wrappedTokenFactory.createWrappedPermissionedToken(
+                    IERC20(Currency.unwrap(currency1)), address(this), mockAllowlistChecker
+                )
+            );
+            if (address(wrappedToken0) > address(wrappedToken1)) {
+                break;
+            }
+        }
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(wrappedToken0), true);
         MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(address(wrappedToken1), true);
 
@@ -330,39 +320,26 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     }
 
     function _deployWrappedTokenFactory() private {
-        CREATE3.deploy(
-            WRAPPED_TOKEN_FACTORY_SALT,
-            abi.encodePacked(
-                vm.getCode("WrappedPermissionedTokenFactory.sol:WrappedPermissionedTokenFactory"),
-                abi.encode(address(manager))
-            ),
-            0
+        bytes memory wrappedTokenFactoryBytecode = abi.encodePacked(
+            vm.getCode("WrappedPermissionedTokenFactory.sol:WrappedPermissionedTokenFactory"),
+            abi.encode(address(manager))
         );
-        wrappedTokenFactory = IWrappedPermissionedTokenFactory(CREATE3.getDeployed(WRAPPED_TOKEN_FACTORY_SALT));
+        wrappedTokenFactory = IWrappedPermissionedTokenFactory(
+            Deploy.create2(wrappedTokenFactoryBytecode, keccak256("wrappedTokenFactory"))
+        );
     }
 
     function _deployPermissionedHooks() private {
-        CREATE3.deploy(
-            PERMISSIONED_HOOKS_SALT,
-            abi.encodePacked(
-                vm.getCode("MockHooks.sol:MockHooks"),
-                abi.encode(wrappedTokenFactory, predictedPositionManager, predictedPermissionedRouter)
-            ),
-            0
-        );
-        permissionedHooks = IHooks(payable(CREATE3.getDeployed(PERMISSIONED_HOOKS_SALT)));
+        permissionedHooks = IHooks(deployPermissionedHooks(address(wrappedTokenFactory)));
     }
 
     function _deployMockPermissionedRouter() private {
-        CREATE3.deploy(
-            PERMISSIONED_ROUTER_SALT,
-            abi.encodePacked(
-                vm.getCode("MockPermissionedV4Router.sol:MockPermissionedV4Router"),
-                abi.encode(manager, permit2, wrappedTokenFactory, predictedPositionManager, predictedPermissionedHooks)
-            ),
-            0
+        bytes memory routerBytecode = abi.encodePacked(
+            vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
+            abi.encode(manager, permit2, wrappedTokenFactory)
         );
-        permissionedRouter = MockPermissionedV4Router(payable(CREATE3.getDeployed(PERMISSIONED_ROUTER_SALT)));
+        permissionedRouter =
+            PermissionedV4Router(payable(Deploy.create2(routerBytecode, keccak256("permissionedSwapRouter"))));
     }
 
     function _deployPositionManager() private {
@@ -378,7 +355,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
                 address(permissionedHooks)
             )
         );
-        positionManager = CREATE3.deploy(PERMISSIONED_POSM_SALT, posmBytecode, 0);
+        positionManager = Deploy.create2(posmBytecode, keccak256("permissionedPosm"));
     }
 
     function _deployAndSetupTokens(MockERC20[] memory tokens) private {

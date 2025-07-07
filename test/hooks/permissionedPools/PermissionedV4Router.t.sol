@@ -11,12 +11,11 @@ import {PermissionedRoutingTestHelpers} from "./shared/PermissionedRoutingTestHe
 import {Planner} from "../../shared/Planner.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../../src/libraries/ActionConstants.sol";
-import {WrappedPermissionedToken} from "../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
 import {MockPermissionedToken} from "./PermissionedPoolsBase.sol";
 import {MockHooks} from "./mocks/MockHooks.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
-    // To allow testing without importing MockPermissionedV4Router
+    // To allow testing without importing PermissionedV4Router
     error HookNotImplemented();
 
     Currency public wrappedCurrency0;
@@ -185,7 +184,8 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
 
-        MockHooks(address(permissionedHooks)).setPermissionedRouter(address(4));
+        wrappedToken0.updateAllowedWrapper(address(permissionedRouter), false);
+        wrappedToken1.updateAllowedWrapper(address(permissionedRouter), false);
 
         vm.prank(alice);
         vm.expectRevert();

@@ -20,26 +20,17 @@ import {Hooks, IHooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 contract PermissionedV4Router is V4Router, ReentrancyLock {
     IAllowanceTransfer public immutable PERMIT2;
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
-    address public immutable PERMISSIONED_POSITION_MANAGER;
 
     error Unauthorized();
     error HookNotImplemented();
 
-    /// @dev as this contract and the swap router rely on each others addresses in the constructor, both contracts need
-    /// to be deployed using create3 to create deterministic addresses that do not depend on the constructor arguments
     constructor(
         IPoolManager poolManager_,
         IAllowanceTransfer permit2,
-        IWrappedPermissionedTokenFactory wrappedTokenFactory,
-        address permissionedPositionManager, // address needs to be calculated in advance using create3
-        address permissionedHooks
+        IWrappedPermissionedTokenFactory wrappedTokenFactory
     ) V4Router(poolManager_) {
         PERMIT2 = permit2;
         WRAPPED_TOKEN_FACTORY = wrappedTokenFactory;
-        PERMISSIONED_POSITION_MANAGER = permissionedPositionManager;
-        Hooks.validateHookPermissions(
-            IHooks(permissionedHooks), PermissionedHooks(permissionedHooks).getHookPermissions()
-        );
     }
 
     function execute(bytes calldata input) public payable isNotLocked {
@@ -90,4 +81,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         }
         return Currency.wrap(permissionedToken).balanceOfSelf();
     }
+
+    fallback() external payable {}
+    receive() external payable {}
 }
