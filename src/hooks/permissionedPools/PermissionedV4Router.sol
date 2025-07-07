@@ -10,6 +10,8 @@ import {
     IWrappedPermissionedToken
 } from "./interfaces/IWrappedPermissionedTokenFactory.sol";
 import {PermissionedHooks} from "./PermissionedHooks.sol";
+import {IWETH9} from "../../interfaces/external/IWETH9.sol";
+
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
@@ -20,17 +22,21 @@ import {Hooks, IHooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 contract PermissionedV4Router is V4Router, ReentrancyLock {
     IAllowanceTransfer public immutable PERMIT2;
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
+    IWETH9 public immutable WETH9;
 
     error Unauthorized();
     error HookNotImplemented();
+    error InvalidEthSender();
 
     constructor(
         IPoolManager poolManager_,
         IAllowanceTransfer permit2,
-        IWrappedPermissionedTokenFactory wrappedTokenFactory
+        IWrappedPermissionedTokenFactory wrappedTokenFactory,
+        IWETH9 weth9
     ) V4Router(poolManager_) {
         PERMIT2 = permit2;
         WRAPPED_TOKEN_FACTORY = wrappedTokenFactory;
+        WETH9 = weth9;
     }
 
     function execute(bytes calldata input) public payable isNotLocked {
@@ -82,5 +88,8 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         return Currency.wrap(permissionedToken).balanceOfSelf();
     }
 
-    receive() external payable {}
+    /// @notice To receive ETH from WETH
+    receive() external payable {
+        if (msg.sender != address(WETH9) && msg.sender != address(poolManager)) revert InvalidEthSender();
+    }
 }

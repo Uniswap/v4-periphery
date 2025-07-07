@@ -60,7 +60,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     function setUp() public {
         permit2 = IAllowanceTransfer(deployPermit2());
-        deployFreshManagerAndRoutersPermissioned(address(permit2));
+
+        deployFreshManagerAndRoutersPermissioned(address(permit2), address(_WETH9));
         (currency0, currency1) = deployMintAndApprove2Currencies(true, false);
         currency2 = deployMintAndApproveCurrency(true);
 

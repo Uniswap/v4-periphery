@@ -39,6 +39,7 @@ import {MockV4Router} from "../../../mocks/MockV4Router.sol";
 import {MockHooks} from "../mocks/MockHooks.sol";
 import {Deploy} from "../../../../test/shared/Deploy.sol";
 import {HookMiner} from "../../../../src/utils/HookMiner.sol";
+import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
 
 /// @notice A contract that provides permissioned deployment functionality for tests
 /// This moves the deployFreshManagerAndRoutersPermissioned function from v4-core to the test folder
@@ -142,19 +143,24 @@ contract PermissionedDeployers is Test {
         deployedHooksAddr = calculatedAddr;
     }
 
-    function deployPermissionedV4Router(address permit2_, address wrappedTokenFactory_)
+    function deployPermissionedV4Router(address permit2_, address wrappedTokenFactory_, address weth9)
         internal
         returns (address deployedAddr)
     {
         bytes memory routerBytecode = abi.encodePacked(
             vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
-            abi.encode(manager, IAllowanceTransfer(permit2_), IWrappedPermissionedTokenFactory(wrappedTokenFactory_))
+            abi.encode(
+                manager,
+                IAllowanceTransfer(permit2_),
+                IWrappedPermissionedTokenFactory(wrappedTokenFactory_),
+                IWETH9(address(weth9))
+            )
         );
 
         deployedAddr = Deploy.create2(routerBytecode, keccak256("permissionedSwapRouter"));
     }
 
-    function deployFreshManagerAndRoutersPermissioned(address permit2_) internal {
+    function deployFreshManagerAndRoutersPermissioned(address permit2_, address weth9) internal {
         deployFreshManager();
         address wrappedTokenFactoryAddress = Deploy.create2(
             abi.encodePacked(
@@ -166,7 +172,7 @@ contract PermissionedDeployers is Test {
         wrappedTokenFactory = IWrappedPermissionedTokenFactory(wrappedTokenFactoryAddress);
         permissionedHooks = IHooks(deployPermissionedHooks(wrappedTokenFactoryAddress));
         secondaryPermissionedHooks = IHooks(deployPermissionedHooks(wrappedTokenFactoryAddress));
-        address deployedAddr = deployPermissionedV4Router(permit2_, wrappedTokenFactoryAddress);
+        address deployedAddr = deployPermissionedV4Router(permit2_, wrappedTokenFactoryAddress, weth9);
         permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
         swapRouter = PoolSwapTest(deployedAddr);
         deployMiscRouters();

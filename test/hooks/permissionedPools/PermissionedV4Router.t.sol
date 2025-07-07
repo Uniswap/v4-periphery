@@ -12,7 +12,6 @@ import {Planner} from "../../shared/Planner.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../../src/libraries/ActionConstants.sol";
 import {MockPermissionedToken} from "./PermissionedPoolsBase.sol";
-import {MockHooks} from "./mocks/MockHooks.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     // To allow testing without importing PermissionedV4Router
@@ -202,13 +201,12 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         if (zeroToOne) {
             inputCurrency = key1.currency0;
             outputCurrency = key1.currency1;
-            IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
+            getPermissionedCurrency(key1.currency0).transfer(alice, 2 ether);
         } else {
             inputCurrency = key1.currency1;
             outputCurrency = key1.currency0;
-            IERC20(Currency.unwrap(key1.currency1)).transfer(alice, 2 ether);
+            getPermissionedCurrency(key1.currency1).transfer(alice, 2 ether);
         }
-
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key1, zeroToOne, uint128(amountIn), 0, bytes(""));
 
@@ -238,11 +236,11 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         if (zeroToOne) {
             inputCurrency = key1.currency0;
             outputCurrency = key1.currency1;
-            IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
+            getPermissionedCurrency(key1.currency0).transfer(alice, 2 ether);
         } else {
             inputCurrency = key1.currency1;
             outputCurrency = key1.currency0;
-            IERC20(Currency.unwrap(key1.currency1)).transfer(alice, 2 ether);
+            getPermissionedCurrency(key1.currency1).transfer(alice, 2 ether);
         }
 
         IV4Router.ExactInputSingleParams memory params =
@@ -835,7 +833,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         uint256 expectedAmountOut = 949;
         bool zeroForOne = true;
 
-        nativeKey.currency0.transfer(address(permissionedRouter), amountIn);
+        vm.deal(address(permissionedRouter), amountIn);
 
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(nativeKey, zeroForOne, ActionConstants.OPEN_DELTA, 0, bytes(""));

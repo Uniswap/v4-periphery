@@ -336,7 +336,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     function _deployMockPermissionedRouter() private {
         bytes memory routerBytecode = abi.encodePacked(
             vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
-            abi.encode(manager, permit2, wrappedTokenFactory)
+            abi.encode(manager, permit2, wrappedTokenFactory, weth9)
         );
         permissionedRouter =
             PermissionedV4Router(payable(Deploy.create2(routerBytecode, keccak256("permissionedSwapRouter"))));
