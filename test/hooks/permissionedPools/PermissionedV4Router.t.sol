@@ -268,11 +268,11 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         if (zeroToOne) {
             inputCurrency = key1.currency0;
             outputCurrency = key1.currency1;
-            IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
+            getPermissionedCurrency(key1.currency0).transfer(alice, 2 ether);
         } else {
             inputCurrency = key1.currency1;
             outputCurrency = key1.currency0;
-            IERC20(Currency.unwrap(key1.currency1)).transfer(alice, 2 ether);
+            getPermissionedCurrency(key1.currency1).transfer(alice, 2 ether);
         }
 
         // Give unauthorized user the permissioned currency
@@ -304,11 +304,11 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         if (zeroToOne) {
             inputCurrency = key1.currency0;
             outputCurrency = key1.currency1;
-            IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
+            getPermissionedCurrency(key1.currency0).transfer(alice, 2 ether);
         } else {
             inputCurrency = key1.currency1;
             outputCurrency = key1.currency0;
-            IERC20(Currency.unwrap(key1.currency1)).transfer(alice, 2 ether);
+            getPermissionedCurrency(key1.currency1).transfer(alice, 2 ether);
         }
 
         IV4Router.ExactInputSingleParams memory params =
