@@ -82,6 +82,5 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         return Currency.wrap(permissionedToken).balanceOfSelf();
     }
 
-    fallback() external payable {}
     receive() external payable {}
 }
