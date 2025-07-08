@@ -34,6 +34,7 @@ contract PermissionedHooks is IHooks, ReentrancyLock {
     }
 
     /// @inheritdoc IHooks
+    /// @dev Does not need to verify msg.sender address directly, as verifying the allowlist is sufficient due to the fact that any valid senders are allowed wrappers
     function beforeSwap(address sender, PoolKey calldata key, SwapParams calldata, bytes calldata)
         external
         view
@@ -44,6 +45,7 @@ contract PermissionedHooks is IHooks, ReentrancyLock {
     }
 
     /// @inheritdoc IHooks
+    /// @dev Does not need to verify msg.sender address directly, as verifying the allowlist is sufficient due to the fact that any valid senders are allowed wrappers
     function beforeAddLiquidity(address sender, PoolKey calldata key, ModifyLiquidityParams calldata, bytes calldata)
         external
         view
