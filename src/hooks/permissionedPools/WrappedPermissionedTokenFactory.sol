@@ -35,6 +35,7 @@ contract WrappedPermissionedTokenFactory is IWrappedPermissionedTokenFactory {
         IERC20 permissionedToken = IERC20(permissionedTokenOf[wrappedToken]);
         if (address(permissionedToken) == address(0)) revert WrappedTokenNotFound(wrappedToken);
         if (verifiedPermissionedTokenOf[wrappedToken] != address(0)) revert WrappedTokenAlreadyVerified(wrappedToken);
+        // this requires that the verifier has some comntrol or ownership of the permissioned token
         if (permissionedToken.balanceOf(wrappedToken) == 0) revert WrappedTokenNotVerified(wrappedToken);
         verifiedPermissionedTokenOf[wrappedToken] = address(permissionedToken);
         emit WrappedTokenVerified(wrappedToken, address(permissionedToken));

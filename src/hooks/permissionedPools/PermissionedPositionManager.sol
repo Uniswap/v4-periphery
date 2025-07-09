@@ -14,15 +14,15 @@ import {
     IWrappedPermissionedTokenFactory,
     IWrappedPermissionedToken
 } from "./interfaces/IWrappedPermissionedTokenFactory.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 contract PermissionedPositionManager is PositionManager {
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
-    address public immutable PERMISSIONED_SWAP_ROUTER;
+    IHooks public immutable PERMISSIONED_HOOKS;
 
     error InvalidHook();
 
-    /// @dev as this contract and the swap router rely on each others addresses in the constructor, both contracts need
-    /// to be deployed using create3 to create deterministic addresses that do not depend on the constructor arguments
+    /// @dev as this contract must know the hooks address in advance, it must be passed in as a constructor argument
     constructor(
         IPoolManager _poolManager,
         IAllowanceTransfer _permit2,
@@ -30,10 +30,10 @@ contract PermissionedPositionManager is PositionManager {
         IPositionDescriptor _tokenDescriptor,
         IWETH9 _weth9,
         IWrappedPermissionedTokenFactory _wrappedTokenFactory,
-        address _permissionedSwapRouter // address needs to be calculated in advance using create3
+        IHooks _permissionedHooks
     ) PositionManager(_poolManager, _permit2, _unsubscribeGasLimit, _tokenDescriptor, _weth9) {
         WRAPPED_TOKEN_FACTORY = _wrappedTokenFactory;
-        PERMISSIONED_SWAP_ROUTER = _permissionedSwapRouter;
+        PERMISSIONED_HOOKS = _permissionedHooks;
     }
 
     /// @dev Disables transfers of the ERC721 liquidity position tokens
@@ -61,7 +61,7 @@ contract PermissionedPositionManager is PositionManager {
         bytes calldata hookData
     ) internal override {
         // allowlist is verified in the hook call
-        if (address(poolKey.hooks) != PERMISSIONED_SWAP_ROUTER) revert InvalidHook();
+        if (poolKey.hooks != PERMISSIONED_HOOKS) revert InvalidHook();
         super._mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, owner, hookData);
     }
 
@@ -80,7 +80,7 @@ contract PermissionedPositionManager is PositionManager {
             if (!wrappedPermissionedToken.isAllowed(msgSender())) {
                 revert Unauthorized();
             }
-            currency.transfer(address(wrappedPermissionedToken), amount);
+            Currency.wrap(permissionedToken).transfer(address(wrappedPermissionedToken), amount);
             wrappedPermissionedToken.wrapToPoolManager(amount);
         } else {
             // token is a permissioned token, wrap the token
