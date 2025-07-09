@@ -12,7 +12,6 @@ import {Planner} from "../../shared/Planner.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../../src/libraries/ActionConstants.sol";
 import {MockPermissionedToken} from "./PermissionedPoolsBase.sol";
-import "forge-std/console.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     // To allow testing without importing PermissionedV4Router
