@@ -12,6 +12,7 @@ import {Planner} from "../../shared/Planner.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../../src/libraries/ActionConstants.sol";
 import {MockPermissionedToken} from "./PermissionedPoolsBase.sol";
+import "forge-std/console.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     // To allow testing without importing PermissionedV4Router
@@ -1424,7 +1425,8 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
             ModifyLiquidityParams({tickLower: 0, tickUpper: 0, liquidityDelta: 0, salt: bytes32(0)});
         BalanceDelta balanceDelta = BalanceDelta.wrap(0);
 
-        vm.startPrank(alice);
+        // Use manager to avoid NotPoolManager errors for hooks with OnlyPoolManager modifier
+        vm.startPrank(address(manager));
         vm.expectRevert(HookNotImplemented.selector);
         permissionedHooks.afterSwap(address(this), key0, swapParams, balanceDelta, bytes(""));
         vm.expectRevert(HookNotImplemented.selector);

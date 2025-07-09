@@ -330,7 +330,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     }
 
     function _deployPermissionedHooks() private {
-        permissionedHooks = IHooks(deployPermissionedHooks(address(wrappedTokenFactory)));
+        permissionedHooks = IHooks(deployPermissionedHooks(address(manager), address(wrappedTokenFactory)));
     }
 
     function _deployMockPermissionedRouter() private {

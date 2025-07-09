@@ -124,18 +124,21 @@ contract PermissionedDeployers is Test {
         manager.setProtocolFeeController(feeController);
     }
 
-    function deployPermissionedHooks(address wrappedTokenFactory_) internal returns (address deployedHooksAddr) {
+    function deployPermissionedHooks(address manager_, address wrappedTokenFactory_)
+        internal
+        returns (address deployedHooksAddr)
+    {
         uint160 flags = (1 << 11) | (1 << 7);
         (address calculatedAddr, bytes32 salt) = HookMiner.find(
             address(this),
             flags,
             vm.getCode("MockHooks.sol:MockHooks"),
-            abi.encode(IWrappedPermissionedTokenFactory(wrappedTokenFactory_))
+            abi.encode(IPoolManager(manager_), IWrappedPermissionedTokenFactory(wrappedTokenFactory_))
         );
         address addr = Deploy.create2(
             abi.encodePacked(
                 vm.getCode("MockHooks.sol:MockHooks"),
-                abi.encode(IWrappedPermissionedTokenFactory(wrappedTokenFactory_))
+                abi.encode(IPoolManager(manager_), IWrappedPermissionedTokenFactory(wrappedTokenFactory_))
             ),
             salt
         );
@@ -162,6 +165,7 @@ contract PermissionedDeployers is Test {
 
     function deployFreshManagerAndRoutersPermissioned(address permit2_, address weth9) internal {
         deployFreshManager();
+
         address wrappedTokenFactoryAddress = Deploy.create2(
             abi.encodePacked(
                 vm.getCode("WrappedPermissionedTokenFactory.sol:WrappedPermissionedTokenFactory"),
@@ -169,9 +173,10 @@ contract PermissionedDeployers is Test {
             ),
             keccak256("wrappedTokenFactory")
         );
+
         wrappedTokenFactory = IWrappedPermissionedTokenFactory(wrappedTokenFactoryAddress);
-        permissionedHooks = IHooks(deployPermissionedHooks(wrappedTokenFactoryAddress));
-        secondaryPermissionedHooks = IHooks(deployPermissionedHooks(wrappedTokenFactoryAddress));
+        permissionedHooks = IHooks(deployPermissionedHooks(address(manager), wrappedTokenFactoryAddress));
+        secondaryPermissionedHooks = IHooks(deployPermissionedHooks(address(manager), wrappedTokenFactoryAddress));
         address deployedAddr = deployPermissionedV4Router(permit2_, wrappedTokenFactoryAddress, weth9);
         permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
         swapRouter = PoolSwapTest(deployedAddr);
