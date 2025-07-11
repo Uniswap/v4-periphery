@@ -82,19 +82,13 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     function setUpPosms() internal {
-        deployAndApprovePosm(
-            manager, address(wrappedTokenFactory), address(permissionedHooks), keccak256("permissionedPosm")
-        );
+        deployAndApprovePosm(manager, address(wrappedTokenFactory), keccak256("permissionedPosm"));
 
         // alternate position manager using different hooks
-        secondaryPosm = deployAndApprovePosmOnly(
-            manager, address(wrappedTokenFactory), address(secondaryPermissionedHooks), keccak256("secondaryPosm")
-        );
+        secondaryPosm = deployAndApprovePosmOnly(manager, address(wrappedTokenFactory), keccak256("secondaryPosm"));
 
         // alternate position manager using the same hooks
-        tertiaryPosm = deployAndApprovePosmOnly(
-            manager, address(wrappedTokenFactory), address(permissionedHooks), keccak256("tertiaryPosm")
-        );
+        tertiaryPosm = deployAndApprovePosmOnly(manager, address(wrappedTokenFactory), keccak256("tertiaryPosm"));
     }
 
     function setupPool() internal {
@@ -204,9 +198,17 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         currency.transfer(address(wrappedToken), 1);
 
         wrappedToken.updateAllowedWrapper(address(manager), true);
-        wrappedToken.updateAllowedWrapper(address(secondaryPosm), true);
         wrappedToken.updateAllowedWrapper(address(lpm), true);
+        wrappedToken.updateAllowedWrapper(address(secondaryPosm), true);
         wrappedToken.updateAllowedWrapper(address(permissionedSwapRouter), true);
+
+        wrappedToken.setAllowedHook(address(lpm), permissionedHooks, true);
+        wrappedToken.setAllowedHook(address(secondaryPosm), permissionedHooks, true);
+        wrappedToken.setAllowedHook(address(tertiaryPosm), permissionedHooks, true);
+
+        wrappedToken.setAllowedHook(address(lpm), secondaryPermissionedHooks, true);
+        wrappedToken.setAllowedHook(address(secondaryPosm), secondaryPermissionedHooks, true);
+        wrappedToken.setAllowedHook(address(tertiaryPosm), secondaryPermissionedHooks, true);
 
         wrappedTokenFactory.verifyWrappedToken(address(wrappedToken));
     }

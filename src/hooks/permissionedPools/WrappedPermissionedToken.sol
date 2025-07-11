@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IWrappedPermissionedToken} from "./interfaces/IWrappedPermissionedToken.sol";
@@ -19,6 +20,9 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
 
     /// @inheritdoc IWrappedPermissionedToken
     mapping(address wrapper => bool) public allowedWrappers;
+
+    /// @inheritdoc IWrappedPermissionedToken
+    mapping(address positionManager => mapping(IHooks hooks => bool)) public isAllowedHook;
 
     constructor(
         IERC20 permissionedToken,
@@ -52,6 +56,12 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     /// @inheritdoc IWrappedPermissionedToken
     function isAllowed(address account, PermissionFlag permission) public view returns (bool) {
         return ((allowListChecker.checkAllowlist(account)) & (permission)) == (permission);
+    }
+
+    /// @inheritdoc IWrappedPermissionedToken
+    function setAllowedHook(address positionManager, IHooks hooks, bool allowed) external onlyOwner {
+        isAllowedHook[positionManager][hooks] = allowed;
+        emit AllowedHookUpdated(positionManager, hooks, allowed);
     }
 
     function _updateAllowListChecker(IAllowlistChecker newAllowListChecker) internal {

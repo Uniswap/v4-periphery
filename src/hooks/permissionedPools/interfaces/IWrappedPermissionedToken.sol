@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IAllowlistChecker, PermissionFlag} from "./IAllowlistChecker.sol";
 
@@ -10,6 +11,9 @@ interface IWrappedPermissionedToken is IERC20 {
 
     /// @notice Emitted when an allowed wrapper is updated
     event AllowedWrapperUpdated(address indexed wrapper, bool allowed);
+
+    /// @notice Emitted when an allowed hook is updated
+    event AllowedHookUpdated(address indexed positionManager, IHooks indexed hooks, bool allowed);
 
     /// @notice Thrown when the allow list checker does not implement the IAllowListChecker interface
     error InvalidAllowListChecker(IAllowlistChecker newAllowListChecker);
@@ -44,6 +48,16 @@ interface IWrappedPermissionedToken is IERC20 {
     /// @notice Returns whether a transfer is allowed
     /// @param account The account to check
     function isAllowed(address account, PermissionFlag permission) external view returns (bool);
+
+    /// @notice Returns whether a hook is allowed
+    /// @param hooks The hook to check
+    function isAllowedHook(address positionManager, IHooks hooks) external view returns (bool);
+
+    /// @notice Sets whether a hook is allowed
+    /// @param hooks The hook to set
+    /// @param allowed Whether the hook is allowed
+    /// @dev Only callable by the owner
+    function setAllowedHook(address positionManager, IHooks hooks, bool allowed) external;
 
     /// @notice Returns the allow list checker
     function allowListChecker() external view returns (IAllowlistChecker);

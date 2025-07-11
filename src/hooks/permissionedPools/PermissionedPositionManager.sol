@@ -20,8 +20,6 @@ import {PermissionFlags} from "./libraries/PermissionFlags.sol";
 contract PermissionedPositionManager is PositionManager {
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
 
-    mapping(IHooks => bool) public isPermissionedHooks;
-
     error InvalidHook();
     error SafeTransferDisabled();
 
@@ -35,11 +33,6 @@ contract PermissionedPositionManager is PositionManager {
         IWrappedPermissionedTokenFactory _wrappedTokenFactory
     ) PositionManager(_poolManager, _permit2, _unsubscribeGasLimit, _tokenDescriptor, _weth9) {
         WRAPPED_TOKEN_FACTORY = _wrappedTokenFactory;
-    }
-    /// @dev add a permissioned hook to the list of permissioned hooks
-
-    function addPermissionedHooks(IHooks permissionedHooks, bool isPermissioned) external {
-        isPermissionedHooks[permissionedHooks] = isPermissioned;
     }
 
     /// @dev Only allow admins of permissioned tokens to transfer positions that contain their tokens
@@ -75,8 +68,23 @@ contract PermissionedPositionManager is PositionManager {
         bytes calldata hookData
     ) internal override {
         // allowlist is verified in the hook call
-        if (!isPermissionedHooks[poolKey.hooks]) revert InvalidHook();
+        if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
         super._mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, owner, hookData);
+    }
+
+    function _checkAllowedHooks(PoolKey calldata poolKey) internal view returns (bool) {
+        if (
+            !_checkAllowedHook(poolKey.currency0, poolKey.hooks) || !_checkAllowedHook(poolKey.currency1, poolKey.hooks)
+        ) {
+            return false;
+        }
+        return true;
+    }
+
+    function _checkAllowedHook(Currency currency, IHooks hooks) internal view returns (bool) {
+        address permissionedToken = _verifiedPermissionedTokenOf(currency);
+        if (permissionedToken == address(0)) return true;
+        return IWrappedPermissionedToken(Currency.unwrap(currency)).isAllowedHook(address(this), hooks);
     }
 
     /// @dev When paying to settle, if the currency is a permissioned token, wrap the token and transfer it to the pool manager.

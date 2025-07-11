@@ -72,7 +72,6 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         _deployPermissionedHooks();
         _deployMockPermissionedRouter();
         _deployPositionManager();
-        _setHooks();
         MockERC20[] memory tokens = _deployTokensMintAndApprove(5, 2);
         _deployAndSetupTokens(tokens);
         _setupPermissionedTokens(spender);
@@ -154,6 +153,9 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         wrappedToken1.updateAllowedWrapper(address(permissionedRouter), true);
         wrappedToken0.updateAllowedWrapper(address(permissionedHooks), true);
         wrappedToken1.updateAllowedWrapper(address(permissionedHooks), true);
+
+        wrappedToken0.setAllowedHook(address(positionManager), permissionedHooks, true);
+        wrappedToken1.setAllowedHook(address(positionManager), permissionedHooks, true);
     }
 
     function createPoolWithLiquidity(Currency currencyA, Currency currencyB, address hookAddr)
@@ -354,14 +356,6 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
             abi.encode(manager, permit2, 1e18, address(tokenDescriptor), address(weth9), wrappedTokenFactory)
         );
         positionManager = Deploy.create2(posmBytecode, keccak256("permissionedPosm"));
-    }
-
-    function _setHooks() private {
-        // addPermissionedHooks selector
-        bytes4 selector = 0x94f5cb5f;
-        bytes memory data = abi.encodeWithSelector(selector, IHooks(permissionedHooks), true);
-        (bool success,) = address(positionManager).call(data);
-        require(success, "Failed to set hooks");
     }
 
     function _deployAndSetupTokens(MockERC20[] memory tokens) private {

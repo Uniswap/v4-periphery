@@ -1734,8 +1734,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     error InvalidEthSender();
 
     function test_receive_fallback_reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(InvalidEthSender.selector));
-        address(permissionedRouter).call{value: 1 ether}("");
+        (bool success, bytes memory data) = address(permissionedRouter).call{value: 1 ether}("");
+
+        assertEq(success, false);
+        assertEq(bytes4(data), InvalidEthSender.selector);
     }
 
     function test_receive_fallback_from_posm() public {

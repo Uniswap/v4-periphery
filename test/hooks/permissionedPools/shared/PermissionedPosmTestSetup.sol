@@ -53,22 +53,12 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
 
     mapping(Currency => Currency) public wrappedToPermissioned;
 
-    function deployAndApprovePosm(
-        IPoolManager poolManager,
-        address wrappedTokenFactory,
-        address permissionedHooks_,
-        bytes32 salt
-    ) public {
-        deployPermissionedPosm(poolManager, wrappedTokenFactory, permissionedHooks_, salt);
+    function deployAndApprovePosm(IPoolManager poolManager, address wrappedTokenFactory, bytes32 salt) public {
+        deployPermissionedPosm(poolManager, wrappedTokenFactory, salt);
         approvePosm();
     }
 
-    function deployPermissionedPosm(
-        IPoolManager poolManager,
-        address wrappedTokenFactory,
-        address permissionedHooks_,
-        bytes32 salt
-    ) internal {
+    function deployPermissionedPosm(IPoolManager poolManager, address wrappedTokenFactory, bytes32 salt) internal {
         permit2 = IAllowanceTransfer(deployPermit2());
         _WETH9 = deployWETH();
         proxyAsImplementation = deployDescriptor(poolManager, "ETH");
@@ -81,15 +71,12 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             wrappedTokenFactory,
             abi.encode(salt)
         );
-        setHooks(lpm, permissionedHooks_);
     }
 
-    function deployAndApprovePosmOnly(
-        IPoolManager poolManager,
-        address wrappedTokenFactory,
-        address permissionedHooks_,
-        bytes32 salt
-    ) public returns (IPositionManager secondaryPosm) {
+    function deployAndApprovePosmOnly(IPoolManager poolManager, address wrappedTokenFactory, bytes32 salt)
+        public
+        returns (IPositionManager secondaryPosm)
+    {
         secondaryPosm = Deploy.permissionedPositionManager(
             address(poolManager),
             address(permit2),
@@ -99,16 +86,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             wrappedTokenFactory,
             abi.encode(salt)
         );
-        setHooks(secondaryPosm, permissionedHooks_);
         approvePosm();
-    }
-
-    function setHooks(IPositionManager posm, address permissionedHooks_) internal {
-        // addPermissionedHooks selector
-        bytes4 selector = 0x94f5cb5f;
-        bytes memory data = abi.encodeWithSelector(selector, IHooks(permissionedHooks_), true);
-        (bool success,) = address(posm).call(data);
-        require(success, "Failed to set hooks");
     }
 
     function deployWETH() internal returns (IWETH9) {
