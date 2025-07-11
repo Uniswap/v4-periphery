@@ -40,6 +40,7 @@ import {MockHooks} from "../mocks/MockHooks.sol";
 import {Deploy} from "../../../../test/shared/Deploy.sol";
 import {HookMiner} from "../../../../src/utils/HookMiner.sol";
 import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
+import {PermissionFlags} from "../../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
 /// @notice A contract that provides permissioned deployment functionality for tests
 /// This moves the deployFreshManagerAndRoutersPermissioned function from v4-core to the test folder
@@ -242,7 +243,7 @@ contract PermissionedDeployers is Test {
         for (uint8 i = 0; i < count; i++) {
             if (arePermissioned) {
                 tokens[i] = MockERC20(address(new MockPermissionedToken()));
-                MockPermissionedToken(address(tokens[i])).setAllowlist(address(this), true);
+                MockPermissionedToken(address(tokens[i])).setAllowlist(address(this), PermissionFlags.ALL_ALLOWED);
                 tokens[i].mint(address(this), totalSupply);
             } else {
                 tokens[i] = new MockERC20("TEST", "TEST", 18);

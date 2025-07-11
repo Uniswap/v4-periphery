@@ -15,10 +15,12 @@ import {
     IWrappedPermissionedToken
 } from "./interfaces/IWrappedPermissionedTokenFactory.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {PermissionFlags} from "./libraries/PermissionFlags.sol";
 
 contract PermissionedPositionManager is PositionManager {
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
-    IHooks public immutable PERMISSIONED_HOOKS;
+
+    mapping(IHooks => bool) public isPermissionedHooks;
 
     error InvalidHook();
     error SafeTransferDisabled();
@@ -30,11 +32,14 @@ contract PermissionedPositionManager is PositionManager {
         uint256 _unsubscribeGasLimit,
         IPositionDescriptor _tokenDescriptor,
         IWETH9 _weth9,
-        IWrappedPermissionedTokenFactory _wrappedTokenFactory,
-        IHooks _permissionedHooks
+        IWrappedPermissionedTokenFactory _wrappedTokenFactory
     ) PositionManager(_poolManager, _permit2, _unsubscribeGasLimit, _tokenDescriptor, _weth9) {
         WRAPPED_TOKEN_FACTORY = _wrappedTokenFactory;
-        PERMISSIONED_HOOKS = _permissionedHooks;
+    }
+    /// @dev add a permissioned hook to the list of permissioned hooks
+
+    function addPermissionedHooks(IHooks permissionedHooks, bool isPermissioned) external {
+        isPermissionedHooks[permissionedHooks] = isPermissioned;
     }
 
     /// @dev Only allow admins of permissioned tokens to transfer positions that contain their tokens
@@ -70,7 +75,7 @@ contract PermissionedPositionManager is PositionManager {
         bytes calldata hookData
     ) internal override {
         // allowlist is verified in the hook call
-        if (poolKey.hooks != PERMISSIONED_HOOKS) revert InvalidHook();
+        if (!isPermissionedHooks[poolKey.hooks]) revert InvalidHook();
         super._mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, owner, hookData);
     }
 
@@ -86,7 +91,7 @@ contract PermissionedPositionManager is PositionManager {
         IWrappedPermissionedToken wrappedPermissionedToken = IWrappedPermissionedToken(Currency.unwrap(currency));
         if (payer == address(this)) {
             // @audit is it necessary to check the allowlist here?
-            if (!wrappedPermissionedToken.isAllowed(msgSender())) {
+            if (!wrappedPermissionedToken.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
                 revert Unauthorized();
             }
             Currency.wrap(permissionedToken).transfer(address(wrappedPermissionedToken), amount);

@@ -30,6 +30,7 @@ import {ReentrantToken} from "../../mocks/ReentrantToken.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {MockAllowlistChecker, MockPermissionedToken} from "./PermissionedPoolsBase.sol";
 import {WrappedPermissionedToken, IERC20} from "../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
+import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
 contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -55,6 +56,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     PoolKey public key2;
     // normal / normal
     PoolKey public key3;
+
     PoolKey public keyFake0;
     PoolKey public keyFake1;
     PoolKey public keyFake2;
@@ -107,7 +109,15 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             3000,
             SQRT_PRICE_1_1
         );
-        (key3, poolId) = initPool(currency2, currency0, permissionedHooks, 3000, SQRT_PRICE_1_1);
+
+        Currency currencyA = currency2;
+        Currency currencyB = currency0;
+        if (currencyA > currencyB) {
+            currencyA = currency0;
+            currencyB = currency2;
+        }
+
+        (key3, poolId) = initPool(currencyA, currencyB, permissionedHooks, 3000, SQRT_PRICE_1_1);
         (keyFake0, poolId) =
             initPool(Currency.wrap(address(wrappedToken0)), currency1, secondaryPermissionedHooks, 3000, SQRT_PRICE_1_1);
         (keyFake1, poolId) =
@@ -163,22 +173,32 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     function setUpAllowlist(Currency currency) internal {
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(this), true);
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(alice, true);
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(lpm), true);
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(secondaryPosm), true);
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(wrappedTokenFactory), true);
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(lpm), true);
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(manager), true);
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(permissionedSwapRouter), true);
-        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(address(permissionedHooks), true);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(this), PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(lpm), PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
+            address(secondaryPosm), PermissionFlags.ALL_ALLOWED
+        );
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
+            address(wrappedTokenFactory), PermissionFlags.ALL_ALLOWED
+        );
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(lpm), PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(manager), PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
+            address(permissionedSwapRouter), PermissionFlags.ALL_ALLOWED
+        );
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(
+            address(permissionedHooks), PermissionFlags.ALL_ALLOWED
+        );
     }
 
     function setUpWrappedToken(WrappedPermissionedToken wrappedToken, Currency currency) internal {
         wrappedToPermissioned[Currency.wrap(address(wrappedToken))] = currency;
 
         MockPermissionedToken(Currency.unwrap(currency)).mint(address(this), 1000 ether);
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(wrappedToken), true);
+        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
+            address(wrappedToken), PermissionFlags.ALL_ALLOWED
+        );
 
         // wrapped token contract must have a non-zero balance of the permissioned token
         currency.transfer(address(wrappedToken), 1);
@@ -626,9 +646,9 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         uint256 liquidity = 1e18;
 
         // Add some tokens to unauthorized user
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, true);
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, PermissionFlags.ALL_ALLOWED);
         MockPermissionedToken(Currency.unwrap(currency0)).mint(unauthorizedUser, 1000e18);
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, false);
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, PermissionFlags.NONE);
         MockERC20(Currency.unwrap(currency1)).mint(unauthorizedUser, 1000e18);
 
         vm.startPrank(unauthorizedUser);
@@ -692,8 +712,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
 
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, false);
-        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, false);
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.NONE);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.NONE);
 
         tokenId = lpm.nextTokenId();
 
@@ -702,8 +722,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
         vm.stopPrank();
 
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, true);
-        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, true);
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
     }
 
     function test_unpermissioned_sided_mint_disallowed_user_reverts() public {
@@ -795,9 +815,13 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         }
 
         // Add some tokens to unauthorized user
-        MockPermissionedToken(Currency.unwrap(currencyPermissioned)).setAllowlist(unauthorizedUser, true);
+        MockPermissionedToken(Currency.unwrap(currencyPermissioned)).setAllowlist(
+            unauthorizedUser, PermissionFlags.ALL_ALLOWED
+        );
         MockPermissionedToken(Currency.unwrap(currencyPermissioned)).mint(unauthorizedUser, 1000e18);
-        MockPermissionedToken(Currency.unwrap(currencyPermissioned)).setAllowlist(unauthorizedUser, false);
+        MockPermissionedToken(Currency.unwrap(currencyPermissioned)).setAllowlist(
+            unauthorizedUser, PermissionFlags.NONE
+        );
 
         vm.startPrank(unauthorizedUser);
 
@@ -1031,12 +1055,10 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         address target = address(lpm);
 
         vm.startPrank(alice);
-        vm.expectRevert(SafeTransferDisabled.selector);
+        (bool success, bytes memory data) = address(target).call(encodedCall);
 
-        bool success;
-        assembly ("memory-safe") {
-            success := call(gas(), target, 0, add(encodedCall, 0x20), mload(encodedCall), 0, 0)
-        }
+        assertEq(success, false);
+        assertEq(bytes4(data), SafeTransferDisabled.selector);
         vm.stopPrank();
     }
 
@@ -1046,12 +1068,10 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         address target = address(lpm);
 
         vm.startPrank(alice);
-        vm.expectRevert(SafeTransferDisabled.selector);
+        (bool success, bytes memory data) = address(target).call(encodedCall);
 
-        bool success;
-        assembly ("memory-safe") {
-            success := call(gas(), target, 0, add(encodedCall, 0x20), mload(encodedCall), 0, 0)
-        }
+        assertEq(success, false);
+        assertEq(bytes4(data), SafeTransferDisabled.selector);
         vm.stopPrank();
     }
 
@@ -1143,5 +1163,175 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.prank(unauthorizedUser);
         vm.expectRevert();
         secondaryPosm.modifyLiquidities(calls, _deadline);
+    }
+
+    // ===== PERMISSION FLAG TESTS =====
+
+    function test_permission_flag_none() public {
+        // Test that NONE permissions prevent all operations
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.NONE);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.NONE);
+
+        // Should revert when trying to mint with NONE permissions
+        PositionConfig memory config = PositionConfig({poolKey: key2, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        vm.prank(alice);
+        vm.expectRevert();
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+    }
+
+    function test_permission_flag_swap_allowed() public {
+        // Test that SWAP_ALLOWED only allows swaps, not liquidity operations
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.SWAP_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.SWAP_ALLOWED);
+
+        // Should revert when trying to mint (liquidity operation) with only SWAP_ALLOWED
+        PositionConfig memory config = PositionConfig({poolKey: key2, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        vm.prank(alice);
+        vm.expectRevert();
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+    }
+
+    function test_permission_flag_liquidity_allowed() public {
+        // Test that LIQUIDITY_ALLOWED allows liquidity operations
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
+
+        // Should succeed when trying to mint with LIQUIDITY_ALLOWED
+        PositionConfig memory config = PositionConfig({poolKey: key2, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
+    }
+
+    function test_permission_flag_all_allowed() public {
+        // Test that ALL_ALLOWED allows all operations
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+
+        // Should succeed when trying to mint with ALL_ALLOWED
+        PositionConfig memory config = PositionConfig({poolKey: key2, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
+    }
+
+    function test_permission_flag_combinations() public {
+        // Test various combinations of permissions
+        PositionConfig memory config = PositionConfig({poolKey: key2, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        // Test SWAP_ALLOWED + LIQUIDITY_ALLOWED (should work like ALL_ALLOWED)
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(
+            alice, (PermissionFlags.SWAP_ALLOWED | PermissionFlags.LIQUIDITY_ALLOWED)
+        );
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(
+            alice, (PermissionFlags.SWAP_ALLOWED | PermissionFlags.LIQUIDITY_ALLOWED)
+        );
+
+        uint256 tokenId = lpm.nextTokenId();
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
+    }
+
+    function test_permission_flag_partial_permissions() public {
+        // Test that having permissions on only one token is enough
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.NONE);
+
+        PositionConfig memory config = PositionConfig({poolKey: key2, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+    }
+
+    function test_permission_flag_dynamic_changes() public {
+        // Test that permission changes take effect immediately
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
+
+        PositionConfig memory config = PositionConfig({poolKey: key2, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        // Should succeed initially
+        uint256 tokenId = lpm.nextTokenId();
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
+
+        // Remove permissions
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.NONE);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.NONE);
+
+        // Should fail on subsequent operations
+        tokenId = lpm.nextTokenId();
+        vm.prank(alice);
+        vm.expectRevert();
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+    }
+
+    function test_permission_flag_edge_cases() public {
+        // Test edge cases with permission flags
+        PositionConfig memory config = PositionConfig({poolKey: key2, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        // Test with zero permissions (should be same as NONE)
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlag.wrap(0x0000));
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlag.wrap(0x0000));
+
+        vm.prank(alice);
+        vm.expectRevert();
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        // Test with maximum permissions (should be same as ALL_ALLOWED)
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlag.wrap(0xFFFF));
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlag.wrap(0xFFFF));
+
+        uint256 tokenId = lpm.nextTokenId();
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
+    }
+
+    function test_permission_flag_all_pools() public {
+        // Test permission flags work across all pool types
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
+
+        PositionConfig memory config0 = PositionConfig({poolKey: key0, tickLower: -120, tickUpper: 120});
+        PositionConfig memory config1 = PositionConfig({poolKey: key1, tickLower: -120, tickUpper: 120});
+        PositionConfig memory config2 = PositionConfig({poolKey: key2, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        // Test permissioned/normal pool
+        uint256 tokenId0 = lpm.nextTokenId();
+        vm.prank(alice);
+        mint(config0, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId0), alice);
+
+        // Test normal/permissioned pool
+        uint256 tokenId1 = lpm.nextTokenId();
+        vm.prank(alice);
+        mint(config1, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId1), alice);
+
+        // Test permissioned/permissioned pool
+        uint256 tokenId2 = lpm.nextTokenId();
+        vm.prank(alice);
+        mint(config2, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId2), alice);
     }
 }

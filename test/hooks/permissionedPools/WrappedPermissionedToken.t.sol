@@ -8,6 +8,7 @@ import {
 import {IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {PermissionedPoolsBase, MockAllowlistChecker} from "./PermissionedPoolsBase.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
 contract WrappedPermissionedTokenTest is PermissionedPoolsBase {
     IWrappedPermissionedToken public wrappedPermissionedToken;
@@ -24,7 +25,7 @@ contract WrappedPermissionedTokenTest is PermissionedPoolsBase {
         assembly {
             sstore(wrappedPermissionedToken.slot, create(0, add(initcode, 0x20), mload(initcode)))
         }
-        permissionedToken.setAllowlist(address(wrappedPermissionedToken), true);
+        permissionedToken.setTokenAllowlist(address(wrappedPermissionedToken), true);
         vm.prank(owner);
         wrappedPermissionedToken.updateAllowedWrapper(address(this), true);
     }
@@ -128,7 +129,7 @@ contract WrappedPermissionedTokenTest is PermissionedPoolsBase {
             recipient != address(0) && recipient != mockPoolManager && recipient != address(wrappedPermissionedToken)
         );
         assertEq(permissionedToken.balanceOf(recipient), 0);
-        permissionedToken.setAllowlist(recipient, true);
+        permissionedToken.setTokenAllowlist(recipient, true);
         transferAmount = bound(transferAmount, 0, mintAmount);
         permissionedToken.mint(address(wrappedPermissionedToken), mintAmount);
         wrappedPermissionedToken.wrapToPoolManager(mintAmount);
@@ -144,8 +145,8 @@ contract WrappedPermissionedTokenTest is PermissionedPoolsBase {
 }
 
 contract ImproperAllowlistChecker is IAllowlistChecker {
-    function checkAllowlist(address) public pure returns (bool) {
-        return true;
+    function checkAllowlist(address) public pure returns (PermissionFlag) {
+        return PermissionFlags.ALL_ALLOWED;
     }
 
     function supportsInterface(bytes4) external pure returns (bool) {

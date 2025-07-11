@@ -9,6 +9,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {WETH} from "solmate/src/tokens/WETH.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
@@ -78,9 +79,9 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             address(proxyAsImplementation),
             address(_WETH9),
             wrappedTokenFactory,
-            permissionedHooks_,
             abi.encode(salt)
         );
+        setHooks(lpm, permissionedHooks_);
     }
 
     function deployAndApprovePosmOnly(
@@ -96,10 +97,18 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             address(proxyAsImplementation),
             address(_WETH9),
             wrappedTokenFactory,
-            permissionedHooks_,
             abi.encode(salt)
         );
+        setHooks(secondaryPosm, permissionedHooks_);
         approvePosm();
+    }
+
+    function setHooks(IPositionManager posm, address permissionedHooks_) internal {
+        // addPermissionedHooks selector
+        bytes4 selector = 0x94f5cb5f;
+        bytes memory data = abi.encodeWithSelector(selector, IHooks(permissionedHooks_), true);
+        (bool success,) = address(posm).call(data);
+        require(success, "Failed to set hooks");
     }
 
     function deployWETH() internal returns (IWETH9) {

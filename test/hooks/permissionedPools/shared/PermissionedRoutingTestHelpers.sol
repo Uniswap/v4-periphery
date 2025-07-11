@@ -27,6 +27,7 @@ import {IPositionDescriptor} from "../../../../src/interfaces/IPositionDescripto
 import {IV4Router} from "../../../../src/interfaces/IV4Router.sol";
 import {ActionConstants} from "../../../../src/libraries/ActionConstants.sol";
 import {PermissionedDeployers} from "./PermissionedDeployers.sol";
+import {PermissionFlags} from "../../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
 /// @notice A shared test contract that wraps the v4-core deployers contract and exposes basic helpers for swapping with the permissioned router.
 contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 {
@@ -71,6 +72,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         _deployPermissionedHooks();
         _deployMockPermissionedRouter();
         _deployPositionManager();
+        _setHooks();
         MockERC20[] memory tokens = _deployTokensMintAndApprove(5, 2);
         _deployAndSetupTokens(tokens);
         _setupPermissionedTokens(spender);
@@ -123,8 +125,12 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
                 break;
             }
         }
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(wrappedToken0), true);
-        MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(address(wrappedToken1), true);
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(
+            address(wrappedToken0), PermissionFlags.ALL_ALLOWED
+        );
+        MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(
+            address(wrappedToken1), PermissionFlags.ALL_ALLOWED
+        );
 
         // Transfer some underlying tokens to the wrapped tokens for verification
         IERC20(Currency.unwrap(currency0)).transfer(address(wrappedToken0), 1);
@@ -345,17 +351,17 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     function _deployPositionManager() private {
         bytes memory posmBytecode = abi.encodePacked(
             vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"),
-            abi.encode(
-                manager,
-                permit2,
-                1e18,
-                address(tokenDescriptor),
-                address(weth9),
-                wrappedTokenFactory,
-                address(permissionedHooks)
-            )
+            abi.encode(manager, permit2, 1e18, address(tokenDescriptor), address(weth9), wrappedTokenFactory)
         );
         positionManager = Deploy.create2(posmBytecode, keccak256("permissionedPosm"));
+    }
+
+    function _setHooks() private {
+        // addPermissionedHooks selector
+        bytes4 selector = 0x94f5cb5f;
+        bytes memory data = abi.encodeWithSelector(selector, IHooks(permissionedHooks), true);
+        (bool success,) = address(positionManager).call(data);
+        require(success, "Failed to set hooks");
     }
 
     function _deployAndSetupTokens(MockERC20[] memory tokens) private {
@@ -390,14 +396,14 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     function _setupMockAllowList(Currency currency, address spender) private {
         MockPermissionedToken mockPermissionedToken = MockPermissionedToken(Currency.unwrap(currency));
         mockAllowlistChecker = new MockAllowlistChecker(mockPermissionedToken);
-        mockPermissionedToken.setAllowlist(address(this), true);
-        mockPermissionedToken.setAllowlist(address(permissionedRouter), true);
-        mockPermissionedToken.setAllowlist(address(permissionedHooks), true);
-        mockPermissionedToken.setAllowlist(address(positionManager), true);
-        mockPermissionedToken.setAllowlist(address(wrappedTokenFactory), true);
-        mockPermissionedToken.setAllowlist(address(manager), true);
-        mockPermissionedToken.setAllowlist(address(permit2), true);
-        mockPermissionedToken.setAllowlist(spender, true);
+        mockPermissionedToken.setAllowlist(address(this), PermissionFlags.ALL_ALLOWED);
+        mockPermissionedToken.setAllowlist(address(permissionedRouter), PermissionFlags.ALL_ALLOWED);
+        mockPermissionedToken.setAllowlist(address(permissionedHooks), PermissionFlags.ALL_ALLOWED);
+        mockPermissionedToken.setAllowlist(address(positionManager), PermissionFlags.ALL_ALLOWED);
+        mockPermissionedToken.setAllowlist(address(wrappedTokenFactory), PermissionFlags.ALL_ALLOWED);
+        mockPermissionedToken.setAllowlist(address(manager), PermissionFlags.ALL_ALLOWED);
+        mockPermissionedToken.setAllowlist(address(permit2), PermissionFlags.ALL_ALLOWED);
+        mockPermissionedToken.setAllowlist(spender, PermissionFlags.ALL_ALLOWED);
     }
 
     function _deployTokensMintAndApprove(uint8 count, uint8 permissionedCount) internal returns (MockERC20[] memory) {
