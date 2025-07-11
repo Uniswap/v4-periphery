@@ -21,6 +21,7 @@ contract PermissionedPositionManager is PositionManager {
     IHooks public immutable PERMISSIONED_HOOKS;
 
     error InvalidHook();
+    error SafeTransferDisabled();
 
     /// @dev as this contract must know the hooks address in advance, it must be passed in as a constructor argument
     constructor(
@@ -36,17 +37,25 @@ contract PermissionedPositionManager is PositionManager {
         PERMISSIONED_HOOKS = _permissionedHooks;
     }
 
-    /// @dev Disables transfers of the ERC721 liquidity position tokens
-    function transferFrom(address, address, uint256) public pure override {
-        revert("Transfer disabled");
+    /// @dev Only allow admins of permissioned tokens to transfer positions that contain their tokens
+    function transferFrom(address from, address to, uint256 id) public override onlyIfPoolManagerLocked {
+        (PoolKey memory poolKey,) = getPoolAndPositionInfo(id);
+        address admin1 = _getOwner(poolKey.currency0);
+        address admin2 = _getOwner(poolKey.currency1);
+        if (msg.sender != admin1 && msg.sender != admin2) {
+            revert Unauthorized();
+        }
+        getApproved[id] = msg.sender;
+        emit Approval(from, msg.sender, id);
+        super.transferFrom(from, to, id);
     }
 
     function safeTransferFrom(address, address, uint256) public pure override {
-        revert("Transfer disabled");
+        revert SafeTransferDisabled();
     }
 
     function safeTransferFrom(address, address, uint256, bytes calldata) public pure override {
-        revert("Transfer disabled");
+        revert SafeTransferDisabled();
     }
 
     /// @dev When minting a position, verify that the sender is allowed to mint the position. This prevents a disallowed user from minting one sided liquidity.
@@ -67,7 +76,7 @@ contract PermissionedPositionManager is PositionManager {
 
     /// @dev When paying to settle, if the currency is a permissioned token, wrap the token and transfer it to the pool manager.
     function _pay(Currency currency, address payer, uint256 amount) internal virtual override {
-        address permissionedToken = WRAPPED_TOKEN_FACTORY.verifiedPermissionedTokenOf(Currency.unwrap(currency));
+        address permissionedToken = _verifiedPermissionedTokenOf(currency);
         if (permissionedToken == address(0)) {
             // token is not a permissioned token, use the default implementation
             super._pay(currency, payer, amount);
@@ -87,5 +96,16 @@ contract PermissionedPositionManager is PositionManager {
             permit2.transferFrom(payer, address(wrappedPermissionedToken), uint160(amount), permissionedToken);
             wrappedPermissionedToken.wrapToPoolManager(amount);
         }
+    }
+
+    function _verifiedPermissionedTokenOf(Currency currency) internal view returns (address) {
+        return WRAPPED_TOKEN_FACTORY.verifiedPermissionedTokenOf(Currency.unwrap(currency));
+    }
+
+    function _getOwner(Currency currency) internal view returns (address) {
+        address wrappedPermissionedToken = Currency.unwrap(currency);
+        address permissionedToken = _verifiedPermissionedTokenOf(currency);
+        if (permissionedToken == address(0)) return address(0);
+        return IWrappedPermissionedToken(wrappedPermissionedToken).owner();
     }
 }

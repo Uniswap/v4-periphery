@@ -47,9 +47,14 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     IPositionManager public secondaryPosm;
     IPositionManager public tertiaryPosm;
 
+    // permissioned / normal
     PoolKey public key0;
+    // normal / permissioned
     PoolKey public key1;
+    // permissioned / permissioned
     PoolKey public key2;
+    // normal / normal
+    PoolKey public key3;
     PoolKey public keyFake0;
     PoolKey public keyFake1;
     PoolKey public keyFake2;
@@ -102,6 +107,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             3000,
             SQRT_PRICE_1_1
         );
+        (key3, poolId) = initPool(currency2, currency0, permissionedHooks, 3000, SQRT_PRICE_1_1);
         (keyFake0, poolId) =
             initPool(Currency.wrap(address(wrappedToken0)), currency1, secondaryPermissionedHooks, 3000, SQRT_PRICE_1_1);
         (keyFake1, poolId) =
@@ -934,28 +940,89 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(lpFee, fee);
     }
 
-    function test_liquidity_token_transfer_reverts() public {
-        _test_liquidity_token_transfer_reverts(key0);
-        _test_liquidity_token_transfer_reverts(key1);
-        _test_liquidity_token_transfer_reverts(key2);
+    event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
+
+    function test_transferFrom_success_seize_by_admin() public {
+        _testRevert_transferFrom_success_seize_by_admin(key0);
+        _testRevert_transferFrom_success_seize_by_admin(key1);
     }
 
-    function _test_liquidity_token_transfer_reverts(PoolKey memory key) internal {
-        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
-
-        uint256 liquidity = 1e18;
+    function _testRevert_transferFrom_success_seize_by_admin(PoolKey memory poolKey) internal {
         uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(poolKey);
 
-        vm.startPrank(alice);
-
-        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
-
-        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
-
-        vm.expectRevert();
+        vm.expectEmit(true, true, true, true);
+        emit Transfer(alice, address(this), tokenId);
+        // address(this) is admin
         IERC721(address(lpm)).transferFrom(alice, address(this), tokenId);
-        vm.stopPrank();
     }
+
+    function test_transferFrom_success_seize_by_either_admin() public {
+        uint256 tokenId0 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+        uint256 tokenId1 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+        uint256 tokenId2 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        vm.expectEmit(true, true, true, true);
+        emit Transfer(alice, address(this), tokenId0);
+        // address(this) is admin of both permissioned tokens
+        IERC721(address(lpm)).transferFrom(alice, address(this), tokenId0);
+
+        address owner0 = makeAddr("owner0");
+        address owner1 = makeAddr("owner1");
+        wrappedToken0.transferOwnership(owner0);
+        vm.prank(owner0);
+        wrappedToken0.acceptOwnership();
+        wrappedToken2.transferOwnership(owner1);
+        vm.prank(owner1);
+        wrappedToken2.acceptOwnership();
+
+        vm.prank(owner0);
+        vm.expectEmit(true, true, true, true);
+        emit Transfer(alice, address(this), tokenId1);
+        // owner0 is admin of wrappedToken0
+        IERC721(address(lpm)).transferFrom(alice, address(this), tokenId1);
+
+        vm.prank(owner1);
+        vm.expectEmit(true, true, true, true);
+        emit Transfer(alice, address(this), tokenId2);
+        // owner1 is admin of wrappedToken2
+        IERC721(address(lpm)).transferFrom(alice, address(this), tokenId2);
+    }
+
+    error Unauthorized();
+
+    function test_transferFrom_revert_not_admin(address notAdmin) public {
+        vm.assume(notAdmin != address(this) && notAdmin != address(0));
+        uint256 tokenId0 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0);
+        uint256 tokenId1 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key1);
+        uint256 tokenId2 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+        uint256 tokenId3 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        vm.prank(notAdmin);
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, address(this), tokenId0);
+
+        vm.prank(notAdmin);
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, address(this), tokenId1);
+
+        vm.prank(notAdmin);
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, address(this), tokenId2);
+
+        vm.prank(notAdmin);
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, address(this), tokenId3);
+    }
+
+    error SafeTransferDisabled();
 
     function test_safe_transfer_from_reverts() public {
         bytes memory encodedCall =
@@ -964,7 +1031,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         address target = address(lpm);
 
         vm.startPrank(alice);
-        vm.expectRevert(abi.encode("Transfer disabled"));
+        vm.expectRevert(SafeTransferDisabled.selector);
 
         bool success;
         assembly ("memory-safe") {
@@ -979,7 +1046,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         address target = address(lpm);
 
         vm.startPrank(alice);
-        vm.expectRevert(abi.encode("Transfer disabled"));
+        vm.expectRevert(SafeTransferDisabled.selector);
 
         bool success;
         assembly ("memory-safe") {
