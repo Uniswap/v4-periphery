@@ -47,6 +47,8 @@ contract WrappedPermissionedTokenTest is PermissionedPoolsBase {
         wrappedPermissionedToken.updateAllowedWrapper(account, true);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, account));
         wrappedPermissionedToken.updateAllowListChecker(allowlistChecker);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, account));
+        wrappedPermissionedToken.updateSwappingEnabled(true);
         vm.stopPrank();
     }
 
@@ -113,6 +115,14 @@ contract WrappedPermissionedTokenTest is PermissionedPoolsBase {
         emit IWrappedPermissionedToken.AllowListCheckerUpdated(newAllowListChecker);
         wrappedPermissionedToken.updateAllowListChecker(newAllowListChecker);
         assertEq(address(wrappedPermissionedToken.allowListChecker()), address(newAllowListChecker));
+    }
+
+    function test_UpdateSwappingEnabled(bool enabled) public {
+        vm.prank(owner);
+        vm.expectEmit(true, true, true, true);
+        emit IWrappedPermissionedToken.SwappingEnabledUpdated(enabled);
+        wrappedPermissionedToken.updateSwappingEnabled(enabled);
+        assertEq(wrappedPermissionedToken.swappingEnabled(), enabled);
     }
 
     function testRevert_WhenInvalidTransfer(address from, address to) public {

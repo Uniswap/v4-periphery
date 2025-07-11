@@ -21,6 +21,7 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
 
     error Unauthorized();
+    error SwappingDisabled();
 
     constructor(IPoolManager manager, IWrappedPermissionedTokenFactory wrappedTokenFactory) BaseHook(manager) {
         WRAPPED_TOKEN_FACTORY = wrappedTokenFactory;
@@ -40,7 +41,7 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        _verifyAllowlist(IMsgSender(sender), key);
+        _verifyAllowlist(IMsgSender(sender), key, true);
         return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
@@ -51,25 +52,26 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
         override
         returns (bytes4)
     {
-        _verifyAllowlist(IMsgSender(sender), key);
+        _verifyAllowlist(IMsgSender(sender), key, false);
         return IHooks.beforeAddLiquidity.selector;
     }
 
     /// @dev checks if the sender is allowed to access both tokens in the pool
-    function _verifyAllowlist(IMsgSender sender, PoolKey calldata poolKey) internal view {
-        _isAllowed(Currency.unwrap(poolKey.currency0), sender.msgSender(), address(sender));
-        _isAllowed(Currency.unwrap(poolKey.currency1), sender.msgSender(), address(sender));
+    function _verifyAllowlist(IMsgSender sender, PoolKey calldata poolKey, bool checkTradingEnabled) internal view {
+        _isAllowed(Currency.unwrap(poolKey.currency0), sender.msgSender(), address(sender), checkTradingEnabled);
+        _isAllowed(Currency.unwrap(poolKey.currency1), sender.msgSender(), address(sender), checkTradingEnabled);
     }
 
     /// @dev checks if the provided token is a wrapped token by checking if it has a verified permissioned token, if yes, check the allowlist
-    function _isAllowed(address wrappedToken, address sender, address router) internal view {
+    function _isAllowed(address wrappedToken, address sender, address router, bool checkTradingEnabled) internal view {
         address permissionedToken = WRAPPED_TOKEN_FACTORY.verifiedPermissionedTokenOf(wrappedToken);
         if (permissionedToken == address(0)) return;
+        if (checkTradingEnabled && !IWrappedPermissionedToken(wrappedToken).swappingEnabled()) {
+            revert SwappingDisabled();
+        }
         if (
             !IWrappedPermissionedToken(wrappedToken).isAllowed(sender)
                 || !IWrappedPermissionedToken(wrappedToken).allowedWrappers(router)
-        ) {
-            revert Unauthorized();
-        }
+        ) revert Unauthorized();
     }
 }

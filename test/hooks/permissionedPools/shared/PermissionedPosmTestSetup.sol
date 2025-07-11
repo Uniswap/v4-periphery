@@ -54,17 +54,17 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
 
     function deployAndApprovePosm(
         IPoolManager poolManager,
-        address wrappedTokenFactory,
+        address wrappedTokenFactory_,
         address permissionedHooks_,
         bytes32 salt
     ) public {
-        deployPermissionedPosm(poolManager, wrappedTokenFactory, permissionedHooks_, salt);
+        deployPermissionedPosm(poolManager, wrappedTokenFactory_, permissionedHooks_, salt);
         approvePosm();
     }
 
     function deployPermissionedPosm(
         IPoolManager poolManager,
-        address wrappedTokenFactory,
+        address wrappedTokenFactory_,
         address permissionedHooks_,
         bytes32 salt
     ) internal {
@@ -77,7 +77,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             100_000,
             address(proxyAsImplementation),
             address(_WETH9),
-            wrappedTokenFactory,
+            wrappedTokenFactory_,
             permissionedHooks_,
             abi.encode(salt)
         );
@@ -85,7 +85,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
 
     function deployAndApprovePosmOnly(
         IPoolManager poolManager,
-        address wrappedTokenFactory,
+        address wrappedTokenFactory_,
         address permissionedHooks_,
         bytes32 salt
     ) public returns (IPositionManager secondaryPosm) {
@@ -95,7 +95,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             100_000,
             address(proxyAsImplementation),
             address(_WETH9),
-            wrappedTokenFactory,
+            wrappedTokenFactory_,
             permissionedHooks_,
             abi.encode(salt)
         );
