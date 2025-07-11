@@ -1729,6 +1729,33 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         permissionedRouter.execute(data);
     }
 
+    // ===== RECEIVE FALLBACK TESTS =====
+
+    error InvalidEthSender();
+
+    function test_receive_fallback_reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(InvalidEthSender.selector));
+        address(permissionedRouter).call{value: 1 ether}("");
+    }
+
+    function test_receive_fallback_from_posm() public {
+        vm.deal(address(manager), 1 ether);
+
+        vm.prank(address(manager));
+        (bool success,) = address(permissionedRouter).call{value: 1 ether}("");
+        assertEq(success, true);
+    }
+
+    function test_receive_fallback_from_weth() public {
+        vm.deal(address(permissionedRouter), 1 ether);
+
+        vm.startPrank(address(permissionedRouter));
+        weth9.deposit{value: 1 ether}();
+        weth9.approve(address(permissionedRouter), 1 ether);
+        weth9.withdraw(1 ether);
+        vm.stopPrank();
+    }
+
     receive() external payable {}
     fallback() external {}
 }
