@@ -6,6 +6,8 @@ import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/Pool
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {IV4Router} from "../../../src/interfaces/IV4Router.sol";
 import {PermissionedRoutingTestHelpers} from "./shared/PermissionedRoutingTestHelpers.sol";
 import {Planner} from "../../shared/Planner.sol";
@@ -16,6 +18,8 @@ import {MockPermissionedToken} from "./PermissionedPoolsBase.sol";
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     // To allow testing without importing PermissionedV4Router
     error HookNotImplemented();
+    error Unauthorized();
+    error HookCallFailed();
 
     Currency public wrappedCurrency0;
     Currency public wrappedCurrency1;
@@ -106,7 +110,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                         PERMISSION TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_swap_reverts_unauthorized_user() public {
+    function test_swap_unauthorized_user_reverts() public {
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, true);
         MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(unauthorizedUser, true);
         IERC20(Currency.unwrap(currency0)).transfer(unauthorizedUser, 2 ether);
@@ -114,21 +118,33 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(unauthorizedUser, false);
         MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(unauthorizedUser, false);
 
+        Currency currencyA = wrappedCurrency0;
+        Currency currencyB = wrappedCurrency1;
+        if (Currency.unwrap(currencyA) > Currency.unwrap(currencyB)) (currencyA, currencyB) = (currencyB, currencyA);
+
         uint256 amountIn = 1 ether;
-        PoolKey memory wrappedKey = PoolKey(currency0, currency1, 3000, 60, permissionedHooks);
+        PoolKey memory wrappedKey = PoolKey(currencyA, currencyB, 3000, 60, permissionedHooks);
 
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(wrappedKey, true, uint128(amountIn), 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(currency0, currency1, ActionConstants.MSG_SENDER);
+        bytes memory data = plan.finalizeSwap(currencyA, currencyB, ActionConstants.MSG_SENDER);
 
         vm.prank(unauthorizedUser);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         permissionedRouter.execute(data);
     }
 
-    function test_swap_succeeds_authorized_user() public {
+    function test_swap_authorized_user() public {
         IERC20(Currency.unwrap(currency0)).transfer(alice, 2 ether);
         IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
 
@@ -187,7 +203,15 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         wrappedToken1.updateAllowedWrapper(address(permissionedRouter), false);
 
         vm.prank(alice);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         permissionedRouter.execute(data);
     }
 
@@ -289,11 +313,19 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, ActionConstants.MSG_SENDER);
 
         vm.prank(unauthorizedUser);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         permissionedRouter.execute(data);
     }
 
-    function test_swap_succeeds_unauthorized_user_mixed_exit() public {
+    function test_swap_unauthorized_user_mixed_exit_reverts() public {
         IERC20(Currency.unwrap(currency2)).transfer(unauthorizedUser, 2 ether);
 
         uint256 amountIn = 100;
@@ -318,7 +350,15 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, ActionConstants.MSG_SENDER);
 
         vm.prank(unauthorizedUser);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         permissionedRouter.execute(data);
     }
 
@@ -1147,7 +1187,15 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(currency4, currency2, ActionConstants.MSG_SENDER);
 
         vm.prank(unauthorizedUser);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         permissionedRouter.execute{value: 0}(data);
     }
 
@@ -1208,7 +1256,15 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(nativeKey.currency0, currency2, ActionConstants.MSG_SENDER);
 
         vm.prank(unauthorizedUser);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         permissionedRouter.execute{value: (nativeKey.currency0.isAddressZero()) ? expectedAmountIn : 0}(data);
     }
 
@@ -1414,7 +1470,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.encode();
 
         vm.prank(unauthorizedUser);
-        vm.expectRevert();
+        vm.expectRevert(Unauthorized.selector);
         permissionedRouter.execute(data);
     }
 
