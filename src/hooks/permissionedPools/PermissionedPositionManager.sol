@@ -20,8 +20,11 @@ import {PermissionFlags} from "./libraries/PermissionFlags.sol";
 contract PermissionedPositionManager is PositionManager {
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
 
+    mapping(Currency currency => mapping(IHooks hooks => bool)) public isAllowedHooks;
+
     error InvalidHook();
     error SafeTransferDisabled();
+    error NotWrappedAdmin();
 
     /// @dev as this contract must know the hooks address in advance, it must be passed in as a constructor argument
     constructor(
@@ -84,7 +87,14 @@ contract PermissionedPositionManager is PositionManager {
     function _checkAllowedHook(Currency currency, IHooks hooks) internal view returns (bool) {
         address permissionedToken = _verifiedPermissionedTokenOf(currency);
         if (permissionedToken == address(0)) return true;
-        return IWrappedPermissionedToken(Currency.unwrap(currency)).isAllowedHook(address(this), hooks);
+        return isAllowedHooks[currency][hooks];
+    }
+
+    function setAllowedHook(Currency currency, IHooks hooks, bool allowed) external {
+        if (_getOwner(currency) != msg.sender) {
+            revert NotWrappedAdmin();
+        }
+        isAllowedHooks[currency][hooks] = allowed;
     }
 
     /// @dev When paying to settle, if the currency is a permissioned token, wrap the token and transfer it to the pool manager.

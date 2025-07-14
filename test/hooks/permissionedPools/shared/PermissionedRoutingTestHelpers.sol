@@ -154,8 +154,16 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         wrappedToken0.updateAllowedWrapper(address(permissionedHooks), true);
         wrappedToken1.updateAllowedWrapper(address(permissionedHooks), true);
 
-        wrappedToken0.setAllowedHook(address(positionManager), permissionedHooks, true);
-        wrappedToken1.setAllowedHook(address(positionManager), permissionedHooks, true);
+        setAllowedHooks(IPositionManager(positionManager), Currency.wrap(address(wrappedToken0)), permissionedHooks);
+        setAllowedHooks(IPositionManager(positionManager), Currency.wrap(address(wrappedToken1)), permissionedHooks);
+    }
+
+    function setAllowedHooks(IPositionManager posm, Currency currency, IHooks permissionedHooks_) internal {
+        // addPermissionedHooks selector
+        bytes4 selector = 0xb5cdc484;
+        bytes memory data = abi.encodeWithSelector(selector, currency, permissionedHooks_, true);
+        (bool success,) = address(posm).call(data);
+        require(success, "Failed to set hooks");
     }
 
     function createPoolWithLiquidity(Currency currencyA, Currency currencyB, address hookAddr)

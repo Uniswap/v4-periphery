@@ -21,9 +21,6 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     /// @inheritdoc IWrappedPermissionedToken
     mapping(address wrapper => bool) public allowedWrappers;
 
-    /// @inheritdoc IWrappedPermissionedToken
-    mapping(address positionManager => mapping(IHooks hooks => bool)) public isAllowedHook;
-
     constructor(
         IERC20 permissionedToken,
         address poolManager,
@@ -56,12 +53,6 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     /// @inheritdoc IWrappedPermissionedToken
     function isAllowed(address account, PermissionFlag permission) public view returns (bool) {
         return ((allowListChecker.checkAllowlist(account)) & (permission)) == (permission);
-    }
-
-    /// @inheritdoc IWrappedPermissionedToken
-    function setAllowedHook(address positionManager, IHooks hooks, bool allowed) external onlyOwner {
-        isAllowedHook[positionManager][hooks] = allowed;
-        emit AllowedHookUpdated(positionManager, hooks, allowed);
     }
 
     function _updateAllowListChecker(IAllowlistChecker newAllowListChecker) internal {

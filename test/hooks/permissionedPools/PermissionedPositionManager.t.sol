@@ -202,15 +202,25 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         wrappedToken.updateAllowedWrapper(address(secondaryPosm), true);
         wrappedToken.updateAllowedWrapper(address(permissionedSwapRouter), true);
 
-        wrappedToken.setAllowedHook(address(lpm), permissionedHooks, true);
-        wrappedToken.setAllowedHook(address(secondaryPosm), permissionedHooks, true);
-        wrappedToken.setAllowedHook(address(tertiaryPosm), permissionedHooks, true);
-
-        wrappedToken.setAllowedHook(address(lpm), secondaryPermissionedHooks, true);
-        wrappedToken.setAllowedHook(address(secondaryPosm), secondaryPermissionedHooks, true);
-        wrappedToken.setAllowedHook(address(tertiaryPosm), secondaryPermissionedHooks, true);
-
         wrappedTokenFactory.verifyWrappedToken(address(wrappedToken));
+
+        Currency wrappedCurrency = Currency.wrap(address(wrappedToken));
+
+        setAllowedHooks(lpm, wrappedCurrency, permissionedHooks);
+        setAllowedHooks(secondaryPosm, wrappedCurrency, permissionedHooks);
+        setAllowedHooks(tertiaryPosm, wrappedCurrency, permissionedHooks);
+
+        setAllowedHooks(lpm, wrappedCurrency, secondaryPermissionedHooks);
+        setAllowedHooks(secondaryPosm, wrappedCurrency, secondaryPermissionedHooks);
+        setAllowedHooks(tertiaryPosm, wrappedCurrency, secondaryPermissionedHooks);
+    }
+
+    function setAllowedHooks(IPositionManager posm, Currency currency, IHooks permissionedHooks_) internal {
+        // addPermissionedHooks selector
+        bytes4 selector = 0xb5cdc484;
+        bytes memory data = abi.encodeWithSelector(selector, currency, permissionedHooks_, true);
+        (bool success,) = address(posm).call(data);
+        require(success, "Failed to set hooks");
     }
 
     function test_modifyLiquidities_reverts_deadlinePassed() public {
