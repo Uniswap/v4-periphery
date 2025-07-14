@@ -90,7 +90,8 @@ contract PermissionedPositionManager is PositionManager {
         return isAllowedHooks[currency][hooks];
     }
 
-    function setAllowedHook(Currency currency, IHooks hooks, bool allowed) external {
+    /// @dev Sets which hooks are allowed to be used with a wrapped permissioned token. Only callable by the owner of the wrapped permissioned token
+    function setAllowedHook(Currency currency, IHooks hooks, bool allowed) public {
         if (_getOwner(currency) != msg.sender) {
             revert NotWrappedAdmin();
         }
