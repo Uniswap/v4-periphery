@@ -38,6 +38,7 @@ contract PermissionedPositionManager is PositionManager {
         WRAPPED_TOKEN_FACTORY = _wrappedTokenFactory;
     }
 
+    /// @inheritdoc PositionManager
     /// @dev Only allow admins of permissioned tokens to transfer positions that contain their tokens
     function transferFrom(address from, address to, uint256 id) public override onlyIfPoolManagerLocked {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(id);
