@@ -13,6 +13,7 @@ import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
@@ -34,6 +35,11 @@ import {WrappedPermissionedToken, IERC20} from "../../../src/hooks/permissionedP
 contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
     using StateLibrary for IPoolManager;
+
+    // To allow testing without importing PermissionedHooks
+    error Unauthorized();
+    error InvalidHook();
+    error HookCallFailed();
 
     PoolId public poolId;
     PoolId public poolIdFake;
@@ -583,19 +589,14 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
     }
 
-    function test_permissioned_mint_alternate_posm_reverts() public {
+    function test_permissioned_mint_alt_posm_diff_hooks_reverts() public {
         // secondary posm uses different hooks contract
-        _test_permissioned_mint_alternate_posm_reverts(key0, secondaryPosm);
-        _test_permissioned_mint_alternate_posm_reverts(key1, secondaryPosm);
-        _test_permissioned_mint_alternate_posm_reverts(key2, secondaryPosm);
-
-        // tertiary posm uses the same hooks contract
-        _test_permissioned_mint_alternate_posm_reverts(key0, tertiaryPosm);
-        _test_permissioned_mint_alternate_posm_reverts(key1, tertiaryPosm);
-        _test_permissioned_mint_alternate_posm_reverts(key2, tertiaryPosm);
+        _test_permissioned_mint_alt_posm_diff_hooks_reverts(key0, secondaryPosm);
+        _test_permissioned_mint_alt_posm_diff_hooks_reverts(key1, secondaryPosm);
+        _test_permissioned_mint_alt_posm_diff_hooks_reverts(key2, secondaryPosm);
     }
 
-    function _test_permissioned_mint_alternate_posm_reverts(PoolKey memory key, IPositionManager posm) internal {
+    function _test_permissioned_mint_alt_posm_diff_hooks_reverts(PoolKey memory key, IPositionManager posm) internal {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
 
         uint256 liquidity = 1e18;
@@ -604,7 +605,35 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         bytes memory calls = getMintEncoded(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         vm.prank(alice);
-        vm.expectRevert();
+        vm.expectRevert(InvalidHook.selector);
+        posm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
+    function test_permissioned_mint_alt_posm_same_hooks_reverts() public {
+        // tertiary posm uses the same hooks contract
+        _test_permissioned_mint_alt_posm_same_hooks_reverts(key0, tertiaryPosm);
+        _test_permissioned_mint_alt_posm_same_hooks_reverts(key1, tertiaryPosm);
+        _test_permissioned_mint_alt_posm_same_hooks_reverts(key2, tertiaryPosm);
+    }
+
+    function _test_permissioned_mint_alt_posm_same_hooks_reverts(PoolKey memory key, IPositionManager posm) internal {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+
+        uint256 liquidity = 1e18;
+
+        // we don't use the helper, so we can choose which position manager to use
+        bytes memory calls = getMintEncoded(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         posm.modifyLiquidities(calls, block.timestamp + 1);
     }
 
@@ -634,7 +663,15 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         permit2.approve(Currency.unwrap(currency1), address(lpm), type(uint160).max, type(uint48).max);
 
         // This should revert because the user is not in the allowlist
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         mint(config, liquidity, unauthorizedUser, ZERO_BYTES);
         vm.stopPrank();
     }
@@ -692,7 +729,15 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         tokenId = lpm.nextTokenId();
 
         // Increasing liquidity should revert because the user is no longer in the allowlist
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
         vm.stopPrank();
 
@@ -730,7 +775,15 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         permit2.approve(Currency.unwrap(currencyUnpermissioned), address(lpm), type(uint160).max, type(uint48).max);
 
         // This should revert because the user is not in the allowlist
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         mint(config, liquidity, unauthorizedUser, ZERO_BYTES);
         vm.stopPrank();
     }
@@ -800,7 +853,15 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         permit2.approve(Currency.unwrap(currencyPermissioned), address(lpm), type(uint160).max, type(uint48).max);
 
         // This should revert because the user is not in the allowlist
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeAddLiquidity.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         mint(config, liquidity, unauthorizedUser, ZERO_BYTES);
         vm.stopPrank();
     }
@@ -952,7 +1013,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
 
-        vm.expectRevert();
+        vm.expectRevert(abi.encode("Transfer disabled"));
         IERC721(address(lpm)).transferFrom(alice, address(this), tokenId);
         vm.stopPrank();
     }
