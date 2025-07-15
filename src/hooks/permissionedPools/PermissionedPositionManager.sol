@@ -38,6 +38,18 @@ contract PermissionedPositionManager is PositionManager {
         WRAPPED_TOKEN_FACTORY = _wrappedTokenFactory;
     }
 
+    /// @notice Sets the allowed hook for a given wrapped permissioned token
+    /// @dev Sets which hooks are allowed to be used with a wrapped permissioned token. Only callable by the owner of the wrapped permissioned token
+    /// @param currency The currency of the wrapped permissioned token
+    /// @param hooks The hook to set the allowance for
+    /// @param allowed Whether the hook is allowed to be used with the wrapped permissioned token
+    function setAllowedHook(Currency currency, IHooks hooks, bool allowed) external {
+        if (_getOwner(currency) != msg.sender) {
+            revert NotWrappedAdmin();
+        }
+        isAllowedHooks[currency][hooks] = allowed;
+    }
+
     /// @inheritdoc PositionManager
     /// @dev Only allow admins of permissioned tokens to transfer positions that contain their tokens
     function transferFrom(address from, address to, uint256 id) public override onlyIfPoolManagerLocked {
@@ -89,14 +101,6 @@ contract PermissionedPositionManager is PositionManager {
         address permissionedToken = _verifiedPermissionedTokenOf(currency);
         if (permissionedToken == address(0)) return true;
         return isAllowedHooks[currency][hooks];
-    }
-
-    /// @dev Sets which hooks are allowed to be used with a wrapped permissioned token. Only callable by the owner of the wrapped permissioned token
-    function setAllowedHook(Currency currency, IHooks hooks, bool allowed) public {
-        if (_getOwner(currency) != msg.sender) {
-            revert NotWrappedAdmin();
-        }
-        isAllowedHooks[currency][hooks] = allowed;
     }
 
     /// @dev When paying to settle, if the currency is a permissioned token, wrap the token and transfer it to the pool manager.
