@@ -1053,8 +1053,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         IERC721(address(lpm)).transferFrom(alice, address(this), tokenId2);
     }
 
-    error Unauthorized();
-
     function test_transferFrom_revert_not_admin(address notAdmin) public {
         vm.assume(notAdmin != address(this) && notAdmin != address(0));
         uint256 tokenId0 = lpm.nextTokenId();
