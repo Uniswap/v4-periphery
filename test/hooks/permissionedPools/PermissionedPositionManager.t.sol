@@ -213,7 +213,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         Currency wrappedCurrency = Currency.wrap(address(wrappedToken));
 
         setAllowedHooks(lpm, wrappedCurrency, permissionedHooks);
-        setAllowedHooks(secondaryPosm, wrappedCurrency, permissionedHooks);
         setAllowedHooks(tertiaryPosm, wrappedCurrency, permissionedHooks);
 
         setAllowedHooks(lpm, wrappedCurrency, secondaryPermissionedHooks);
