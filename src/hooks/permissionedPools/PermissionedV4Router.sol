@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {BytesLib} from "@uniswap/universal-router/contracts/modules/uniswap/v3/BytesLib.sol";
 import {ActionConstants} from "../../libraries/ActionConstants.sol";
 import {ReentrancyLock} from "../../base/ReentrancyLock.sol";
 import {V4Router, IPoolManager, Currency} from "../../V4Router.sol";
@@ -13,6 +14,8 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {PermissionFlags} from "./libraries/PermissionFlags.sol";
 
 contract PermissionedV4Router is V4Router, ReentrancyLock {
+    using BytesLib for bytes;
+
     IAllowanceTransfer public immutable PERMIT2;
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
     IWETH9 public immutable WETH9;
@@ -20,6 +23,18 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
     error Unauthorized();
     error HookNotImplemented();
     error InvalidEthSender();
+    error CommandNotImplemented();
+    error TransactionDeadlinePassed();
+    error LengthMismatch();
+    /// @notice Thrown when a required command has failed
+    error ExecutionFailed(uint256 commandIndex, bytes message);
+
+    // Commands
+    /// @dev As of 07/15/2025, latest avaiable version of universal router library does not have V4 commands, so we define the commands here
+    uint256 constant COMMAND_V4_SWAP = 0x10;
+    uint256 constant COMMAND_PERMIT2_PERMIT = 0x0a;
+    bytes1 internal constant COMMAND_FLAG_ALLOW_REVERT = 0x80;
+    bytes1 internal constant COMMAND_TYPE_MASK = 0x3f;
 
     constructor(
         IPoolManager poolManager_,
@@ -32,8 +47,85 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         WETH9 = weth9;
     }
 
-    function execute(bytes calldata input) public payable isNotLocked {
-        _executeActions(input);
+    modifier checkDeadline(uint256 deadline) {
+        if (block.timestamp > deadline) revert TransactionDeadlinePassed();
+        _;
+    }
+
+    /// @notice To receive ETH from WETH
+    receive() external payable {
+        if (msg.sender != address(WETH9) && msg.sender != address(poolManager)) revert InvalidEthSender();
+    }
+
+    /// @notice Executes encoded commands along with provided inputs. Reverts if deadline has expired.
+    /// @param commands A set of concatenated commands, each 1 byte in length
+    /// @param inputs An array of byte strings containing abi encoded inputs for each command
+    /// @param deadline The deadline by which the transaction must be executed
+    function execute(bytes calldata commands, bytes[] calldata inputs, uint256 deadline)
+        external
+        payable
+        checkDeadline(deadline)
+    {
+        execute(commands, inputs);
+    }
+
+    /// @notice Executes encoded commands along with provided inputs.
+    /// @param commands A set of concatenated commands, each 1 byte in length
+    /// @param inputs An array of byte strings containing abi encoded inputs for each command
+    function execute(bytes calldata commands, bytes[] calldata inputs) public payable isNotLocked {
+        bool success;
+        bytes memory output;
+        uint256 numCommands = commands.length;
+        if (inputs.length != numCommands) revert LengthMismatch();
+
+        // loop through all given commands, execute them and pass along outputs as defined
+        for (uint256 commandIndex = 0; commandIndex < numCommands; commandIndex++) {
+            bytes1 command = commands[commandIndex];
+
+            bytes calldata input = inputs[commandIndex];
+
+            (success, output) = dispatch(command, input);
+
+            if (!success && successRequired(command)) {
+                revert ExecutionFailed({commandIndex: commandIndex, message: output});
+            }
+        }
+    }
+
+    /// @notice Decodes and executes the given command with the given inputs
+    /// @param commandType The command type to execute
+    /// @param inputs The inputs to execute the command with
+    /// @dev 2 masks are used to enable use of a nested-if statement in execution for efficiency reasons
+    /// @return success True on success of the command, false on failure
+    /// @return output The outputs or error messages, if any, from the command
+    function dispatch(bytes1 commandType, bytes calldata inputs)
+        public
+        payable
+        returns (bool success, bytes memory output)
+    {
+        uint256 command = uint8(commandType & COMMAND_TYPE_MASK);
+        success = true;
+        if (command == COMMAND_PERMIT2_PERMIT) {
+            // equivalent: abi.decode(inputs, (IAllowanceTransfer.PermitSingle, bytes))
+            IAllowanceTransfer.PermitSingle calldata permitSingle;
+            assembly {
+                permitSingle := inputs.offset
+            }
+            bytes calldata data = inputs.toBytes(6); // PermitSingle takes first 6 slots (0..5)
+
+            (success, output) = address(PERMIT2).call(
+                abi.encodeWithSignature(
+                    "permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)",
+                    msgSender(),
+                    permitSingle,
+                    data
+                )
+            );
+        } else if (command == COMMAND_V4_SWAP) {
+            _executeActions(inputs);
+        } else {
+            revert CommandNotImplemented();
+        }
     }
 
     /// @notice Public view function to be used instead of msg.sender, as the contract performs self-reentrancy and at
@@ -81,8 +173,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         return Currency.wrap(permissionedToken).balanceOfSelf();
     }
 
-    /// @notice To receive ETH from WETH
-    receive() external payable {
-        if (msg.sender != address(WETH9) && msg.sender != address(poolManager)) revert InvalidEthSender();
+    function successRequired(bytes1 command) internal pure returns (bool) {
+        return command & COMMAND_FLAG_ALLOW_REVERT == 0;
     }
 }

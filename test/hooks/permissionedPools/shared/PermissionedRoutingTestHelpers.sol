@@ -293,10 +293,10 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         outputBalanceBefore = getPermissionedCurrency(outputCurrency).balanceOfSelf();
 
         bytes memory data = plan.finalizeSwap(inputCurrency, outputCurrency, takeRecipient);
-
         uint256 value = (inputCurrency.isAddressZero()) ? amountIn : 0;
+        bytes memory command = hex"10";
 
-        permissionedRouter.execute{value: value}(data);
+        permissionedRouter.execute{value: value}(command, toBytesArray(data), type(uint256).max);
 
         inputBalanceAfter = getPermissionedCurrency(inputCurrency).balanceOfSelf();
         outputBalanceAfter = getPermissionedCurrency(outputCurrency).balanceOfSelf();
