@@ -10,6 +10,7 @@ import {IWrappedPermissionedTokenFactory} from
 import {IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {PermissionedPoolsBase, MockAllowlistChecker} from "./PermissionedPoolsBase.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {PermissionFlags} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
 contract WrappedPermissionedTokenFactoryTest is PermissionedPoolsBase {
     IWrappedPermissionedTokenFactory public wrappedPermissionedTokenFactory;
@@ -70,7 +71,7 @@ contract WrappedPermissionedTokenFactoryTest is PermissionedPoolsBase {
         address wrappedPermissionedToken = wrappedPermissionedTokenFactory.createWrappedPermissionedToken(
             permissionedToken, makeAddr("initialOwner"), allowlistChecker
         );
-        permissionedToken.setAllowlist(wrappedPermissionedToken, true);
+        permissionedToken.setAllowlist(wrappedPermissionedToken, PermissionFlags.ALL_ALLOWED);
         permissionedToken.mint(wrappedPermissionedToken, 1);
         vm.expectEmit(true, true, true, true);
         emit IWrappedPermissionedTokenFactory.WrappedTokenVerified(wrappedPermissionedToken, address(permissionedToken));
@@ -85,7 +86,7 @@ contract WrappedPermissionedTokenFactoryTest is PermissionedPoolsBase {
         address wrappedPermissionedToken = wrappedPermissionedTokenFactory.createWrappedPermissionedToken(
             permissionedToken, makeAddr("initialOwner"), allowlistChecker
         );
-        permissionedToken.setAllowlist(wrappedPermissionedToken, true);
+        permissionedToken.setAllowlist(wrappedPermissionedToken, PermissionFlags.ALL_ALLOWED);
         permissionedToken.mint(wrappedPermissionedToken, 1);
         wrappedPermissionedTokenFactory.verifyWrappedToken(wrappedPermissionedToken);
         vm.expectRevert(

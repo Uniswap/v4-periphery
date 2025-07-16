@@ -15,13 +15,16 @@ import {
     IWrappedPermissionedToken
 } from "./interfaces/IWrappedPermissionedTokenFactory.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {PermissionFlags} from "./libraries/PermissionFlags.sol";
 
 contract PermissionedPositionManager is PositionManager {
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
-    IHooks public immutable PERMISSIONED_HOOKS;
+
+    mapping(Currency currency => mapping(IHooks hooks => bool)) public isAllowedHooks;
 
     error InvalidHook();
     error SafeTransferDisabled();
+    error NotWrappedAdmin();
 
     /// @dev as this contract must know the hooks address in advance, it must be passed in as a constructor argument
     constructor(
@@ -30,13 +33,24 @@ contract PermissionedPositionManager is PositionManager {
         uint256 _unsubscribeGasLimit,
         IPositionDescriptor _tokenDescriptor,
         IWETH9 _weth9,
-        IWrappedPermissionedTokenFactory _wrappedTokenFactory,
-        IHooks _permissionedHooks
+        IWrappedPermissionedTokenFactory _wrappedTokenFactory
     ) PositionManager(_poolManager, _permit2, _unsubscribeGasLimit, _tokenDescriptor, _weth9) {
         WRAPPED_TOKEN_FACTORY = _wrappedTokenFactory;
-        PERMISSIONED_HOOKS = _permissionedHooks;
     }
 
+    /// @notice Sets the allowed hook for a given wrapped permissioned token
+    /// @dev Sets which hooks are allowed to be used with a wrapped permissioned token. Only callable by the owner of the wrapped permissioned token
+    /// @param currency The currency of the wrapped permissioned token
+    /// @param hooks The hook to set the allowance for
+    /// @param allowed Whether the hook is allowed to be used with the wrapped permissioned token
+    function setAllowedHook(Currency currency, IHooks hooks, bool allowed) external {
+        if (_getOwner(currency) != msg.sender) {
+            revert NotWrappedAdmin();
+        }
+        isAllowedHooks[currency][hooks] = allowed;
+    }
+
+    /// @inheritdoc PositionManager
     /// @dev Only allow admins of permissioned tokens to transfer positions that contain their tokens
     function transferFrom(address from, address to, uint256 id) public override onlyIfPoolManagerLocked {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(id);
@@ -69,8 +83,19 @@ contract PermissionedPositionManager is PositionManager {
         bytes calldata hookData
     ) internal override {
         // allowlist is verified in the hook call
-        if (poolKey.hooks != PERMISSIONED_HOOKS) revert InvalidHook();
+        if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
         super._mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, owner, hookData);
+    }
+
+    function _checkAllowedHooks(PoolKey calldata poolKey) internal view returns (bool) {
+        return
+            _checkAllowedHook(poolKey.currency0, poolKey.hooks) && _checkAllowedHook(poolKey.currency1, poolKey.hooks);
+    }
+
+    function _checkAllowedHook(Currency currency, IHooks hooks) internal view returns (bool) {
+        address permissionedToken = _verifiedPermissionedTokenOf(currency);
+        if (permissionedToken == address(0)) return true;
+        return isAllowedHooks[currency][hooks];
     }
 
     /// @dev When paying to settle, if the currency is a permissioned token, wrap the token and transfer it to the pool manager.
@@ -85,7 +110,7 @@ contract PermissionedPositionManager is PositionManager {
         IWrappedPermissionedToken wrappedPermissionedToken = IWrappedPermissionedToken(Currency.unwrap(currency));
         if (payer == address(this)) {
             // @audit is it necessary to check the allowlist here?
-            if (!wrappedPermissionedToken.isAllowed(msgSender())) {
+            if (!wrappedPermissionedToken.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
                 revert Unauthorized();
             }
             Currency.wrap(permissionedToken).transfer(address(wrappedPermissionedToken), amount);

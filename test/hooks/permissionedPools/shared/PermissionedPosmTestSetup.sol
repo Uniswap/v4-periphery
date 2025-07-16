@@ -9,6 +9,7 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {WETH} from "solmate/src/tokens/WETH.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
@@ -52,22 +53,12 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
 
     mapping(Currency => Currency) public wrappedToPermissioned;
 
-    function deployAndApprovePosm(
-        IPoolManager poolManager,
-        address wrappedTokenFactory,
-        address permissionedHooks_,
-        bytes32 salt
-    ) public {
-        deployPermissionedPosm(poolManager, wrappedTokenFactory, permissionedHooks_, salt);
+    function deployAndApprovePosm(IPoolManager poolManager, address wrappedTokenFactory, bytes32 salt) public {
+        deployPermissionedPosm(poolManager, wrappedTokenFactory, salt);
         approvePosm();
     }
 
-    function deployPermissionedPosm(
-        IPoolManager poolManager,
-        address wrappedTokenFactory,
-        address permissionedHooks_,
-        bytes32 salt
-    ) internal {
+    function deployPermissionedPosm(IPoolManager poolManager, address wrappedTokenFactory, bytes32 salt) internal {
         permit2 = IAllowanceTransfer(deployPermit2());
         _WETH9 = deployWETH();
         proxyAsImplementation = deployDescriptor(poolManager, "ETH");
@@ -78,17 +69,14 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             address(proxyAsImplementation),
             address(_WETH9),
             wrappedTokenFactory,
-            permissionedHooks_,
             abi.encode(salt)
         );
     }
 
-    function deployAndApprovePosmOnly(
-        IPoolManager poolManager,
-        address wrappedTokenFactory,
-        address permissionedHooks_,
-        bytes32 salt
-    ) public returns (IPositionManager secondaryPosm) {
+    function deployAndApprovePosmOnly(IPoolManager poolManager, address wrappedTokenFactory, bytes32 salt)
+        public
+        returns (IPositionManager secondaryPosm)
+    {
         secondaryPosm = Deploy.permissionedPositionManager(
             address(poolManager),
             address(permit2),
@@ -96,7 +84,6 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             address(proxyAsImplementation),
             address(_WETH9),
             wrappedTokenFactory,
-            permissionedHooks_,
             abi.encode(salt)
         );
         approvePosm();

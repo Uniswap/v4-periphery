@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IWrappedPermissionedToken} from "./interfaces/IWrappedPermissionedToken.sol";
 import {IAllowlistChecker} from "./interfaces/IAllowlistChecker.sol";
+import {PermissionFlag} from "./libraries/PermissionFlags.sol";
 
 contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedToken {
     /// @inheritdoc IWrappedPermissionedToken
@@ -50,8 +51,8 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     }
 
     /// @inheritdoc IWrappedPermissionedToken
-    function isAllowed(address account) public view returns (bool) {
-        return allowListChecker.checkAllowlist(account);
+    function isAllowed(address account, PermissionFlag permission) public view returns (bool) {
+        return ((allowListChecker.checkAllowlist(account)) & (permission)) == (permission);
     }
 
     function _updateAllowListChecker(IAllowlistChecker newAllowListChecker) internal {

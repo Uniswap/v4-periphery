@@ -34,17 +34,10 @@ library Deploy {
         address positionDescriptor_,
         address wrappedNative,
         address wrappedTokenFactory,
-        address permissionedHooks,
         bytes memory salt
     ) internal returns (IPositionManager manager) {
         bytes memory args = abi.encode(
-            poolManager,
-            permit2,
-            unsubscribeGasLimit,
-            positionDescriptor_,
-            wrappedNative,
-            wrappedTokenFactory,
-            permissionedHooks
+            poolManager, permit2, unsubscribeGasLimit, positionDescriptor_, wrappedNative, wrappedTokenFactory
         );
         bytes memory initcode =
             abi.encodePacked(vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args);
