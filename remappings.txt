@@ -3,5 +3,3 @@ ds-test/=lib/v4-core/lib/forge-std/lib/ds-test/src/
 forge-std/=lib/v4-core/lib/forge-std/src/
 openzeppelin-contracts/=lib/v4-core/lib/openzeppelin-contracts/
 solmate/=lib/v4-core/lib/solmate/
-@uniswap/universal-router/=lib/universal-router/
-@openzeppelin/=lib/openzeppelin-contracts/
