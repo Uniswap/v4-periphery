@@ -60,7 +60,6 @@ contract PermissionedPositionManager is PositionManager {
             revert Unauthorized();
         }
         getApproved[id] = msg.sender;
-        emit Approval(from, msg.sender, id);
         super.transferFrom(from, to, id);
     }
 
