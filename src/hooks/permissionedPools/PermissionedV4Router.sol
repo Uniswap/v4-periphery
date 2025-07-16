@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IMsgSender} from "../../interfaces/IMsgSender.sol";
 import {ActionConstants} from "../../libraries/ActionConstants.sol";
 import {ReentrancyLock} from "../../base/ReentrancyLock.sol";
 import {V4Router, IPoolManager, Currency} from "../../V4Router.sol";
@@ -9,15 +8,9 @@ import {
     IWrappedPermissionedTokenFactory,
     IWrappedPermissionedToken
 } from "./interfaces/IWrappedPermissionedTokenFactory.sol";
-import {PermissionedHooks} from "./PermissionedHooks.sol";
 import {IWETH9} from "../../interfaces/external/IWETH9.sol";
-
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {Hooks, IHooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {PermissionFlags} from "./libraries/PermissionFlags.sol";
 
 contract PermissionedV4Router is V4Router, ReentrancyLock {
     IAllowanceTransfer public immutable PERMIT2;
@@ -66,7 +59,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         IWrappedPermissionedToken wrappedPermissionedToken = IWrappedPermissionedToken(Currency.unwrap(currency));
         if (payer == address(this)) {
             // allowlist check necessary to ensure a disallowed user cannot sell a permissioned token
-            if (!wrappedPermissionedToken.isAllowed(msgSender())) {
+            if (!wrappedPermissionedToken.isAllowed(msgSender(), PermissionFlags.SWAP_ALLOWED)) {
                 revert Unauthorized();
             }
             Currency.wrap(permissionedToken).transfer(address(wrappedPermissionedToken), amount);

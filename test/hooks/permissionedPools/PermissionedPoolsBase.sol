@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {Test} from "forge-std/Test.sol";
 import {BaseAllowlistChecker} from "../../../src/hooks/permissionedPools/BaseAllowListChecker.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
 contract MockToken is ERC20 {
     constructor() ERC20("MockToken", "MT") {}
@@ -22,11 +23,20 @@ contract MockToken is ERC20 {
 }
 
 contract MockPermissionedToken is MockToken {
-    mapping(address account => bool allowed) public isAllowed;
+    // this mapping is the allow list for permissioned pools
+    mapping(address account => PermissionFlag permissions) public accountPermissions;
+    // this mapping represents if the account is allowed to interact with the token
+    mapping(address account => bool isAllowed) public isAllowed;
 
     error Unauthorized();
 
-    function setAllowlist(address account, bool allowed) public {
+    function setAllowlist(address account, PermissionFlag permissions) public {
+        accountPermissions[account] = permissions;
+        // allowed to transfer the token
+        isAllowed[account] = true;
+    }
+
+    function setTokenAllowlist(address account, bool allowed) public {
         isAllowed[account] = allowed;
     }
 
@@ -43,8 +53,8 @@ contract MockAllowlistChecker is BaseAllowlistChecker {
         token = token_;
     }
 
-    function checkAllowlist(address account) public view override returns (bool) {
-        return token.isAllowed(account);
+    function checkAllowlist(address account) public view override returns (PermissionFlag) {
+        return token.accountPermissions(account);
     }
 }
 
