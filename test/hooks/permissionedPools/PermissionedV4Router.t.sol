@@ -27,6 +27,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     error Unauthorized();
     error HookCallFailed();
     error CommandNotImplemented();
+    error SliceOutOfBounds();
     error ExecutionFailed(uint256 commandIndex, bytes output);
 
     Currency public wrappedCurrency0;
@@ -1813,6 +1814,12 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = abi.encode(permitSingle, signature);
 
         vm.expectRevert(abi.encodeWithSelector(ExecutionFailed.selector, 0, hex""));
+        permissionedRouter.execute(COMMAND_PERMIT2_PERMIT, toBytesArray(data), type(uint256).max);
+    }
+
+    function test_slice_out_of_bounds_reverts() public {
+        bytes memory data = hex"1234567890";
+        vm.expectRevert(SliceOutOfBounds.selector);
         permissionedRouter.execute(COMMAND_PERMIT2_PERMIT, toBytesArray(data), type(uint256).max);
     }
 

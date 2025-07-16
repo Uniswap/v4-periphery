@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {BytesLib} from "@uniswap/universal-router/contracts/modules/uniswap/v3/BytesLib.sol";
 import {ActionConstants} from "../../libraries/ActionConstants.sol";
 import {ReentrancyLock} from "../../base/ReentrancyLock.sol";
 import {V4Router, IPoolManager, Currency} from "../../V4Router.sol";
@@ -14,8 +13,6 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {PermissionFlags} from "./libraries/PermissionFlags.sol";
 
 contract PermissionedV4Router is V4Router, ReentrancyLock {
-    using BytesLib for bytes;
-
     IAllowanceTransfer public immutable PERMIT2;
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
     IWETH9 public immutable WETH9;
@@ -26,6 +23,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
     error CommandNotImplemented();
     error TransactionDeadlinePassed();
     error LengthMismatch();
+    error SliceOutOfBounds();
     /// @notice Thrown when a required command has failed
     error ExecutionFailed(uint256 commandIndex, bytes message);
 
@@ -111,7 +109,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
             assembly {
                 permitSingle := inputs.offset
             }
-            bytes calldata data = inputs.toBytes(6); // PermitSingle takes first 6 slots (0..5)
+            bytes calldata data = toBytes(inputs, 6); // PermitSingle takes first 6 slots (0..5)
 
             (success, output) = address(PERMIT2).call(
                 abi.encodeWithSignature(
@@ -175,5 +173,34 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
 
     function successRequired(bytes1 command) internal pure returns (bool) {
         return command & COMMAND_FLAG_ALLOW_REVERT == 0;
+    }
+
+    /// @notice Decode the `_arg`-th element in `_bytes` as a dynamic array
+    /// @dev This function is copied from BytesLib in universal-router to avoid adding it into the repositoriy
+    function toLengthOffset(bytes calldata _bytes, uint256 _arg)
+        private
+        pure
+        returns (uint256 length, uint256 offset)
+    {
+        uint256 relativeOffset;
+        assembly {
+            // The offset of the `_arg`-th element is `32 * arg`, which stores the offset of the length pointer.
+            // shl(5, x) is equivalent to mul(32, x)
+            let lengthPtr := add(_bytes.offset, calldataload(add(_bytes.offset, shl(5, _arg))))
+            length := calldataload(lengthPtr)
+            offset := add(lengthPtr, 0x20)
+            relativeOffset := sub(offset, _bytes.offset)
+        }
+        if (_bytes.length < length + relativeOffset) revert SliceOutOfBounds();
+    }
+
+    /// @notice Decode the `_arg`-th element in `_bytes` as `bytes`
+    /// @dev This function is copied from BytesLib in universal-router to avoid adding it into the repositoriy
+    function toBytes(bytes calldata _bytes, uint256 _arg) private pure returns (bytes calldata res) {
+        (uint256 length, uint256 offset) = toLengthOffset(_bytes, _arg);
+        assembly {
+            res.length := length
+            res.offset := offset
+        }
     }
 }
