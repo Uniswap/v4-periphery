@@ -57,4 +57,7 @@ interface IWrappedPermissionedToken is IERC20 {
 
     /// @notice Returns the permissioned token that is wrapped by this contract
     function PERMISSIONED_TOKEN() external view returns (IERC20);
+
+    /// @notice Returns the admin of the wrapped permissioned token
+    function owner() external view returns (address);
 }

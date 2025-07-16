@@ -110,4 +110,8 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     function decimals() public view override returns (uint8) {
         return ERC20(address(PERMISSIONED_TOKEN)).decimals();
     }
+
+    function owner() public view override(Ownable, IWrappedPermissionedToken) returns (address) {
+        return super.owner();
+    }
 }
