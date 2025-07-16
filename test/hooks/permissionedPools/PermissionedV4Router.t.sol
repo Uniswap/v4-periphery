@@ -1555,7 +1555,9 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 abi.encodeWithSelector(HookCallFailed.selector)
             )
         );
-        permissionedRouter.execute{value: (nativeKey.currency0.isAddressZero()) ? expectedAmountIn : 0}(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+        permissionedRouter.execute{value: (nativeKey.currency0.isAddressZero()) ? expectedAmountIn : 0}(
+            COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max
+        );
     }
 
     function test_swapExactOutputSingle_swapOpenDelta() public {
