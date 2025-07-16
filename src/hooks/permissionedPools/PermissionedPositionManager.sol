@@ -89,12 +89,8 @@ contract PermissionedPositionManager is PositionManager {
     }
 
     function _checkAllowedHooks(PoolKey calldata poolKey) internal view returns (bool) {
-        if (
-            !_checkAllowedHook(poolKey.currency0, poolKey.hooks) || !_checkAllowedHook(poolKey.currency1, poolKey.hooks)
-        ) {
-            return false;
-        }
-        return true;
+        return
+            _checkAllowedHook(poolKey.currency0, poolKey.hooks) && _checkAllowedHook(poolKey.currency1, poolKey.hooks);
     }
 
     function _checkAllowedHook(Currency currency, IHooks hooks) internal view returns (bool) {
