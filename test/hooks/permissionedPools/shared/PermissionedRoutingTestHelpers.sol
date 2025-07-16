@@ -188,6 +188,37 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         modifyLiquidity(_key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x", 200 ether);
     }
 
+    function generatePermitDigest(IAllowanceTransfer.PermitSingle memory permitSingle)
+        internal
+        view
+        returns (bytes32)
+    {
+        bytes32 domainSeparator = permit2.DOMAIN_SEPARATOR();
+
+        bytes32 PERMIT_SINGLE_TYPEHASH = keccak256(
+            "PermitSingle(PermitDetails details,address spender,uint256 sigDeadline)PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)"
+        );
+
+        // Hash the permit details
+        bytes32 permitDetailsHash = keccak256(
+            abi.encode(
+                keccak256("PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)"),
+                permitSingle.details.token,
+                permitSingle.details.amount,
+                permitSingle.details.expiration,
+                permitSingle.details.nonce
+            )
+        );
+
+        // Hash the permit single data
+        bytes32 permitSingleHash = keccak256(
+            abi.encode(PERMIT_SINGLE_TYPEHASH, permitDetailsHash, permitSingle.spender, permitSingle.sigDeadline)
+        );
+
+        // Create the final digest
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, permitSingleHash));
+    }
+
     function _getExactInputParams(Currency[] memory _tokenPath, uint256 amountIn)
         internal
         pure

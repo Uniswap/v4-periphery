@@ -8,6 +8,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {PermitHash} from "permit2/src/libraries/PermitHash.sol";
 import {IV4Router} from "../../../src/interfaces/IV4Router.sol";
 import {PermissionedRoutingTestHelpers} from "./shared/PermissionedRoutingTestHelpers.sol";
 import {Planner} from "../../shared/Planner.sol";
@@ -18,10 +20,14 @@ import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPo
 import {PathKey} from "../../../src/libraries/PathKey.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
+    using PermitHash for IAllowanceTransfer.PermitSingle;
+
     // To allow testing without importing PermissionedV4Router
     error HookNotImplemented();
     error Unauthorized();
     error HookCallFailed();
+    error CommandNotImplemented();
+    error ExecutionFailed(uint256 commandIndex, bytes output);
 
     Currency public wrappedCurrency0;
     Currency public wrappedCurrency1;
@@ -1757,6 +1763,57 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         vm.prank(unauthorizedUser);
         vm.expectRevert(Unauthorized.selector);
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+    }
+
+    function test_command_permit2_permit() public {
+        IAllowanceTransfer.PermitSingle memory permitSingle = IAllowanceTransfer.PermitSingle({
+            details: IAllowanceTransfer.PermitDetails({
+                token: Currency.unwrap(currency0),
+                amount: 1e18,
+                expiration: uint48(block.timestamp + 3600),
+                nonce: 0
+            }),
+            spender: address(permissionedRouter),
+            sigDeadline: block.timestamp + 3600
+        });
+
+        uint256 testKey = uint256(0x22);
+        address testSigner = vm.addr(testKey);
+
+        bytes32 digest = generatePermitDigest(permitSingle);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(testKey, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+        bytes memory data = abi.encode(permitSingle, signature);
+
+        vm.prank(testSigner);
+        permissionedRouter.execute(COMMAND_PERMIT2_PERMIT, toBytesArray(data), type(uint256).max);
+    }
+
+    function test_invalid_command_reverts() public {
+        bytes memory data = hex"1234567890";
+        vm.expectRevert(CommandNotImplemented.selector);
+        permissionedRouter.execute(hex"07", toBytesArray(data), type(uint256).max);
+    }
+
+    function test_failed_call_reverts() public {
+        IAllowanceTransfer.PermitSingle memory permitSingle = IAllowanceTransfer.PermitSingle({
+            details: IAllowanceTransfer.PermitDetails({
+                token: Currency.unwrap(currency0),
+                amount: 1e18,
+                expiration: uint48(block.timestamp + 3600),
+                nonce: 0
+            }),
+            spender: address(permissionedRouter),
+            sigDeadline: block.timestamp + 3600
+        });
+        uint256 testKey = uint256(0x22);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(testKey, hex"aa");
+        bytes memory signature = abi.encodePacked(r, s, v);
+        bytes memory data = abi.encode(permitSingle, signature);
+
+        vm.expectRevert(abi.encodeWithSelector(ExecutionFailed.selector, 0, hex""));
+        permissionedRouter.execute(COMMAND_PERMIT2_PERMIT, toBytesArray(data), type(uint256).max);
     }
 
     function test_hooks() public {
