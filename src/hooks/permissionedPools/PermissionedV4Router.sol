@@ -20,10 +20,10 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
     error Unauthorized();
     error HookNotImplemented();
     error InvalidEthSender();
-    error CommandNotImplemented();
     error TransactionDeadlinePassed();
     error LengthMismatch();
     error SliceOutOfBounds();
+    error InvalidCommandType(uint256 commandType);
     /// @notice Thrown when a required command has failed
     error ExecutionFailed(uint256 commandIndex, bytes message);
 
@@ -119,7 +119,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         } else if (command == COMMAND_V4_SWAP) {
             _executeActions(inputs);
         } else {
-            revert CommandNotImplemented();
+            revert InvalidCommandType(command);
         }
     }
 
