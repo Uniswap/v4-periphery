@@ -89,17 +89,15 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         }
     }
 
+    /// @notice Public view function to be used instead of msg.sender, as the contract performs self-reentrancy and at
+    /// times msg.sender == address(this). Instead msgSender() returns the initiator of the lock
+    /// @dev overrides BaseActionsRouter.msgSender in V4Router
+    function msgSender() public view override returns (address) {
+        return _getLocker();
+    }
+
     /// @notice Decodes and executes the given command with the given inputs
-    /// @param commandType The command type to execute
-    /// @param inputs The inputs to execute the command with
-    /// @dev 2 masks are used to enable use of a nested-if statement in execution for efficiency reasons
-    /// @return success True on success of the command, false on failure
-    /// @return output The outputs or error messages, if any, from the command
-    function dispatch(bytes1 commandType, bytes calldata inputs)
-        public
-        payable
-        returns (bool success, bytes memory output)
-    {
+    function dispatch(bytes1 commandType, bytes calldata inputs) internal returns (bool success, bytes memory output) {
         uint256 command = uint8(commandType & COMMAND_TYPE_MASK);
         success = true;
         if (command == COMMAND_PERMIT2_PERMIT) {
@@ -123,13 +121,6 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         } else {
             revert CommandNotImplemented();
         }
-    }
-
-    /// @notice Public view function to be used instead of msg.sender, as the contract performs self-reentrancy and at
-    /// times msg.sender == address(this). Instead msgSender() returns the initiator of the lock
-    /// @dev overrides BaseActionsRouter.msgSender in V4Router
-    function msgSender() public view override returns (address) {
-        return _getLocker();
     }
 
     function _pay(Currency currency, address payer, uint256 amount) internal override {
