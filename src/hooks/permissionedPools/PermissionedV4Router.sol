@@ -97,7 +97,10 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
     }
 
     /// @notice Decodes and executes the given command with the given inputs
-    function _dispatch(bytes1 commandType, bytes calldata inputs) internal returns (bool success, bytes memory output) {
+    function _dispatch(bytes1 commandType, bytes calldata inputs)
+        internal
+        returns (bool success, bytes memory output)
+    {
         uint256 command = uint8(commandType & COMMAND_TYPE_MASK);
         success = true;
         if (command == COMMAND_PERMIT2_PERMIT) {
