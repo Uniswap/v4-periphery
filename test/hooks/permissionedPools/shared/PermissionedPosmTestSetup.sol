@@ -51,14 +51,16 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
 
     PoolKey public wethKey;
 
-    mapping(Currency => Currency) public wrappedToPermissioned;
+    mapping(Currency => Currency) public adapterToPermissioned;
 
-    function deployAndApprovePosm(IPoolManager poolManager, address wrappedTokenFactory_, bytes32 salt) public {
-        deployPermissionedPosm(poolManager, wrappedTokenFactory_, salt);
+    function deployAndApprovePosm(IPoolManager poolManager, address permissionsAdapterFactory_, bytes32 salt) public {
+        deployPermissionedPosm(poolManager, permissionsAdapterFactory_, salt);
         approvePosm();
     }
 
-    function deployPermissionedPosm(IPoolManager poolManager, address wrappedTokenFactory_, bytes32 salt) internal {
+    function deployPermissionedPosm(IPoolManager poolManager, address permissionsAdapterFactory_, bytes32 salt)
+        internal
+    {
         permit2 = IAllowanceTransfer(deployPermit2());
         _WETH9 = deployWETH();
         proxyAsImplementation = deployDescriptor(poolManager, "ETH");
@@ -68,12 +70,12 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             100_000,
             address(proxyAsImplementation),
             address(_WETH9),
-            wrappedTokenFactory_,
+            permissionsAdapterFactory_,
             abi.encode(salt)
         );
     }
 
-    function deployAndApprovePosmOnly(IPoolManager poolManager, address wrappedTokenFactory_, bytes32 salt)
+    function deployAndApprovePosmOnly(IPoolManager poolManager, address permissionsAdapterFactory_, bytes32 salt)
         public
         returns (IPositionManager secondaryPosm)
     {
@@ -83,7 +85,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             100_000,
             address(proxyAsImplementation),
             address(_WETH9),
-            wrappedTokenFactory_,
+            permissionsAdapterFactory_,
             abi.encode(salt)
         );
         approvePosm();
@@ -144,7 +146,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
     }
 
     function getPermissionedCurrency(Currency currency) internal view returns (Currency) {
-        Currency permissionedCurrency = wrappedToPermissioned[currency];
+        Currency permissionedCurrency = adapterToPermissioned[currency];
         if (permissionedCurrency == Currency.wrap(address(0))) {
             return currency;
         }

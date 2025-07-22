@@ -5,7 +5,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IAllowlistChecker, PermissionFlag} from "./IAllowlistChecker.sol";
 
-interface IWrappedPermissionedToken is IERC20 {
+interface IPermissionsAdapter is IERC20 {
     /// @notice Emitted when the allow list checker is updated
     event AllowListCheckerUpdated(IAllowlistChecker indexed newAllowListChecker);
 
@@ -21,7 +21,7 @@ interface IWrappedPermissionedToken is IERC20 {
     /// @notice Thrown when the transfer is not interacting with the pool manager
     error InvalidTransfer(address from, address to);
 
-    /// @notice Thrown when the wrapper is not allowed to trigger transfers on the wrapped token
+    /// @notice Thrown when the wrapper is not allowed to trigger transfers on the permissions adapter
     error UnauthorizedWrapper(address wrapper);
 
     /// @notice Thrown when there is an insufficient amount of permissioned tokens available to wrap
@@ -42,7 +42,7 @@ interface IWrappedPermissionedToken is IERC20 {
     /// @param wrapper The wrapper to update
     /// @param allowed Whether the wrapper is allowed
     /// @dev Only callable by the owner
-    /// @dev To ensure the wrapped token cannot be wrapped in an ERC6909 token on the PoolManager, the wrapper must only implement `swap` or `modifyLiquidity` functions
+    /// @dev To ensure the permissions adapter cannot be wrapped in an ERC6909 token on the PoolManager, the wrapper must only implement `swap` or `modifyLiquidity` functions
     function updateAllowedWrapper(address wrapper, bool allowed) external;
 
     /// @notice Updates the swapping enabled status
@@ -67,9 +67,9 @@ interface IWrappedPermissionedToken is IERC20 {
     /// @notice Returns the Uniswap v4 pool manager
     function POOL_MANAGER() external view returns (address);
 
-    /// @notice Returns the permissioned token that is wrapped by this contract
+    /// @notice Returns the permissioned token that is deposited in this contract
     function PERMISSIONED_TOKEN() external view returns (IERC20);
 
-    /// @notice Returns the admin of the wrapped permissioned token
+    /// @notice Returns the admin of the permissions adapter
     function owner() external view returns (address);
 }

@@ -5,13 +5,13 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IWrappedPermissionedTokenFactory} from
-    "../../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
+import {IPermissionsAdapterFactory} from
+    "../../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
 import {PermissionedHooks} from "../../../../src/hooks/permissionedPools/PermissionedHooks.sol";
 
 contract MockHooks is PermissionedHooks {
-    constructor(IPoolManager manager, IWrappedPermissionedTokenFactory wrappedTokenFactory)
-        PermissionedHooks(manager, wrappedTokenFactory)
+    constructor(IPoolManager manager, IPermissionsAdapterFactory permissionsAdapterFactory)
+        PermissionedHooks(manager, permissionsAdapterFactory)
     {}
 }
 
