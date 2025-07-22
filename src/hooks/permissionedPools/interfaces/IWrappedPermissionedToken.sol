@@ -12,6 +12,7 @@ interface IWrappedPermissionedToken is IERC20 {
     /// @notice Emitted when an allowed wrapper is updated
     event AllowedWrapperUpdated(address indexed wrapper, bool allowed);
 
+    /// @notice Emitted when the swapping enabled status is updated
     event SwappingEnabledUpdated(bool enabled);
 
     /// @notice Thrown when the allow list checker does not implement the IAllowListChecker interface
