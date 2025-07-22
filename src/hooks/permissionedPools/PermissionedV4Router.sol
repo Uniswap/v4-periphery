@@ -81,9 +81,9 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
 
             bytes calldata input = inputs[commandIndex];
 
-            (success, output) = dispatch(command, input);
+            (success, output) = _dispatch(command, input);
 
-            if (!success && successRequired(command)) {
+            if (!success && _successRequired(command)) {
                 revert ExecutionFailed({commandIndex: commandIndex, message: output});
             }
         }
@@ -97,7 +97,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
     }
 
     /// @notice Decodes and executes the given command with the given inputs
-    function dispatch(bytes1 commandType, bytes calldata inputs) internal returns (bool success, bytes memory output) {
+    function _dispatch(bytes1 commandType, bytes calldata inputs) internal returns (bool success, bytes memory output) {
         uint256 command = uint8(commandType & COMMAND_TYPE_MASK);
         success = true;
         if (command == COMMAND_PERMIT2_PERMIT) {
@@ -106,7 +106,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
             assembly {
                 permitSingle := inputs.offset
             }
-            bytes calldata data = toBytes(inputs, 6); // PermitSingle takes first 6 slots (0..5)
+            bytes calldata data = _toBytes(inputs, 6); // PermitSingle takes first 6 slots (0..5)
 
             (success, output) = address(PERMIT2).call(
                 abi.encodeWithSignature(
@@ -161,13 +161,13 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         return Currency.wrap(permissionedToken).balanceOfSelf();
     }
 
-    function successRequired(bytes1 command) internal pure returns (bool) {
+    function _successRequired(bytes1 command) internal pure returns (bool) {
         return command & COMMAND_FLAG_ALLOW_REVERT == 0;
     }
 
     /// @notice Decode the `_arg`-th element in `_bytes` as a dynamic array
     /// @dev This function is copied from BytesLib in universal-router to avoid adding it into the repositoriy
-    function toLengthOffset(bytes calldata _bytes, uint256 _arg)
+    function _toLengthOffset(bytes calldata _bytes, uint256 _arg)
         private
         pure
         returns (uint256 length, uint256 offset)
@@ -186,8 +186,8 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
 
     /// @notice Decode the `_arg`-th element in `_bytes` as `bytes`
     /// @dev This function is copied from BytesLib in universal-router to avoid adding it into the repositoriy
-    function toBytes(bytes calldata _bytes, uint256 _arg) private pure returns (bytes calldata res) {
-        (uint256 length, uint256 offset) = toLengthOffset(_bytes, _arg);
+    function _toBytes(bytes calldata _bytes, uint256 _arg) private pure returns (bytes calldata res) {
+        (uint256 length, uint256 offset) = _toLengthOffset(_bytes, _arg);
         assembly {
             res.length := length
             res.offset := offset
