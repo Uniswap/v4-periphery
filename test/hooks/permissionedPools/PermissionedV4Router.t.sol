@@ -8,6 +8,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {Hooks, IHooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {PermitHash} from "permit2/src/libraries/PermitHash.sol";
 import {IV4Router} from "../../../src/interfaces/IV4Router.sol";
 import {PermissionedRoutingTestHelpers} from "./shared/PermissionedRoutingTestHelpers.sol";
 import {Planner} from "../../shared/Planner.sol";
@@ -18,10 +20,15 @@ import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPo
 import {PathKey} from "../../../src/libraries/PathKey.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
+    using PermitHash for IAllowanceTransfer.PermitSingle;
+
     // To allow testing without importing PermissionedV4Router
     error HookNotImplemented();
     error Unauthorized();
     error HookCallFailed();
+    error SliceOutOfBounds();
+    error InvalidCommandType(uint256 commandType);
+    error ExecutionFailed(uint256 commandIndex, bytes output);
 
     Currency public wrappedCurrency0;
     Currency public wrappedCurrency1;
@@ -29,6 +36,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     // Test Users
     address public alice = makeAddr("ALICE");
     address public unauthorizedUser = makeAddr("UNAUTHORIZED");
+
+    // Commands
+    bytes public COMMAND_V4_SWAP = hex"10";
+    bytes public COMMAND_PERMIT2_PERMIT = hex"0a";
 
     function setUp() public {
         setupPermissionedRouterCurrenciesAndPoolsWithLiquidity(alice);
@@ -106,7 +117,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
 
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
         vm.snapshotGasLastCall("PermissionedV4Router_ExactInputSingle_PermissionedTokens");
     }
 
@@ -145,7 +156,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 abi.encodeWithSelector(HookCallFailed.selector)
             )
         );
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     error SwappingDisabled();
@@ -175,7 +186,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
 
         wrappedToken0.updateSwappingEnabled(true);
         wrappedToken1.updateSwappingEnabled(false);
@@ -190,7 +201,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 abi.encodeWithSelector(Hooks.HookCallFailed.selector)
             )
         );
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_swap_succeeds_authorized_user() public {
@@ -207,7 +218,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
 
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_swap_authorized_router() public {
@@ -227,7 +238,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(wrappedKey, true, address(manager));
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(wrappedKey, true, address(manager));
 
@@ -261,7 +272,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 abi.encodeWithSelector(HookCallFailed.selector)
             )
         );
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_swap_succeeds_authorized_user_mixed_entry() public {
@@ -289,7 +300,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key1, zeroToOne, address(manager));
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key1, zeroToOne, address(manager));
 
@@ -325,7 +336,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key1, zeroToOne, address(manager));
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key1, zeroToOne, address(manager));
 
@@ -371,7 +382,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 abi.encodeWithSelector(HookCallFailed.selector)
             )
         );
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_swap_unauthorized_user_mixed_exit_reverts() public {
@@ -408,7 +419,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 abi.encodeWithSelector(HookCallFailed.selector)
             )
         );
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_permission_flag_none_swap_reverts() public {
@@ -427,7 +438,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         vm.prank(alice);
         vm.expectRevert();
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_permission_flag_swap_allowed_succeeds() public {
@@ -448,7 +459,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
 
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_permission_flag_liquidity_allowed_swap_reverts() public {
@@ -470,7 +481,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         vm.prank(alice);
         vm.expectRevert();
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_permission_flag_all_allowed_swap_succeeds() public {
@@ -491,7 +502,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
 
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_permission_flag_combinations_swap() public {
@@ -517,7 +528,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         );
 
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_permission_flag_partial_permissions_swap() public {
@@ -539,7 +550,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         vm.prank(alice);
         vm.expectRevert();
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_permission_flag_dynamic_changes_swap() public {
@@ -561,7 +572,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         // Should succeed initially
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
 
         // Remove permissions
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.NONE);
@@ -570,7 +581,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         // Should fail on subsequent operations
         vm.prank(alice);
         vm.expectRevert();
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_permission_flag_edge_cases_swap() public {
@@ -593,14 +604,14 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         vm.prank(alice);
         vm.expectRevert();
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
 
         // Test with maximum permissions (should be same as ALL_ALLOWED)
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlag.wrap(0xFFFF));
         MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(alice, PermissionFlag.wrap(0xFFFF));
 
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_permission_flag_all_pool_types_swap() public {
@@ -630,7 +641,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(poolKey.currency0, poolKey.currency1, ActionConstants.MSG_SENDER);
 
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_permission_flag_exact_output_swap() public {
@@ -652,7 +663,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
 
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_permission_flag_multi_hop_swap() public {
@@ -685,7 +696,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
 
         vm.prank(alice);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -705,7 +716,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         vm.expectRevert(
             abi.encodeWithSelector(IV4Router.V4TooLittleReceived.selector, expectedAmountOut + 1, expectedAmountOut)
         );
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_swapExactInputSingle_zeroForOne_takeToMsgSender() public {
@@ -806,7 +817,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         assertEq(inputCurrency.balanceOf(address(permissionedRouter)), 0);
         assertEq(outputCurrency.balanceOf(address(permissionedRouter)), 0);
 
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
         // the output tokens have been left in the router
         assertEq(outputCurrency.balanceOf(address(permissionedRouter)), expectedAmountOut);
         assertEq(inputCurrency.balanceOf(address(permissionedRouter)), 0);
@@ -858,7 +869,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         vm.expectRevert(
             abi.encodeWithSelector(IV4Router.V4TooLittleReceived.selector, expectedAmountOut + 1, expectedAmountOut)
         );
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_swapExactIn_1Hop_zeroForOne() public {
@@ -1212,7 +1223,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 ethBalanceBefore) =
             getInputAndOutputBalances(nativeKey, zeroForOne, address(manager));
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter, uint256 ethBalanceAfter) =
             getInputAndOutputBalances(nativeKey, zeroForOne, address(manager));
 
@@ -1241,7 +1252,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 IV4Router.V4TooMuchRequested.selector, expectedAmountIn - 1, 369070324193623892281288
             )
         );
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_swapExactOutputSingle_zeroForOne() public {
@@ -1323,7 +1334,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         vm.expectRevert(
             abi.encodeWithSelector(IV4Router.V4TooMuchRequested.selector, expectedAmountIn - 1, expectedAmountIn)
         );
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_swapExactOut_1Hop_zeroForOne() public {
@@ -1522,7 +1533,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 abi.encodeWithSelector(HookCallFailed.selector)
             )
         );
-        permissionedRouter.execute{value: 0}(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
     function test_swapExactOut_native_3Hops_permissioned_middle() public {
@@ -1591,7 +1602,9 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
                 abi.encodeWithSelector(HookCallFailed.selector)
             )
         );
-        permissionedRouter.execute{value: (nativeKey.currency0.isAddressZero()) ? expectedAmountIn : 0}(data);
+        permissionedRouter.execute{value: (nativeKey.currency0.isAddressZero()) ? expectedAmountIn : 0}(
+            COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max
+        );
     }
 
     function test_swapExactOutputSingle_swapOpenDelta() public {
@@ -1610,7 +1623,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalances(key0, true, address(manager));
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key0, true, address(manager));
 
@@ -1637,7 +1650,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         (uint256 inputBalanceBefore, uint256 outputBalanceBefore,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalancesPath(tokenPath, address(manager));
 
@@ -1731,7 +1744,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
             getInputAndOutputBalances(key2, true, address(manager));
 
         // Execute the swap - this should trigger the _pay function with payer == address(this) and permissionedToken == address(0)
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
 
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key2, true, address(manager));
@@ -1760,7 +1773,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
             getInputAndOutputBalances(key0, true, address(manager));
 
         // Execute the swap - this should trigger the _pay function with payer == address(this) and permissionedToken != address(0)
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
 
         (uint256 inputBalanceAfter, uint256 outputBalanceAfter,) =
             getInputAndOutputBalances(key0, true, address(manager));
@@ -1797,7 +1810,64 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         vm.prank(unauthorizedUser);
         vm.expectRevert(Unauthorized.selector);
-        permissionedRouter.execute(data);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+    }
+
+    function test_command_permit2_permit() public {
+        IAllowanceTransfer.PermitSingle memory permitSingle = IAllowanceTransfer.PermitSingle({
+            details: IAllowanceTransfer.PermitDetails({
+                token: Currency.unwrap(currency0),
+                amount: 1e18,
+                expiration: uint48(block.timestamp + 3600),
+                nonce: 0
+            }),
+            spender: address(permissionedRouter),
+            sigDeadline: block.timestamp + 3600
+        });
+
+        uint256 testKey = uint256(0x22);
+        address testSigner = vm.addr(testKey);
+
+        bytes32 digest = generatePermitDigest(permitSingle);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(testKey, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+        bytes memory data = abi.encode(permitSingle, signature);
+
+        vm.prank(testSigner);
+        permissionedRouter.execute(COMMAND_PERMIT2_PERMIT, toBytesArray(data), type(uint256).max);
+    }
+
+    function test_invalid_command_reverts() public {
+        bytes memory data = hex"1234567890";
+        vm.expectRevert(abi.encodeWithSelector(InvalidCommandType.selector, uint8(0x07)));
+        permissionedRouter.execute(hex"07", toBytesArray(data), type(uint256).max);
+    }
+
+    function test_failed_call_reverts() public {
+        IAllowanceTransfer.PermitSingle memory permitSingle = IAllowanceTransfer.PermitSingle({
+            details: IAllowanceTransfer.PermitDetails({
+                token: Currency.unwrap(currency0),
+                amount: 1e18,
+                expiration: uint48(block.timestamp + 3600),
+                nonce: 0
+            }),
+            spender: address(permissionedRouter),
+            sigDeadline: block.timestamp + 3600
+        });
+        uint256 testKey = uint256(0x22);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(testKey, hex"aa");
+        bytes memory signature = abi.encodePacked(r, s, v);
+        bytes memory data = abi.encode(permitSingle, signature);
+
+        vm.expectRevert(abi.encodeWithSelector(ExecutionFailed.selector, 0, hex""));
+        permissionedRouter.execute(COMMAND_PERMIT2_PERMIT, toBytesArray(data), type(uint256).max);
+    }
+
+    function test_slice_out_of_bounds_reverts() public {
+        bytes memory data = hex"1234567890";
+        vm.expectRevert(SliceOutOfBounds.selector);
+        permissionedRouter.execute(COMMAND_PERMIT2_PERMIT, toBytesArray(data), type(uint256).max);
     }
 
     function test_hooks() public {

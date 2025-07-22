@@ -20,6 +20,18 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
     error Unauthorized();
     error HookNotImplemented();
     error InvalidEthSender();
+    error TransactionDeadlinePassed();
+    error LengthMismatch();
+    error SliceOutOfBounds();
+    error InvalidCommandType(uint256 commandType);
+    /// @notice Thrown when a required command has failed
+    error ExecutionFailed(uint256 commandIndex, bytes message);
+
+    // Commands
+    uint256 constant COMMAND_V4_SWAP = 0x10;
+    uint256 constant COMMAND_PERMIT2_PERMIT = 0x0a;
+    bytes1 internal constant COMMAND_FLAG_ALLOW_REVERT = 0x80;
+    bytes1 internal constant COMMAND_TYPE_MASK = 0x3f;
 
     constructor(
         IPoolManager poolManager_,
@@ -32,8 +44,49 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         WETH9 = weth9;
     }
 
-    function execute(bytes calldata input) public payable isNotLocked {
-        _executeActions(input);
+    modifier checkDeadline(uint256 deadline) {
+        if (block.timestamp > deadline) revert TransactionDeadlinePassed();
+        _;
+    }
+
+    /// @notice To receive ETH from WETH
+    receive() external payable {
+        if (msg.sender != address(WETH9) && msg.sender != address(poolManager)) revert InvalidEthSender();
+    }
+
+    /// @notice Executes encoded commands along with provided inputs. Reverts if deadline has expired.
+    /// @param commands A set of concatenated commands, each 1 byte in length
+    /// @param inputs An array of byte strings containing abi encoded inputs for each command
+    /// @param deadline The deadline by which the transaction must be executed
+    function execute(bytes calldata commands, bytes[] calldata inputs, uint256 deadline)
+        external
+        payable
+        checkDeadline(deadline)
+    {
+        execute(commands, inputs);
+    }
+
+    /// @notice Executes encoded commands along with provided inputs.
+    /// @param commands A set of concatenated commands, each 1 byte in length
+    /// @param inputs An array of byte strings containing abi encoded inputs for each command
+    function execute(bytes calldata commands, bytes[] calldata inputs) public payable isNotLocked {
+        bool success;
+        bytes memory output;
+        uint256 numCommands = commands.length;
+        if (inputs.length != numCommands) revert LengthMismatch();
+
+        // loop through all given commands, execute them and pass along outputs as defined
+        for (uint256 commandIndex = 0; commandIndex < numCommands; commandIndex++) {
+            bytes1 command = commands[commandIndex];
+
+            bytes calldata input = inputs[commandIndex];
+
+            (success, output) = _dispatch(command, input);
+
+            if (!success && _successRequired(command)) {
+                revert ExecutionFailed({commandIndex: commandIndex, message: output});
+            }
+        }
     }
 
     /// @notice Public view function to be used instead of msg.sender, as the contract performs self-reentrancy and at
@@ -41,6 +94,36 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
     /// @dev overrides BaseActionsRouter.msgSender in V4Router
     function msgSender() public view override returns (address) {
         return _getLocker();
+    }
+
+    /// @notice Decodes and executes the given command with the given inputs
+    function _dispatch(bytes1 commandType, bytes calldata inputs)
+        internal
+        returns (bool success, bytes memory output)
+    {
+        uint256 command = uint8(commandType & COMMAND_TYPE_MASK);
+        success = true;
+        if (command == COMMAND_PERMIT2_PERMIT) {
+            // equivalent: abi.decode(inputs, (IAllowanceTransfer.PermitSingle, bytes))
+            IAllowanceTransfer.PermitSingle calldata permitSingle;
+            assembly {
+                permitSingle := inputs.offset
+            }
+            bytes calldata data = _toBytes(inputs, 6); // PermitSingle takes first 6 slots (0..5)
+
+            (success, output) = address(PERMIT2).call(
+                abi.encodeWithSignature(
+                    "permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)",
+                    msgSender(),
+                    permitSingle,
+                    data
+                )
+            );
+        } else if (command == COMMAND_V4_SWAP) {
+            _executeActions(inputs);
+        } else {
+            revert InvalidCommandType(command);
+        }
     }
 
     function _pay(Currency currency, address payer, uint256 amount) internal override {
@@ -81,8 +164,36 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         return Currency.wrap(permissionedToken).balanceOfSelf();
     }
 
-    /// @notice To receive ETH from WETH
-    receive() external payable {
-        if (msg.sender != address(WETH9) && msg.sender != address(poolManager)) revert InvalidEthSender();
+    function _successRequired(bytes1 command) internal pure returns (bool) {
+        return command & COMMAND_FLAG_ALLOW_REVERT == 0;
+    }
+
+    /// @notice Decode the `_arg`-th element in `_bytes` as a dynamic array
+    /// @dev This function is copied from BytesLib in universal-router to avoid adding it into the repositoriy
+    function _toLengthOffset(bytes calldata _bytes, uint256 _arg)
+        private
+        pure
+        returns (uint256 length, uint256 offset)
+    {
+        uint256 relativeOffset;
+        assembly {
+            // The offset of the `_arg`-th element is `32 * arg`, which stores the offset of the length pointer.
+            // shl(5, x) is equivalent to mul(32, x)
+            let lengthPtr := add(_bytes.offset, calldataload(add(_bytes.offset, shl(5, _arg))))
+            length := calldataload(lengthPtr)
+            offset := add(lengthPtr, 0x20)
+            relativeOffset := sub(offset, _bytes.offset)
+        }
+        if (_bytes.length < length + relativeOffset) revert SliceOutOfBounds();
+    }
+
+    /// @notice Decode the `_arg`-th element in `_bytes` as `bytes`
+    /// @dev This function is copied from BytesLib in universal-router to avoid adding it into the repositoriy
+    function _toBytes(bytes calldata _bytes, uint256 _arg) private pure returns (bytes calldata res) {
+        (uint256 length, uint256 offset) = _toLengthOffset(_bytes, _arg);
+        assembly {
+            res.length := length
+            res.offset := offset
+        }
     }
 }

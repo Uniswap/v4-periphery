@@ -282,7 +282,8 @@ contract PermissionedDeployers is Test {
 
         uint256 value = isNativeInput ? uint256(-amountSpecified) : 0;
         bytes memory data = getSwapData(_key, uint256(-amountSpecified), zeroForOne);
-        permissionedSwapRouter.execute{value: value}(data);
+        bytes memory command = hex"10";
+        permissionedSwapRouter.execute{value: value}(command, toBytesArray(data), type(uint256).max);
     }
 
     function getSwapData(PoolKey memory poolKey, uint256 amountIn, bool zeroForOne)
@@ -313,5 +314,11 @@ contract PermissionedDeployers is Test {
         );
 
         return data;
+    }
+
+    function toBytesArray(bytes memory data) internal pure returns (bytes[] memory) {
+        bytes[] memory result = new bytes[](1);
+        result[0] = data;
+        return result;
     }
 }
