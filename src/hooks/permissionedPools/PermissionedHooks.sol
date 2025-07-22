@@ -19,6 +19,7 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
     IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
 
     error Unauthorized();
+    error SwappingDisabled();
 
     constructor(IPoolManager manager, IWrappedPermissionedTokenFactory wrappedTokenFactory) BaseHook(manager) {
         WRAPPED_TOKEN_FACTORY = wrappedTokenFactory;
@@ -60,7 +61,7 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
         _isAllowed(Currency.unwrap(poolKey.currency1), sender.msgSender(), address(sender), selector);
     }
 
-    /// @dev checks if the provided token is a wrapped token by checking if it has a verified permissioned token, if yes, check the allowlist
+    /// @dev checks if the provided token is a wrapped token by checking if it has a verified permissioned token, if yes, check the allowlist and check whether swapping is enabled
     function _isAllowed(address wrappedToken, address sender, address router, bytes4 selector) internal view {
         address permissionedToken = WRAPPED_TOKEN_FACTORY.verifiedPermissionedTokenOf(wrappedToken);
         if (permissionedToken == address(0)) return;
@@ -68,6 +69,7 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
         PermissionFlag permission = PermissionFlags.NONE;
         if (selector == this.beforeSwap.selector) {
             permission = PermissionFlags.SWAP_ALLOWED;
+            if (!IWrappedPermissionedToken(wrappedToken).swappingEnabled()) revert SwappingDisabled();
         } else if (selector == this.beforeAddLiquidity.selector) {
             permission = PermissionFlags.LIQUIDITY_ALLOWED;
         }
@@ -75,8 +77,6 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
         if (
             !IWrappedPermissionedToken(wrappedToken).isAllowed(sender, permission)
                 || !IWrappedPermissionedToken(wrappedToken).allowedWrappers(router)
-        ) {
-            revert Unauthorized();
-        }
+        ) revert Unauthorized();
     }
 }

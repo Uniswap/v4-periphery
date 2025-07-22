@@ -12,6 +12,9 @@ interface IWrappedPermissionedToken is IERC20 {
     /// @notice Emitted when an allowed wrapper is updated
     event AllowedWrapperUpdated(address indexed wrapper, bool allowed);
 
+    /// @notice Emitted when the swapping enabled status is updated
+    event SwappingEnabledUpdated(bool enabled);
+
     /// @notice Thrown when the allow list checker does not implement the IAllowListChecker interface
     error InvalidAllowListChecker(IAllowlistChecker newAllowListChecker);
 
@@ -24,16 +27,16 @@ interface IWrappedPermissionedToken is IERC20 {
     /// @notice Thrown when there is an insufficient amount of permissioned tokens available to wrap
     error InsufficientBalance(uint256 amount, uint256 availableBalance);
 
-    /// @notice Updates the allow list checker
-    /// @param newAllowListChecker The new allow list checker
-    /// @dev Only callable by the owner
-    function updateAllowListChecker(IAllowlistChecker newAllowListChecker) external;
-
     /// @notice Wraps the permissioned token to the pool manager
     /// @param amount The amount of permissioned tokens to wrap
     /// @dev Only callable by allowed wrappers
     /// @dev The `amount` must be sent to this contract before calling this function
     function wrapToPoolManager(uint256 amount) external;
+
+    /// @notice Updates the allow list checker
+    /// @param newAllowListChecker The new allow list checker
+    /// @dev Only callable by the owner
+    function updateAllowListChecker(IAllowlistChecker newAllowListChecker) external;
 
     /// @notice Updates the allowed wrapper that can wrap the permissioned token
     /// @param wrapper The wrapper to update
@@ -41,6 +44,11 @@ interface IWrappedPermissionedToken is IERC20 {
     /// @dev Only callable by the owner
     /// @dev To ensure the wrapped token cannot be wrapped in an ERC6909 token on the PoolManager, the wrapper must only implement `swap` or `modifyLiquidity` functions
     function updateAllowedWrapper(address wrapper, bool allowed) external;
+
+    /// @notice Updates the swapping enabled status
+    /// @param enabled Whether swapping is enabled
+    /// @dev Only callable by the owner
+    function updateSwappingEnabled(bool enabled) external;
 
     /// @notice Returns whether a transfer is allowed
     /// @param account The account to check
@@ -52,6 +60,9 @@ interface IWrappedPermissionedToken is IERC20 {
     /// @notice Returns the allowed wrappers that can wrap the permissioned token
     /// @dev e.g., the permissioned pool manager, quoters or the swap router
     function allowedWrappers(address wrapper) external view returns (bool);
+
+    /// @notice Returns the swapping enabled status
+    function swappingEnabled() external view returns (bool);
 
     /// @notice Returns the Uniswap v4 pool manager
     function POOL_MANAGER() external view returns (address);

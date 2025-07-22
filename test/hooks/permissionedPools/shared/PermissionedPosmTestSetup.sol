@@ -53,12 +53,12 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
 
     mapping(Currency => Currency) public wrappedToPermissioned;
 
-    function deployAndApprovePosm(IPoolManager poolManager, address wrappedTokenFactory, bytes32 salt) public {
-        deployPermissionedPosm(poolManager, wrappedTokenFactory, salt);
+    function deployAndApprovePosm(IPoolManager poolManager, address wrappedTokenFactory_, bytes32 salt) public {
+        deployPermissionedPosm(poolManager, wrappedTokenFactory_, salt);
         approvePosm();
     }
 
-    function deployPermissionedPosm(IPoolManager poolManager, address wrappedTokenFactory, bytes32 salt) internal {
+    function deployPermissionedPosm(IPoolManager poolManager, address wrappedTokenFactory_, bytes32 salt) internal {
         permit2 = IAllowanceTransfer(deployPermit2());
         _WETH9 = deployWETH();
         proxyAsImplementation = deployDescriptor(poolManager, "ETH");
@@ -68,12 +68,12 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             100_000,
             address(proxyAsImplementation),
             address(_WETH9),
-            wrappedTokenFactory,
+            wrappedTokenFactory_,
             abi.encode(salt)
         );
     }
 
-    function deployAndApprovePosmOnly(IPoolManager poolManager, address wrappedTokenFactory, bytes32 salt)
+    function deployAndApprovePosmOnly(IPoolManager poolManager, address wrappedTokenFactory_, bytes32 salt)
         public
         returns (IPositionManager secondaryPosm)
     {
@@ -83,7 +83,7 @@ contract PermissionedPosmTestSetup is Test, PermissionedDeployers, DeployPermit2
             100_000,
             address(proxyAsImplementation),
             address(_WETH9),
-            wrappedTokenFactory,
+            wrappedTokenFactory_,
             abi.encode(salt)
         );
         approvePosm();

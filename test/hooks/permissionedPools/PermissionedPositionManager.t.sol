@@ -85,6 +85,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         // set up approvals for alice
         seedBalance(alice);
         approvePosmFor(alice);
+        wrappedToken0.updateSwappingEnabled(true);
+        wrappedToken2.updateSwappingEnabled(true);
     }
 
     function setUpPosms() internal {

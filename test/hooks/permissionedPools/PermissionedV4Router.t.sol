@@ -6,8 +6,8 @@ import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/Pool
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
+import {Hooks, IHooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {PermitHash} from "permit2/src/libraries/PermitHash.sol";
 import {IV4Router} from "../../../src/interfaces/IV4Router.sol";
@@ -46,6 +46,8 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         wrappedCurrency0 = Currency.wrap(address(wrappedToken0));
         wrappedCurrency1 = Currency.wrap(address(wrappedToken1));
+        wrappedToken0.updateSwappingEnabled(true);
+        wrappedToken1.updateSwappingEnabled(true);
 
         plan = Planner.init();
 
@@ -157,7 +159,52 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
-    function test_swap_authorized_user() public {
+    error SwappingDisabled();
+
+    function test_swap_revert_trading_disabled() public {
+        IERC20(Currency.unwrap(currency0)).transfer(alice, 2 ether);
+        IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
+
+        uint256 amountIn = 100;
+        PoolKey memory wrappedKey = PoolKey(wrappedCurrency1, wrappedCurrency0, 3000, 60, permissionedHooks);
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(wrappedKey, true, uint128(amountIn), 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(wrappedCurrency1, wrappedCurrency0, ActionConstants.MSG_SENDER);
+
+        wrappedToken0.updateSwappingEnabled(false);
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(SwappingDisabled.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
+        );
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+
+        wrappedToken0.updateSwappingEnabled(true);
+        wrappedToken1.updateSwappingEnabled(false);
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(SwappingDisabled.selector),
+                abi.encodeWithSelector(Hooks.HookCallFailed.selector)
+            )
+        );
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+    }
+
+    function test_swap_succeeds_authorized_user() public {
         IERC20(Currency.unwrap(currency0)).transfer(alice, 2 ether);
         IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
 

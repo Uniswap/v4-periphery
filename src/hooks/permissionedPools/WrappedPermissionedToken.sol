@@ -19,6 +19,9 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     IAllowlistChecker public allowListChecker;
 
     /// @inheritdoc IWrappedPermissionedToken
+    bool public swappingEnabled;
+
+    /// @inheritdoc IWrappedPermissionedToken
     mapping(address wrapper => bool) public allowedWrappers;
 
     constructor(
@@ -51,6 +54,11 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     }
 
     /// @inheritdoc IWrappedPermissionedToken
+    function updateSwappingEnabled(bool enabled) external onlyOwner {
+        _updateSwappingEnabled(enabled);
+    }
+
+    /// @inheritdoc IWrappedPermissionedToken
     function isAllowed(address account, PermissionFlag permission) public view returns (bool) {
         return ((allowListChecker.checkAllowlist(account)) & (permission)) == (permission);
     }
@@ -66,6 +74,11 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     function _updateAllowedWrapper(address wrapper, bool allowed) internal {
         allowedWrappers[wrapper] = allowed;
         emit AllowedWrapperUpdated(wrapper, allowed);
+    }
+
+    function _updateSwappingEnabled(bool enabled) internal {
+        swappingEnabled = enabled;
+        emit SwappingEnabledUpdated(enabled);
     }
 
     /// @dev Overrides the ERC20._update function to add the following checks and logic:
