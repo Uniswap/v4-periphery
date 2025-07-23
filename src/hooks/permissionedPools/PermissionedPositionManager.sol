@@ -10,21 +10,19 @@ import {
     IWETH9,
     Currency
 } from "../../PositionManager.sol";
-import {
-    IWrappedPermissionedTokenFactory,
-    IWrappedPermissionedToken
-} from "./interfaces/IWrappedPermissionedTokenFactory.sol";
+import {IPermissionsAdapter} from "./interfaces/IPermissionsAdapter.sol";
+import {IPermissionsAdapterFactory} from "./interfaces/IPermissionsAdapterFactory.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PermissionFlags} from "./libraries/PermissionFlags.sol";
 
 contract PermissionedPositionManager is PositionManager {
-    IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
+    IPermissionsAdapterFactory public immutable PERMISSIONS_ADAPTER_FACTORY;
 
     mapping(Currency currency => mapping(IHooks hooks => bool)) public isAllowedHooks;
 
     error InvalidHook();
     error SafeTransferDisabled();
-    error NotWrappedAdmin();
+    error NotPermissionsAdapterAdmin();
 
     /// @dev as this contract must know the hooks address in advance, it must be passed in as a constructor argument
     constructor(
@@ -33,19 +31,19 @@ contract PermissionedPositionManager is PositionManager {
         uint256 _unsubscribeGasLimit,
         IPositionDescriptor _tokenDescriptor,
         IWETH9 _weth9,
-        IWrappedPermissionedTokenFactory _wrappedTokenFactory
+        IPermissionsAdapterFactory _permissionsAdapterFactory
     ) PositionManager(_poolManager, _permit2, _unsubscribeGasLimit, _tokenDescriptor, _weth9) {
-        WRAPPED_TOKEN_FACTORY = _wrappedTokenFactory;
+        PERMISSIONS_ADAPTER_FACTORY = _permissionsAdapterFactory;
     }
 
-    /// @notice Sets the allowed hook for a given wrapped permissioned token
-    /// @dev Sets which hooks are allowed to be used with a wrapped permissioned token. Only callable by the owner of the wrapped permissioned token
-    /// @param currency The currency of the wrapped permissioned token
+    /// @notice Sets the allowed hook for a given permissions adapter
+    /// @dev Sets which hooks are allowed to be used with a permissions adapter. Only callable by the owner of the permissions adapter
+    /// @param currency The currency of the permissions adapter
     /// @param hooks The hook to set the allowance for
-    /// @param allowed Whether the hook is allowed to be used with the wrapped permissioned token
+    /// @param allowed Whether the hook is allowed to be used with the permissions adapter
     function setAllowedHook(Currency currency, IHooks hooks, bool allowed) external {
         if (_getOwner(currency) != msg.sender) {
-            revert NotWrappedAdmin();
+            revert NotPermissionsAdapterAdmin();
         }
         isAllowedHooks[currency][hooks] = allowed;
     }
@@ -107,29 +105,29 @@ contract PermissionedPositionManager is PositionManager {
             return;
         }
         // token is permissioned, wrap the token and transfer it to the pool manager
-        IWrappedPermissionedToken wrappedPermissionedToken = IWrappedPermissionedToken(Currency.unwrap(currency));
+        IPermissionsAdapter pemissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
         if (payer == address(this)) {
             // @audit is it necessary to check the allowlist here?
-            if (!wrappedPermissionedToken.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
+            if (!pemissionsAdapter.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
                 revert Unauthorized();
             }
-            Currency.wrap(permissionedToken).transfer(address(wrappedPermissionedToken), amount);
-            wrappedPermissionedToken.wrapToPoolManager(amount);
+            Currency.wrap(permissionedToken).transfer(address(pemissionsAdapter), amount);
+            pemissionsAdapter.wrapToPoolManager(amount);
         } else {
             // token is a permissioned token, wrap the token
-            permit2.transferFrom(payer, address(wrappedPermissionedToken), uint160(amount), permissionedToken);
-            wrappedPermissionedToken.wrapToPoolManager(amount);
+            permit2.transferFrom(payer, address(pemissionsAdapter), uint160(amount), permissionedToken);
+            pemissionsAdapter.wrapToPoolManager(amount);
         }
     }
 
     function _verifiedPermissionedTokenOf(Currency currency) internal view returns (address) {
-        return WRAPPED_TOKEN_FACTORY.verifiedPermissionedTokenOf(Currency.unwrap(currency));
+        return PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(Currency.unwrap(currency));
     }
 
     function _getOwner(Currency currency) internal view returns (address) {
-        address wrappedPermissionedToken = Currency.unwrap(currency);
+        address pemissionsAdapter = Currency.unwrap(currency);
         address permissionedToken = _verifiedPermissionedTokenOf(currency);
         if (permissionedToken == address(0)) return address(0);
-        return IWrappedPermissionedToken(wrappedPermissionedToken).owner();
+        return IPermissionsAdapter(pemissionsAdapter).owner();
     }
 }

@@ -4,24 +4,24 @@ pragma solidity 0.8.26;
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {IWrappedPermissionedToken} from "./interfaces/IWrappedPermissionedToken.sol";
+import {IPermissionsAdapter} from "./interfaces/IPermissionsAdapter.sol";
 import {IAllowlistChecker} from "./interfaces/IAllowlistChecker.sol";
 import {PermissionFlag} from "./libraries/PermissionFlags.sol";
 
-contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedToken {
-    /// @inheritdoc IWrappedPermissionedToken
+contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
+    /// @inheritdoc IPermissionsAdapter
     address public immutable POOL_MANAGER;
 
-    /// @inheritdoc IWrappedPermissionedToken
+    /// @inheritdoc IPermissionsAdapter
     IERC20 public immutable PERMISSIONED_TOKEN;
 
-    /// @inheritdoc IWrappedPermissionedToken
+    /// @inheritdoc IPermissionsAdapter
     IAllowlistChecker public allowListChecker;
 
-    /// @inheritdoc IWrappedPermissionedToken
+    /// @inheritdoc IPermissionsAdapter
     bool public swappingEnabled;
 
-    /// @inheritdoc IWrappedPermissionedToken
+    /// @inheritdoc IPermissionsAdapter
     mapping(address wrapper => bool) public allowedWrappers;
 
     constructor(
@@ -35,7 +35,7 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
         _updateAllowListChecker(allowListChecker_);
     }
 
-    /// @inheritdoc IWrappedPermissionedToken
+    /// @inheritdoc IPermissionsAdapter
     function wrapToPoolManager(uint256 amount) external {
         if (!allowedWrappers[msg.sender]) revert UnauthorizedWrapper(msg.sender);
         uint256 availableBalance = PERMISSIONED_TOKEN.balanceOf(address(this)) - totalSupply();
@@ -43,22 +43,22 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
         _mint(POOL_MANAGER, amount);
     }
 
-    /// @inheritdoc IWrappedPermissionedToken
+    /// @inheritdoc IPermissionsAdapter
     function updateAllowListChecker(IAllowlistChecker newAllowListChecker) external onlyOwner {
         _updateAllowListChecker(newAllowListChecker);
     }
 
-    /// @inheritdoc IWrappedPermissionedToken
+    /// @inheritdoc IPermissionsAdapter
     function updateAllowedWrapper(address wrapper, bool allowed) external onlyOwner {
         _updateAllowedWrapper(wrapper, allowed);
     }
 
-    /// @inheritdoc IWrappedPermissionedToken
+    /// @inheritdoc IPermissionsAdapter
     function updateSwappingEnabled(bool enabled) external onlyOwner {
         _updateSwappingEnabled(enabled);
     }
 
-    /// @inheritdoc IWrappedPermissionedToken
+    /// @inheritdoc IPermissionsAdapter
     function isAllowed(address account, PermissionFlag permission) public view returns (bool) {
         return ((allowListChecker.checkAllowlist(account)) & (permission)) == (permission);
     }
@@ -82,9 +82,9 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     }
 
     /// @dev Overrides the ERC20._update function to add the following checks and logic:
-    /// - Before `settle` is called on the pool manager, the token is wrapped and minted to the pool manager
-    /// - When `take` is called on the pool manager, the token is automatically unwrapped when the pool manager transfers the token to the recipient
-    /// - Enforces that the pool manager is the only holder of the wrapped token
+    /// - Before `settle` is called on the pool manager, the permissioned token is deposited and the permissions adapter is minted to the pool manager
+    /// - When `take` is called on the pool manager, the permissioned token is automatically released when the pool manager transfers the permissions adapter to the recipient
+    /// - Enforces that the pool manager is the only holder of the permissions adapter
     function _update(address from, address to, uint256 amount) internal override {
         if (to == address(0)) {
             // prevents infinite loop when burning
@@ -93,18 +93,18 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
         }
         if (from == address(0)) {
             assert(to == POOL_MANAGER);
-            // token is being wrapped
+            // permissioned token is being deposited
             super._update(from, to, amount);
             return;
         } else if (from != POOL_MANAGER) {
-            // if the pool manager is the sender, the token is automatically unwrapped, skip the checks
+            // if the pool manager is the sender, the permissioned token is automatically released, skip the checks
             revert InvalidTransfer(from, to);
         }
         super._update(from, to, amount);
         if (from == POOL_MANAGER) {
             _unwrap(to, amount);
         }
-        // the pool manager must always be the only holder of the wrapped token
+        // the pool manager must always be the only holder of the permissions adapter
         assert(balanceOf(POOL_MANAGER) == totalSupply());
     }
 
@@ -114,18 +114,18 @@ contract WrappedPermissionedToken is ERC20, Ownable2Step, IWrappedPermissionedTo
     }
 
     function _getName(IERC20 permissionedToken) private view returns (string memory) {
-        return string.concat("Uniswap v4 Wrapped ", ERC20(address(permissionedToken)).name());
+        return string.concat("Uniswap v4 ", ERC20(address(permissionedToken)).name());
     }
 
     function _getSymbol(IERC20 permissionedToken) private view returns (string memory) {
-        return string.concat("uw", ERC20(address(permissionedToken)).symbol());
+        return string.concat("v4", ERC20(address(permissionedToken)).symbol());
     }
 
     function decimals() public view override returns (uint8) {
         return ERC20(address(PERMISSIONED_TOKEN)).decimals();
     }
 
-    function owner() public view override(Ownable, IWrappedPermissionedToken) returns (address) {
+    function owner() public view override(Ownable, IPermissionsAdapter) returns (address) {
         return super.owner();
     }
 }

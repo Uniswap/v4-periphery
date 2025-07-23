@@ -30,7 +30,7 @@ import {PermissionedPosmTestSetup, BalanceInfo} from "./shared/PermissionedPosmT
 import {ReentrantToken} from "../../mocks/ReentrantToken.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {MockAllowlistChecker, MockPermissionedToken} from "./PermissionedPoolsBase.sol";
-import {WrappedPermissionedToken, IERC20} from "../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
+import {PermissionsAdapter, IERC20} from "../../../src/hooks/permissionedPools/PermissionsAdapter.sol";
 import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
 contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, LiquidityFuzzers {
@@ -47,8 +47,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     // Permissioned components
     MockAllowlistChecker public mockAllowListChecker;
-    WrappedPermissionedToken public wrappedToken0;
-    WrappedPermissionedToken public wrappedToken2;
+    PermissionsAdapter public permissionsAdapter0;
+    PermissionsAdapter public permissionsAdapter2;
     MockERC20 public originalToken0;
     MockERC20 public originalToken2;
     IPositionManager public secondaryPosm;
@@ -85,28 +85,29 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         // set up approvals for alice
         seedBalance(alice);
         approvePosmFor(alice);
-        wrappedToken0.updateSwappingEnabled(true);
-        wrappedToken2.updateSwappingEnabled(true);
+        permissionsAdapter0.updateSwappingEnabled(true);
+        permissionsAdapter2.updateSwappingEnabled(true);
     }
 
     function setUpPosms() internal {
-        deployAndApprovePosm(manager, address(wrappedTokenFactory), keccak256("permissionedPosm"));
+        deployAndApprovePosm(manager, address(permissionsAdapterFactory), keccak256("permissionedPosm"));
 
         // alternate position manager using different hooks
-        secondaryPosm = deployAndApprovePosmOnly(manager, address(wrappedTokenFactory), keccak256("secondaryPosm"));
+        secondaryPosm =
+            deployAndApprovePosmOnly(manager, address(permissionsAdapterFactory), keccak256("secondaryPosm"));
 
         // alternate position manager using the same hooks
-        tertiaryPosm = deployAndApprovePosmOnly(manager, address(wrappedTokenFactory), keccak256("tertiaryPosm"));
+        tertiaryPosm = deployAndApprovePosmOnly(manager, address(permissionsAdapterFactory), keccak256("tertiaryPosm"));
     }
 
     function setupPool() internal {
         (key0, poolId) =
-            initPool(Currency.wrap(address(wrappedToken0)), currency1, permissionedHooks, 3000, SQRT_PRICE_1_1);
+            initPool(Currency.wrap(address(permissionsAdapter0)), currency1, permissionedHooks, 3000, SQRT_PRICE_1_1);
         (key1, poolId) =
-            initPool(currency1, Currency.wrap(address(wrappedToken2)), permissionedHooks, 3000, SQRT_PRICE_1_1);
+            initPool(currency1, Currency.wrap(address(permissionsAdapter2)), permissionedHooks, 3000, SQRT_PRICE_1_1);
         (key2, poolId) = initPool(
-            Currency.wrap(address(wrappedToken0)),
-            Currency.wrap(address(wrappedToken2)),
+            Currency.wrap(address(permissionsAdapter0)),
+            Currency.wrap(address(permissionsAdapter2)),
             permissionedHooks,
             3000,
             SQRT_PRICE_1_1
@@ -120,13 +121,15 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         }
 
         (key3, poolId) = initPool(currencyA, currencyB, permissionedHooks, 3000, SQRT_PRICE_1_1);
-        (keyFake0, poolId) =
-            initPool(Currency.wrap(address(wrappedToken0)), currency1, secondaryPermissionedHooks, 3000, SQRT_PRICE_1_1);
-        (keyFake1, poolId) =
-            initPool(currency1, Currency.wrap(address(wrappedToken2)), secondaryPermissionedHooks, 3000, SQRT_PRICE_1_1);
+        (keyFake0, poolId) = initPool(
+            Currency.wrap(address(permissionsAdapter0)), currency1, secondaryPermissionedHooks, 3000, SQRT_PRICE_1_1
+        );
+        (keyFake1, poolId) = initPool(
+            currency1, Currency.wrap(address(permissionsAdapter2)), secondaryPermissionedHooks, 3000, SQRT_PRICE_1_1
+        );
         (keyFake2, poolId) = initPool(
-            Currency.wrap(address(wrappedToken0)),
-            Currency.wrap(address(wrappedToken2)),
+            Currency.wrap(address(permissionsAdapter0)),
+            Currency.wrap(address(permissionsAdapter2)),
             secondaryPermissionedHooks,
             3000,
             SQRT_PRICE_1_1
@@ -144,16 +147,16 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         originalToken0 = MockERC20(Currency.unwrap(currency0));
         // ensure expected ordering
         while (true) {
-            wrappedToken0 = WrappedPermissionedToken(
-                wrappedTokenFactory.createWrappedPermissionedToken(
+            permissionsAdapter0 = PermissionsAdapter(
+                permissionsAdapterFactory.createPermissionsAdapter(
                     IERC20(address(originalToken0)), address(this), mockAllowListChecker
                 )
             );
-            if (address(wrappedToken0) < Currency.unwrap(currency1)) {
+            if (address(permissionsAdapter0) < Currency.unwrap(currency1)) {
                 break;
             }
         }
-        setUpWrappedToken(wrappedToken0, currency0);
+        setUpPemissionsAdapter(permissionsAdapter0, currency0);
     }
 
     function setUpCurrencyTwo() internal {
@@ -162,16 +165,16 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         // ensure expected ordering
         while (true) {
-            wrappedToken2 = WrappedPermissionedToken(
-                wrappedTokenFactory.createWrappedPermissionedToken(
+            permissionsAdapter2 = PermissionsAdapter(
+                permissionsAdapterFactory.createPermissionsAdapter(
                     IERC20(address(originalToken2)), address(this), mockAllowListChecker
                 )
             );
-            if (Currency.unwrap(currency1) < address(wrappedToken2)) {
+            if (Currency.unwrap(currency1) < address(permissionsAdapter2)) {
                 break;
             }
         }
-        setUpWrappedToken(wrappedToken2, currency2);
+        setUpPemissionsAdapter(permissionsAdapter2, currency2);
     }
 
     function setUpAllowlist(Currency currency) internal {
@@ -182,7 +185,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             address(secondaryPosm), PermissionFlags.ALL_ALLOWED
         );
         MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
-            address(wrappedTokenFactory), PermissionFlags.ALL_ALLOWED
+            address(permissionsAdapterFactory), PermissionFlags.ALL_ALLOWED
         );
         MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(lpm), PermissionFlags.ALL_ALLOWED);
         MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(manager), PermissionFlags.ALL_ALLOWED);
@@ -194,32 +197,32 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         );
     }
 
-    function setUpWrappedToken(WrappedPermissionedToken wrappedToken, Currency currency) internal {
-        wrappedToPermissioned[Currency.wrap(address(wrappedToken))] = currency;
+    function setUpPemissionsAdapter(PermissionsAdapter pemissionsAdapter, Currency currency) internal {
+        adapterToPermissioned[Currency.wrap(address(pemissionsAdapter))] = currency;
 
         MockPermissionedToken(Currency.unwrap(currency)).mint(address(this), 1000 ether);
         MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
-            address(wrappedToken), PermissionFlags.ALL_ALLOWED
+            address(pemissionsAdapter), PermissionFlags.ALL_ALLOWED
         );
 
-        // wrapped token contract must have a non-zero balance of the permissioned token
-        currency.transfer(address(wrappedToken), 1);
+        // permissions adapter contract must have a non-zero balance of the permissioned token
+        currency.transfer(address(pemissionsAdapter), 1);
 
-        wrappedToken.updateAllowedWrapper(address(manager), true);
-        wrappedToken.updateAllowedWrapper(address(lpm), true);
-        wrappedToken.updateAllowedWrapper(address(secondaryPosm), true);
-        wrappedToken.updateAllowedWrapper(address(permissionedSwapRouter), true);
+        pemissionsAdapter.updateAllowedWrapper(address(manager), true);
+        pemissionsAdapter.updateAllowedWrapper(address(lpm), true);
+        pemissionsAdapter.updateAllowedWrapper(address(secondaryPosm), true);
+        pemissionsAdapter.updateAllowedWrapper(address(permissionedSwapRouter), true);
 
-        wrappedTokenFactory.verifyWrappedToken(address(wrappedToken));
+        permissionsAdapterFactory.verifyPermissionsAdapter(address(pemissionsAdapter));
 
-        Currency wrappedCurrency = Currency.wrap(address(wrappedToken));
+        Currency permissionsAdapter = Currency.wrap(address(pemissionsAdapter));
 
-        setAllowedHooks(lpm, wrappedCurrency, permissionedHooks);
-        setAllowedHooks(tertiaryPosm, wrappedCurrency, permissionedHooks);
+        setAllowedHooks(lpm, permissionsAdapter, permissionedHooks);
+        setAllowedHooks(tertiaryPosm, permissionsAdapter, permissionedHooks);
 
-        setAllowedHooks(lpm, wrappedCurrency, secondaryPermissionedHooks);
-        setAllowedHooks(secondaryPosm, wrappedCurrency, secondaryPermissionedHooks);
-        setAllowedHooks(tertiaryPosm, wrappedCurrency, secondaryPermissionedHooks);
+        setAllowedHooks(lpm, permissionsAdapter, secondaryPermissionedHooks);
+        setAllowedHooks(secondaryPosm, permissionsAdapter, secondaryPermissionedHooks);
+        setAllowedHooks(tertiaryPosm, permissionsAdapter, secondaryPermissionedHooks);
     }
 
     function setAllowedHooks(IPositionManager posm, Currency currency, IHooks permissionedHooks_) internal {
@@ -426,20 +429,20 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         Currency currency0_ = getPermissionedCurrency(key.currency0);
         Currency currency1_ = getPermissionedCurrency(key.currency1);
-        Currency currency0wrapped = key.currency0;
-        Currency currency1wrapped = key.currency1;
+        Currency currency0Adapter = key.currency0;
+        Currency currency1Adapter = key.currency1;
         uint256 tokenId = lpm.nextTokenId();
         uint256 balance0Before = currency0_.balanceOfSelf();
         uint256 balance1Before = currency1_.balanceOfSelf();
         uint256 balance0BeforeAlice = currency0_.balanceOf(alice);
         uint256 balance1BeforeAlice = currency1_.balanceOf(alice);
-        uint256 balance0ManagerBefore = currency0wrapped.balanceOf(address(manager));
-        uint256 balance1ManagerBefore = currency1wrapped.balanceOf(address(manager));
+        uint256 balance0ManagerBefore = currency0Adapter.balanceOf(address(manager));
+        uint256 balance1ManagerBefore = currency1Adapter.balanceOf(address(manager));
 
         mint(config, liquidityToAdd, alice, ZERO_BYTES);
 
-        uint256 balance0ManagerAfter = currency0wrapped.balanceOf(address(manager));
-        uint256 balance1ManagerAfter = currency1wrapped.balanceOf(address(manager));
+        uint256 balance0ManagerAfter = currency0Adapter.balanceOf(address(manager));
+        uint256 balance1ManagerAfter = currency1Adapter.balanceOf(address(manager));
 
         // alice was not the payer
         assertEq(tokenId, lpm.nextTokenId() - 1);
@@ -987,9 +990,9 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     function test_initialize() public {
         _test_initialize(currency0, currency1);
-        _test_initialize(Currency.wrap(address(wrappedToken0)), currency1);
-        _test_initialize(currency1, Currency.wrap(address(wrappedToken2)));
-        _test_initialize(Currency.wrap(address(wrappedToken0)), Currency.wrap(address(wrappedToken2)));
+        _test_initialize(Currency.wrap(address(permissionsAdapter0)), currency1);
+        _test_initialize(currency1, Currency.wrap(address(permissionsAdapter2)));
+        _test_initialize(Currency.wrap(address(permissionsAdapter0)), Currency.wrap(address(permissionsAdapter2)));
     }
 
     function _test_initialize(Currency currency0_, Currency currency1_) internal {
@@ -1009,10 +1012,10 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     function test_fuzz_initialize(uint160 sqrtPrice, uint24 fee) public {
         _test_fuzz_initialize(currency0, currency1, sqrtPrice, fee);
-        _test_fuzz_initialize(Currency.wrap(address(wrappedToken0)), currency1, sqrtPrice, fee);
-        _test_fuzz_initialize(currency1, Currency.wrap(address(wrappedToken2)), sqrtPrice, fee);
+        _test_fuzz_initialize(Currency.wrap(address(permissionsAdapter0)), currency1, sqrtPrice, fee);
+        _test_fuzz_initialize(currency1, Currency.wrap(address(permissionsAdapter2)), sqrtPrice, fee);
         _test_fuzz_initialize(
-            Currency.wrap(address(wrappedToken0)), Currency.wrap(address(wrappedToken2)), sqrtPrice, fee
+            Currency.wrap(address(permissionsAdapter0)), Currency.wrap(address(permissionsAdapter2)), sqrtPrice, fee
         );
     }
 
@@ -1070,23 +1073,23 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         address owner0 = makeAddr("owner0");
         address owner1 = makeAddr("owner1");
-        wrappedToken0.transferOwnership(owner0);
+        permissionsAdapter0.transferOwnership(owner0);
         vm.prank(owner0);
-        wrappedToken0.acceptOwnership();
-        wrappedToken2.transferOwnership(owner1);
+        permissionsAdapter0.acceptOwnership();
+        permissionsAdapter2.transferOwnership(owner1);
         vm.prank(owner1);
-        wrappedToken2.acceptOwnership();
+        permissionsAdapter2.acceptOwnership();
 
         vm.prank(owner0);
         vm.expectEmit(true, true, true, true);
         emit Transfer(alice, address(this), tokenId1);
-        // owner0 is admin of wrappedToken0
+        // owner0 is admin of permissionsAdapter0
         IERC721(address(lpm)).transferFrom(alice, address(this), tokenId1);
 
         vm.prank(owner1);
         vm.expectEmit(true, true, true, true);
         emit Transfer(alice, address(this), tokenId2);
-        // owner1 is admin of wrappedToken2
+        // owner1 is admin of permissionsAdapter2
         IERC721(address(lpm)).transferFrom(alice, address(this), tokenId2);
     }
 

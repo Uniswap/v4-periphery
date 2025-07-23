@@ -16,12 +16,12 @@ import {PermissionedV4Router} from "../../../../src/hooks/permissionedPools/Perm
 import {Plan, Planner} from "../../../shared/Planner.sol";
 import {PathKey} from "../../../../src/libraries/PathKey.sol";
 import {Actions} from "../../../../src/libraries/Actions.sol";
-import {WrappedPermissionedToken} from "../../../../src/hooks/permissionedPools/WrappedPermissionedToken.sol";
+import {PermissionsAdapter} from "../../../../src/hooks/permissionedPools/PermissionsAdapter.sol";
 import {MockAllowlistChecker, MockPermissionedToken} from "../PermissionedPoolsBase.sol";
 import {IAllowlistChecker} from "../../../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
 import {IPositionManager} from "../../../../src/interfaces/IPositionManager.sol";
-import {IWrappedPermissionedTokenFactory} from
-    "../../../../src/hooks/permissionedPools/interfaces/IWrappedPermissionedTokenFactory.sol";
+import {IPermissionsAdapterFactory} from
+    "../../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
 import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
 import {IPositionDescriptor} from "../../../../src/interfaces/IPositionDescriptor.sol";
 import {IV4Router} from "../../../../src/interfaces/IV4Router.sol";
@@ -53,22 +53,22 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     Currency public currency3;
     Currency public currency4;
 
-    WrappedPermissionedToken public wrappedToken0;
-    WrappedPermissionedToken public wrappedToken1;
+    PermissionsAdapter public permissionsAdapter0;
+    PermissionsAdapter public permissionsAdapter1;
 
     Currency[] public tokenPath;
     Plan public plan;
 
     address public positionManager;
 
-    mapping(Currency wrappedCurrency => Currency permissionedCurrency) public wrappedToPermissioned;
+    mapping(Currency permissionsAdapter => Currency permissionedCurrency) public adapterToPermissioned;
 
     function setupPermissionedRouterCurrenciesAndPoolsWithLiquidity(address spender) public {
         _deployFreshManager();
         _deployWETH();
         _deployPositionDescriptor();
         _deployPermit2();
-        _deployWrappedTokenFactory();
+        _deployPemissionsAdapterFactory();
         _deployPermissionedHooks();
         _deployMockPermissionedRouter();
         _deployPositionManager();
@@ -99,7 +99,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     }
 
     function getPermissionedCurrency(Currency currency) public view returns (Currency) {
-        Currency permissionedCurrency = wrappedToPermissioned[currency];
+        Currency permissionedCurrency = adapterToPermissioned[currency];
         if (permissionedCurrency == Currency.wrap(address(0))) {
             return currency;
         }
@@ -110,52 +110,56 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         _setupMockAllowList(currency0, spender);
         _setupMockAllowList(currency1, spender);
         while (true) {
-            wrappedToken0 = WrappedPermissionedToken(
-                wrappedTokenFactory.createWrappedPermissionedToken(
+            permissionsAdapter0 = PermissionsAdapter(
+                permissionsAdapterFactory.createPermissionsAdapter(
                     IERC20(Currency.unwrap(currency0)), address(this), mockAllowlistChecker
                 )
             );
-            wrappedToken1 = WrappedPermissionedToken(
-                wrappedTokenFactory.createWrappedPermissionedToken(
+            permissionsAdapter1 = PermissionsAdapter(
+                permissionsAdapterFactory.createPermissionsAdapter(
                     IERC20(Currency.unwrap(currency1)), address(this), mockAllowlistChecker
                 )
             );
-            if (address(wrappedToken0) > address(wrappedToken1)) {
+            if (address(permissionsAdapter0) > address(permissionsAdapter1)) {
                 break;
             }
         }
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(
-            address(wrappedToken0), PermissionFlags.ALL_ALLOWED
+            address(permissionsAdapter0), PermissionFlags.ALL_ALLOWED
         );
         MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(
-            address(wrappedToken1), PermissionFlags.ALL_ALLOWED
+            address(permissionsAdapter1), PermissionFlags.ALL_ALLOWED
         );
 
-        // Transfer some underlying tokens to the wrapped tokens for verification
-        IERC20(Currency.unwrap(currency0)).transfer(address(wrappedToken0), 1);
-        IERC20(Currency.unwrap(currency1)).transfer(address(wrappedToken1), 1);
+        // Transfer some underlying tokens to the permissions adapter for verification
+        IERC20(Currency.unwrap(currency0)).transfer(address(permissionsAdapter0), 1);
+        IERC20(Currency.unwrap(currency1)).transfer(address(permissionsAdapter1), 1);
 
         verifyTokensAndAddWrappers();
 
-        wrappedToPermissioned[Currency.wrap(address(wrappedToken0))] = currency0;
-        wrappedToPermissioned[Currency.wrap(address(wrappedToken1))] = currency1;
+        adapterToPermissioned[Currency.wrap(address(permissionsAdapter0))] = currency0;
+        adapterToPermissioned[Currency.wrap(address(permissionsAdapter1))] = currency1;
     }
 
     function verifyTokensAndAddWrappers() private {
-        wrappedTokenFactory.verifyWrappedToken(address(wrappedToken0));
-        wrappedTokenFactory.verifyWrappedToken(address(wrappedToken1));
+        permissionsAdapterFactory.verifyPermissionsAdapter(address(permissionsAdapter0));
+        permissionsAdapterFactory.verifyPermissionsAdapter(address(permissionsAdapter1));
 
-        wrappedToken0.updateAllowedWrapper(address(this), true);
-        wrappedToken1.updateAllowedWrapper(address(this), true);
-        wrappedToken0.updateAllowedWrapper(positionManager, true);
-        wrappedToken1.updateAllowedWrapper(positionManager, true);
-        wrappedToken0.updateAllowedWrapper(address(permissionedRouter), true);
-        wrappedToken1.updateAllowedWrapper(address(permissionedRouter), true);
-        wrappedToken0.updateAllowedWrapper(address(permissionedHooks), true);
-        wrappedToken1.updateAllowedWrapper(address(permissionedHooks), true);
+        permissionsAdapter0.updateAllowedWrapper(address(this), true);
+        permissionsAdapter1.updateAllowedWrapper(address(this), true);
+        permissionsAdapter0.updateAllowedWrapper(positionManager, true);
+        permissionsAdapter1.updateAllowedWrapper(positionManager, true);
+        permissionsAdapter0.updateAllowedWrapper(address(permissionedRouter), true);
+        permissionsAdapter1.updateAllowedWrapper(address(permissionedRouter), true);
+        permissionsAdapter0.updateAllowedWrapper(address(permissionedHooks), true);
+        permissionsAdapter1.updateAllowedWrapper(address(permissionedHooks), true);
 
-        setAllowedHooks(IPositionManager(positionManager), Currency.wrap(address(wrappedToken0)), permissionedHooks);
-        setAllowedHooks(IPositionManager(positionManager), Currency.wrap(address(wrappedToken1)), permissionedHooks);
+        setAllowedHooks(
+            IPositionManager(positionManager), Currency.wrap(address(permissionsAdapter0)), permissionedHooks
+        );
+        setAllowedHooks(
+            IPositionManager(positionManager), Currency.wrap(address(permissionsAdapter1)), permissionedHooks
+        );
     }
 
     function setAllowedHooks(IPositionManager posm, Currency currency, IHooks permissionedHooks_) internal {
@@ -366,24 +370,23 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         permit2 = IAllowanceTransfer(deployPermit2());
     }
 
-    function _deployWrappedTokenFactory() private {
-        bytes memory wrappedTokenFactoryBytecode = abi.encodePacked(
-            vm.getCode("WrappedPermissionedTokenFactory.sol:WrappedPermissionedTokenFactory"),
-            abi.encode(address(manager))
+    function _deployPemissionsAdapterFactory() private {
+        bytes memory permissionsAdapterFactoryBytecode = abi.encodePacked(
+            vm.getCode("PermissionsAdapterFactory.sol:PermissionsAdapterFactory"), abi.encode(address(manager))
         );
-        wrappedTokenFactory = IWrappedPermissionedTokenFactory(
-            Deploy.create2(wrappedTokenFactoryBytecode, keccak256("wrappedTokenFactory"))
+        permissionsAdapterFactory = IPermissionsAdapterFactory(
+            Deploy.create2(permissionsAdapterFactoryBytecode, keccak256("permissionsAdapterFactory"))
         );
     }
 
     function _deployPermissionedHooks() private {
-        permissionedHooks = IHooks(deployPermissionedHooks(address(manager), address(wrappedTokenFactory)));
+        permissionedHooks = IHooks(deployPermissionedHooks(address(manager), address(permissionsAdapterFactory)));
     }
 
     function _deployMockPermissionedRouter() private {
         bytes memory routerBytecode = abi.encodePacked(
             vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
-            abi.encode(manager, permit2, wrappedTokenFactory, weth9)
+            abi.encode(manager, permit2, permissionsAdapterFactory, weth9)
         );
         permissionedRouter =
             PermissionedV4Router(payable(Deploy.create2(routerBytecode, keccak256("permissionedSwapRouter"))));
@@ -392,7 +395,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     function _deployPositionManager() private {
         bytes memory posmBytecode = abi.encodePacked(
             vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"),
-            abi.encode(manager, permit2, 1e18, address(tokenDescriptor), address(weth9), wrappedTokenFactory)
+            abi.encode(manager, permit2, 1e18, address(tokenDescriptor), address(weth9), permissionsAdapterFactory)
         );
         positionManager = Deploy.create2(posmBytecode, keccak256("permissionedPosm"));
     }
@@ -417,13 +420,18 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     }
 
     function _createPoolsWithLiquidity() private {
-        nativeKey = createNativePoolWithLiquidity(Currency.wrap(address(wrappedToken0)), address(permissionedHooks));
+        nativeKey =
+            createNativePoolWithLiquidity(Currency.wrap(address(permissionsAdapter0)), address(permissionedHooks));
         key0 = createPoolWithLiquidity(
-            Currency.wrap(address(wrappedToken0)), Currency.wrap(address(wrappedToken1)), address(permissionedHooks)
+            Currency.wrap(address(permissionsAdapter0)),
+            Currency.wrap(address(permissionsAdapter1)),
+            address(permissionedHooks)
         );
-        key1 = createPoolWithLiquidity(Currency.wrap(address(wrappedToken1)), currency2, address(permissionedHooks));
+        key1 =
+            createPoolWithLiquidity(Currency.wrap(address(permissionsAdapter1)), currency2, address(permissionedHooks));
         key2 = createPoolWithLiquidity(currency2, currency3, address(permissionedHooks));
-        key3 = createPoolWithLiquidity(Currency.wrap(address(wrappedToken0)), currency4, address(permissionedHooks));
+        key3 =
+            createPoolWithLiquidity(Currency.wrap(address(permissionsAdapter0)), currency4, address(permissionedHooks));
     }
 
     function _setupMockAllowList(Currency currency, address spender) private {
@@ -433,7 +441,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         mockPermissionedToken.setAllowlist(address(permissionedRouter), PermissionFlags.ALL_ALLOWED);
         mockPermissionedToken.setAllowlist(address(permissionedHooks), PermissionFlags.ALL_ALLOWED);
         mockPermissionedToken.setAllowlist(address(positionManager), PermissionFlags.ALL_ALLOWED);
-        mockPermissionedToken.setAllowlist(address(wrappedTokenFactory), PermissionFlags.ALL_ALLOWED);
+        mockPermissionedToken.setAllowlist(address(permissionsAdapterFactory), PermissionFlags.ALL_ALLOWED);
         mockPermissionedToken.setAllowlist(address(manager), PermissionFlags.ALL_ALLOWED);
         mockPermissionedToken.setAllowlist(address(permit2), PermissionFlags.ALL_ALLOWED);
         mockPermissionedToken.setAllowlist(spender, PermissionFlags.ALL_ALLOWED);

@@ -2,10 +2,8 @@
 pragma solidity ^0.8.0;
 
 import {IPoolManager, Currency} from "../../V4Router.sol";
-import {
-    IWrappedPermissionedTokenFactory,
-    IWrappedPermissionedToken
-} from "./interfaces/IWrappedPermissionedTokenFactory.sol";
+import {IPermissionsAdapter} from "./interfaces/IPermissionsAdapter.sol";
+import {IPermissionsAdapterFactory} from "./interfaces/IPermissionsAdapterFactory.sol";
 import {IMsgSender} from "../../interfaces/IMsgSender.sol";
 import {ReentrancyLock} from "../../base/ReentrancyLock.sol";
 import {Hooks, IHooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
@@ -16,13 +14,13 @@ import {BaseHook} from "../../utils/BaseHook.sol";
 import {PermissionFlags, PermissionFlag} from "./libraries/PermissionFlags.sol";
 
 contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
-    IWrappedPermissionedTokenFactory public immutable WRAPPED_TOKEN_FACTORY;
+    IPermissionsAdapterFactory public immutable PERMISSIONS_ADAPTER_FACTORY;
 
     error Unauthorized();
     error SwappingDisabled();
 
-    constructor(IPoolManager manager, IWrappedPermissionedTokenFactory wrappedTokenFactory) BaseHook(manager) {
-        WRAPPED_TOKEN_FACTORY = wrappedTokenFactory;
+    constructor(IPoolManager manager, IPermissionsAdapterFactory permissionsAdapterFactory) BaseHook(manager) {
+        PERMISSIONS_ADAPTER_FACTORY = permissionsAdapterFactory;
         Hooks.validateHookPermissions(this, getHookPermissions());
     }
 
@@ -61,22 +59,22 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
         _isAllowed(Currency.unwrap(poolKey.currency1), sender.msgSender(), address(sender), selector);
     }
 
-    /// @dev checks if the provided token is a wrapped token by checking if it has a verified permissioned token, if yes, check the allowlist and check whether swapping is enabled
-    function _isAllowed(address wrappedToken, address sender, address router, bytes4 selector) internal view {
-        address permissionedToken = WRAPPED_TOKEN_FACTORY.verifiedPermissionedTokenOf(wrappedToken);
+    /// @dev checks if the provided token is a permissioned token by checking if it has a verified permissions adapter, if yes, check the allowlist and check whether swapping is enabled
+    function _isAllowed(address pemissionsAdapter, address sender, address router, bytes4 selector) internal view {
+        address permissionedToken = PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(pemissionsAdapter);
         if (permissionedToken == address(0)) return;
 
         PermissionFlag permission = PermissionFlags.NONE;
         if (selector == this.beforeSwap.selector) {
             permission = PermissionFlags.SWAP_ALLOWED;
-            if (!IWrappedPermissionedToken(wrappedToken).swappingEnabled()) revert SwappingDisabled();
+            if (!IPermissionsAdapter(pemissionsAdapter).swappingEnabled()) revert SwappingDisabled();
         } else if (selector == this.beforeAddLiquidity.selector) {
             permission = PermissionFlags.LIQUIDITY_ALLOWED;
         }
 
         if (
-            !IWrappedPermissionedToken(wrappedToken).isAllowed(sender, permission)
-                || !IWrappedPermissionedToken(wrappedToken).allowedWrappers(router)
+            !IPermissionsAdapter(pemissionsAdapter).isAllowed(sender, permission)
+                || !IPermissionsAdapter(pemissionsAdapter).allowedWrappers(router)
         ) revert Unauthorized();
     }
 }
