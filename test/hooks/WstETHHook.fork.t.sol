@@ -17,7 +17,6 @@ import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
 import {BaseTokenWrapperHook} from "../../src/base/hooks/BaseTokenWrapperHook.sol";
 import {WstETHHook} from "../../src/hooks/WstETHHook.sol";
-import {WstETHRoutingHook} from "../../src/hooks/WstETHRoutingHook.sol";
 import {IWstETH} from "../../src/interfaces/external/IWstETH.sol";
 import {TestRouter} from "../shared/TestRouter.sol";
 import {IV4Quoter} from "../../src/interfaces/IV4Quoter.sol";
@@ -35,11 +34,9 @@ contract WstETHHookForkTest is Test, Deployers {
     address constant WSTETH_WHALE = 0x10CD5fbe1b404B7E19Ef964B63939907bdaf42E2;
 
     WstETHHook public hook;
-    WstETHRoutingHook public hookSim;
     IWstETH public wstETH;
     IERC20 public stETH;
     PoolKey poolKey;
-    PoolKey poolKeySim;
     TestRouter public router;
     uint160 initSqrtPriceX96;
     IV4Quoter quoter;
@@ -78,19 +75,7 @@ contract WstETHHookForkTest is Test, Deployers {
                     )
                 )
             );
-            hookSim = WstETHRoutingHook(
-                payable(
-                    address(
-                        uint160(
-                            type(uint160).max & clearAllHookPermissionsMask | Hooks.BEFORE_SWAP_FLAG
-                                | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
-                                | Hooks.BEFORE_INITIALIZE_FLAG
-                        ) & (type(uint160).max - 2 ** 156)
-                    )
-                )
-            );
             deployCodeTo("WstETHHook", abi.encode(manager, wstETH), address(hook));
-            deployCodeTo("WstETHRoutingHook", abi.encode(manager, wstETH), address(hookSim));
             quoter = Deploy.v4Quoter(address(manager), hex"00");
 
             // Create pool key for wstETH/stETH (wstETH has lower address)
@@ -101,17 +86,9 @@ contract WstETHHookForkTest is Test, Deployers {
                 tickSpacing: 60,
                 hooks: IHooks(address(hook))
             });
-            poolKeySim = PoolKey({
-                currency0: Currency.wrap(address(wstETH)),
-                currency1: Currency.wrap(address(stETH)),
-                fee: 0,
-                tickSpacing: 60,
-                hooks: IHooks(address(hookSim))
-            });
 
             // Initialize pool at current exchange rate
             manager.initialize(poolKey, SQRT_PRICE_1_1);
-            manager.initialize(poolKeySim, SQRT_PRICE_1_1);
 
             // Get tokens from whales and set up approvals
             vm.startPrank(STETH_WHALE);
@@ -154,21 +131,11 @@ contract WstETHHookForkTest is Test, Deployers {
 
         uint256 expectedOutput = wstETH.getWstETHByStETH(wrapAmount);
 
-        // quoting the swap with the WstETHHook should revert
-        vm.expectRevert();
-        quoter.quoteExactInputSingle(
-            IV4Quoter.QuoteExactSingleParams({
-                poolKey: poolKey,
-                zeroForOne: false,
-                exactAmount: uint128(wrapAmount),
-                hookData: ""
-            })
-        );
-
-        // quoting the swap with the WstETHRoutingHook should not revert
+        // set tx.origin to 0 to simulate a forked call
+        vm.prank(address(0), address(0));
         (uint256 quotedAmountOut,) = quoter.quoteExactInputSingle(
             IV4Quoter.QuoteExactSingleParams({
-                poolKey: poolKeySim,
+                poolKey: poolKey,
                 zeroForOne: false,
                 exactAmount: uint128(wrapAmount),
                 hookData: ""
@@ -210,6 +177,15 @@ contract WstETHHookForkTest is Test, Deployers {
         uint256 aliceStethBefore = stETH.balanceOf(alice);
         uint256 aliceWstethBefore = IERC20(WSTETH).balanceOf(alice);
 
+        (uint256 quotedAmountOut,) = quoter.quoteExactInputSingle(
+            IV4Quoter.QuoteExactSingleParams({
+                poolKey: poolKey,
+                zeroForOne: true,
+                exactAmount: uint128(unwrapAmount),
+                hookData: ""
+            })
+        );
+
         router.swap(
             poolKey,
             SwapParams({
@@ -222,33 +198,9 @@ contract WstETHHookForkTest is Test, Deployers {
 
         vm.stopPrank();
 
-        // quoting the swap with the WstETHHook should not revert
-        (uint256 quotedAmountOut,) = quoter.quoteExactInputSingle(
-            IV4Quoter.QuoteExactSingleParams({
-                poolKey: poolKey,
-                zeroForOne: true,
-                exactAmount: uint128(unwrapAmount),
-                hookData: ""
-            })
-        );
-
-        // quoting the swap with the WstETHRoutingHook should not revert
-        (uint256 quotedAmountOutSim,) = quoter.quoteExactInputSingle(
-            IV4Quoter.QuoteExactSingleParams({
-                poolKey: poolKeySim,
-                zeroForOne: true,
-                exactAmount: uint128(unwrapAmount),
-                hookData: ""
-            })
-        );
-
-        assertEq(quotedAmountOut, quotedAmountOutSim, "Quotes from WstETHHook and WstETHRoutingHook should match");
-
         uint256 actualAmountOut = stETH.balanceOf(alice) - aliceStethBefore;
         // transfer from pool manager to alice can incur a small amount of rounding error
-        assertApproxEqAbs(
-            quotedAmountOutSim, actualAmountOut, 3, "Quoted amount should match the actual amount received"
-        );
+        assertApproxEqAbs(quotedAmountOut, actualAmountOut, 3, "Quoted amount should match the actual amount received");
 
         assertApproxEqAbs(stETH.balanceOf(alice) - aliceStethBefore, expectedOutput, 3, "Incorrect stETH received");
         assertEq(aliceWstethBefore - IERC20(WSTETH).balanceOf(alice), unwrapAmount, "Incorrect wstETH spent");

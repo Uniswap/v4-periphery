@@ -38,10 +38,23 @@ contract WstETHHook is BaseTokenWrapperHook {
     /// @inheritdoc BaseTokenWrapperHook
     function _deposit(uint256 underlyingAmount)
         internal
-        virtual
         override
         returns (uint256 actualUnderlyingAmount, uint256 wrappedAmount)
     {
+        // simulate the deposit if tx.origin is set to address(0)
+        if (tx.origin == address(0)) {
+            // simulate taking stETH from the PoolManager
+            // when calling take on the PoolManager the amount is rounded down to the nearest share
+            // the following code calculates the amount of shares that would be transferred by the PoolManager and their corresponding amount of ETH
+            IStETH stETH = IStETH(Currency.unwrap(underlyingCurrency));
+            uint256 transferredShares = stETH.getSharesByPooledEth(underlyingAmount);
+            actualUnderlyingAmount = stETH.getPooledEthByShares(transferredShares - 1);
+
+            // simulate wrapping stETH to wstETH
+            // when wrapping stETH to wstETH the amount of wstETH minted is calculated by the current stETH/wstETH exchange rate
+            wrappedAmount = wstETH.getWstETHByStETH(actualUnderlyingAmount);
+            return (actualUnderlyingAmount, wrappedAmount);
+        }
         _take(underlyingCurrency, address(this), underlyingAmount);
         // For wrapping, the key is ensuring we wrap exactly what we got
         actualUnderlyingAmount = IStETH(Currency.unwrap(underlyingCurrency)).balanceOf(address(this));
