@@ -38,6 +38,7 @@ contract WstETHHook is BaseTokenWrapperHook {
     /// @inheritdoc BaseTokenWrapperHook
     function _deposit(uint256 underlyingAmount)
         internal
+        virtual
         override
         returns (uint256 actualUnderlyingAmount, uint256 wrappedAmount)
     {
@@ -54,12 +55,14 @@ contract WstETHHook is BaseTokenWrapperHook {
     function _withdraw(uint256 wrapperAmount)
         internal
         override
-        returns (uint256 actualWrappedAmount, uint256 unwrappedAmount)
+        returns (uint256 actualWrappedAmount, uint256 actualUnwrappedAmount)
     {
         _take(wrapperCurrency, address(this), wrapperAmount);
         actualWrappedAmount = wrapperAmount;
-        unwrappedAmount = wstETH.unwrap(actualWrappedAmount);
+        uint256 unwrappedAmount = wstETH.unwrap(actualWrappedAmount);
         _settle(underlyingCurrency, address(this), unwrappedAmount);
+        uint256 transferredShares = IStETH(Currency.unwrap(underlyingCurrency)).getSharesByPooledEth(unwrappedAmount);
+        actualUnwrappedAmount = IStETH(Currency.unwrap(underlyingCurrency)).getPooledEthByShares(transferredShares);
     }
 
     /// @inheritdoc BaseTokenWrapperHook
