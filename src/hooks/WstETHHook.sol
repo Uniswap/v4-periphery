@@ -60,9 +60,13 @@ contract WstETHHook is BaseTokenWrapperHook {
         _take(wrapperCurrency, address(this), wrapperAmount);
         actualWrappedAmount = wrapperAmount;
         uint256 unwrappedAmount = wstETH.unwrap(actualWrappedAmount);
+
+        // check pool manager balance to account for balance mismatch on transfers due to rounding errors
+        uint256 poolManagerBalanceBefore = IStETH(Currency.unwrap(underlyingCurrency)).balanceOf(address(poolManager));
         _settle(underlyingCurrency, address(this), unwrappedAmount);
-        uint256 transferredShares = IStETH(Currency.unwrap(underlyingCurrency)).getSharesByPooledEth(unwrappedAmount);
-        actualUnwrappedAmount = IStETH(Currency.unwrap(underlyingCurrency)).getPooledEthByShares(transferredShares);
+        uint256 poolManagerBalanceAfter = IStETH(Currency.unwrap(underlyingCurrency)).balanceOf(address(poolManager));
+
+        actualUnwrappedAmount = poolManagerBalanceAfter - poolManagerBalanceBefore;
     }
 
     /// @inheritdoc BaseTokenWrapperHook

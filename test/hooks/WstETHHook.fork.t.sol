@@ -201,8 +201,8 @@ contract WstETHHookForkTest is Test, Deployers {
     function test_fork_unwrap_exactInput(uint256 amount, uint256 dustStEth) public onlyForked {
         uint256 unwrapAmount = (bound(amount, 0.1 ether, 10 ether));
         dustStEth = bound(dustStEth, 1, 10 ether);
-        vm.prank(WSTETH_WHALE);
-        IERC20(WSTETH).transfer(address(manager), dustStEth);
+        vm.prank(STETH_WHALE);
+        stETH.transfer(address(manager), dustStEth);
 
         uint256 expectedOutput = wstETH.getStETHByWstETH(unwrapAmount);
 
