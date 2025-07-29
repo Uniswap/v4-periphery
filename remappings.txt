@@ -1,5 +1,9 @@
 @uniswap/v4-core/=lib/v4-core/
+@uniswap/briefcase/=lib/briefcase/
+@uniswap/universal-router/=lib/universal-router/
 ds-test/=lib/v4-core/lib/forge-std/lib/ds-test/src/
 forge-std/=lib/v4-core/lib/forge-std/src/
 openzeppelin-contracts/=lib/v4-core/lib/openzeppelin-contracts/
 solmate/=lib/v4-core/lib/solmate/
+@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
+@uniswap/v2-core/contracts/interfaces/=lib/briefcase/src/protocols/v2-core/interfaces/
