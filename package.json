@@ -1,6 +1,6 @@
 {
   "name": "@uniswap/v4-periphery",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "🦄 Peripheral smart contracts for interacting with Uniswap v4",
   "repository": {
     "type": "git",

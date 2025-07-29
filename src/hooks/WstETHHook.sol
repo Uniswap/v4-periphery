@@ -38,6 +38,7 @@ contract WstETHHook is BaseTokenWrapperHook {
     /// @inheritdoc BaseTokenWrapperHook
     function _deposit(uint256 underlyingAmount)
         internal
+        virtual
         override
         returns (uint256 actualUnderlyingAmount, uint256 wrappedAmount)
     {
@@ -54,12 +55,18 @@ contract WstETHHook is BaseTokenWrapperHook {
     function _withdraw(uint256 wrapperAmount)
         internal
         override
-        returns (uint256 actualWrappedAmount, uint256 unwrappedAmount)
+        returns (uint256 actualWrappedAmount, uint256 actualUnwrappedAmount)
     {
         _take(wrapperCurrency, address(this), wrapperAmount);
         actualWrappedAmount = wrapperAmount;
-        unwrappedAmount = wstETH.unwrap(actualWrappedAmount);
+        uint256 unwrappedAmount = wstETH.unwrap(actualWrappedAmount);
+
+        // check pool manager balance to account for balance mismatch on transfers due to rounding errors
+        uint256 poolManagerBalanceBefore = IStETH(Currency.unwrap(underlyingCurrency)).balanceOf(address(poolManager));
         _settle(underlyingCurrency, address(this), unwrappedAmount);
+        uint256 poolManagerBalanceAfter = IStETH(Currency.unwrap(underlyingCurrency)).balanceOf(address(poolManager));
+
+        actualUnwrappedAmount = poolManagerBalanceAfter - poolManagerBalanceBefore;
     }
 
     /// @inheritdoc BaseTokenWrapperHook
