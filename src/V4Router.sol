@@ -7,6 +7,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 import {PathKey} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
@@ -26,6 +27,13 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using SafeCast for *;
     using CalldataDecoder for bytes;
     using BipsLibrary for uint256;
+    using CustomRevert for bytes4;
+
+    /// @notice Thrown when swap path is empty
+    error EmptyPath();
+    
+    /// @notice Thrown when swap path exceeds maximum allowed length
+    error PathTooLong();
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
@@ -76,7 +84,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 return;
             }
         }
-        revert UnsupportedAction(action);
+        UnsupportedAction.selector.revertWith(action);
     }
 
     function _swapExactInputSingle(IV4Router.ExactInputSingleParams calldata params) private {
@@ -87,19 +95,24 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         }
         uint128 amountOut =
             _swap(params.poolKey, params.zeroForOne, -int256(uint256(amountIn)), params.hookData).toUint128();
-        if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived(params.amountOutMinimum, amountOut);
+        if (amountOut < params.amountOutMinimum) V4TooLittleReceived.selector.revertWith(params.amountOutMinimum, amountOut);
     }
 
     function _swapExactInput(IV4Router.ExactInputParams calldata params) private {
-        unchecked {
-            // Caching for gas savings
-            uint256 pathLength = params.path.length;
-            uint128 amountOut;
-            Currency currencyIn = params.currencyIn;
-            uint128 amountIn = params.amountIn;
-            if (amountIn == ActionConstants.OPEN_DELTA) amountIn = _getFullCredit(currencyIn).toUint128();
-            PathKey calldata pathKey;
+        // Caching for gas savings
+        uint256 pathLength = params.path.length;
+        
+        // Add protection against excessive path lengths that could cause issues
+        if (pathLength == 0) revert EmptyPath();
+        if (pathLength > 256) revert PathTooLong(); // Reasonable upper bound
+        
+        uint128 amountOut;
+        Currency currencyIn = params.currencyIn;
+        uint128 amountIn = params.amountIn;
+        if (amountIn == ActionConstants.OPEN_DELTA) amountIn = _getFullCredit(currencyIn).toUint128();
+        PathKey calldata pathKey;
 
+        unchecked {
             for (uint256 i = 0; i < pathLength; i++) {
                 pathKey = params.path[i];
                 (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(currencyIn);
@@ -109,9 +122,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 amountIn = amountOut;
                 currencyIn = pathKey.intermediateCurrency;
             }
-
-            if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived(params.amountOutMinimum, amountOut);
         }
+
+        if (amountOut < params.amountOutMinimum) V4TooLittleReceived.selector.revertWith(params.amountOutMinimum, amountOut);
     }
 
     function _swapExactOutputSingle(IV4Router.ExactOutputSingleParams calldata params) private {
@@ -123,22 +136,27 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         uint128 amountIn = (
             uint256(-int256(_swap(params.poolKey, params.zeroForOne, int256(uint256(amountOut)), params.hookData)))
         ).toUint128();
-        if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
+        if (amountIn > params.amountInMaximum) V4TooMuchRequested.selector.revertWith(params.amountInMaximum, amountIn);
     }
 
     function _swapExactOutput(IV4Router.ExactOutputParams calldata params) private {
+        // Caching for gas savings
+        uint256 pathLength = params.path.length;
+        
+        // Add protection against excessive path lengths that could cause issues
+        if (pathLength == 0) revert EmptyPath();
+        if (pathLength > 256) revert PathTooLong(); // Reasonable upper bound
+        
+        uint128 amountIn;
+        uint128 amountOut = params.amountOut;
+        Currency currencyOut = params.currencyOut;
+        PathKey calldata pathKey;
+
+        if (amountOut == ActionConstants.OPEN_DELTA) {
+            amountOut = _getFullDebt(currencyOut).toUint128();
+        }
+
         unchecked {
-            // Caching for gas savings
-            uint256 pathLength = params.path.length;
-            uint128 amountIn;
-            uint128 amountOut = params.amountOut;
-            Currency currencyOut = params.currencyOut;
-            PathKey calldata pathKey;
-
-            if (amountOut == ActionConstants.OPEN_DELTA) {
-                amountOut = _getFullDebt(currencyOut).toUint128();
-            }
-
             for (uint256 i = pathLength; i > 0; i--) {
                 pathKey = params.path[i - 1];
                 (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
@@ -149,8 +167,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;
             }
-            if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
         }
+        if (amountIn > params.amountInMaximum) V4TooMuchRequested.selector.revertWith(params.amountInMaximum, amountIn);
     }
 
     function _swap(PoolKey memory poolKey, bool zeroForOne, int256 amountSpecified, bytes calldata hookData)

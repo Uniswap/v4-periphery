@@ -2,16 +2,22 @@
 pragma solidity ^0.8.21;
 
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 /// @title HookMiner
 /// @notice a minimal library for mining hook addresses
 library HookMiner {
+    using CustomRevert for bytes4;
+
     // mask to slice out the bottom 14 bit of the address
     uint160 constant FLAG_MASK = Hooks.ALL_HOOK_MASK; // 0000 ... 0000 0011 1111 1111 1111
 
     // Maximum number of iterations to find a salt, avoid infinite loops or MemoryOOG
     // (arbitrarily set)
     uint256 constant MAX_LOOP = 160_444;
+
+    /// @notice Thrown when salt could not be found
+    error SaltNotFound();
 
     /// @notice Find a salt that produces a hook address with the desired `flags`
     /// @param deployer The address that will deploy the hook. In `forge test`, this will be the test contract `address(this)` or the pranking address
@@ -37,7 +43,7 @@ library HookMiner {
                 return (hookAddress, bytes32(salt));
             }
         }
-        revert("HookMiner: could not find salt");
+        SaltNotFound.selector.revertWith();
     }
 
     /// @notice Precompute a contract address deployed via CREATE2

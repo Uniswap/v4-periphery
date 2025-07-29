@@ -26,9 +26,13 @@ library VanityAddressLib {
         // convert the address to bytes for easier parsing
         bytes20 addrBytes = bytes20(addr);
 
+        // Add overflow protection for score calculations
+        uint256 maxScore = type(uint256).max / 100; // Reserve space for multiplication
+        
         unchecked {
             // 10 points per leading zero nibble
             uint256 leadingZeroCount = getLeadingNibbleCount(addrBytes, 0, 0);
+            if (leadingZeroCount > maxScore / 10) return type(uint256).max; // Prevent overflow
             calculatedScore += (leadingZeroCount * 10);
 
             // special handling for 4s immediately after leading 0s
@@ -38,9 +42,11 @@ library VanityAddressLib {
                 return 0;
             } else if (leadingFourCount == 4) {
                 // 60 points if exactly 4 4s
+                if (calculatedScore > maxScore - 60) return type(uint256).max; // Prevent overflow
                 calculatedScore += 60;
             } else if (leadingFourCount > 4) {
                 // 40 points if more than 4 4s
+                if (calculatedScore > maxScore - 40) return type(uint256).max; // Prevent overflow
                 calculatedScore += 40;
             }
 
@@ -50,12 +56,14 @@ library VanityAddressLib {
 
                 // 1 extra point for any 4 nibbles
                 if (currentNibble == 4) {
+                    if (calculatedScore >= maxScore) return type(uint256).max; // Prevent overflow
                     calculatedScore += 1;
                 }
             }
 
             // If the last 4 nibbles are 4s, add 20 points
             if (addrBytes[18] == 0x44 && addrBytes[19] == 0x44) {
+                if (calculatedScore > maxScore - 20) return type(uint256).max; // Prevent overflow
                 calculatedScore += 20;
             }
         }
@@ -63,6 +71,9 @@ library VanityAddressLib {
 
     /// @notice Returns the number of leading nibbles in an address that match a given value
     /// @param addrBytes The address to count the leading zero nibbles in
+    /// @param startIndex The starting index for the search  
+    /// @param comparison The nibble value to match
+    /// @return count The number of consecutive matching nibbles found
     function getLeadingNibbleCount(bytes20 addrBytes, uint256 startIndex, uint8 comparison)
         internal
         pure
@@ -72,7 +83,13 @@ library VanityAddressLib {
             return count;
         }
 
-        for (uint256 i = startIndex; i < addrBytes.length * 2; i++) {
+        // Add gas efficiency: limit maximum search to prevent excessive gas consumption
+        uint256 maxSearch = addrBytes.length * 2;
+        if (maxSearch > startIndex + 20) {
+            maxSearch = startIndex + 20; // Reasonable upper bound for consecutive nibbles
+        }
+
+        for (uint256 i = startIndex; i < maxSearch; i++) {
             uint8 currentNibble = getNibble(addrBytes, i);
             if (currentNibble != comparison) {
                 return count;
