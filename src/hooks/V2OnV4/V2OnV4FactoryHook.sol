@@ -36,6 +36,7 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
     error InvalidFee();
     error LiquidityNotAllowed();
     error InvalidTickSpacing();
+    error InvalidToken();
     error IdenticalAddresses();
     error ZeroAddress();
     error PairExists();
@@ -98,6 +99,10 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
     function _beforeInitialize(address, PoolKey calldata poolKey, uint160) internal override returns (bytes4) {
         require(poolKey.fee == SWAP_FEE, InvalidFee());
         require(poolKey.tickSpacing == TICK_SPACING, InvalidTickSpacing());
+
+        // native ETH not allowed
+        require(!poolKey.currency0.isAddressZero(), InvalidToken());
+        require(!poolKey.currency1.isAddressZero(), InvalidToken());
         if (getPair[Currency.unwrap(poolKey.currency0)][Currency.unwrap(poolKey.currency1)] == address(0)) {
             // pair doesn't exist, create it
             createPair(Currency.unwrap(poolKey.currency0), Currency.unwrap(poolKey.currency1));
