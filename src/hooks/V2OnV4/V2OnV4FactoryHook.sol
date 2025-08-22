@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {V2OnV4Pair} from "./V2OnV4Pair.sol";
 import {IUniswapV2Factory} from "briefcase/protocols/v2-core/interfaces/IUniswapV2Factory.sol";
+import {IUniswapV2Pair} from "briefcase/protocols/v2-core/interfaces/IUniswapV2Pair.sol";
 import {WETH} from "solmate/src/tokens/WETH.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -56,12 +58,12 @@ contract V2OnV4FactoryHook is BaseHook, IUniswapV2Factory {
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(token0 != address(0), ZeroAddress());
         require(getPair[token0][token1] == address(0), PairExists()); // single check is sufficient
-        // bytes memory bytecode = type(UniswapV2Pair).creationCode;
-        // bytes32 salt = keccak256(abi.encodePacked(token0, token1));
-        // assembly {
-        //     pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
-        // }
-        // IUniswapV2Pair(pair).initialize(token0, token1);
+        bytes memory bytecode = type(V2OnV4Pair).creationCode;
+        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
+        assembly {
+            pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
+        }
+        IUniswapV2Pair(pair).initialize(token0, token1);
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // populate mapping in the reverse direction
         allPairs.push(pair);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
@@ -18,13 +19,15 @@ import {UQ112x112} from "./UQ112x112.sol";
 contract V2OnV4Pair is ERC20 {
     using UQ112x112 for uint224;
     using SafeTransferLib for ERC20;
+    using CurrencyLibrary for Currency;
 
     uint256 public constant MINIMUM_LIQUIDITY = 10 ** 3;
     bytes4 private constant SELECTOR = bytes4(keccak256(bytes("transfer(address,uint256)")));
 
+    IPoolManager public poolManager;
     address public factory;
-    ERC20 public token0;
-    ERC20 public token1;
+    Currency public token0;
+    Currency public token1;
 
     uint112 private reserve0; // uses single storage slot, accessible via getReserves
     uint112 private reserve1; // uses single storage slot, accessible via getReserves
@@ -76,10 +79,11 @@ contract V2OnV4Pair is ERC20 {
     }
 
     // called once by the factory at time of deployment
-    function initialize(address _token0, address _token1) external {
+    function initialize(address _token0, address _token1, address _poolManager) external {
         require(msg.sender == factory, Forbidden()); // sufficient check
-        token0 = ERC20(_token0);
-        token1 = ERC20(_token1);
+        token0 = Currency.wrap(_token0);
+        token1 = Currency.wrap(_token1);
+        poolManager = IPoolManager(_poolManager);
     }
 
     // update reserves and, on the first call per block, price accumulators
@@ -121,8 +125,8 @@ contract V2OnV4Pair is ERC20 {
     // this low-level function should be called from a contract which performs important safety checks
     function mint(address to) external lock returns (uint256 liquidity) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
-        uint256 balance0 = ERC20(token0).balanceOf(address(this));
-        uint256 balance1 = ERC20(token1).balanceOf(address(this));
+        uint256 balance0 = poolManager.balanceOf(address(this), token0.toId());
+        uint256 balance1 = poolManager.balanceOf(address(this), token1.toId());
         uint256 amount0 = balance0 - _reserve0;
         uint256 amount1 = balance1 - _reserve1;
 
@@ -145,10 +149,8 @@ contract V2OnV4Pair is ERC20 {
     // this low-level function should be called from a contract which performs important safety checks
     function burn(address to) external lock returns (uint256 amount0, uint256 amount1) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
-        ERC20 _token0 = token0; // gas savings
-        ERC20 _token1 = token1; // gas savings
-        uint256 balance0 = _token0.balanceOf(address(this));
-        uint256 balance1 = _token1.balanceOf(address(this));
+        uint256 balance0 = poolManager.balanceOf(address(this), token0.toId());
+        uint256 balance1 = poolManager.balanceOf(address(this), token1.toId());
         uint256 liquidity = balanceOf[address(this)];
 
         bool feeOn = _mintFee(_reserve0, _reserve1);
@@ -157,10 +159,10 @@ contract V2OnV4Pair is ERC20 {
         amount1 = liquidity * balance1 / _totalSupply; // using balances ensures pro-rata distribution
         require(amount0 > 0 && amount1 > 0, InsufficientLiquidityBurned());
         _burn(address(this), liquidity);
-        _token0.safeTransfer(to, amount0);
-        _token1.safeTransfer(to, amount1);
-        balance0 = _token0.balanceOf(address(this));
-        balance1 = _token1.balanceOf(address(this));
+        poolManager.transfer(to, token0.toId(), amount0);
+        poolManager.transfer(to, token1.toId(), amount1);
+        balance0 = poolManager.balanceOf(address(this), token0.toId());
+        balance1 = poolManager.balanceOf(address(this), token1.toId());
 
         _update(balance0, balance1, _reserve0, _reserve1);
         if (feeOn) kLast = uint256(reserve0) * reserve1; // reserve0 and reserve1 are up-to-date
@@ -177,14 +179,12 @@ contract V2OnV4Pair is ERC20 {
         uint256 balance1;
         {
             // scope for _token{0,1}, avoids stack too deep errors
-            ERC20 _token0 = token0;
-            ERC20 _token1 = token1;
-            require(to != address(_token0) && to != address(_token1), InvalidTo());
-            if (amount0Out > 0) _token0.safeTransfer(to, amount0Out); // optimistically transfer tokens
-            if (amount1Out > 0) _token1.safeTransfer(to, amount1Out); // optimistically transfer tokens
+            require(to != Currency.unwrap(token0) && to != Currency.unwrap(token1), InvalidTo());
+            if (amount0Out > 0) poolManager.transfer(to, token0.toId(), amount0Out); // optimistically transfer tokens
+            if (amount1Out > 0) poolManager.transfer(to, token1.toId(), amount1Out); // optimistically transfer tokens
             if (data.length > 0) IUniswapV2Callee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
-            balance0 = _token0.balanceOf(address(this));
-            balance1 = _token1.balanceOf(address(this));
+            balance0 = poolManager.balanceOf(address(this), token0.toId());
+            balance1 = poolManager.balanceOf(address(this), token1.toId());
         }
         uint256 amount0In = balance0 > _reserve0 - amount0Out ? balance0 - (_reserve0 - amount0Out) : 0;
         uint256 amount1In = balance1 > _reserve1 - amount1Out ? balance1 - (_reserve1 - amount1Out) : 0;
@@ -202,15 +202,13 @@ contract V2OnV4Pair is ERC20 {
 
     // force balances to match reserves
     function skim(address to) external lock {
-        ERC20 _token0 = token0; // gas savings
-        ERC20 _token1 = token1; // gas savings
-        _token0.safeTransfer(to, _token0.balanceOf(address(this)) - reserve0);
-        _token1.safeTransfer(to, _token1.balanceOf(address(this)) - reserve1);
+        poolManager.transfer(to, token0.toId(), poolManager.balanceOf(address(this), token0.toId()) - reserve0);
+        poolManager.transfer(to, token1.toId(), poolManager.balanceOf(address(this), token1.toId()) - reserve1);
     }
 
     // force reserves to match balances
     function sync() external lock {
-        _update(ERC20(token0).balanceOf(address(this)), ERC20(token1).balanceOf(address(this)), reserve0, reserve1);
+        _update(token0.balanceOfSelf(), token1.balanceOfSelf(), reserve0, reserve1);
     }
 
     function min(uint256 a, uint256 b) internal pure returns (uint256) {
