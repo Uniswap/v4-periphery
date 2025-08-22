@@ -153,7 +153,7 @@ contract V2OnV4FactoryHook is BaseHook, IUniswapV2Factory {
 
         (uint256 amount0Out, uint256 amount1Out) = params.zeroForOne ? (uint256(0), amountOut) : (amountOut, uint256(0));
         poolManager.mint(address(pair), tokenIn.toId(), amountIn);
-        pair.swap(amount0Out, amount1Out, address(this), new bytes(0));
+        pair.swapClaims(amount0Out, amount1Out, address(this), new bytes(0));
         poolManager.burn(address(this), tokenOut.toId(), amountOut);
 
         return (IHooks.beforeSwap.selector, swapDelta, 0);
