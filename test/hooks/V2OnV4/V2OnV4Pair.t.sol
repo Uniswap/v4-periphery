@@ -8,6 +8,7 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IUniswapV2Factory} from "briefcase/protocols/v2-core/interfaces/IUniswapV2Factory.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -16,9 +17,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {IERC20} from "forge-std/interfaces/IERC20.sol";
 
-import {V2OnV4FactoryHook} from "../../../src/hooks/V2OnV4/V2OnV4FactoryHook.sol";
-import {V2OnV4Pair} from "../../../src/hooks/V2OnV4/V2OnV4Pair.sol";
-import {UniswapV2Library} from "../../../src/hooks/V2OnV4/UniswapV2Library.sol";
+import {IV2OnV4Pair} from "../../../src/interfaces/IV2OnV4Pair.sol";
 import {IUniswapV2Pair} from "briefcase/protocols/v2-core/interfaces/IUniswapV2Pair.sol";
 import {IUniswapV2Callee} from "briefcase/protocols/v2-core/interfaces/IUniswapV2Callee.sol";
 import {MockClaimManager} from "../../mocks/MockClaimManager.sol";
@@ -29,8 +28,8 @@ contract V2OnV4PairTest is Test, Deployers {
     using FixedPointMathLib for uint256;
 
     // Test contracts
-    V2OnV4FactoryHook public factory;
-    V2OnV4Pair public pair;
+    IUniswapV2Factory public factory;
+    IV2OnV4Pair public pair;
     MockClaimManager public claimManager;
 
     // Tokens
@@ -71,7 +70,7 @@ contract V2OnV4PairTest is Test, Deployers {
             (token0, token1) = (token1, token0);
         }
 
-        factory = V2OnV4FactoryHook(
+        factory = IUniswapV2Factory(
             payable(
                 address(
                     uint160(
@@ -89,8 +88,8 @@ contract V2OnV4PairTest is Test, Deployers {
         poolKey = PoolKey({
             currency0: Currency.wrap(address(token0)),
             currency1: Currency.wrap(address(token1)),
-            fee: factory.SWAP_FEE(),
-            tickSpacing: factory.TICK_SPACING(),
+            fee: 3000,
+            tickSpacing: 1,
             hooks: IHooks(address(factory))
         });
         poolId = poolKey.toId();
@@ -99,7 +98,7 @@ contract V2OnV4PairTest is Test, Deployers {
         manager.initialize(poolKey, INIT_SQRT_PRICE);
 
         // Get the deployed pair
-        pair = V2OnV4Pair(factory.getPair(address(token0), address(token1)));
+        pair = IV2OnV4Pair(factory.getPair(address(token0), address(token1)));
 
         // Mint tokens to test users
         _mintTokensToUsers();
@@ -148,10 +147,10 @@ contract V2OnV4PairTest is Test, Deployers {
         manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), 1 ether);
         manager.transfer(address(pair), Currency.wrap(address(token1)).toId(), 1 ether);
         vm.expectEmit(true, true, true, true);
-        emit V2OnV4Pair.Mint(alice, 1 ether, 1 ether);
+        emit IV2OnV4Pair.Mint(alice, 1 ether, 1 ether);
         pair.mintClaims(alice);
         vm.snapshotGasLastCall("V2OnV4Hook_AddLiquidityClaim");
-        vm.assertEq(pair.balanceOf(alice), 1 ether - 1000);
+        vm.assertEq(IERC20(address(pair)).balanceOf(alice), 1 ether - 1000);
         vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token0)).toId()), 1 ether);
         vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token1)).toId()), 1 ether);
     }
@@ -161,10 +160,10 @@ contract V2OnV4PairTest is Test, Deployers {
         token0.mint(address(pair), 1 ether);
         token1.mint(address(pair), 1 ether);
         vm.expectEmit(true, true, true, true);
-        emit V2OnV4Pair.Mint(address(manager), 1 ether, 1 ether);
+        emit IV2OnV4Pair.Mint(address(manager), 1 ether, 1 ether);
         pair.mint(alice);
         vm.snapshotGasLastCall("V2OnV4Hook_AddLiquidity");
-        vm.assertEq(pair.balanceOf(alice), 1 ether - 1000);
+        vm.assertEq(IERC20(address(pair)).balanceOf(alice), 1 ether - 1000);
         vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token0)).toId()), 1 ether);
         vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token1)).toId()), 1 ether);
     }
@@ -177,7 +176,7 @@ contract V2OnV4PairTest is Test, Deployers {
         manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), 1 ether);
 
         vm.expectEmit(true, true, true, true);
-        emit V2OnV4Pair.Swap(alice, 1 ether, 0, 0, 0.5 ether, alice);
+        emit IV2OnV4Pair.Swap(alice, 1 ether, 0, 0, 0.5 ether, alice);
         pair.swapClaims(0, 0.5 ether, alice, new bytes(0));
         vm.snapshotGasLastCall("V2OnV4Hook_SwapClaim");
     }
@@ -189,7 +188,7 @@ contract V2OnV4PairTest is Test, Deployers {
         claimManager.mint(Currency.wrap(address(token0)), 1 ether);
         manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), 1 ether);
 
-        vm.expectRevert(V2OnV4Pair.K.selector);
+        vm.expectRevert(IV2OnV4Pair.K.selector);
         pair.swapClaims(0, 1 ether, alice, new bytes(0));
     }
 
@@ -200,7 +199,7 @@ contract V2OnV4PairTest is Test, Deployers {
         token0.mint(address(pair), 1 ether);
 
         vm.expectEmit(true, true, true, true);
-        emit V2OnV4Pair.Swap(address(manager), 1 ether, 0, 0, 0.5 ether, alice);
+        emit IV2OnV4Pair.Swap(address(manager), 1 ether, 0, 0, 0.5 ether, alice);
         pair.swap(0, 0.5 ether, alice, new bytes(0));
         vm.snapshotGasLastCall("V2OnV4Hook_Swap");
     }
@@ -212,7 +211,7 @@ contract V2OnV4PairTest is Test, Deployers {
         token1.mint(address(pair), 1 ether);
 
         vm.expectEmit(true, true, true, true);
-        emit V2OnV4Pair.Swap(address(manager), 0, 1 ether, 0.5 ether, 0, alice);
+        emit IV2OnV4Pair.Swap(address(manager), 0, 1 ether, 0.5 ether, 0, alice);
         pair.swap(0.5 ether, 0, alice, new bytes(0));
     }
 
@@ -222,7 +221,7 @@ contract V2OnV4PairTest is Test, Deployers {
         vm.startPrank(alice);
         token0.mint(address(pair), 1 ether);
 
-        vm.expectRevert(V2OnV4Pair.K.selector);
+        vm.expectRevert(IV2OnV4Pair.K.selector);
         pair.swap(0, 1 ether, alice, new bytes(0));
     }
 

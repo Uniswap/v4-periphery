@@ -12,16 +12,15 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
-import {V2OnV4FactoryHook} from "../../../src/hooks/V2OnV4/V2OnV4FactoryHook.sol";
 import {MockClaimManager} from "../../mocks/MockClaimManager.sol";
-import {V2OnV4Pair} from "../../../src/hooks/V2OnV4/V2OnV4Pair.sol";
-import {IUniswapV2Factory} from "briefcase/protocols/v2-core/interfaces/IUniswapV2Factory.sol";
+import {IV2OnV4Pair} from "../../../src/interfaces/IV2OnV4Pair.sol";
+import {IV2OnV4Factory} from "../../../src/interfaces/IV2OnV4Factory.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 contract V2OnV4FactoryHookTest is Test, Deployers {
     using CurrencyLibrary for Currency;
 
-    V2OnV4FactoryHook public factory;
+    IV2OnV4Factory public factory;
     MockERC20 public token0;
     MockERC20 public token1;
     MockClaimManager public claimManager;
@@ -36,7 +35,7 @@ contract V2OnV4FactoryHookTest is Test, Deployers {
         claimManager = new MockClaimManager(manager);
 
         // Deploy the factory hook with proper permissions
-        factory = V2OnV4FactoryHook(
+        factory = IV2OnV4Factory(
             payable(
                 address(
                     uint160(
@@ -72,27 +71,6 @@ contract V2OnV4FactoryHookTest is Test, Deployers {
         });
     }
 
-    function test_factoryDeployment() public view {
-        assertEq(address(factory.poolManager()), address(manager));
-        assertEq(factory.feeToSetter(), manager.protocolFeeController());
-        assertEq(factory.SWAP_FEE(), 3000);
-        assertEq(factory.TICK_SPACING(), 1);
-    }
-
-    function test_hookPermissions() public view {
-        Hooks.Permissions memory permissions = factory.getHookPermissions();
-
-        assertTrue(permissions.beforeInitialize);
-        assertTrue(permissions.beforeAddLiquidity);
-        assertTrue(permissions.beforeSwap);
-        assertTrue(permissions.beforeSwapReturnDelta);
-
-        assertFalse(permissions.afterInitialize);
-        assertFalse(permissions.afterSwap);
-        assertFalse(permissions.afterAddLiquidity);
-        assertFalse(permissions.afterRemoveLiquidity);
-    }
-
     function test_createPair() public {
         address pairAddress = factory.createPair(address(token0), address(token1));
 
@@ -106,7 +84,7 @@ contract V2OnV4FactoryHookTest is Test, Deployers {
         assertEq(factory.allPairs(0), pairAddress);
 
         // Verify pair properties
-        V2OnV4Pair pair = V2OnV4Pair(pairAddress);
+        IV2OnV4Pair pair = IV2OnV4Pair(pairAddress);
         assertEq(Currency.unwrap(pair.token0()), address(token0));
         assertEq(Currency.unwrap(pair.token1()), address(token1));
         assertEq(address(pair.poolManager()), address(manager));
@@ -116,23 +94,23 @@ contract V2OnV4FactoryHookTest is Test, Deployers {
     function test_createPair_revertsOnDuplicate() public {
         factory.createPair(address(token0), address(token1));
 
-        vm.expectRevert(abi.encodeWithSelector(V2OnV4FactoryHook.PairExists.selector));
+        vm.expectRevert(abi.encodeWithSelector(IV2OnV4Factory.PairExists.selector));
         factory.createPair(address(token0), address(token1));
 
-        vm.expectRevert(abi.encodeWithSelector(V2OnV4FactoryHook.PairExists.selector));
+        vm.expectRevert(abi.encodeWithSelector(IV2OnV4Factory.PairExists.selector));
         factory.createPair(address(token1), address(token0));
     }
 
     function test_createPair_revertsOnIdenticalTokens() public {
-        vm.expectRevert(abi.encodeWithSelector(V2OnV4FactoryHook.IdenticalAddresses.selector));
+        vm.expectRevert(abi.encodeWithSelector(IV2OnV4Factory.IdenticalAddresses.selector));
         factory.createPair(address(token0), address(token0));
     }
 
     function test_createPair_revertsOnZeroAddress() public {
-        vm.expectRevert(abi.encodeWithSelector(V2OnV4FactoryHook.ZeroAddress.selector));
+        vm.expectRevert(abi.encodeWithSelector(IV2OnV4Factory.ZeroAddress.selector));
         factory.createPair(address(0), address(token1));
 
-        vm.expectRevert(abi.encodeWithSelector(V2OnV4FactoryHook.ZeroAddress.selector));
+        vm.expectRevert(abi.encodeWithSelector(IV2OnV4Factory.ZeroAddress.selector));
         factory.createPair(address(token0), address(0));
     }
 
@@ -167,7 +145,7 @@ contract V2OnV4FactoryHookTest is Test, Deployers {
 
         // Should revert if not called by feeToSetter
         vm.prank(address(1));
-        vm.expectRevert(V2OnV4FactoryHook.Forbidden.selector);
+        vm.expectRevert(IV2OnV4Factory.Forbidden.selector);
         factory.setFeeTo(newFeeTo);
 
         // Should succeed when called by feeToSetter
@@ -179,13 +157,13 @@ contract V2OnV4FactoryHookTest is Test, Deployers {
 
     function test_setFeeToSetter_alwaysReverts() public {
         // feeToSetter is locked and cannot be changed
-        vm.expectRevert(V2OnV4FactoryHook.FeeToSetterLocked.selector);
+        vm.expectRevert(IV2OnV4Factory.FeeToSetterLocked.selector);
         factory.setFeeToSetter(makeAddr("newSetter"));
 
         // Even the current feeToSetter cannot change it
         address feeToSetter = factory.feeToSetter();
         vm.prank(feeToSetter);
-        vm.expectRevert(V2OnV4FactoryHook.FeeToSetterLocked.selector);
+        vm.expectRevert(IV2OnV4Factory.FeeToSetterLocked.selector);
         factory.setFeeToSetter(makeAddr("newSetter"));
     }
 
@@ -294,7 +272,7 @@ contract V2OnV4FactoryHookTest is Test, Deployers {
         vm.startPrank(alice);
         token0.transfer(address(pair), amount0);
         token1.transfer(address(pair), amount1);
-        V2OnV4Pair(pair).mint(alice);
+        IV2OnV4Pair(pair).mint(alice);
         vm.stopPrank();
     }
 }

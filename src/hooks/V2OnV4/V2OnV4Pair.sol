@@ -15,6 +15,7 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {BaseHook} from "../../utils/BaseHook.sol";
 import {V2OnV4PairDeployer} from "./V2OnV4PairDeployer.sol";
 import {UQ112x112} from "./UQ112x112.sol";
+import {IV2OnV4Pair} from "../../interfaces/IV2OnV4Pair.sol";
 
 enum UnlockCallbackAction {
     MINT,
@@ -32,7 +33,7 @@ struct UnlockCallback {
 /// @author Uniswap Labs
 /// @notice A V2-style AMM pair contract that operates on Uniswap V4 infrastructure
 /// @dev Implements constant product (x*y=k) AMM logic while leveraging V4's singleton pool manager
-contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
+contract V2OnV4Pair is IV2OnV4Pair, ERC20, ReentrancyGuardTransient {
     using UQ112x112 for uint224;
     using SafeTransferLib for ERC20;
     using CurrencyLibrary for Currency;
@@ -79,29 +80,6 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         _;
     }
 
-    error K();
-    error Forbidden();
-    error NotPoolManager();
-    error InvalidUnlockCallbackData();
-    error InsufficientLiquidityBurned();
-    error InsufficientLiquidityMinted();
-    error InsufficientOutputAmount();
-    error InsufficientInputAmount();
-    error InsufficientLiquidity();
-    error InvalidTo();
-
-    event Mint(address indexed sender, uint256 amount0, uint256 amount1);
-    event Burn(address indexed sender, uint256 amount0, uint256 amount1, address indexed to);
-    event Swap(
-        address indexed sender,
-        uint256 amount0In,
-        uint256 amount1In,
-        uint256 amount0Out,
-        uint256 amount1Out,
-        address indexed to
-    );
-    event Sync(uint112 reserve0, uint112 reserve1);
-
     /// @notice Deploys a new V2 pair on V4
     /// @dev Called by the factory with deployment parameters
     constructor() ERC20("Uniswap V2", "UNI-V2", 18) {
@@ -118,8 +96,13 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @dev Low-level function that should be called through a router with proper safety checks
     /// @param to Address to receive the minted LP tokens
     /// @return liquidity Amount of LP tokens minted
-    function mint(address to) external nonReentrant returns (uint256 liquidity) {
-        poolManager.unlock(abi.encode(UnlockCallback({action: UnlockCallbackAction.MINT, to: to, data: new bytes(0)})));
+    function mint(address to) external override nonReentrant returns (uint256 liquidity) {
+        (liquidity) = abi.decode(
+            poolManager.unlock(
+                abi.encode(UnlockCallback({action: UnlockCallbackAction.MINT, to: to, data: new bytes(0)}))
+            ),
+            (uint256)
+        );
     }
 
     /// @notice Internal mint function that handles ERC20 token deposits and liquidity creation
@@ -128,9 +111,9 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @return liquidity Amount of LP tokens minted
     function _mint(address to) internal returns (uint256 liquidity) {
         // transform ERC20 tokens into claims
-        (uint256 amount0, uint256 amount1) = _slurp();
+        _slurp();
         // Then mint liquidity as normal with those claims
-        _mintClaims(to);
+        liquidity = _mintClaims(to);
     }
 
     /// @notice Burns liquidity tokens and returns underlying assets
@@ -138,8 +121,13 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @param to Address to receive the underlying tokens
     /// @return amount0 Amount of token0 returned
     /// @return amount1 Amount of token1 returned
-    function burn(address to) external nonReentrant returns (uint256 amount0, uint256 amount1) {
-        poolManager.unlock(abi.encode(UnlockCallback({action: UnlockCallbackAction.BURN, to: to, data: new bytes(0)})));
+    function burn(address to) external override nonReentrant returns (uint256 amount0, uint256 amount1) {
+        (amount0, amount1) = abi.decode(
+            poolManager.unlock(
+                abi.encode(UnlockCallback({action: UnlockCallbackAction.BURN, to: to, data: new bytes(0)}))
+            ),
+            (uint256, uint256)
+        );
     }
 
     /// @notice Internal burn function that redeems LP tokens for underlying assets
@@ -158,7 +146,11 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @param amount1Out Amount of token1 to send
     /// @param to Address to receive output tokens
     /// @param data Callback data for flash swaps
-    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) external nonReentrant {
+    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data)
+        external
+        override
+        nonReentrant
+    {
         poolManager.unlock(
             abi.encode(
                 UnlockCallback({
@@ -207,7 +199,7 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @param to Address to receive the minted LP tokens
     /// @return liquidity Amount of LP tokens minted
     function mintClaims(address to) external nonReentrant returns (uint256 liquidity) {
-        _mintClaims(to);
+        return _mintClaims(to);
     }
 
     /// @notice Burns liquidity and returns claims directly
@@ -216,7 +208,7 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @return amount0 Amount of token0 claims returned
     /// @return amount1 Amount of token1 claims returned
     function burnClaims(address to) external nonReentrant returns (uint256 amount0, uint256 amount1) {
-        _burnClaims(to, true);
+        return _burnClaims(to, true);
     }
 
     /// @notice Executes a swap using V4 claims directly
@@ -239,13 +231,15 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     function unlockCallback(bytes calldata data) external onlyPoolManager returns (bytes memory) {
         UnlockCallback memory callbackData = abi.decode(data, (UnlockCallback));
         if (callbackData.action == UnlockCallbackAction.MINT) {
-            _mint(callbackData.to);
+            return abi.encode(_mint(callbackData.to));
         } else if (callbackData.action == UnlockCallbackAction.BURN) {
-            _burn(callbackData.to);
+            (uint256 amount0, uint256 amount1) = _burn(callbackData.to);
+            return abi.encode(amount0, amount1);
         } else if (callbackData.action == UnlockCallbackAction.SWAP) {
             (uint256 amount0Out, uint256 amount1Out, bytes memory swapData) =
                 abi.decode(callbackData.data, (uint256, uint256, bytes));
             _swap(amount0Out, amount1Out, callbackData.to, swapData);
+            return new bytes(0); // no return data needed for swap
         } else {
             revert InvalidUnlockCallbackData();
         }

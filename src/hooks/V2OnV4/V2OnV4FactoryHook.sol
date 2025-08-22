@@ -2,11 +2,9 @@
 pragma solidity 0.8.26;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {V2OnV4Pair} from "./V2OnV4Pair.sol";
 import {
     toBeforeSwapDelta, BeforeSwapDelta, BeforeSwapDeltaLibrary
 } from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
-import {IUniswapV2Factory} from "briefcase/protocols/v2-core/interfaces/IUniswapV2Factory.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IUniswapV2Pair} from "briefcase/protocols/v2-core/interfaces/IUniswapV2Pair.sol";
@@ -17,13 +15,15 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {UniswapV2Library} from "./UniswapV2Library.sol";
 import {V2OnV4PairDeployer} from "./V2OnV4PairDeployer.sol";
+import {IV2OnV4Pair} from "../../interfaces/IV2OnV4Pair.sol";
+import {IV2OnV4Factory} from "../../interfaces/IV2OnV4Factory.sol";
 import {BaseHook} from "../../utils/BaseHook.sol";
 
 /// @title V2OnV4FactoryHook
 /// @author Uniswap Labs
 /// @notice Factory contract that enables Uniswap V2-style AMM pools to run on Uniswap V4 infrastructure
 /// @dev Implements the IUniswapV2Factory interface while leveraging V4's hook system for pool management
-contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
+contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IV2OnV4Factory {
     using CurrencyLibrary for Currency;
     using SafeCast for int256;
     using SafeCast for uint256;
@@ -32,27 +32,17 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
     address public feeTo;
 
     /// @notice Fixed swap fee of 0.3% (3000 basis points) matching V2's fee structure
-    uint24 public constant SWAP_FEE = 3000;
+    uint24 public constant override SWAP_FEE = 3000;
 
     /// @notice Minimum tick spacing for V4 pools (1 tick = finest granularity)
-    int24 public constant TICK_SPACING = 1;
+    int24 public constant override TICK_SPACING = 1;
 
     /// @notice Returns the address of the pair for tokenA and tokenB, if it exists
     /// @dev getPair[tokenA][tokenB] and getPair[tokenB][tokenA] return the same pair address
-    mapping(address => mapping(address => address)) public getPair;
+    mapping(address => mapping(address => address)) public override getPair;
 
     /// @notice Array of all created pair addresses for enumeration
-    address[] public allPairs;
-
-    error InvalidFee();
-    error LiquidityNotAllowed();
-    error InvalidTickSpacing();
-    error InvalidToken();
-    error IdenticalAddresses();
-    error ZeroAddress();
-    error PairExists();
-    error Forbidden();
-    error FeeToSetterLocked();
+    address[] public override allPairs;
 
     /// @notice Deploys the V2OnV4 factory hook
     /// @param _manager The Uniswap V4 pool manager contract
@@ -80,7 +70,7 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
 
     /// @notice Returns the total number of pairs created
     /// @return The length of the allPairs array
-    function allPairsLength() external view returns (uint256) {
+    function allPairsLength() external view override returns (uint256) {
         return allPairs.length;
     }
 
@@ -89,7 +79,7 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
     /// @param tokenB Address of the second token
     /// @return pair Address of the newly created pair contract
     /// @dev Tokens are sorted, and the pair is deployed deterministically
-    function createPair(address tokenA, address tokenB) public returns (address pair) {
+    function createPair(address tokenA, address tokenB) public override returns (address pair) {
         require(tokenA != tokenB, IdenticalAddresses());
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(token0 != address(0), ZeroAddress());
@@ -104,20 +94,20 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
     /// @notice Returns the address authorized to set the fee recipient
     /// @return The protocol fee controller from the V4 pool manager
     /// @dev Delegates fee setter authority to V4's protocol fee controller
-    function feeToSetter() public view returns (address) {
+    function feeToSetter() public view override returns (address) {
         return poolManager.protocolFeeController();
     }
 
     /// @notice Prevents changing the fee setter (locked to V4's protocol controller)
     /// @dev Always reverts as fee setter is managed by V4 pool manager
-    function setFeeToSetter(address) external pure {
+    function setFeeToSetter(address) external pure override {
         revert FeeToSetterLocked();
     }
 
     /// @notice Sets the address that receives protocol fees
     /// @param _feeTo The address to receive protocol fees (or address(0) to disable)
     /// @dev Only callable by the current fee setter
-    function setFeeTo(address _feeTo) external {
+    function setFeeTo(address _feeTo) external override {
         require(msg.sender == feeToSetter(), Forbidden());
         feeTo = _feeTo;
     }
@@ -162,7 +152,7 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
         override
         returns (bytes4, BeforeSwapDelta swapDelta, uint24)
     {
-        V2OnV4Pair pair = V2OnV4Pair(getPair[Currency.unwrap(poolKey.currency0)][Currency.unwrap(poolKey.currency1)]);
+        IV2OnV4Pair pair = IV2OnV4Pair(getPair[Currency.unwrap(poolKey.currency0)][Currency.unwrap(poolKey.currency1)]);
 
         (Currency tokenIn, Currency tokenOut, uint256 reserveIn, uint256 reserveOut, uint256 amountSpecified) =
             _parseSwap(poolKey, params, pair);
@@ -200,7 +190,7 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
     /// @return reserveIn Input token reserves
     /// @return reserveOut Output token reserves
     /// @return amountSpecified Absolute value of the specified swap amount
-    function _parseSwap(PoolKey calldata poolKey, SwapParams calldata params, V2OnV4Pair pair)
+    function _parseSwap(PoolKey calldata poolKey, SwapParams calldata params, IV2OnV4Pair pair)
         private
         view
         returns (Currency tokenIn, Currency tokenOut, uint256 reserveIn, uint256 reserveOut, uint256 amountSpecified)

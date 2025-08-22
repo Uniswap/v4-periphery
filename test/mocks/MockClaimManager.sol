@@ -15,12 +15,11 @@ contract MockClaimManager is DeltaResolver, IUnlockCallback {
     constructor(IPoolManager _poolManager) ImmutableState(_poolManager) {}
 
     function mint(Currency currency, uint256 amount) external {
-        poolManager.unlock(abi.encode(currency, msg.sender, amount, true));
+        poolManager.unlock(abi.encode(currency, msg.sender, amount));
     }
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        (Currency currency, address caller, uint256 amount, bool _mint) =
-            abi.decode(data, (Currency, address, uint256, bool));
+        (Currency currency, address caller, uint256 amount) = abi.decode(data, (Currency, address, uint256));
         _settle(currency, caller, amount);
         poolManager.mint(caller, currency.toId(), amount);
 
