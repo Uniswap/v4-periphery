@@ -141,7 +141,7 @@ contract V2OnV4PairTest is Test, Deployers {
         vm.stopPrank();
     }
 
-    function testAddLiquidity() public {
+    function testAddLiquidityClaims() public {
         vm.startPrank(alice);
         claimManager.mint(Currency.wrap(address(token0)), 1 ether);
         claimManager.mint(Currency.wrap(address(token1)), 1 ether);
@@ -149,13 +149,25 @@ contract V2OnV4PairTest is Test, Deployers {
         manager.transfer(address(pair), Currency.wrap(address(token1)).toId(), 1 ether);
         vm.expectEmit(true, true, true, false);
         emit V2OnV4Pair.Mint(alice, 1 ether, 1 ether);
-        pair.mint(alice);
+        pair.mintClaims(alice);
         vm.assertEq(pair.balanceOf(alice), 1 ether - 1000);
         vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token0)).toId()), 1 ether);
         vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token1)).toId()), 1 ether);
     }
 
-    function testSwap() public {
+    function testAddLiquidity() public {
+        vm.startPrank(alice);
+        token0.mint(address(pair), 1 ether);
+        token1.mint(address(pair), 1 ether);
+        vm.expectEmit(true, true, true, false);
+        emit V2OnV4Pair.Mint(alice, 1 ether, 1 ether);
+        pair.mint(alice);
+        vm.assertEq(pair.balanceOf(alice), 1 ether - 1000);
+        vm.assertEq(token0.balanceOf(address(pair)), 1 ether);
+        vm.assertEq(token1.balanceOf(address(pair)), 1 ether);
+    }
+
+    function testSwapClaims() public {
         _addLiquidity(10 ether, 10 ether);
 
         vm.startPrank(alice);
@@ -164,10 +176,10 @@ contract V2OnV4PairTest is Test, Deployers {
 
         vm.expectEmit(true, true, true, false);
         emit V2OnV4Pair.Swap(alice, 1 ether, 1 ether, 0, 0.5 ether, alice);
-        pair.swap(0, 0.5 ether, alice, new bytes(0));
+        pair.swapClaims(0, 0.5 ether, alice, new bytes(0));
     }
 
-    function testSwapTooMuchOutput() public {
+    function testSwapClaimsTooMuchOutput() public {
         _addLiquidity(10 ether, 10 ether);
 
         vm.startPrank(alice);
@@ -175,15 +187,46 @@ contract V2OnV4PairTest is Test, Deployers {
         manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), 1 ether);
 
         vm.expectRevert(V2OnV4Pair.K.selector);
-        pair.swap(0, 1 ether, alice, new bytes(0));
+        pair.swapClaims(0, 1 ether, address(manager), new bytes(0));
     }
 
-    function _addLiquidity(uint256 amount0, uint256 amount) internal {
+    function testSwapToken0() public {
+        _addLiquidity(10 ether, 10 ether);
+
         vm.startPrank(alice);
-        claimManager.mint(Currency.wrap(address(token0)), amount);
-        claimManager.mint(Currency.wrap(address(token1)), amount);
-        manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), amount);
-        manager.transfer(address(pair), Currency.wrap(address(token1)).toId(), amount);
+        token0.mint(address(pair), 1 ether);
+
+        vm.expectEmit(true, true, true, false);
+        emit V2OnV4Pair.Swap(alice, 1 ether, 1 ether, 0, 0.5 ether, alice);
+        pair.swap(0, 0.5 ether, address(manager), new bytes(0));
+    }
+
+    function testSwapToken1() public {
+        _addLiquidity(10 ether, 10 ether);
+
+        vm.startPrank(alice);
+        token1.mint(address(pair), 1 ether);
+
+        vm.expectEmit(true, true, true, false);
+        emit V2OnV4Pair.Swap(alice, 1 ether, 1 ether, 0.5 ether, 0, alice);
+        pair.swap(0.5 ether, 0, address(manager), new bytes(0));
+    }
+
+    function testSwapTooMuchOutput() public {
+        _addLiquidity(10 ether, 10 ether);
+
+        vm.startPrank(alice);
+        token0.mint(address(pair), 1 ether);
+
+        vm.expectEmit(true, true, true, false);
+        emit V2OnV4Pair.Swap(alice, 1 ether, 1 ether, 0, 0.5 ether, alice);
+        pair.swap(0, 1 ether, address(manager), new bytes(0));
+    }
+
+    function _addLiquidity(uint256 amount0, uint256 amount1) internal {
+        vm.startPrank(alice);
+        token0.mint(address(pair), amount0);
+        token1.mint(address(pair), amount1);
         pair.mint(alice);
         vm.stopPrank();
     }
