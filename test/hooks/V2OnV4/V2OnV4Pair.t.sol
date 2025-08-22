@@ -150,6 +150,7 @@ contract V2OnV4PairTest is Test, Deployers {
         vm.expectEmit(true, true, true, true);
         emit V2OnV4Pair.Mint(alice, 1 ether, 1 ether);
         pair.mintClaims(alice);
+        vm.snapshotGasLastCall("V2OnV4Hook_AddLiquidityClaim");
         vm.assertEq(pair.balanceOf(alice), 1 ether - 1000);
         vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token0)).toId()), 1 ether);
         vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token1)).toId()), 1 ether);
@@ -162,6 +163,7 @@ contract V2OnV4PairTest is Test, Deployers {
         vm.expectEmit(true, true, true, true);
         emit V2OnV4Pair.Mint(address(manager), 1 ether, 1 ether);
         pair.mint(alice);
+        vm.snapshotGasLastCall("V2OnV4Hook_AddLiquidity");
         vm.assertEq(pair.balanceOf(alice), 1 ether - 1000);
         vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token0)).toId()), 1 ether);
         vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token1)).toId()), 1 ether);
@@ -177,6 +179,7 @@ contract V2OnV4PairTest is Test, Deployers {
         vm.expectEmit(true, true, true, true);
         emit V2OnV4Pair.Swap(alice, 1 ether, 0, 0, 0.5 ether, alice);
         pair.swapClaims(0, 0.5 ether, alice, new bytes(0));
+        vm.snapshotGasLastCall("V2OnV4Hook_SwapClaim");
     }
 
     function testSwapClaimsTooMuchOutput() public {
@@ -199,6 +202,7 @@ contract V2OnV4PairTest is Test, Deployers {
         vm.expectEmit(true, true, true, true);
         emit V2OnV4Pair.Swap(address(manager), 1 ether, 0, 0, 0.5 ether, alice);
         pair.swap(0, 0.5 ether, alice, new bytes(0));
+        vm.snapshotGasLastCall("V2OnV4Hook_Swap");
     }
 
     function testSwapToken1() public {
