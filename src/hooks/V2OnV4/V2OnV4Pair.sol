@@ -41,28 +41,17 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @dev Prevents division by zero and protects against manipulation
     uint256 public constant MINIMUM_LIQUIDITY = 10 ** 3;
 
-    /// @dev Transfer function selector for low-level calls
-    bytes4 private constant SELECTOR = bytes4(keccak256(bytes("transfer(address,uint256)")));
-
     /// @notice The Uniswap V4 pool manager contract
     IPoolManager public immutable poolManager;
 
     /// @notice Address of the factory that deployed this pair
     address public immutable factory;
 
-    /// @notice First token of the pair (sorted)
     Currency public immutable token0;
-
-    /// @notice Second token of the pair (sorted)
     Currency public immutable token1;
 
-    /// @dev Reserve of token0, packed for gas efficiency
     uint112 private reserve0;
-
-    /// @dev Reserve of token1, packed for gas efficiency
     uint112 private reserve1;
-
-    /// @dev Last block timestamp when reserves were updated, packed with reserves
     uint32 private blockTimestampLast;
 
     /// @notice Cumulative price of token0 in terms of token1, used for TWAP oracles
@@ -159,12 +148,8 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @return amount0 Amount of token0 returned
     /// @return amount1 Amount of token1 returned
     function _burn(address to) internal returns (uint256 amount0, uint256 amount1) {
-        // burn the liquidity tokens and transfer claims to this contract
-        (amount0, amount1) = _burnClaims(address(this));
-        poolManager.burn(address(this), token0.toId(), amount0);
-        poolManager.burn(address(this), token1.toId(), amount1);
-        poolManager.take(token0, to, amount0);
-        poolManager.take(token1, to, amount0);
+        // burn the liquidity tokens and transfer claims to the recipient
+        (amount0, amount1) = _burnClaims(to, false);
     }
 
     /// @notice Executes a swap with specified output amounts
@@ -193,19 +178,7 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @param data Callback data for flash swaps
     function _swap(uint256 amount0Out, uint256 amount1Out, address to, bytes memory data) internal {
         _slurp();
-
-        // swap input claims for output claims
-        _swapClaims(amount0Out, amount1Out, address(this), data);
-
-        // take outputs and send to the recipient
-        if (amount0Out > 0) {
-            poolManager.burn(address(this), token0.toId(), amount0Out);
-            poolManager.take(token0, to, amount0Out);
-        }
-        if (amount1Out > 0) {
-            poolManager.burn(address(this), token1.toId(), amount1Out);
-            poolManager.take(token1, to, amount1Out);
-        }
+        _swapClaims(amount0Out, amount1Out, to, data, false);
     }
 
     /// @notice Transfers excess tokens to maintain balance-reserve parity
@@ -243,7 +216,7 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @return amount0 Amount of token0 claims returned
     /// @return amount1 Amount of token1 claims returned
     function burnClaims(address to) external nonReentrant returns (uint256 amount0, uint256 amount1) {
-        _burnClaims(to);
+        _burnClaims(to, true);
     }
 
     /// @notice Executes a swap using V4 claims directly
@@ -256,7 +229,7 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         external
         nonReentrant
     {
-        _swapClaims(amount0Out, amount1Out, to, data);
+        _swapClaims(amount0Out, amount1Out, to, data, true);
     }
 
     /// @notice Callback executed by pool manager during unlock operations
@@ -283,9 +256,10 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @notice Burns liquidity tokens and returns underlying assets
     /// @dev Low-level function that should be called through a router with proper safety checks
     /// @param to Address to receive the underlying tokens
+    /// @param claimOutput true if the user should receive claims, false if they should receive raw ERC20 tokens
     /// @return amount0 Amount of token0 returned
     /// @return amount1 Amount of token1 returned
-    function _burnClaims(address to) internal returns (uint256 amount0, uint256 amount1) {
+    function _burnClaims(address to, bool claimOutput) internal returns (uint256 amount0, uint256 amount1) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         uint256 balance0 = poolManager.balanceOf(address(this), token0.toId());
         uint256 balance1 = poolManager.balanceOf(address(this), token1.toId());
@@ -297,8 +271,8 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         amount1 = liquidity * balance1 / _totalSupply; // using balances ensures pro-rata distribution
         require(amount0 > 0 && amount1 > 0, InsufficientLiquidityBurned());
         _burn(address(this), liquidity);
-        poolManager.transfer(to, token0.toId(), amount0);
-        poolManager.transfer(to, token1.toId(), amount1);
+        _transfer(token0, to, amount0, claimOutput);
+        _transfer(token1, to, amount1, claimOutput);
         balance0 = poolManager.balanceOf(address(this), token0.toId());
         balance1 = poolManager.balanceOf(address(this), token1.toId());
 
@@ -340,7 +314,10 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @param amount1Out Amount of token1 to send
     /// @param to Address to receive output tokens
     /// @param data Callback data for flash swaps
-    function _swapClaims(uint256 amount0Out, uint256 amount1Out, address to, bytes memory data) internal {
+    /// @param claimOutput true if the user should receive claims, false if they should receive raw ERC20 tokens
+    function _swapClaims(uint256 amount0Out, uint256 amount1Out, address to, bytes memory data, bool claimOutput)
+        internal
+    {
         require(amount0Out > 0 || amount1Out > 0, InsufficientOutputAmount());
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         require(amount0Out < _reserve0 && amount1Out < _reserve1, InsufficientLiquidity()); // ensure that there is enough liquidity to perform the swap
@@ -350,8 +327,8 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         {
             // scope for _token{0,1}, avoids stack too deep errors
             require(to != Currency.unwrap(token0) && to != Currency.unwrap(token1), InvalidTo());
-            if (amount0Out > 0) poolManager.transfer(to, token0.toId(), amount0Out); // optimistically transfer tokens
-            if (amount1Out > 0) poolManager.transfer(to, token1.toId(), amount1Out); // optimistically transfer tokens
+            if (amount0Out > 0) _transfer(token0, to, amount0Out, claimOutput); // optimistically transfer tokens
+            if (amount1Out > 0) _transfer(token1, to, amount1Out, claimOutput); // optimistically transfer tokens
             if (data.length > 0) IUniswapV2Callee(to).uniswapV2Call(msg.sender, amount0Out, amount1Out, data);
             balance0 = poolManager.balanceOf(address(this), token0.toId());
             balance1 = poolManager.balanceOf(address(this), token1.toId());
@@ -452,6 +429,16 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         // mint into new claims
         if (amount0 > 0) poolManager.mint(address(this), token0.toId(), amount0);
         if (amount1 > 0) poolManager.mint(address(this), token1.toId(), amount1);
+    }
+
+    /// @notice Transfers The given asset to the recipient, either as a claim or as a raw ERC20 token
+    function _transfer(Currency currency, address to, uint256 amount, bool claim) internal {
+        if (claim) {
+            poolManager.transfer(to, currency.toId(), amount);
+        } else {
+            poolManager.burn(address(this), currency.toId(), amount);
+            poolManager.take(currency, to, amount);
+        }
     }
 
     /// @inheritdoc ReentrancyGuardTransient

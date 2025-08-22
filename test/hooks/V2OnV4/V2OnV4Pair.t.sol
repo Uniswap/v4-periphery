@@ -147,7 +147,7 @@ contract V2OnV4PairTest is Test, Deployers {
         claimManager.mint(Currency.wrap(address(token1)), 1 ether);
         manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), 1 ether);
         manager.transfer(address(pair), Currency.wrap(address(token1)).toId(), 1 ether);
-        vm.expectEmit(true, true, true, false);
+        vm.expectEmit(true, true, true, true);
         emit V2OnV4Pair.Mint(alice, 1 ether, 1 ether);
         pair.mintClaims(alice);
         vm.assertEq(pair.balanceOf(alice), 1 ether - 1000);
@@ -159,12 +159,12 @@ contract V2OnV4PairTest is Test, Deployers {
         vm.startPrank(alice);
         token0.mint(address(pair), 1 ether);
         token1.mint(address(pair), 1 ether);
-        vm.expectEmit(true, true, true, false);
+        vm.expectEmit(true, true, true, true);
         emit V2OnV4Pair.Mint(address(manager), 1 ether, 1 ether);
         pair.mint(alice);
         vm.assertEq(pair.balanceOf(alice), 1 ether - 1000);
-        vm.assertEq(token0.balanceOf(address(pair)), 1 ether);
-        vm.assertEq(token1.balanceOf(address(pair)), 1 ether);
+        vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token0)).toId()), 1 ether);
+        vm.assertEq(manager.balanceOf(address(pair), Currency.wrap(address(token1)).toId()), 1 ether);
     }
 
     function testSwapClaims() public {
@@ -174,8 +174,8 @@ contract V2OnV4PairTest is Test, Deployers {
         claimManager.mint(Currency.wrap(address(token0)), 1 ether);
         manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), 1 ether);
 
-        vm.expectEmit(true, true, true, false);
-        emit V2OnV4Pair.Swap(alice, 1 ether, 1 ether, 0, 0.5 ether, alice);
+        vm.expectEmit(true, true, true, true);
+        emit V2OnV4Pair.Swap(alice, 1 ether, 0, 0, 0.5 ether, alice);
         pair.swapClaims(0, 0.5 ether, alice, new bytes(0));
     }
 
@@ -196,8 +196,8 @@ contract V2OnV4PairTest is Test, Deployers {
         vm.startPrank(alice);
         token0.mint(address(pair), 1 ether);
 
-        vm.expectEmit(true, true, true, false);
-        emit V2OnV4Pair.Swap(address(manager), 1 ether, 1 ether, 0, 0.5 ether, alice);
+        vm.expectEmit(true, true, true, true);
+        emit V2OnV4Pair.Swap(address(manager), 1 ether, 0, 0, 0.5 ether, alice);
         pair.swap(0, 0.5 ether, alice, new bytes(0));
     }
 
@@ -207,8 +207,8 @@ contract V2OnV4PairTest is Test, Deployers {
         vm.startPrank(alice);
         token1.mint(address(pair), 1 ether);
 
-        vm.expectEmit(true, true, true, false);
-        emit V2OnV4Pair.Swap(address(manager), 1 ether, 1 ether, 0.5 ether, 0, alice);
+        vm.expectEmit(true, true, true, true);
+        emit V2OnV4Pair.Swap(address(manager), 0, 1 ether, 0.5 ether, 0, alice);
         pair.swap(0.5 ether, 0, alice, new bytes(0));
     }
 
@@ -218,8 +218,7 @@ contract V2OnV4PairTest is Test, Deployers {
         vm.startPrank(alice);
         token0.mint(address(pair), 1 ether);
 
-        vm.expectEmit(true, true, true, false);
-        emit V2OnV4Pair.Swap(address(manager), 1 ether, 1 ether, 0, 0.5 ether, alice);
+        vm.expectRevert(V2OnV4Pair.K.selector);
         pair.swap(0, 1 ether, alice, new bytes(0));
     }
 
