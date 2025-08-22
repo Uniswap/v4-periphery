@@ -30,17 +30,17 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
 
     /// @notice Address that receives protocol fees when enabled
     address public feeTo;
-    
+
     /// @notice Fixed swap fee of 0.3% (3000 basis points) matching V2's fee structure
     uint24 public constant SWAP_FEE = 3000;
-    
+
     /// @notice Minimum tick spacing for V4 pools (1 tick = finest granularity)
     int24 public constant TICK_SPACING = 1;
 
     /// @notice Returns the address of the pair for tokenA and tokenB, if it exists
     /// @dev getPair[tokenA][tokenB] and getPair[tokenB][tokenA] return the same pair address
     mapping(address => mapping(address => address)) public getPair;
-    
+
     /// @notice Array of all created pair addresses for enumeration
     address[] public allPairs;
 

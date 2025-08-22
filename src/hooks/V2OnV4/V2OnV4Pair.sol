@@ -28,37 +28,37 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     /// @notice Minimum liquidity locked when first LP tokens are minted
     /// @dev Prevents division by zero and protects against manipulation
     uint256 public constant MINIMUM_LIQUIDITY = 10 ** 3;
-    
+
     /// @dev Transfer function selector for low-level calls
     bytes4 private constant SELECTOR = bytes4(keccak256(bytes("transfer(address,uint256)")));
 
     /// @notice The Uniswap V4 pool manager contract
     IPoolManager public immutable poolManager;
-    
+
     /// @notice Address of the factory that deployed this pair
     address public immutable factory;
-    
+
     /// @notice First token of the pair (sorted)
     Currency public immutable token0;
-    
+
     /// @notice Second token of the pair (sorted)
     Currency public immutable token1;
 
     /// @dev Reserve of token0, packed for gas efficiency
     uint112 private reserve0;
-    
+
     /// @dev Reserve of token1, packed for gas efficiency
     uint112 private reserve1;
-    
+
     /// @dev Last block timestamp when reserves were updated, packed with reserves
     uint32 private blockTimestampLast;
 
     /// @notice Cumulative price of token0 in terms of token1, used for TWAP oracles
     uint256 public price0CumulativeLast;
-    
+
     /// @notice Cumulative price of token1 in terms of token0, used for TWAP oracles
     uint256 public price1CumulativeLast;
-    
+
     /// @notice Product of reserves (k value) after last liquidity event, used for protocol fee calculation
     uint256 public kLast;
 

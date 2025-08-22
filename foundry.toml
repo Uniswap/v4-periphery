@@ -13,13 +13,16 @@ bytecode_hash = "none"
 additional_compiler_profiles = [
   { name = "posm", via_ir = true, optimizer_runs = 30000 },
   { name = "descriptor", via_ir = true, optimizer_runs = 1 },
+  { name = "v2onv4", via_ir = true },
   { name = "test", via_ir = false }
 ]
 
 compilation_restrictions = [
   { paths = "src/PositionManager.sol", optimizer_runs = 30000 },
   { paths = "src/PositionDescriptor.sol", optimizer_runs = 1 },
-  { paths = "test/**", via_ir = false }
+  { paths = "src/hooks/V2OnV4/**", via_ir = true },
+  { paths = "test/hooks/V2OnV4/**", via_ir = true },
+  { paths = "^test/(?!hooks/V2OnV4/).*$", via_ir = false },
 ]
 
 [profile.debug]
