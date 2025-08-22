@@ -160,7 +160,7 @@ contract V2OnV4PairTest is Test, Deployers {
         token0.mint(address(pair), 1 ether);
         token1.mint(address(pair), 1 ether);
         vm.expectEmit(true, true, true, false);
-        emit V2OnV4Pair.Mint(alice, 1 ether, 1 ether);
+        emit V2OnV4Pair.Mint(address(manager), 1 ether, 1 ether);
         pair.mint(alice);
         vm.assertEq(pair.balanceOf(alice), 1 ether - 1000);
         vm.assertEq(token0.balanceOf(address(pair)), 1 ether);
@@ -187,7 +187,7 @@ contract V2OnV4PairTest is Test, Deployers {
         manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), 1 ether);
 
         vm.expectRevert(V2OnV4Pair.K.selector);
-        pair.swapClaims(0, 1 ether, address(manager), new bytes(0));
+        pair.swapClaims(0, 1 ether, alice, new bytes(0));
     }
 
     function testSwapToken0() public {
@@ -197,8 +197,8 @@ contract V2OnV4PairTest is Test, Deployers {
         token0.mint(address(pair), 1 ether);
 
         vm.expectEmit(true, true, true, false);
-        emit V2OnV4Pair.Swap(alice, 1 ether, 1 ether, 0, 0.5 ether, alice);
-        pair.swap(0, 0.5 ether, address(manager), new bytes(0));
+        emit V2OnV4Pair.Swap(address(manager), 1 ether, 1 ether, 0, 0.5 ether, alice);
+        pair.swap(0, 0.5 ether, alice, new bytes(0));
     }
 
     function testSwapToken1() public {
@@ -208,8 +208,8 @@ contract V2OnV4PairTest is Test, Deployers {
         token1.mint(address(pair), 1 ether);
 
         vm.expectEmit(true, true, true, false);
-        emit V2OnV4Pair.Swap(alice, 1 ether, 1 ether, 0.5 ether, 0, alice);
-        pair.swap(0.5 ether, 0, address(manager), new bytes(0));
+        emit V2OnV4Pair.Swap(address(manager), 1 ether, 1 ether, 0.5 ether, 0, alice);
+        pair.swap(0.5 ether, 0, alice, new bytes(0));
     }
 
     function testSwapTooMuchOutput() public {
@@ -219,8 +219,8 @@ contract V2OnV4PairTest is Test, Deployers {
         token0.mint(address(pair), 1 ether);
 
         vm.expectEmit(true, true, true, false);
-        emit V2OnV4Pair.Swap(alice, 1 ether, 1 ether, 0, 0.5 ether, alice);
-        pair.swap(0, 1 ether, address(manager), new bytes(0));
+        emit V2OnV4Pair.Swap(address(manager), 1 ether, 1 ether, 0, 0.5 ether, alice);
+        pair.swap(0, 1 ether, alice, new bytes(0));
     }
 
     function _addLiquidity(uint256 amount0, uint256 amount1) internal {

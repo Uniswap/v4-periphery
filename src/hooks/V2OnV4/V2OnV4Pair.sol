@@ -123,52 +123,7 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         factory = msg.sender;
     }
 
-    /// @notice Updates reserves and price accumulators
-    /// @dev Called after every liquidity or swap operation to maintain price oracle
-    /// @param balance0 New balance of token0
-    /// @param balance1 New balance of token1
-    /// @param _reserve0 Previous reserve of token0
-    /// @param _reserve1 Previous reserve of token1
-    function _update(uint256 balance0, uint256 balance1, uint112 _reserve0, uint112 _reserve1) private {
-        uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
-        uint32 timeElapsed = blockTimestamp - blockTimestampLast; // overflow is desired
-        if (timeElapsed > 0 && _reserve0 != 0 && _reserve1 != 0) {
-            // * never overflows, and + overflow is desired
-            price0CumulativeLast += uint256(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) * timeElapsed;
-            price1CumulativeLast += uint256(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) * timeElapsed;
-        }
-        reserve0 = uint112(balance0);
-        reserve1 = uint112(balance1);
-        blockTimestampLast = blockTimestamp;
-        emit Sync(reserve0, reserve1);
-    }
-
     // V2 STYLE ERC20 FUNCTIONS
-
-    /// @notice Mints protocol fee as LP tokens if enabled
-    /// @dev Calculates fee as 1/6th of sqrt(k) growth since last fee collection
-    /// @param _reserve0 Current reserve of token0
-    /// @param _reserve1 Current reserve of token1
-    /// @return feeOn Whether protocol fee is enabled
-    function _mintFee(uint112 _reserve0, uint112 _reserve1) private returns (bool feeOn) {
-        address feeTo = IUniswapV2Factory(factory).feeTo();
-        feeOn = feeTo != address(0);
-        uint256 _kLast = kLast; // gas savings
-        if (feeOn) {
-            if (_kLast != 0) {
-                uint256 rootK = FixedPointMathLib.sqrt(uint256(_reserve0) * _reserve1);
-                uint256 rootKLast = FixedPointMathLib.sqrt(_kLast);
-                if (rootK > rootKLast) {
-                    uint256 numerator = totalSupply * (rootK - rootKLast);
-                    uint256 denominator = rootK * 5 / rootKLast;
-                    uint256 liquidity = numerator / denominator;
-                    if (liquidity > 0) _mint(feeTo, liquidity);
-                }
-            }
-        } else if (_kLast != 0) {
-            kLast = 0;
-        }
-    }
 
     /// @notice Mints liquidity tokens to the specified address
     /// @dev Low-level function that should be called through a router with proper safety checks
@@ -413,6 +368,51 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
 
         _update(balance0, balance1, _reserve0, _reserve1);
         emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
+    }
+
+    /// @notice Updates reserves and price accumulators
+    /// @dev Called after every liquidity or swap operation to maintain price oracle
+    /// @param balance0 New balance of token0
+    /// @param balance1 New balance of token1
+    /// @param _reserve0 Previous reserve of token0
+    /// @param _reserve1 Previous reserve of token1
+    function _update(uint256 balance0, uint256 balance1, uint112 _reserve0, uint112 _reserve1) private {
+        uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
+        uint32 timeElapsed = blockTimestamp - blockTimestampLast; // overflow is desired
+        if (timeElapsed > 0 && _reserve0 != 0 && _reserve1 != 0) {
+            // * never overflows, and + overflow is desired
+            price0CumulativeLast += uint256(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) * timeElapsed;
+            price1CumulativeLast += uint256(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) * timeElapsed;
+        }
+        reserve0 = uint112(balance0);
+        reserve1 = uint112(balance1);
+        blockTimestampLast = blockTimestamp;
+        emit Sync(reserve0, reserve1);
+    }
+
+    /// @notice Mints protocol fee as LP tokens if enabled
+    /// @dev Calculates fee as 1/6th of sqrt(k) growth since last fee collection
+    /// @param _reserve0 Current reserve of token0
+    /// @param _reserve1 Current reserve of token1
+    /// @return feeOn Whether protocol fee is enabled
+    function _mintFee(uint112 _reserve0, uint112 _reserve1) private returns (bool feeOn) {
+        address feeTo = IUniswapV2Factory(factory).feeTo();
+        feeOn = feeTo != address(0);
+        uint256 _kLast = kLast; // gas savings
+        if (feeOn) {
+            if (_kLast != 0) {
+                uint256 rootK = FixedPointMathLib.sqrt(uint256(_reserve0) * _reserve1);
+                uint256 rootKLast = FixedPointMathLib.sqrt(_kLast);
+                if (rootK > rootKLast) {
+                    uint256 numerator = totalSupply * (rootK - rootKLast);
+                    uint256 denominator = rootK * 5 / rootKLast;
+                    uint256 liquidity = numerator / denominator;
+                    if (liquidity > 0) _mint(feeTo, liquidity);
+                }
+            }
+        } else if (_kLast != 0) {
+            kLast = 0;
+        }
     }
 
     /// @notice Returns the minimum of two values
