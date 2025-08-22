@@ -156,19 +156,35 @@ contract V2OnV4PairTest is Test, Deployers {
     }
 
     function testSwap() public {
-        // add liquidity first
-        vm.startPrank(alice);
-        claimManager.mint(Currency.wrap(address(token0)), 10 ether);
-        claimManager.mint(Currency.wrap(address(token1)), 10 ether);
-        manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), 10 ether);
-        manager.transfer(address(pair), Currency.wrap(address(token1)).toId(), 10 ether);
-        pair.mint(alice);
+        _addLiquidity(10 ether, 10 ether);
 
+        vm.startPrank(alice);
         claimManager.mint(Currency.wrap(address(token0)), 1 ether);
         manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), 1 ether);
 
         vm.expectEmit(true, true, true, false);
         emit V2OnV4Pair.Swap(alice, 1 ether, 1 ether, 0, 0.5 ether, alice);
         pair.swap(0, 0.5 ether, alice, new bytes(0));
+    }
+
+    function testSwapTooMuchOutput() public {
+        _addLiquidity(10 ether, 10 ether);
+
+        vm.startPrank(alice);
+        claimManager.mint(Currency.wrap(address(token0)), 1 ether);
+        manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), 1 ether);
+
+        vm.expectRevert(V2OnV4Pair.K.selector);
+        pair.swap(0, 1 ether, alice, new bytes(0));
+    }
+
+    function _addLiquidity(uint256 amount0, uint256 amount) internal {
+        vm.startPrank(alice);
+        claimManager.mint(Currency.wrap(address(token0)), amount);
+        claimManager.mint(Currency.wrap(address(token1)), amount);
+        manager.transfer(address(pair), Currency.wrap(address(token0)).toId(), amount);
+        manager.transfer(address(pair), Currency.wrap(address(token1)).toId(), amount);
+        pair.mint(alice);
+        vm.stopPrank();
     }
 }
