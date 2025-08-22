@@ -40,7 +40,7 @@ contract V2OnV4Pair is ERC20 {
     uint256 private unlocked = 1;
 
     modifier lock() {
-        require(unlocked == 1, "UniswapV2: LOCKED");
+        require(unlocked == 1, Locked());
         unlocked = 0;
         _;
         unlocked = 1;
