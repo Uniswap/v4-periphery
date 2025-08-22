@@ -16,10 +16,11 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {UniswapV2Library} from "./UniswapV2Library.sol";
+import {V2OnV4PairDeployer} from "./V2OnV4PairDeployer.sol";
 import {BaseHook} from "../../utils/BaseHook.sol";
 
 /// @title Uniswap V2 on Uniswap V4 as a hook
-contract V2OnV4FactoryHook is BaseHook, IUniswapV2Factory {
+contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
     using CurrencyLibrary for Currency;
     using SafeCast for int256;
     using SafeCast for uint256;
@@ -74,12 +75,7 @@ contract V2OnV4FactoryHook is BaseHook, IUniswapV2Factory {
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(token0 != address(0), ZeroAddress());
         require(getPair[token0][token1] == address(0), PairExists()); // single check is sufficient
-        bytes memory bytecode = type(V2OnV4Pair).creationCode;
-        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
-        assembly {
-            pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
-        }
-        IUniswapV2Pair(pair).initialize(token0, token1);
+        deploy(token0, token1, address(poolManager));
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // populate mapping in the reverse direction
         allPairs.push(pair);

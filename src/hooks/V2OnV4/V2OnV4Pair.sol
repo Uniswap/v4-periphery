@@ -13,6 +13,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {BaseHook} from "../../utils/BaseHook.sol";
+import {V2OnV4PairDeployer} from "./V2OnV4PairDeployer.sol";
 import {UQ112x112} from "./UQ112x112.sol";
 
 /// @title Uniswap V2 on Uniswap V4 as a hook
@@ -24,10 +25,10 @@ contract V2OnV4Pair is ERC20 {
     uint256 public constant MINIMUM_LIQUIDITY = 10 ** 3;
     bytes4 private constant SELECTOR = bytes4(keccak256(bytes("transfer(address,uint256)")));
 
-    IPoolManager public poolManager;
-    address public factory;
-    Currency public token0;
-    Currency public token1;
+    IPoolManager public immutable poolManager;
+    address public immutable factory;
+    Currency public immutable token0;
+    Currency public immutable token1;
 
     uint112 private reserve0; // uses single storage slot, accessible via getReserves
     uint112 private reserve1; // uses single storage slot, accessible via getReserves
@@ -75,15 +76,11 @@ contract V2OnV4Pair is ERC20 {
     event Sync(uint112 reserve0, uint112 reserve1);
 
     constructor() ERC20("Uniswap V2", "UNI-V2", 18) {
-        factory = msg.sender;
-    }
-
-    // called once by the factory at time of deployment
-    function initialize(address _token0, address _token1, address _poolManager) external {
-        require(msg.sender == factory, Forbidden()); // sufficient check
+        (address _token0, address _token1, address _poolManager) = V2OnV4PairDeployer(msg.sender).parameters();
         token0 = Currency.wrap(_token0);
         token1 = Currency.wrap(_token1);
         poolManager = IPoolManager(_poolManager);
+        factory = msg.sender;
     }
 
     // update reserves and, on the first call per block, price accumulators
