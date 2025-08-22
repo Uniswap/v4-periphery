@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
+import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
@@ -16,7 +17,7 @@ import {V2OnV4PairDeployer} from "./V2OnV4PairDeployer.sol";
 import {UQ112x112} from "./UQ112x112.sol";
 
 /// @title Uniswap V2 on Uniswap V4 as a hook
-contract V2OnV4Pair is ERC20 {
+contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     using UQ112x112 for uint224;
     using SafeTransferLib for ERC20;
     using CurrencyLibrary for Currency;
@@ -37,24 +38,22 @@ contract V2OnV4Pair is ERC20 {
     uint256 public price1CumulativeLast;
     uint256 public kLast; // reserve0 * reserve1, as of immediately after the most recent liquidity event
 
-    uint256 private unlocked = 1;
-
-    modifier lock() {
-        require(unlocked == 1, Locked());
-        unlocked = 0;
-        _;
-        unlocked = 1;
-    }
-
     function getReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast) {
         _reserve0 = reserve0;
         _reserve1 = reserve1;
         _blockTimestampLast = blockTimestampLast;
     }
 
+    /// @notice Only allow calls from the PoolManager contract
+    modifier onlyPoolManager() {
+        if (msg.sender != address(poolManager)) revert NotPoolManager();
+        _;
+    }
+
     error K();
-    error Locked();
     error Forbidden();
+    error NotPoolManager();
+    error InvalidUnlockCallbackData();
     error InsufficientLiquidityBurned();
     error InsufficientLiquidityMinted();
     error InsufficientOutputAmount();
@@ -119,7 +118,7 @@ contract V2OnV4Pair is ERC20 {
     }
 
     // this low-level function should be called from a contract which performs important safety checks
-    function mint(address to) external lock returns (uint256 liquidity) {
+    function mint(address to) external nonReentrant returns (uint256 liquidity) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         uint256 balance0 = poolManager.balanceOf(address(this), token0.toId());
         uint256 balance1 = poolManager.balanceOf(address(this), token1.toId());
@@ -143,7 +142,7 @@ contract V2OnV4Pair is ERC20 {
     }
 
     // this low-level function should be called from a contract which performs important safety checks
-    function burn(address to) external lock returns (uint256 amount0, uint256 amount1) {
+    function burn(address to) external nonReentrant returns (uint256 amount0, uint256 amount1) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         uint256 balance0 = poolManager.balanceOf(address(this), token0.toId());
         uint256 balance1 = poolManager.balanceOf(address(this), token1.toId());
@@ -166,31 +165,7 @@ contract V2OnV4Pair is ERC20 {
     }
 
     // this low-level function should be called from a contract which performs important safety checks
-    function _swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) internal {
-        // settle any raw token balances that we've received
-        uint256 amount0In = _settle(token0);
-        uint256 amount1In = _settle(token1);
-
-        // mint into new claims
-        if (amount0In > 0) poolManager.mint(address(this), token0.toId(), amount0In);
-        if (amount1In > 0) poolManager.mint(address(this), token0.toId(), amount1In);
-
-        // swap input claims for output claims
-        swapClaims(amount0Out, amount1Out, address(this), data);
-
-        // take outputs and send to the recipient
-        if (amount0Out > 0) {
-            poolManager.burn(address(this), token0.toId(), amount0Out);
-            poolManager.take(token0, to, amount0Out);
-        }
-        if (amount1Out > 0) {
-            poolManager.burn(address(this), token1.toId(), amount1Out);
-            poolManager.take(token1, to, amount1Out);
-        }
-    }
-
-    // this low-level function should be called from a contract which performs important safety checks
-    function swapClaims(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) public lock {
+    function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) public nonReentrant {
         require(amount0Out > 0 || amount1Out > 0, InsufficientOutputAmount());
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         require(amount0Out < _reserve0 && amount1Out < _reserve1, InsufficientLiquidity()); // ensure that there is enough liquidity to perform the swap
@@ -221,13 +196,13 @@ contract V2OnV4Pair is ERC20 {
     }
 
     // force balances to match reserves
-    function skim(address to) external lock {
+    function skim(address to) external nonReentrant {
         poolManager.transfer(to, token0.toId(), poolManager.balanceOf(address(this), token0.toId()) - reserve0);
         poolManager.transfer(to, token1.toId(), poolManager.balanceOf(address(this), token1.toId()) - reserve1);
     }
 
     // force reserves to match balances
-    function sync() external lock {
+    function sync() external nonReentrant {
         _update(
             poolManager.balanceOf(address(this), token0.toId()),
             poolManager.balanceOf(address(this), token1.toId()),
@@ -236,6 +211,7 @@ contract V2OnV4Pair is ERC20 {
         );
     }
 
+    // UTILITIES
     function _min(uint256 a, uint256 b) internal pure returns (uint256) {
         return a < b ? uint256(a) : b;
     }
@@ -243,8 +219,18 @@ contract V2OnV4Pair is ERC20 {
     function _settle(Currency currency) internal returns (uint256 amount) {
         amount = currency.balanceOfSelf();
         if (amount == 0) return 0;
+
         poolManager.sync(currency);
-        currency.transfer(address(poolManager), amount);
-        poolManager.settle();
+        if (currency.isAddressZero()) {
+            poolManager.settle{value: amount}();
+        } else {
+            currency.transfer(address(poolManager), amount);
+            poolManager.settle();
+        }
+    }
+
+    /// @inheritdoc ReentrancyGuardTransient
+    function _useTransientReentrancyGuardOnlyOnMainnet() internal pure override returns (bool) {
+        return false;
     }
 }
