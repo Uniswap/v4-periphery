@@ -16,28 +16,56 @@ import {BaseHook} from "../../utils/BaseHook.sol";
 import {V2OnV4PairDeployer} from "./V2OnV4PairDeployer.sol";
 import {UQ112x112} from "./UQ112x112.sol";
 
-/// @title Uniswap V2 on Uniswap V4 as a hook
+/// @title V2OnV4Pair
+/// @author Uniswap Labs
+/// @notice A V2-style AMM pair contract that operates on Uniswap V4 infrastructure
+/// @dev Implements constant product (x*y=k) AMM logic while leveraging V4's singleton pool manager
 contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     using UQ112x112 for uint224;
     using SafeTransferLib for ERC20;
     using CurrencyLibrary for Currency;
 
+    /// @notice Minimum liquidity locked when first LP tokens are minted
+    /// @dev Prevents division by zero and protects against manipulation
     uint256 public constant MINIMUM_LIQUIDITY = 10 ** 3;
+    
+    /// @dev Transfer function selector for low-level calls
     bytes4 private constant SELECTOR = bytes4(keccak256(bytes("transfer(address,uint256)")));
 
+    /// @notice The Uniswap V4 pool manager contract
     IPoolManager public immutable poolManager;
+    
+    /// @notice Address of the factory that deployed this pair
     address public immutable factory;
+    
+    /// @notice First token of the pair (sorted)
     Currency public immutable token0;
+    
+    /// @notice Second token of the pair (sorted)
     Currency public immutable token1;
 
-    uint112 private reserve0; // uses single storage slot, accessible via getReserves
-    uint112 private reserve1; // uses single storage slot, accessible via getReserves
-    uint32 private blockTimestampLast; // uses single storage slot, accessible via getReserves
+    /// @dev Reserve of token0, packed for gas efficiency
+    uint112 private reserve0;
+    
+    /// @dev Reserve of token1, packed for gas efficiency
+    uint112 private reserve1;
+    
+    /// @dev Last block timestamp when reserves were updated, packed with reserves
+    uint32 private blockTimestampLast;
 
+    /// @notice Cumulative price of token0 in terms of token1, used for TWAP oracles
     uint256 public price0CumulativeLast;
+    
+    /// @notice Cumulative price of token1 in terms of token0, used for TWAP oracles
     uint256 public price1CumulativeLast;
-    uint256 public kLast; // reserve0 * reserve1, as of immediately after the most recent liquidity event
+    
+    /// @notice Product of reserves (k value) after last liquidity event, used for protocol fee calculation
+    uint256 public kLast;
 
+    /// @notice Returns the current reserves and last update timestamp
+    /// @return _reserve0 Current reserve of token0
+    /// @return _reserve1 Current reserve of token1
+    /// @return _blockTimestampLast Timestamp of last reserve update
     function getReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast) {
         _reserve0 = reserve0;
         _reserve1 = reserve1;
@@ -73,6 +101,8 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
     );
     event Sync(uint112 reserve0, uint112 reserve1);
 
+    /// @notice Deploys a new V2 pair on V4
+    /// @dev Called by the factory with deployment parameters
     constructor() ERC20("Uniswap V2", "UNI-V2", 18) {
         (address _token0, address _token1, address _poolManager) = V2OnV4PairDeployer(msg.sender).parameters();
         token0 = Currency.wrap(_token0);
@@ -81,7 +111,12 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         factory = msg.sender;
     }
 
-    // update reserves and, on the first call per block, price accumulators
+    /// @notice Updates reserves and price accumulators
+    /// @dev Called after every liquidity or swap operation to maintain price oracle
+    /// @param balance0 New balance of token0
+    /// @param balance1 New balance of token1
+    /// @param _reserve0 Previous reserve of token0
+    /// @param _reserve1 Previous reserve of token1
     function _update(uint256 balance0, uint256 balance1, uint112 _reserve0, uint112 _reserve1) private {
         uint32 blockTimestamp = uint32(block.timestamp % 2 ** 32);
         uint32 timeElapsed = blockTimestamp - blockTimestampLast; // overflow is desired
@@ -96,7 +131,11 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         emit Sync(reserve0, reserve1);
     }
 
-    // if fee is on, mint liquidity equivalent to 1/6th of the growth in sqrt(k)
+    /// @notice Mints protocol fee as LP tokens if enabled
+    /// @dev Calculates fee as 1/6th of sqrt(k) growth since last fee collection
+    /// @param _reserve0 Current reserve of token0
+    /// @param _reserve1 Current reserve of token1
+    /// @return feeOn Whether protocol fee is enabled
     function _mintFee(uint112 _reserve0, uint112 _reserve1) private returns (bool feeOn) {
         address feeTo = IUniswapV2Factory(factory).feeTo();
         feeOn = feeTo != address(0);
@@ -117,7 +156,10 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         }
     }
 
-    // this low-level function should be called from a contract which performs important safety checks
+    /// @notice Mints liquidity tokens to the specified address
+    /// @dev Low-level function that should be called through a router with proper safety checks
+    /// @param to Address to receive the minted LP tokens
+    /// @return liquidity Amount of LP tokens minted
     function mint(address to) external nonReentrant returns (uint256 liquidity) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         uint256 balance0 = poolManager.balanceOf(address(this), token0.toId());
@@ -141,7 +183,11 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         emit Mint(msg.sender, amount0, amount1);
     }
 
-    // this low-level function should be called from a contract which performs important safety checks
+    /// @notice Burns liquidity tokens and returns underlying assets
+    /// @dev Low-level function that should be called through a router with proper safety checks
+    /// @param to Address to receive the underlying tokens
+    /// @return amount0 Amount of token0 returned
+    /// @return amount1 Amount of token1 returned
     function burn(address to) external nonReentrant returns (uint256 amount0, uint256 amount1) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
         uint256 balance0 = poolManager.balanceOf(address(this), token0.toId());
@@ -164,7 +210,12 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
-    // this low-level function should be called from a contract which performs important safety checks
+    /// @notice Executes a swap with specified output amounts
+    /// @dev Low-level function enforcing constant product invariant (x*y=k)
+    /// @param amount0Out Amount of token0 to send
+    /// @param amount1Out Amount of token1 to send
+    /// @param to Address to receive output tokens
+    /// @param data Callback data for flash swaps
     function swap(uint256 amount0Out, uint256 amount1Out, address to, bytes calldata data) public nonReentrant {
         require(amount0Out > 0 || amount1Out > 0, InsufficientOutputAmount());
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
@@ -195,13 +246,16 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
 
-    // force balances to match reserves
+    /// @notice Transfers excess tokens to maintain balance-reserve parity
+    /// @dev Useful for recovering tokens sent directly to the pair
+    /// @param to Address to receive excess tokens
     function skim(address to) external nonReentrant {
         poolManager.transfer(to, token0.toId(), poolManager.balanceOf(address(this), token0.toId()) - reserve0);
         poolManager.transfer(to, token1.toId(), poolManager.balanceOf(address(this), token1.toId()) - reserve1);
     }
 
-    // force reserves to match balances
+    /// @notice Synchronizes reserves with current balances
+    /// @dev Updates reserves to match actual token balances
     function sync() external nonReentrant {
         _update(
             poolManager.balanceOf(address(this), token0.toId()),
@@ -211,11 +265,18 @@ contract V2OnV4Pair is ERC20, ReentrancyGuardTransient {
         );
     }
 
-    // UTILITIES
+    /// @notice Returns the minimum of two values
+    /// @param a First value
+    /// @param b Second value
+    /// @return The smaller of the two values
     function _min(uint256 a, uint256 b) internal pure returns (uint256) {
         return a < b ? uint256(a) : b;
     }
 
+    /// @notice Settles tokens with the V4 pool manager
+    /// @dev Handles both native ETH and ERC20 token settlements
+    /// @param currency The currency to settle
+    /// @return amount The amount settled
     function _settle(Currency currency) internal returns (uint256 amount) {
         amount = currency.balanceOfSelf();
         if (amount == 0) return 0;

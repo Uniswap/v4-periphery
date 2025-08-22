@@ -19,18 +19,29 @@ import {UniswapV2Library} from "./UniswapV2Library.sol";
 import {V2OnV4PairDeployer} from "./V2OnV4PairDeployer.sol";
 import {BaseHook} from "../../utils/BaseHook.sol";
 
-/// @title Uniswap V2 on Uniswap V4 as a hook
+/// @title V2OnV4FactoryHook
+/// @author Uniswap Labs
+/// @notice Factory contract that enables Uniswap V2-style AMM pools to run on Uniswap V4 infrastructure
+/// @dev Implements the IUniswapV2Factory interface while leveraging V4's hook system for pool management
 contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
     using CurrencyLibrary for Currency;
     using SafeCast for int256;
     using SafeCast for uint256;
 
+    /// @notice Address that receives protocol fees when enabled
     address public feeTo;
-    address public immutable feeToSetter;
+    
+    /// @notice Fixed swap fee of 0.3% (3000 basis points) matching V2's fee structure
     uint24 public constant SWAP_FEE = 3000;
+    
+    /// @notice Minimum tick spacing for V4 pools (1 tick = finest granularity)
     int24 public constant TICK_SPACING = 1;
 
+    /// @notice Returns the address of the pair for tokenA and tokenB, if it exists
+    /// @dev getPair[tokenA][tokenB] and getPair[tokenB][tokenA] return the same pair address
     mapping(address => mapping(address => address)) public getPair;
+    
+    /// @notice Array of all created pair addresses for enumeration
     address[] public allPairs;
 
     error InvalidFee();
@@ -43,9 +54,9 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
     error Forbidden();
     error FeeToSetterLocked();
 
-    constructor(IPoolManager _manager) BaseHook(_manager) {
-        feeToSetter = address(_manager.protocolFeeController());
-    }
+    /// @notice Deploys the V2OnV4 factory hook
+    /// @param _manager The Uniswap V4 pool manager contract
+    constructor(IPoolManager _manager) BaseHook(_manager) {}
 
     /// @inheritdoc BaseHook
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -67,35 +78,54 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
         });
     }
 
+    /// @notice Returns the total number of pairs created
+    /// @return The length of the allPairs array
     function allPairsLength() external view returns (uint256) {
         return allPairs.length;
     }
 
+    /// @notice Creates a new V2-style pair for the given token addresses
+    /// @param tokenA Address of the first token
+    /// @param tokenB Address of the second token
+    /// @return pair Address of the newly created pair contract
+    /// @dev Tokens are sorted, and the pair is deployed deterministically
     function createPair(address tokenA, address tokenB) public returns (address pair) {
         require(tokenA != tokenB, IdenticalAddresses());
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(token0 != address(0), ZeroAddress());
         require(getPair[token0][token1] == address(0), PairExists()); // single check is sufficient
-        deploy(token0, token1, address(poolManager));
+        pair = deploy(token0, token1, address(poolManager));
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // populate mapping in the reverse direction
         allPairs.push(pair);
         emit PairCreated(token0, token1, pair, allPairs.length);
     }
 
+    /// @notice Returns the address authorized to set the fee recipient
+    /// @return The protocol fee controller from the V4 pool manager
+    /// @dev Delegates fee setter authority to V4's protocol fee controller
+    function feeToSetter() public view returns (address) {
+        return poolManager.protocolFeeController();
+    }
+
+    /// @notice Prevents changing the fee setter (locked to V4's protocol controller)
+    /// @dev Always reverts as fee setter is managed by V4 pool manager
     function setFeeToSetter(address) external pure {
         revert FeeToSetterLocked();
     }
 
+    /// @notice Sets the address that receives protocol fees
+    /// @param _feeTo The address to receive protocol fees (or address(0) to disable)
+    /// @dev Only callable by the current fee setter
     function setFeeTo(address _feeTo) external {
-        require(msg.sender == feeToSetter, Forbidden());
+        require(msg.sender == feeToSetter(), Forbidden());
         feeTo = _feeTo;
     }
 
-    /// @notice Validates pool initialization parameters
-    /// @dev Ensures pool contains wrapper and underlying tokens with zero fee
-    /// @param poolKey The pool configuration including tokens and fee
-    /// @return The function selector if validation passes
+    /// @notice Hook called before pool initialization to validate parameters and create pairs
+    /// @dev Ensures the pool uses the correct fee and tick spacing, creates pair if needed
+    /// @param poolKey The pool configuration including tokens, fee, and tick spacing
+    /// @return The function selector indicating successful validation
     function _beforeInitialize(address, PoolKey calldata poolKey, uint160) internal override returns (bytes4) {
         require(poolKey.fee == SWAP_FEE, InvalidFee());
         require(poolKey.tickSpacing == TICK_SPACING, InvalidTickSpacing());
@@ -108,8 +138,9 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
         return IHooks.beforeInitialize.selector;
     }
 
-    /// @notice Prevents liquidity operations on wrapper pools
-    /// @dev Always reverts as liquidity is managed through the token wrapper
+    /// @notice Hook called before adding liquidity - always reverts
+    /// @dev Liquidity must be added through V2-style pair contracts, not directly to V4 pools
+    /// @return Never returns, always reverts with LiquidityNotAllowed
     function _beforeAddLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
         internal
         pure
@@ -119,6 +150,13 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
         revert LiquidityNotAllowed();
     }
 
+    /// @notice Hook called before swap execution to handle V2-style constant product swaps
+    /// @dev Calculates swap amounts using V2 formula and executes through the pair contract
+    /// @param poolKey The pool configuration
+    /// @param params Swap parameters including direction and amount
+    /// @return selector The function selector
+    /// @return swapDelta The calculated swap deltas for input and output
+    /// @return fee The swap fee (always 0 as fee is handled by V2 logic)
     function _beforeSwap(address, PoolKey calldata poolKey, SwapParams calldata params, bytes calldata)
         internal
         override
@@ -126,14 +164,9 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
     {
         V2OnV4Pair pair = V2OnV4Pair(getPair[Currency.unwrap(poolKey.currency0)][Currency.unwrap(poolKey.currency1)]);
 
-        (Currency tokenIn, Currency tokenOut) =
-            params.zeroForOne ? (poolKey.currency0, poolKey.currency1) : (poolKey.currency1, poolKey.currency0);
-        (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
-        (uint256 reserveIn, uint256 reserveOut) = tokenIn == poolKey.currency0
-            ? (uint256(reserve0), uint256(reserve1))
-            : (uint256(reserve1), uint256(reserve0));
-        uint256 amountSpecified =
-            params.amountSpecified > 0 ? uint256(params.amountSpecified) : uint256(-params.amountSpecified);
+        (Currency tokenIn, Currency tokenOut, uint256 reserveIn, uint256 reserveOut, uint256 amountSpecified) =
+            _parseSwap(poolKey, params, pair);
+        params.amountSpecified > 0 ? uint256(params.amountSpecified) : uint256(-params.amountSpecified);
 
         bool isExactInput = params.amountSpecified < 0;
 
@@ -155,5 +188,30 @@ contract V2OnV4FactoryHook is BaseHook, V2OnV4PairDeployer, IUniswapV2Factory {
         poolManager.burn(address(this), tokenOut.toId(), amountOut);
 
         return (IHooks.beforeSwap.selector, swapDelta, 0);
+    }
+
+    /// @notice Parses swap parameters and retrieves reserve information
+    /// @dev Helper function to extract tokens, reserves, and amounts from swap params
+    /// @param poolKey The pool configuration
+    /// @param params Swap parameters
+    /// @param pair The V2 pair contract
+    /// @return tokenIn The input token currency
+    /// @return tokenOut The output token currency
+    /// @return reserveIn Input token reserves
+    /// @return reserveOut Output token reserves
+    /// @return amountSpecified Absolute value of the specified swap amount
+    function _parseSwap(PoolKey calldata poolKey, SwapParams calldata params, V2OnV4Pair pair)
+        private
+        view
+        returns (Currency tokenIn, Currency tokenOut, uint256 reserveIn, uint256 reserveOut, uint256 amountSpecified)
+    {
+        (tokenIn, tokenOut) =
+            params.zeroForOne ? (poolKey.currency0, poolKey.currency1) : (poolKey.currency1, poolKey.currency0);
+        (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
+        (reserveIn, reserveOut) = tokenIn == poolKey.currency0
+            ? (uint256(reserve0), uint256(reserve1))
+            : (uint256(reserve1), uint256(reserve0));
+        amountSpecified =
+            params.amountSpecified > 0 ? uint256(params.amountSpecified) : uint256(-params.amountSpecified);
     }
 }
