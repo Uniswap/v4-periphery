@@ -104,8 +104,19 @@ contract RoutingTestHelpers is Test, Deployers {
 
         params.currencyIn = _tokenPath[0];
         params.path = path;
+        params.maxHopSlippage = new uint256[](0);
         params.amountIn = uint128(amountIn);
         params.amountOutMinimum = 0;
+    }
+
+    function _getExactInputParams(Currency[] memory _tokenPath, uint256[] memory maxHopSlippage, uint256 amountIn)
+        internal
+        pure
+        returns (IV4Router.ExactInputParams memory params)
+    {
+        params = _getExactInputParams(_tokenPath, amountIn);
+        params.maxHopSlippage = maxHopSlippage;
+        return params;
     }
 
     function _getExactOutputParams(Currency[] memory _tokenPath, uint256 amountOut)
@@ -120,8 +131,19 @@ contract RoutingTestHelpers is Test, Deployers {
 
         params.currencyOut = _tokenPath[_tokenPath.length - 1];
         params.path = path;
+        params.maxHopSlippage = new uint256[](0);
         params.amountOut = uint128(amountOut);
         params.amountInMaximum = type(uint128).max;
+    }
+
+    function _getExactOutputParams(Currency[] memory _tokenPath, uint256[] memory maxHopSlippage, uint256 amountOut)
+        internal
+        pure
+        returns (IV4Router.ExactOutputParams memory params)
+    {
+        params = _getExactOutputParams(_tokenPath, amountOut);
+        params.maxHopSlippage = maxHopSlippage;
+        return params;
     }
 
     function _finalizeAndExecuteSwap(
