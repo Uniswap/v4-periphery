@@ -20,6 +20,8 @@ contract PermissionedPositionManager is PositionManager {
 
     mapping(Currency currency => mapping(IHooks hooks => bool)) public isAllowedHooks;
 
+    event AllowedHooksUpdated(Currency currency, IHooks hooks, bool allowed);
+
     error InvalidHook();
     error SafeTransferDisabled();
     error NotPermissionsAdapterAdmin();
@@ -45,7 +47,10 @@ contract PermissionedPositionManager is PositionManager {
         if (_getOwner(currency) != msg.sender) {
             revert NotPermissionsAdapterAdmin();
         }
+        bool oldAllowed = isAllowedHooks[currency][hooks];
+        if (oldAllowed == allowed) return;
         isAllowedHooks[currency][hooks] = allowed;
+        emit AllowedHooksUpdated(currency, hooks, allowed);
     }
 
     /// @inheritdoc PositionManager

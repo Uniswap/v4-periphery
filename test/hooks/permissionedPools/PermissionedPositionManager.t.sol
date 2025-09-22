@@ -226,7 +226,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     function setAllowedHooks(IPositionManager posm, Currency currency, IHooks permissionedHooks_) internal {
-        // addPermissionedHooks selector
+        // setAllowedHook selector
         bytes4 selector = 0xb5cdc484;
         bytes memory data = abi.encodeWithSelector(selector, currency, permissionedHooks_, true);
         (bool success,) = address(posm).call(data);
