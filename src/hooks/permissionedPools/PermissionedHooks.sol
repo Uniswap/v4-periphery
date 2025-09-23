@@ -60,21 +60,21 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
     }
 
     /// @dev checks if the provided token is a permissioned token by checking if it has a verified permissions adapter, if yes, check the allowlist and check whether swapping is enabled
-    function _isAllowed(address pemissionsAdapter, address sender, address router, bytes4 selector) internal view {
-        address permissionedToken = PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(pemissionsAdapter);
+    function _isAllowed(address permissionsAdapter, address sender, address router, bytes4 selector) internal view {
+        address permissionedToken = PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(permissionsAdapter);
         if (permissionedToken == address(0)) return;
 
         PermissionFlag permission = PermissionFlags.NONE;
         if (selector == this.beforeSwap.selector) {
             permission = PermissionFlags.SWAP_ALLOWED;
-            if (!IPermissionsAdapter(pemissionsAdapter).swappingEnabled()) revert SwappingDisabled();
+            if (!IPermissionsAdapter(permissionsAdapter).swappingEnabled()) revert SwappingDisabled();
         } else if (selector == this.beforeAddLiquidity.selector) {
             permission = PermissionFlags.LIQUIDITY_ALLOWED;
         }
 
         if (
-            !IPermissionsAdapter(pemissionsAdapter).isAllowed(sender, permission)
-                || !IPermissionsAdapter(pemissionsAdapter).allowedWrappers(router)
+            !IPermissionsAdapter(permissionsAdapter).isAllowed(sender, permission)
+                || !IPermissionsAdapter(permissionsAdapter).allowedWrappers(router)
         ) revert Unauthorized();
     }
 }

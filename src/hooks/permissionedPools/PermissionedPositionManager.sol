@@ -110,18 +110,18 @@ contract PermissionedPositionManager is PositionManager {
             return;
         }
         // token is permissioned, wrap the token and transfer it to the pool manager
-        IPermissionsAdapter pemissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
+        IPermissionsAdapter permissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
         if (payer == address(this)) {
             // @audit is it necessary to check the allowlist here?
-            if (!pemissionsAdapter.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
+            if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
                 revert Unauthorized();
             }
-            Currency.wrap(permissionedToken).transfer(address(pemissionsAdapter), amount);
-            pemissionsAdapter.wrapToPoolManager(amount);
+            Currency.wrap(permissionedToken).transfer(address(permissionsAdapter), amount);
+            permissionsAdapter.wrapToPoolManager(amount);
         } else {
             // token is a permissioned token, wrap the token
-            permit2.transferFrom(payer, address(pemissionsAdapter), uint160(amount), permissionedToken);
-            pemissionsAdapter.wrapToPoolManager(amount);
+            permit2.transferFrom(payer, address(permissionsAdapter), uint160(amount), permissionedToken);
+            permissionsAdapter.wrapToPoolManager(amount);
         }
     }
 
@@ -130,9 +130,9 @@ contract PermissionedPositionManager is PositionManager {
     }
 
     function _getOwner(Currency currency) internal view returns (address) {
-        address pemissionsAdapter = Currency.unwrap(currency);
+        address permissionsAdapter = Currency.unwrap(currency);
         address permissionedToken = _verifiedPermissionedTokenOf(currency);
         if (permissionedToken == address(0)) return address(0);
-        return IPermissionsAdapter(pemissionsAdapter).owner();
+        return IPermissionsAdapter(permissionsAdapter).owner();
     }
 }

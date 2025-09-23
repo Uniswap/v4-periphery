@@ -197,32 +197,32 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         );
     }
 
-    function setUpPemissionsAdapter(PermissionsAdapter pemissionsAdapter, Currency currency) internal {
-        adapterToPermissioned[Currency.wrap(address(pemissionsAdapter))] = currency;
+    function setUpPemissionsAdapter(PermissionsAdapter permissionsAdapter, Currency currency) internal {
+        adapterToPermissioned[Currency.wrap(address(permissionsAdapter))] = currency;
 
         MockPermissionedToken(Currency.unwrap(currency)).mint(address(this), 1000 ether);
         MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
-            address(pemissionsAdapter), PermissionFlags.ALL_ALLOWED
+            address(permissionsAdapter), PermissionFlags.ALL_ALLOWED
         );
 
         // permissions adapter contract must have a non-zero balance of the permissioned token
-        currency.transfer(address(pemissionsAdapter), 1);
+        currency.transfer(address(permissionsAdapter), 1);
 
-        pemissionsAdapter.updateAllowedWrapper(address(manager), true);
-        pemissionsAdapter.updateAllowedWrapper(address(lpm), true);
-        pemissionsAdapter.updateAllowedWrapper(address(secondaryPosm), true);
-        pemissionsAdapter.updateAllowedWrapper(address(permissionedSwapRouter), true);
+        permissionsAdapter.updateAllowedWrapper(address(manager), true);
+        permissionsAdapter.updateAllowedWrapper(address(lpm), true);
+        permissionsAdapter.updateAllowedWrapper(address(secondaryPosm), true);
+        permissionsAdapter.updateAllowedWrapper(address(permissionedSwapRouter), true);
 
-        permissionsAdapterFactory.verifyPermissionsAdapter(address(pemissionsAdapter));
+        permissionsAdapterFactory.verifyPermissionsAdapter(address(permissionsAdapter));
 
-        Currency permissionsAdapter = Currency.wrap(address(pemissionsAdapter));
+        Currency permissionsAdapterCurrency = Currency.wrap(address(permissionsAdapter));
 
-        setAllowedHooks(lpm, permissionsAdapter, permissionedHooks);
-        setAllowedHooks(tertiaryPosm, permissionsAdapter, permissionedHooks);
+        setAllowedHooks(lpm, permissionsAdapterCurrency, permissionedHooks);
+        setAllowedHooks(tertiaryPosm, permissionsAdapterCurrency, permissionedHooks);
 
-        setAllowedHooks(lpm, permissionsAdapter, secondaryPermissionedHooks);
-        setAllowedHooks(secondaryPosm, permissionsAdapter, secondaryPermissionedHooks);
-        setAllowedHooks(tertiaryPosm, permissionsAdapter, secondaryPermissionedHooks);
+        setAllowedHooks(lpm, permissionsAdapterCurrency, secondaryPermissionedHooks);
+        setAllowedHooks(secondaryPosm, permissionsAdapterCurrency, secondaryPermissionedHooks);
+        setAllowedHooks(tertiaryPosm, permissionsAdapterCurrency, secondaryPermissionedHooks);
     }
 
     function setAllowedHooks(IPositionManager posm, Currency currency, IHooks permissionedHooks_) internal {

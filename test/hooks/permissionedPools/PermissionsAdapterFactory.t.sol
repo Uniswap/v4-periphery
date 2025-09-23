@@ -38,54 +38,54 @@ contract PermissionsAdapterFactoryTest is PermissionedPoolsBase {
         emit IPermissionsAdapterFactory.PermissionsAdapterCreated(
             expectedPermissionsAdapter, address(permissionedToken)
         );
-        address pemissionsAdapter =
+        address permissionsAdapter =
             permissionsAdapterFactory.createPermissionsAdapter(permissionedToken, initialOwner, allowlistChecker);
-        assertEq(pemissionsAdapter, expectedPermissionsAdapter);
-        assertEq(permissionsAdapterFactory.permissionsAdapterOf(pemissionsAdapter), address(permissionedToken));
-        assertEq(permissionsAdapterFactory.verifiedPermissionsAdapterOf(pemissionsAdapter), address(0));
+        assertEq(permissionsAdapter, expectedPermissionsAdapter);
+        assertEq(permissionsAdapterFactory.permissionsAdapterOf(permissionsAdapter), address(permissionedToken));
+        assertEq(permissionsAdapterFactory.verifiedPermissionsAdapterOf(permissionsAdapter), address(0));
     }
 
-    function testRevert_WhenPemissionsAdapterNotDeployed(address pemissionsAdapter) public {
+    function testRevert_WhenPemissionsAdapterNotDeployed(address permissionsAdapter) public {
         vm.expectRevert(
-            abi.encodeWithSelector(IPermissionsAdapterFactory.PemissionsAdapterNotFound.selector, pemissionsAdapter)
+            abi.encodeWithSelector(IPermissionsAdapterFactory.PemissionsAdapterNotFound.selector, permissionsAdapter)
         );
-        permissionsAdapterFactory.verifyPermissionsAdapter(pemissionsAdapter);
+        permissionsAdapterFactory.verifyPermissionsAdapter(permissionsAdapter);
     }
 
     function testRevert_WhenPemissionsAdapterNotVerified() public {
-        address pemissionsAdapter = permissionsAdapterFactory.createPermissionsAdapter(
+        address permissionsAdapter = permissionsAdapterFactory.createPermissionsAdapter(
             permissionedToken, makeAddr("initialOwner"), allowlistChecker
         );
         vm.expectRevert(
-            abi.encodeWithSelector(IPermissionsAdapterFactory.PemissionsAdapterNotVerified.selector, pemissionsAdapter)
+            abi.encodeWithSelector(IPermissionsAdapterFactory.PemissionsAdapterNotVerified.selector, permissionsAdapter)
         );
-        permissionsAdapterFactory.verifyPermissionsAdapter(pemissionsAdapter);
+        permissionsAdapterFactory.verifyPermissionsAdapter(permissionsAdapter);
     }
 
     function test_VerifyPemissionsAdapter() public {
-        address pemissionsAdapter = permissionsAdapterFactory.createPermissionsAdapter(
+        address permissionsAdapter = permissionsAdapterFactory.createPermissionsAdapter(
             permissionedToken, makeAddr("initialOwner"), allowlistChecker
         );
-        permissionedToken.setAllowlist(pemissionsAdapter, PermissionFlags.ALL_ALLOWED);
-        permissionedToken.mint(pemissionsAdapter, 1);
+        permissionedToken.setAllowlist(permissionsAdapter, PermissionFlags.ALL_ALLOWED);
+        permissionedToken.mint(permissionsAdapter, 1);
         vm.expectEmit(true, true, true, true);
-        emit IPermissionsAdapterFactory.PemissionsAdapterVerified(pemissionsAdapter, address(permissionedToken));
-        permissionsAdapterFactory.verifyPermissionsAdapter(pemissionsAdapter);
-        assertEq(permissionsAdapterFactory.verifiedPermissionsAdapterOf(pemissionsAdapter), address(permissionedToken));
+        emit IPermissionsAdapterFactory.PemissionsAdapterVerified(permissionsAdapter, address(permissionedToken));
+        permissionsAdapterFactory.verifyPermissionsAdapter(permissionsAdapter);
+        assertEq(permissionsAdapterFactory.verifiedPermissionsAdapterOf(permissionsAdapter), address(permissionedToken));
     }
 
     function testRevert_WhenPemissionsAdapterAlreadyVerified() public {
-        address pemissionsAdapter = permissionsAdapterFactory.createPermissionsAdapter(
+        address permissionsAdapter = permissionsAdapterFactory.createPermissionsAdapter(
             permissionedToken, makeAddr("initialOwner"), allowlistChecker
         );
-        permissionedToken.setAllowlist(pemissionsAdapter, PermissionFlags.ALL_ALLOWED);
-        permissionedToken.mint(pemissionsAdapter, 1);
-        permissionsAdapterFactory.verifyPermissionsAdapter(pemissionsAdapter);
+        permissionedToken.setAllowlist(permissionsAdapter, PermissionFlags.ALL_ALLOWED);
+        permissionedToken.mint(permissionsAdapter, 1);
+        permissionsAdapterFactory.verifyPermissionsAdapter(permissionsAdapter);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IPermissionsAdapterFactory.PemissionsAdapterAlreadyVerified.selector, pemissionsAdapter
+                IPermissionsAdapterFactory.PemissionsAdapterAlreadyVerified.selector, permissionsAdapter
             )
         );
-        permissionsAdapterFactory.verifyPermissionsAdapter(pemissionsAdapter);
+        permissionsAdapterFactory.verifyPermissionsAdapter(permissionsAdapter);
     }
 }

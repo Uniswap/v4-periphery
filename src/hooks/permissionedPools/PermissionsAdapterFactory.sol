@@ -10,9 +10,9 @@ contract PermissionsAdapterFactory is IPermissionsAdapterFactory {
     address public immutable POOL_MANAGER;
 
     /// @inheritdoc IPermissionsAdapterFactory
-    mapping(address pemissionsAdapter => address permissionedToken) public permissionsAdapterOf;
+    mapping(address permissionsAdapter => address permissionedToken) public permissionsAdapterOf;
     /// @inheritdoc IPermissionsAdapterFactory
-    mapping(address pemissionsAdapter => address permissionedToken) public verifiedPermissionsAdapterOf;
+    mapping(address permissionsAdapter => address permissionedToken) public verifiedPermissionsAdapterOf;
 
     constructor(address poolManager) {
         POOL_MANAGER = poolManager;
@@ -23,23 +23,25 @@ contract PermissionsAdapterFactory is IPermissionsAdapterFactory {
         IERC20 permissionedToken,
         address initialOwner,
         IAllowlistChecker allowListChecker
-    ) external returns (address pemissionsAdapter) {
-        pemissionsAdapter =
+    ) external returns (address permissionsAdapter) {
+        permissionsAdapter =
             address(new PermissionsAdapter(permissionedToken, POOL_MANAGER, initialOwner, allowListChecker));
-        permissionsAdapterOf[pemissionsAdapter] = address(permissionedToken);
-        emit PermissionsAdapterCreated(pemissionsAdapter, address(permissionedToken));
+        permissionsAdapterOf[permissionsAdapter] = address(permissionedToken);
+        emit PermissionsAdapterCreated(permissionsAdapter, address(permissionedToken));
     }
 
     /// @inheritdoc IPermissionsAdapterFactory
-    function verifyPermissionsAdapter(address pemissionsAdapter) external {
-        IERC20 permissionedToken = IERC20(permissionsAdapterOf[pemissionsAdapter]);
-        if (address(permissionedToken) == address(0)) revert PemissionsAdapterNotFound(pemissionsAdapter);
-        if (verifiedPermissionsAdapterOf[pemissionsAdapter] != address(0)) {
-            revert PemissionsAdapterAlreadyVerified(pemissionsAdapter);
+    function verifyPermissionsAdapter(address permissionsAdapter) external {
+        IERC20 permissionedToken = IERC20(permissionsAdapterOf[permissionsAdapter]);
+        if (address(permissionedToken) == address(0)) revert PemissionsAdapterNotFound(permissionsAdapter);
+        if (verifiedPermissionsAdapterOf[permissionsAdapter] != address(0)) {
+            revert PemissionsAdapterAlreadyVerified(permissionsAdapter);
         }
         // this requires that the verifier has some comntrol or ownership of the permissioned token
-        if (permissionedToken.balanceOf(pemissionsAdapter) == 0) revert PemissionsAdapterNotVerified(pemissionsAdapter);
-        verifiedPermissionsAdapterOf[pemissionsAdapter] = address(permissionedToken);
-        emit PemissionsAdapterVerified(pemissionsAdapter, address(permissionedToken));
+        if (permissionedToken.balanceOf(permissionsAdapter) == 0) {
+            revert PemissionsAdapterNotVerified(permissionsAdapter);
+        }
+        verifiedPermissionsAdapterOf[permissionsAdapter] = address(permissionedToken);
+        emit PemissionsAdapterVerified(permissionsAdapter, address(permissionedToken));
     }
 }

@@ -6,19 +6,19 @@ import {IAllowlistChecker} from "./IAllowlistChecker.sol";
 
 interface IPermissionsAdapterFactory {
     /// @notice Emitted when a permissions adapter is created
-    event PermissionsAdapterCreated(address indexed pemissionsAdapter, address indexed permissionedToken);
+    event PermissionsAdapterCreated(address indexed permissionsAdapter, address indexed permissionedToken);
 
     /// @notice Emitted when a permissions adapter is verified
-    event PemissionsAdapterVerified(address indexed pemissionsAdapter, address indexed permissionedToken);
+    event PemissionsAdapterVerified(address indexed permissionsAdapter, address indexed permissionedToken);
 
     /// @notice Thrown when the permissions adapter does not exist
-    error PemissionsAdapterNotFound(address pemissionsAdapter);
+    error PemissionsAdapterNotFound(address permissionsAdapter);
 
     /// @notice Thrown when the permissions adapter is already verified
-    error PemissionsAdapterAlreadyVerified(address pemissionsAdapter);
+    error PemissionsAdapterAlreadyVerified(address permissionsAdapter);
 
     /// @notice Thrown when the permissions adapter is not verified
-    error PemissionsAdapterNotVerified(address pemissionsAdapter);
+    error PemissionsAdapterNotVerified(address permissionsAdapter);
 
     /// @notice Creates a new permissions adapter
     /// @param permissionedToken The permissioned token to wrap
@@ -31,20 +31,20 @@ interface IPermissionsAdapterFactory {
     ) external returns (address);
 
     /// @notice Verifies a permissions adapter
-    /// @param pemissionsAdapter The permissions adapter
+    /// @param permissionsAdapter The permissions adapter
     /// @dev This function verifies that the permissions adapter has a balance of the permissioned token. This means that the permissions adapter is on the allow list of the permissioned token and can be used to wrap and unwrap the permissioned token.
-    function verifyPermissionsAdapter(address pemissionsAdapter) external;
+    function verifyPermissionsAdapter(address permissionsAdapter) external;
 
     /// @notice Returns the permissioned token of a permissions adapter
-    /// @param pemissionsAdapter The permissions adapter
+    /// @param permissionsAdapter The permissions adapter
     /// @return permissionedToken The permissioned token
-    function permissionsAdapterOf(address pemissionsAdapter) external view returns (address permissionedToken);
+    function permissionsAdapterOf(address permissionsAdapter) external view returns (address permissionedToken);
 
     /// @notice Returns the verified permissioned token of a permissions adapter
-    /// @param pemissionsAdapter The permissions adapter
+    /// @param permissionsAdapter The permissions adapter
     /// @return permissionedToken The verified permissioned token
     /// @dev A reverse lookup of the permissioned token is required, otherwise anyone could create a permissions adapter for a non-permissioned token
-    function verifiedPermissionsAdapterOf(address pemissionsAdapter)
+    function verifiedPermissionsAdapterOf(address permissionsAdapter)
         external
         view
         returns (address permissionedToken);

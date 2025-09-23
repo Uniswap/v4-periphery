@@ -137,18 +137,18 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
             return;
         }
         // token is permissioned, wrap the token and transfer it to the pool manager
-        IPermissionsAdapter pemissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
+        IPermissionsAdapter permissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
         if (payer == address(this)) {
             // allowlist check necessary to ensure a disallowed user cannot sell a permissioned token
-            if (!pemissionsAdapter.isAllowed(msgSender(), PermissionFlags.SWAP_ALLOWED)) {
+            if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.SWAP_ALLOWED)) {
                 revert Unauthorized();
             }
-            Currency.wrap(permissionedToken).transfer(address(pemissionsAdapter), amount);
-            pemissionsAdapter.wrapToPoolManager(amount);
+            Currency.wrap(permissionedToken).transfer(address(permissionsAdapter), amount);
+            permissionsAdapter.wrapToPoolManager(amount);
         } else {
             // token is a permissioned token, wrap the token
-            PERMIT2.transferFrom(payer, address(pemissionsAdapter), uint160(amount), permissionedToken);
-            pemissionsAdapter.wrapToPoolManager(amount);
+            PERMIT2.transferFrom(payer, address(permissionsAdapter), uint160(amount), permissionedToken);
+            permissionsAdapter.wrapToPoolManager(amount);
         }
     }
 
