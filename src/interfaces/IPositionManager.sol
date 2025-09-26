@@ -65,4 +65,9 @@ interface IPositionManager is
     /// @param tokenId the ERC721 tokenId
     /// @return a uint256 packed value holding information about the position including the range (tickLower, tickUpper)
     function positionInfo(uint256 tokenId) external view returns (PositionInfo);
+
+    /// @notice Returns the full pool key corresponding to a bytes25-truncated-image of a specific pool id
+    /// @param poolId the id of the pool, truncated to 25 bytes (first 25 bytes)
+    // return poolKey the pool key of the pool
+    function poolKeys(bytes25 poolId) external view returns (PoolKey);
 }
