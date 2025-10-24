@@ -4,10 +4,15 @@ pragma solidity ^0.8.0;
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 /// @notice Provides functions for computing liquidity amounts from token amounts and prices
 library LiquidityAmounts {
     using SafeCast for uint256;
+    using CustomRevert for bytes4;
+
+    /// @notice Thrown when price range is invalid (upper <= lower)
+    error InvalidPriceRange();
 
     /// @notice Computes the amount of liquidity received for a given amount of token0 and price range
     /// @dev Calculates amount0 * (sqrt(upper) * sqrt(lower)) / (sqrt(upper) - sqrt(lower))
@@ -20,8 +25,11 @@ library LiquidityAmounts {
         pure
         returns (uint128 liquidity)
     {
+        if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+        // Add protection against invalid price ranges
+        if (sqrtPriceBX96 <= sqrtPriceAX96) InvalidPriceRange.selector.revertWith();
+        
         unchecked {
-            if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
             uint256 intermediate = FullMath.mulDiv(sqrtPriceAX96, sqrtPriceBX96, FixedPoint96.Q96);
             return FullMath.mulDiv(amount0, intermediate, sqrtPriceBX96 - sqrtPriceAX96).toUint128();
         }
@@ -38,8 +46,11 @@ library LiquidityAmounts {
         pure
         returns (uint128 liquidity)
     {
+        if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
+        // Add protection against invalid price ranges  
+        if (sqrtPriceBX96 <= sqrtPriceAX96) InvalidPriceRange.selector.revertWith();
+        
         unchecked {
-            if (sqrtPriceAX96 > sqrtPriceBX96) (sqrtPriceAX96, sqrtPriceBX96) = (sqrtPriceBX96, sqrtPriceAX96);
             return FullMath.mulDiv(amount1, FixedPoint96.Q96, sqrtPriceBX96 - sqrtPriceAX96).toUint128();
         }
     }

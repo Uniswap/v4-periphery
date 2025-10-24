@@ -5,6 +5,7 @@ import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {BaseTokenWrapperHook} from "../base/hooks/BaseTokenWrapperHook.sol";
 import {IWstETH, IStETH} from "../interfaces/external/IWstETH.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
@@ -16,9 +17,16 @@ import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 contract WstETHHook is BaseTokenWrapperHook {
     using FixedPointMathLib for uint256;
     using SafeTransferLib for ERC20;
+    using CustomRevert for bytes4;
 
     /// @notice The wstETH contract used for wrapping/unwrapping operations
     IWstETH public immutable wstETH;
+    
+    /// @notice Minimum exchange rate for stETH/wstETH (prevents manipulation)  
+    uint256 private constant MIN_WSTETH_RATE = 0.8e18; // 0.8 stETH per wstETH (very conservative)
+    
+    /// @notice Maximum exchange rate for stETH/wstETH (prevents manipulation)
+    uint256 private constant MAX_WSTETH_RATE = 2.0e18; // 2.0 stETH per wstETH (very conservative)
 
     /// @notice Creates a new wstETH wrapper hook
     /// @param _manager The Uniswap V4 pool manager
@@ -90,5 +98,55 @@ contract WstETHHook is BaseTokenWrapperHook {
     /// @inheritdoc BaseTokenWrapperHook
     function _supportsExactOutput() internal pure override returns (bool) {
         return false;
+    }
+    
+    /// @inheritdoc BaseTokenWrapperHook
+    /// @notice Validates stETH/wstETH exchange rates to prevent manipulation
+    /// @dev Ensures current exchange rates are within reasonable bounds
+    function _validateExchangeRates() internal view override {
+        uint256 tokensPerStEth = wstETH.tokensPerStEth();
+        
+        // Validate the exchange rate is within reasonable bounds
+        if (tokensPerStEth < MIN_WSTETH_RATE) {
+            InvalidExchangeRate.selector.revertWith();
+        }
+        
+        if (tokensPerStEth > MAX_WSTETH_RATE) {
+            ExchangeRateOverflow.selector.revertWith();
+        }
+        
+        // Additional sanity check: ensure the rate is not zero
+        if (tokensPerStEth == 0) {
+            InvalidExchangeRate.selector.revertWith();
+        }
+    }
+    
+    /// @inheritdoc BaseTokenWrapperHook
+    /// @notice Enhanced validation for stETH/wstETH exchange rate deviations
+    /// @dev Provides specific validation for stETH rebasing token edge cases
+    function _validateExchangeRateDeviation(uint256 inputAmount, uint256 outputAmount, bool isWrapping) internal view override {
+        // Call parent validation first
+        super._validateExchangeRateDeviation(inputAmount, outputAmount, isWrapping);
+        
+        // Additional stETH-specific validation
+        if (isWrapping) {
+            // When wrapping stETH to wstETH, ensure the conversion is reasonable
+            uint256 expectedWstETH = wstETH.getWstETHByStETH(inputAmount);
+            
+            // Allow for small rounding differences (0.1% tolerance)
+            uint256 tolerance = expectedWstETH / 1000;
+            if (outputAmount < expectedWstETH - tolerance || outputAmount > expectedWstETH + tolerance) {
+                AmountMismatch.selector.revertWith();
+            }
+        } else {
+            // When unwrapping wstETH to stETH, ensure the conversion is reasonable
+            uint256 expectedStETH = inputAmount.mulWadDown(wstETH.tokensPerStEth());
+            
+            // Allow for small rounding differences (0.1% tolerance)
+            uint256 tolerance = expectedStETH / 1000;
+            if (outputAmount < expectedStETH - tolerance || outputAmount > expectedStETH + tolerance) {
+                AmountMismatch.selector.revertWith();
+            }
+        }
     }
 }

@@ -30,6 +30,7 @@ import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {NativeWrapper} from "./base/NativeWrapper.sol";
 import {IWETH9} from "./interfaces/external/IWETH9.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 
 //                                           444444444
 //                                444444444444      444444
@@ -60,7 +61,7 @@ import {IWETH9} from "./interfaces/external/IWETH9.sol";
 //                 4444   44  44444        44444444444             444444444444444444444    44444444
 //                     44444   4444        4444444444             444444444444444444444444     44444
 //                 44444 44444 444         444444                4444444444444444444444444       44444
-//                       4444 44         44                     4 44444444444444444444444444   444 44444
+//                       4444 44         44                     4 44444444444444444444444444   444 444444
 //                   44444444 444  44   4    4         444444  4 44444444444444444444444444444   4444444
 //                        444444    44       44444444444       44444444444444 444444444444444      444444
 //                     444444 44   4444      44444       44     44444444444444444444444 4444444      44444
@@ -115,6 +116,28 @@ contract PositionManager is
     using SafeCast for int256;
     using CalldataDecoder for bytes;
     using SlippageCheck for BalanceDelta;
+    using CustomRevert for bytes4;
+
+    /// @notice Thrown when a zero address is provided for a critical parameter
+    error ZeroAddress(string parameter);
+    
+    /// @notice Thrown when token ID would overflow
+    error TokenIdOverflow();
+    
+    /// @notice Thrown when the from address is incorrect
+    error WrongFrom();
+    
+    /// @notice Thrown when recipient is zero address
+    error InvalidRecipient();
+    
+    /// @notice Thrown when caller is not authorized for token transfer
+    error NotAuthorized();
+    
+    /// @notice Thrown when balance would underflow
+    error InsufficientBalance();
+    
+    /// @notice Thrown when balance would overflow  
+    error BalanceOverflow();
 
     /// @inheritdoc IPositionManager
     /// @dev The ID of the next token that will be minted. Skips 0
@@ -138,6 +161,12 @@ contract PositionManager is
         Notifier(_unsubscribeGasLimit)
         NativeWrapper(_weth9)
     {
+        // Comprehensive zero address validation for critical parameters
+        if (address(_poolManager) == address(0)) revert ZeroAddress("poolManager");
+        if (address(_permit2) == address(0)) revert ZeroAddress("permit2");
+        if (address(_tokenDescriptor) == address(0)) revert ZeroAddress("tokenDescriptor");
+        if (address(_weth9) == address(0)) revert ZeroAddress("weth9");
+        
         tokenDescriptor = _tokenDescriptor;
     }
 
@@ -357,6 +386,9 @@ contract PositionManager is
     ) internal {
         // mint receipt token
         uint256 tokenId;
+        // Add overflow protection for nextTokenId
+        if (nextTokenId >= type(uint256).max) revert TokenIdOverflow();
+        
         // tokenId is assigned to current nextTokenId before incrementing it
         unchecked {
             tokenId = nextTokenId++;
@@ -532,9 +564,40 @@ contract PositionManager is
     }
 
     /// @dev overrides solmate transferFrom in case a notification to subscribers is needed
-    /// @dev will revert if pool manager is locked
+    /// @dev will revert if pool manager is unlocked
+    /// @dev requires proper authorization: caller must be owner, approved for all, or approved for specific token
     function transferFrom(address from, address to, uint256 id) public virtual override onlyIfPoolManagerLocked {
-        super.transferFrom(from, to, id);
+        // Get the correct caller context (locker when pool is locked, msg.sender otherwise)
+        address caller = msgSender();
+        
+        // Perform the same authorization checks as the parent ERC721 contract
+        // but using the correct caller context for the locked pool manager scenario
+        if (from != _ownerOf[id]) WrongFrom.selector.revertWith();
+        if (to == address(0)) InvalidRecipient.selector.revertWith();
+        
+        // Critical authorization check: caller must be authorized to transfer this token
+        if (!(caller == from || isApprovedForAll[from][caller] || caller == getApproved[id])) {
+            NotAuthorized.selector.revertWith();
+        }
+        
+        // Replicate the transfer logic from solmate ERC721 to avoid parent authorization conflicts
+        // Add validation to prevent underflow/overflow in balance updates
+        if (_balanceOf[from] == 0) InsufficientBalance.selector.revertWith();
+        if (_balanceOf[to] >= type(uint256).max) BalanceOverflow.selector.revertWith();
+        
+        // Underflow of the sender's balance is impossible because we check for
+        // ownership above and the recipient's balance can't realistically overflow.
+        unchecked {
+            _balanceOf[from]--;
+            _balanceOf[to]++;
+        }
+
+        _ownerOf[id] = to;
+        delete getApproved[id];
+        
+        emit Transfer(from, to, id);
+        
+        // Handle subscriber notifications after successful transfer
         if (positionInfo[id].hasSubscriber()) _unsubscribe(id);
     }
 

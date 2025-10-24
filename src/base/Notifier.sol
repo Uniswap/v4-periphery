@@ -13,6 +13,16 @@ abstract contract Notifier is INotifier {
 
     ISubscriber private constant NO_SUBSCRIBER = ISubscriber(address(0));
 
+    /// @notice Reentrancy guard states
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+
+    /// @notice Current reentrancy guard state for external subscription calls
+    uint256 private _notifierReentrancyStatus;
+
+    /// @notice Thrown when a reentrant call is detected
+    error NotifierReentrancyGuardReentrantCall();
+
     /// @inheritdoc INotifier
     uint256 public immutable unsubscribeGasLimit;
 
@@ -21,6 +31,14 @@ abstract contract Notifier is INotifier {
 
     constructor(uint256 _unsubscribeGasLimit) {
         unsubscribeGasLimit = _unsubscribeGasLimit;
+        _notifierReentrancyStatus = _NOT_ENTERED;
+    }
+
+    /// @notice Prevents reentrant calls to external subscription functions
+    modifier notifierNonReentrant() {
+        _notifierNonReentrantBefore();
+        _;
+        _notifierNonReentrantAfter();
     }
 
     /// @notice Only allow callers that are approved as spenders or operators of the tokenId
@@ -36,23 +54,54 @@ abstract contract Notifier is INotifier {
 
     function _setSubscribed(uint256 tokenId) internal virtual;
 
+    /// @notice Returns the address of the caller that should be used for authorization
+    /// @dev Must be implemented by inheriting contracts - should return the actual caller context
+    function msgSender() public view virtual returns (address);
+
+    /// @notice Internal function to set up reentrancy guard
+    function _notifierNonReentrantBefore() private {
+        // On the first call to nonReentrant, _status will be _NOT_ENTERED
+        if (_notifierReentrancyStatus != _NOT_ENTERED) {
+            revert NotifierReentrancyGuardReentrantCall();
+        }
+
+        // Any calls to nonReentrant after this point will fail
+        _notifierReentrancyStatus = _ENTERED;
+    }
+
+    /// @notice Internal function to clean up reentrancy guard
+    function _notifierNonReentrantAfter() private {
+        // By storing the original value once again, a refund is triggered (see
+        // https://eips.ethereum.org/EIPS/eip-2200)
+        _notifierReentrancyStatus = _NOT_ENTERED;
+    }
+
     /// @inheritdoc INotifier
     function subscribe(uint256 tokenId, address newSubscriber, bytes calldata data)
         external
         payable
         onlyIfPoolManagerLocked
-        onlyIfApproved(msg.sender, tokenId)
+        onlyIfApproved(msgSender(), tokenId)
+        notifierNonReentrant
     {
+        // Validate newSubscriber is not zero address
+        if (newSubscriber == address(0)) revert NoCodeSubscriber.selector.revertWith();
+        
         ISubscriber _subscriber = subscriber[tokenId];
 
         if (_subscriber != NO_SUBSCRIBER) revert AlreadySubscribed(tokenId, address(_subscriber));
+        
+        // Update state before external call
         _setSubscribed(tokenId);
-
         subscriber[tokenId] = ISubscriber(newSubscriber);
 
-        bool success = _call(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, data)));
+        // Make external call with reentrancy protection
+        bool success = _safeCall(newSubscriber, abi.encodeCall(ISubscriber.notifySubscribe, (tokenId, data)));
 
         if (!success) {
+            // Revert state changes if call failed
+            _setUnsubscribed(tokenId);
+            delete subscriber[tokenId];
             newSubscriber.bubbleUpAndRevertWith(ISubscriber.notifySubscribe.selector, SubscriptionReverted.selector);
         }
 
@@ -64,7 +113,8 @@ abstract contract Notifier is INotifier {
         external
         payable
         onlyIfPoolManagerLocked
-        onlyIfApproved(msg.sender, tokenId)
+        onlyIfApproved(msgSender(), tokenId)
+        notifierNonReentrant
     {
         _unsubscribe(tokenId);
     }
@@ -73,22 +123,30 @@ abstract contract Notifier is INotifier {
         ISubscriber _subscriber = subscriber[tokenId];
 
         if (_subscriber == NO_SUBSCRIBER) revert NotSubscribed();
+        
+        // Update state before external call
         _setUnsubscribed(tokenId);
-
         delete subscriber[tokenId];
+
+        // Emit event before external call to ensure it's emitted even if call fails
+        emit Unsubscription(tokenId, address(_subscriber));
 
         if (address(_subscriber).code.length > 0) {
             // require that the remaining gas is sufficient to notify the subscriber
             // otherwise, users can select a gas limit where .notifyUnsubscribe hits OutOfGas yet the
             // transaction/unsubscription can still succeed
             if (gasleft() < unsubscribeGasLimit) GasLimitTooLow.selector.revertWith();
-            try _subscriber.notifyUnsubscribe{gas: unsubscribeGasLimit}(tokenId) {} catch {}
+            
+            // Use try-catch to prevent subscriber from blocking unsubscription
+            try _subscriber.notifyUnsubscribe{gas: unsubscribeGasLimit}(tokenId) {} catch {
+                // Silently ignore failures in unsubscribe notifications
+                // This prevents malicious subscribers from blocking unsubscription
+            }
         }
-
-        emit Unsubscription(tokenId, address(_subscriber));
     }
 
     /// @dev note this function also deletes the subscriber address from the mapping
+    /// @dev This function is called from within already protected contexts, so no additional reentrancy guard
     function _removeSubscriberAndNotifyBurn(
         uint256 tokenId,
         address owner,
@@ -98,21 +156,22 @@ abstract contract Notifier is INotifier {
     ) internal {
         address _subscriber = address(subscriber[tokenId]);
 
-        // remove the subscriber
+        // remove the subscriber before external call
         delete subscriber[tokenId];
 
         bool success =
-            _call(_subscriber, abi.encodeCall(ISubscriber.notifyBurn, (tokenId, owner, info, liquidity, feesAccrued)));
+            _safeCall(_subscriber, abi.encodeCall(ISubscriber.notifyBurn, (tokenId, owner, info, liquidity, feesAccrued)));
 
         if (!success) {
             _subscriber.bubbleUpAndRevertWith(ISubscriber.notifyBurn.selector, BurnNotificationReverted.selector);
         }
     }
 
+    /// @dev This function is called from within already protected contexts, so no additional reentrancy guard
     function _notifyModifyLiquidity(uint256 tokenId, int256 liquidityChange, BalanceDelta feesAccrued) internal {
         address _subscriber = address(subscriber[tokenId]);
 
-        bool success = _call(
+        bool success = _safeCall(
             _subscriber, abi.encodeCall(ISubscriber.notifyModifyLiquidity, (tokenId, liquidityChange, feesAccrued))
         );
 
@@ -123,10 +182,32 @@ abstract contract Notifier is INotifier {
         }
     }
 
-    function _call(address target, bytes memory encodedCall) internal returns (bool success) {
+    /// @notice Safe external call with additional validation and reentrancy protection
+    /// @param target The address to call
+    /// @param encodedCall The encoded function call
+    /// @return success Whether the call succeeded
+    function _safeCall(address target, bytes memory encodedCall) internal returns (bool success) {
         if (target.code.length == 0) NoCodeSubscriber.selector.revertWith();
+        
+        // Additional validation: ensure target is not this contract to prevent self-calls
+        if (target == address(this)) revert NotifierReentrancyGuardReentrantCall();
+        
+        // Store original reentrancy status to check for nested calls during external call
+        uint256 originalStatus = _notifierReentrancyStatus;
+        
         assembly ("memory-safe") {
             success := call(gas(), target, 0, add(encodedCall, 0x20), mload(encodedCall), 0, 0)
         }
+        
+        // Verify that the external call didn't cause a reentrant call that changed our status
+        if (_notifierReentrancyStatus != originalStatus) {
+            revert NotifierReentrancyGuardReentrantCall();
+        }
+    }
+
+    /// @notice Legacy _call function for backward compatibility - now uses _safeCall
+    /// @dev This function is deprecated and should not be used in new code
+    function _call(address target, bytes memory encodedCall) internal returns (bool success) {
+        return _safeCall(target, encodedCall);
     }
 }

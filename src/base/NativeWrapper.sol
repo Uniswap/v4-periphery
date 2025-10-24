@@ -13,8 +13,12 @@ abstract contract NativeWrapper is ImmutableState {
 
     /// @notice Thrown when an unexpected address sends ETH to this contract
     error InvalidEthSender();
+    
+    /// @notice Thrown when a zero address is provided for a critical parameter
+    error ZeroAddress(string parameter);
 
     constructor(IWETH9 _weth9) {
+        if (address(_weth9) == address(0)) revert ZeroAddress("weth9");
         WETH9 = _weth9;
     }
 

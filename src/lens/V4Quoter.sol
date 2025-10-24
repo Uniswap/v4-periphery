@@ -6,6 +6,7 @@ import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {IV4Quoter} from "../interfaces/IV4Quoter.sol";
 import {PathKey} from "../libraries/PathKey.sol";
 import {QuoterRevert} from "../libraries/QuoterRevert.sol";
@@ -19,6 +20,13 @@ import {IMsgSender} from "../interfaces/IMsgSender.sol";
 /// to compute the result. They are also not gas efficient and should not be called on-chain.
 contract V4Quoter is IV4Quoter, BaseV4Quoter {
     using QuoterRevert for *;
+    using CustomRevert for bytes4;
+
+    /// @notice Maximum path length allowed to prevent gas bomb attacks
+    uint256 public constant MAX_PATH_LENGTH = 10;
+    
+    /// @notice Thrown when path length exceeds maximum allowed
+    error PathTooLong(uint256 length, uint256 maxLength);
 
     constructor(IPoolManager _poolManager) BaseV4Quoter(_poolManager) {}
 
@@ -91,6 +99,9 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
     /// @dev external function called within the _unlockCallback, to simulate an exact input swap, then revert with the result
     function _quoteExactInput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
+        if (pathLength > MAX_PATH_LENGTH) {
+            PathTooLong.selector.revertWith(pathLength, MAX_PATH_LENGTH);
+        }
         BalanceDelta swapDelta;
         uint128 amountIn = params.exactAmount;
         Currency inputCurrency = params.exactCurrency;
@@ -122,6 +133,9 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
     /// @dev external function called within the _unlockCallback, to simulate an exact output swap, then revert with the result
     function _quoteExactOutput(QuoteExactParams calldata params) external selfOnly returns (bytes memory) {
         uint256 pathLength = params.path.length;
+        if (pathLength > MAX_PATH_LENGTH) {
+            PathTooLong.selector.revertWith(pathLength, MAX_PATH_LENGTH);
+        }
         BalanceDelta swapDelta;
         uint128 amountOut = params.exactAmount;
         Currency outputCurrency = params.exactCurrency;
