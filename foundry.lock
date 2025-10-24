@@ -1,0 +1,17 @@
+{
+  "lib/briefcase": {
+    "rev": "71de140e687a26294070b601ab4607223ae1e45a"
+  },
+  "lib/permit2": {
+    "rev": "cc56ad0f3439c502c246fc5cfcc3db92bb8b7219"
+  },
+  "lib/solady": {
+    "rev": "a5bb996e91aae5b0c068087af7594d92068b12f1"
+  },
+  "lib/solmate": {
+    "rev": "89365b880c4f3c786bdd453d4b8e8fe410344a69"
+  },
+  "lib/v4-core": {
+    "rev": "59d3ecf53afa9264a16bba0e38f4c5d2231f80bc"
+  }
+}
