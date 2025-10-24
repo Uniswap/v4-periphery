@@ -27,6 +27,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using CalldataDecoder for bytes;
     using BipsLibrary for uint256;
 
+    uint256 private constant PRECISION = 1e18;
+
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
     function _handleAction(uint256 action, bytes calldata params) internal override {
@@ -100,11 +102,20 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             if (amountIn == ActionConstants.OPEN_DELTA) amountIn = _getFullCredit(currencyIn).toUint128();
             PathKey calldata pathKey;
 
+            uint256 perHopSlippageLength = params.maxHopSlippage.length;
+            if (perHopSlippageLength != 0 && perHopSlippageLength != pathLength) revert InvalidHopSlippageLength();
+
             for (uint256 i = 0; i < pathLength; i++) {
                 pathKey = params.path[i];
                 (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(currencyIn);
                 // The output delta will always be positive, except for when interacting with certain hook pools
                 amountOut = _swap(poolKey, zeroForOne, -int256(uint256(amountIn)), pathKey.hookData).toUint128();
+
+                if (perHopSlippageLength != 0) {
+                    uint256 price = amountIn * PRECISION / amountOut;
+                    uint256 maxSlippage = params.maxHopSlippage[i];
+                    if (price > maxSlippage) revert V4TooLittleReceivedPerHop(i, maxSlippage, price);
+                }
 
                 amountIn = amountOut;
                 currencyIn = pathKey.intermediateCurrency;
@@ -139,6 +150,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 amountOut = _getFullDebt(currencyOut).toUint128();
             }
 
+            uint256 perHopSlippageLength = params.maxHopSlippage.length;
+            if (perHopSlippageLength != 0 && perHopSlippageLength != pathLength) revert InvalidHopSlippageLength();
+
             for (uint256 i = pathLength; i > 0; i--) {
                 pathKey = params.path[i - 1];
                 (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
@@ -146,6 +160,11 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 amountIn = (uint256(-int256(_swap(poolKey, !oneForZero, int256(uint256(amountOut)), pathKey.hookData))))
                     .toUint128();
 
+                if (perHopSlippageLength != 0) {
+                    uint256 price = amountIn * PRECISION / amountOut;
+                    uint256 maxSlippage = params.maxHopSlippage[i - 1];
+                    if (price > maxSlippage) revert V4TooMuchRequestedPerHop(i - 1, maxSlippage, price);
+                }
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;
             }
