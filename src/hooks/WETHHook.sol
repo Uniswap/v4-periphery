@@ -27,15 +27,26 @@ contract WETHHook is BaseTokenWrapperHook {
     }
 
     /// @inheritdoc BaseTokenWrapperHook
-    function _deposit(uint256 underlyingAmount) internal override returns (uint256) {
-        weth.deposit{value: underlyingAmount}();
-        return underlyingAmount; // 1:1 ratio
+    /// @dev Note the WETH deposit relies on the WETH wrapper having a receive function that mints WETH to msg.sender
+    function _deposit(uint256 underlyingAmount) internal override returns (uint256, uint256) {
+        // Sync WETH on PoolManager
+        poolManager.sync(wrapperCurrency);
+        // take ETH from PoolManager and deposit directly into the WETH contract
+        // this will mint WETH to msg.sender (PoolManager in this case)
+        _take(underlyingCurrency, address(weth), underlyingAmount);
+        // Settle on PoolManager which will take into account the new weth
+        poolManager.settle();
+        return (underlyingAmount, underlyingAmount); // 1:1 ratio
     }
 
     /// @inheritdoc BaseTokenWrapperHook
-    function _withdraw(uint256 wrapperAmount) internal override returns (uint256) {
+    function _withdraw(uint256 wrapperAmount) internal override returns (uint256, uint256) {
+        // take WETH into this hook contract
+        _take(wrapperCurrency, address(this), wrapperAmount);
+        // Withdraw WETH - this returns ETH back to this hook contract
         weth.withdraw(wrapperAmount);
-        return wrapperAmount; // 1:1 ratio
+        _settle(underlyingCurrency, address(this), wrapperAmount);
+        return (wrapperAmount, wrapperAmount); // 1:1 ratio
     }
 
     /// @notice Required to receive ETH
