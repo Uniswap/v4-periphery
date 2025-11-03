@@ -5,8 +5,9 @@ import {
     IPermissionsAdapter,
     IAllowlistChecker
 } from "../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapter.sol";
-import {IPermissionsAdapterFactory} from
-    "../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
+import {
+    IPermissionsAdapterFactory
+} from "../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
 import {IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {PermissionedPoolsBase, MockAllowlistChecker} from "./PermissionedPoolsBase.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -47,7 +48,7 @@ contract PermissionsAdapterFactoryTest is PermissionedPoolsBase {
 
     function testRevert_WhenPemissionsAdapterNotDeployed(address permissionsAdapter) public {
         vm.expectRevert(
-            abi.encodeWithSelector(IPermissionsAdapterFactory.PemissionsAdapterNotFound.selector, permissionsAdapter)
+            abi.encodeWithSelector(IPermissionsAdapterFactory.PermissionsAdapterNotFound.selector, permissionsAdapter)
         );
         permissionsAdapterFactory.verifyPermissionsAdapter(permissionsAdapter);
     }

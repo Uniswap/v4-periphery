@@ -12,7 +12,7 @@ interface IPermissionsAdapterFactory {
     event PemissionsAdapterVerified(address indexed permissionsAdapter, address indexed permissionedToken);
 
     /// @notice Thrown when the permissions adapter does not exist
-    error PemissionsAdapterNotFound(address permissionsAdapter);
+    error PermissionsAdapterNotFound(address permissionsAdapter);
 
     /// @notice Thrown when the permissions adapter is already verified
     error PemissionsAdapterAlreadyVerified(address permissionsAdapter);
@@ -44,10 +44,7 @@ interface IPermissionsAdapterFactory {
     /// @param permissionsAdapter The permissions adapter
     /// @return permissionedToken The verified permissioned token
     /// @dev A reverse lookup of the permissioned token is required, otherwise anyone could create a permissions adapter for a non-permissioned token
-    function verifiedPermissionsAdapterOf(address permissionsAdapter)
-        external
-        view
-        returns (address permissionedToken);
+    function verifiedPermissionsAdapterOf(address permissionsAdapter) external view returns (address permissionedToken);
 
     /// @notice Returns the v4 pool manager
     /// @return poolManager The v4 pool manager

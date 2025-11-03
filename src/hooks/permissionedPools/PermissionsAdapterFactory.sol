@@ -24,8 +24,9 @@ contract PermissionsAdapterFactory is IPermissionsAdapterFactory {
         address initialOwner,
         IAllowlistChecker allowListChecker
     ) external returns (address permissionsAdapter) {
-        permissionsAdapter =
-            address(new PermissionsAdapter(permissionedToken, POOL_MANAGER, initialOwner, allowListChecker));
+        permissionsAdapter = address(
+            new PermissionsAdapter(permissionedToken, POOL_MANAGER, initialOwner, allowListChecker)
+        );
         permissionsAdapterOf[permissionsAdapter] = address(permissionedToken);
         emit PermissionsAdapterCreated(permissionsAdapter, address(permissionedToken));
     }
@@ -33,11 +34,11 @@ contract PermissionsAdapterFactory is IPermissionsAdapterFactory {
     /// @inheritdoc IPermissionsAdapterFactory
     function verifyPermissionsAdapter(address permissionsAdapter) external {
         IERC20 permissionedToken = IERC20(permissionsAdapterOf[permissionsAdapter]);
-        if (address(permissionedToken) == address(0)) revert PemissionsAdapterNotFound(permissionsAdapter);
+        if (address(permissionedToken) == address(0)) revert PermissionsAdapterNotFound(permissionsAdapter);
         if (verifiedPermissionsAdapterOf[permissionsAdapter] != address(0)) {
             revert PemissionsAdapterAlreadyVerified(permissionsAdapter);
         }
-        // this requires that the verifier has some comntrol or ownership of the permissioned token
+        // this requires that the verifier has some control or ownership of the permissioned token
         if (permissionedToken.balanceOf(permissionsAdapter) == 0) {
             revert PemissionsAdapterNotVerified(permissionsAdapter);
         }
