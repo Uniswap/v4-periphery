@@ -70,7 +70,9 @@ contract RoutingTestHelpers is Test, Deployers {
         internal
         returns (PoolKey memory _key)
     {
-        if (Currency.unwrap(currencyA) > Currency.unwrap(currencyB)) (currencyA, currencyB) = (currencyB, currencyA);
+        if (Currency.unwrap(currencyA) > Currency.unwrap(currencyB)) {
+            (currencyA, currencyB) = (currencyB, currencyA);
+        }
         _key = PoolKey(currencyA, currencyB, 3000, 60, IHooks(hookAddr));
 
         manager.initialize(_key, SQRT_PRICE_1_1);
@@ -79,10 +81,7 @@ contract RoutingTestHelpers is Test, Deployers {
         positionManager.modifyLiquidity(_key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x");
     }
 
-    function createNativePoolWithLiquidity(Currency currency, address hookAddr)
-        internal
-        returns (PoolKey memory _key)
-    {
+    function createNativePoolWithLiquidity(Currency currency, address hookAddr) internal returns (PoolKey memory _key) {
         _key = PoolKey(CurrencyLibrary.ADDRESS_ZERO, currency, 3000, 60, IHooks(hookAddr));
 
         manager.initialize(_key, SQRT_PRICE_1_1);

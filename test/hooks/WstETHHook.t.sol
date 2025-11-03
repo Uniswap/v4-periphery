@@ -21,13 +21,25 @@ import {MockWstETH} from "../mocks/MockWstETH.sol";
 import {TestRouter} from "../shared/TestRouter.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
+contract MockStETH is MockERC20 {
+    constructor(string memory name_, string memory symbol_, uint8 decimals_) MockERC20(name_, symbol_, decimals_) {}
+
+    function getSharesByPooledEth(uint256 pooledEth) public pure returns (uint256) {
+        return pooledEth;
+    }
+
+    function getPooledEthByShares(uint256 shares) public pure returns (uint256) {
+        return shares;
+    }
+}
+
 contract WstETHHookTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
 
     WstETHHook public hook;
     MockWstETH public wstETH;
-    MockERC20 public stETH;
+    MockStETH public stETH;
     TestRouter public router;
     PoolKey poolKey;
     uint160 initSqrtPriceX96;
@@ -43,20 +55,18 @@ contract WstETHHookTest is Test, Deployers {
         router = new TestRouter(manager);
 
         // Deploy mock stETH and wstETH
-        stETH = new MockERC20("Liquid staked Ether", "stETH", 18);
+        stETH = new MockStETH("Liquid staked Ether", "stETH", 18);
         wstETH = new MockWstETH(address(stETH));
 
         // Deploy WstETH hook
         hook = WstETHHook(
-            payable(
-                address(
+            payable(address(
                     uint160(
                         type(uint160).max & clearAllHookPermissionsMask | Hooks.BEFORE_SWAP_FLAG
                             | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
                             | Hooks.BEFORE_INITIALIZE_FLAG
                     )
-                )
-            )
+                ))
         );
         deployCodeTo("WstETHHook", abi.encode(manager, wstETH), address(hook));
 
@@ -227,8 +237,9 @@ contract WstETHHookTest is Test, Deployers {
         (Currency currency0, Currency currency1) = address(randomToken) < address(wstETH)
             ? (Currency.wrap(address(randomToken)), Currency.wrap(address(wstETH)))
             : (Currency.wrap(address(wstETH)), Currency.wrap(address(randomToken)));
-        invalidKey =
-            PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 60, hooks: IHooks(address(hook))});
+        invalidKey = PoolKey({
+            currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 60, hooks: IHooks(address(hook))
+        });
 
         vm.expectRevert(
             abi.encodeWithSelector(

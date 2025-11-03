@@ -105,11 +105,10 @@ contract Permit2SignatureHelpers {
     {
         IAllowanceTransfer.PermitDetails memory details =
             IAllowanceTransfer.PermitDetails({token: token0, amount: amount, expiration: expiration, nonce: nonce});
-        return IAllowanceTransfer.PermitSingle({
-            details: details,
-            spender: address(this),
-            sigDeadline: block.timestamp + 100
-        });
+        return
+            IAllowanceTransfer.PermitSingle({
+                details: details, spender: address(this), sigDeadline: block.timestamp + 100
+            });
     }
 
     function defaultERC20PermitBatchAllowance(address[] memory tokens, uint160 amount, uint48 expiration, uint48 nonce)
@@ -121,17 +120,13 @@ contract Permit2SignatureHelpers {
 
         for (uint256 i = 0; i < tokens.length; ++i) {
             details[i] = IAllowanceTransfer.PermitDetails({
-                token: tokens[i],
-                amount: amount,
-                expiration: expiration,
-                nonce: nonce
+                token: tokens[i], amount: amount, expiration: expiration, nonce: nonce
             });
         }
 
-        return IAllowanceTransfer.PermitBatch({
-            details: details,
-            spender: address(this),
-            sigDeadline: block.timestamp + 100
-        });
+        return
+            IAllowanceTransfer.PermitBatch({
+                details: details, spender: address(this), sigDeadline: block.timestamp + 100
+            });
     }
 }

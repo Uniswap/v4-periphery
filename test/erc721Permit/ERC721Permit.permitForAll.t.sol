@@ -317,9 +317,7 @@ contract ERC721PermitForAllTest is Test {
     }
 
     // Helpers related to permitForAll
-    function _permitForAll(uint256 privateKey, address owner, address operator, bool approved, uint256 nonce)
-        internal
-    {
+    function _permitForAll(uint256 privateKey, address owner, address operator, bool approved, uint256 nonce) internal {
         bytes32 digest = _getPermitForAllDigest(operator, approved, nonce, block.timestamp);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);

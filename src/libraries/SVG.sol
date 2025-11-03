@@ -262,11 +262,7 @@ library SVG {
     /// @param tickUpper The upper tick
     /// @param tickSpacing The tick spacing
     /// @return curve The curve path
-    function getCurve(int24 tickLower, int24 tickUpper, int24 tickSpacing)
-        internal
-        pure
-        returns (string memory curve)
-    {
+    function getCurve(int24 tickLower, int24 tickUpper, int24 tickSpacing) internal pure returns (string memory curve) {
         int24 tickRange = (tickUpper - tickLower) / tickSpacing;
         if (tickRange <= 4) {
             curve = curve1;

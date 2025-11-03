@@ -498,10 +498,7 @@ contract PositionManager is
         (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(
             poolKey,
             ModifyLiquidityParams({
-                tickLower: info.tickLower(),
-                tickUpper: info.tickUpper(),
-                liquidityDelta: liquidityChange,
-                salt: salt
+                tickLower: info.tickLower(), tickUpper: info.tickUpper(), liquidityDelta: liquidityChange, salt: salt
             }),
             hookData
         );
