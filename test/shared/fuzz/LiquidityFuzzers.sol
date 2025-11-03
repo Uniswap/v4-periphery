@@ -24,19 +24,20 @@ contract LiquidityFuzzers is Fuzzers {
     ) internal returns (uint256, ModifyLiquidityParams memory) {
         params = Fuzzers.createFuzzyLiquidityParams(key, params, sqrtPriceX96);
 
-        Plan memory planner = Planner.init().add(
-            Actions.MINT_POSITION,
-            abi.encode(
-                key,
-                params.tickLower,
-                params.tickUpper,
-                uint256(params.liquidityDelta),
-                _MAX_SLIPPAGE_INCREASE,
-                _MAX_SLIPPAGE_INCREASE,
-                recipient,
-                hookData
-            )
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.MINT_POSITION,
+                abi.encode(
+                    key,
+                    params.tickLower,
+                    params.tickUpper,
+                    uint256(params.liquidityDelta),
+                    _MAX_SLIPPAGE_INCREASE,
+                    _MAX_SLIPPAGE_INCREASE,
+                    recipient,
+                    hookData
+                )
+            );
 
         uint256 tokenId = lpm.nextTokenId();
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(key);

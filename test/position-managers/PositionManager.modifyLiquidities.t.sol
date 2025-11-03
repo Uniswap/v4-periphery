@@ -923,11 +923,9 @@ contract PositionManagerModifyLiquiditiesTest is Test, PosmTestSetup, LiquidityF
         // if (bips == 10000 && !positionIsEntirelyInOtherToken) {
         if (
             bips == 10000
-                && !(
-                    fotKey.currency0 == Currency.wrap(address(fotToken))
+                && !(fotKey.currency0 == Currency.wrap(address(fotToken))
                         ? TickMath.getSqrtPriceAtTick(tickUpper) <= sqrtPriceX96
-                        : TickMath.getSqrtPriceAtTick(tickLower) >= sqrtPriceX96
-                )
+                        : TickMath.getSqrtPriceAtTick(tickLower) >= sqrtPriceX96)
         ) {
             vm.expectRevert(Position.CannotUpdateEmptyPosition.selector);
             lpm.modifyLiquidities(planner.encode(), _deadline);

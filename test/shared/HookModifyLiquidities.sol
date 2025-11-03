@@ -30,7 +30,11 @@ contract HookModifyLiquidities is HookSavesDelta {
         PoolKey calldata key, /* key **/
         SwapParams calldata, /* params **/
         bytes calldata hookData
-    ) external override returns (bytes4, BeforeSwapDelta, uint24) {
+    )
+        external
+        override
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
         approvePosmCurrency(key.currency0);
         approvePosmCurrency(key.currency1);
 
@@ -44,7 +48,11 @@ contract HookModifyLiquidities is HookSavesDelta {
         PoolKey calldata, /* key **/
         ModifyLiquidityParams calldata, /* params **/
         bytes calldata hookData
-    ) external override returns (bytes4) {
+    )
+        external
+        override
+        returns (bytes4)
+    {
         if (hookData.length > 0) {
             (bytes memory actions, bytes[] memory params) = abi.decode(hookData, (bytes, bytes[]));
             posm.modifyLiquiditiesWithoutUnlock(actions, params);

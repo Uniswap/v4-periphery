@@ -29,8 +29,9 @@ contract MulticallTest is Test {
 
     function test_multicall_firstRevert() public {
         bytes[] memory calls = new bytes[](2);
-        calls[0] =
-            abi.encodeWithSelector(MockMulticall(multicall).functionThatRevertsWithString.selector, "First call failed");
+        calls[0] = abi.encodeWithSelector(
+            MockMulticall(multicall).functionThatRevertsWithString.selector, "First call failed"
+        );
         calls[1] = abi.encodeWithSelector(MockMulticall(multicall).functionThatReturnsTuple.selector, 1, 2);
 
         vm.expectRevert("First call failed");

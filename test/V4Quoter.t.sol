@@ -95,10 +95,7 @@ contract QuoterTest is Test, Deployers {
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInputSingle(
             IV4Quoter.QuoteExactSingleParams({
-                poolKey: key02,
-                zeroForOne: true,
-                exactAmount: uint128(amountIn),
-                hookData: ZERO_BYTES
+                poolKey: key02, zeroForOne: true, exactAmount: uint128(amountIn), hookData: ZERO_BYTES
             })
         );
         vm.snapshotGasLastCall("Quoter_exactInputSingle_zeroForOne_multiplePositions");
@@ -114,10 +111,7 @@ contract QuoterTest is Test, Deployers {
 
         (uint256 amountOut, uint256 gasEstimate) = quoter.quoteExactInputSingle(
             IV4Quoter.QuoteExactSingleParams({
-                poolKey: key02,
-                zeroForOne: false,
-                exactAmount: uint128(amountIn),
-                hookData: ZERO_BYTES
+                poolKey: key02, zeroForOne: false, exactAmount: uint128(amountIn), hookData: ZERO_BYTES
             })
         );
         vm.snapshotGasLastCall("Quoter_exactInputSingle_oneForZero_multiplePositions");
@@ -284,10 +278,7 @@ contract QuoterTest is Test, Deployers {
         uint256 amountOut = 10000;
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutputSingle(
             IV4Quoter.QuoteExactSingleParams({
-                poolKey: key01,
-                zeroForOne: true,
-                exactAmount: uint128(amountOut),
-                hookData: ZERO_BYTES
+                poolKey: key01, zeroForOne: true, exactAmount: uint128(amountOut), hookData: ZERO_BYTES
             })
         );
         vm.snapshotGasLastCall("Quoter_exactOutputSingle_zeroForOne");
@@ -301,10 +292,7 @@ contract QuoterTest is Test, Deployers {
         uint256 amountOut = 10000;
         (uint256 amountIn, uint256 gasEstimate) = quoter.quoteExactOutputSingle(
             IV4Quoter.QuoteExactSingleParams({
-                poolKey: key01,
-                zeroForOne: false,
-                exactAmount: uint128(amountOut),
-                hookData: ZERO_BYTES
+                poolKey: key01, zeroForOne: false, exactAmount: uint128(amountOut), hookData: ZERO_BYTES
             })
         );
         vm.snapshotGasLastCall("Quoter_exactOutputSingle_oneForZero");
@@ -452,10 +440,7 @@ contract QuoterTest is Test, Deployers {
 
     function test_fuzz_quoter_msgSender(address pranker, bool zeroForOne, bool exactInput) public {
         IV4Quoter.QuoteExactSingleParams memory params = IV4Quoter.QuoteExactSingleParams({
-            poolKey: key01Hook,
-            zeroForOne: zeroForOne,
-            exactAmount: 10000,
-            hookData: ZERO_BYTES
+            poolKey: key01Hook, zeroForOne: zeroForOne, exactAmount: 10000, hookData: ZERO_BYTES
         });
 
         vm.expectEmit(true, true, true, true);

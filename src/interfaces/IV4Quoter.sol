@@ -42,9 +42,7 @@ interface IV4Quoter is IImmutableState, IMsgSender {
     /// exactAmount The desired input amount
     /// @return amountOut The output quote for the exactIn swap
     /// @return gasEstimate Estimated gas units used for the swap
-    function quoteExactInput(QuoteExactParams memory params)
-        external
-        returns (uint256 amountOut, uint256 gasEstimate);
+    function quoteExactInput(QuoteExactParams memory params) external returns (uint256 amountOut, uint256 gasEstimate);
 
     /// @notice Returns the delta amounts for a given exact output swap of a single pool
     /// @param params The params for the quote, encoded as `QuoteExactSingleParams`
@@ -65,7 +63,5 @@ interface IV4Quoter is IImmutableState, IMsgSender {
     /// exactAmount The desired output amount
     /// @return amountIn The input quote for the exactOut swap
     /// @return gasEstimate Estimated gas units used for the swap
-    function quoteExactOutput(QuoteExactParams memory params)
-        external
-        returns (uint256 amountIn, uint256 gasEstimate);
+    function quoteExactOutput(QuoteExactParams memory params) external returns (uint256 amountIn, uint256 gasEstimate);
 }
