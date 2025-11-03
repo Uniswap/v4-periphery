@@ -320,11 +320,7 @@ library CalldataDecoder {
     }
 
     /// @dev equivalent to: abi.decode(params, (Currency, uint256)) in calldata
-    function decodeCurrencyAndUint256(bytes calldata params)
-        internal
-        pure
-        returns (Currency currency, uint256 amount)
-    {
+    function decodeCurrencyAndUint256(bytes calldata params) internal pure returns (Currency currency, uint256 amount) {
         assembly ("memory-safe") {
             if lt(params.length, 0x40) {
                 mstore(0, SLICE_ERROR_SELECTOR)

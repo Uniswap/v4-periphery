@@ -60,15 +60,13 @@ contract WstETHHookTest is Test, Deployers {
 
         // Deploy WstETH hook
         hook = WstETHHook(
-            payable(
-                address(
+            payable(address(
                     uint160(
                         type(uint160).max & clearAllHookPermissionsMask | Hooks.BEFORE_SWAP_FLAG
                             | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
                             | Hooks.BEFORE_INITIALIZE_FLAG
                     )
-                )
-            )
+                ))
         );
         deployCodeTo("WstETHHook", abi.encode(manager, wstETH), address(hook));
 
@@ -239,8 +237,9 @@ contract WstETHHookTest is Test, Deployers {
         (Currency currency0, Currency currency1) = address(randomToken) < address(wstETH)
             ? (Currency.wrap(address(randomToken)), Currency.wrap(address(wstETH)))
             : (Currency.wrap(address(wstETH)), Currency.wrap(address(randomToken)));
-        invalidKey =
-            PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 60, hooks: IHooks(address(hook))});
+        invalidKey = PoolKey({
+            currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 60, hooks: IHooks(address(hook))
+        });
 
         vm.expectRevert(
             abi.encodeWithSelector(

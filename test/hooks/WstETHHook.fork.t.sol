@@ -68,26 +68,22 @@ contract WstETHHookForkTest is Test, Deployers {
 
             // Deploy WstETH hook
             hook = WstETHHook(
-                payable(
-                    address(
+                payable(address(
                         uint160(
                             type(uint160).max & clearAllHookPermissionsMask | Hooks.BEFORE_SWAP_FLAG
                                 | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
                                 | Hooks.BEFORE_INITIALIZE_FLAG
                         )
-                    )
-                )
+                    ))
             );
             hookSim = WstETHRoutingHook(
-                payable(
-                    address(
+                payable(address(
                         uint160(
                             type(uint160).max & clearAllHookPermissionsMask | Hooks.BEFORE_SWAP_FLAG
                                 | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
                                 | Hooks.BEFORE_INITIALIZE_FLAG
                         ) & (type(uint160).max - 2 ** 156)
-                    )
-                )
+                    ))
             );
             deployCodeTo("WstETHHook", abi.encode(manager, wstETH), address(hook));
             deployCodeTo("WstETHRoutingHook", abi.encode(manager, wstETH), address(hookSim));
@@ -158,20 +154,14 @@ contract WstETHHookForkTest is Test, Deployers {
         vm.expectRevert();
         quoter.quoteExactInputSingle(
             IV4Quoter.QuoteExactSingleParams({
-                poolKey: poolKey,
-                zeroForOne: false,
-                exactAmount: uint128(wrapAmount),
-                hookData: ""
+                poolKey: poolKey, zeroForOne: false, exactAmount: uint128(wrapAmount), hookData: ""
             })
         );
 
         // quoting the swap with the WstETHRoutingHook should not revert
         (uint256 quotedAmountOut,) = quoter.quoteExactInputSingle(
             IV4Quoter.QuoteExactSingleParams({
-                poolKey: poolKeySim,
-                zeroForOne: false,
-                exactAmount: uint128(wrapAmount),
-                hookData: ""
+                poolKey: poolKeySim, zeroForOne: false, exactAmount: uint128(wrapAmount), hookData: ""
             })
         );
 
@@ -225,20 +215,14 @@ contract WstETHHookForkTest is Test, Deployers {
         // quoting the swap with the WstETHHook should not revert
         (uint256 quotedAmountOut,) = quoter.quoteExactInputSingle(
             IV4Quoter.QuoteExactSingleParams({
-                poolKey: poolKey,
-                zeroForOne: true,
-                exactAmount: uint128(unwrapAmount),
-                hookData: ""
+                poolKey: poolKey, zeroForOne: true, exactAmount: uint128(unwrapAmount), hookData: ""
             })
         );
 
         // quoting the swap with the WstETHRoutingHook should not revert
         (uint256 quotedAmountOutSim,) = quoter.quoteExactInputSingle(
             IV4Quoter.QuoteExactSingleParams({
-                poolKey: poolKeySim,
-                zeroForOne: true,
-                exactAmount: uint128(unwrapAmount),
-                hookData: ""
+                poolKey: poolKeySim, zeroForOne: true, exactAmount: uint128(unwrapAmount), hookData: ""
             })
         );
 

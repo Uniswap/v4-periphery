@@ -2,7 +2,9 @@
 pragma solidity ^0.8.0;
 
 import {
-    toBeforeSwapDelta, BeforeSwapDelta, BeforeSwapDeltaLibrary
+    toBeforeSwapDelta,
+    BeforeSwapDelta,
+    BeforeSwapDeltaLibrary
 } from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -129,8 +131,9 @@ abstract contract BaseTokenWrapperHook is BaseHook, DeltaResolver {
 
         if (wrapZeroForOne == params.zeroForOne) {
             // we are wrapping
-            uint256 inputAmount =
-                isExactInput ? uint256(-params.amountSpecified) : _getWrapInputRequired(uint256(params.amountSpecified));
+            uint256 inputAmount = isExactInput
+                ? uint256(-params.amountSpecified)
+                : _getWrapInputRequired(uint256(params.amountSpecified));
             (uint256 actualUnderlyingAmount, uint256 wrappedAmount) = _deposit(inputAmount);
             int128 amountUnspecified =
                 isExactInput ? -wrappedAmount.toInt256().toInt128() : actualUnderlyingAmount.toInt256().toInt128();
