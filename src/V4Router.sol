@@ -147,7 +147,6 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 amountIn = (uint256(-int256(_swap(poolKey, !oneForZero, int256(uint256(amountOut)), pathKey.hookData))))
                 .toUint128();
 
-                amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;
             }
             if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
