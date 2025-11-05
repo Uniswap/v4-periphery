@@ -354,7 +354,7 @@ contract PositionManager is
         uint128 amount1Max,
         address owner,
         bytes calldata hookData
-    ) internal {
+    ) internal virtual {
         // mint receipt token
         uint256 tokenId;
         // tokenId is assigned to current nextTokenId before incrementing it
@@ -509,7 +509,7 @@ contract PositionManager is
     }
 
     // implementation of abstract function DeltaResolver._pay
-    function _pay(Currency currency, address payer, uint256 amount) internal override {
+    function _pay(Currency currency, address payer, uint256 amount) internal virtual override {
         if (payer == address(this)) {
             currency.transfer(address(poolManager), amount);
         } else {
