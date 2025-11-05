@@ -42,15 +42,13 @@ contract WETHHookTest is Test, Deployers {
 
         // Deploy WETH hook
         hook = WETHHook(
-            payable(
-                address(
+            payable(address(
                     uint160(
                         type(uint160).max & clearAllHookPermissionsMask | Hooks.BEFORE_SWAP_FLAG
                             | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
                             | Hooks.BEFORE_INITIALIZE_FLAG
                     )
-                )
-            )
+                ))
         );
         deployCodeTo("WETHHook", abi.encode(manager, weth), address(hook));
 
@@ -290,8 +288,9 @@ contract WETHHookTest is Test, Deployers {
         (Currency currency0, Currency currency1) = address(randomToken) < address(weth)
             ? (Currency.wrap(address(randomToken)), Currency.wrap(address(weth)))
             : (Currency.wrap(address(weth)), Currency.wrap(address(randomToken)));
-        invalidKey =
-            PoolKey({currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 60, hooks: IHooks(address(hook))});
+        invalidKey = PoolKey({
+            currency0: currency0, currency1: currency1, fee: 0, tickSpacing: 60, hooks: IHooks(address(hook))
+        });
 
         vm.expectRevert(
             abi.encodeWithSelector(

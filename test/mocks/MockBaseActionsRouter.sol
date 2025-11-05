@@ -45,39 +45,75 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
         return address(0xdeadbeef);
     }
 
-    function _settle(bytes calldata /* params **/ ) internal {
+    function _settle(
+        bytes calldata /* params **/
+    )
+        internal
+    {
         settleCount++;
     }
 
-    function _take(bytes calldata /* params **/ ) internal {
+    function _take(
+        bytes calldata /* params **/
+    )
+        internal
+    {
         takeCount++;
     }
 
-    function _swap(bytes calldata /* params **/ ) internal {
+    function _swap(
+        bytes calldata /* params **/
+    )
+        internal
+    {
         swapCount++;
     }
 
-    function _increaseLiquidity(bytes calldata /* params **/ ) internal {
+    function _increaseLiquidity(
+        bytes calldata /* params **/
+    )
+        internal
+    {
         increaseLiqCount++;
     }
 
-    function _decreaseLiquidity(bytes calldata /* params **/ ) internal {
+    function _decreaseLiquidity(
+        bytes calldata /* params **/
+    )
+        internal
+    {
         decreaseLiqCount++;
     }
 
-    function _donate(bytes calldata /* params **/ ) internal {
+    function _donate(
+        bytes calldata /* params **/
+    )
+        internal
+    {
         donateCount++;
     }
 
-    function _mint6909(bytes calldata /* params **/ ) internal {
+    function _mint6909(
+        bytes calldata /* params **/
+    )
+        internal
+    {
         mintCount++;
     }
 
-    function _burn6909(bytes calldata /* params **/ ) internal {
+    function _burn6909(
+        bytes calldata /* params **/
+    )
+        internal
+    {
         burnCount++;
     }
 
-    function _clear(bytes calldata /* params **/ ) internal {
+    function _clear(
+        bytes calldata /* params **/
+    )
+        internal
+    {
         clearCount++;
     }
 

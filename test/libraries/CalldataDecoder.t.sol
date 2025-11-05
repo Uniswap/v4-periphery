@@ -280,10 +280,7 @@ contract CalldataDecoderTest is Test {
         decoder.decodeCurrencyPairAndAddress(invalidParams);
     }
 
-    function test_fuzz_decodeCurrencyAddressAndUint256(Currency _currency, address _addr, uint256 _amount)
-        public
-        view
-    {
+    function test_fuzz_decodeCurrencyAddressAndUint256(Currency _currency, address _addr, uint256 _amount) public view {
         bytes memory params = abi.encode(_currency, _addr, _amount);
         (Currency currency, address addr, uint256 amount) = decoder.decodeCurrencyAddressAndUint256(params);
 

@@ -45,8 +45,12 @@ contract V4RouterTest is RoutingTestHelpers {
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn);
 
         assertEq(currency0.balanceOf(address(router)), 0);
         assertEq(currency1.balanceOf(address(router)), 0);
@@ -67,8 +71,12 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 aliceOutputBalanceBefore = key0.currency1.balanceOf(alice);
 
         // swap with alice as the take recipient
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn, alice);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn, alice);
 
         uint256 aliceOutputBalanceAfter = key0.currency1.balanceOf(alice);
 
@@ -97,8 +105,12 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(currency1.balanceOf(address(router)), 0);
 
         // swap with the router as the take recipient
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn, ActionConstants.ADDRESS_THIS);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, amountIn, ActionConstants.ADDRESS_THIS);
 
         // the output tokens have been left in the router
         assertEq(currency0.balanceOf(address(router)), 0);
@@ -121,8 +133,9 @@ contract V4RouterTest is RoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, expectedAmountOut * 12 / 10));
         // take the entire open delta to the router's address
-        plan =
-            plan.add(Actions.TAKE, abi.encode(key0.currency1, ActionConstants.ADDRESS_THIS, ActionConstants.OPEN_DELTA));
+        plan = plan.add(
+            Actions.TAKE, abi.encode(key0.currency1, ActionConstants.ADDRESS_THIS, ActionConstants.OPEN_DELTA)
+        );
         bytes memory data = plan.encode();
 
         // the router holds no funds before
@@ -152,8 +165,12 @@ contract V4RouterTest is RoutingTestHelpers {
             IV4Router.ExactInputSingleParams(key0, false, uint128(amountIn), 0, bytes(""));
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(key0.currency1, key0.currency0, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency1, key0.currency0, amountIn);
 
         assertEq(currency0.balanceOf(address(router)), 0);
         assertEq(currency1.balanceOf(address(router)), 0);
@@ -232,8 +249,12 @@ contract V4RouterTest is RoutingTestHelpers {
         IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(currency0, currency1, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(currency0, currency1, amountIn);
 
         assertEq(currency0.balanceOf(address(router)), 0);
         assertEq(currency1.balanceOf(address(router)), 0);
@@ -252,8 +273,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(currency1, currency0, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(currency1, currency0, amountIn);
 
         assertEq(currency0.balanceOf(address(router)), 0);
         assertEq(currency1.balanceOf(address(router)), 0);
@@ -275,8 +300,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         uint256 intermediateBalanceBefore = currency1.balanceOfSelf();
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(currency0, currency2, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(currency0, currency2, amountIn);
 
         // check intermediate token balances
         assertEq(intermediateBalanceBefore, currency1.balanceOfSelf());
@@ -300,8 +329,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(currency0, currency3, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(currency0, currency3, amountIn);
 
         // check intermediate tokens werent left in the router
         assertEq(currency0.balanceOf(address(router)), 0);
@@ -357,8 +390,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(nativeKey.currency0, nativeKey.currency1, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(nativeKey.currency0, nativeKey.currency1, amountIn);
 
         assertEq(nativeKey.currency0.balanceOf(address(router)), 0);
         assertEq(nativeKey.currency1.balanceOf(address(router)), 0);
@@ -377,8 +414,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(nativeKey.currency1, nativeKey.currency0, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(nativeKey.currency1, nativeKey.currency0, amountIn);
 
         assertEq(nativeKey.currency0.balanceOf(address(router)), 0);
         assertEq(nativeKey.currency1.balanceOf(address(router)), 0);
@@ -396,8 +437,12 @@ contract V4RouterTest is RoutingTestHelpers {
         IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(CurrencyLibrary.ADDRESS_ZERO, nativeKey.currency1, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(CurrencyLibrary.ADDRESS_ZERO, nativeKey.currency1, amountIn);
 
         assertEq(nativeKey.currency0.balanceOf(address(router)), 0);
         assertEq(nativeKey.currency1.balanceOf(address(router)), 0);
@@ -416,8 +461,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(nativeKey.currency1, CurrencyLibrary.ADDRESS_ZERO, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(nativeKey.currency1, CurrencyLibrary.ADDRESS_ZERO, amountIn);
 
         assertEq(nativeKey.currency0.balanceOf(address(router)), 0);
         assertEq(nativeKey.currency1.balanceOf(address(router)), 0);
@@ -440,8 +489,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         uint256 intermediateBalanceBefore = currency0.balanceOfSelf();
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(CurrencyLibrary.ADDRESS_ZERO, currency1, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(CurrencyLibrary.ADDRESS_ZERO, currency1, amountIn);
 
         // check intermediate token balances
         assertEq(intermediateBalanceBefore, currency0.balanceOfSelf());
@@ -468,8 +521,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         uint256 intermediateBalanceBefore = currency0.balanceOfSelf();
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(currency1, CurrencyLibrary.ADDRESS_ZERO, amountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(currency1, CurrencyLibrary.ADDRESS_ZERO, amountIn);
 
         // check intermediate token balances
         assertEq(intermediateBalanceBefore, currency0.balanceOfSelf());
@@ -541,8 +598,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, expectedAmountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, expectedAmountIn);
 
         assertEq(currency0.balanceOf(address(router)), 0);
         assertEq(currency1.balanceOf(address(router)), 0);
@@ -555,13 +616,18 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, false, uint128(amountOut), uint128(expectedAmountIn + 1), bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            key0, false, uint128(amountOut), uint128(expectedAmountIn + 1), bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(key0.currency1, key0.currency0, expectedAmountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency1, key0.currency0, expectedAmountIn);
 
         assertEq(currency0.balanceOf(address(router)), 0);
         assertEq(currency1.balanceOf(address(router)), 0);
@@ -670,8 +736,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, expectedAmountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(key0.currency0, key0.currency1, expectedAmountIn);
 
         assertEq(currency0.balanceOf(address(router)), 0);
         assertEq(currency1.balanceOf(address(router)), 0);
@@ -690,8 +760,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(currency1, currency0, expectedAmountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(currency1, currency0, expectedAmountIn);
 
         assertEq(currency0.balanceOf(address(router)), 0);
         assertEq(currency1.balanceOf(address(router)), 0);
@@ -713,8 +787,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(currency0, currency2, expectedAmountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(currency0, currency2, expectedAmountIn);
 
         assertEq(intermediateBalanceBefore, currency1.balanceOfSelf());
         assertEq(currency0.balanceOf(address(router)), 0);
@@ -737,8 +815,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(currency0, currency3, expectedAmountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(currency0, currency3, expectedAmountIn);
 
         assertEq(currency0.balanceOf(address(router)), 0);
         assertEq(currency1.balanceOf(address(router)), 0);
@@ -793,8 +875,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteNativeInputExactOutputSwap(nativeKey.currency0, nativeKey.currency1, expectedAmountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteNativeInputExactOutputSwap(nativeKey.currency0, nativeKey.currency1, expectedAmountIn);
 
         assertEq(nativeKey.currency0.balanceOf(address(router)), 0);
         assertEq(nativeKey.currency1.balanceOf(address(router)), 0);
@@ -813,8 +899,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(nativeKey.currency1, nativeKey.currency0, expectedAmountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(nativeKey.currency1, nativeKey.currency0, expectedAmountIn);
 
         assertEq(nativeKey.currency0.balanceOf(address(router)), 0);
         assertEq(nativeKey.currency1.balanceOf(address(router)), 0);
@@ -833,8 +923,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteNativeInputExactOutputSwap(
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteNativeInputExactOutputSwap(
             CurrencyLibrary.ADDRESS_ZERO, nativeKey.currency1, expectedAmountIn
         );
 
@@ -855,8 +949,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteSwap(nativeKey.currency1, CurrencyLibrary.ADDRESS_ZERO, expectedAmountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteSwap(nativeKey.currency1, CurrencyLibrary.ADDRESS_ZERO, expectedAmountIn);
 
         assertEq(nativeKey.currency0.balanceOf(address(router)), 0);
         assertEq(nativeKey.currency1.balanceOf(address(router)), 0);
@@ -879,8 +977,12 @@ contract V4RouterTest is RoutingTestHelpers {
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
-        (uint256 inputBalanceBefore, uint256 outputBalanceBefore, uint256 inputBalanceAfter, uint256 outputBalanceAfter)
-        = _finalizeAndExecuteNativeInputExactOutputSwap(CurrencyLibrary.ADDRESS_ZERO, currency1, expectedAmountIn);
+        (
+            uint256 inputBalanceBefore,
+            uint256 outputBalanceBefore,
+            uint256 inputBalanceAfter,
+            uint256 outputBalanceAfter
+        ) = _finalizeAndExecuteNativeInputExactOutputSwap(CurrencyLibrary.ADDRESS_ZERO, currency1, expectedAmountIn);
 
         assertEq(intermediateBalanceBefore, currency0.balanceOfSelf());
         assertEq(currency1.balanceOf(address(router)), 0);

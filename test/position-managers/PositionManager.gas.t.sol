@@ -82,38 +82,40 @@ contract PosMGasTest is Test, PosmTestSetup {
     }
 
     function test_gas_mint_withClose() public {
-        Plan memory planner = Planner.init().add(
-            Actions.MINT_POSITION,
-            abi.encode(
-                config.poolKey,
-                config.tickLower,
-                config.tickUpper,
-                10_000 ether,
-                MAX_SLIPPAGE_INCREASE,
-                MAX_SLIPPAGE_INCREASE,
-                ActionConstants.MSG_SENDER,
-                ZERO_BYTES
-            )
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.MINT_POSITION,
+                abi.encode(
+                    config.poolKey,
+                    config.tickLower,
+                    config.tickUpper,
+                    10_000 ether,
+                    MAX_SLIPPAGE_INCREASE,
+                    MAX_SLIPPAGE_INCREASE,
+                    ActionConstants.MSG_SENDER,
+                    ZERO_BYTES
+                )
+            );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         vm.snapshotGasLastCall("PositionManager_mint_withClose");
     }
 
     function test_gas_mint_withSettlePair() public {
-        Plan memory planner = Planner.init().add(
-            Actions.MINT_POSITION,
-            abi.encode(
-                config.poolKey,
-                config.tickLower,
-                config.tickUpper,
-                10_000 ether,
-                MAX_SLIPPAGE_INCREASE,
-                MAX_SLIPPAGE_INCREASE,
-                address(this),
-                ZERO_BYTES
-            )
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.MINT_POSITION,
+                abi.encode(
+                    config.poolKey,
+                    config.tickLower,
+                    config.tickUpper,
+                    10_000 ether,
+                    MAX_SLIPPAGE_INCREASE,
+                    MAX_SLIPPAGE_INCREASE,
+                    address(this),
+                    ZERO_BYTES
+                )
+            );
         bytes memory calls = planner.finalizeModifyLiquidityWithSettlePair(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
         vm.snapshotGasLastCall("PositionManager_mint_withSettlePair");
@@ -126,19 +128,20 @@ contract PosMGasTest is Test, PosmTestSetup {
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
         // Mint to a diff config, diff user.
-        Plan memory planner = Planner.init().add(
-            Actions.MINT_POSITION,
-            abi.encode(
-                config.poolKey,
-                config.tickLower,
-                config.tickUpper,
-                10_000 ether,
-                MAX_SLIPPAGE_INCREASE,
-                MAX_SLIPPAGE_INCREASE,
-                ActionConstants.MSG_SENDER,
-                ZERO_BYTES
-            )
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.MINT_POSITION,
+                abi.encode(
+                    config.poolKey,
+                    config.tickLower,
+                    config.tickUpper,
+                    10_000 ether,
+                    MAX_SLIPPAGE_INCREASE,
+                    MAX_SLIPPAGE_INCREASE,
+                    ActionConstants.MSG_SENDER,
+                    ZERO_BYTES
+                )
+            );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
@@ -152,19 +155,20 @@ contract PosMGasTest is Test, PosmTestSetup {
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
         // Mint to a diff config, diff user.
-        Plan memory planner = Planner.init().add(
-            Actions.MINT_POSITION,
-            abi.encode(
-                config.poolKey,
-                config.tickLower,
-                config.tickUpper,
-                10_000 ether,
-                MAX_SLIPPAGE_INCREASE,
-                MAX_SLIPPAGE_INCREASE,
-                ActionConstants.MSG_SENDER,
-                ZERO_BYTES
-            )
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.MINT_POSITION,
+                abi.encode(
+                    config.poolKey,
+                    config.tickLower,
+                    config.tickUpper,
+                    10_000 ether,
+                    MAX_SLIPPAGE_INCREASE,
+                    MAX_SLIPPAGE_INCREASE,
+                    ActionConstants.MSG_SENDER,
+                    ZERO_BYTES
+                )
+            );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
@@ -178,19 +182,20 @@ contract PosMGasTest is Test, PosmTestSetup {
         mint(bob_mint, 10_000 ether, address(bob), ZERO_BYTES);
         vm.stopPrank();
         // Mint to a diff config, diff user.
-        Plan memory planner = Planner.init().add(
-            Actions.MINT_POSITION,
-            abi.encode(
-                config.poolKey,
-                config.tickLower,
-                config.tickUpper,
-                10_000 ether,
-                MAX_SLIPPAGE_INCREASE,
-                MAX_SLIPPAGE_INCREASE,
-                ActionConstants.MSG_SENDER,
-                ZERO_BYTES
-            )
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.MINT_POSITION,
+                abi.encode(
+                    config.poolKey,
+                    config.tickLower,
+                    config.tickUpper,
+                    10_000 ether,
+                    MAX_SLIPPAGE_INCREASE,
+                    MAX_SLIPPAGE_INCREASE,
+                    ActionConstants.MSG_SENDER,
+                    ZERO_BYTES
+                )
+            );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
@@ -201,10 +206,11 @@ contract PosMGasTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenId, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.INCREASE_LIQUIDITY,
+                abi.encode(tokenId, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -215,10 +221,11 @@ contract PosMGasTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, address(this), ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenId, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.INCREASE_LIQUIDITY,
+                abi.encode(tokenId, 10_000 ether, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithSettlePair(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -259,10 +266,11 @@ contract PosMGasTest is Test, PosmTestSetup {
             tokensOwedAlice
         );
 
-        Plan memory planner = Planner.init().add(
-            Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.INCREASE_LIQUIDITY,
+                abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            );
         // because its a perfect autocompound, the delta is exactly 0 and we dont need to "close" deltas
         bytes memory calls = planner.encode();
 
@@ -354,10 +362,11 @@ contract PosMGasTest is Test, PosmTestSetup {
             halfTokensOwedAlice
         );
 
-        Plan memory planner = Planner.init().add(
-            Actions.INCREASE_LIQUIDITY,
-            abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.INCREASE_LIQUIDITY,
+                abi.encode(tokenIdAlice, liquidityDelta, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+            );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
 
@@ -370,10 +379,11 @@ contract PosMGasTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.DECREASE_LIQUIDITY,
+                abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -384,10 +394,11 @@ contract PosMGasTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.DECREASE_LIQUIDITY,
+                abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
         lpm.modifyLiquidities(calls, _deadline);
@@ -437,9 +448,11 @@ contract PosMGasTest is Test, PosmTestSetup {
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
         // Collect by calling decrease with 0.
-        Plan memory planner = Planner.init().add(
-            Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.DECREASE_LIQUIDITY,
+                abi.encode(tokenId, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -454,9 +467,11 @@ contract PosMGasTest is Test, PosmTestSetup {
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
         // Collect by calling decrease with 0.
-        Plan memory planner = Planner.init().add(
-            Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.DECREASE_LIQUIDITY,
+                abi.encode(tokenId, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
         lpm.modifyLiquidities(calls, _deadline);
@@ -467,19 +482,20 @@ contract PosMGasTest is Test, PosmTestSetup {
     function test_gas_sameRange_mint() public {
         mint(config, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.MINT_POSITION,
-            abi.encode(
-                config.poolKey,
-                config.tickLower,
-                config.tickUpper,
-                10_001 ether,
-                MAX_SLIPPAGE_INCREASE,
-                MAX_SLIPPAGE_INCREASE,
-                ActionConstants.MSG_SENDER,
-                ZERO_BYTES
-            )
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.MINT_POSITION,
+                abi.encode(
+                    config.poolKey,
+                    config.tickLower,
+                    config.tickUpper,
+                    10_001 ether,
+                    MAX_SLIPPAGE_INCREASE,
+                    MAX_SLIPPAGE_INCREASE,
+                    ActionConstants.MSG_SENDER,
+                    ZERO_BYTES
+                )
+            );
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
@@ -495,10 +511,11 @@ contract PosMGasTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.DECREASE_LIQUIDITY,
+                abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -517,9 +534,11 @@ contract PosMGasTest is Test, PosmTestSetup {
         // donate to create fee revenue
         donateRouter.donate(config.poolKey, 0.2e18, 0.2e18, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.DECREASE_LIQUIDITY, abi.encode(tokenId, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.DECREASE_LIQUIDITY,
+                abi.encode(tokenId, 0, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            );
 
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
         lpm.modifyLiquidities(calls, _deadline);
@@ -530,9 +549,8 @@ contract PosMGasTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
@@ -543,9 +561,8 @@ contract PosMGasTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(config.poolKey, address(this));
 
         lpm.modifyLiquidities(calls, _deadline);
@@ -557,9 +574,8 @@ contract PosMGasTest is Test, PosmTestSetup {
         mint(config, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         decreaseLiquidity(tokenId, config, 10_000 ether, ZERO_BYTES);
-        Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES));
 
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
@@ -573,10 +589,11 @@ contract PosMGasTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.DECREASE_LIQUIDITY,
+                abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            );
         planner.add(
             Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
         );
@@ -713,9 +730,8 @@ contract PosMGasTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidityWithClose(configNative.poolKey);
 
         lpm.modifyLiquidities(calls, _deadline);
@@ -726,9 +742,8 @@ contract PosMGasTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES));
         bytes memory calls = planner.finalizeModifyLiquidityWithTakePair(configNative.poolKey, address(this));
 
         lpm.modifyLiquidities(calls, _deadline);
@@ -740,9 +755,8 @@ contract PosMGasTest is Test, PosmTestSetup {
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         decreaseLiquidity(tokenId, configNative, 10_000 ether, ZERO_BYTES);
-        Plan memory planner = Planner.init().add(
-            Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(Actions.BURN_POSITION, abi.encode(tokenId, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES));
 
         // There is no need to include CLOSE commands.
         bytes memory calls = planner.encode();
@@ -756,10 +770,11 @@ contract PosMGasTest is Test, PosmTestSetup {
         uint256 tokenId = lpm.nextTokenId();
         mintWithNative(SQRT_PRICE_1_1, configNative, 10_000 ether, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
-        Plan memory planner = Planner.init().add(
-            Actions.DECREASE_LIQUIDITY,
-            abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
-        );
+        Plan memory planner = Planner.init()
+            .add(
+                Actions.DECREASE_LIQUIDITY,
+                abi.encode(tokenId, 10_000 ether, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+            );
         planner.add(Actions.BURN_POSITION, abi.encode(tokenId, 0 wei, 0 wei, ZERO_BYTES));
 
         // We must include CLOSE commands.

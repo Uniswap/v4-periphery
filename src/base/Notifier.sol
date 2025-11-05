@@ -60,12 +60,7 @@ abstract contract Notifier is INotifier {
     }
 
     /// @inheritdoc INotifier
-    function unsubscribe(uint256 tokenId)
-        external
-        payable
-        onlyIfPoolManagerLocked
-        onlyIfApproved(msg.sender, tokenId)
-    {
+    function unsubscribe(uint256 tokenId) external payable onlyIfPoolManagerLocked onlyIfApproved(msg.sender, tokenId) {
         _unsubscribe(tokenId);
     }
 

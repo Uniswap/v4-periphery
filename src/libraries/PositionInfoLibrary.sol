@@ -95,11 +95,10 @@ library PositionInfoLibrary {
     {
         bytes25 _poolId = bytes25(PoolId.unwrap(_poolKey.toId()));
         assembly {
-            info :=
-                or(
-                    or(and(MASK_UPPER_200_BITS, _poolId), shl(TICK_UPPER_OFFSET, and(MASK_24_BITS, _tickUpper))),
-                    shl(TICK_LOWER_OFFSET, and(MASK_24_BITS, _tickLower))
-                )
+            info := or(
+                or(and(MASK_UPPER_200_BITS, _poolId), shl(TICK_UPPER_OFFSET, and(MASK_24_BITS, _tickUpper))),
+                shl(TICK_LOWER_OFFSET, and(MASK_24_BITS, _tickLower))
+            )
         }
     }
 }
