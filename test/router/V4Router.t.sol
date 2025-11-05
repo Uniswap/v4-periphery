@@ -197,6 +197,49 @@ contract V4RouterTest is RoutingTestHelpers {
         router.executeActions(data);
     }
 
+    function test_swapExactInput_revertsForAmountOutPerHop() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        uint256 expectedPrice = amountIn * 1e18 / expectedAmountOut;
+        uint256[] memory maxSlippages = new uint256[](1);
+        uint256 maxSlippage = expectedPrice - 1;
+        maxSlippages[0] = maxSlippage;
+
+        tokenPath.push(currency0);
+        tokenPath.push(currency1);
+        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, maxSlippages, amountIn);
+        params.amountOutMinimum = uint128(0);
+
+        plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IV4Router.V4TooLittleReceivedPerHop.selector, 0, maxSlippage, expectedPrice)
+        );
+        router.executeActions(data);
+    }
+
+    function test_swapExactInput_succeedsForAmountOutPerHop() public {
+        uint256 amountIn = 1 ether;
+        uint256 expectedAmountOut = 992054607780215625;
+
+        uint256 expectedPrice = amountIn * 1e18 / expectedAmountOut;
+        uint256[] memory maxSlippages = new uint256[](1);
+        uint256 maxSlippage = expectedPrice;
+        maxSlippages[0] = maxSlippage;
+
+        tokenPath.push(currency0);
+        tokenPath.push(currency1);
+        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, maxSlippages, amountIn);
+        params.amountOutMinimum = uint128(expectedAmountOut);
+
+        plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
+
+        router.executeActions(data);
+    }
+
     function test_swapExactIn_1Hop_zeroForOne() public {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
@@ -637,6 +680,49 @@ contract V4RouterTest is RoutingTestHelpers {
         vm.expectRevert(
             abi.encodeWithSelector(IV4Router.V4TooMuchRequested.selector, expectedAmountIn - 1, expectedAmountIn)
         );
+        router.executeActions(data);
+    }
+
+    function test_swapExactOut_revertsForAmountInPerHop() public {
+        uint256 amountOut = 1 ether;
+        uint256 expectedAmountIn = 1008049273448486163;
+
+        uint256 expectedPrice = expectedAmountIn * 1e18 / amountOut;
+        uint256[] memory maxSlippages = new uint256[](1);
+        uint256 maxSlippage = expectedPrice - 1;
+        maxSlippages[0] = maxSlippage;
+
+        tokenPath.push(currency0);
+        tokenPath.push(currency1);
+        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, maxSlippages, amountOut);
+        params.amountInMaximum = type(uint128).max;
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IV4Router.V4TooMuchRequestedPerHop.selector, 0, maxSlippage, expectedPrice)
+        );
+        router.executeActions(data);
+    }
+
+    function test_swapExactOut_succeedsForAmountInPerHop() public {
+        uint256 amountOut = 1 ether;
+        uint256 expectedAmountIn = 1008049273448486163;
+
+        uint256 expectedPrice = expectedAmountIn * 1e18 / amountOut;
+        uint256[] memory maxSlippages = new uint256[](1);
+        uint256 maxSlippage = expectedPrice;
+        maxSlippages[0] = maxSlippage;
+
+        tokenPath.push(currency0);
+        tokenPath.push(currency1);
+        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, maxSlippages, amountOut);
+        params.amountInMaximum = type(uint128).max;
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
+
         router.executeActions(data);
     }
 

@@ -113,6 +113,7 @@ contract CalldataDecoderTest is Test {
         assertEq(swapParams.amountIn, _swapParams.amountIn);
         assertEq(swapParams.amountOutMinimum, _swapParams.amountOutMinimum);
         _assertEq(swapParams.path, _swapParams.path);
+        _assertEq(swapParams.maxHopSlippage, _swapParams.maxHopSlippage);
     }
 
     function test_fuzz_decodeSwapExactInSingleParams(IV4Router.ExactInputSingleParams calldata _swapParams)
@@ -137,6 +138,7 @@ contract CalldataDecoderTest is Test {
         assertEq(swapParams.amountOut, _swapParams.amountOut);
         assertEq(swapParams.amountInMaximum, _swapParams.amountInMaximum);
         _assertEq(swapParams.path, _swapParams.path);
+        _assertEq(swapParams.maxHopSlippage, _swapParams.maxHopSlippage);
     }
 
     function test_fuzz_decodeSwapExactOutSingleParams(IV4Router.ExactOutputSingleParams calldata _swapParams)
@@ -384,6 +386,13 @@ contract CalldataDecoderTest is Test {
             assertEq(path1[i].tickSpacing, path2[i].tickSpacing);
             assertEq(address(path1[i].hooks), address(path2[i].hooks));
             assertEq(path1[i].hookData, path2[i].hookData);
+        }
+    }
+
+    function _assertEq(uint256[] memory a, uint256[] memory b) internal pure {
+        assertEq(a.length, b.length);
+        for (uint256 i = 0; i < a.length; i++) {
+            assertEq(a[i], b[i]);
         }
     }
 
