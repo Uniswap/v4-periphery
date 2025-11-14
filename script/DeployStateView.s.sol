@@ -1,14 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/**
+ * Script: DeployStateView
+ * Purpose: Deploy read-only StateView lens bound to a PoolManager
+ * Usage:
+ *   forge script script/DeployStateView.s.sol:DeployStateView --rpc-url $RPC --private-key $PK --broadcast --sig "run(address)" <POOL_MANAGER>
+ */
+
 import "forge-std/console2.sol";
 import "forge-std/Script.sol";
 
 import {Deploy, IStateView} from "../test/shared/Deploy.sol";
 
+/// @title DeployStateView Script
+/// @notice Deploys StateView bound to a PoolManager
 contract DeployStateView is Script {
+    /// @notice Optional pre-run setup
     function setUp() public {}
 
+    /// @notice Deploy the StateView lens
+    /// @param poolManager PoolManager address
+    /// @return state The deployed StateView instance
     function run(address poolManager) public returns (IStateView state) {
         vm.startBroadcast();
 
