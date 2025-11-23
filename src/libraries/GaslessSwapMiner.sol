@@ -13,11 +13,11 @@ import {Currency} from "@uniswap/v4-core/contracts/types/Currency.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /**
- * @title TokenERC20
+ * @title ITokenERC20
  * @dev Reward token interface required by GaslessSwapMiner
  * @custom:security-contact security@xcure.com
  */
-interface TokenERC20 is IERC20 {
+interface ITokenERC20 is IERC20 {
     /// @notice Mints `amount` tokens to `to` (only callable by GaslessSwapMiner)
     /// @param to Recipient address
     /// @param amount Amount in wei
@@ -45,7 +45,7 @@ contract GaslessSwapMiner is Ownable, ReentrancyGuard, IUnlockCallback {
     IPoolManager public immutable poolManager;
 
     /// @dev Reward token contract (set by owner after deployment)
-    TokenERC20 public rewardERC20;
+    ITokenERC20 public rewardERC20;
 
     /// @dev Stablecoin whitelist for USD volume calculation (USDC, USDT, etc.)
     mapping(address token => bool isStable) public isStableCoin;
@@ -85,7 +85,7 @@ contract GaslessSwapMiner is Ownable, ReentrancyGuard, IUnlockCallback {
         uint256 fixedReward
     );
 
-    /// @notice Emitted when contract is paused/unpaused
+    /// @notice Emitted when the contract is paused/unpaused
     event Paused(bool indexed isPaused);
 
     /// @notice Emitted when gasless swap fee is burned
@@ -148,7 +148,7 @@ contract GaslessSwapMiner is Ownable, ReentrancyGuard, IUnlockCallback {
      */
     function updateRewardToken(address newToken) external onlyOwner {
         if (newToken == address(0)) revert ZeroAddressNotAllowed();
-        rewardERC20 = TokenERC20(newToken);
+        rewardERC20 = ITokenERC20(newToken);
     }
 
     /**
@@ -211,7 +211,7 @@ contract GaslessSwapMiner is Ownable, ReentrancyGuard, IUnlockCallback {
     }
 
     /**
-     * @notice Execute a swap (only operation that triggers rewards)
+     * @notice Execute a swap (the only operation that triggers rewards)
      * @param key Pool key
      * @param params Swap parameters
      * @param hookData Data forwarded to hooks (unused)
@@ -230,19 +230,19 @@ contract GaslessSwapMiner is Ownable, ReentrancyGuard, IUnlockCallback {
 
     /**
      * @dev Internal function – calculates USD volume from stablecoin leg of a swap
-     * @param key The pool key
-     * @param delta BalanceDelta from the swap
+     * @param _key The pool key
+     * @param _delta BalanceDelta from the swap
      * @return USD volume in 6 decimals
      */
-    function _getUsdAmountFromDelta(PoolKey memory key, BalanceDelta delta) private view returns (uint256 usd) {
-        int128 raw0 = delta.amount0();
-        int128 raw1 = delta.amount1();
+    function _getUsdAmountFromDelta(PoolKey memory _key, BalanceDelta _delta) private view returns (uint256 usd) {
+        int128 raw0 = _delta.amount0();
+        int128 raw1 = _delta.amount1();
 
         uint256 abs0 = raw0 < 0 ? uint256(uint256(int256(-raw0))) : uint256(uint256(int256(raw0)));
         uint256 abs1 = raw1 < 0 ? uint256(uint256(int256(-raw1))) : uint256(uint256(int256(raw1)));
 
-        address token0 = Currency.unwrap(key.currency0);
-        address token1 = Currency.unwrap(key.currency1);
+        address token0 = Currency.unwrap(_key.currency0);
+        address token1 = Currency.unwrap(_key.currency1);
 
         bool s0 = isStableCoin[token0];
         bool s1 = isStableCoin[token1];
@@ -378,7 +378,7 @@ contract GaslessSwapMiner is Ownable, ReentrancyGuard, IUnlockCallback {
     /* ═════════════════════════════════ ADMIN ═════════════════════════════════ */
 
     /**
-     * @notice Owner withdraws ETH accidentally sent to contract
+     * @notice Owner withdraws ETH accidentally sent to the contract
      * @param amount Amount to withdraw
      */
     function withdrawETH(uint256 amount) external onlyOwner {
@@ -396,7 +396,7 @@ contract GaslessSwapMiner is Ownable, ReentrancyGuard, IUnlockCallback {
     }
 
     /**
-     * @notice Check if reward token is set
+     * @notice Check if the reward token is set
      * @return True if rewardERC20 is configured
      */
     function isRewardTokenEnabled() external view returns (bool) {
