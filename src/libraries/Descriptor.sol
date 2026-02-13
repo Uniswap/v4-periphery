@@ -442,10 +442,10 @@ library Descriptor {
             params.zerosStartIndex = 2; // leading zeros will start after the decimal point
             params.zerosEndIndex = uint8(nZeros + params.zerosStartIndex - 1); // end index for leading zeros
             params.bufferLength = uint8(nZeros + numSigfigs + 2); // total length of string buffer, including "0." and "%"
-            params.sigfigIndex = uint8(params.bufferLength - 2); // index of starting signficant figure
+            params.sigfigIndex = uint8(params.bufferLength - 2); // index of starting significant figure
             params.isLessThanOne = true;
         }
-        params.sigfigs = uint256(fee) / (10 ** (digits - numSigfigs)); // the signficant figures of the fee
+        params.sigfigs = uint256(fee) / (10 ** (digits - numSigfigs)); // the significant figures of the fee
         params.isPercent = true;
         params.decimalIndex = digits > 4 ? uint8(digits - 4) : 0; // based on total number of digits in the fee
 
