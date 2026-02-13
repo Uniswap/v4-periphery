@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IV4Router} from "../interfaces/IV4Router.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 /// @title Library for abi decoding in calldata
 library CalldataDecoder {
@@ -383,5 +384,14 @@ library CalldataDecoder {
                 revert(0x1c, 4)
             }
         }
+    }
+
+    /// @dev equivalent to: abi.decode(params, (IV4Router.ExactInputWithLimitParams))
+    function decodeSwapExactInRawParams(bytes calldata params)
+        internal
+        pure
+        returns (PoolKey memory poolKey, SwapParams memory swapParams, bytes memory hookData)
+    {
+        (poolKey, swapParams, hookData) = abi.decode(params, (PoolKey, SwapParams, bytes));
     }
 }

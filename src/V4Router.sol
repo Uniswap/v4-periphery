@@ -76,6 +76,10 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 (Currency currency, address recipient, uint256 bips) = params.decodeCurrencyAddressAndUint256();
                 _take(currency, _mapRecipient(recipient), _getFullCredit(currency).calculatePortion(bips));
                 return;
+            } else if (action == Actions.SWAP_EXACT_IN_RAW) {
+                (PoolKey memory poolKey, SwapParams memory swapParams, bytes memory hookData) = params.decodeSwapExactInRawParams();
+                _rawSwap(poolKey, swapParams, hookData);
+                return;
             }
         }
         revert UnsupportedAction(action);
@@ -170,6 +174,22 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 currencyOut = pathKey.intermediateCurrency;
             }
             if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
+        }
+    }
+
+    function _rawSwap(PoolKey memory poolKey, SwapParams memory swapParams, bytes memory hookData)
+        private
+        returns (int128 reciprocalAmount)
+    {
+        // for protection of exactOut swaps, sqrtPriceLimit is not exposed as a feature in this contract
+        unchecked {
+            BalanceDelta delta = poolManager.swap(
+                poolKey,
+                swapParams,
+                hookData
+            );
+
+            reciprocalAmount = (swapParams.amountSpecified < 0) ? delta.amount1() : delta.amount0();
         }
     }
 
