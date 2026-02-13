@@ -6,6 +6,7 @@ import {IPositionDescriptor} from "../../src/interfaces/IPositionDescriptor.sol"
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {IV4Quoter} from "../../src/interfaces/IV4Quoter.sol";
 import {IStateView} from "../../src/interfaces/IStateView.sol";
+import {PermissionedV4Router} from "../../src/hooks/permissionedPools/PermissionedV4Router.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 library Deploy {
@@ -21,6 +22,25 @@ library Deploy {
     ) internal returns (IPositionManager manager) {
         bytes memory args = abi.encode(poolManager, permit2, unsubscribeGasLimit, positionDescriptor_, wrappedNative);
         bytes memory initcode = abi.encodePacked(vm.getCode("PositionManager.sol:PositionManager"), args);
+        assembly {
+            manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
+        }
+    }
+
+    function permissionedPositionManager(
+        address poolManager,
+        address permit2,
+        uint256 unsubscribeGasLimit,
+        address positionDescriptor_,
+        address wrappedNative,
+        address permissionsAdapterFactory,
+        bytes memory salt
+    ) internal returns (IPositionManager manager) {
+        bytes memory args = abi.encode(
+            poolManager, permit2, unsubscribeGasLimit, positionDescriptor_, wrappedNative, permissionsAdapterFactory
+        );
+        bytes memory initcode =
+            abi.encodePacked(vm.getCode("PermissionedPositionManager.sol:PermissionedPositionManager"), args);
         assembly {
             manager := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
@@ -64,6 +84,18 @@ library Deploy {
         bytes memory initcode = abi.encodePacked(vm.getCode("PositionDescriptor.sol:PositionDescriptor"), args);
         assembly {
             descriptor := create2(0, add(initcode, 0x20), mload(initcode), salt)
+        }
+    }
+
+    function create2(bytes memory initcode, bytes32 salt) internal returns (address contractAddress) {
+        assembly {
+            contractAddress := create2(0, add(initcode, 32), mload(initcode), salt)
+            if iszero(contractAddress) {
+                let ptr := mload(0x40)
+                let errorSize := returndatasize()
+                returndatacopy(ptr, 0, errorSize)
+                revert(ptr, errorSize)
+            }
         }
     }
 }
