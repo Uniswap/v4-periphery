@@ -90,10 +90,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         uint128 amountOut =
             _swap(params.poolKey, params.zeroForOne, -int256(uint256(amountIn)), params.hookData).toUint128();
         if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived(params.amountOutMinimum, amountOut);
-        if (params.maxHopSlippage != 0) {
-            uint256 price = uint256(amountIn) * PRECISION / amountOut;
-            if (price > params.maxHopSlippage) revert V4TooLittleReceivedPerHopSingle(params.maxHopSlippage, price);
-        }
+        uint256 price = uint256(amountOut) * PRECISION / amountIn;
+        if (price < params.maxHopSlippage) revert V4TooLittleReceivedPerHopSingle(params.maxHopSlippage, price);
     }
 
     function _swapExactInput(IV4Router.ExactInputParams calldata params) private {
@@ -116,9 +114,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 amountOut = _swap(poolKey, zeroForOne, -int256(uint256(amountIn)), pathKey.hookData).toUint128();
 
                 if (perHopSlippageLength != 0) {
-                    uint256 price = amountIn * PRECISION / amountOut;
-                    uint256 maxSlippage = params.maxHopSlippage[i];
-                    if (price > maxSlippage) revert V4TooLittleReceivedPerHop(i, maxSlippage, price);
+                    uint256 price = amountOut * PRECISION / amountIn;
+                    uint256 minPrice = params.maxHopSlippage[i];
+                    if (price < minPrice) revert V4TooLittleReceivedPerHop(i, minPrice, price);
                 }
 
                 amountIn = amountOut;
@@ -140,10 +138,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             ))
         .toUint128();
         if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
-        if (params.maxHopSlippage != 0) {
-            uint256 price = uint256(amountIn) * PRECISION / amountOut;
-            if (price > params.maxHopSlippage) revert V4TooMuchRequestedPerHopSingle(params.maxHopSlippage, price);
-        }
+        uint256 price = uint256(amountOut) * PRECISION / amountIn;
+        if (price < params.maxHopSlippage) revert V4TooMuchRequestedPerHopSingle(params.maxHopSlippage, price);
     }
 
     function _swapExactOutput(IV4Router.ExactOutputParams calldata params) private {
@@ -170,9 +166,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 .toUint128();
 
                 if (perHopSlippageLength != 0) {
-                    uint256 price = amountIn * PRECISION / amountOut;
-                    uint256 maxSlippage = params.maxHopSlippage[i - 1];
-                    if (price > maxSlippage) revert V4TooMuchRequestedPerHop(i - 1, maxSlippage, price);
+                    uint256 price = amountOut * PRECISION / amountIn;
+                    uint256 minPrice = params.maxHopSlippage[i - 1];
+                    if (price < minPrice) revert V4TooMuchRequestedPerHop(i - 1, minPrice, price);
                 }
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;
