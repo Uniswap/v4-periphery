@@ -27,7 +27,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using CalldataDecoder for bytes;
     using BipsLibrary for uint256;
 
-    uint256 private constant PRECISION = 1e18;
+    uint256 private constant PRECISION = 1e36;
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
