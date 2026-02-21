@@ -17,6 +17,10 @@ interface IV4Router is IImmutableState {
     error V4TooLittleReceivedPerHop(uint256 hopIndex, uint256 maxPrice, uint256 price);
     /// @notice Emitted when an exactOutput is asked for more than its relative maxAmountIn per hop (max price)
     error V4TooMuchRequestedPerHop(uint256 hopIndex, uint256 maxPrice, uint256 price);
+    /// @notice Emitted when a single exactInput swap does not meet its relative price limit
+    error V4TooLittleReceivedPerHopSingle(uint256 maxPrice, uint256 price);
+    /// @notice Emitted when a single exactOutput swap exceeds its relative price limit
+    error V4TooMuchRequestedPerHopSingle(uint256 maxPrice, uint256 price);
     /// @notice Emitted when the length of the maxHopSlippage array is not zero and not equal to the path length
     error InvalidHopSlippageLength();
 
@@ -26,6 +30,7 @@ interface IV4Router is IImmutableState {
         bool zeroForOne;
         uint128 amountIn;
         uint128 amountOutMinimum;
+        uint256 maxHopSlippage;
         bytes hookData;
     }
 
@@ -44,6 +49,7 @@ interface IV4Router is IImmutableState {
         bool zeroForOne;
         uint128 amountOut;
         uint128 amountInMaximum;
+        uint256 maxHopSlippage;
         bytes hookData;
     }
 
