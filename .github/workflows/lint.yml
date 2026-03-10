@@ -6,6 +6,7 @@ on:
       - main
   pull_request:
 
+permissions: {}
 jobs:
   run-linters:
     name: Forge Linting
@@ -17,6 +18,7 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@50d5a8956f2e319df19e6b57539d7e2acb9f8c1e # v1.5.0
