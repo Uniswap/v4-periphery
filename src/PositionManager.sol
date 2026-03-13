@@ -200,6 +200,7 @@ contract PositionManager is
                 _increase(tokenId, liquidity, amount0Max, amount1Max, hookData);
                 return;
             } else if (action == Actions.INCREASE_LIQUIDITY_FROM_DELTAS) {
+                // DEPRECATED - vulnerable to sandwich attacks, do not use. See _increaseFromDeltas().
                 (uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData) =
                     params.decodeIncreaseLiquidityFromDeltasParams();
                 _increaseFromDeltas(tokenId, amount0Max, amount1Max, hookData);
@@ -223,6 +224,7 @@ contract PositionManager is
                 _mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
                 return;
             } else if (action == Actions.MINT_POSITION_FROM_DELTAS) {
+                // DEPRECATED - vulnerable to sandwich attacks, do not use. See _mintFromDeltas().
                 (
                     PoolKey calldata poolKey,
                     int24 tickLower,
@@ -300,7 +302,9 @@ contract PositionManager is
         (liquidityDelta - feesAccrued).validateMaxIn(amount0Max, amount1Max);
     }
 
-    /// @dev The liquidity delta is derived from open deltas in the pool manager.
+    /// @notice DEPRECATED: Vulnerable to sandwich attacks - do not use this function.
+    /// @dev Same issue as _mintFromDeltas -- the delta-based approach provides no minimum
+    /// liquidity protection. Use _increase() instead.
     function _increaseFromDeltas(uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData)
         internal
         onlyIfApproved(msgSender(), tokenId)
@@ -380,6 +384,12 @@ contract PositionManager is
         liquidityDelta.validateMaxIn(amount0Max, amount1Max);
     }
 
+    /// @notice DEPRECATED: Vulnerable to sandwich attacks - do not use this function.
+    /// @dev The amount0Max/amount1Max parameters are redundant because settled amounts already
+    /// act as an upper bound. There is no lower bound on liquidity received.
+    /// If the price is manipulated, fewer tokens are used (the rest are swept back),
+    /// less liquidity is minted, and the max check never triggers.
+    /// Use _mint() instead, which takes an explicit liquidity amount with proper slippage protection.
     function _mintFromDeltas(
         PoolKey calldata poolKey,
         int24 tickLower,
