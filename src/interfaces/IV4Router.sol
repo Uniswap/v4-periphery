@@ -21,8 +21,8 @@ interface IV4Router is IImmutableState {
     error V4TooLittleReceivedPerHopSingle(uint256 minPrice, uint256 price);
     /// @notice Emitted when a single exactOutput swap exceeds its relative price limit
     error V4TooMuchRequestedPerHopSingle(uint256 minPrice, uint256 price);
-    /// @notice Emitted when the length of the maxHopSlippage array is not zero and not equal to the path length
-    error InvalidHopSlippageLength();
+    /// @notice Emitted when the length of the per-hop minimum price array is not zero and not equal to the path length
+    error InvalidHopPriceLength();
 
     /// @notice Parameters for a single-hop exact-input swap
     struct ExactInputSingleParams {
@@ -30,7 +30,7 @@ interface IV4Router is IImmutableState {
         bool zeroForOne;
         uint128 amountIn;
         uint128 amountOutMinimum;
-        uint256 maxHopSlippage;
+        uint256 minHopPriceX36;
         bytes hookData;
     }
 
@@ -38,7 +38,7 @@ interface IV4Router is IImmutableState {
     struct ExactInputParams {
         Currency currencyIn;
         PathKey[] path;
-        uint256[] maxHopSlippage;
+        uint256[] minHopPriceX36;
         uint128 amountIn;
         uint128 amountOutMinimum;
     }
@@ -49,7 +49,7 @@ interface IV4Router is IImmutableState {
         bool zeroForOne;
         uint128 amountOut;
         uint128 amountInMaximum;
-        uint256 maxHopSlippage;
+        uint256 minHopPriceX36;
         bytes hookData;
     }
 
@@ -57,7 +57,7 @@ interface IV4Router is IImmutableState {
     struct ExactOutputParams {
         Currency currencyOut;
         PathKey[] path;
-        uint256[] maxHopSlippage;
+        uint256[] minHopPriceX36;
         uint128 amountOut;
         uint128 amountInMaximum;
     }

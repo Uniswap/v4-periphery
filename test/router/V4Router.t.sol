@@ -242,13 +242,13 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 expectedAmountOut = 992054607780215625;
 
         uint256 expectedPrice = expectedAmountOut * 1e36 / amountIn;
-        uint256[] memory maxSlippages = new uint256[](1);
+        uint256[] memory minPricesX36 = new uint256[](1);
         uint256 minPrice = expectedPrice + 1;
-        maxSlippages[0] = minPrice;
+        minPricesX36[0] = minPrice;
 
         tokenPath.push(currency0);
         tokenPath.push(currency1);
-        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, maxSlippages, amountIn);
+        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, minPricesX36, amountIn);
         params.amountOutMinimum = uint128(0);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
@@ -265,13 +265,13 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 expectedAmountOut = 992054607780215625;
 
         uint256 expectedPrice = expectedAmountOut * 1e36 / amountIn;
-        uint256[] memory maxSlippages = new uint256[](1);
-        uint256 maxSlippage = expectedPrice;
-        maxSlippages[0] = maxSlippage;
+        uint256[] memory minPricesX36 = new uint256[](1);
+        uint256 minPriceX36 = expectedPrice;
+        minPricesX36[0] = minPriceX36;
 
         tokenPath.push(currency0);
         tokenPath.push(currency1);
-        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, maxSlippages, amountIn);
+        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, minPricesX36, amountIn);
         params.amountOutMinimum = uint128(expectedAmountOut);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
@@ -334,10 +334,10 @@ contract V4RouterTest is RoutingTestHelpers {
         vm.revertToState(snap);
 
         // Verify the per-hop slippage check fires for extreme ratio pairs
-        uint256[] memory maxSlippages = new uint256[](1);
-        maxSlippages[0] = expectedPrice + 1;
+        uint256[] memory minPricesX36 = new uint256[](1);
+        minPricesX36[0] = expectedPrice + 1;
 
-        IV4Router.ExactInputParams memory params2 = _getExactInputParams(path, maxSlippages, amountIn);
+        IV4Router.ExactInputParams memory params2 = _getExactInputParams(path, minPricesX36, amountIn);
         params2.amountOutMinimum = 0;
         plan = Planner.init();
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params2));
@@ -834,13 +834,13 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 expectedAmountIn = 1008049273448486163;
 
         uint256 expectedPrice = amountOut * 1e36 / expectedAmountIn;
-        uint256[] memory maxSlippages = new uint256[](1);
+        uint256[] memory minPricesX36 = new uint256[](1);
         uint256 minPrice = expectedPrice + 1;
-        maxSlippages[0] = minPrice;
+        minPricesX36[0] = minPrice;
 
         tokenPath.push(currency0);
         tokenPath.push(currency1);
-        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, maxSlippages, amountOut);
+        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, minPricesX36, amountOut);
         params.amountInMaximum = type(uint128).max;
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
@@ -855,13 +855,13 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 expectedAmountIn = 1008049273448486163;
 
         uint256 expectedPrice = amountOut * 1e36 / expectedAmountIn;
-        uint256[] memory maxSlippages = new uint256[](1);
-        uint256 maxSlippage = expectedPrice;
-        maxSlippages[0] = maxSlippage;
+        uint256[] memory minPricesX36 = new uint256[](1);
+        uint256 minPriceX36 = expectedPrice;
+        minPricesX36[0] = minPriceX36;
 
         tokenPath.push(currency0);
         tokenPath.push(currency1);
-        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, maxSlippages, amountOut);
+        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, minPricesX36, amountOut);
         params.amountInMaximum = type(uint128).max;
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));

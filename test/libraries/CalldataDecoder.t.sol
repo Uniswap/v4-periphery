@@ -113,7 +113,7 @@ contract CalldataDecoderTest is Test {
         assertEq(swapParams.amountIn, _swapParams.amountIn);
         assertEq(swapParams.amountOutMinimum, _swapParams.amountOutMinimum);
         _assertEq(swapParams.path, _swapParams.path);
-        _assertEq(swapParams.maxHopSlippage, _swapParams.maxHopSlippage);
+        _assertEq(swapParams.minHopPriceX36, _swapParams.minHopPriceX36);
     }
 
     function test_fuzz_decodeSwapExactInSingleParams(IV4Router.ExactInputSingleParams calldata _swapParams)
@@ -126,7 +126,7 @@ contract CalldataDecoderTest is Test {
         assertEq(swapParams.zeroForOne, _swapParams.zeroForOne);
         assertEq(swapParams.amountIn, _swapParams.amountIn);
         assertEq(swapParams.amountOutMinimum, _swapParams.amountOutMinimum);
-        assertEq(swapParams.maxHopSlippage, _swapParams.maxHopSlippage);
+        assertEq(swapParams.minHopPriceX36, _swapParams.minHopPriceX36);
         assertEq(swapParams.hookData, _swapParams.hookData);
         _assertEq(swapParams.poolKey, _swapParams.poolKey);
     }
@@ -139,7 +139,7 @@ contract CalldataDecoderTest is Test {
         assertEq(swapParams.amountOut, _swapParams.amountOut);
         assertEq(swapParams.amountInMaximum, _swapParams.amountInMaximum);
         _assertEq(swapParams.path, _swapParams.path);
-        _assertEq(swapParams.maxHopSlippage, _swapParams.maxHopSlippage);
+        _assertEq(swapParams.minHopPriceX36, _swapParams.minHopPriceX36);
     }
 
     function test_fuzz_decodeSwapExactOutSingleParams(IV4Router.ExactOutputSingleParams calldata _swapParams)
@@ -152,7 +152,7 @@ contract CalldataDecoderTest is Test {
         assertEq(swapParams.zeroForOne, _swapParams.zeroForOne);
         assertEq(swapParams.amountOut, _swapParams.amountOut);
         assertEq(swapParams.amountInMaximum, _swapParams.amountInMaximum);
-        assertEq(swapParams.maxHopSlippage, _swapParams.maxHopSlippage);
+        assertEq(swapParams.minHopPriceX36, _swapParams.minHopPriceX36);
         assertEq(swapParams.hookData, _swapParams.hookData);
         _assertEq(swapParams.poolKey, _swapParams.poolKey);
     }
