@@ -91,8 +91,10 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             _swap(params.poolKey, params.zeroForOne, -int256(uint256(amountIn)), params.hookData).toUint128();
         if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived(params.amountOutMinimum, amountOut);
         if (params.minHopPriceX36 != 0) {
-            uint256 price = uint256(amountOut) * PRECISION / amountIn;
-            if (price < params.minHopPriceX36) revert V4TooLittleReceivedPerHopSingle(params.minHopPriceX36, price);
+            uint256 priceX36 = uint256(amountOut) * PRECISION / amountIn;
+            if (priceX36 < params.minHopPriceX36) {
+                revert V4TooLittleReceivedPerHopSingle(params.minHopPriceX36, priceX36);
+            }
         }
     }
 
@@ -116,9 +118,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 amountOut = _swap(poolKey, zeroForOne, -int256(uint256(amountIn)), pathKey.hookData).toUint128();
 
                 if (perHopPriceLength != 0) {
-                    uint256 price = amountOut * PRECISION / amountIn;
+                    uint256 priceX36 = amountOut * PRECISION / amountIn;
                     uint256 minPrice = params.minHopPriceX36[i];
-                    if (price < minPrice) revert V4TooLittleReceivedPerHop(i, minPrice, price);
+                    if (priceX36 < minPrice) revert V4TooLittleReceivedPerHop(i, minPrice, priceX36);
                 }
 
                 amountIn = amountOut;
@@ -141,8 +143,10 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         .toUint128();
         if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
         if (params.minHopPriceX36 != 0) {
-            uint256 price = uint256(amountOut) * PRECISION / amountIn;
-            if (price < params.minHopPriceX36) revert V4TooMuchRequestedPerHopSingle(params.minHopPriceX36, price);
+            uint256 priceX36 = uint256(amountOut) * PRECISION / amountIn;
+            if (priceX36 < params.minHopPriceX36) {
+                revert V4TooMuchRequestedPerHopSingle(params.minHopPriceX36, priceX36);
+            }
         }
     }
 
@@ -170,9 +174,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 .toUint128();
 
                 if (perHopPriceLength != 0) {
-                    uint256 price = amountOut * PRECISION / amountIn;
+                    uint256 priceX36 = amountOut * PRECISION / amountIn;
                     uint256 minPrice = params.minHopPriceX36[i - 1];
-                    if (price < minPrice) revert V4TooMuchRequestedPerHop(i - 1, minPrice, price);
+                    if (priceX36 < minPrice) revert V4TooMuchRequestedPerHop(i - 1, minPrice, priceX36);
                 }
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;

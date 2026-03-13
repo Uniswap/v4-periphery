@@ -14,6 +14,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 
 contract V4RouterTest is RoutingTestHelpers {
+    uint256 constant PRECISION = 1e36;
     address alice = makeAddr("ALICE");
 
     function setUp() public {
@@ -47,7 +48,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
-        uint256 expectedPrice = expectedAmountOut * 1e36 / amountIn;
+        uint256 expectedPrice = expectedAmountOut * PRECISION / amountIn;
 
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, expectedPrice + 1, bytes(""));
@@ -65,7 +66,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
-        uint256 expectedPrice = expectedAmountOut * 1e36 / amountIn;
+        uint256 expectedPrice = expectedAmountOut * PRECISION / amountIn;
 
         IV4Router.ExactInputSingleParams memory params = IV4Router.ExactInputSingleParams(
             key0, true, uint128(amountIn), uint128(expectedAmountOut), expectedPrice, bytes("")
@@ -241,7 +242,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
-        uint256 expectedPrice = expectedAmountOut * 1e36 / amountIn;
+        uint256 expectedPrice = expectedAmountOut * PRECISION / amountIn;
         uint256[] memory minPricesX36 = new uint256[](1);
         uint256 minPrice = expectedPrice + 1;
         minPricesX36[0] = minPrice;
@@ -264,7 +265,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountIn = 1 ether;
         uint256 expectedAmountOut = 992054607780215625;
 
-        uint256 expectedPrice = expectedAmountOut * 1e36 / amountIn;
+        uint256 expectedPrice = expectedAmountOut * PRECISION / amountIn;
         uint256[] memory minPricesX36 = new uint256[](1);
         uint256 minPriceX36 = expectedPrice;
         minPricesX36[0] = minPriceX36;
@@ -307,10 +308,11 @@ contract V4RouterTest is RoutingTestHelpers {
             extremeKey, ModifyLiquidityParams(extremeTick - 600, extremeTick + 600, 100 ether, 0), "0x"
         );
 
-        uint256 amountIn = 1e8;
+        // Swap currB -> currA (token1 -> token0): output is tiny relative to input at this extreme tick.
+        uint256 amountIn = 1e26;
         Currency[] memory path = new Currency[](2);
-        path[0] = currA;
-        path[1] = currB;
+        path[0] = currB;
+        path[1] = currA;
 
         // Snapshot state so the first swap doesn't drain liquidity for the second
         uint256 snap = vm.snapshotState();
@@ -319,15 +321,16 @@ contract V4RouterTest is RoutingTestHelpers {
         IV4Router.ExactInputParams memory params = _getExactInputParams(path, amountIn);
         plan = Planner.init();
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(currA, currB, ActionConstants.MSG_SENDER);
+        bytes memory data = plan.finalizeSwap(currB, currA, ActionConstants.MSG_SENDER);
 
-        uint256 outputBefore = currB.balanceOfSelf();
+        uint256 outputBefore = currA.balanceOfSelf();
         router.executeActions(data);
-        uint256 actualAmountOut = currB.balanceOfSelf() - outputBefore;
+        uint256 actualAmountOut = currA.balanceOfSelf() - outputBefore;
 
-        // With output/input formula: price is large for this direction, no truncation concern.
-        // The precision concern applies in the reverse direction (tiny output, huge input).
-        uint256 expectedPrice = actualAmountOut * 1e36 / amountIn;
+        // With 1e18 precision, the price truncates to 0 for this extreme ratio.
+        assertEq(actualAmountOut * 1e18 / amountIn, 0, "1e18 precision should truncate to zero");
+        // 1e36 precision preserves enough resolution.
+        uint256 expectedPrice = actualAmountOut * PRECISION / amountIn;
         assertGt(expectedPrice, 0, "price should be non-zero");
 
         // Restore state for the slippage test
@@ -341,7 +344,7 @@ contract V4RouterTest is RoutingTestHelpers {
         params2.amountOutMinimum = 0;
         plan = Planner.init();
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params2));
-        data = plan.finalizeSwap(currA, currB, ActionConstants.MSG_SENDER);
+        data = plan.finalizeSwap(currB, currA, ActionConstants.MSG_SENDER);
 
         vm.expectRevert(
             abi.encodeWithSelector(IV4Router.V4TooLittleReceivedPerHop.selector, 0, expectedPrice + 1, expectedPrice)
@@ -703,7 +706,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        uint256 expectedPrice = amountOut * 1e36 / expectedAmountIn;
+        uint256 expectedPrice = amountOut * PRECISION / expectedAmountIn;
 
         IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
             key0, true, uint128(amountOut), type(uint128).max, expectedPrice + 1, bytes("")
@@ -722,7 +725,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        uint256 expectedPrice = amountOut * 1e36 / expectedAmountIn;
+        uint256 expectedPrice = amountOut * PRECISION / expectedAmountIn;
 
         IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
             key0, true, uint128(amountOut), type(uint128).max, expectedPrice, bytes("")
@@ -833,7 +836,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        uint256 expectedPrice = amountOut * 1e36 / expectedAmountIn;
+        uint256 expectedPrice = amountOut * PRECISION / expectedAmountIn;
         uint256[] memory minPricesX36 = new uint256[](1);
         uint256 minPrice = expectedPrice + 1;
         minPricesX36[0] = minPrice;
@@ -854,7 +857,7 @@ contract V4RouterTest is RoutingTestHelpers {
         uint256 amountOut = 1 ether;
         uint256 expectedAmountIn = 1008049273448486163;
 
-        uint256 expectedPrice = amountOut * 1e36 / expectedAmountIn;
+        uint256 expectedPrice = amountOut * PRECISION / expectedAmountIn;
         uint256[] memory minPricesX36 = new uint256[](1);
         uint256 minPriceX36 = expectedPrice;
         minPricesX36[0] = minPriceX36;
