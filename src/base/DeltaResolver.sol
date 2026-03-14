@@ -76,7 +76,7 @@ abstract contract DeltaResolver is ImmutableState {
     }
 
     /// @notice Calculates the amount for a settle action
-    function _mapSettleAmount(uint256 amount, Currency currency) internal view returns (uint256) {
+    function _mapSettleAmount(uint256 amount, Currency currency) internal view virtual returns (uint256) {
         if (amount == ActionConstants.CONTRACT_BALANCE) {
             return currency.balanceOfSelf();
         } else if (amount == ActionConstants.OPEN_DELTA) {
