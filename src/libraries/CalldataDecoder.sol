@@ -182,9 +182,9 @@ library CalldataDecoder {
     {
         // ExactInputParams is a variable length struct so we just have to look up its location
         assembly ("memory-safe") {
-            // only safety checks for the minimum length, where path is empty
-            // 0xa0 = 5 * 0x20 -> 3 elements, path offset, and path length 0
-            if lt(params.length, 0xa0) {
+            // only safety checks for the minimum length, where path and minHopPriceX36 are empty
+            // 0xe0 = 7 * 0x20 -> 3 elements, path offset, minHopPriceX36 offset, path length 0, and minHopPriceX36 length 0
+            if lt(params.length, 0xe0) {
                 mstore(0, SLICE_ERROR_SELECTOR)
                 revert(0x1c, 4)
             }
@@ -201,8 +201,8 @@ library CalldataDecoder {
         // ExactInputSingleParams is a variable length struct so we just have to look up its location
         assembly ("memory-safe") {
             // only safety checks for the minimum length, where hookData is empty
-            // 0x140 = 10 * 0x20 -> 8 elements, bytes offset, and bytes length 0
-            if lt(params.length, 0x140) {
+            // 0x160 = 11 * 0x20 -> 9 elements, bytes offset, and bytes length 0
+            if lt(params.length, 0x160) {
                 mstore(0, SLICE_ERROR_SELECTOR)
                 revert(0x1c, 4)
             }
@@ -218,9 +218,9 @@ library CalldataDecoder {
     {
         // ExactOutputParams is a variable length struct so we just have to look up its location
         assembly ("memory-safe") {
-            // only safety checks for the minimum length, where path is empty
-            // 0xa0 = 5 * 0x20 -> 3 elements, path offset, and path length 0
-            if lt(params.length, 0xa0) {
+            // only safety checks for the minimum length, where path and minHopPriceX36 are empty
+            // 0xe0 = 7 * 0x20 -> 3 elements, path offset, minHopPriceX36 offset, path length 0, and minHopPriceX36 length 0
+            if lt(params.length, 0xe0) {
                 mstore(0, SLICE_ERROR_SELECTOR)
                 revert(0x1c, 4)
             }
@@ -237,8 +237,8 @@ library CalldataDecoder {
         // ExactOutputSingleParams is a variable length struct so we just have to look up its location
         assembly ("memory-safe") {
             // only safety checks for the minimum length, where hookData is empty
-            // 0x140 = 10 * 0x20 -> 8 elements, bytes offset, and bytes length 0
-            if lt(params.length, 0x140) {
+            // 0x160 = 11 * 0x20 -> 9 elements, bytes offset, and bytes length 0
+            if lt(params.length, 0x160) {
                 mstore(0, SLICE_ERROR_SELECTOR)
                 revert(0x1c, 4)
             }
