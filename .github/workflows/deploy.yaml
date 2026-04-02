@@ -41,7 +41,7 @@ jobs:
         run: forge build
 
       - name: Install npm
-        run: npm install -g npm@latest
+        run: npm install -g github:npm/cli#6d1db8724b1d0e5457a87bb31e62e43d566348ce # npm@11.7.0
 
       - name: Release
         run: |
