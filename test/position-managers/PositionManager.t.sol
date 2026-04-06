@@ -745,7 +745,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         bytes memory calls = getBurnEncoded(tokenId, config, ZERO_BYTES);
 
         uint256 balance0BeforeAlice = currency0.balanceOf(alice);
-        uint256 balance1BeforeAlice = currency0.balanceOf(alice);
+        uint256 balance1BeforeAlice = currency1.balanceOf(alice);
 
         vm.prank(alice);
         lpm.modifyLiquidities(calls, _deadline);
