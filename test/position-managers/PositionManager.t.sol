@@ -652,7 +652,7 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         uint256 tokenId = lpm.nextTokenId();
         mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
         BalanceDelta delta = getLastDelta();
-        uint128 amount1Delta = uint128(-delta.amount0());
+        uint128 amount1Delta = uint128(-delta.amount1());
 
         bytes memory calls =
             getDecreaseEncoded(tokenId, config, 1e18, MIN_SLIPPAGE_DECREASE, amount1Delta + 1 wei, ZERO_BYTES);
@@ -974,5 +974,42 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
         assertLt(uint256(int256(deltaDecrease.amount1())), uint256(int256(-deltaMint.amount1()))); // amount1 in the second position was greater than amount1 in the first position
     }
 
-    function test_mint_slippageRevert() public {}
+    function test_mint_slippageRevert() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 100e18;
+
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(config.tickLower),
+            TickMath.getSqrtPriceAtTick(config.tickUpper),
+            uint128(liquidity)
+        );
+
+        // Snapshot state to prove full rollback on revert.
+        uint256 nextTokenIdBefore = lpm.nextTokenId();
+        uint256 balance0Before = currency0.balanceOfSelf();
+        uint256 balance1Before = currency1.balanceOfSelf();
+
+        // Make both slippage limits intentionally too strict by 1 wei.
+        bytes memory calls = getMintEncoded(
+            config,
+            liquidity,
+            uint128(amount0 - 1 wei),
+            uint128(amount1 - 1 wei),
+            ActionConstants.MSG_SENDER,
+            ZERO_BYTES
+        );
+
+        // Position manager checks amount0 first for this path.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SlippageCheck.MaximumAmountExceeded.selector, uint128(amount0 - 1 wei), uint128(amount0 + 1 wei)
+            )
+        );
+        lpm.modifyLiquidities(calls, _deadline);
+
+        assertEq(lpm.nextTokenId(), nextTokenIdBefore);
+        assertEq(currency0.balanceOfSelf(), balance0Before);
+        assertEq(currency1.balanceOfSelf(), balance1Before);
+    }
 }
