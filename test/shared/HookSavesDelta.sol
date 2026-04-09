@@ -18,7 +18,7 @@ contract HookSavesDelta is BaseTestHooks {
         BalanceDelta delta,
         BalanceDelta, /* feesAccrued **/
         bytes calldata /* hookData **/
-    ) external override returns (bytes4, BalanceDelta) {
+    ) public virtual override returns (bytes4, BalanceDelta) {
         _storeDelta(delta);
         return (this.afterAddLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
@@ -30,7 +30,7 @@ contract HookSavesDelta is BaseTestHooks {
         BalanceDelta delta,
         BalanceDelta, /* feesAccrued */
         bytes calldata /* hookData **/
-    ) external override returns (bytes4, BalanceDelta) {
+    ) public virtual override returns (bytes4, BalanceDelta) {
         _storeDelta(delta);
         return (this.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
