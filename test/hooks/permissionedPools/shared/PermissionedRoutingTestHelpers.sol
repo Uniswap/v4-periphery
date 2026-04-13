@@ -20,8 +20,9 @@ import {PermissionsAdapter} from "../../../../src/hooks/permissionedPools/Permis
 import {MockAllowlistChecker, MockPermissionedToken} from "../PermissionedPoolsBase.sol";
 import {IAllowlistChecker} from "../../../../src/hooks/permissionedPools/interfaces/IAllowlistChecker.sol";
 import {IPositionManager} from "../../../../src/interfaces/IPositionManager.sol";
-import {IPermissionsAdapterFactory} from
-    "../../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
+import {
+    IPermissionsAdapterFactory
+} from "../../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
 import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
 import {IPositionDescriptor} from "../../../../src/interfaces/IPositionDescriptor.sol";
 import {IV4Router} from "../../../../src/interfaces/IV4Router.sol";
@@ -47,6 +48,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     PoolKey public key1;
     PoolKey public key2;
     PoolKey public key3;
+    PoolKey public insecureKey;
 
     // currency0 and currency1 are defined in Deployers.sol
     Currency public currency2;
@@ -70,6 +72,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         _deployPermit2();
         _deployPemissionsAdapterFactory();
         _deployPermissionedHooks();
+        _deployInsecureHook();
         _deployMockPermissionedRouter();
         _deployPositionManager();
         MockERC20[] memory tokens = _deployTokensMintAndApprove(5, 2);
@@ -124,12 +127,10 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
                 break;
             }
         }
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(
-            address(permissionsAdapter0), PermissionFlags.ALL_ALLOWED
-        );
-        MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(
-            address(permissionsAdapter1), PermissionFlags.ALL_ALLOWED
-        );
+        MockPermissionedToken(Currency.unwrap(currency0))
+            .setAllowlist(address(permissionsAdapter0), PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency1))
+            .setAllowlist(address(permissionsAdapter1), PermissionFlags.ALL_ALLOWED);
 
         // Transfer some underlying tokens to the permissions adapter for verification
         IERC20(Currency.unwrap(currency0)).transfer(address(permissionsAdapter0), 1);
@@ -160,6 +161,9 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         setAllowedHooks(
             IPositionManager(positionManager), Currency.wrap(address(permissionsAdapter1)), permissionedHooks
         );
+
+        setAllowedHooks(IPositionManager(positionManager), Currency.wrap(address(permissionsAdapter0)), insecureHooks);
+        setAllowedHooks(IPositionManager(positionManager), Currency.wrap(address(permissionsAdapter1)), insecureHooks);
     }
 
     function setAllowedHooks(IPositionManager posm, Currency currency, IHooks permissionedHooks_) internal {
@@ -174,7 +178,9 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         internal
         returns (PoolKey memory _key)
     {
-        if (Currency.unwrap(currencyA) > Currency.unwrap(currencyB)) (currencyA, currencyB) = (currencyB, currencyA);
+        if (Currency.unwrap(currencyA) > Currency.unwrap(currencyB)) {
+            (currencyA, currencyB) = (currencyB, currencyA);
+        }
         _key = PoolKey(currencyA, currencyB, 3000, 60, IHooks(hookAddr));
         manager.initialize(_key, SQRT_PRICE_1_1);
         MockERC20(Currency.unwrap(currencyA)).approve(positionManager, type(uint256).max);
@@ -182,21 +188,14 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         modifyLiquidity(_key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x", 0);
     }
 
-    function createNativePoolWithLiquidity(Currency currency, address hookAddr)
-        internal
-        returns (PoolKey memory _key)
-    {
+    function createNativePoolWithLiquidity(Currency currency, address hookAddr) internal returns (PoolKey memory _key) {
         _key = PoolKey(CurrencyLibrary.ADDRESS_ZERO, currency, 3000, 60, IHooks(hookAddr));
         manager.initialize(_key, SQRT_PRICE_1_1);
         MockERC20(Currency.unwrap(currency)).approve(positionManager, type(uint256).max);
         modifyLiquidity(_key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x", 200 ether);
     }
 
-    function generatePermitDigest(IAllowanceTransfer.PermitSingle memory permitSingle)
-        internal
-        view
-        returns (bytes32)
-    {
+    function generatePermitDigest(IAllowanceTransfer.PermitSingle memory permitSingle) internal view returns (bytes32) {
         bytes32 domainSeparator = permit2.DOMAIN_SEPARATOR();
 
         bytes32 PERMIT_SINGLE_TYPEHASH = keccak256(
@@ -383,6 +382,10 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         permissionedHooks = IHooks(deployPermissionedHooks(address(manager), address(permissionsAdapterFactory)));
     }
 
+    function _deployInsecureHook() private {
+        insecureHooks = IHooks(deployInsecureHooks(address(manager)));
+    }
+
     function _deployMockPermissionedRouter() private {
         bytes memory routerBytecode = abi.encodePacked(
             vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
@@ -432,6 +435,11 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         key2 = createPoolWithLiquidity(currency2, currency3, address(permissionedHooks));
         key3 =
             createPoolWithLiquidity(Currency.wrap(address(permissionsAdapter0)), currency4, address(permissionedHooks));
+        insecureKey = createPoolWithLiquidity(
+            Currency.wrap(address(permissionsAdapter0)),
+            Currency.wrap(address(permissionsAdapter1)),
+            address(insecureHooks)
+        );
     }
 
     function _setupMockAllowList(Currency currency, address spender) private {
