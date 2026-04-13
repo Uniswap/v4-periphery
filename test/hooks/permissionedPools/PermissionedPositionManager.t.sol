@@ -1413,6 +1413,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         // Should revert when trying to mint with SWAP_ALLOWED
         PositionConfig memory config = PositionConfig({poolKey: insecureKey, tickLower: -120, tickUpper: 120});
         uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
 
         vm.startPrank(alice);
         vm.expectRevert(Unauthorized.selector);
