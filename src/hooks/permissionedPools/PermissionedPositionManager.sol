@@ -14,6 +14,7 @@ import {IPermissionsAdapter} from "./interfaces/IPermissionsAdapter.sol";
 import {IPermissionsAdapterFactory} from "./interfaces/IPermissionsAdapterFactory.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PermissionFlags} from "./libraries/PermissionFlags.sol";
+import {ActionConstants} from "../../libraries/ActionConstants.sol";
 
 contract PermissionedPositionManager is PositionManager {
     IPermissionsAdapterFactory public immutable PERMISSIONS_ADAPTER_FACTORY;
@@ -141,6 +142,15 @@ contract PermissionedPositionManager is PositionManager {
 
     function _verifiedPermissionedTokenOf(Currency currency) internal view returns (address) {
         return PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(Currency.unwrap(currency));
+    }
+
+    /// @notice Calculates the amount for a settle action
+    function _mapSettleAmount(uint256 amount, Currency currency) internal view override returns (uint256) {
+        address permissionedToken = _verifiedPermissionedTokenOf(currency);
+        if (permissionedToken == address(0) || amount != ActionConstants.CONTRACT_BALANCE) {
+            return super._mapSettleAmount(amount, currency);
+        }
+        return Currency.wrap(permissionedToken).balanceOfSelf();
     }
 
     function _getOwner(Currency currency) internal view returns (address) {
