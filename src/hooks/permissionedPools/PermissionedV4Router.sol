@@ -137,7 +137,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         // token is permissioned, wrap the token and transfer it to the pool manager
         IPermissionsAdapter permissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
         if (payer == address(this)) {
-            // allowlist check necessary to ensure a disallowed user cannot sell a permissioned token
+            // Check swap permission for the actual user
             if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.SWAP_ALLOWED)) {
                 revert Unauthorized();
             }
