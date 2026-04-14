@@ -446,6 +446,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         MockPermissionedToken mockPermissionedToken = MockPermissionedToken(Currency.unwrap(currency));
         mockAllowlistChecker = new MockAllowlistChecker(mockPermissionedToken);
         mockPermissionedToken.setAllowlist(address(this), PermissionFlags.ALL_ALLOWED);
+        mockPermissionedToken.setAllowlist(msg.sender, PermissionFlags.ALL_ALLOWED);
         mockPermissionedToken.setAllowlist(address(permissionedRouter), PermissionFlags.ALL_ALLOWED);
         mockPermissionedToken.setAllowlist(address(permissionedHooks), PermissionFlags.ALL_ALLOWED);
         mockPermissionedToken.setAllowlist(address(positionManager), PermissionFlags.ALL_ALLOWED);

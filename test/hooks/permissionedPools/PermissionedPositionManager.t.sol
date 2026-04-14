@@ -710,16 +710,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         permit2.approve(address(originalToken0), address(lpm), type(uint160).max, type(uint48).max);
         permit2.approve(Currency.unwrap(currency1), address(lpm), type(uint160).max, type(uint48).max);
 
-        // This should revert because the user is not in the allowlist
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CustomRevert.WrappedError.selector,
-                address(permissionedHooks),
-                IHooks.beforeAddLiquidity.selector,
-                abi.encodeWithSelector(Unauthorized.selector),
-                abi.encodeWithSelector(HookCallFailed.selector)
-            )
-        );
+        // This should revert because the recipient is not in the allowlist
+        vm.expectRevert(Unauthorized.selector);
         mint(config, liquidity, unauthorizedUser, ZERO_BYTES);
         vm.stopPrank();
     }
@@ -776,16 +768,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         tokenId = lpm.nextTokenId();
 
-        // Increasing liquidity should revert because the user is no longer in the allowlist
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CustomRevert.WrappedError.selector,
-                address(permissionedHooks),
-                IHooks.beforeAddLiquidity.selector,
-                abi.encodeWithSelector(Unauthorized.selector),
-                abi.encodeWithSelector(HookCallFailed.selector)
-            )
-        );
+        // Increasing liquidity should revert because the recipient is no longer in the allowlist
+        vm.expectRevert(Unauthorized.selector);
         mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
         vm.stopPrank();
 
@@ -822,16 +806,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         MockERC20(Currency.unwrap(currencyUnpermissioned)).approve(address(permit2), type(uint256).max);
         permit2.approve(Currency.unwrap(currencyUnpermissioned), address(lpm), type(uint160).max, type(uint48).max);
 
-        // This should revert because the user is not in the allowlist
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CustomRevert.WrappedError.selector,
-                address(permissionedHooks),
-                IHooks.beforeAddLiquidity.selector,
-                abi.encodeWithSelector(Unauthorized.selector),
-                abi.encodeWithSelector(HookCallFailed.selector)
-            )
-        );
+        // This should revert because the recipient is not in the allowlist
+        vm.expectRevert(Unauthorized.selector);
         mint(config, liquidity, unauthorizedUser, ZERO_BYTES);
         vm.stopPrank();
     }
@@ -902,16 +878,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         MockERC20(Currency.unwrap(currencyPermissioned)).approve(address(permit2), type(uint256).max);
         permit2.approve(Currency.unwrap(currencyPermissioned), address(lpm), type(uint160).max, type(uint48).max);
 
-        // This should revert because the user is not in the allowlist
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CustomRevert.WrappedError.selector,
-                address(permissionedHooks),
-                IHooks.beforeAddLiquidity.selector,
-                abi.encodeWithSelector(Unauthorized.selector),
-                abi.encodeWithSelector(HookCallFailed.selector)
-            )
-        );
+        // This should revert because the recipient is not in the allowlist
+        vm.expectRevert(Unauthorized.selector);
         mint(config, liquidity, unauthorizedUser, ZERO_BYTES);
         vm.stopPrank();
     }
@@ -1422,5 +1390,27 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.expectRevert(Unauthorized.selector);
         mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
         vm.stopPrank();
+    }
+
+    function test_permissioned_mint_to_unauthorized_recipient_reverts() public {
+        // Caller (address(this)) is allowed, but unauthorizedUser is not
+        // The hook will pass because the caller is authorized,
+        // but _mint should revert because the recipient lacks LIQUIDITY_ALLOWED
+        PositionConfig memory config = PositionConfig({poolKey: key0, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        vm.expectRevert(Unauthorized.selector);
+        mint(config, liquidity, unauthorizedUser, ZERO_BYTES);
+    }
+
+    function test_permissioned_mint_to_authorized_recipient_succeeds() public {
+        // Caller (address(this)) is allowed, alice is also allowed
+        // Minting to an authorized recipient should succeed
+        PositionConfig memory config = PositionConfig({poolKey: key0, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        mint(config, liquidity, alice, ZERO_BYTES);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
     }
 }
