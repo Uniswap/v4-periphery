@@ -87,7 +87,17 @@ contract PermissionedPositionManager is PositionManager {
     ) internal override {
         // allowlist is verified in the hook call
         if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
+        _checkRecipientAllowed(poolKey.currency0, owner);
+        _checkRecipientAllowed(poolKey.currency1, owner);
         super._mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, owner, hookData);
+    }
+
+    function _checkRecipientAllowed(Currency currency, address recipient) internal view {
+        address permissionedToken = _verifiedPermissionedTokenOf(currency);
+        if (permissionedToken == address(0)) return;
+        if (!IPermissionsAdapter(Currency.unwrap(currency)).isAllowed(recipient, PermissionFlags.LIQUIDITY_ALLOWED)) {
+            revert Unauthorized();
+        }
     }
 
     function _checkAllowedHooks(PoolKey calldata poolKey) internal view returns (bool) {
