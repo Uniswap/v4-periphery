@@ -12,7 +12,7 @@ import {WETH} from "solmate/src/tokens/WETH.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {Deploy} from "test/shared/Deploy.sol";
-import {PermissionedV4Router} from "../../../../src/hooks/permissionedPools/PermissionedV4Router.sol";
+import {MockPermissionedRouter} from "../../../mocks/MockPermissionedRouter.sol";
 import {Plan, Planner} from "../../../shared/Planner.sol";
 import {PathKey} from "../../../../src/libraries/PathKey.sol";
 import {Actions} from "../../../../src/libraries/Actions.sol";
@@ -36,7 +36,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     uint256 public constant MIN_TAKE_AMOUNT = 0;
 
     // Permissioned components
-    PermissionedV4Router public permissionedRouter;
+    MockPermissionedRouter public permissionedRouter;
     IAllowanceTransfer public permit2;
     MockAllowlistChecker public mockAllowlistChecker;
     IAllowlistChecker public allowListChecker;
@@ -390,11 +390,11 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
 
     function _deployMockPermissionedRouter() private {
         bytes memory routerBytecode = abi.encodePacked(
-            vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
+            vm.getCode("MockPermissionedRouter.sol:MockPermissionedRouter"),
             abi.encode(manager, permit2, permissionsAdapterFactory, weth9)
         );
         permissionedRouter =
-            PermissionedV4Router(payable(Deploy.create2(routerBytecode, keccak256("permissionedSwapRouter"))));
+            MockPermissionedRouter(payable(Deploy.create2(routerBytecode, keccak256("permissionedSwapRouter"))));
     }
 
     function _deployPositionManager() private {
