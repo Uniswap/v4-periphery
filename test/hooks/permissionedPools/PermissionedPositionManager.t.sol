@@ -1209,6 +1209,60 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         secondaryPosm.modifyLiquidities(calls, _deadline);
     }
 
+    function test_mint_from_contract_balance_uses_contract_balance_settle() public {
+        _test_mint_from_contract_balance_uses_contract_balance_settle(key0);
+        _test_mint_from_contract_balance_uses_contract_balance_settle(key1);
+        _test_mint_from_contract_balance_uses_contract_balance_settle(key2);
+    }
+
+    function _test_mint_from_contract_balance_uses_contract_balance_settle(PoolKey memory key) internal {
+        uint256 amount0ToTransfer = 100e18;
+        uint256 amount1ToTransfer = 100e18;
+
+        // Transfer underlying permissioned tokens to the POSM
+        setupContractBalance(key, amount0ToTransfer, amount1ToTransfer);
+
+        BalanceInfo memory balanceInfo = getBalanceInfo(key);
+
+        // Create a mint plan that uses CONTRACT_BALANCE instead of OPEN_DELTA
+        int24 tickLower = -int24(key.tickSpacing);
+        int24 tickUpper = int24(key.tickSpacing);
+        uint256 liquidityToAdd = LiquidityAmounts.getLiquidityForAmounts(
+            SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            amount0ToTransfer,
+            amount1ToTransfer
+        );
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: tickLower, tickUpper: tickUpper});
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.MINT_POSITION,
+            abi.encode(
+                config.poolKey,
+                config.tickLower,
+                config.tickUpper,
+                liquidityToAdd,
+                MAX_SLIPPAGE_INCREASE,
+                MAX_SLIPPAGE_INCREASE,
+                address(this),
+                ZERO_BYTES
+            )
+        );
+
+        // Use CONTRACT_BALANCE instead of OPEN_DELTA — this is the broken path
+        planner.add(Actions.SETTLE, abi.encode(key.currency0, ActionConstants.CONTRACT_BALANCE, false));
+        planner.add(Actions.SETTLE, abi.encode(key.currency1, ActionConstants.CONTRACT_BALANCE, false));
+
+        bytes memory calls = planner.finalizeModifyLiquidityWithClose(config.poolKey);
+        uint256 tokenId = lpm.nextTokenId();
+        lpm.modifyLiquidities(calls, _deadline);
+
+        verifyMintResults(key, balanceInfo, tokenId);
+    }
+
     // ===== PERMISSION FLAG TESTS =====
 
     function test_permission_flag_none() public {
