@@ -31,8 +31,9 @@ import {Plan} from "../../../shared/Planner.sol";
 import {IV4Router} from "../../../../src/interfaces/IV4Router.sol";
 import {Actions} from "../../../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../../../src/libraries/ActionConstants.sol";
-import {IPermissionsAdapterFactory} from
-    "../../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
+import {
+    IPermissionsAdapterFactory
+} from "../../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
 import {PermissionedV4Router} from "../../../../src/hooks/permissionedPools/PermissionedV4Router.sol";
 import {MockPermissionedToken} from "../PermissionedPoolsBase.sol";
 import {MockV4Router} from "../../../mocks/MockV4Router.sol";
@@ -81,6 +82,7 @@ contract PermissionedDeployers is Test {
     ActionsRouter public actionsRouter;
     IHooks public permissionedHooks;
     IHooks public secondaryPermissionedHooks;
+    IHooks public insecureHooks;
     IPermissionsAdapterFactory public permissionsAdapterFactory;
 
     PoolClaimsTest public claimsRouter;
@@ -147,6 +149,18 @@ contract PermissionedDeployers is Test {
         deployedHooksAddr = calculatedAddr;
     }
 
+    function deployInsecureHooks(address manager_) internal returns (address deployedHooksAddr) {
+        uint160 flags = (1 << 11) | (1 << 7);
+        (address calculatedAddr, bytes32 salt) = HookMiner.find(
+            address(this), flags, vm.getCode("MockHooks.sol:MockInsecureHooks"), abi.encode(IPoolManager(manager_))
+        );
+        address addr = Deploy.create2(
+            abi.encodePacked(vm.getCode("MockHooks.sol:MockInsecureHooks"), abi.encode(IPoolManager(manager_))), salt
+        );
+        assertEq(addr, calculatedAddr);
+        deployedHooksAddr = calculatedAddr;
+    }
+
     function deployPermissionedV4Router(address permit2_, address permissionsAdapterFactory_, address weth9)
         internal
         returns (address deployedAddr)
@@ -177,6 +191,7 @@ contract PermissionedDeployers is Test {
         permissionsAdapterFactory = IPermissionsAdapterFactory(permissionsAdapterFactoryAddress);
         permissionedHooks = IHooks(deployPermissionedHooks(address(manager), permissionsAdapterFactoryAddress));
         secondaryPermissionedHooks = IHooks(deployPermissionedHooks(address(manager), permissionsAdapterFactoryAddress));
+        insecureHooks = IHooks(deployInsecureHooks(address(manager)));
         address deployedAddr = deployPermissionedV4Router(permit2_, permissionsAdapterFactoryAddress, weth9);
         permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
         swapRouter = PoolSwapTest(deployedAddr);

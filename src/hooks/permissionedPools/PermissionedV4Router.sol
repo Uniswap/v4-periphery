@@ -95,10 +95,7 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
     }
 
     /// @notice Decodes and executes the given command with the given inputs
-    function _dispatch(bytes1 commandType, bytes calldata inputs)
-        internal
-        returns (bool success, bytes memory output)
-    {
+    function _dispatch(bytes1 commandType, bytes calldata inputs) internal returns (bool success, bytes memory output) {
         uint256 command = uint8(commandType & COMMAND_TYPE_MASK);
         success = true;
         if (command == COMMAND_PERMIT2_PERMIT) {
@@ -109,14 +106,15 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
             }
             bytes calldata data = _toBytes(inputs, 6); // PermitSingle takes first 6 slots (0..5)
 
-            (success, output) = address(PERMIT2).call(
-                abi.encodeWithSignature(
-                    "permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)",
-                    msgSender(),
-                    permitSingle,
-                    data
-                )
-            );
+            (success, output) = address(PERMIT2)
+                .call(
+                    abi.encodeWithSignature(
+                        "permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)",
+                        msgSender(),
+                        permitSingle,
+                        data
+                    )
+                );
         } else if (command == COMMAND_V4_SWAP) {
             _executeActions(inputs);
         } else {
@@ -139,13 +137,17 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         // token is permissioned, wrap the token and transfer it to the pool manager
         IPermissionsAdapter permissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
         if (payer == address(this)) {
-            // allowlist check necessary to ensure a disallowed user cannot sell a permissioned token
+            // Check swap permission for the actual user
             if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.SWAP_ALLOWED)) {
                 revert Unauthorized();
             }
             Currency.wrap(permissionedToken).transfer(address(permissionsAdapter), amount);
             permissionsAdapter.wrapToPoolManager(amount);
         } else {
+            // Check swap permission for the actual user
+            if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.SWAP_ALLOWED)) {
+                revert Unauthorized();
+            }
             // token is a permissioned token, wrap the token
             PERMIT2.transferFrom(payer, address(permissionsAdapter), uint160(amount), permissionedToken);
             permissionsAdapter.wrapToPoolManager(amount);

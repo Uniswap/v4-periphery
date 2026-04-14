@@ -4,9 +4,11 @@ pragma solidity ^0.8.0;
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IPermissionsAdapterFactory} from
-    "../../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
+import {
+    IPermissionsAdapterFactory
+} from "../../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
 import {PermissionedHooks} from "../../../../src/hooks/permissionedPools/PermissionedHooks.sol";
 
 contract MockHooks is PermissionedHooks {
@@ -28,9 +30,9 @@ contract MockInsecureHooks {
     function beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata)
         external
         pure
-        returns (bytes4)
+        returns (bytes4, BeforeSwapDelta, uint24)
     {
-        return IHooks.beforeSwap.selector;
+        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     receive() external payable {}

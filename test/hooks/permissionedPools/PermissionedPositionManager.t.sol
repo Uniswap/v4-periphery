@@ -67,6 +67,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     PoolKey public keyFake1;
     PoolKey public keyFake2;
 
+    PoolKey public insecureKey;
+
     // Test Users
     address public alice = makeAddr("ALICE");
     address public unauthorizedUser = makeAddr("UNAUTHORIZED");
@@ -134,6 +136,13 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             3000,
             SQRT_PRICE_1_1
         );
+        (insecureKey, poolId) = initPool(
+            Currency.wrap(address(permissionsAdapter0)),
+            Currency.wrap(address(permissionsAdapter2)),
+            insecureHooks,
+            3000,
+            SQRT_PRICE_1_1
+        );
     }
 
     function setupPermissionedComponents() internal {
@@ -181,29 +190,24 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(this), PermissionFlags.ALL_ALLOWED);
         MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
         MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(lpm), PermissionFlags.ALL_ALLOWED);
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
-            address(secondaryPosm), PermissionFlags.ALL_ALLOWED
-        );
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
-            address(permissionsAdapterFactory), PermissionFlags.ALL_ALLOWED
-        );
+        MockPermissionedToken(Currency.unwrap(currency))
+            .setAllowlist(address(secondaryPosm), PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency))
+            .setAllowlist(address(permissionsAdapterFactory), PermissionFlags.ALL_ALLOWED);
         MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(lpm), PermissionFlags.ALL_ALLOWED);
         MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(address(manager), PermissionFlags.ALL_ALLOWED);
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
-            address(permissionedSwapRouter), PermissionFlags.ALL_ALLOWED
-        );
-        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(
-            address(permissionedHooks), PermissionFlags.ALL_ALLOWED
-        );
+        MockPermissionedToken(Currency.unwrap(currency))
+            .setAllowlist(address(permissionedSwapRouter), PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2))
+            .setAllowlist(address(permissionedHooks), PermissionFlags.ALL_ALLOWED);
     }
 
     function setUpPemissionsAdapter(PermissionsAdapter permissionsAdapter, Currency currency) internal {
         adapterToPermissioned[Currency.wrap(address(permissionsAdapter))] = currency;
 
         MockPermissionedToken(Currency.unwrap(currency)).mint(address(this), 1000 ether);
-        MockPermissionedToken(Currency.unwrap(currency)).setAllowlist(
-            address(permissionsAdapter), PermissionFlags.ALL_ALLOWED
-        );
+        MockPermissionedToken(Currency.unwrap(currency))
+            .setAllowlist(address(permissionsAdapter), PermissionFlags.ALL_ALLOWED);
 
         // permissions adapter contract must have a non-zero balance of the permissioned token
         currency.transfer(address(permissionsAdapter), 1);
@@ -223,6 +227,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         setAllowedHooks(lpm, permissionsAdapterCurrency, secondaryPermissionedHooks);
         setAllowedHooks(secondaryPosm, permissionsAdapterCurrency, secondaryPermissionedHooks);
         setAllowedHooks(tertiaryPosm, permissionsAdapterCurrency, secondaryPermissionedHooks);
+
+        setAllowedHooks(lpm, permissionsAdapterCurrency, insecureHooks);
     }
 
     function setAllowedHooks(IPositionManager posm, Currency currency, IHooks permissionedHooks_) internal {
@@ -884,13 +890,11 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         }
 
         // Add some tokens to unauthorized user
-        MockPermissionedToken(Currency.unwrap(currencyPermissioned)).setAllowlist(
-            unauthorizedUser, PermissionFlags.ALL_ALLOWED
-        );
+        MockPermissionedToken(Currency.unwrap(currencyPermissioned))
+            .setAllowlist(unauthorizedUser, PermissionFlags.ALL_ALLOWED);
         MockPermissionedToken(Currency.unwrap(currencyPermissioned)).mint(unauthorizedUser, 1000e18);
-        MockPermissionedToken(Currency.unwrap(currencyPermissioned)).setAllowlist(
-            unauthorizedUser, PermissionFlags.NONE
-        );
+        MockPermissionedToken(Currency.unwrap(currencyPermissioned))
+            .setAllowlist(unauthorizedUser, PermissionFlags.NONE);
 
         vm.startPrank(unauthorizedUser);
 
@@ -997,8 +1001,9 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     function _test_initialize(Currency currency0_, Currency currency1_) internal {
         // initialize a new pool
-        PoolKey memory key =
-            PoolKey({currency0: currency0_, currency1: currency1_, fee: 0, tickSpacing: 100, hooks: IHooks(address(0))});
+        PoolKey memory key = PoolKey({
+            currency0: currency0_, currency1: currency1_, fee: 0, tickSpacing: 100, hooks: IHooks(address(0))
+        });
 
         lpm.initializePool(key, SQRT_PRICE_1_1);
 
@@ -1024,11 +1029,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             uint160(bound(sqrtPrice, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE_MINUS_MIN_SQRT_PRICE_MINUS_ONE));
         fee = uint24(bound(fee, 0, LPFeeLibrary.MAX_LP_FEE));
         PoolKey memory key = PoolKey({
-            currency0: currency0_,
-            currency1: currency1_,
-            fee: fee,
-            tickSpacing: 10,
-            hooks: IHooks(address(0))
+            currency0: currency0_, currency1: currency1_, fee: fee, tickSpacing: 10, hooks: IHooks(address(0))
         });
 
         lpm.initializePool(key, sqrtPrice);
@@ -1308,12 +1309,10 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         uint256 liquidity = 1e18;
 
         // Test SWAP_ALLOWED + LIQUIDITY_ALLOWED (should work like ALL_ALLOWED)
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(
-            alice, (PermissionFlags.SWAP_ALLOWED | PermissionFlags.LIQUIDITY_ALLOWED)
-        );
-        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(
-            alice, (PermissionFlags.SWAP_ALLOWED | PermissionFlags.LIQUIDITY_ALLOWED)
-        );
+        MockPermissionedToken(Currency.unwrap(currency0))
+            .setAllowlist(alice, (PermissionFlags.SWAP_ALLOWED | PermissionFlags.LIQUIDITY_ALLOWED));
+        MockPermissionedToken(Currency.unwrap(currency2))
+            .setAllowlist(alice, (PermissionFlags.SWAP_ALLOWED | PermissionFlags.LIQUIDITY_ALLOWED));
 
         uint256 tokenId = lpm.nextTokenId();
         vm.prank(alice);
@@ -1408,5 +1407,20 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.prank(alice);
         mint(config2, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
         assertEq(IERC721(address(lpm)).ownerOf(tokenId2), alice);
+    }
+
+    function test_permission_flag_swap_allowed_unauthorized_reverts() public {
+        // Test that SWAP_ALLOWED does not allow liquidity operations
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.SWAP_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.SWAP_ALLOWED);
+
+        // Should revert when trying to mint with SWAP_ALLOWED
+        PositionConfig memory config = PositionConfig({poolKey: insecureKey, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+
+        vm.startPrank(alice);
+        vm.expectRevert(Unauthorized.selector);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        vm.stopPrank();
     }
 }

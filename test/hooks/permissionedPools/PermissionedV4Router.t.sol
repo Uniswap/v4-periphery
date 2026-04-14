@@ -453,17 +453,17 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
-    function test_permission_flag_swap_allowed_succeeds() public {
-        // Test that SWAP_ALLOWED allows swap operations
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.SWAP_ALLOWED);
-        MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(alice, PermissionFlags.SWAP_ALLOWED);
+    function test_router_user_payment_permissioned_token_unauthorized_reverts() public {
+        // Test that LIQUIDITY_ALLOWED does not allow swap operations
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
 
         IERC20(Currency.unwrap(currency0)).transfer(alice, 2 ether);
         IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
 
         uint256 amountIn = 100;
         PoolKey memory adapterKey =
-            PoolKey(permissionsAdapter1Currency, permissionsAdapter0Currency, 3000, 60, permissionedHooks);
+            PoolKey(permissionsAdapter1Currency, permissionsAdapter0Currency, 3000, 60, insecureHooks);
 
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(adapterKey, true, uint128(amountIn), 0, bytes(""));
@@ -472,8 +472,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data =
             plan.finalizeSwap(permissionsAdapter1Currency, permissionsAdapter0Currency, ActionConstants.MSG_SENDER);
 
-        vm.prank(alice);
+        vm.startPrank(alice);
+        vm.expectRevert(Unauthorized.selector);
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+        vm.stopPrank();
     }
 
     function test_permission_flag_liquidity_allowed_swap_reverts() public {
@@ -540,12 +542,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
             plan.finalizeSwap(permissionsAdapter1Currency, permissionsAdapter0Currency, ActionConstants.MSG_SENDER);
 
         // Test SWAP_ALLOWED + LIQUIDITY_ALLOWED (should work like ALL_ALLOWED)
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(
-            alice, (PermissionFlags.SWAP_ALLOWED | PermissionFlags.LIQUIDITY_ALLOWED)
-        );
-        MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(
-            alice, (PermissionFlags.SWAP_ALLOWED | PermissionFlags.LIQUIDITY_ALLOWED)
-        );
+        MockPermissionedToken(Currency.unwrap(currency0))
+            .setAllowlist(alice, (PermissionFlags.SWAP_ALLOWED | PermissionFlags.LIQUIDITY_ALLOWED));
+        MockPermissionedToken(Currency.unwrap(currency1))
+            .setAllowlist(alice, (PermissionFlags.SWAP_ALLOWED | PermissionFlags.LIQUIDITY_ALLOWED));
 
         vm.prank(alice);
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
@@ -641,12 +641,10 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     }
 
     function test_permission_flag_all_pool_types_swap() public {
-        MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(permissionsAdapter0Currency))).setAllowlist(
-            alice, PermissionFlags.SWAP_ALLOWED
-        );
-        MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(permissionsAdapter1Currency))).setAllowlist(
-            alice, PermissionFlags.SWAP_ALLOWED
-        );
+        MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(permissionsAdapter0Currency)))
+            .setAllowlist(alice, PermissionFlags.SWAP_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(permissionsAdapter1Currency)))
+            .setAllowlist(alice, PermissionFlags.SWAP_ALLOWED);
 
         _test_permission_flag_all_pool_types_swap(key0);
         _test_permission_flag_all_pool_types_swap(key1);
@@ -683,8 +681,9 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         PoolKey memory adapterKey =
             PoolKey(permissionsAdapter1Currency, permissionsAdapter0Currency, 3000, 60, permissionedHooks);
 
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(adapterKey, true, uint128(amountOut), uint128(amountInMaximum), bytes(""));
+        IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
+            adapterKey, true, uint128(amountOut), uint128(amountInMaximum), bytes("")
+        );
 
         plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
         bytes memory data =
@@ -721,6 +720,29 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
             IV4Router.ExactInputParams(permissionsAdapter1Currency, pathKeys, uint128(amountIn), 0);
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
+        bytes memory data =
+            plan.finalizeSwap(permissionsAdapter1Currency, permissionsAdapter0Currency, ActionConstants.MSG_SENDER);
+
+        vm.prank(alice);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+    }
+
+    function test_router_user_payment_permissioned_token() public {
+        // Test that SWAP_ALLOWED allows swap operations
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.SWAP_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency1)).setAllowlist(alice, PermissionFlags.SWAP_ALLOWED);
+
+        IERC20(Currency.unwrap(currency0)).transfer(alice, 2 ether);
+        IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
+
+        uint256 amountIn = 100;
+        PoolKey memory adapterKey =
+            PoolKey(permissionsAdapter1Currency, permissionsAdapter0Currency, 3000, 60, permissionedHooks);
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(adapterKey, true, uint128(amountIn), 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         bytes memory data =
             plan.finalizeSwap(permissionsAdapter1Currency, permissionsAdapter0Currency, ActionConstants.MSG_SENDER);
 
@@ -839,8 +861,9 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
         plan = plan.add(Actions.SETTLE_ALL, abi.encode(key0.currency0, expectedAmountOut * 12 / 10));
         // take the entire open delta to the router's address
-        plan =
-            plan.add(Actions.TAKE, abi.encode(key0.currency1, ActionConstants.ADDRESS_THIS, ActionConstants.OPEN_DELTA));
+        plan = plan.add(
+            Actions.TAKE, abi.encode(key0.currency1, ActionConstants.ADDRESS_THIS, ActionConstants.OPEN_DELTA)
+        );
         bytes memory data = plan.encode();
         // the router holds no funds before
         assertEq(inputCurrency.balanceOf(address(permissionedRouter)), 0);
@@ -1816,17 +1839,15 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     function test_router_self_payment_permissioned_token_unauthorized_reverts() public {
         uint256 amountIn = 100000;
 
-        MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(key0.currency0))).setAllowlist(
-            unauthorizedUser, PermissionFlags.ALL_ALLOWED
-        );
+        MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(key0.currency0)))
+            .setAllowlist(unauthorizedUser, PermissionFlags.ALL_ALLOWED);
         IERC20(Currency.unwrap(getPermissionedCurrency(key0.currency0))).transfer(address(unauthorizedUser), amountIn);
 
         vm.prank(unauthorizedUser);
         IERC20(Currency.unwrap(getPermissionedCurrency(key0.currency0))).transfer(address(permissionedRouter), amountIn);
 
-        MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(key0.currency0))).setAllowlist(
-            unauthorizedUser, PermissionFlags.NONE
-        );
+        MockPermissionedToken(Currency.unwrap(getPermissionedCurrency(key0.currency0)))
+            .setAllowlist(unauthorizedUser, PermissionFlags.NONE);
 
         IV4Router.ExactInputSingleParams memory params =
             IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
@@ -1845,10 +1866,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     function test_command_permit2_permit() public {
         IAllowanceTransfer.PermitSingle memory permitSingle = IAllowanceTransfer.PermitSingle({
             details: IAllowanceTransfer.PermitDetails({
-                token: Currency.unwrap(currency0),
-                amount: 1e18,
-                expiration: uint48(block.timestamp + 3600),
-                nonce: 0
+                token: Currency.unwrap(currency0), amount: 1e18, expiration: uint48(block.timestamp + 3600), nonce: 0
             }),
             spender: address(permissionedRouter),
             sigDeadline: block.timestamp + 3600
@@ -1875,10 +1893,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     function test_failed_call_reverts() public {
         IAllowanceTransfer.PermitSingle memory permitSingle = IAllowanceTransfer.PermitSingle({
             details: IAllowanceTransfer.PermitDetails({
-                token: Currency.unwrap(currency0),
-                amount: 1e18,
-                expiration: uint48(block.timestamp + 3600),
-                nonce: 0
+                token: Currency.unwrap(currency0), amount: 1e18, expiration: uint48(block.timestamp + 3600), nonce: 0
             }),
             spender: address(permissionedRouter),
             sigDeadline: block.timestamp + 3600
