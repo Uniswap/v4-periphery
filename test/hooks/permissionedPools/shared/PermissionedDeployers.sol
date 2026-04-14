@@ -34,7 +34,7 @@ import {ActionConstants} from "../../../../src/libraries/ActionConstants.sol";
 import {
     IPermissionsAdapterFactory
 } from "../../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
-import {PermissionedV4Router} from "../../../../src/hooks/permissionedPools/PermissionedV4Router.sol";
+import {MockPermissionedRouter} from "../../../mocks/MockPermissionedRouter.sol";
 import {MockPermissionedToken} from "../PermissionedPoolsBase.sol";
 import {MockV4Router} from "../../../mocks/MockV4Router.sol";
 import {MockHooks} from "../mocks/MockHooks.sol";
@@ -75,7 +75,7 @@ contract PermissionedDeployers is Test {
     PoolModifyLiquidityTest public modifyLiquidityRouter;
     PoolModifyLiquidityTestNoChecks public modifyLiquidityNoChecks;
     SwapRouterNoChecks public swapRouterNoChecks;
-    PermissionedV4Router public permissionedSwapRouter;
+    MockPermissionedRouter public permissionedSwapRouter;
     PoolSwapTest public swapRouter;
     PoolDonateTest public donateRouter;
     PoolTakeTest public takeRouter;
@@ -166,7 +166,7 @@ contract PermissionedDeployers is Test {
         returns (address deployedAddr)
     {
         bytes memory routerBytecode = abi.encodePacked(
-            vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
+            vm.getCode("MockPermissionedRouter.sol:MockPermissionedRouter"),
             abi.encode(
                 manager,
                 IAllowanceTransfer(permit2_),
@@ -193,7 +193,7 @@ contract PermissionedDeployers is Test {
         secondaryPermissionedHooks = IHooks(deployPermissionedHooks(address(manager), permissionsAdapterFactoryAddress));
         insecureHooks = IHooks(deployInsecureHooks(address(manager)));
         address deployedAddr = deployPermissionedV4Router(permit2_, permissionsAdapterFactoryAddress, weth9);
-        permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
+        permissionedSwapRouter = MockPermissionedRouter(payable(deployedAddr));
         swapRouter = PoolSwapTest(deployedAddr);
         deployMiscRouters();
     }
