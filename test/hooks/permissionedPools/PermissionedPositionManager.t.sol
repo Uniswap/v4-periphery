@@ -115,14 +115,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             SQRT_PRICE_1_1
         );
 
-        Currency currencyA = currency2;
-        Currency currencyB = currency0;
-        if (currencyA > currencyB) {
-            currencyA = currency0;
-            currencyB = currency2;
-        }
-
-        (key3, poolId) = initPool(currencyA, currencyB, permissionedHooks, 3000, SQRT_PRICE_1_1);
         (keyFake0, poolId) = initPool(
             Currency.wrap(address(permissionsAdapter0)), currency1, secondaryPermissionedHooks, 3000, SQRT_PRICE_1_1
         );
@@ -269,15 +261,16 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     function test_modifyLiquidities_reverts_reentrancy() public {
         PoolKey memory key;
 
-        // Create a reentrant token and initialize the pool
+        // Create a reentrant token and initialize the pool with a verified adapter so beforeInitialize passes
         Currency reentrantToken = Currency.wrap(address(new ReentrantToken(lpm)));
-        (currency0, currency1) = (Currency.unwrap(reentrantToken) < Currency.unwrap(currency1))
-            ? (reentrantToken, currency1)
-            : (currency1, reentrantToken);
+        Currency adapterCurrency = Currency.wrap(address(permissionsAdapter0));
+        (Currency c0, Currency c1) = (Currency.unwrap(reentrantToken) < Currency.unwrap(adapterCurrency))
+            ? (reentrantToken, adapterCurrency)
+            : (adapterCurrency, reentrantToken);
 
         // Set up approvals for the reentrant token
         approvePosmCurrency(reentrantToken);
-        (key, poolId) = initPool(currency0, currency1, permissionedHooks, 3000, SQRT_PRICE_1_1);
+        (key, poolId) = initPool(c0, c1, permissionedHooks, 3000, SQRT_PRICE_1_1);
 
         // Try to add liquidity at that range, but the token reenters posm
         PositionConfig memory config =

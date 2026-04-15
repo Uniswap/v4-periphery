@@ -15,7 +15,7 @@ import {PermissionedRoutingTestHelpers} from "./shared/PermissionedRoutingTestHe
 import {Planner} from "../../shared/Planner.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../../src/libraries/ActionConstants.sol";
-import {MockPermissionedToken} from "./PermissionedPoolsBase.sol";
+import {MockPermissionedToken, MockAllowlistChecker} from "./PermissionedPoolsBase.sol";
 import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 import {PathKey} from "../../../src/libraries/PathKey.sol";
 
@@ -27,6 +27,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     error Unauthorized();
     error HookCallFailed();
     error SliceOutOfBounds();
+    error NoVerifiedAdapter();
     error InvalidCommandType(uint256 commandType);
     error ExecutionFailed(uint256 commandIndex, bytes output);
 
@@ -1031,8 +1032,17 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(currency2);
         tokenPath.push(currency3);
 
-        IV4Router.ExactInputParams memory params =
-            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedHooks), expectedAmountOut);
+        // Build path manually: first two hops use permissionedHooks, last hop uses address(0) (key2 is hookless)
+        PathKey[] memory path = new PathKey[](3);
+        path[0] = PathKey(permissionsAdapter1Currency, 3000, 60, IHooks(address(permissionedHooks)), bytes(""));
+        path[1] = PathKey(currency2, 3000, 60, IHooks(address(permissionedHooks)), bytes(""));
+        path[2] = PathKey(currency3, 3000, 60, IHooks(address(0)), bytes(""));
+        IV4Router.ExactInputParams memory params = IV4Router.ExactInputParams({
+            currencyIn: permissionsAdapter0Currency,
+            path: path,
+            amountIn: uint128(amountIn),
+            amountOutMinimum: uint128(expectedAmountOut)
+        });
 
         plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
 
@@ -1493,8 +1503,20 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         tokenPath.push(currency2);
         tokenPath.push(currency3);
 
-        IV4Router.ExactOutputParams memory params =
-            _getExactOutputParamsWithHook(tokenPath, amountOut, address(permissionedHooks), expectedAmountIn);
+        // Build path following _getExactOutputParamsWithHook pattern:
+        // path[2] = currency2 (hop: currency3→currency2, hookless pool)
+        // path[1] = adapter1 (hop: currency2→adapter1, permissioned)
+        // path[0] = adapter0 (hop: adapter1→adapter0, permissioned)
+        PathKey[] memory path = new PathKey[](3);
+        path[0] = PathKey(permissionsAdapter0Currency, 3000, 60, IHooks(address(permissionedHooks)), bytes(""));
+        path[1] = PathKey(permissionsAdapter1Currency, 3000, 60, IHooks(address(permissionedHooks)), bytes(""));
+        path[2] = PathKey(currency2, 3000, 60, IHooks(address(0)), bytes(""));
+        IV4Router.ExactOutputParams memory params = IV4Router.ExactOutputParams({
+            currencyOut: currency3,
+            path: path,
+            amountOut: uint128(amountOut),
+            amountInMaximum: uint128(expectedAmountIn)
+        });
 
         plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
 
@@ -1925,8 +1947,6 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         vm.expectRevert(HookNotImplemented.selector);
         permissionedHooks.afterSwap(address(this), key0, swapParams, balanceDelta, bytes(""));
         vm.expectRevert(HookNotImplemented.selector);
-        permissionedHooks.beforeInitialize(address(this), key0, 0);
-        vm.expectRevert(HookNotImplemented.selector);
         permissionedHooks.afterInitialize(address(this), key0, 0, 0);
         vm.expectRevert(HookNotImplemented.selector);
         permissionedHooks.beforeRemoveLiquidity(address(this), key0, modifyLiquidityParams, bytes(""));
@@ -1973,6 +1993,50 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         weth9.approve(address(permissionedRouter), 1 ether);
         weth9.withdraw(1 ether);
         vm.stopPrank();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    POOL INITIALIZATION TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_initialize_reverts_no_verified_adapter() public {
+        // Two non-permissioned tokens — neither is a verified adapter
+        (Currency c0, Currency c1) = currency2 < currency3 ? (currency2, currency3) : (currency3, currency2);
+        PoolKey memory unverifiedKey = PoolKey(c0, c1, 3000, 60, permissionedHooks);
+        vm.expectRevert();
+        manager.initialize(unverifiedKey, SQRT_PRICE_1_1);
+    }
+
+    function test_initialize_succeeds_one_verified_adapter() public {
+        Currency adapterCurrency = Currency.wrap(address(permissionsAdapter1));
+        (Currency c0, Currency c1) =
+            adapterCurrency < currency3 ? (adapterCurrency, currency3) : (currency3, adapterCurrency);
+        PoolKey memory oneAdapterKey = PoolKey(c0, c1, 500, 10, permissionedHooks);
+        manager.initialize(oneAdapterKey, SQRT_PRICE_1_1);
+    }
+
+    function test_initialize_succeeds_two_verified_adapters() public {
+        Currency a0 = Currency.wrap(address(permissionsAdapter0));
+        Currency a1 = Currency.wrap(address(permissionsAdapter1));
+        (Currency c0, Currency c1) = a0 < a1 ? (a0, a1) : (a1, a0);
+        PoolKey memory twoAdapterKey = PoolKey(c0, c1, 500, 10, permissionedHooks);
+        manager.initialize(twoAdapterKey, SQRT_PRICE_1_1);
+    }
+
+    function test_initialize_reverts_unverified_adapter() public {
+        // Create an adapter for a permissioned token but do NOT verify it — the M-03 attack path
+        // currency0 is a MockPermissionedToken (first 2 tokens in setup are permissioned)
+        IERC20 token = IERC20(Currency.unwrap(currency0));
+        MockAllowlistChecker checker = new MockAllowlistChecker(MockPermissionedToken(address(token)));
+        address unverifiedAdapter = permissionsAdapterFactory.createPermissionsAdapter(token, address(this), checker);
+        // Do NOT verify — skip transferring 1 wei and calling verifyPermissionsAdapter
+
+        Currency adapterCurrency = Currency.wrap(unverifiedAdapter);
+        (Currency c0, Currency c1) =
+            adapterCurrency < currency4 ? (adapterCurrency, currency4) : (currency4, adapterCurrency);
+        PoolKey memory attackKey = PoolKey(c0, c1, 3000, 60, permissionedHooks);
+        vm.expectRevert();
+        manager.initialize(attackKey, SQRT_PRICE_1_1);
     }
 
     receive() external payable {}

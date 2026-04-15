@@ -123,7 +123,7 @@ contract PermissionedPositionManager is PositionManager {
         // token is permissioned, wrap the token and transfer it to the pool manager
         IPermissionsAdapter permissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
         if (payer == address(this)) {
-            // @audit is it necessary to check the allowlist here?
+            // Check liquidity permission for the actual user
             if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
                 revert Unauthorized();
             }

@@ -432,7 +432,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         );
         key1 =
             createPoolWithLiquidity(Currency.wrap(address(permissionsAdapter1)), currency2, address(permissionedHooks));
-        key2 = createPoolWithLiquidity(currency2, currency3, address(permissionedHooks));
+        key2 = createPoolWithLiquidity(currency2, currency3, address(0));
         key3 =
             createPoolWithLiquidity(Currency.wrap(address(permissionsAdapter0)), currency4, address(permissionedHooks));
         insecureKey = createPoolWithLiquidity(
