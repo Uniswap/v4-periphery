@@ -79,14 +79,15 @@ contract MockPermissionedRouter is PermissionedV4Router, ReentrancyLock {
                 permitSingle := inputs.offset
             }
             bytes calldata data = _toBytes(inputs, 6);
-            (success, output) = address(PERMIT2).call(
-                abi.encodeWithSignature(
-                    "permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)",
-                    msgSender(),
-                    permitSingle,
-                    data
-                )
-            );
+            (success, output) = address(PERMIT2)
+                .call(
+                    abi.encodeWithSignature(
+                        "permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)",
+                        msgSender(),
+                        permitSingle,
+                        data
+                    )
+                );
         } else if (command == COMMAND_V4_SWAP) {
             _executeActions(inputs);
         } else {
