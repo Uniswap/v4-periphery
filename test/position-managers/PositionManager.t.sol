@@ -975,4 +975,61 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_mint_slippageRevert() public {}
+
+    /*//////////////////////////////////////////////////////////////
+                       MODIFY LIQUIDITY EVENT TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_mint_emitsModifyLiquidityEvent() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.expectEmit(true, true, true, true, address(lpm));
+        emit IPositionManager.ModifyLiquidity(
+            key.toId(), address(this), config.tickLower, config.tickUpper, int256(liquidity), bytes32(tokenId)
+        );
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+    }
+
+    function test_increase_emitsModifyLiquidityEvent() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        uint256 liquidityToAdd = 1e18;
+
+        vm.expectEmit(true, true, true, true, address(lpm));
+        emit IPositionManager.ModifyLiquidity(
+            key.toId(), address(this), config.tickLower, config.tickUpper, int256(liquidityToAdd), bytes32(tokenId)
+        );
+        increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
+    }
+
+    function test_decrease_emitsModifyLiquidityEvent() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        uint256 liquidityToRemove = 1e18;
+
+        vm.expectEmit(true, true, true, true, address(lpm));
+        emit IPositionManager.ModifyLiquidity(
+            key.toId(), address(this), config.tickLower, config.tickUpper, -int256(liquidityToRemove), bytes32(tokenId)
+        );
+        decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
+    }
+
+    function test_burn_emitsModifyLiquidityEvent() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        vm.expectEmit(true, true, true, true, address(lpm));
+        emit IPositionManager.ModifyLiquidity(
+            key.toId(), address(this), config.tickLower, config.tickUpper, -int256(liquidity), bytes32(tokenId)
+        );
+        burn(tokenId, config, ZERO_BYTES);
+    }
 }

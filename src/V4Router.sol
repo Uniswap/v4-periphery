@@ -4,9 +4,11 @@ pragma solidity 0.8.26;
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 import {PathKey} from "./libraries/PathKey.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
@@ -24,6 +26,7 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 /// An inheriting contract should call _executeActions at the point that they wish actions to be executed
 abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using SafeCast for *;
+    using StateLibrary for IPoolManager;
     using CalldataDecoder for bytes;
     using BipsLibrary for uint256;
 
@@ -167,6 +170,11 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 ),
                 hookData
             );
+
+            PoolId id = poolKey.toId();
+            (uint160 sqrtPriceX96, int24 tick,, uint24 fee) = poolManager.getSlot0(id);
+            uint128 liquidity = poolManager.getLiquidity(id);
+            emit Swap(id, msgSender(), delta.amount0(), delta.amount1(), sqrtPriceX96, liquidity, tick, fee);
 
             reciprocalAmount = (zeroForOne == amountSpecified < 0) ? delta.amount1() : delta.amount0();
         }

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PositionInfo} from "../libraries/PositionInfoLibrary.sol";
 
 import {INotifier} from "./INotifier.sol";
@@ -25,6 +26,16 @@ interface IPositionManager is
     IUnorderedNonce,
     IPermit2Forwarder
 {
+    /// @notice Emitted by the position manager for each modifyLiquidity call, mirroring PoolManager ModifyLiquidity except `sender` is the unlock locker (end user), not the position manager
+    event ModifyLiquidity(
+        PoolId indexed id,
+        address indexed sender,
+        int24 tickLower,
+        int24 tickUpper,
+        int256 liquidityDelta,
+        bytes32 salt
+    );
+
     /// @notice Thrown when the caller is not approved to modify a position
     error NotApproved(address caller);
     /// @notice Thrown when the block.timestamp exceeds the user-provided deadline
