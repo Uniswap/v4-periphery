@@ -506,9 +506,7 @@ contract PositionManager is
             hookData
         );
 
-        emit ModifyLiquidity(
-            poolKey.toId(), msgSender(), info.tickLower(), info.tickUpper(), liquidityChange, salt
-        );
+        emit ModifyLiquidity(poolKey.toId(), msgSender(), info.tickLower(), info.tickUpper(), liquidityChange, salt);
 
         if (info.hasSubscriber()) {
             _notifyModifyLiquidity(uint256(salt), liquidityChange, feesAccrued);
