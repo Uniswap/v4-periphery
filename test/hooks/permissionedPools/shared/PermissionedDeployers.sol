@@ -131,7 +131,7 @@ contract PermissionedDeployers is Test {
         internal
         returns (address deployedHooksAddr)
     {
-        uint160 flags = (1 << 11) | (1 << 7);
+        uint160 flags = (1 << 13) | (1 << 11) | (1 << 7);
         (address calculatedAddr, bytes32 salt) = HookMiner.find(
             address(this),
             flags,
