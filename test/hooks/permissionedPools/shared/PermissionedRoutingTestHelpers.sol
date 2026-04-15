@@ -261,6 +261,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
 
         params.currencyIn = _tokenPath[0];
         params.path = path;
+        params.minHopPriceX36 = new uint256[](0);
         params.amountIn = uint128(amountIn);
         params.amountOutMinimum = uint128(amountOutMinimum);
     }
@@ -286,6 +287,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
 
         params.currencyOut = _tokenPath[_tokenPath.length - 1];
         params.path = path;
+        params.minHopPriceX36 = new uint256[](0);
         params.amountOut = uint128(amountOut);
         params.amountInMaximum = uint128(amountInMaximum);
     }
