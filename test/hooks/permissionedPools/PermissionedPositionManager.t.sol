@@ -232,7 +232,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         require(success, "Failed to set hooks");
     }
 
-    function test_erc721_metadata_distinct_from_positionManager() public view {
+    function test_nameAndSymbol() public view {
         ERC721 posm = ERC721(address(lpm));
         assertEq(posm.name(), "Uniswap v4 Permissioned Positions NFT");
         assertEq(posm.symbol(), "UNI-V4-PERM-POSM");
