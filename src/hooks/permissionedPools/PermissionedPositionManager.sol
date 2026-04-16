@@ -37,6 +37,7 @@ contract PermissionedPositionManager is PositionManager {
         IPermissionsAdapterFactory _permissionsAdapterFactory
     ) PositionManager(_poolManager, _permit2, _unsubscribeGasLimit, _tokenDescriptor, _weth9) {
         PERMISSIONS_ADAPTER_FACTORY = _permissionsAdapterFactory;
+        /// @dev The EIP712 domain separator still uses "Uniswap v4 Positions NFT" as the name
         name = "Uniswap v4 Permissioned Positions NFT";
         symbol = "UNI-V4-PERM-POSM";
     }
