@@ -158,7 +158,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
                 break;
             }
         }
-        setUpPemissionsAdapter(permissionsAdapter0, currency0);
+        setUpPermissionsAdapter(permissionsAdapter0, currency0);
     }
 
     function setUpCurrencyTwo() internal {
@@ -176,7 +176,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
                 break;
             }
         }
-        setUpPemissionsAdapter(permissionsAdapter2, currency2);
+        setUpPermissionsAdapter(permissionsAdapter2, currency2);
     }
 
     function setUpAllowlist(Currency currency) internal {
@@ -195,7 +195,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             .setAllowlist(address(permissionedHooks), PermissionFlags.ALL_ALLOWED);
     }
 
-    function setUpPemissionsAdapter(PermissionsAdapter permissionsAdapter, Currency currency) internal {
+    function setUpPermissionsAdapter(PermissionsAdapter permissionsAdapter, Currency currency) internal {
         adapterToPermissioned[Currency.wrap(address(permissionsAdapter))] = currency;
 
         MockPermissionedToken(Currency.unwrap(currency)).mint(address(this), 1000 ether);

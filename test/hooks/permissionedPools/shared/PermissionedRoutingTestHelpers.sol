@@ -70,7 +70,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         _deployWETH();
         _deployPositionDescriptor();
         _deployPermit2();
-        _deployPemissionsAdapterFactory();
+        _deployPermissionsAdapterFactory();
         _deployPermissionedHooks();
         _deployInsecureHook();
         _deployMockPermissionedRouter();
@@ -369,7 +369,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         permit2 = IAllowanceTransfer(deployPermit2());
     }
 
-    function _deployPemissionsAdapterFactory() private {
+    function _deployPermissionsAdapterFactory() private {
         bytes memory permissionsAdapterFactoryBytecode = abi.encodePacked(
             vm.getCode("PermissionsAdapterFactory.sol:PermissionsAdapterFactory"), abi.encode(address(manager))
         );
