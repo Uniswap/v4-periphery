@@ -37,6 +37,8 @@ contract PermissionedPositionManager is PositionManager {
         IPermissionsAdapterFactory _permissionsAdapterFactory
     ) PositionManager(_poolManager, _permit2, _unsubscribeGasLimit, _tokenDescriptor, _weth9) {
         PERMISSIONS_ADAPTER_FACTORY = _permissionsAdapterFactory;
+        name = "Uniswap v4 Permissioned Positions NFT";
+        symbol = "UNI-V4-PERM-POSM";
     }
 
     /// @notice Sets the allowed hook for a given permissions adapter

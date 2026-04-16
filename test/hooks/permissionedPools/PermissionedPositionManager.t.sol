@@ -18,6 +18,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {IPositionManager} from "../../../src/interfaces/IPositionManager.sol";
+import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {DeltaResolver} from "../../../src/base/DeltaResolver.sol";
 import {PositionConfig} from "test/shared/PositionConfig.sol";
@@ -229,6 +230,12 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         bytes memory data = abi.encodeWithSelector(selector, currency, permissionedHooks_, true);
         (bool success,) = address(posm).call(data);
         require(success, "Failed to set hooks");
+    }
+
+    function test_erc721_metadata_distinct_from_positionManager() public view {
+        ERC721 posm = ERC721(address(lpm));
+        assertEq(posm.name(), "Uniswap v4 Permissioned Positions NFT");
+        assertEq(posm.symbol(), "UNI-V4-PERM-POSM");
     }
 
     function test_modifyLiquidities_reverts_deadlinePassed() public {
