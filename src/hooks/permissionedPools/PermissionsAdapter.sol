@@ -4,6 +4,7 @@ pragma solidity 0.8.26;
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPermissionsAdapter} from "./interfaces/IPermissionsAdapter.sol";
 import {IAllowlistChecker} from "./interfaces/IAllowlistChecker.sol";
 import {PermissionFlag} from "./libraries/PermissionFlags.sol";
@@ -108,7 +109,7 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
 
     function _unwrap(address account, uint256 amount) internal {
         _burn(account, amount);
-        PERMISSIONED_TOKEN.transfer(account, amount);
+        SafeERC20.safeTransfer(PERMISSIONED_TOKEN, account, amount);
     }
 
     function _getName(IERC20 permissionedToken) private view returns (string memory) {

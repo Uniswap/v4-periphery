@@ -5,7 +5,8 @@ import {
     IPermissionsAdapter,
     IAllowlistChecker
 } from "../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapter.sol";
-import {IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20, IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {PermissionedPoolsBase, MockAllowlistChecker} from "./PermissionedPoolsBase.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
@@ -146,6 +147,105 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
         permissionsAdapter.transfer(recipient, transferAmount);
         assertEq(permissionsAdapter.balanceOf(mockPoolManager), mintAmount - transferAmount);
         assertEq(permissionedToken.balanceOf(recipient), transferAmount);
+    }
+
+    function testRevert_UnwrapWhenUnderlyingReturnsFalse() public {
+        FalseReturningToken falseToken = new FalseReturningToken();
+        IPermissionsAdapter adapter = _deployAdapterForToken(IERC20(address(falseToken)));
+
+        falseToken.mint(address(adapter), 100);
+        adapter.wrapToPoolManager(100);
+
+        address recipient = makeAddr("recipient");
+        vm.prank(mockPoolManager);
+        vm.expectRevert(abi.encodeWithSelector(SafeERC20.SafeERC20FailedOperation.selector, address(falseToken)));
+        IERC20(address(adapter)).transfer(recipient, 50);
+
+        // Burn and payout are atomic: nothing moved.
+        assertEq(adapter.totalSupply(), 100);
+        assertEq(adapter.balanceOf(mockPoolManager), 100);
+        assertEq(falseToken.balanceOf(recipient), 0);
+    }
+
+    function testRevert_UnwrapWhenUnderlyingPausedSilentFail() public {
+        PausableSilentFailToken pausableToken = new PausableSilentFailToken();
+        IPermissionsAdapter adapter = _deployAdapterForToken(IERC20(address(pausableToken)));
+
+        pausableToken.mint(address(adapter), 100);
+        adapter.wrapToPoolManager(100);
+        pausableToken.pause();
+
+        address recipient = makeAddr("recipient");
+        vm.prank(mockPoolManager);
+        vm.expectRevert(abi.encodeWithSelector(SafeERC20.SafeERC20FailedOperation.selector, address(pausableToken)));
+        IERC20(address(adapter)).transfer(recipient, 50);
+
+        assertEq(adapter.totalSupply(), 100);
+        assertEq(adapter.balanceOf(mockPoolManager), 100);
+        assertEq(pausableToken.balanceOf(recipient), 0);
+        assertEq(pausableToken.balanceOf(address(adapter)), 100);
+    }
+
+    function test_UnwrapSucceedsAfterUnpause() public {
+        PausableSilentFailToken pausableToken = new PausableSilentFailToken();
+        IPermissionsAdapter adapter = _deployAdapterForToken(IERC20(address(pausableToken)));
+
+        pausableToken.mint(address(adapter), 100);
+        adapter.wrapToPoolManager(100);
+
+        address recipient = makeAddr("recipient");
+        vm.prank(mockPoolManager);
+        IERC20(address(adapter)).transfer(recipient, 50);
+
+        assertEq(adapter.totalSupply(), 50);
+        assertEq(adapter.balanceOf(mockPoolManager), 50);
+        assertEq(pausableToken.balanceOf(recipient), 50);
+        assertEq(pausableToken.balanceOf(address(adapter)), 50);
+    }
+
+    function _deployAdapterForToken(IERC20 token) internal returns (IPermissionsAdapter adapter) {
+        bytes memory args = abi.encode(token, mockPoolManager, owner, allowlistChecker);
+        bytes memory initcode = abi.encodePacked(vm.getCode("PermissionsAdapter.sol:PermissionsAdapter"), args);
+        address deployed;
+        assembly {
+            deployed := create(0, add(initcode, 0x20), mload(initcode))
+        }
+        adapter = IPermissionsAdapter(deployed);
+        vm.prank(owner);
+        adapter.updateAllowedWrapper(address(this), true);
+    }
+}
+
+/// @dev ERC-20 that silently returns false from transfer without reverting or moving balances.
+contract FalseReturningToken is ERC20 {
+    constructor() ERC20("FalseToken", "FT") {}
+
+    function mint(address to, uint256 amount) public {
+        _mint(to, amount);
+    }
+
+    function transfer(address, uint256) public pure override returns (bool) {
+        return false;
+    }
+}
+
+/// @dev ERC-20 with pause logic that silently returns false on transfer when paused.
+contract PausableSilentFailToken is ERC20 {
+    bool public paused;
+
+    constructor() ERC20("PausableToken", "PT") {}
+
+    function mint(address to, uint256 amount) public {
+        _mint(to, amount);
+    }
+
+    function pause() public {
+        paused = true;
+    }
+
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        if (paused) return false;
+        return super.transfer(to, amount);
     }
 }
 
