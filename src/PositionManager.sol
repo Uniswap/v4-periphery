@@ -482,7 +482,7 @@ contract PositionManager is
     }
 
     /// @notice Sweeps the entire contract balance of specified currency to the recipient
-    function _sweep(Currency currency, address to) internal {
+    function _sweep(Currency currency, address to) internal virtual {
         uint256 balance = currency.balanceOfSelf();
         if (balance > 0) currency.transfer(to, balance);
     }
