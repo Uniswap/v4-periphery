@@ -146,7 +146,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     function setupPermissionedComponents() internal {
-        mockAllowListChecker = new MockAllowlistChecker(MockPermissionedToken(Currency.unwrap(currency0)));
+        mockAllowListChecker = new MockAllowlistChecker();
         setUpCurrencyZero();
         setUpCurrencyTwo();
     }
@@ -1343,8 +1343,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
     }
 
-    function test_permission_flag_partial_permissions() public {
-        // Test that having permissions on only one token is enough
+    function test_permission_flag_partial_permissions_reverts() public {
+        // Test that having permissions on only one of the pool's tokens is not enough
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
         MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.NONE);
 
@@ -1352,6 +1352,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         uint256 liquidity = 1e18;
 
         vm.prank(alice);
+        vm.expectRevert();
         mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
     }
 

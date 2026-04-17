@@ -47,15 +47,8 @@ contract MockPermissionedToken is MockToken {
 }
 
 contract MockAllowlistChecker is BaseAllowlistChecker {
-    MockPermissionedToken public token;
-
-    constructor(MockPermissionedToken token_) {
-        token = token_;
-    }
-
     function checkAllowlist(address account, address tokenAddress) public view override returns (PermissionFlag) {
-        tokenAddress; // A real issuer's single-allowlist impl would key permissions by tokenAddress; this mock does not.
-        return token.accountPermissions(account);
+        return MockPermissionedToken(tokenAddress).accountPermissions(account);
     }
 }
 
@@ -65,6 +58,6 @@ contract PermissionedPoolsBase is Test {
 
     function setUp() public virtual {
         permissionedToken = new MockPermissionedToken();
-        allowlistChecker = new MockAllowlistChecker(permissionedToken);
+        allowlistChecker = new MockAllowlistChecker();
     }
 }

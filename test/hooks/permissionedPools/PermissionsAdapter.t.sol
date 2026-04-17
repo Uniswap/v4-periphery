@@ -107,7 +107,7 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
     }
 
     function test_UpdateAllowListChecker() public {
-        IAllowlistChecker newAllowListChecker = new MockAllowlistChecker(permissionedToken);
+        IAllowlistChecker newAllowListChecker = new MockAllowlistChecker();
         vm.prank(owner);
         vm.expectEmit(true, true, true, true);
         emit IPermissionsAdapter.AllowListCheckerUpdated(newAllowListChecker);
