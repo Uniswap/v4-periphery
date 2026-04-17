@@ -210,7 +210,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             .setAllowlist(address(permissionsAdapter), PermissionFlags.ALL_ALLOWED);
 
         // permissions adapter contract must have a non-zero balance of the permissioned token
-        currency.transfer(address(permissionsAdapter), 1);
+        IERC20(Currency.unwrap(currency)).approve(address(permissionsAdapter), 1);
+        permissionsAdapter.depositForVerification(1);
 
         permissionsAdapter.updateAllowedWrapper(address(manager), true);
         permissionsAdapter.updateAllowedWrapper(address(lpm), true);

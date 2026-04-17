@@ -53,7 +53,7 @@ contract MockAllowlistChecker is BaseAllowlistChecker {
         token = token_;
     }
 
-    function checkAllowlist(address account) public view override returns (PermissionFlag) {
+    function checkAllowlist(address account, address /*tokenAddress*/ ) public view override returns (PermissionFlag) {
         return token.accountPermissions(account);
     }
 }

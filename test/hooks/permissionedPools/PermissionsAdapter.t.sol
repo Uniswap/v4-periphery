@@ -115,6 +115,19 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
         assertEq(address(permissionsAdapter.allowListChecker()), address(newAllowListChecker));
     }
 
+    function test_DepositForVerification(uint256 amount) public {
+        address depositor = makeAddr("depositor");
+        permissionedToken.setTokenAllowlist(depositor, true);
+        permissionedToken.mint(depositor, amount);
+        vm.startPrank(depositor);
+        permissionedToken.approve(address(permissionsAdapter), amount);
+        vm.expectEmit(true, true, true, true);
+        emit IPermissionsAdapter.VerificationDeposit(depositor, amount);
+        permissionsAdapter.depositForVerification(amount);
+        vm.stopPrank();
+        assertEq(permissionedToken.balanceOf(address(permissionsAdapter)), amount);
+    }
+
     function test_UpdateSwappingEnabled(bool enabled) public {
         vm.prank(owner);
         vm.expectEmit(true, true, true, true);
@@ -150,7 +163,7 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
 }
 
 contract ImproperAllowlistChecker is IAllowlistChecker {
-    function checkAllowlist(address) public pure returns (PermissionFlag) {
+    function checkAllowlist(address, address) public pure returns (PermissionFlag) {
         return PermissionFlags.ALL_ALLOWED;
     }
 
