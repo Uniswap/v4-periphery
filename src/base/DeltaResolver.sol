@@ -12,9 +12,9 @@ import {ActionConstants} from "../libraries/ActionConstants.sol";
 abstract contract DeltaResolver is ImmutableState {
     using TransientStateLibrary for IPoolManager;
 
-    /// @notice Emitted trying to settle a positive delta.
+    /// @notice Emitted when unexpected negative delta is found.
     error DeltaNotPositive(Currency currency);
-    /// @notice Emitted trying to take a negative delta.
+    /// @notice Emitted when unexpected positive delta is found.
     error DeltaNotNegative(Currency currency);
     /// @notice Emitted when the contract does not have enough balance to wrap or unwrap.
     error InsufficientBalance();
