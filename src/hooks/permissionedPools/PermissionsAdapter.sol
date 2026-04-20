@@ -107,9 +107,7 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
             revert InvalidTransfer(from, to);
         }
         super._update(from, to, amount);
-        if (from == POOL_MANAGER) {
-            _unwrap(to, amount);
-        }
+        _unwrap(to, amount);
         // the pool manager must always be the only holder of the permissions adapter
         assert(balanceOf(POOL_MANAGER) == totalSupply());
     }

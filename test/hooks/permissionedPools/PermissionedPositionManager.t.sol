@@ -18,6 +18,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {IPositionManager} from "../../../src/interfaces/IPositionManager.sol";
+import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {DeltaResolver} from "../../../src/base/DeltaResolver.sol";
 import {PositionConfig} from "test/shared/PositionConfig.sol";
@@ -115,14 +116,6 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             SQRT_PRICE_1_1
         );
 
-        Currency currencyA = currency2;
-        Currency currencyB = currency0;
-        if (currencyA > currencyB) {
-            currencyA = currency0;
-            currencyB = currency2;
-        }
-
-        (key3, poolId) = initPool(currencyA, currencyB, permissionedHooks, 3000, SQRT_PRICE_1_1);
         (keyFake0, poolId) = initPool(
             Currency.wrap(address(permissionsAdapter0)), currency1, secondaryPermissionedHooks, 3000, SQRT_PRICE_1_1
         );
@@ -165,7 +158,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
                 break;
             }
         }
-        setUpPemissionsAdapter(permissionsAdapter0, currency0);
+        setUpPermissionsAdapter(permissionsAdapter0, currency0);
     }
 
     function setUpCurrencyTwo() internal {
@@ -183,7 +176,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
                 break;
             }
         }
-        setUpPemissionsAdapter(permissionsAdapter2, currency2);
+        setUpPermissionsAdapter(permissionsAdapter2, currency2);
     }
 
     function setUpAllowlist(Currency currency) internal {
@@ -202,7 +195,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             .setAllowlist(address(permissionedHooks), PermissionFlags.ALL_ALLOWED);
     }
 
-    function setUpPemissionsAdapter(PermissionsAdapter permissionsAdapter, Currency currency) internal {
+    function setUpPermissionsAdapter(PermissionsAdapter permissionsAdapter, Currency currency) internal {
         adapterToPermissioned[Currency.wrap(address(permissionsAdapter))] = currency;
 
         MockPermissionedToken(Currency.unwrap(currency)).mint(address(this), 1000 ether);
@@ -240,6 +233,12 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         require(success, "Failed to set hooks");
     }
 
+    function test_nameAndSymbol() public view {
+        ERC721 posm = ERC721(address(lpm));
+        assertEq(posm.name(), "Uniswap v4 Permissioned Positions NFT");
+        assertEq(posm.symbol(), "UNI-V4-PERM-POSM");
+    }
+
     function test_modifyLiquidities_reverts_deadlinePassed() public {
         _test_modifyLiquidities_reverts_deadlinePassed(key0);
         _test_modifyLiquidities_reverts_deadlinePassed(key1);
@@ -270,15 +269,16 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     function test_modifyLiquidities_reverts_reentrancy() public {
         PoolKey memory key;
 
-        // Create a reentrant token and initialize the pool
+        // Create a reentrant token and initialize the pool with a verified adapter so beforeInitialize passes
         Currency reentrantToken = Currency.wrap(address(new ReentrantToken(lpm)));
-        (currency0, currency1) = (Currency.unwrap(reentrantToken) < Currency.unwrap(currency1))
-            ? (reentrantToken, currency1)
-            : (currency1, reentrantToken);
+        Currency adapterCurrency = Currency.wrap(address(permissionsAdapter0));
+        (Currency c0, Currency c1) = (Currency.unwrap(reentrantToken) < Currency.unwrap(adapterCurrency))
+            ? (reentrantToken, adapterCurrency)
+            : (adapterCurrency, reentrantToken);
 
         // Set up approvals for the reentrant token
         approvePosmCurrency(reentrantToken);
-        (key, poolId) = initPool(currency0, currency1, permissionedHooks, 3000, SQRT_PRICE_1_1);
+        (key, poolId) = initPool(c0, c1, permissionedHooks, 3000, SQRT_PRICE_1_1);
 
         // Try to add liquidity at that range, but the token reenters posm
         PositionConfig memory config =
@@ -1089,6 +1089,52 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.prank(notAdmin);
         vm.expectRevert(Unauthorized.selector);
         IERC721(address(lpm)).transferFrom(alice, address(this), tokenId3);
+    }
+
+    function test_transferFrom_revert_recipient_not_allowlisted_mixed_pool() public {
+        // key0 is permissioned/normal, key1 is normal/permissioned
+        uint256 tokenId0 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0);
+        uint256 tokenId1 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key1);
+
+        address notAllowed = makeAddr("NOT_ALLOWED");
+
+        // admin is address(this) for both adapters; recipient is not on either allowlist
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, notAllowed, tokenId0);
+
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, notAllowed, tokenId1);
+    }
+
+    function test_transferFrom_revert_recipient_not_allowlisted_both_permissioned() public {
+        // key2 has two permissioned currencies
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        address notAllowed = makeAddr("NOT_ALLOWED");
+
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, notAllowed, tokenId);
+    }
+
+    function test_transferFrom_success_recipient_allowlisted_after_seize() public {
+        // admin can seize a key2 position to a fresh recipient after allowlisting them
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        address recipient = makeAddr("NEW_HOLDER");
+
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, recipient, tokenId);
+
+        // admin allowlists the recipient on each permissioned token in the pool
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(recipient, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(recipient, PermissionFlags.ALL_ALLOWED);
+
+        IERC721(address(lpm)).transferFrom(alice, recipient, tokenId);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), recipient);
     }
 
     error SafeTransferDisabled();

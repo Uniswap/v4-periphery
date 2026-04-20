@@ -44,6 +44,7 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
 
     error Unauthorized();
     error SwappingDisabled();
+    error NoVerifiedAdapter();
 
     constructor(IPoolManager manager, IPermissionsAdapterFactory permissionsAdapterFactory) BaseHook(manager) {
         PERMISSIONS_ADAPTER_FACTORY = permissionsAdapterFactory;
@@ -52,9 +53,20 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
 
     /// @dev Returns the hook permissions configuration for this contract
     function getHookPermissions() public pure override returns (Hooks.Permissions memory permissions) {
+        permissions.beforeInitialize = true;
         permissions.beforeSwap = true;
         permissions.afterSwap = true;
         permissions.beforeAddLiquidity = true;
+    }
+
+    /// @dev Requires at least one pool currency to be a verified permissions adapter
+    function _beforeInitialize(address, PoolKey calldata key, uint160) internal view override returns (bytes4) {
+        bool currency0Verified =
+            PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(Currency.unwrap(key.currency0)) != address(0);
+        bool currency1Verified =
+            PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(Currency.unwrap(key.currency1)) != address(0);
+        if (!currency0Verified && !currency1Verified) revert NoVerifiedAdapter();
+        return IHooks.beforeInitialize.selector;
     }
 
     /// @dev Does not need to verify msg.sender address directly, as verifying the allowlist is sufficient due to the fact that any valid senders are allowed wrappers

@@ -37,6 +37,9 @@ contract PermissionedPositionManager is PositionManager {
         IPermissionsAdapterFactory _permissionsAdapterFactory
     ) PositionManager(_poolManager, _permit2, _unsubscribeGasLimit, _tokenDescriptor, _weth9) {
         PERMISSIONS_ADAPTER_FACTORY = _permissionsAdapterFactory;
+        /// @dev The EIP712 domain separator still uses "Uniswap v4 Positions NFT" as the name
+        name = "Uniswap v4 Permissioned Positions NFT";
+        symbol = "UNI-V4-PERM-POSM";
     }
 
     /// @notice Sets the allowed hook for a given permissions adapter
@@ -55,7 +58,8 @@ contract PermissionedPositionManager is PositionManager {
     }
 
     /// @inheritdoc PositionManager
-    /// @dev Only allow admins of permissioned tokens to transfer positions that contain their tokens
+    /// @dev Only allow admins of permissioned tokens to transfer positions that contain their tokens,
+    /// and only to recipients that are allowlisted for each permissioned currency in the pool.
     function transferFrom(address from, address to, uint256 id) public override onlyIfPoolManagerLocked {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(id);
         address admin1 = _getOwner(poolKey.currency0);
@@ -63,6 +67,8 @@ contract PermissionedPositionManager is PositionManager {
         if (msg.sender != admin1 && msg.sender != admin2) {
             revert Unauthorized();
         }
+        _checkRecipientAllowed(poolKey.currency0, to);
+        _checkRecipientAllowed(poolKey.currency1, to);
         getApproved[id] = msg.sender;
         super.transferFrom(from, to, id);
     }

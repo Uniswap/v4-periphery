@@ -9,16 +9,16 @@ interface IPermissionsAdapterFactory {
     event PermissionsAdapterCreated(address indexed permissionsAdapter, address indexed permissionedToken);
 
     /// @notice Emitted when a permissions adapter is verified
-    event PemissionsAdapterVerified(address indexed permissionsAdapter, address indexed permissionedToken);
+    event PermissionsAdapterVerified(address indexed permissionsAdapter, address indexed permissionedToken);
 
     /// @notice Thrown when the permissions adapter does not exist
     error PermissionsAdapterNotFound(address permissionsAdapter);
 
     /// @notice Thrown when the permissions adapter is already verified
-    error PemissionsAdapterAlreadyVerified(address permissionsAdapter);
+    error PermissionsAdapterAlreadyVerified(address permissionsAdapter);
 
     /// @notice Thrown when the permissions adapter is not verified
-    error PemissionsAdapterNotVerified(address permissionsAdapter);
+    error PermissionsAdapterNotVerified(address permissionsAdapter);
 
     /// @notice Creates a new permissions adapter
     /// @param permissionedToken The permissioned token to wrap

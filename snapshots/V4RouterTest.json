@@ -22,6 +22,5 @@
   "V4Router_ExactOut3Hops_nativeOut": "200830",
   "V4Router_ExactOutputSingle": "106769",
   "V4Router_ExactOutputSingle_nativeIn_sweepETH": "100331",
-  "V4Router_ExactOutputSingle_nativeOut": "93745",
-  "router initcode hash (without constructor params, as uint256)": "27545762869727400677117557485685740862616789454191614676777323590122002226479"
+  "V4Router_ExactOutputSingle_nativeOut": "93745"
 }
