@@ -1920,15 +1920,13 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     }
 
     function test_hooks() public {
-        SwapParams memory swapParams = SwapParams({zeroForOne: true, amountSpecified: 100000, sqrtPriceLimitX96: 0});
         ModifyLiquidityParams memory modifyLiquidityParams =
             ModifyLiquidityParams({tickLower: 0, tickUpper: 0, liquidityDelta: 0, salt: bytes32(0)});
         BalanceDelta balanceDelta = BalanceDelta.wrap(0);
 
         // Use manager to avoid NotPoolManager errors for hooks with OnlyPoolManager modifier
         vm.startPrank(address(manager));
-        vm.expectRevert(HookNotImplemented.selector);
-        permissionedHooks.afterSwap(address(this), key0, swapParams, balanceDelta, bytes(""));
+        // afterSwap is implemented and tested separately
         vm.expectRevert(HookNotImplemented.selector);
         permissionedHooks.beforeInitialize(address(this), key0, 0);
         vm.expectRevert(HookNotImplemented.selector);
@@ -2016,7 +2014,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes32 swapTopic = IV4Router.Swap.selector;
         bool found = false;
         for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedRouter)) {
+            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedHooks)) {
                 found = true;
                 assertEq(logs[i].topics[1], PoolId.unwrap(adapterKey.toId()));
                 assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(this)))));
@@ -2052,7 +2050,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes32 swapTopic = IV4Router.Swap.selector;
         bool found = false;
         for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedRouter)) {
+            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedHooks)) {
                 found = true;
                 assertEq(logs[i].topics[1], PoolId.unwrap(adapterKey.toId()));
                 assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(this)))));
@@ -2089,7 +2087,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes32 swapTopic = IV4Router.Swap.selector;
         uint256 swapEventCount = 0;
         for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedRouter)) {
+            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedHooks)) {
                 swapEventCount++;
                 assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(this)))));
             }
