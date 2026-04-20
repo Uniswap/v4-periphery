@@ -1,6 +1,6 @@
 {
-  "Payments_swap_settleFromCaller_takeAllToMsgSender": "138777",
-  "Payments_swap_settleFromCaller_takeAllToSpecifiedAddress": "140249",
-  "Payments_swap_settleWithBalance_takeAllToMsgSender": "132731",
-  "Payments_swap_settleWithBalance_takeAllToSpecifiedAddress": "132869"
+  "Payments_swap_settleFromCaller_takeAllToMsgSender": "106980",
+  "Payments_swap_settleFromCaller_takeAllToSpecifiedAddress": "107909",
+  "Payments_swap_settleWithBalance_takeAllToMsgSender": "98363",
+  "Payments_swap_settleWithBalance_takeAllToSpecifiedAddress": "98273"
 }

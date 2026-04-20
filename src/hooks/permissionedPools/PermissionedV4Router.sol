@@ -12,7 +12,6 @@ import {PermissionFlags} from "./libraries/PermissionFlags.sol";
 
 contract PermissionedV4Router is V4Router, ReentrancyLock {
     IAllowanceTransfer public immutable PERMIT2;
-    IPermissionsAdapterFactory public immutable PERMISSIONS_ADAPTER_FACTORY;
     IWETH9 public immutable WETH9;
 
     error Unauthorized();
@@ -36,9 +35,8 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
         IAllowanceTransfer permit2,
         IPermissionsAdapterFactory permissionsAdapterFactory,
         IWETH9 weth9
-    ) V4Router(poolManager_) {
+    ) V4Router(poolManager_, permissionsAdapterFactory) {
         PERMIT2 = permit2;
-        PERMISSIONS_ADAPTER_FACTORY = permissionsAdapterFactory;
         WETH9 = weth9;
     }
 

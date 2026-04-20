@@ -5,13 +5,14 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {V4Router} from "../../src/V4Router.sol";
 import {ReentrancyLock} from "../../src/base/ReentrancyLock.sol";
+import {IPermissionsAdapterFactory} from "../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 
 contract MockV4Router is V4Router, ReentrancyLock {
     using SafeTransferLib for *;
 
-    constructor(IPoolManager _poolManager) V4Router(_poolManager) {}
+    constructor(IPoolManager _poolManager) V4Router(_poolManager, IPermissionsAdapterFactory(address(0))) {}
 
     function executeActions(bytes calldata params) external payable isNotLocked {
         _executeActions(params);

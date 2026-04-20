@@ -1,20 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import {VmSafe} from "forge-std/Vm.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
 import {Planner} from "../shared/Planner.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
-import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 
 contract V4RouterTest is RoutingTestHelpers {
-    using StateLibrary for IPoolManager;
-
     address alice = makeAddr("ALICE");
 
     function setUp() public {
@@ -913,113 +907,4 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(outputBalanceAfter - outputBalanceBefore, amountOut);
     }
 
-    /*//////////////////////////////////////////////////////////////
-                            SWAP EVENT TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_swapExactInputSingle_emitsSwapEvent() public {
-        uint256 amountIn = 1 ether;
-        uint256 expectedAmountOut = 992054607780215625;
-
-        IV4Router.ExactInputSingleParams memory params =
-            IV4Router.ExactInputSingleParams(key0, true, uint128(amountIn), 0, bytes(""));
-
-        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
-
-        vm.recordLogs();
-        router.executeActions(data);
-        VmSafe.Log[] memory logs = vm.getRecordedLogs();
-
-        // Find the Swap event emitted by the router
-        bytes32 swapTopic = IV4Router.Swap.selector;
-        bool found = false;
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(router)) {
-                found = true;
-                assertEq(logs[i].topics[1], PoolId.unwrap(key0.toId()));
-                assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(this)))));
-
-                (int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee) =
-                    abi.decode(logs[i].data, (int128, int128, uint160, uint128, int24, uint24));
-                assertEq(amount0, -int128(int256(amountIn)));
-                assertEq(amount1, int128(int256(expectedAmountOut)));
-
-                // Verify pool state fields match post-swap state
-                (uint160 expectedSqrtPrice, int24 expectedTick,, uint24 expectedFee) = manager.getSlot0(key0.toId());
-                uint128 expectedLiquidity = manager.getLiquidity(key0.toId());
-                assertEq(sqrtPriceX96, expectedSqrtPrice);
-                assertEq(tick, expectedTick);
-                assertEq(liquidity, expectedLiquidity);
-                assertEq(fee, expectedFee);
-                break;
-            }
-        }
-        assertTrue(found, "Swap event not found");
-    }
-
-    function test_swapExactOutputSingle_emitsSwapEvent() public {
-        uint256 amountOut = 1 ether;
-        uint256 expectedAmountIn = 1008049273448486163;
-
-        IV4Router.ExactOutputSingleParams memory params =
-            IV4Router.ExactOutputSingleParams(key0, true, uint128(amountOut), type(uint128).max, bytes(""));
-
-        plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
-
-        vm.recordLogs();
-        router.executeActions(data);
-        VmSafe.Log[] memory logs = vm.getRecordedLogs();
-
-        bytes32 swapTopic = IV4Router.Swap.selector;
-        bool found = false;
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(router)) {
-                found = true;
-                assertEq(logs[i].topics[1], PoolId.unwrap(key0.toId()));
-                assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(this)))));
-
-                (int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee) =
-                    abi.decode(logs[i].data, (int128, int128, uint160, uint128, int24, uint24));
-                assertEq(amount0, -int128(int256(expectedAmountIn)));
-                assertEq(amount1, int128(int256(amountOut)));
-
-                (uint160 expectedSqrtPrice, int24 expectedTick,, uint24 expectedFee) = manager.getSlot0(key0.toId());
-                uint128 expectedLiquidity = manager.getLiquidity(key0.toId());
-                assertEq(sqrtPriceX96, expectedSqrtPrice);
-                assertEq(tick, expectedTick);
-                assertEq(liquidity, expectedLiquidity);
-                assertEq(fee, expectedFee);
-                break;
-            }
-        }
-        assertTrue(found, "Swap event not found");
-    }
-
-    function test_swapExactIn_2Hops_emitsSwapEvents() public {
-        uint256 amountIn = 1 ether;
-
-        tokenPath.push(currency0);
-        tokenPath.push(currency1);
-        tokenPath.push(currency2);
-        IV4Router.ExactInputParams memory params = _getExactInputParams(tokenPath, amountIn);
-
-        plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
-        bytes memory data = plan.finalizeSwap(currency0, currency2, ActionConstants.MSG_SENDER);
-
-        vm.recordLogs();
-        router.executeActions(data);
-        VmSafe.Log[] memory logs = vm.getRecordedLogs();
-
-        bytes32 swapTopic = IV4Router.Swap.selector;
-        uint256 swapEventCount = 0;
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(router)) {
-                swapEventCount++;
-                assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(this)))));
-            }
-        }
-        assertEq(swapEventCount, 2, "Expected 2 Swap events for 2-hop swap");
-    }
 }

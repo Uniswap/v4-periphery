@@ -19,6 +19,7 @@ import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
 import {BipsLibrary} from "./libraries/BipsLibrary.sol";
 import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {IPermissionsAdapterFactory} from "./hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
 
 /// @title UniswapV4Router
 /// @notice Abstract contract that contains all internal logic needed for routing through Uniswap v4 pools
@@ -30,7 +31,15 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using CalldataDecoder for bytes;
     using BipsLibrary for uint256;
 
-    constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
+    /// @notice Factory used to detect verified permissioned tokens. May be the zero address, in which case
+    /// all tokens are treated as non-permissioned.
+    IPermissionsAdapterFactory public immutable PERMISSIONS_ADAPTER_FACTORY;
+
+    constructor(IPoolManager _poolManager, IPermissionsAdapterFactory _permissionsAdapterFactory)
+        BaseActionsRouter(_poolManager)
+    {
+        PERMISSIONS_ADAPTER_FACTORY = _permissionsAdapterFactory;
+    }
 
     function _handleAction(uint256 action, bytes calldata params) internal override {
         // swap actions and payment actions in different blocks for gas efficiency
@@ -171,12 +180,21 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 hookData
             );
 
-            PoolId id = poolKey.toId();
-            (uint160 sqrtPriceX96, int24 tick,, uint24 fee) = poolManager.getSlot0(id);
-            uint128 liquidity = poolManager.getLiquidity(id);
-            emit Swap(id, msgSender(), delta.amount0(), delta.amount1(), sqrtPriceX96, liquidity, tick, fee);
+            if (_isPermissioned(poolKey.currency0) || _isPermissioned(poolKey.currency1)) {
+                PoolId id = poolKey.toId();
+                (uint160 sqrtPriceX96, int24 tick,, uint24 fee) = poolManager.getSlot0(id);
+                uint128 liquidity = poolManager.getLiquidity(id);
+                emit Swap(id, msgSender(), delta.amount0(), delta.amount1(), sqrtPriceX96, liquidity, tick, fee);
+            }
 
             reciprocalAmount = (zeroForOne == amountSpecified < 0) ? delta.amount1() : delta.amount0();
         }
+    }
+
+    /// @notice Returns whether `currency` is a verified permissioned token. Always false when no
+    /// permissions adapter factory is configured.
+    function _isPermissioned(Currency currency) private view returns (bool) {
+        if (address(PERMISSIONS_ADAPTER_FACTORY) == address(0)) return false;
+        return PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(Currency.unwrap(currency)) != address(0);
     }
 }

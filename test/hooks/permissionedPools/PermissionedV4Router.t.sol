@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
+import {VmSafe} from "forge-std/Vm.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {CustomRevert} from "@uniswap/v4-core/src/libraries/CustomRevert.sol";
 import {Hooks, IHooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {PermitHash} from "permit2/src/libraries/PermitHash.sol";
 import {IV4Router} from "../../../src/interfaces/IV4Router.sol";
@@ -21,6 +25,7 @@ import {PathKey} from "../../../src/libraries/PathKey.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     using PermitHash for IAllowanceTransfer.PermitSingle;
+    using StateLibrary for IPoolManager;
 
     // To allow testing without importing PermissionedV4Router
     error HookNotImplemented();
@@ -1973,6 +1978,123 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         weth9.approve(address(permissionedRouter), 1 ether);
         weth9.withdraw(1 ether);
         vm.stopPrank();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            SWAP EVENT TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function _assertSwapEventMatchesPoolState(VmSafe.Log memory log, PoolKey memory key) private view {
+        (, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee) =
+            abi.decode(log.data, (int128, int128, uint160, uint128, int24, uint24));
+        amount1; // silence unused variable warning
+        PoolId id = key.toId();
+        (uint160 expectedSqrtPrice, int24 expectedTick,, uint24 expectedFee) = manager.getSlot0(id);
+        uint128 expectedLiquidity = manager.getLiquidity(id);
+        assertEq(sqrtPriceX96, expectedSqrtPrice);
+        assertEq(tick, expectedTick);
+        assertEq(liquidity, expectedLiquidity);
+        assertEq(fee, expectedFee);
+    }
+
+    function test_swapExactInputSingle_emitsSwapEvent() public {
+        uint256 amountIn = 1 ether;
+        PoolKey memory adapterKey =
+            PoolKey(permissionsAdapter1Currency, permissionsAdapter0Currency, 3000, 60, permissionedHooks);
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(adapterKey, true, uint128(amountIn), 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        bytes memory data =
+            plan.finalizeSwap(permissionsAdapter1Currency, permissionsAdapter0Currency, ActionConstants.MSG_SENDER);
+
+        vm.recordLogs();
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+        VmSafe.Log[] memory logs = vm.getRecordedLogs();
+
+        bytes32 swapTopic = IV4Router.Swap.selector;
+        bool found = false;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedRouter)) {
+                found = true;
+                assertEq(logs[i].topics[1], PoolId.unwrap(adapterKey.toId()));
+                assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(this)))));
+
+                (int128 amount0, int128 amount1,,,,) =
+                    abi.decode(logs[i].data, (int128, int128, uint160, uint128, int24, uint24));
+                assertEq(amount0, -int128(int256(amountIn)));
+                assertGt(amount1, 0);
+
+                _assertSwapEventMatchesPoolState(logs[i], adapterKey);
+                break;
+            }
+        }
+        assertTrue(found, "Swap event not found");
+    }
+
+    function test_swapExactOutputSingle_emitsSwapEvent() public {
+        uint256 amountOut = 1000;
+        PoolKey memory adapterKey =
+            PoolKey(permissionsAdapter1Currency, permissionsAdapter0Currency, 3000, 60, permissionedHooks);
+
+        IV4Router.ExactOutputSingleParams memory params =
+            IV4Router.ExactOutputSingleParams(adapterKey, true, uint128(amountOut), type(uint128).max, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT_SINGLE, abi.encode(params));
+        bytes memory data =
+            plan.finalizeSwap(permissionsAdapter1Currency, permissionsAdapter0Currency, ActionConstants.MSG_SENDER);
+
+        vm.recordLogs();
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+        VmSafe.Log[] memory logs = vm.getRecordedLogs();
+
+        bytes32 swapTopic = IV4Router.Swap.selector;
+        bool found = false;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedRouter)) {
+                found = true;
+                assertEq(logs[i].topics[1], PoolId.unwrap(adapterKey.toId()));
+                assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(this)))));
+
+                (int128 amount0, int128 amount1,,,,) =
+                    abi.decode(logs[i].data, (int128, int128, uint160, uint128, int24, uint24));
+                assertLt(amount0, 0);
+                assertEq(amount1, int128(int256(amountOut)));
+
+                _assertSwapEventMatchesPoolState(logs[i], adapterKey);
+                break;
+            }
+        }
+        assertTrue(found, "Swap event not found");
+    }
+
+    function test_swapExactIn_2Hops_emitsSwapEvents() public {
+        uint256 amountIn = 1 ether;
+
+        tokenPath.push(permissionsAdapter0Currency);
+        tokenPath.push(permissionsAdapter1Currency);
+        tokenPath.push(currency2);
+
+        IV4Router.ExactInputParams memory params =
+            _getExactInputParamsWithHook(tokenPath, amountIn, address(permissionedHooks));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(permissionsAdapter0Currency, currency2, ActionConstants.MSG_SENDER);
+
+        vm.recordLogs();
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+        VmSafe.Log[] memory logs = vm.getRecordedLogs();
+
+        bytes32 swapTopic = IV4Router.Swap.selector;
+        uint256 swapEventCount = 0;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedRouter)) {
+                swapEventCount++;
+                assertEq(logs[i].topics[2], bytes32(uint256(uint160(address(this)))));
+            }
+        }
+        assertEq(swapEventCount, 2, "Expected 2 Swap events for 2-hop swap");
     }
 
     receive() external payable {}
