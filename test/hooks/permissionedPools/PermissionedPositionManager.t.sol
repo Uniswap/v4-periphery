@@ -1090,6 +1090,51 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         IERC721(address(lpm)).transferFrom(alice, address(this), tokenId3);
     }
 
+    function test_transferFrom_revert_recipient_not_allowlisted_mixed_pool() public {
+        // key0 is permissioned/normal, key1 is normal/permissioned
+        uint256 tokenId0 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0);
+        uint256 tokenId1 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key1);
+
+        address notAllowed = makeAddr("NOT_ALLOWED");
+
+        // admin is address(this) for both adapters; recipient is not on either allowlist
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, notAllowed, tokenId0);
+
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, notAllowed, tokenId1);
+    }
+
+    function test_transferFrom_revert_recipient_not_allowlisted_both_permissioned() public {
+        // key2 has two permissioned currencies
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        address notAllowed = makeAddr("NOT_ALLOWED");
+
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, notAllowed, tokenId);
+    }
+
+    function test_transferFrom_success_recipient_allowlisted_after_seize() public {
+        // admin can seize a key2 position to a fresh recipient after allowlisting them
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        address recipient = makeAddr("NEW_HOLDER");
+
+        vm.expectRevert(Unauthorized.selector);
+        IERC721(address(lpm)).transferFrom(alice, recipient, tokenId);
+
+        // admin allowlists the recipient on the permissioned token backing the shared checker
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(recipient, PermissionFlags.ALL_ALLOWED);
+
+        IERC721(address(lpm)).transferFrom(alice, recipient, tokenId);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), recipient);
+    }
+
     error SafeTransferDisabled();
 
     function test_safe_transfer_from_reverts() public {
