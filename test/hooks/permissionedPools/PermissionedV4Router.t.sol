@@ -1984,9 +1984,8 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     //////////////////////////////////////////////////////////////*/
 
     function _assertSwapEventMatchesPoolState(VmSafe.Log memory log, PoolKey memory key) private view {
-        (, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee) =
+        (,, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee) =
             abi.decode(log.data, (int128, int128, uint160, uint128, int24, uint24));
-        amount1; // silence unused variable warning
         PoolId id = key.toId();
         (uint160 expectedSqrtPrice, int24 expectedTick,, uint24 expectedFee) = manager.getSlot0(id);
         uint128 expectedLiquidity = manager.getLiquidity(id);
