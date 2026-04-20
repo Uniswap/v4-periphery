@@ -20,6 +20,7 @@ import {Planner} from "../../shared/Planner.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
 import {ActionConstants} from "../../../src/libraries/ActionConstants.sol";
 import {MockPermissionedToken} from "./PermissionedPoolsBase.sol";
+import {PermissionedHooks} from "../../../src/hooks/permissionedPools/PermissionedHooks.sol";
 import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 import {PathKey} from "../../../src/libraries/PathKey.sol";
 
@@ -2011,7 +2012,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
         VmSafe.Log[] memory logs = vm.getRecordedLogs();
 
-        bytes32 swapTopic = IV4Router.Swap.selector;
+        bytes32 swapTopic = PermissionedHooks.Swap.selector;
         bool found = false;
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedHooks)) {
@@ -2047,7 +2048,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
         VmSafe.Log[] memory logs = vm.getRecordedLogs();
 
-        bytes32 swapTopic = IV4Router.Swap.selector;
+        bytes32 swapTopic = PermissionedHooks.Swap.selector;
         bool found = false;
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedHooks)) {
@@ -2084,7 +2085,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
         VmSafe.Log[] memory logs = vm.getRecordedLogs();
 
-        bytes32 swapTopic = IV4Router.Swap.selector;
+        bytes32 swapTopic = PermissionedHooks.Swap.selector;
         uint256 swapEventCount = 0;
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == swapTopic && logs[i].emitter == address(permissionedHooks)) {
