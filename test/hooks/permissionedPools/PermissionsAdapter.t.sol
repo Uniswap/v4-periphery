@@ -6,7 +6,6 @@ import {
     IAllowlistChecker
 } from "../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapter.sol";
 import {ERC20, IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {PermissionedPoolsBase, MockAllowlistChecker} from "./PermissionedPoolsBase.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
@@ -158,7 +157,7 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
 
         address recipient = makeAddr("recipient");
         vm.prank(mockPoolManager);
-        vm.expectRevert(abi.encodeWithSelector(SafeERC20.SafeERC20FailedOperation.selector, address(falseToken)));
+        vm.expectRevert("TRANSFER_FAILED");
         IERC20(address(adapter)).transfer(recipient, 50);
 
         // Burn and payout are atomic: nothing moved.
@@ -177,7 +176,7 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
 
         address recipient = makeAddr("recipient");
         vm.prank(mockPoolManager);
-        vm.expectRevert(abi.encodeWithSelector(SafeERC20.SafeERC20FailedOperation.selector, address(pausableToken)));
+        vm.expectRevert("TRANSFER_FAILED");
         IERC20(address(adapter)).transfer(recipient, 50);
 
         assertEq(adapter.totalSupply(), 100);
