@@ -906,5 +906,4 @@ contract V4RouterTest is RoutingTestHelpers {
         assertEq(inputBalanceBefore - inputBalanceAfter, expectedAmountIn);
         assertEq(outputBalanceAfter - outputBalanceBefore, amountOut);
     }
-
 }
