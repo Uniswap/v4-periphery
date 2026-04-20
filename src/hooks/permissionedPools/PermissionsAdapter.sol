@@ -3,15 +3,15 @@ pragma solidity 0.8.26;
 
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
-import {ERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {ERC20 as SolmateERC20} from "solmate/src/tokens/ERC20.sol";
+import {ERC20 as OZERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {IPermissionsAdapter} from "./interfaces/IPermissionsAdapter.sol";
 import {IAllowlistChecker} from "./interfaces/IAllowlistChecker.sol";
 import {PermissionFlag} from "./libraries/PermissionFlags.sol";
 
-contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
-    using SafeTransferLib for SolmateERC20;
+contract PermissionsAdapter is OZERC20, Ownable2Step, IPermissionsAdapter {
+    using SafeTransferLib for ERC20;
 
     /// @inheritdoc IPermissionsAdapter
     address public immutable POOL_MANAGER;
@@ -33,7 +33,7 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
         address poolManager,
         address initialOwner,
         IAllowlistChecker allowListChecker_
-    ) ERC20(_getName(permissionedToken), _getSymbol(permissionedToken)) Ownable(initialOwner) {
+    ) OZERC20(_getName(permissionedToken), _getSymbol(permissionedToken)) Ownable(initialOwner) {
         PERMISSIONED_TOKEN = permissionedToken;
         POOL_MANAGER = poolManager;
         _updateAllowListChecker(allowListChecker_);
@@ -112,7 +112,7 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
 
     function _unwrap(address account, uint256 amount) internal {
         _burn(account, amount);
-        SolmateERC20(address(PERMISSIONED_TOKEN)).safeTransfer(account, amount);
+        ERC20(address(PERMISSIONED_TOKEN)).safeTransfer(account, amount);
     }
 
     function _getName(IERC20 permissionedToken) private view returns (string memory) {
