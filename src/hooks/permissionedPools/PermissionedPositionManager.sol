@@ -43,7 +43,9 @@ contract PermissionedPositionManager is PositionManager {
     }
 
     /// @notice Sets the allowed hook for a given permissions adapter
-    /// @dev Sets which hooks are allowed to be used with a permissions adapter. Only callable by the owner of the permissions adapter
+    /// @dev Sets which hooks are allowed to be used with a permissions adapter. Only callable by the owner of the permissions adapter.
+    ///      Revoking a hook (setting `allowed` to false) blocks future mints and liquidity increases on existing positions that use
+    ///      that hook; existing liquidity can still be decreased or burned so that holders can always exit.
     /// @param currency The currency of the permissions adapter
     /// @param hooks The hook to set the allowance for
     /// @param allowed Whether the hook is allowed to be used with the permissions adapter
@@ -99,6 +101,32 @@ contract PermissionedPositionManager is PositionManager {
         super._mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, owner, hookData);
     }
 
+    /// @dev Re-validate the hook allowlist on every liquidity increase so that a revoked hook cannot
+    ///      continue to accept new inflows on existing positions. Decrease and burn paths are intentionally
+    ///      left unchecked so that holders can always exit positions even after a hook has been removed
+    ///      from the allowlist.
+    function _increase(
+        uint256 tokenId,
+        uint256 liquidity,
+        uint128 amount0Max,
+        uint128 amount1Max,
+        bytes calldata hookData
+    ) internal override {
+        (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
+        if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
+        super._increase(tokenId, liquidity, amount0Max, amount1Max, hookData);
+    }
+
+    /// @dev See `_increase` — same rationale for the from-deltas variant.
+    function _increaseFromDeltas(uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData)
+        internal
+        override
+    {
+        (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
+        if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
+        super._increaseFromDeltas(tokenId, amount0Max, amount1Max, hookData);
+    }
+
     function _checkRecipientAllowed(Currency currency, address recipient) internal view {
         address permissionedToken = _verifiedPermissionedTokenOf(currency);
         if (permissionedToken == address(0)) return;
@@ -107,7 +135,7 @@ contract PermissionedPositionManager is PositionManager {
         }
     }
 
-    function _checkAllowedHooks(PoolKey calldata poolKey) internal view returns (bool) {
+    function _checkAllowedHooks(PoolKey memory poolKey) internal view returns (bool) {
         return
             _checkAllowedHook(poolKey.currency0, poolKey.hooks) && _checkAllowedHook(poolKey.currency1, poolKey.hooks);
     }

@@ -1512,4 +1512,179 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         mint(config, liquidity, alice, ZERO_BYTES);
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
     }
+
+    // =============================================================================
+    // Hook allowlist revocation enforcement on liquidity increases (ECO-218 / SC-L-07)
+    // =============================================================================
+
+    function test_permissioned_increase_disallowed_hook_reverts() public {
+        _test_permissioned_increase_disallowed_hook_reverts(key0);
+        _test_permissioned_increase_disallowed_hook_reverts(key1);
+        _test_permissioned_increase_disallowed_hook_reverts(key2);
+    }
+
+    function _test_permissioned_increase_disallowed_hook_reverts(PoolKey memory key) internal {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        uint128 liquidityBefore = lpm.getPositionLiquidity(tokenId);
+
+        // Revoke the hook as the adapter admin (address(this) owns both permissionsAdapter0 and permissionsAdapter2)
+        _setHookAllowedForKey(key, false);
+
+        vm.prank(alice);
+        vm.expectRevert(InvalidHook.selector);
+        increaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+
+        assertEq(lpm.getPositionLiquidity(tokenId), liquidityBefore);
+
+        // restore so the fan-out across keys is independent
+        _setHookAllowedForKey(key, true);
+    }
+
+    function test_permissioned_increaseFromDeltas_disallowed_hook_reverts() public {
+        _test_permissioned_increaseFromDeltas_disallowed_hook_reverts(key0);
+        _test_permissioned_increaseFromDeltas_disallowed_hook_reverts(key1);
+        _test_permissioned_increaseFromDeltas_disallowed_hook_reverts(key2);
+    }
+
+    function _test_permissioned_increaseFromDeltas_disallowed_hook_reverts(PoolKey memory key) internal {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 initialLiquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.prank(alice);
+        mint(config, initialLiquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        uint128 liquidityBefore = lpm.getPositionLiquidity(tokenId);
+
+        _setHookAllowedForKey(key, false);
+
+        // Build a plan that pre-settles both currencies then drives INCREASE_LIQUIDITY_FROM_DELTAS.
+        // The hook-allowlist check runs at the top of the override, so the whole batch reverts
+        // atomically and no funds move.
+        Plan memory planner = Planner.init();
+        planner.add(Actions.SETTLE, abi.encode(key.currency0, uint256(10e18), true));
+        planner.add(Actions.SETTLE, abi.encode(key.currency1, uint256(10e18), true));
+        planner.add(
+            Actions.INCREASE_LIQUIDITY_FROM_DELTAS,
+            abi.encode(tokenId, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        vm.expectRevert(InvalidHook.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+
+        assertEq(lpm.getPositionLiquidity(tokenId), liquidityBefore);
+
+        _setHookAllowedForKey(key, true);
+    }
+
+    function test_permissioned_increase_succeeds_when_hook_still_allowed() public {
+        _test_permissioned_increase_succeeds_when_hook_still_allowed(key0);
+        _test_permissioned_increase_succeeds_when_hook_still_allowed(key1);
+        _test_permissioned_increase_succeeds_when_hook_still_allowed(key2);
+    }
+
+    function _test_permissioned_increase_succeeds_when_hook_still_allowed(PoolKey memory key) internal {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        uint128 liquidityBefore = lpm.getPositionLiquidity(tokenId);
+
+        vm.prank(alice);
+        increaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+
+        assertEq(lpm.getPositionLiquidity(tokenId), liquidityBefore + uint128(liquidity));
+    }
+
+    function test_permissioned_increase_succeeds_then_reverts_after_revocation() public {
+        _test_permissioned_increase_succeeds_then_reverts_after_revocation(key0);
+        _test_permissioned_increase_succeeds_then_reverts_after_revocation(key1);
+        _test_permissioned_increase_succeeds_then_reverts_after_revocation(key2);
+    }
+
+    function _test_permissioned_increase_succeeds_then_reverts_after_revocation(PoolKey memory key) internal {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        // While the hook is still allowed, increase succeeds.
+        vm.prank(alice);
+        increaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+        uint128 liquidityAfterFirstIncrease = lpm.getPositionLiquidity(tokenId);
+
+        // Revoke the hook — the next increase must revert.
+        _setHookAllowedForKey(key, false);
+
+        vm.prank(alice);
+        vm.expectRevert(InvalidHook.selector);
+        increaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+
+        assertEq(lpm.getPositionLiquidity(tokenId), liquidityAfterFirstIncrease);
+
+        _setHookAllowedForKey(key, true);
+    }
+
+    function test_permissioned_increase_reverts_when_only_one_currency_hook_revoked() public {
+        // Use key2 (permissioned/permissioned) to exercise the `&&` short-circuit in _checkAllowedHooks.
+        // Each side's mapping entry must independently block an increase.
+        _test_permissioned_increase_reverts_when_only_one_currency_hook_revoked(key2, true);
+        _test_permissioned_increase_reverts_when_only_one_currency_hook_revoked(key2, false);
+    }
+
+    function _test_permissioned_increase_reverts_when_only_one_currency_hook_revoked(
+        PoolKey memory key,
+        bool revokeCurrency0
+    ) internal {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        Currency revoked = revokeCurrency0 ? key.currency0 : key.currency1;
+        _setHookAllowed(revoked, key.hooks, false);
+
+        vm.prank(alice);
+        vm.expectRevert(InvalidHook.selector);
+        increaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+
+        // Restore for the next iteration so the tests are independent.
+        _setHookAllowed(revoked, key.hooks, true);
+    }
+
+    // Helpers for toggling the hook allowlist in tests. Uses a raw selector call to mirror the
+    // pattern established by `setAllowedHooks` (line 227).
+    function _setHookAllowedForKey(PoolKey memory key, bool allowed) internal {
+        _setHookAllowedIfPermissioned(key.currency0, key.hooks, allowed);
+        _setHookAllowedIfPermissioned(key.currency1, key.hooks, allowed);
+    }
+
+    function _setHookAllowedIfPermissioned(Currency currency, IHooks hooks_, bool allowed) internal {
+        // setAllowedHook requires the currency to have a verified permissions adapter;
+        // skip unpermissioned currencies so mixed-pool keys (key0, key1) work with this helper.
+        if (permissionsAdapterFactory.verifiedPermissionsAdapterOf(Currency.unwrap(currency)) == address(0)) return;
+        _setHookAllowed(currency, hooks_, allowed);
+    }
+
+    function _setHookAllowed(Currency currency, IHooks hooks_, bool allowed) internal {
+        // setAllowedHook(Currency,IHooks,bool) selector
+        bytes4 selector = 0xb5cdc484;
+        (bool success,) = address(lpm).call(abi.encodeWithSelector(selector, currency, hooks_, allowed));
+        require(success, "setAllowedHook failed");
+    }
 }
