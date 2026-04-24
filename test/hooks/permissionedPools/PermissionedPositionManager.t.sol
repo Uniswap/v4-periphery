@@ -1670,11 +1670,11 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     // Helpers for toggling the hook allowlist in tests. Uses a raw selector call to mirror the
     // pattern established by `setAllowedHooks` (line 227).
     function _setHookAllowedForKey(PoolKey memory key, bool allowed) internal {
-        _maybeSetHookAllowed(key.currency0, key.hooks, allowed);
-        _maybeSetHookAllowed(key.currency1, key.hooks, allowed);
+        _setHookAllowedIfPermissioned(key.currency0, key.hooks, allowed);
+        _setHookAllowedIfPermissioned(key.currency1, key.hooks, allowed);
     }
 
-    function _maybeSetHookAllowed(Currency currency, IHooks hooks_, bool allowed) internal {
+    function _setHookAllowedIfPermissioned(Currency currency, IHooks hooks_, bool allowed) internal {
         // setAllowedHook requires the currency to have a verified permissions adapter;
         // skip unpermissioned currencies so mixed-pool keys (key0, key1) work with this helper.
         if (permissionsAdapterFactory.verifiedPermissionsAdapterOf(Currency.unwrap(currency)) == address(0)) return;
