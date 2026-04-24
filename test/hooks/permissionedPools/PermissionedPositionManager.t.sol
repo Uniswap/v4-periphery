@@ -1090,8 +1090,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         IERC721(address(lpm)).transferFrom(alice, address(this), tokenId3);
     }
 
-    function test_transferFrom_revert_recipient_not_allowlisted_mixed_pool() public {
-        // key0 is permissioned/normal, key1 is normal/permissioned
+    function test_transferFrom_success_recipient_not_allowlisted_mixed_pool() public {
+        // admin may transfer to any recipient; the co-admin must not be able to block via allowlist
         uint256 tokenId0 = lpm.nextTokenId();
         _test_permissioned_mint_allowed_user(key0);
         uint256 tokenId1 = lpm.nextTokenId();
@@ -1099,40 +1099,21 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         address notAllowed = makeAddr("NOT_ALLOWED");
 
-        // admin is address(this) for both adapters; recipient is not on either allowlist
-        vm.expectRevert(Unauthorized.selector);
         IERC721(address(lpm)).transferFrom(alice, notAllowed, tokenId0);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId0), notAllowed);
 
-        vm.expectRevert(Unauthorized.selector);
         IERC721(address(lpm)).transferFrom(alice, notAllowed, tokenId1);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId1), notAllowed);
     }
 
-    function test_transferFrom_revert_recipient_not_allowlisted_both_permissioned() public {
-        // key2 has two permissioned currencies
+    function test_transferFrom_success_recipient_not_allowlisted_both_permissioned() public {
         uint256 tokenId = lpm.nextTokenId();
         _test_permissioned_mint_allowed_user(key2);
 
         address notAllowed = makeAddr("NOT_ALLOWED");
 
-        vm.expectRevert(Unauthorized.selector);
         IERC721(address(lpm)).transferFrom(alice, notAllowed, tokenId);
-    }
-
-    function test_transferFrom_success_recipient_allowlisted_after_seize() public {
-        // admin can seize a key2 position to a fresh recipient after allowlisting them
-        uint256 tokenId = lpm.nextTokenId();
-        _test_permissioned_mint_allowed_user(key2);
-
-        address recipient = makeAddr("NEW_HOLDER");
-
-        vm.expectRevert(Unauthorized.selector);
-        IERC721(address(lpm)).transferFrom(alice, recipient, tokenId);
-
-        // admin allowlists the recipient on the permissioned token backing the shared checker
-        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(recipient, PermissionFlags.ALL_ALLOWED);
-
-        IERC721(address(lpm)).transferFrom(alice, recipient, tokenId);
-        assertEq(IERC721(address(lpm)).ownerOf(tokenId), recipient);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), notAllowed);
     }
 
     error SafeTransferDisabled();
@@ -1686,5 +1667,145 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         bytes4 selector = 0xb5cdc484;
         (bool success,) = address(lpm).call(abi.encodeWithSelector(selector, currency, hooks_, allowed));
         require(success, "setAllowedHook failed");
+    }
+
+    event PositionSeized(
+        uint256 indexed tokenId,
+        address indexed previousOwner,
+        address indexed seizingAdmin,
+        address recipient0,
+        address recipient1
+    );
+
+    // seize(uint256) selector
+    bytes4 private constant _SEIZE_SELECTOR = 0x2ac05311;
+    // withdrawClaim(Currency,uint256,address) selector
+    bytes4 private constant _WITHDRAW_CLAIM_SELECTOR = 0xf77de3fc;
+
+    function _seize(uint256 tokenId) internal {
+        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_SEIZE_SELECTOR, tokenId));
+        require(ok, "seize failed");
+    }
+
+    function _seizeExpectRevert(uint256 tokenId, bytes4 expectedSelector) internal {
+        (bool ok, bytes memory data) = address(lpm).call(abi.encodeWithSelector(_SEIZE_SELECTOR, tokenId));
+        assertEq(ok, false);
+        assertEq(bytes4(data), expectedSelector);
+    }
+
+    function _withdrawClaim(Currency currency, uint256 amount, address to) internal {
+        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_WITHDRAW_CLAIM_SELECTOR, currency, amount, to));
+        require(ok, "withdrawClaim failed");
+    }
+
+    function test_seize_credits_admins_with_6909_claims() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        address admin0 = permissionsAdapter0.owner();
+        address admin1 = permissionsAdapter2.owner();
+        uint256 admin0ClaimBefore = manager.balanceOf(admin0, key2.currency0.toId());
+        uint256 admin1ClaimBefore = manager.balanceOf(admin1, key2.currency1.toId());
+
+        vm.expectEmit(true, true, true, true);
+        emit PositionSeized(tokenId, alice, address(this), admin0, admin1);
+        _seize(tokenId);
+
+        // NFT is gone
+        vm.expectRevert();
+        IERC721(address(lpm)).ownerOf(tokenId);
+
+        // Each admin received a positive claim for their side
+        assertGt(manager.balanceOf(admin0, key2.currency0.toId()), admin0ClaimBefore);
+        assertGt(manager.balanceOf(admin1, key2.currency1.toId()), admin1ClaimBefore);
+    }
+
+    function test_seize_single_pa_pool_credits_caller_for_nonpermissioned_side() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0); // [pa0, currency1=normal]
+
+        address admin0 = permissionsAdapter0.owner();
+        uint256 paClaimBefore = manager.balanceOf(admin0, key0.currency0.toId());
+        uint256 normalClaimBefore = manager.balanceOf(admin0, key0.currency1.toId());
+
+        _seize(tokenId);
+
+        // Both claims routed to the sole admin (caller)
+        assertGt(manager.balanceOf(admin0, key0.currency0.toId()), paClaimBefore);
+        assertGt(manager.balanceOf(admin0, key0.currency1.toId()), normalClaimBefore);
+    }
+
+    function test_seize_reverts_when_caller_is_not_admin(address notAdmin) public {
+        vm.assume(notAdmin != address(this) && notAdmin != address(0));
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        vm.prank(notAdmin);
+        _seizeExpectRevert(tokenId, Unauthorized.selector);
+    }
+
+    function test_seize_either_admin_cannot_be_blocked_by_the_other() public {
+        // Split adapter ownership so each side has a distinct admin
+        address admin0 = makeAddr("ADMIN0");
+        address admin1 = makeAddr("ADMIN1");
+        permissionsAdapter0.transferOwnership(admin0);
+        vm.prank(admin0);
+        permissionsAdapter0.acceptOwnership();
+        permissionsAdapter2.transferOwnership(admin1);
+        vm.prank(admin1);
+        permissionsAdapter2.acceptOwnership();
+
+        uint256 tokenId0 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+        uint256 tokenId1 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        // admin0 seizes independently — admin1 has no lever to block
+        vm.prank(admin0);
+        _seize(tokenId0);
+        assertGt(manager.balanceOf(admin0, key2.currency0.toId()), 0);
+
+        // admin1 does the same, independently
+        vm.prank(admin1);
+        _seize(tokenId1);
+        assertGt(manager.balanceOf(admin1, key2.currency1.toId()), 0);
+    }
+
+    function test_withdrawClaim_round_trip() public {
+        // Seize a key2 position, then withdraw each side to the admin
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+        _seize(tokenId);
+
+        uint256 claim0 = manager.balanceOf(address(this), key2.currency0.toId());
+        uint256 claim1 = manager.balanceOf(address(this), key2.currency1.toId());
+        assertGt(claim0, 0);
+        assertGt(claim1, 0);
+
+        // Allow PermPosm to burn our 6909 claim
+        manager.setOperator(address(lpm), true);
+
+        address payout = makeAddr("PAYOUT");
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(payout, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(payout, PermissionFlags.ALL_ALLOWED);
+
+        uint256 under0Before = IERC20(Currency.unwrap(currency0)).balanceOf(payout);
+        uint256 under1Before = IERC20(Currency.unwrap(currency2)).balanceOf(payout);
+
+        _withdrawClaim(key2.currency0, claim0, payout);
+        _withdrawClaim(key2.currency1, claim1, payout);
+
+        assertEq(manager.balanceOf(address(this), key2.currency0.toId()), 0);
+        assertEq(manager.balanceOf(address(this), key2.currency1.toId()), 0);
+        assertEq(IERC20(Currency.unwrap(currency0)).balanceOf(payout) - under0Before, claim0);
+        assertEq(IERC20(Currency.unwrap(currency2)).balanceOf(payout) - under1Before, claim1);
+    }
+
+    function test_withdrawClaim_reverts_without_operator_or_balance() public {
+        // Caller has no claim and has not approved — PoolManager's burn reverts
+        vm.startPrank(alice);
+        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_WITHDRAW_CLAIM_SELECTOR, key2.currency0, 1, alice));
+        vm.stopPrank();
+        assertEq(ok, false);
     }
 }

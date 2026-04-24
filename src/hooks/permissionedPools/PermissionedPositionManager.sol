@@ -15,13 +15,24 @@ import {IPermissionsAdapterFactory} from "./interfaces/IPermissionsAdapterFactor
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PermissionFlags} from "./libraries/PermissionFlags.sol";
 import {ActionConstants} from "../../libraries/ActionConstants.sol";
+import {Actions} from "../../libraries/Actions.sol";
+import {CalldataDecoder} from "../../libraries/CalldataDecoder.sol";
 
 contract PermissionedPositionManager is PositionManager {
+    using CalldataDecoder for bytes;
+
     IPermissionsAdapterFactory public immutable PERMISSIONS_ADAPTER_FACTORY;
 
     mapping(Currency currency => mapping(IHooks hooks => bool)) public isAllowedHooks;
 
     event AllowedHooksUpdated(Currency currency, IHooks hooks, bool allowed);
+    event PositionSeized(
+        uint256 indexed tokenId,
+        address indexed previousOwner,
+        address indexed seizingAdmin,
+        address recipient0,
+        address recipient1
+    );
 
     error InvalidHook();
     error SafeTransferDisabled();
@@ -59,18 +70,59 @@ contract PermissionedPositionManager is PositionManager {
         emit AllowedHooksUpdated(currency, hooks, allowed);
     }
 
+    /// @notice Atomically retire a position and convert each currency's proceeds into an ERC-6909 claim on the PoolManager
+    ///         held by the respective adapter admin.
+    /// @dev Either adapter admin may call. Non-permissioned currencies (no verified adapter) credit the caller instead,
+    ///      so single-PA pools route both legs to the sole admin. Claims are redeemable via `withdrawClaim`.
+    /// @param tokenId The id of the position to seize
+    function seize(uint256 tokenId) external isNotLocked {
+        (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
+        address admin0 = _getOwner(poolKey.currency0);
+        address admin1 = _getOwner(poolKey.currency1);
+        if (msg.sender != admin0 && msg.sender != admin1) revert Unauthorized();
+
+        address recipient0 = admin0 == address(0) ? msg.sender : admin0;
+        address recipient1 = admin1 == address(0) ? msg.sender : admin1;
+
+        // Pre-approve so the inner BURN_POSITION action passes `onlyIfApproved`.
+        getApproved[tokenId] = msg.sender;
+
+        emit PositionSeized(tokenId, ownerOf(tokenId), msg.sender, recipient0, recipient1);
+
+        bytes memory actions =
+            abi.encodePacked(uint8(Actions.BURN_POSITION), uint8(Actions.MINT_6909), uint8(Actions.MINT_6909));
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
+        params[1] = abi.encode(poolKey.currency0, recipient0, ActionConstants.OPEN_DELTA);
+        params[2] = abi.encode(poolKey.currency1, recipient1, ActionConstants.OPEN_DELTA);
+
+        poolManager.unlock(abi.encode(actions, params));
+    }
+
+    /// @notice Burn an ERC-6909 claim held on the PoolManager and transfer the underlying currency to `to`.
+    /// @dev Caller must hold the claim or have granted this contract operator/allowance on PoolManager's ERC-6909.
+    ///      For permissioned currencies, `to` must clear the underlying token's issuer compliance on unwrap.
+    /// @param currency The currency whose claim is being withdrawn
+    /// @param amount   The amount of claim to burn (and underlying to transfer)
+    /// @param to       The recipient of the underlying
+    function withdrawClaim(Currency currency, uint256 amount, address to) external isNotLocked {
+        bytes memory actions = abi.encodePacked(uint8(Actions.BURN_6909), uint8(Actions.TAKE));
+        bytes[] memory params = new bytes[](2);
+        params[0] = abi.encode(currency, msg.sender, amount);
+        params[1] = abi.encode(currency, to, amount);
+        poolManager.unlock(abi.encode(actions, params));
+    }
+
     /// @inheritdoc PositionManager
-    /// @dev Only allow admins of permissioned tokens to transfer positions that contain their tokens,
-    /// and only to recipients that are allowlisted for each permissioned currency in the pool.
+    /// @dev Unilateral admin transfer: either currency admin may move the NFT without co-admin cooperation.
+    ///      No recipient allowlist gate — that would let one admin block the other. Use `seize` to unwind atomically.
     function transferFrom(address from, address to, uint256 id) public override onlyIfPoolManagerLocked {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(id);
-        address admin1 = _getOwner(poolKey.currency0);
-        address admin2 = _getOwner(poolKey.currency1);
-        if (msg.sender != admin1 && msg.sender != admin2) {
+        address admin0 = _getOwner(poolKey.currency0);
+        address admin1 = _getOwner(poolKey.currency1);
+        if (msg.sender != admin0 && msg.sender != admin1) {
             revert Unauthorized();
         }
-        _checkRecipientAllowed(poolKey.currency0, to);
-        _checkRecipientAllowed(poolKey.currency1, to);
         getApproved[id] = msg.sender;
         super.transferFrom(from, to, id);
     }
@@ -192,5 +244,22 @@ contract PermissionedPositionManager is PositionManager {
         address permissionedToken = _verifiedPermissionedTokenOf(currency);
         if (permissionedToken == address(0)) return address(0);
         return IPermissionsAdapter(permissionsAdapter).owner();
+    }
+
+    /// @dev Adds MINT_6909 / BURN_6909 to the action set so `seize` and `withdrawClaim` can convert
+    ///      open deltas into persistent ERC-6909 claims and back.
+    function _handleAction(uint256 action, bytes calldata params) internal override {
+        if (action == Actions.MINT_6909) {
+            (Currency currency, address to, uint256 amount) = params.decodeCurrencyAddressAndUint256();
+            if (amount == ActionConstants.OPEN_DELTA) amount = _getFullCredit(currency);
+            poolManager.mint(to, currency.toId(), amount);
+            return;
+        }
+        if (action == Actions.BURN_6909) {
+            (Currency currency, address from, uint256 amount) = params.decodeCurrencyAddressAndUint256();
+            poolManager.burn(from, currency.toId(), amount);
+            return;
+        }
+        super._handleAction(action, params);
     }
 }
