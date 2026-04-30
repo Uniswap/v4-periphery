@@ -5,7 +5,7 @@ import {
     IPermissionsAdapter,
     IAllowlistChecker
 } from "../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapter.sol";
-import {IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20, IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {PermissionedPoolsBase, MockAllowlistChecker} from "./PermissionedPoolsBase.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
@@ -159,6 +159,213 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
         permissionsAdapter.transfer(recipient, transferAmount);
         assertEq(permissionsAdapter.balanceOf(mockPoolManager), mintAmount - transferAmount);
         assertEq(permissionedToken.balanceOf(recipient), transferAmount);
+    }
+
+    function testRevert_UnwrapWhenUnderlyingReturnsFalse() public {
+        FalseReturningToken falseToken = new FalseReturningToken();
+        IPermissionsAdapter adapter = _deployAdapterForToken(IERC20(address(falseToken)));
+
+        falseToken.mint(address(adapter), 100);
+        adapter.wrapToPoolManager(100);
+
+        address recipient = makeAddr("recipient");
+        vm.prank(mockPoolManager);
+        vm.expectRevert("TRANSFER_FAILED");
+        IERC20(address(adapter)).transfer(recipient, 50);
+
+        // Burn and payout are atomic: nothing moved.
+        assertEq(adapter.totalSupply(), 100);
+        assertEq(adapter.balanceOf(mockPoolManager), 100);
+        assertEq(falseToken.balanceOf(recipient), 0);
+    }
+
+    function testRevert_UnwrapWhenUnderlyingPausedSilentFail() public {
+        PausableSilentFailToken pausableToken = new PausableSilentFailToken();
+        IPermissionsAdapter adapter = _deployAdapterForToken(IERC20(address(pausableToken)));
+
+        pausableToken.mint(address(adapter), 100);
+        adapter.wrapToPoolManager(100);
+        pausableToken.pause();
+
+        address recipient = makeAddr("recipient");
+        vm.prank(mockPoolManager);
+        vm.expectRevert("TRANSFER_FAILED");
+        IERC20(address(adapter)).transfer(recipient, 50);
+
+        assertEq(adapter.totalSupply(), 100);
+        assertEq(adapter.balanceOf(mockPoolManager), 100);
+        assertEq(pausableToken.balanceOf(recipient), 0);
+        assertEq(pausableToken.balanceOf(address(adapter)), 100);
+    }
+
+    function test_UnwrapSucceedsAfterUnpause() public {
+        PausableSilentFailToken pausableToken = new PausableSilentFailToken();
+        IPermissionsAdapter adapter = _deployAdapterForToken(IERC20(address(pausableToken)));
+
+        pausableToken.mint(address(adapter), 100);
+        adapter.wrapToPoolManager(100);
+
+        address recipient = makeAddr("recipient");
+        vm.prank(mockPoolManager);
+        IERC20(address(adapter)).transfer(recipient, 50);
+
+        assertEq(adapter.totalSupply(), 50);
+        assertEq(adapter.balanceOf(mockPoolManager), 50);
+        assertEq(pausableToken.balanceOf(recipient), 50);
+        assertEq(pausableToken.balanceOf(address(adapter)), 50);
+    }
+
+    // --- ERC20 metadata fallbacks ---
+
+    function _assertMetadataFallbacks(IPermissionsAdapter adapter) internal view {
+        assertEq(IERC20Metadata(address(adapter)).name(), "Uniswap v4 Permissioned Token");
+        assertEq(IERC20Metadata(address(adapter)).symbol(), "v4PT");
+        assertEq(IERC20Metadata(address(adapter)).decimals(), 18);
+    }
+
+    function test_Constructor_FallsBackWhenMetadataIsMissing() public {
+        _assertMetadataFallbacks(_deployAdapterForToken(IERC20(address(new NoMetadataToken()))));
+    }
+
+    function test_Constructor_FallsBackWhenMetadataReverts() public {
+        _assertMetadataFallbacks(_deployAdapterForToken(IERC20(address(new RevertingMetadataToken()))));
+    }
+
+    /// @dev bytes32 returns aren't standard ABI-encoded strings, so decode fails and we fall back.
+    function test_Constructor_FallsBackOnBytes32Metadata() public {
+        IPermissionsAdapter adapter = _deployAdapterForToken(IERC20(address(new Bytes32MetadataToken())));
+        assertEq(IERC20Metadata(address(adapter)).name(), "Uniswap v4 Permissioned Token");
+        assertEq(IERC20Metadata(address(adapter)).symbol(), "v4PT");
+        // decimals() is a valid uint8 here, so it does NOT fall back.
+        assertEq(IERC20Metadata(address(adapter)).decimals(), 18);
+    }
+
+    function test_Constructor_FallsBackWhenDecimalsDoesNotFitInUint8() public {
+        IPermissionsAdapter adapter = _deployAdapterForToken(IERC20(address(new OversizedDecimalsToken())));
+        // name/symbol decode cleanly.
+        assertEq(IERC20Metadata(address(adapter)).name(), "Uniswap v4 Big");
+        assertEq(IERC20Metadata(address(adapter)).symbol(), "v4BIG");
+        // decimals decode as uint8 fails on the oversized value -> fallback.
+        assertEq(IERC20Metadata(address(adapter)).decimals(), 18);
+    }
+
+    function _deployAdapterForToken(IERC20 token) internal returns (IPermissionsAdapter adapter) {
+        bytes memory args = abi.encode(token, mockPoolManager, owner, allowlistChecker);
+        bytes memory initcode = abi.encodePacked(vm.getCode("PermissionsAdapter.sol:PermissionsAdapter"), args);
+        address deployed;
+        assembly {
+            deployed := create(0, add(initcode, 0x20), mload(initcode))
+        }
+        require(deployed != address(0), "deployment failed");
+        adapter = IPermissionsAdapter(deployed);
+        vm.prank(owner);
+        adapter.updateAllowedWrapper(address(this), true);
+    }
+}
+
+/// @dev ERC-20 that silently returns false from transfer without reverting or moving balances.
+contract FalseReturningToken is ERC20 {
+    constructor() ERC20("FalseToken", "FT") {}
+
+    function mint(address to, uint256 amount) public {
+        _mint(to, amount);
+    }
+
+    function transfer(address, uint256) public pure override returns (bool) {
+        return false;
+    }
+}
+
+/// @dev ERC-20 with pause logic that silently returns false on transfer when paused.
+contract PausableSilentFailToken is ERC20 {
+    bool public paused;
+
+    constructor() ERC20("PausableToken", "PT") {}
+
+    function mint(address to, uint256 amount) public {
+        _mint(to, amount);
+    }
+
+    function pause() public {
+        paused = true;
+    }
+
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        if (paused) return false;
+        return super.transfer(to, amount);
+    }
+}
+
+/// @dev Bare-minimum IERC20 so the mocks below do not inherit OZ ERC20 (which would auto-provide metadata).
+abstract contract StubIERC20 is IERC20 {
+    function totalSupply() external pure override returns (uint256) {
+        return 0;
+    }
+
+    function balanceOf(address) external pure override returns (uint256) {
+        return 0;
+    }
+
+    function transfer(address, uint256) external pure override returns (bool) {
+        return true;
+    }
+
+    function allowance(address, address) external pure override returns (uint256) {
+        return 0;
+    }
+
+    function approve(address, uint256) external pure override returns (bool) {
+        return true;
+    }
+
+    function transferFrom(address, address, uint256) external pure override returns (bool) {
+        return true;
+    }
+}
+
+contract NoMetadataToken is StubIERC20 {}
+
+contract RevertingMetadataToken is StubIERC20 {
+    function name() external pure returns (string memory) {
+        revert("no name");
+    }
+
+    function symbol() external pure returns (string memory) {
+        revert("no symbol");
+    }
+
+    function decimals() external pure returns (uint8) {
+        revert("no decimals");
+    }
+}
+
+/// @dev Legacy MKR-style token that returns `bytes32` instead of `string` for name/symbol.
+contract Bytes32MetadataToken is StubIERC20 {
+    function name() external pure returns (bytes32) {
+        return bytes32("MakerDAO");
+    }
+
+    function symbol() external pure returns (bytes32) {
+        return bytes32("MKR");
+    }
+
+    function decimals() external pure returns (uint8) {
+        return 18;
+    }
+}
+
+/// @dev `decimals()` returns a uint256 that does not fit in uint8 — ABI decode as uint8 must fail.
+contract OversizedDecimalsToken is StubIERC20 {
+    function name() external pure returns (string memory) {
+        return "Big";
+    }
+
+    function symbol() external pure returns (string memory) {
+        return "BIG";
+    }
+
+    function decimals() external pure returns (uint256) {
+        return 999;
     }
 }
 

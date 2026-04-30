@@ -24,8 +24,4 @@ library PermissionFlags {
     PermissionFlag constant SWAP_ALLOWED = PermissionFlag.wrap(0x0001);
     PermissionFlag constant LIQUIDITY_ALLOWED = PermissionFlag.wrap(0x0002);
     PermissionFlag constant ALL_ALLOWED = PermissionFlag.wrap(0xFFFF);
-
-    function hasFlag(PermissionFlag permissions, PermissionFlag flag) internal pure returns (bool) {
-        return PermissionFlag.unwrap(and(permissions, flag)) != 0;
-    }
 }
