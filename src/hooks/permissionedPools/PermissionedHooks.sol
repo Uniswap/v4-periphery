@@ -90,7 +90,9 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
         PoolId id = key.toId();
         (uint160 sqrtPriceX96, int24 tick,, uint24 fee) = poolManager.getSlot0(id);
         uint128 liquidity = poolManager.getLiquidity(id);
-        emit Swap(id, IMsgSender(sender).msgSender(), delta.amount0(), delta.amount1(), sqrtPriceX96, liquidity, tick, fee);
+        emit Swap(
+            id, IMsgSender(sender).msgSender(), delta.amount0(), delta.amount1(), sqrtPriceX96, liquidity, tick, fee
+        );
         return (IHooks.afterSwap.selector, 0);
     }
 
