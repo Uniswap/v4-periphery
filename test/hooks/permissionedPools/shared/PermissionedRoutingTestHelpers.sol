@@ -132,9 +132,11 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         MockPermissionedToken(Currency.unwrap(currency1))
             .setAllowlist(address(permissionsAdapter1), PermissionFlags.ALL_ALLOWED);
 
-        // Transfer some underlying tokens to the permissions adapter for verification
-        IERC20(Currency.unwrap(currency0)).transfer(address(permissionsAdapter0), 1);
-        IERC20(Currency.unwrap(currency1)).transfer(address(permissionsAdapter1), 1);
+        // Deposit some underlying tokens into the permissions adapter for verification
+        IERC20(Currency.unwrap(currency0)).approve(address(permissionsAdapter0), 1);
+        permissionsAdapter0.depositForVerification(1);
+        IERC20(Currency.unwrap(currency1)).approve(address(permissionsAdapter1), 1);
+        permissionsAdapter1.depositForVerification(1);
 
         verifyTokensAndAddWrappers();
 
@@ -444,7 +446,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
 
     function _setupMockAllowList(Currency currency, address spender) private {
         MockPermissionedToken mockPermissionedToken = MockPermissionedToken(Currency.unwrap(currency));
-        mockAllowlistChecker = new MockAllowlistChecker(mockPermissionedToken);
+        mockAllowlistChecker = new MockAllowlistChecker();
         mockPermissionedToken.setAllowlist(address(this), PermissionFlags.ALL_ALLOWED);
         mockPermissionedToken.setAllowlist(msg.sender, PermissionFlags.ALL_ALLOWED);
         mockPermissionedToken.setAllowlist(address(permissionedRouter), PermissionFlags.ALL_ALLOWED);

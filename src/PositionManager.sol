@@ -432,6 +432,9 @@ contract PositionManager is
                 salt: bytes32(tokenId)
             });
             (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(poolKey, params, hookData);
+            emit ModifyLiquidity(
+                poolKey.toId(), msgSender(), params.tickLower, params.tickUpper, params.liquidityDelta, params.salt
+            );
             // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
@@ -503,6 +506,8 @@ contract PositionManager is
             }),
             hookData
         );
+
+        emit ModifyLiquidity(poolKey.toId(), msgSender(), info.tickLower(), info.tickUpper(), liquidityChange, salt);
 
         if (info.hasSubscriber()) {
             _notifyModifyLiquidity(uint256(salt), liquidityChange, feesAccrued);

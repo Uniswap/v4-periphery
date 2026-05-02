@@ -49,6 +49,12 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
     }
 
     /// @inheritdoc IPermissionsAdapter
+    function depositForVerification(uint256 amount) external {
+        PERMISSIONED_TOKEN.transferFrom(msg.sender, address(this), amount);
+        emit VerificationDeposit(msg.sender, amount);
+    }
+
+    /// @inheritdoc IPermissionsAdapter
     function updateAllowListChecker(IAllowlistChecker newAllowListChecker) external onlyOwner {
         _updateAllowListChecker(newAllowListChecker);
     }
@@ -65,7 +71,7 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
 
     /// @inheritdoc IPermissionsAdapter
     function isAllowed(address account, PermissionFlag permission) public view returns (bool) {
-        return ((allowListChecker.checkAllowlist(account)) & (permission)) == (permission);
+        return ((allowListChecker.checkAllowlist(account, address(PERMISSIONED_TOKEN))) & (permission)) == (permission);
     }
 
     function _updateAllowListChecker(IAllowlistChecker newAllowListChecker) internal {

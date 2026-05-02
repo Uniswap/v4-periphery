@@ -139,7 +139,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     function setupPermissionedComponents() internal {
-        mockAllowListChecker = new MockAllowlistChecker(MockPermissionedToken(Currency.unwrap(currency0)));
+        mockAllowListChecker = new MockAllowlistChecker();
         setUpCurrencyZero();
         setUpCurrencyTwo();
     }
@@ -203,7 +203,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             .setAllowlist(address(permissionsAdapter), PermissionFlags.ALL_ALLOWED);
 
         // permissions adapter contract must have a non-zero balance of the permissioned token
-        currency.transfer(address(permissionsAdapter), 1);
+        IERC20(Currency.unwrap(currency)).approve(address(permissionsAdapter), 1);
+        permissionsAdapter.depositForVerification(1);
 
         permissionsAdapter.updateAllowedWrapper(address(manager), true);
         permissionsAdapter.updateAllowedWrapper(address(lpm), true);
@@ -1128,8 +1129,9 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.expectRevert(Unauthorized.selector);
         IERC721(address(lpm)).transferFrom(alice, recipient, tokenId);
 
-        // admin allowlists the recipient on the permissioned token backing the shared checker
+        // admin allowlists the recipient on each permissioned token in the pool
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(recipient, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(recipient, PermissionFlags.ALL_ALLOWED);
 
         IERC721(address(lpm)).transferFrom(alice, recipient, tokenId);
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), recipient);
@@ -1387,8 +1389,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
     }
 
-    function test_permission_flag_partial_permissions() public {
-        // Test that having permissions on only one token is enough
+    function test_permission_flag_partial_permissions_reverts() public {
+        // Test that having permissions on only one of the pool's tokens is not enough
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
         MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.NONE);
 
@@ -1396,6 +1398,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         uint256 liquidity = 1e18;
 
         vm.prank(alice);
+        vm.expectRevert();
         mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
     }
 

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
@@ -975,4 +976,119 @@ contract PositionManagerTest is Test, PosmTestSetup, LiquidityFuzzers {
     }
 
     function test_mint_slippageRevert() public {}
+
+    /*//////////////////////////////////////////////////////////////
+                       MODIFY LIQUIDITY EVENT TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_mint_emitsModifyLiquidityEvent() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.expectEmit(true, true, true, true, address(lpm));
+        emit IPositionManager.ModifyLiquidity(
+            key.toId(), address(this), config.tickLower, config.tickUpper, int256(liquidity), bytes32(tokenId)
+        );
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+    }
+
+    function test_increase_emitsModifyLiquidityEvent() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        uint256 liquidityToAdd = 1e18;
+
+        vm.expectEmit(true, true, true, true, address(lpm));
+        emit IPositionManager.ModifyLiquidity(
+            key.toId(), address(this), config.tickLower, config.tickUpper, int256(liquidityToAdd), bytes32(tokenId)
+        );
+        increaseLiquidity(tokenId, config, liquidityToAdd, ZERO_BYTES);
+    }
+
+    function test_decrease_emitsModifyLiquidityEvent() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        uint256 liquidityToRemove = 1e18;
+
+        vm.expectEmit(true, true, true, true, address(lpm));
+        emit IPositionManager.ModifyLiquidity(
+            key.toId(), address(this), config.tickLower, config.tickUpper, -int256(liquidityToRemove), bytes32(tokenId)
+        );
+        decreaseLiquidity(tokenId, config, liquidityToRemove, ZERO_BYTES);
+    }
+
+    function test_burn_emitsModifyLiquidityEvent() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        vm.expectEmit(true, true, true, true, address(lpm));
+        emit IPositionManager.ModifyLiquidity(
+            key.toId(), address(this), config.tickLower, config.tickUpper, -int256(liquidity), bytes32(tokenId)
+        );
+        burn(tokenId, config, ZERO_BYTES);
+    }
+
+    /// @dev Guards against a future refactor that might route mint through `_modifyLiquidity` (or vice versa) and cause
+    /// a duplicate `ModifyLiquidity` emission. Each lifecycle action must emit exactly one event from `address(lpm)`.
+    function test_modifyLiquidityEvent_emitsOncePerAction() public {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        assertEq(_countModifyLiquidityEventsDuring_mint(config, liquidity), 1, "mint should emit once");
+        assertEq(_countModifyLiquidityEventsDuring_increase(tokenId, config, liquidity), 1, "increase should emit once");
+        assertEq(_countModifyLiquidityEventsDuring_decrease(tokenId, config, liquidity), 1, "decrease should emit once");
+        assertEq(_countModifyLiquidityEventsDuring_burn(tokenId, config), 1, "burn should emit once");
+    }
+
+    function _countModifyLiquidityEventsDuring_mint(PositionConfig memory config, uint256 liquidity)
+        private
+        returns (uint256)
+    {
+        vm.recordLogs();
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        return _countModifyLiquidityEvents(vm.getRecordedLogs());
+    }
+
+    function _countModifyLiquidityEventsDuring_increase(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint256 liquidity
+    ) private returns (uint256) {
+        vm.recordLogs();
+        increaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+        return _countModifyLiquidityEvents(vm.getRecordedLogs());
+    }
+
+    function _countModifyLiquidityEventsDuring_decrease(
+        uint256 tokenId,
+        PositionConfig memory config,
+        uint256 liquidity
+    ) private returns (uint256) {
+        vm.recordLogs();
+        decreaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+        return _countModifyLiquidityEvents(vm.getRecordedLogs());
+    }
+
+    function _countModifyLiquidityEventsDuring_burn(uint256 tokenId, PositionConfig memory config)
+        private
+        returns (uint256)
+    {
+        vm.recordLogs();
+        burn(tokenId, config, ZERO_BYTES);
+        return _countModifyLiquidityEvents(vm.getRecordedLogs());
+    }
+
+    function _countModifyLiquidityEvents(VmSafe.Log[] memory logs) private view returns (uint256 count) {
+        bytes32 topic = IPositionManager.ModifyLiquidity.selector;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == topic && logs[i].emitter == address(lpm)) count++;
+        }
+    }
 }
