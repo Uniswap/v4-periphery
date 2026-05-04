@@ -1612,4 +1612,345 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         (bool success,) = address(lpm).call(abi.encodeWithSelector(selector, currency, hooks_, allowed));
         require(success, "setAllowedHook failed");
     }
+
+    event PositionUnwound(
+        uint256 indexed tokenId, address indexed lp, address indexed admin, address defaultRecipient
+    );
+    event ClaimWithdrawn(Currency indexed currency, address indexed from, address indexed to, uint256 amount);
+
+    bytes4 private constant _UNWIND_SELECTOR = 0x3aa505cc;
+    bytes4 private constant _WITHDRAW_CLAIM_SELECTOR = 0xf77de3fc;
+
+    function _unwind(uint256 tokenId, address defaultRecipient) internal {
+        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, defaultRecipient));
+        require(ok, "unwindPosition failed");
+    }
+
+    function _withdrawClaim(Currency currency, uint256 amount, address to) internal {
+        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_WITHDRAW_CLAIM_SELECTOR, currency, amount, to));
+        require(ok, "withdrawClaim failed");
+    }
+
+    /// @dev V4 rounds in favor of the pool: a mint+burn roundtrip loses up to 1 wei per side.
+    uint256 private constant _ROUNDTRIP_TOLERANCE = 1;
+
+    function _balanceOf(Currency c, address who) internal view returns (uint256) {
+        return IERC20(Currency.unwrap(c)).balanceOf(who);
+    }
+
+    /// @dev Sets up unwindPosition tests by handing pa0 ownership to `admin1`, pa2 ownership to `admin2`, and
+    ///      filtering fuzz inputs so the cascade test premise holds. Pass `admin1 == admin2` for the same-admin case.
+    function _setupUnwindPositionTests(address admin1, address admin2, address defaultRecipient) internal {
+        // admins must be valid Ownable2Step recipients and distinct from protocol contracts
+        vm.assume(admin1 != address(0) && admin2 != address(0));
+        vm.assume(admin1 != alice && admin2 != alice);
+        vm.assume(admin1 != address(manager) && admin2 != address(manager));
+        vm.assume(admin1 != address(lpm) && admin2 != address(lpm));
+
+        permissionsAdapter0.transferOwnership(admin1);
+        vm.prank(admin1);
+        permissionsAdapter0.acceptOwnership();
+
+        permissionsAdapter2.transferOwnership(admin2);
+        vm.prank(admin2);
+        permissionsAdapter2.acceptOwnership();
+
+        // defaultRecipient must not collide with the LP or with any protocol contract whose receipt semantics
+        // would distort the cascade balance assertions
+        vm.assume(defaultRecipient != address(0));
+        vm.assume(defaultRecipient != alice);
+        vm.assume(defaultRecipient != address(manager));
+        vm.assume(defaultRecipient != address(lpm));
+        vm.assume(defaultRecipient != address(permissionsAdapter0));
+        vm.assume(defaultRecipient != address(permissionsAdapter2));
+    }
+
+    // ===== Case 1: both currencies are PAs owned by the same admin (admin1 == admin2) =====
+
+    function test_unwindPosition_two_pas_same_admin_routes_both_to_lp(address admin, address defaultRecipient) public {
+        _setupUnwindPositionTests(admin, admin, defaultRecipient);
+
+        uint256 aliceCurrency0BeforeMint = _balanceOf(currency0, alice);
+        uint256 aliceCurrency2BeforeMint = _balanceOf(currency2, alice);
+
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        vm.expectEmit(true, true, true, true);
+        emit PositionUnwound(tokenId, alice, admin, defaultRecipient);
+        vm.prank(admin);
+        _unwind(tokenId, defaultRecipient);
+
+        // alice should be roughly whole on both currencies
+        assertApproxEqAbs(_balanceOf(currency0, alice), aliceCurrency0BeforeMint, _ROUNDTRIP_TOLERANCE);
+        assertApproxEqAbs(_balanceOf(currency2, alice), aliceCurrency2BeforeMint, _ROUNDTRIP_TOLERANCE);
+    }
+
+    // ===== Case 2: one PA + one regular ERC-20; admin1 (= owner of pa0) calls =====
+
+    /// @dev Case 2a: LP compliant on pa0's underlying → both cascade to LP.
+    function test_unwindPosition_pa_and_regular_routes_both_to_lp_when_compliant(
+        address admin1,
+        address admin2,
+        address defaultRecipient
+    ) public {
+        _setupUnwindPositionTests(admin1, admin2, defaultRecipient);
+
+        uint256 aliceCurrency0BeforeMint = _balanceOf(currency0, alice);
+        uint256 aliceCurrency1BeforeMint = _balanceOf(key0.currency1, alice);
+
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0);
+
+        vm.prank(admin1);
+        _unwind(tokenId, defaultRecipient);
+
+        assertApproxEqAbs(_balanceOf(currency0, alice), aliceCurrency0BeforeMint, _ROUNDTRIP_TOLERANCE);
+        assertApproxEqAbs(_balanceOf(key0.currency1, alice), aliceCurrency1BeforeMint, _ROUNDTRIP_TOLERANCE);
+    }
+
+    /// @dev Case 2b: LP delisted on pa0's underlying → pa0 cascades to defaultRecipient; regular still goes to LP.
+    function test_unwindPosition_pa_and_regular_routes_pa_to_default_when_lp_blocked(
+        address admin1,
+        address admin2,
+        address defaultRecipient
+    ) public {
+        _setupUnwindPositionTests(admin1, admin2, defaultRecipient);
+
+        uint256 aliceCurrency0BeforeMint = _balanceOf(currency0, alice);
+        uint256 aliceCurrency1BeforeMint = _balanceOf(key0.currency1, alice);
+        uint256 recipientCurrency0BeforeMint = _balanceOf(currency0, defaultRecipient);
+
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0);
+
+        // capture how much pa0 underlying alice deposited at mint time
+        uint256 deposited0 = aliceCurrency0BeforeMint - _balanceOf(currency0, alice);
+
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(alice, false);
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(defaultRecipient, true);
+
+        vm.prank(admin1);
+        _unwind(tokenId, defaultRecipient);
+
+        // defaultRecipient receives ~exactly what alice deposited on pa0; regular currency goes back to alice
+        assertApproxEqAbs(
+            _balanceOf(currency0, defaultRecipient) - recipientCurrency0BeforeMint,
+            deposited0,
+            _ROUNDTRIP_TOLERANCE
+        );
+        assertApproxEqAbs(_balanceOf(key0.currency1, alice), aliceCurrency1BeforeMint, _ROUNDTRIP_TOLERANCE);
+    }
+
+    /// @dev Case 2c: neither LP nor defaultRecipient on pa0's underlying → pa0 lands as 6909 claim to defaultRecipient.
+    function test_unwindPosition_pa_and_regular_credits_6909_when_lp_and_default_blocked(
+        address admin1,
+        address admin2,
+        address defaultRecipient
+    ) public {
+        _setupUnwindPositionTests(admin1, admin2, defaultRecipient);
+
+        uint256 aliceCurrency0BeforeMint = _balanceOf(currency0, alice);
+        uint256 aliceCurrency1BeforeMint = _balanceOf(key0.currency1, alice);
+
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0);
+
+        uint256 deposited0 = aliceCurrency0BeforeMint - _balanceOf(currency0, alice);
+
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(alice, false);
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(defaultRecipient, false);
+
+        vm.prank(admin1);
+        _unwind(tokenId, defaultRecipient);
+
+        // 6909 claim to defaultRecipient ≈ alice's pa0 deposit; regular currency goes back to alice
+        assertApproxEqAbs(
+            manager.balanceOf(defaultRecipient, key0.currency0.toId()), deposited0, _ROUNDTRIP_TOLERANCE
+        );
+        assertApproxEqAbs(_balanceOf(key0.currency1, alice), aliceCurrency1BeforeMint, _ROUNDTRIP_TOLERANCE);
+    }
+
+    // ===== Case 3: both currencies are PAs owned by different admins; admin1 (= owner of pa0) calls =====
+    // pa0 always cascades happy-path because admin1 controls currency0's compliance list. pa2 is the variable.
+
+    /// @dev Case 3a: LP on both underlyings → both cascade to LP.
+    function test_unwindPosition_two_pas_different_admins_routes_both_to_lp(
+        address admin1,
+        address admin2,
+        address defaultRecipient
+    ) public {
+        _setupUnwindPositionTests(admin1, admin2, defaultRecipient);
+
+        uint256 aliceCurrency0BeforeMint = _balanceOf(currency0, alice);
+        uint256 aliceCurrency2BeforeMint = _balanceOf(currency2, alice);
+
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        vm.prank(admin1);
+        _unwind(tokenId, defaultRecipient);
+
+        assertApproxEqAbs(_balanceOf(currency0, alice), aliceCurrency0BeforeMint, _ROUNDTRIP_TOLERANCE);
+        assertApproxEqAbs(_balanceOf(currency2, alice), aliceCurrency2BeforeMint, _ROUNDTRIP_TOLERANCE);
+    }
+
+    /// @dev Case 3b: LP delisted on currency2 → pa0 → LP, pa2 → defaultRecipient.
+    function test_unwindPosition_two_pas_different_admins_routes_pa1_to_default_when_lp_blocked(
+        address admin1,
+        address admin2,
+        address defaultRecipient
+    ) public {
+        _setupUnwindPositionTests(admin1, admin2, defaultRecipient);
+
+        uint256 aliceCurrency0BeforeMint = _balanceOf(currency0, alice);
+        uint256 aliceCurrency2BeforeMint = _balanceOf(currency2, alice);
+        uint256 recipientCurrency2BeforeMint = _balanceOf(currency2, defaultRecipient);
+
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        uint256 deposited2 = aliceCurrency2BeforeMint - _balanceOf(currency2, alice);
+
+        MockPermissionedToken(Currency.unwrap(currency2)).setTokenAllowlist(alice, false);
+        MockPermissionedToken(Currency.unwrap(currency2)).setTokenAllowlist(defaultRecipient, true);
+
+        vm.prank(admin1);
+        _unwind(tokenId, defaultRecipient);
+
+        assertApproxEqAbs(_balanceOf(currency0, alice), aliceCurrency0BeforeMint, _ROUNDTRIP_TOLERANCE);
+        assertApproxEqAbs(
+            _balanceOf(currency2, defaultRecipient) - recipientCurrency2BeforeMint,
+            deposited2,
+            _ROUNDTRIP_TOLERANCE
+        );
+    }
+
+    /// @dev Case 3c: LP and defaultRecipient delisted on currency2 → pa0 → LP, pa2 → 6909 claim to defaultRecipient.
+    function test_unwindPosition_two_pas_different_admins_credits_6909_when_lp_and_default_blocked_on_pa1(
+        address admin1,
+        address admin2,
+        address defaultRecipient
+    ) public {
+        _setupUnwindPositionTests(admin1, admin2, defaultRecipient);
+
+        uint256 aliceCurrency0BeforeMint = _balanceOf(currency0, alice);
+        uint256 aliceCurrency2BeforeMint = _balanceOf(currency2, alice);
+
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        uint256 deposited2 = aliceCurrency2BeforeMint - _balanceOf(currency2, alice);
+
+        MockPermissionedToken(Currency.unwrap(currency2)).setTokenAllowlist(alice, false);
+        MockPermissionedToken(Currency.unwrap(currency2)).setTokenAllowlist(defaultRecipient, false);
+
+        vm.prank(admin1);
+        _unwind(tokenId, defaultRecipient);
+
+        assertApproxEqAbs(_balanceOf(currency0, alice), aliceCurrency0BeforeMint, _ROUNDTRIP_TOLERANCE);
+        assertApproxEqAbs(
+            manager.balanceOf(defaultRecipient, key2.currency1.toId()), deposited2, _ROUNDTRIP_TOLERANCE
+        );
+    }
+
+    function test_unwindPosition_reverts_when_caller_is_not_admin(address notAdmin) public {
+        vm.assume(notAdmin != address(this) && notAdmin != address(0));
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        vm.prank(notAdmin);
+        (bool ok, bytes memory data) =
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, notAdmin));
+        assertEq(ok, false);
+        assertEq(bytes4(data), Unauthorized.selector);
+    }
+
+    /// @dev Either PA admin in the pool can call `unwindPosition`. With split ownership (admin1 ≠ admin2), exercise
+    ///      both: admin1 unwinds one position, admin2 unwinds another.
+    function test_unwindPosition_either_admin_acts_independently(
+        address admin1,
+        address admin2,
+        address defaultRecipient
+    ) public {
+        _setupUnwindPositionTests(admin1, admin2, defaultRecipient);
+        // need distinct admins to actually exercise "either"
+        vm.assume(admin1 != admin2);
+
+        uint256 tokenId0 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+        uint256 tokenId1 = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        vm.prank(admin1);
+        _unwind(tokenId0, defaultRecipient);
+        vm.expectRevert();
+        IERC721(address(lpm)).ownerOf(tokenId0);
+
+        vm.prank(admin2);
+        _unwind(tokenId1, defaultRecipient);
+        vm.expectRevert();
+        IERC721(address(lpm)).ownerOf(tokenId1);
+    }
+
+    /// @dev Roundtrip: force the cascade to step 3 (6909 mint to defaultRecipient), then redeem the claim through
+    ///      `withdrawClaim` to a fresh `to` address. Verifies the claim is fully consumed and the underlying
+    ///      lands at `to` exactly.
+    function test_withdrawClaim_round_trip(
+        address admin1,
+        address admin2,
+        address defaultRecipient,
+        address to
+    ) public {
+        _setupUnwindPositionTests(admin1, admin2, defaultRecipient);
+        // to must be a clean recipient distinct from existing actors and from the action-handler sentinels
+        // (MSG_SENDER = 0x1 / ADDRESS_THIS = 0x2 would get remapped by _mapRecipient inside the TAKE action)
+        vm.assume(to != address(0));
+        vm.assume(to != ActionConstants.MSG_SENDER);
+        vm.assume(to != ActionConstants.ADDRESS_THIS);
+        vm.assume(to != alice);
+        vm.assume(to != defaultRecipient);
+        vm.assume(to != address(manager));
+        vm.assume(to != address(lpm));
+        vm.assume(to != address(permissionsAdapter0));
+        vm.assume(to != address(permissionsAdapter2));
+
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0);
+
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(alice, false);
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(defaultRecipient, false);
+
+        vm.prank(admin1);
+        _unwind(tokenId, defaultRecipient);
+
+        uint256 claim = manager.balanceOf(defaultRecipient, key0.currency0.toId());
+        assertGt(claim, 0);
+
+        // to needs to be on the underlying compliance list to receive the secToken on unwrap
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(to, PermissionFlags.ALL_ALLOWED);
+
+        // defaultRecipient authorizes permPosm to burn its 6909 claims
+        vm.prank(defaultRecipient);
+        manager.setOperator(address(lpm), true);
+
+        uint256 toBefore = _balanceOf(currency0, to);
+        vm.expectEmit(true, true, true, true);
+        emit ClaimWithdrawn(key0.currency0, defaultRecipient, to, claim);
+        vm.prank(defaultRecipient);
+        _withdrawClaim(key0.currency0, claim, to);
+
+        // claim fully consumed; to received exactly `claim` of the underlying
+        assertEq(manager.balanceOf(defaultRecipient, key0.currency0.toId()), 0);
+        assertEq(_balanceOf(currency0, to) - toBefore, claim);
+    }
+
+    /// @dev Caller has no 6909 balance and has not authorized permPosm via `setOperator` or `approve` →
+    ///      `PoolManager.burn` underflows on the allowance check and the whole unlock reverts.
+    function test_withdrawClaim_reverts_without_operator_or_balance() public {
+        vm.startPrank(alice);
+        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_WITHDRAW_CLAIM_SELECTOR, key2.currency0, 1, alice));
+        vm.stopPrank();
+        assertEq(ok, false);
+    }
 }
