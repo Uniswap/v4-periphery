@@ -30,9 +30,7 @@ contract PermissionedPositionManager is PositionManager {
     mapping(Currency currency => mapping(IHooks hooks => bool)) public isAllowedHooks;
 
     event AllowedHooksUpdated(Currency currency, IHooks hooks, bool allowed);
-    event PositionUnwound(
-        uint256 indexed tokenId, address indexed lp, address indexed admin, address defaultRecipient
-    );
+    event PositionUnwound(uint256 indexed tokenId, address indexed lp, address indexed admin, address defaultRecipient);
     event ClaimWithdrawn(Currency indexed currency, address indexed from, address indexed to, uint256 amount);
 
     error InvalidHook();
@@ -72,10 +70,8 @@ contract PermissionedPositionManager is PositionManager {
     }
 
     /// @notice Force-exit the LP from a position. Burns the NFT, unwinds liquidity, and routes each currency.
-    /// @dev Either PA admin in the pool may call. For each currency the cascade is: try transfer to the original
-    ///      LP → on failure, try transfer to `defaultRecipient` → on failure, mint a persistent ERC-6909 claim on
-    ///      the PoolManager to `defaultRecipient`. The third step never reverts, so the call is atomic. Permissioned
-    ///      currencies unwrap to the underlying token; non-permissioned currencies transfer directly.
+    /// @dev Either PA admin may call. Per-currency cascade: LP → `defaultRecipient` → 6909 mint to `defaultRecipient`.
+    ///      The 6909 fallback never reverts, so the call is atomic.
     /// @param tokenId          The position to unwind
     /// @param defaultRecipient The fallback address used if the LP cannot receive a currency
     function unwindPosition(uint256 tokenId, address defaultRecipient) external isNotLocked {
@@ -85,7 +81,6 @@ contract PermissionedPositionManager is PositionManager {
         if (msg.sender != admin0 && msg.sender != admin1) revert Unauthorized();
 
         address lp = ownerOf(tokenId);
-        emit PositionUnwound(tokenId, lp, msg.sender, defaultRecipient);
 
         // Pre-approve so BURN_POSITION inside the unlock passes its onlyIfApproved check.
         // ERC-721 _burn clears getApproved as part of its teardown, so the approval is self-cleaning.
@@ -99,6 +94,8 @@ contract PermissionedPositionManager is PositionManager {
         params[1] = abi.encode(poolKey.currency0, lp, defaultRecipient);
         params[2] = abi.encode(poolKey.currency1, lp, defaultRecipient);
         poolManager.unlock(abi.encode(actions, params));
+
+        emit PositionUnwound(tokenId, lp, msg.sender, defaultRecipient);
     }
 
     /// @notice Burn an ERC-6909 claim on the PoolManager and transfer the underlying currency to `to`.
@@ -111,8 +108,9 @@ contract PermissionedPositionManager is PositionManager {
         bytes[] memory params = new bytes[](2);
         params[0] = abi.encode(currency, msg.sender, amount);
         params[1] = abi.encode(currency, to, amount);
-        emit ClaimWithdrawn(currency, msg.sender, to, amount);
         poolManager.unlock(abi.encode(actions, params));
+
+        emit ClaimWithdrawn(currency, msg.sender, to, amount);
     }
 
     /// @inheritdoc PositionManager
@@ -244,8 +242,7 @@ contract PermissionedPositionManager is PositionManager {
     ///      `withdrawClaim`. All other actions fall through to the base PositionManager dispatcher.
     function _handleAction(uint256 action, bytes calldata params) internal override {
         if (action == _ACTION_TAKE_WITH_FALLBACK) {
-            (Currency currency, address lp, address defaultRecipient) =
-                abi.decode(params, (Currency, address, address));
+            (Currency currency, address lp, address defaultRecipient) = abi.decode(params, (Currency, address, address));
             _routeCredit(currency, lp, defaultRecipient);
             return;
         }
@@ -257,20 +254,18 @@ contract PermissionedPositionManager is PositionManager {
         super._handleAction(action, params);
     }
 
-    /// @dev Cascading routes: 1. Underlying -> LP, Underlying -> defaultRecipient, PA 6909 claim to defaultRecipient. Final mint never reverts.
+    /// @dev Cascade: try take to LP → take to defaultRecipient → mint 6909 claim to defaultRecipient.
+    ///      Final mint never reverts.
     function _routeCredit(Currency currency, address lp, address defaultRecipient) internal {
         uint256 amount = _getFullCredit(currency);
         if (amount == 0) return;
 
-        // Unwrap and transfer underlying to LP
         try poolManager.take(currency, lp, amount) {
             return;
         } catch {}
-        // Unwrap and transfer underlying to defaultRecipient
         try poolManager.take(currency, defaultRecipient, amount) {
             return;
         } catch {}
-        // Mint 6909 claim to defaultRecipient
         poolManager.mint(defaultRecipient, currency.toId(), amount);
     }
 }

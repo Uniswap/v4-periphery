@@ -1613,13 +1613,19 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         require(success, "setAllowedHook failed");
     }
 
-    event PositionUnwound(
-        uint256 indexed tokenId, address indexed lp, address indexed admin, address defaultRecipient
-    );
-    event ClaimWithdrawn(Currency indexed currency, address indexed from, address indexed to, uint256 amount);
+    // ===== unwindPosition / withdrawClaim helpers =====
 
+    /// @dev V4 rounds in favor of the pool: a mint+burn roundtrip loses up to 1 wei per side.
+    uint256 private constant _ROUNDTRIP_TOLERANCE = 1;
     bytes4 private constant _UNWIND_SELECTOR = 0x3aa505cc;
     bytes4 private constant _WITHDRAW_CLAIM_SELECTOR = 0xf77de3fc;
+
+    event PositionUnwound(uint256 indexed tokenId, address indexed lp, address indexed admin, address defaultRecipient);
+    event ClaimWithdrawn(Currency indexed currency, address indexed from, address indexed to, uint256 amount);
+
+    function _balanceOf(Currency c, address who) internal view returns (uint256) {
+        return IERC20(Currency.unwrap(c)).balanceOf(who);
+    }
 
     function _unwind(uint256 tokenId, address defaultRecipient) internal {
         (bool ok,) = address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, defaultRecipient));
@@ -1631,15 +1637,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         require(ok, "withdrawClaim failed");
     }
 
-    /// @dev V4 rounds in favor of the pool: a mint+burn roundtrip loses up to 1 wei per side.
-    uint256 private constant _ROUNDTRIP_TOLERANCE = 1;
-
-    function _balanceOf(Currency c, address who) internal view returns (uint256) {
-        return IERC20(Currency.unwrap(c)).balanceOf(who);
-    }
-
-    /// @dev Sets up unwindPosition tests by handing pa0 ownership to `admin1`, pa2 ownership to `admin2`, and
-    ///      filtering fuzz inputs so the cascade test premise holds. Pass `admin1 == admin2` for the same-admin case.
+    /// @dev Hands pa0 ownership to `admin1`, pa2 ownership to `admin2`, and filters fuzz inputs so the cascade
+    ///      premise holds. Pass `admin1 == admin2` for the same-admin case.
     function _setupUnwindPositionTests(address admin1, address admin2, address defaultRecipient) internal {
         // admins must be valid Ownable2Step recipients and distinct from protocol contracts
         vm.assume(admin1 != address(0) && admin2 != address(0));
@@ -1735,9 +1734,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         // defaultRecipient receives ~exactly what alice deposited on pa0; regular currency goes back to alice
         assertApproxEqAbs(
-            _balanceOf(currency0, defaultRecipient) - recipientCurrency0BeforeMint,
-            deposited0,
-            _ROUNDTRIP_TOLERANCE
+            _balanceOf(currency0, defaultRecipient) - recipientCurrency0BeforeMint, deposited0, _ROUNDTRIP_TOLERANCE
         );
         assertApproxEqAbs(_balanceOf(key0.currency1, alice), aliceCurrency1BeforeMint, _ROUNDTRIP_TOLERANCE);
     }
@@ -1765,9 +1762,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         _unwind(tokenId, defaultRecipient);
 
         // 6909 claim to defaultRecipient ≈ alice's pa0 deposit; regular currency goes back to alice
-        assertApproxEqAbs(
-            manager.balanceOf(defaultRecipient, key0.currency0.toId()), deposited0, _ROUNDTRIP_TOLERANCE
-        );
+        assertApproxEqAbs(manager.balanceOf(defaultRecipient, key0.currency0.toId()), deposited0, _ROUNDTRIP_TOLERANCE);
         assertApproxEqAbs(_balanceOf(key0.currency1, alice), aliceCurrency1BeforeMint, _ROUNDTRIP_TOLERANCE);
     }
 
@@ -1796,7 +1791,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     /// @dev Case 3b: LP delisted on currency2 → pa0 → LP, pa2 → defaultRecipient.
-    function test_unwindPosition_two_pas_different_admins_routes_pa1_to_default_when_lp_blocked(
+    function test_unwindPosition_two_pas_different_admins_routes_pa2_to_default_when_lp_blocked(
         address admin1,
         address admin2,
         address defaultRecipient
@@ -1820,14 +1815,12 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         assertApproxEqAbs(_balanceOf(currency0, alice), aliceCurrency0BeforeMint, _ROUNDTRIP_TOLERANCE);
         assertApproxEqAbs(
-            _balanceOf(currency2, defaultRecipient) - recipientCurrency2BeforeMint,
-            deposited2,
-            _ROUNDTRIP_TOLERANCE
+            _balanceOf(currency2, defaultRecipient) - recipientCurrency2BeforeMint, deposited2, _ROUNDTRIP_TOLERANCE
         );
     }
 
     /// @dev Case 3c: LP and defaultRecipient delisted on currency2 → pa0 → LP, pa2 → 6909 claim to defaultRecipient.
-    function test_unwindPosition_two_pas_different_admins_credits_6909_when_lp_and_default_blocked_on_pa1(
+    function test_unwindPosition_two_pas_different_admins_credits_6909_when_lp_and_default_blocked_on_pa2(
         address admin1,
         address admin2,
         address defaultRecipient
@@ -1849,32 +1842,37 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         _unwind(tokenId, defaultRecipient);
 
         assertApproxEqAbs(_balanceOf(currency0, alice), aliceCurrency0BeforeMint, _ROUNDTRIP_TOLERANCE);
-        assertApproxEqAbs(
-            manager.balanceOf(defaultRecipient, key2.currency1.toId()), deposited2, _ROUNDTRIP_TOLERANCE
-        );
+        assertApproxEqAbs(manager.balanceOf(defaultRecipient, key2.currency1.toId()), deposited2, _ROUNDTRIP_TOLERANCE);
     }
 
-    function test_unwindPosition_reverts_when_caller_is_not_admin(address notAdmin) public {
-        vm.assume(notAdmin != address(this) && notAdmin != address(0));
+    // ===== Auth / either-admin =====
+
+    function test_unwindPosition_reverts_when_caller_is_not_admin(
+        address admin1,
+        address admin2,
+        address defaultRecipient,
+        address notAdmin
+    ) public {
+        _setupUnwindPositionTests(admin1, admin2, defaultRecipient);
+        vm.assume(notAdmin != admin1 && notAdmin != admin2);
+
         uint256 tokenId = lpm.nextTokenId();
         _test_permissioned_mint_allowed_user(key2);
 
         vm.prank(notAdmin);
         (bool ok, bytes memory data) =
-            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, notAdmin));
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, defaultRecipient));
         assertEq(ok, false);
         assertEq(bytes4(data), Unauthorized.selector);
     }
 
-    /// @dev Either PA admin in the pool can call `unwindPosition`. With split ownership (admin1 ≠ admin2), exercise
-    ///      both: admin1 unwinds one position, admin2 unwinds another.
+    /// @dev Either PA admin can call `unwindPosition`. With distinct admins, exercise both.
     function test_unwindPosition_either_admin_acts_independently(
         address admin1,
         address admin2,
         address defaultRecipient
     ) public {
         _setupUnwindPositionTests(admin1, admin2, defaultRecipient);
-        // need distinct admins to actually exercise "either"
         vm.assume(admin1 != admin2);
 
         uint256 tokenId0 = lpm.nextTokenId();
@@ -1893,18 +1891,15 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         IERC721(address(lpm)).ownerOf(tokenId1);
     }
 
-    /// @dev Roundtrip: force the cascade to step 3 (6909 mint to defaultRecipient), then redeem the claim through
-    ///      `withdrawClaim` to a fresh `to` address. Verifies the claim is fully consumed and the underlying
-    ///      lands at `to` exactly.
-    function test_withdrawClaim_round_trip(
-        address admin1,
-        address admin2,
-        address defaultRecipient,
-        address to
-    ) public {
+    // ===== withdrawClaim =====
+
+    /// @dev Forces the cascade to the 6909 fallback, then redeems via `withdrawClaim` to a fresh `to`.
+    function test_withdrawClaim_round_trip(address admin1, address admin2, address defaultRecipient, address to)
+        public
+    {
         _setupUnwindPositionTests(admin1, admin2, defaultRecipient);
-        // to must be a clean recipient distinct from existing actors and from the action-handler sentinels
-        // (MSG_SENDER = 0x1 / ADDRESS_THIS = 0x2 would get remapped by _mapRecipient inside the TAKE action)
+        // `to` must be distinct from existing actors and from action-handler sentinels (MSG_SENDER = 0x1 /
+        // ADDRESS_THIS = 0x2 would get remapped by _mapRecipient inside the TAKE action)
         vm.assume(to != address(0));
         vm.assume(to != ActionConstants.MSG_SENDER);
         vm.assume(to != ActionConstants.ADDRESS_THIS);
@@ -1927,7 +1922,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         uint256 claim = manager.balanceOf(defaultRecipient, key0.currency0.toId());
         assertGt(claim, 0);
 
-        // to needs to be on the underlying compliance list to receive the secToken on unwrap
+        // `to` needs to be on the underlying compliance list to receive the secToken on unwrap
         MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(to, PermissionFlags.ALL_ALLOWED);
 
         // defaultRecipient authorizes permPosm to burn its 6909 claims
@@ -1945,9 +1940,20 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(_balanceOf(currency0, to) - toBefore, claim);
     }
 
-    /// @dev Caller has no 6909 balance and has not authorized permPosm via `setOperator` or `approve` →
-    ///      `PoolManager.burn` underflows on the allowance check and the whole unlock reverts.
-    function test_withdrawClaim_reverts_without_operator_or_balance() public {
+    /// @dev Caller has not authorized permPosm via `setOperator` → BURN_6909 underflows on the allowance check.
+    function test_withdrawClaim_reverts_without_operator() public {
+        vm.startPrank(alice);
+        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_WITHDRAW_CLAIM_SELECTOR, key2.currency0, 1, alice));
+        vm.stopPrank();
+        assertEq(ok, false);
+    }
+
+    /// @dev Caller has authorized permPosm but holds no 6909 balance → BURN_6909 passes auth and underflows on
+    ///      the balance subtraction.
+    function test_withdrawClaim_reverts_without_balance() public {
+        vm.prank(alice);
+        manager.setOperator(address(lpm), true);
+
         vm.startPrank(alice);
         (bool ok,) = address(lpm).call(abi.encodeWithSelector(_WITHDRAW_CLAIM_SELECTOR, key2.currency0, 1, alice));
         vm.stopPrank();
