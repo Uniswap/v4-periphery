@@ -243,7 +243,7 @@ contract PermissionedPositionManager is PositionManager {
     function _handleAction(uint256 action, bytes calldata params) internal override {
         if (action == _ACTION_TAKE_WITH_FALLBACK) {
             (Currency currency, address lp, address defaultRecipient) = abi.decode(params, (Currency, address, address));
-            _routeCredit(currency, lp, defaultRecipient);
+            _takeWithFallback(currency, lp, defaultRecipient);
             return;
         }
         if (action == Actions.BURN_6909) {
@@ -256,7 +256,7 @@ contract PermissionedPositionManager is PositionManager {
 
     /// @dev Cascade: try take to LP → take to defaultRecipient → mint 6909 claim to defaultRecipient.
     ///      Final mint never reverts.
-    function _routeCredit(Currency currency, address lp, address defaultRecipient) internal {
+    function _takeWithFallback(Currency currency, address lp, address defaultRecipient) internal {
         uint256 amount = _getFullCredit(currency);
         if (amount == 0) return;
 
