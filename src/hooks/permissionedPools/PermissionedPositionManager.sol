@@ -24,7 +24,7 @@ contract PermissionedPositionManager is PositionManager {
     event AllowedHooksUpdated(Currency currency, IHooks hooks, bool allowed);
 
     error InvalidHook();
-    error SafeTransferDisabled();
+    error TransferDisabled();
     error NotPermissionsAdapterAdmin();
 
     /// @dev as this contract must know the hooks address in advance, it must be passed in as a constructor argument
@@ -60,27 +60,17 @@ contract PermissionedPositionManager is PositionManager {
     }
 
     /// @inheritdoc PositionManager
-    /// @dev Only allow admins of permissioned tokens to transfer positions that contain their tokens,
-    /// and only to recipients that are allowlisted for each permissioned currency in the pool.
+    /// @dev Positions of permissioned tokens are not transferable.
     function transferFrom(address from, address to, uint256 id) public override onlyIfPoolManagerLocked {
-        (PoolKey memory poolKey,) = getPoolAndPositionInfo(id);
-        address admin1 = _getOwner(poolKey.currency0);
-        address admin2 = _getOwner(poolKey.currency1);
-        if (msg.sender != admin1 && msg.sender != admin2) {
-            revert Unauthorized();
-        }
-        _checkRecipientAllowed(poolKey.currency0, to);
-        _checkRecipientAllowed(poolKey.currency1, to);
-        getApproved[id] = msg.sender;
-        super.transferFrom(from, to, id);
+        revert TransferDisabled();
     }
 
     function safeTransferFrom(address, address, uint256) public pure override {
-        revert SafeTransferDisabled();
+        revert TransferDisabled();
     }
 
     function safeTransferFrom(address, address, uint256, bytes calldata) public pure override {
-        revert SafeTransferDisabled();
+        revert TransferDisabled();
     }
 
     /// @dev When minting a position, verify that the sender is allowed to mint the position. This prevents a disallowed user from minting one sided liquidity.
