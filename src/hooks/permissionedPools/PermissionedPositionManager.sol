@@ -26,7 +26,6 @@ contract PermissionedPositionManager is PositionManager {
     mapping(Currency currency => mapping(IHooks hooks => bool)) public isAllowedHooks;
 
     event AllowedHooksUpdated(Currency currency, IHooks hooks, bool allowed);
-
     event CurrencyUnwound(
         uint256 indexed tokenId,
         Currency indexed currency,

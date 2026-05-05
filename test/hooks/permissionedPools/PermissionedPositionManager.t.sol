@@ -1624,7 +1624,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         uint256 indexed tokenId,
         Currency indexed currency,
         address indexed recipient,
-        address admin,
+        address caller,
         address lp,
         uint256 amount,
         bool asClaim
@@ -1665,6 +1665,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     // ===== Case 1: both currencies are PAs owned by the same admin (admin1 == admin2) =====
 
+    /// @dev Case 1: same admin owns both PAs, LP compliant on both → both legs cascade to LP.
     function test_unwindPosition_two_pas_same_admin_routes_both_to_lp(address admin) public {
         _setupUnwindPositionTests(admin, admin);
 
@@ -1678,8 +1679,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         uint256 deposited0 = aliceCurrency0BeforeMint - _balanceOf(currency0, alice);
         uint256 deposited2 = aliceCurrency2BeforeMint - _balanceOf(currency2, alice);
 
-        // Full-data check on both events. Notably verifies `caller == admin` (i.e., msgSender() returns the
-        // original unwindPosition caller, not the PoolManager). _ROUNDTRIP_TOLERANCE absorbed via deposited - 1.
+        // Full-data check verifies caller == admin (msgSender() returns the unwindPosition caller, not PoolManager).
         vm.expectEmit(true, true, true, true);
         emit CurrencyUnwound(tokenId, key2.currency0, alice, admin, alice, deposited0 - 1, false);
         vm.expectEmit(true, true, true, true);
