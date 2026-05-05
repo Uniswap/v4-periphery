@@ -21,16 +21,12 @@ import {CalldataDecoder} from "../../libraries/CalldataDecoder.sol";
 contract PermissionedPositionManager is PositionManager {
     using CalldataDecoder for bytes;
 
-    /// @dev Takes a currency's positive delta with a fallback cascade: LP → defaultRecipient → 6909 mint to
-    ///      defaultRecipient. Picked above the standard Actions.sol range to avoid collision.
-    uint256 private constant _ACTION_TAKE_WITH_FALLBACK = 0x20;
-
     IPermissionsAdapterFactory public immutable PERMISSIONS_ADAPTER_FACTORY;
 
     mapping(Currency currency => mapping(IHooks hooks => bool)) public isAllowedHooks;
 
     event AllowedHooksUpdated(Currency currency, IHooks hooks, bool allowed);
-    event PositionUnwound(uint256 indexed tokenId, address indexed lp, address indexed admin, address defaultRecipient);
+    event PositionUnwound(uint256 indexed tokenId, address indexed lp, address indexed admin);
     event ClaimWithdrawn(Currency indexed currency, address indexed from, address indexed to, uint256 amount);
 
     error InvalidHook();
@@ -70,11 +66,10 @@ contract PermissionedPositionManager is PositionManager {
     }
 
     /// @notice Force-exit the LP from a position. Burns the NFT, unwinds liquidity, and routes each currency.
-    /// @dev Either PA admin may call. Per-currency cascade: LP → `defaultRecipient` → 6909 mint to `defaultRecipient`.
-    ///      The 6909 fallback never reverts, so the call is atomic.
-    /// @param tokenId          The position to unwind
-    /// @param defaultRecipient The fallback address used if the LP cannot receive a currency
-    function unwindPosition(uint256 tokenId, address defaultRecipient) external isNotLocked {
+    /// @dev Either PA admin may call. Per-currency fallback is derived on-chain via `_getOwner` (see
+    ///      `_unwindWithFallback`). The 6909 fallback never reverts, so the call is atomic.
+    /// @param tokenId The position to unwind
+    function unwindPosition(uint256 tokenId) external isNotLocked {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
         address admin0 = _getOwner(poolKey.currency0);
         address admin1 = _getOwner(poolKey.currency1);
@@ -87,15 +82,15 @@ contract PermissionedPositionManager is PositionManager {
         getApproved[tokenId] = msg.sender;
 
         bytes memory actions = abi.encodePacked(
-            uint8(Actions.BURN_POSITION), uint8(_ACTION_TAKE_WITH_FALLBACK), uint8(_ACTION_TAKE_WITH_FALLBACK)
+            uint8(Actions.BURN_POSITION), uint8(Actions.UNWIND_WITH_FALLBACK), uint8(Actions.UNWIND_WITH_FALLBACK)
         );
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
-        params[1] = abi.encode(poolKey.currency0, lp, defaultRecipient);
-        params[2] = abi.encode(poolKey.currency1, lp, defaultRecipient);
+        params[1] = abi.encode(poolKey.currency0, lp);
+        params[2] = abi.encode(poolKey.currency1, lp);
         poolManager.unlock(abi.encode(actions, params));
 
-        emit PositionUnwound(tokenId, lp, msg.sender, defaultRecipient);
+        emit PositionUnwound(tokenId, lp, msg.sender);
     }
 
     /// @notice Burn an ERC-6909 claim on the PoolManager and transfer the underlying currency to `to`.
@@ -241,9 +236,9 @@ contract PermissionedPositionManager is PositionManager {
     /// @dev Adds the cascade-routing action used by `unwindPosition` and the BURN_6909 primitive used by
     ///      `withdrawClaim`. All other actions fall through to the base PositionManager dispatcher.
     function _handleAction(uint256 action, bytes calldata params) internal override {
-        if (action == _ACTION_TAKE_WITH_FALLBACK) {
-            (Currency currency, address lp, address defaultRecipient) = abi.decode(params, (Currency, address, address));
-            _takeWithFallback(currency, lp, defaultRecipient);
+        if (action == Actions.UNWIND_WITH_FALLBACK) {
+            (Currency currency, address lp) = abi.decode(params, (Currency, address));
+            _unwindWithFallback(currency, lp);
             return;
         }
         if (action == Actions.BURN_6909) {
@@ -254,18 +249,30 @@ contract PermissionedPositionManager is PositionManager {
         super._handleAction(action, params);
     }
 
-    /// @dev Cascade: try take to LP → take to defaultRecipient → mint 6909 claim to defaultRecipient.
-    ///      Final mint never reverts.
-    function _takeWithFallback(Currency currency, address lp, address defaultRecipient) internal {
+    /// @dev Permissioned currencies cascade `take → LP → admin → 6909 mint to admin`. Non-permissioned currencies
+    ///      cascade `take → LP → 6909 mint to LP` — admins cannot take regular ERC-20s, so the LP
+    ///      retains ownership as a transferable claim. Final mint never reverts.
+    function _unwindWithFallback(Currency currency, address lp) internal {
         uint256 amount = _getFullCredit(currency);
         if (amount == 0) return;
 
+        // Try to take to LP
         try poolManager.take(currency, lp, amount) {
             return;
         } catch {}
-        try poolManager.take(currency, defaultRecipient, amount) {
+
+        // If LP is not allowed to receive the currency, try to take to admin
+        address admin = _getOwner(currency);
+        // If no admin, LP retains ownership as a 6909 claim
+        if (admin == address(0)) {
+            poolManager.mint(lp, currency.toId(), amount);
+            return;
+        }
+        // Try to take to admin
+        try poolManager.take(currency, admin, amount) {
             return;
         } catch {}
-        poolManager.mint(defaultRecipient, currency.toId(), amount);
+        // If admin is not allowed to receive the currency, mint a 6909 claim to admin
+        poolManager.mint(admin, currency.toId(), amount);
     }
 }
