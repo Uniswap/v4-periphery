@@ -26,7 +26,16 @@ contract PermissionedPositionManager is PositionManager {
     mapping(Currency currency => mapping(IHooks hooks => bool)) public isAllowedHooks;
 
     event AllowedHooksUpdated(Currency currency, IHooks hooks, bool allowed);
-    event PositionUnwound(uint256 indexed tokenId, address indexed lp, address indexed admin);
+
+    event CurrencyUnwound(
+        uint256 indexed tokenId,
+        Currency indexed currency,
+        address indexed recipient,
+        address caller,
+        address lp,
+        uint256 amount,
+        bool asClaim
+    );
     event ClaimWithdrawn(Currency indexed currency, address indexed from, address indexed to, uint256 amount);
 
     error InvalidHook();
@@ -67,7 +76,8 @@ contract PermissionedPositionManager is PositionManager {
 
     /// @notice Force-exit the LP from a position. Burns the NFT, unwinds liquidity, and routes each currency.
     /// @dev Either PA admin may call. Per-currency fallback is derived on-chain via `_getOwner` (see
-    ///      `_unwindWithFallback`). The 6909 fallback never reverts, so the call is atomic.
+    ///      `_unwindWithFallback`). The 6909 fallback never reverts, so the call is atomic. Emits one
+    ///      `CurrencyUnwound` event per leg.
     /// @param tokenId The position to unwind
     function unwindPosition(uint256 tokenId) external isNotLocked {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
@@ -86,11 +96,9 @@ contract PermissionedPositionManager is PositionManager {
         );
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
-        params[1] = abi.encode(poolKey.currency0, lp);
-        params[2] = abi.encode(poolKey.currency1, lp);
+        params[1] = abi.encode(poolKey.currency0, lp, tokenId);
+        params[2] = abi.encode(poolKey.currency1, lp, tokenId);
         poolManager.unlock(abi.encode(actions, params));
-
-        emit PositionUnwound(tokenId, lp, msg.sender);
     }
 
     /// @notice Burn an ERC-6909 claim on the PoolManager and transfer the underlying currency to `to`.
@@ -237,8 +245,8 @@ contract PermissionedPositionManager is PositionManager {
     ///      `withdrawClaim`. All other actions fall through to the base PositionManager dispatcher.
     function _handleAction(uint256 action, bytes calldata params) internal override {
         if (action == Actions.UNWIND_WITH_FALLBACK) {
-            (Currency currency, address lp) = abi.decode(params, (Currency, address));
-            _unwindWithFallback(currency, lp);
+            (Currency currency, address lp, uint256 tokenId) = abi.decode(params, (Currency, address, uint256));
+            _unwindWithFallback(currency, lp, tokenId);
             return;
         }
         if (action == Actions.BURN_6909) {
@@ -251,13 +259,15 @@ contract PermissionedPositionManager is PositionManager {
 
     /// @dev Permissioned currencies cascade `take → LP → admin → 6909 mint to admin`. Non-permissioned currencies
     ///      cascade `take → LP → 6909 mint to LP` — admins cannot take regular ERC-20s, so the LP
-    ///      retains ownership as a transferable claim. Final mint never reverts.
-    function _unwindWithFallback(Currency currency, address lp) internal {
+    ///      retains ownership as a transferable claim. Final mint never reverts. Emits `CurrencyUnwound` on the
+    ///      terminal branch with `recipient`/`asClaim` reflecting the actual destination.
+    function _unwindWithFallback(Currency currency, address lp, uint256 tokenId) internal {
         uint256 amount = _getFullCredit(currency);
         if (amount == 0) return;
 
         // Try to take to LP
         try poolManager.take(currency, lp, amount) {
+            emit CurrencyUnwound(tokenId, currency, lp, msgSender(), lp, amount, false);
             return;
         } catch {}
 
@@ -266,13 +276,16 @@ contract PermissionedPositionManager is PositionManager {
         // If no admin, LP retains ownership as a 6909 claim
         if (admin == address(0)) {
             poolManager.mint(lp, currency.toId(), amount);
+            emit CurrencyUnwound(tokenId, currency, lp, msgSender(), lp, amount, true);
             return;
         }
         // Try to take to admin
         try poolManager.take(currency, admin, amount) {
+            emit CurrencyUnwound(tokenId, currency, admin, msgSender(), lp, amount, false);
             return;
         } catch {}
         // If admin is not allowed to receive the currency, mint a 6909 claim to admin
         poolManager.mint(admin, currency.toId(), amount);
+        emit CurrencyUnwound(tokenId, currency, admin, msgSender(), lp, amount, true);
     }
 }

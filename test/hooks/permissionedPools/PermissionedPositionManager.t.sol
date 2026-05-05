@@ -1620,7 +1620,15 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     bytes4 private constant _UNWIND_SELECTOR = 0x37058749;
     bytes4 private constant _WITHDRAW_CLAIM_SELECTOR = 0xf77de3fc;
 
-    event PositionUnwound(uint256 indexed tokenId, address indexed lp, address indexed admin);
+    event CurrencyUnwound(
+        uint256 indexed tokenId,
+        Currency indexed currency,
+        address indexed recipient,
+        address admin,
+        address lp,
+        uint256 amount,
+        bool asClaim
+    );
     event ClaimWithdrawn(Currency indexed currency, address indexed from, address indexed to, uint256 amount);
 
     function _balanceOf(Currency c, address who) internal view returns (uint256) {
@@ -1666,8 +1674,16 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         uint256 tokenId = lpm.nextTokenId();
         _test_permissioned_mint_allowed_user(key2);
 
+        // capture the exact deposit amounts so we can do a full-data event check
+        uint256 deposited0 = aliceCurrency0BeforeMint - _balanceOf(currency0, alice);
+        uint256 deposited2 = aliceCurrency2BeforeMint - _balanceOf(currency2, alice);
+
+        // Full-data check on both events. Notably verifies `caller == admin` (i.e., msgSender() returns the
+        // original unwindPosition caller, not the PoolManager). _ROUNDTRIP_TOLERANCE absorbed via deposited - 1.
         vm.expectEmit(true, true, true, true);
-        emit PositionUnwound(tokenId, alice, admin);
+        emit CurrencyUnwound(tokenId, key2.currency0, alice, admin, alice, deposited0 - 1, false);
+        vm.expectEmit(true, true, true, true);
+        emit CurrencyUnwound(tokenId, key2.currency1, alice, admin, alice, deposited2 - 1, false);
         vm.prank(admin);
         _unwind(tokenId);
 
@@ -1716,6 +1732,11 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(alice, false);
         MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(admin1, true);
 
+        // pa0 leg lands at admin1 as underlying; regular leg lands at alice as underlying
+        vm.expectEmit(true, true, true, false);
+        emit CurrencyUnwound(tokenId, key0.currency0, admin1, address(0), address(0), 0, false);
+        vm.expectEmit(true, true, true, false);
+        emit CurrencyUnwound(tokenId, key0.currency1, alice, address(0), address(0), 0, false);
         vm.prank(admin1);
         _unwind(tokenId);
 
@@ -1741,6 +1762,11 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(alice, false);
         MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(admin1, false);
 
+        // pa0 leg lands at admin1 as 6909 (asClaim=true); regular leg lands at alice as underlying
+        vm.expectEmit(true, true, true, false);
+        emit CurrencyUnwound(tokenId, key0.currency0, admin1, address(0), address(0), 0, true);
+        vm.expectEmit(true, true, true, false);
+        emit CurrencyUnwound(tokenId, key0.currency1, alice, address(0), address(0), 0, false);
         vm.prank(admin1);
         _unwind(tokenId);
 
@@ -1837,6 +1863,11 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             bytes("LP rejects")
         );
 
+        // pa0 leg lands at alice as underlying; regular leg falls back to 6909 mint to alice (asClaim=true)
+        vm.expectEmit(true, true, true, false);
+        emit CurrencyUnwound(tokenId, key0.currency0, alice, address(0), address(0), 0, false);
+        vm.expectEmit(true, true, true, false);
+        emit CurrencyUnwound(tokenId, key0.currency1, alice, address(0), address(0), 0, true);
         vm.prank(admin1);
         _unwind(tokenId);
 
