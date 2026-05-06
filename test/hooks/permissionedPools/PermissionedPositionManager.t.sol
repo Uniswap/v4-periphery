@@ -1983,4 +1983,94 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.stopPrank();
         assertEq(ok, false);
     }
+
+    /// @dev TAKE(adapter, ADDRESS_THIS) leaves the POSM holding the underlying permissioned token
+    /// (because PermissionsAdapter._update auto-unwraps on transfer out of the PoolManager).
+    /// SWEEP(adapter, ...) must therefore resolve to and transfer the underlying — not the adapter —
+    /// or else the underlying is stranded and sweepable by a later caller.
+    function test_sweep_adapterCurrency_transfersUnderlyingToRecipient() public {
+        Currency adapterCurrency = key0.currency0;
+        Currency underlying = getPermissionedCurrency(adapterCurrency);
+
+        PositionConfig memory config = PositionConfig({poolKey: key0, tickLower: -120, tickUpper: 120});
+        uint256 liquidityToAdd = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidityToAdd, address(this), ZERO_BYTES);
+
+        uint256 recipientUnderlyingBefore = underlying.balanceOf(alice);
+        uint256 recipientAdapterBefore = adapterCurrency.balanceOf(alice);
+
+        // DECREASE to create a positive delta, then TAKE(adapter, ADDRESS_THIS) which routes the
+        // underlying into POSM via the adapter unwrap, then SWEEP(adapter, alice).
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, liquidityToAdd, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+        planner.add(Actions.TAKE, abi.encode(adapterCurrency, ActionConstants.ADDRESS_THIS, ActionConstants.OPEN_DELTA));
+        planner.add(Actions.TAKE, abi.encode(key0.currency1, ActionConstants.MSG_SENDER, ActionConstants.OPEN_DELTA));
+        planner.add(Actions.SWEEP, abi.encode(adapterCurrency, alice));
+
+        lpm.modifyLiquidities(planner.encode(), _deadline);
+
+        // Alice received the underlying token, not the adapter token.
+        assertGt(underlying.balanceOf(alice), recipientUnderlyingBefore, "recipient did not receive underlying");
+        assertEq(
+            adapterCurrency.balanceOf(alice), recipientAdapterBefore, "recipient should not receive adapter tokens"
+        );
+        // POSM should not be left holding either the underlying or the adapter.
+        assertEq(underlying.balanceOf(address(lpm)), 0, "underlying stranded in POSM");
+        assertEq(adapterCurrency.balanceOf(address(lpm)), 0, "adapter stranded in POSM");
+    }
+
+    /// @dev Second call to SWEEP with the adapter currency must be a no-op — the underlying
+    /// has already been forwarded on the first sweep.
+    function test_sweep_adapterCurrency_secondSweepTransfersNothing() public {
+        Currency adapterCurrency = key0.currency0;
+        Currency underlying = getPermissionedCurrency(adapterCurrency);
+
+        PositionConfig memory config = PositionConfig({poolKey: key0, tickLower: -120, tickUpper: 120});
+        uint256 liquidityToAdd = 100e18;
+        uint256 tokenId = lpm.nextTokenId();
+        mint(config, liquidityToAdd, address(this), ZERO_BYTES);
+
+        uint256 aliceBefore = underlying.balanceOf(alice);
+        uint256 selfBefore = underlying.balanceOfSelf();
+
+        Plan memory planner = Planner.init();
+        planner.add(
+            Actions.DECREASE_LIQUIDITY,
+            abi.encode(tokenId, liquidityToAdd, MIN_SLIPPAGE_DECREASE, MIN_SLIPPAGE_DECREASE, ZERO_BYTES)
+        );
+        planner.add(Actions.TAKE, abi.encode(adapterCurrency, ActionConstants.ADDRESS_THIS, ActionConstants.OPEN_DELTA));
+        planner.add(Actions.TAKE, abi.encode(key0.currency1, ActionConstants.MSG_SENDER, ActionConstants.OPEN_DELTA));
+        planner.add(Actions.SWEEP, abi.encode(adapterCurrency, alice));
+        // Second sweep goes to the test contract (also allowlisted) and should move nothing
+        // since the POSM's underlying balance was fully drained by the first sweep.
+        planner.add(Actions.SWEEP, abi.encode(adapterCurrency, address(this)));
+
+        lpm.modifyLiquidities(planner.encode(), _deadline);
+
+        assertGt(underlying.balanceOf(alice), aliceBefore, "first recipient received nothing");
+        assertEq(underlying.balanceOfSelf(), selfBefore, "second sweep should transfer nothing");
+        assertEq(adapterCurrency.balanceOfSelf(), 0, "second sweep should not transfer adapter");
+    }
+
+    /// @dev Sweeping a non-permissioned currency is unchanged: it still transfers whatever balance
+    /// of that currency POSM happens to hold.
+    function test_sweep_nonPermissionedCurrency_stillTransfersBalance() public {
+        Currency nonPermissioned = key0.currency1;
+        uint256 amount = 123 ether;
+        nonPermissioned.transfer(address(lpm), amount);
+
+        address recipient = makeAddr("RECIPIENT");
+        uint256 recipientBefore = nonPermissioned.balanceOf(recipient);
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.SWEEP, abi.encode(nonPermissioned, recipient));
+        lpm.modifyLiquidities(planner.encode(), _deadline);
+
+        assertEq(nonPermissioned.balanceOf(recipient) - recipientBefore, amount);
+        assertEq(nonPermissioned.balanceOf(address(lpm)), 0);
+    }
 }

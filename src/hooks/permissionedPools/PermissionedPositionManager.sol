@@ -236,6 +236,21 @@ contract PermissionedPositionManager is PositionManager {
         return Currency.wrap(permissionedToken).balanceOfSelf();
     }
 
+    /// @dev When a TAKE is performed with the adapter currency to this contract, the adapter's
+    /// _update hook unwraps the adapter tokens, so this contract ends up holding the underlying
+    /// permissioned token — not the adapter token. Sweep the underlying to avoid leaving
+    /// tokens behind that a later caller could claim.
+    function _sweep(Currency currency, address to) internal override {
+        address permissionedToken = _verifiedPermissionedTokenOf(currency);
+        if (permissionedToken == address(0)) {
+            super._sweep(currency, to);
+            return;
+        }
+        Currency underlying = Currency.wrap(permissionedToken);
+        uint256 balance = underlying.balanceOfSelf();
+        if (balance > 0) underlying.transfer(to, balance);
+    }
+
     function _getOwner(Currency currency) internal view returns (address) {
         address permissionsAdapter = Currency.unwrap(currency);
         address permissionedToken = _verifiedPermissionedTokenOf(currency);
