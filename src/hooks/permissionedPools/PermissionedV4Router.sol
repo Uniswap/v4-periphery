@@ -67,6 +67,8 @@ contract PermissionedV4Router is V4Router, ReentrancyLock {
     /// @notice Executes encoded commands along with provided inputs.
     /// @param commands A set of concatenated commands, each 1 byte in length
     /// @param inputs An array of byte strings containing abi encoded inputs for each command
+    /// @dev COMMAND_FLAG_ALLOW_REVERT is currently only honored for COMMAND_PERMIT2_PERMIT. Swap commands
+    /// always revert on failure to avoid leaving the router in an inconsistent state mid-batch.
     function execute(bytes calldata commands, bytes[] calldata inputs) public payable isNotLocked {
         bool success;
         bytes memory output;

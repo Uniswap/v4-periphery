@@ -290,7 +290,7 @@ contract PositionManager is
         uint128 amount0Max,
         uint128 amount1Max,
         bytes calldata hookData
-    ) internal onlyIfApproved(msgSender(), tokenId) {
+    ) internal virtual onlyIfApproved(msgSender(), tokenId) {
         (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
 
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
@@ -303,6 +303,7 @@ contract PositionManager is
     /// @dev The liquidity delta is derived from open deltas in the pool manager.
     function _increaseFromDeltas(uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData)
         internal
+        virtual
         onlyIfApproved(msgSender(), tokenId)
     {
         (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
@@ -431,6 +432,9 @@ contract PositionManager is
                 salt: bytes32(tokenId)
             });
             (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(poolKey, params, hookData);
+            emit ModifyLiquidity(
+                poolKey.toId(), msgSender(), params.tickLower, params.tickUpper, params.liquidityDelta, params.salt
+            );
             // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
@@ -502,6 +506,8 @@ contract PositionManager is
             }),
             hookData
         );
+
+        emit ModifyLiquidity(poolKey.toId(), msgSender(), info.tickLower(), info.tickUpper(), liquidityChange, salt);
 
         if (info.hasSubscriber()) {
             _notifyModifyLiquidity(uint256(salt), liquidityChange, feesAccrued);

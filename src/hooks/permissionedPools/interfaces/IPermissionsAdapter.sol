@@ -15,6 +15,10 @@ interface IPermissionsAdapter is IERC20 {
     /// @notice Emitted when the swapping enabled status is updated
     event SwappingEnabledUpdated(bool enabled);
 
+    /// @notice Emitted when the permissioned token is deposited into this adapter as a verification signal
+    /// @dev Provides a filterable signal that the asset issuer has allow-listed this adapter, without relying on a vanilla ERC20 Transfer event
+    event VerificationDeposit(address indexed depositor, uint256 amount);
+
     /// @notice Thrown when the allow list checker does not implement the IAllowListChecker interface
     error InvalidAllowListChecker(IAllowlistChecker newAllowListChecker);
 
@@ -32,6 +36,13 @@ interface IPermissionsAdapter is IERC20 {
     /// @dev Only callable by allowed wrappers
     /// @dev The `amount` must be sent to this contract before calling this function
     function wrapToPoolManager(uint256 amount) external;
+
+    /// @notice Deposits the permissioned token into this adapter as an on-chain verification signal
+    /// @param amount The amount of permissioned tokens to pull from the caller
+    /// @dev Intended to be called by the asset issuer once the adapter has been allow-listed on the permissioned token.
+    /// Emits `VerificationDeposit` so off-chain observers have a dedicated event to filter on. The resulting balance also
+    /// satisfies the on-chain check used by `PermissionsAdapterFactory.verifyPermissionsAdapter`.
+    function depositForVerification(uint256 amount) external;
 
     /// @notice Updates the allow list checker
     /// @param newAllowListChecker The new allow list checker

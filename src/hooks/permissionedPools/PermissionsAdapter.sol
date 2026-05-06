@@ -4,11 +4,16 @@ pragma solidity 0.8.26;
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {ERC20 as SafeERC20} from "solmate/src/tokens/ERC20.sol";
+import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {IPermissionsAdapter} from "./interfaces/IPermissionsAdapter.sol";
 import {IAllowlistChecker} from "./interfaces/IAllowlistChecker.sol";
 import {PermissionFlag} from "./libraries/PermissionFlags.sol";
 
 contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
+    using SafeTransferLib for SafeERC20;
+
     /// @inheritdoc IPermissionsAdapter
     address public immutable POOL_MANAGER;
 
@@ -44,6 +49,12 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
     }
 
     /// @inheritdoc IPermissionsAdapter
+    function depositForVerification(uint256 amount) external {
+        PERMISSIONED_TOKEN.transferFrom(msg.sender, address(this), amount);
+        emit VerificationDeposit(msg.sender, amount);
+    }
+
+    /// @inheritdoc IPermissionsAdapter
     function updateAllowListChecker(IAllowlistChecker newAllowListChecker) external onlyOwner {
         _updateAllowListChecker(newAllowListChecker);
     }
@@ -60,7 +71,7 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
 
     /// @inheritdoc IPermissionsAdapter
     function isAllowed(address account, PermissionFlag permission) public view returns (bool) {
-        return ((allowListChecker.checkAllowlist(account)) & (permission)) == (permission);
+        return ((allowListChecker.checkAllowlist(account, address(PERMISSIONED_TOKEN))) & (permission)) == (permission);
     }
 
     function _updateAllowListChecker(IAllowlistChecker newAllowListChecker) internal {
@@ -108,19 +119,40 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
 
     function _unwrap(address account, uint256 amount) internal {
         _burn(account, amount);
-        PERMISSIONED_TOKEN.transfer(account, amount);
+        SafeERC20(address(PERMISSIONED_TOKEN)).safeTransfer(account, amount);
+    }
+
+    /// @dev Low-level staticcall + ABI-layout validation. try/catch doesn't catch return-data decode failures,
+    /// so tokens returning bytes32 (MKR-style) or other non-string shapes must be checked explicitly.
+    function _readString(address token, bytes4 selector, string memory fallback_) private view returns (string memory) {
+        (bool ok, bytes memory data) = token.staticcall(abi.encodeWithSelector(selector));
+        if (!ok || data.length < 64) return fallback_;
+        uint256 offset;
+        uint256 length;
+        assembly ("memory-safe") {
+            offset := mload(add(data, 0x20))
+            length := mload(add(data, 0x40))
+        }
+        if (offset != 0x20 || length == 0 || length > data.length - 64) return fallback_;
+        return abi.decode(data, (string));
     }
 
     function _getName(IERC20 permissionedToken) private view returns (string memory) {
-        return string.concat("Uniswap v4 ", ERC20(address(permissionedToken)).name());
+        return string.concat(
+            "Uniswap v4 ", _readString(address(permissionedToken), IERC20Metadata.name.selector, "Permissioned Token")
+        );
     }
 
     function _getSymbol(IERC20 permissionedToken) private view returns (string memory) {
-        return string.concat("v4", ERC20(address(permissionedToken)).symbol());
+        return string.concat("v4", _readString(address(permissionedToken), IERC20Metadata.symbol.selector, "PT"));
     }
 
     function decimals() public view override returns (uint8) {
-        return ERC20(address(PERMISSIONED_TOKEN)).decimals();
+        (bool ok, bytes memory data) =
+            address(PERMISSIONED_TOKEN).staticcall(abi.encodeWithSelector(IERC20Metadata.decimals.selector));
+        if (!ok || data.length < 32) return 18;
+        uint256 value = abi.decode(data, (uint256));
+        return value > type(uint8).max ? 18 : uint8(value);
     }
 
     function owner() public view override(Ownable, IPermissionsAdapter) returns (address) {
