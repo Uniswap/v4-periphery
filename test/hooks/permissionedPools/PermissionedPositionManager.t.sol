@@ -2015,7 +2015,9 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         // Alice received the underlying token, not the adapter token.
         assertGt(underlying.balanceOf(alice), recipientUnderlyingBefore, "recipient did not receive underlying");
-        assertEq(adapterCurrency.balanceOf(alice), recipientAdapterBefore, "recipient should not receive adapter tokens");
+        assertEq(
+            adapterCurrency.balanceOf(alice), recipientAdapterBefore, "recipient should not receive adapter tokens"
+        );
         // POSM should not be left holding either the underlying or the adapter.
         assertEq(underlying.balanceOf(address(lpm)), 0, "underlying stranded in POSM");
         assertEq(adapterCurrency.balanceOf(address(lpm)), 0, "adapter stranded in POSM");
