@@ -50,4 +50,7 @@ library Actions {
     // permissioned-pools specific actions
     // routes a currency's positive delta with a fallback cascade: LP → defaultRecipient → 6909 mint to defaultRecipient
     uint256 internal constant UNWIND_WITH_FALLBACK = 0x19;
+    // subscribing/unsubscribing via position manager
+    uint256 internal constant SUBSCRIBE = 0x1a;
+    uint256 internal constant UNSUBSCRIBE = 0x1b;
 }

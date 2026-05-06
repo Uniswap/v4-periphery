@@ -91,12 +91,16 @@ contract PermissionedPositionManager is PositionManager {
         getApproved[tokenId] = msg.sender;
 
         bytes memory actions = abi.encodePacked(
-            uint8(Actions.BURN_POSITION), uint8(Actions.UNWIND_WITH_FALLBACK), uint8(Actions.UNWIND_WITH_FALLBACK)
+            uint8(Actions.UNSUBSCRIBE),
+            uint8(Actions.BURN_POSITION),
+            uint8(Actions.UNWIND_WITH_FALLBACK),
+            uint8(Actions.UNWIND_WITH_FALLBACK)
         );
-        bytes[] memory params = new bytes[](3);
-        params[0] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
-        params[1] = abi.encode(poolKey.currency0, lp, tokenId);
-        params[2] = abi.encode(poolKey.currency1, lp, tokenId);
+        bytes[] memory params = new bytes[](4);
+        params[0] = abi.encode(tokenId);
+        params[1] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
+        params[2] = abi.encode(poolKey.currency0, lp, tokenId);
+        params[3] = abi.encode(poolKey.currency1, lp, tokenId);
         poolManager.unlock(abi.encode(actions, params));
     }
 
@@ -264,6 +268,11 @@ contract PermissionedPositionManager is PositionManager {
         if (action == Actions.UNWIND_WITH_FALLBACK) {
             (Currency currency, address lp, uint256 tokenId) = abi.decode(params, (Currency, address, uint256));
             _unwindWithFallback(currency, lp, tokenId);
+            return;
+        }
+        if (action == Actions.UNSUBSCRIBE) {
+            uint256 tokenId = abi.decode(params, (uint256));
+            if (positionInfo[tokenId].hasSubscriber()) _unsubscribe(tokenId);
             return;
         }
         if (action == Actions.BURN_6909) {
