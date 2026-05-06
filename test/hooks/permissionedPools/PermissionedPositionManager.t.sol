@@ -33,6 +33,10 @@ import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.so
 import {MockAllowlistChecker, MockPermissionedToken} from "./PermissionedPoolsBase.sol";
 import {PermissionsAdapter, IERC20} from "../../../src/hooks/permissionedPools/PermissionsAdapter.sol";
 import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
+import {INotifier} from "../../../src/interfaces/INotifier.sol";
+import {MockUnsubscribeRevertingSubscriber} from "../../mocks/MockUnsubscribeRevertingSubscriber.sol";
+import {MockBurnRevertingSubscriber} from "../../mocks/MockBurnRevertingSubscriber.sol";
+import {MockReentrantSubscriber} from "../../mocks/MockReentrantSubscriber.sol";
 
 contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -2072,5 +2076,79 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         assertEq(nonPermissioned.balanceOf(recipient) - recipientBefore, amount);
         assertEq(nonPermissioned.balanceOf(address(lpm)), 0);
+    }
+
+    // ===== Subscriber DoS protection on unwindPosition =====
+
+    /// @dev Admin force-exit succeeds even when the LP attached a subscriber that reverts on
+    ///      `notifyUnsubscribe`. The revert is gas-capped + try/catch'd inside `_unsubscribe`.
+    function test_unwindPosition_with_unsubscribe_reverting_subscriber_succeeds() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        MockUnsubscribeRevertingSubscriber sub = new MockUnsubscribeRevertingSubscriber();
+        vm.prank(alice);
+        INotifier(address(lpm)).subscribe(tokenId, address(sub), "");
+        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(sub));
+
+        // address(this) is admin of both adapters (default setUp)
+        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId));
+        assertEq(ok, true);
+
+        // subscriber detached, NFT burned
+        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(0));
+        vm.expectRevert();
+        IERC721(address(lpm)).ownerOf(tokenId);
+    }
+
+    /// @dev Admin force-exit succeeds even when the LP grants operator approval to a malicious
+    ///      reentrant subscriber that tries to re-attach a fresh subscriber during
+    ///      `notifyUnsubscribe`. The re-entry is blocked by `subscribe`'s `onlyIfPoolManagerLocked`
+    ///      modifier (we're inside an active unlock callback when `_unsubscribe` runs).
+    function test_unwindPosition_with_reentrant_subscriber_blocks_reentry() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        // The would-be replacement subscriber. If reentry succeeded, this would be attached
+        // and its `notifyBurn` revert would brick the burn.
+        MockBurnRevertingSubscriber replacement = new MockBurnRevertingSubscriber();
+
+        // The malicious subscriber that the LP attaches. On notifyUnsubscribe it tries to
+        // re-attach `replacement` via posm.subscribe.
+        MockReentrantSubscriber sub = new MockReentrantSubscriber(INotifier(address(lpm)), address(replacement));
+
+        vm.prank(alice);
+        INotifier(address(lpm)).subscribe(tokenId, address(sub), "");
+        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(sub));
+
+        // The reentry path requires the subscriber to be authorized to call posm.subscribe.
+        // LP grants operator approval — this is the setup we're testing the defense against.
+        vm.prank(alice);
+        IERC721(address(lpm)).setApprovalForAll(address(sub), true);
+
+        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId));
+        assertEq(ok, true);
+
+        // Subscriber fully detached — no re-attach happened, despite the reentry attempt.
+        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(0));
+        vm.expectRevert();
+        IERC721(address(lpm)).ownerOf(tokenId);
+    }
+
+    /// @dev LP-initiated burn semantics are preserved: a subscriber that reverts on `notifyBurn`
+    ///      still propagates the revert when the LP burns their own position via BURN_POSITION.
+    function test_burn_lp_with_burn_reverting_subscriber_still_reverts() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        MockBurnRevertingSubscriber sub = new MockBurnRevertingSubscriber();
+        vm.prank(alice);
+        INotifier(address(lpm)).subscribe(tokenId, address(sub), "");
+
+        PositionConfig memory config = PositionConfig({poolKey: key2, tickLower: -120, tickUpper: 120});
+
+        vm.prank(alice);
+        vm.expectRevert();
+        burn(tokenId, config, ZERO_BYTES);
     }
 }
