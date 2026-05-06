@@ -105,6 +105,9 @@ contract PermissionedPositionManager is PositionManager {
     ///      currencies, `to` must clear the underlying token's issuer compliance on unwrap. `to` follows the
     ///      standard `Actions.TAKE` recipient sentinels: `address(1)` remaps to the caller, `address(2)` to this
     ///      contract.
+    /// @param currency The currency whose 6909 claim is being burned
+    /// @param amount The amount of claim to burn (and underlying to deliver)
+    /// @param to The recipient of the underlying currency
     function withdrawClaim(Currency currency, uint256 amount, address to) external isNotLocked {
         bytes memory actions = abi.encodePacked(uint8(Actions.BURN_6909), uint8(Actions.TAKE));
         bytes[] memory params = new bytes[](2);
