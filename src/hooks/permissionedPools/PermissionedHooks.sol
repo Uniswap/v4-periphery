@@ -45,6 +45,7 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
     error Unauthorized();
     error SwappingDisabled();
     error NoVerifiedAdapter();
+    error UnverifiedAdapter();
 
     constructor(IPoolManager manager, IPermissionsAdapterFactory permissionsAdapterFactory) BaseHook(manager) {
         PERMISSIONS_ADAPTER_FACTORY = permissionsAdapterFactory;
@@ -59,13 +60,23 @@ contract PermissionedHooks is IHooks, ReentrancyLock, BaseHook {
         permissions.beforeAddLiquidity = true;
     }
 
-    /// @dev Requires at least one pool currency to be a verified permissions adapter
+    /// @dev Requires at least one pool currency to be a verified permissions adapter, and disallows
+    /// any pool currency that is an unverified permissions adapter.
     function _beforeInitialize(address, PoolKey calldata key, uint160) internal view override returns (bytes4) {
-        bool currency0Verified =
-            PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(Currency.unwrap(key.currency0)) != address(0);
-        bool currency1Verified =
-            PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(Currency.unwrap(key.currency1)) != address(0);
-        if (!currency0Verified && !currency1Verified) revert NoVerifiedAdapter();
+        address currency0 = Currency.unwrap(key.currency0);
+        address currency1 = Currency.unwrap(key.currency1);
+
+        bool currency0IsAdapter = PERMISSIONS_ADAPTER_FACTORY.permissionsAdapterOf(currency0) != address(0);
+        bool currency1IsAdapter = PERMISSIONS_ADAPTER_FACTORY.permissionsAdapterOf(currency1) != address(0);
+
+        if (!currency0IsAdapter && !currency1IsAdapter) revert NoVerifiedAdapter();
+        if (currency0IsAdapter && PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(currency0) == address(0)) {
+            revert UnverifiedAdapter();
+        }
+        if (currency1IsAdapter && PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(currency1) == address(0)) {
+            revert UnverifiedAdapter();
+        }
+
         return IHooks.beforeInitialize.selector;
     }
 

@@ -34,6 +34,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     error HookCallFailed();
     error SliceOutOfBounds();
     error NoVerifiedAdapter();
+    error UnverifiedAdapter();
     error InvalidCommandType(uint256 commandType);
     error ExecutionFailed(uint256 commandIndex, bytes output);
 
@@ -2123,7 +2124,15 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         // Two non-permissioned tokens — neither is a verified adapter
         (Currency c0, Currency c1) = currency2 < currency3 ? (currency2, currency3) : (currency3, currency2);
         PoolKey memory unverifiedKey = PoolKey(c0, c1, 3000, 60, permissionedHooks);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeInitialize.selector,
+                abi.encodeWithSelector(NoVerifiedAdapter.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         manager.initialize(unverifiedKey, SQRT_PRICE_1_1);
     }
 
@@ -2143,7 +2152,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         manager.initialize(twoAdapterKey, SQRT_PRICE_1_1);
     }
 
-    function test_initialize_reverts_unverified_adapter() public {
+    function test_initialize_reverts_unverified_adapter_paired_with_plain_token() public {
         // Create an adapter for a permissioned token but do NOT verify it — the M-03 attack path
         // currency0 is a MockPermissionedToken (first 2 tokens in setup are permissioned)
         IERC20 token = IERC20(Currency.unwrap(currency0));
@@ -2155,7 +2164,44 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         (Currency c0, Currency c1) =
             adapterCurrency < currency4 ? (adapterCurrency, currency4) : (currency4, adapterCurrency);
         PoolKey memory attackKey = PoolKey(c0, c1, 3000, 60, permissionedHooks);
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeInitialize.selector,
+                abi.encodeWithSelector(UnverifiedAdapter.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
+        manager.initialize(attackKey, SQRT_PRICE_1_1);
+    }
+
+    /// @dev Closes the residual M-03 gap: the "at least one verified adapter" rule alone passes when
+    /// one side is a verified adapter and the other is a registered-but-unverified adapter. The new
+    /// per-currency check must reject this configuration so liquidity cannot be parked one-sided
+    /// before the second adapter is verified.
+    function test_initialize_reverts_verified_paired_with_unverified_adapter() public {
+        // Build a fresh, unverified adapter for a different permissioned token (currency1).
+        IERC20 token = IERC20(Currency.unwrap(currency1));
+        MockAllowlistChecker checker = new MockAllowlistChecker();
+        address unverifiedAdapter = permissionsAdapterFactory.createPermissionsAdapter(token, address(this), checker);
+        // Do NOT verify.
+
+        Currency verifiedAdapterCurrency = Currency.wrap(address(permissionsAdapter0));
+        Currency unverifiedAdapterCurrency = Currency.wrap(unverifiedAdapter);
+        (Currency c0, Currency c1) = verifiedAdapterCurrency < unverifiedAdapterCurrency
+            ? (verifiedAdapterCurrency, unverifiedAdapterCurrency)
+            : (unverifiedAdapterCurrency, verifiedAdapterCurrency);
+        PoolKey memory attackKey = PoolKey(c0, c1, 3000, 60, permissionedHooks);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeInitialize.selector,
+                abi.encodeWithSelector(UnverifiedAdapter.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
         manager.initialize(attackKey, SQRT_PRICE_1_1);
     }
 
