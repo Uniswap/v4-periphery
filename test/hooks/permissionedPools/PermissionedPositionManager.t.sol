@@ -721,6 +721,38 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.stopPrank();
     }
 
+    /// @dev A pool with no verified permissions adapter on either side has nothing for the
+    ///      PermissionedPositionManager to enforce; minting such a position would only produce
+    ///      a non-transferable NFT (see ECO-221 / `transferFrom`). Reject the mint outright.
+    function test_mint_reverts_when_no_verified_adapter() public {
+        // Two ordinary ERC-20s — neither is a verified permissions adapter.
+        Currency ordinary0 = deployMintAndApproveCurrency(false);
+        Currency ordinary1 = deployMintAndApproveCurrency(false);
+        if (Currency.unwrap(ordinary1) < Currency.unwrap(ordinary0)) {
+            (ordinary0, ordinary1) = (ordinary1, ordinary0);
+        }
+        approvePosmCurrency(ordinary0);
+        approvePosmCurrency(ordinary1);
+
+        // Initialize directly on the PoolManager with no hooks so initialization isn't gated.
+        PoolKey memory ordinaryKey = PoolKey({
+            currency0: ordinary0,
+            currency1: ordinary1,
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+        manager.initialize(ordinaryKey, SQRT_PRICE_1_1);
+
+        PositionConfig memory config = PositionConfig({poolKey: ordinaryKey, tickLower: -120, tickUpper: 120});
+        bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        // Use the literal selector to avoid pulling in PermissionedPositionManager imports here.
+        // bytes4(keccak256("NoVerifiedAdapter()")) = 0x36a01ad4
+        vm.expectRevert(bytes4(keccak256("NoVerifiedAdapter()")));
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
     function test_permissioned_mint_increase_allowed_user() public {
         _test_permissioned_mint_increase_allowed_user(key0);
         _test_permissioned_mint_increase_allowed_user(key1);

@@ -62,6 +62,10 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
     Plan public plan;
 
     address public positionManager;
+    /// @dev Plain (non-permissioned) PositionManager used to mint liquidity into ordinary
+    ///      ERC-20/ERC-20 pools (e.g. `key2`) for routing tests. The PermissionedPositionManager
+    ///      now rejects mints where neither side is a verified permissions adapter.
+    address public ordinaryPositionManager;
 
     mapping(Currency permissionsAdapter => Currency permissionedCurrency) public adapterToPermissioned;
 
@@ -185,9 +189,22 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         }
         _key = PoolKey(currencyA, currencyB, 3000, 60, IHooks(hookAddr));
         manager.initialize(_key, SQRT_PRICE_1_1);
-        MockERC20(Currency.unwrap(currencyA)).approve(positionManager, type(uint256).max);
-        MockERC20(Currency.unwrap(currencyB)).approve(positionManager, type(uint256).max);
-        modifyLiquidity(_key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x", 0);
+
+        // Pools where neither side is a verified permissions adapter must use the plain PositionManager —
+        // PermissionedPositionManager rejects mints into those pools (positions would be untransferable).
+        bool currency0Verified =
+            permissionsAdapterFactory.verifiedPermissionsAdapterOf(Currency.unwrap(currencyA)) != address(0);
+        bool currency1Verified =
+            permissionsAdapterFactory.verifiedPermissionsAdapterOf(Currency.unwrap(currencyB)) != address(0);
+        address posm = (currency0Verified || currency1Verified) ? positionManager : ordinaryPositionManager;
+
+        MockERC20(Currency.unwrap(currencyA)).approve(posm, type(uint256).max);
+        MockERC20(Currency.unwrap(currencyB)).approve(posm, type(uint256).max);
+        MockERC20(Currency.unwrap(currencyA)).approve(address(permit2), type(uint256).max);
+        MockERC20(Currency.unwrap(currencyB)).approve(address(permit2), type(uint256).max);
+        permit2.approve(Currency.unwrap(currencyA), posm, type(uint160).max, type(uint48).max);
+        permit2.approve(Currency.unwrap(currencyB), posm, type(uint160).max, type(uint48).max);
+        modifyLiquidityVia(posm, _key, ModifyLiquidityParams(-887220, 887220, 200 ether, 0), "0x", 0);
     }
 
     function createNativePoolWithLiquidity(Currency currency, address hookAddr) internal returns (PoolKey memory _key) {
@@ -298,6 +315,16 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         bytes memory hookData,
         uint256 value
     ) public {
+        modifyLiquidityVia(positionManager, key, params, hookData, value);
+    }
+
+    function modifyLiquidityVia(
+        address posm,
+        PoolKey memory key,
+        ModifyLiquidityParams memory params,
+        bytes memory hookData,
+        uint256 value
+    ) public {
         // Create a plan with the mint position action
         plan = Planner.init();
         plan = plan.add(
@@ -310,7 +337,7 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         uint256 deadline = block.timestamp + 3600;
 
         // Call modifyLiquidities with the properly encoded data
-        IPositionManager(positionManager).modifyLiquidities{value: value}(unlockData, deadline);
+        IPositionManager(posm).modifyLiquidities{value: value}(unlockData, deadline);
     }
 
     function _finalizeAndExecuteSwap(
@@ -405,6 +432,18 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
             abi.encode(manager, permit2, 1e18, address(tokenDescriptor), address(weth9), permissionsAdapterFactory)
         );
         positionManager = Deploy.create2(posmBytecode, keccak256("permissionedPosm"));
+
+        // Plain PositionManager — used to mint liquidity into ordinary pools (no verified adapter).
+        ordinaryPositionManager = address(
+            Deploy.positionManager(
+                address(manager),
+                address(permit2),
+                1e18,
+                address(tokenDescriptor),
+                address(weth9),
+                bytes.concat(keccak256("ordinaryPosm"))
+            )
+        );
     }
 
     function _deployAndSetupTokens(MockERC20[] memory tokens) private {

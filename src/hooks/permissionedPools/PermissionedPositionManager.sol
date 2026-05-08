@@ -40,6 +40,7 @@ contract PermissionedPositionManager is PositionManager {
     error InvalidHook();
     error TransferDisabled();
     error NotPermissionsAdapterAdmin();
+    error NoVerifiedAdapter();
 
     /// @dev as this contract must know the hooks address in advance, it must be passed in as a constructor argument
     constructor(
@@ -137,6 +138,9 @@ contract PermissionedPositionManager is PositionManager {
     }
 
     /// @dev When minting a position, verify that the sender is allowed to mint the position. This prevents a disallowed user from minting one sided liquidity.
+    ///      Also rejects pools where neither side is a verified permissions adapter — those positions provide no
+    ///      permissioning value over the base PositionManager and would otherwise be permanently non-transferable
+    ///      (see `transferFrom`), so the manager refuses to mint them.
     function _mint(
         PoolKey calldata poolKey,
         int24 tickLower,
@@ -147,6 +151,11 @@ contract PermissionedPositionManager is PositionManager {
         address owner,
         bytes calldata hookData
     ) internal override {
+        // require at least one currency to be a verified permissions adapter
+        if (
+            _verifiedPermissionedTokenOf(poolKey.currency0) == address(0)
+                && _verifiedPermissionedTokenOf(poolKey.currency1) == address(0)
+        ) revert NoVerifiedAdapter();
         // allowlist is verified in the hook call
         if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
         _checkRecipientAllowed(poolKey.currency0, owner);
