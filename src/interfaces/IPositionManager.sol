@@ -26,8 +26,9 @@ interface IPositionManager is
     IUnorderedNonce,
     IPermit2Forwarder
 {
-    /// @notice Emitted by the position manager for each modifyLiquidity call, mirroring PoolManager ModifyLiquidity except `sender` is the unlock locker (end user), not the position manager
-    event ModifyLiquidity(
+    /// @notice Emitted by the position manager for each modifyLiquidity call, mirroring PoolManager
+    ///         ModifyLiquidity except `sender` is the unlock locker (end user), not the position manager.
+    event ModifyPosition(
         PoolId indexed id, address indexed sender, int24 tickLower, int24 tickUpper, int256 liquidityDelta, bytes32 salt
     );
 

@@ -34,10 +34,10 @@
   "PositionManager_mint_withSettlePair": "423838",
   "PositionManager_multicall_initialize_mint": "461136",
   "PositionManager_permit": "79175",
-  "PositionManager_permit_secondPosition": "62063",
+  "PositionManager_permit_secondPosition": "62075",
   "PositionManager_permit_twice": "44963",
   "PositionManager_subscribe": "87968",
   "PositionManager_unsubscribe": "62697",
-  "position manager initcode hash (without constructor params, as uint256)": "67582943578862820501218462243067479340757004968368407905126233562933492108999",
+  "position manager initcode hash (without constructor params, as uint256)": "39950173930130160046527526152179940231178202021933001972999459034999301007875",
   "positionManager bytecode size": "24172"
 }
