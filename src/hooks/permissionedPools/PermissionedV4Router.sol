@@ -14,6 +14,7 @@ abstract contract PermissionedV4Router is V4Router {
     IPermissionsAdapterFactory public immutable PERMISSIONS_ADAPTER_FACTORY;
 
     error Unauthorized();
+    error SwappingDisabled();
 
     constructor(IPoolManager poolManager_, IPermissionsAdapterFactory permissionsAdapterFactory)
         V4Router(poolManager_)
@@ -31,6 +32,7 @@ abstract contract PermissionedV4Router is V4Router {
         }
         // token is permissioned, wrap the token and transfer it to the pool manager
         IPermissionsAdapter permissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
+        if (!permissionsAdapter.swappingEnabled()) revert SwappingDisabled();
         if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.SWAP_ALLOWED)) {
             revert Unauthorized();
         }
