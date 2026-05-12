@@ -34,12 +34,13 @@ import {ActionConstants} from "../../../../src/libraries/ActionConstants.sol";
 import {
     IPermissionsAdapterFactory
 } from "../../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapterFactory.sol";
-import {PermissionedV4Router} from "../../../../src/hooks/permissionedPools/PermissionedV4Router.sol";
+import {MockPermissionedRouter} from "../../../mocks/MockPermissionedRouter.sol";
 import {MockPermissionedToken} from "../PermissionedPoolsBase.sol";
 import {MockV4Router} from "../../../mocks/MockV4Router.sol";
-import {MockHooks} from "../mocks/MockHooks.sol";
+import {MockInsecureHooks} from "../mocks/MockInsecureHooks.sol";
+import {MockPermissionedHooks} from "../mocks/MockPermissionedHooks.sol";
 import {Deploy} from "../../../../test/shared/Deploy.sol";
-import {HookMiner} from "../../../../src/utils/HookMiner.sol";
+import {HookMiner} from "../../../shared/HookMiner.sol";
 import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
 import {PermissionFlags} from "../../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
@@ -75,7 +76,7 @@ contract PermissionedDeployers is Test {
     PoolModifyLiquidityTest public modifyLiquidityRouter;
     PoolModifyLiquidityTestNoChecks public modifyLiquidityNoChecks;
     SwapRouterNoChecks public swapRouterNoChecks;
-    PermissionedV4Router public permissionedSwapRouter;
+    MockPermissionedRouter public permissionedSwapRouter;
     PoolSwapTest public swapRouter;
     PoolDonateTest public donateRouter;
     PoolTakeTest public takeRouter;
@@ -135,12 +136,12 @@ contract PermissionedDeployers is Test {
         (address calculatedAddr, bytes32 salt) = HookMiner.find(
             address(this),
             flags,
-            vm.getCode("MockHooks.sol:MockHooks"),
+            vm.getCode("MockPermissionedHooks.sol:MockPermissionedHooks"),
             abi.encode(IPoolManager(manager_), IPermissionsAdapterFactory(permissionsAdapterFactory_))
         );
         address addr = Deploy.create2(
             abi.encodePacked(
-                vm.getCode("MockHooks.sol:MockHooks"),
+                vm.getCode("MockPermissionedHooks.sol:MockPermissionedHooks"),
                 abi.encode(IPoolManager(manager_), IPermissionsAdapterFactory(permissionsAdapterFactory_))
             ),
             salt
@@ -152,10 +153,14 @@ contract PermissionedDeployers is Test {
     function deployInsecureHooks(address manager_) internal returns (address deployedHooksAddr) {
         uint160 flags = (1 << 11) | (1 << 7);
         (address calculatedAddr, bytes32 salt) = HookMiner.find(
-            address(this), flags, vm.getCode("MockHooks.sol:MockInsecureHooks"), abi.encode(IPoolManager(manager_))
+            address(this),
+            flags,
+            vm.getCode("MockInsecureHooks.sol:MockInsecureHooks"),
+            abi.encode(IPoolManager(manager_))
         );
         address addr = Deploy.create2(
-            abi.encodePacked(vm.getCode("MockHooks.sol:MockInsecureHooks"), abi.encode(IPoolManager(manager_))), salt
+            abi.encodePacked(vm.getCode("MockInsecureHooks.sol:MockInsecureHooks"), abi.encode(IPoolManager(manager_))),
+            salt
         );
         assertEq(addr, calculatedAddr);
         deployedHooksAddr = calculatedAddr;
@@ -166,7 +171,7 @@ contract PermissionedDeployers is Test {
         returns (address deployedAddr)
     {
         bytes memory routerBytecode = abi.encodePacked(
-            vm.getCode("PermissionedV4Router.sol:PermissionedV4Router"),
+            vm.getCode("MockPermissionedRouter.sol:MockPermissionedRouter"),
             abi.encode(
                 manager,
                 IAllowanceTransfer(permit2_),
@@ -193,7 +198,7 @@ contract PermissionedDeployers is Test {
         secondaryPermissionedHooks = IHooks(deployPermissionedHooks(address(manager), permissionsAdapterFactoryAddress));
         insecureHooks = IHooks(deployInsecureHooks(address(manager)));
         address deployedAddr = deployPermissionedV4Router(permit2_, permissionsAdapterFactoryAddress, weth9);
-        permissionedSwapRouter = PermissionedV4Router(payable(deployedAddr));
+        permissionedSwapRouter = MockPermissionedRouter(payable(deployedAddr));
         swapRouter = PoolSwapTest(deployedAddr);
         deployMiscRouters();
     }
@@ -314,6 +319,7 @@ contract PermissionedDeployers is Test {
             zeroForOne, // Direction of swap
             uint128(amountIn), // Amount to swap in
             0, // Minimum amount out (0 = no slippage protection)
+            0,
             bytes("") // Hook data
         );
 

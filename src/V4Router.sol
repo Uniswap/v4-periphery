@@ -27,6 +27,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using CalldataDecoder for bytes;
     using BipsLibrary for uint256;
 
+    uint256 private constant PRECISION = 1e36;
+
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
     function _handleAction(uint256 action, bytes calldata params) internal override {
@@ -88,6 +90,12 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         uint128 amountOut =
             _swap(params.poolKey, params.zeroForOne, -int256(uint256(amountIn)), params.hookData).toUint128();
         if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived(params.amountOutMinimum, amountOut);
+        if (params.minHopPriceX36 != 0) {
+            uint256 priceX36 = uint256(amountOut) * PRECISION / amountIn;
+            if (priceX36 < params.minHopPriceX36) {
+                revert V4TooLittleReceivedPerHopSingle(params.minHopPriceX36, priceX36);
+            }
+        }
     }
 
     function _swapExactInput(IV4Router.ExactInputParams calldata params) private {
@@ -100,11 +108,20 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             if (amountIn == ActionConstants.OPEN_DELTA) amountIn = _getFullCredit(currencyIn).toUint128();
             PathKey calldata pathKey;
 
+            uint256 perHopPriceLength = params.minHopPriceX36.length;
+            if (perHopPriceLength != 0 && perHopPriceLength != pathLength) revert InvalidHopPriceLength();
+
             for (uint256 i = 0; i < pathLength; i++) {
                 pathKey = params.path[i];
                 (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(currencyIn);
                 // The output delta will always be positive, except for when interacting with certain hook pools
                 amountOut = _swap(poolKey, zeroForOne, -int256(uint256(amountIn)), pathKey.hookData).toUint128();
+
+                if (perHopPriceLength != 0) {
+                    uint256 priceX36 = amountOut * PRECISION / amountIn;
+                    uint256 minPrice = params.minHopPriceX36[i];
+                    if (priceX36 < minPrice) revert V4TooLittleReceivedPerHop(i, minPrice, priceX36);
+                }
 
                 amountIn = amountOut;
                 currencyIn = pathKey.intermediateCurrency;
@@ -125,6 +142,12 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             ))
         .toUint128();
         if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
+        if (params.minHopPriceX36 != 0) {
+            uint256 priceX36 = uint256(amountOut) * PRECISION / amountIn;
+            if (priceX36 < params.minHopPriceX36) {
+                revert V4TooMuchRequestedPerHopSingle(params.minHopPriceX36, priceX36);
+            }
+        }
     }
 
     function _swapExactOutput(IV4Router.ExactOutputParams calldata params) private {
@@ -140,6 +163,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 amountOut = _getFullDebt(currencyOut).toUint128();
             }
 
+            uint256 perHopPriceLength = params.minHopPriceX36.length;
+            if (perHopPriceLength != 0 && perHopPriceLength != pathLength) revert InvalidHopPriceLength();
+
             for (uint256 i = pathLength; i > 0; i--) {
                 pathKey = params.path[i - 1];
                 (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
@@ -147,6 +173,11 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 amountIn = (uint256(-int256(_swap(poolKey, !oneForZero, int256(uint256(amountOut)), pathKey.hookData))))
                 .toUint128();
 
+                if (perHopPriceLength != 0) {
+                    uint256 priceX36 = amountOut * PRECISION / amountIn;
+                    uint256 minPrice = params.minHopPriceX36[i - 1];
+                    if (priceX36 < minPrice) revert V4TooMuchRequestedPerHop(i - 1, minPrice, priceX36);
+                }
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;
             }

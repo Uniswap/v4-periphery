@@ -6,7 +6,6 @@ import {IPositionDescriptor} from "../../src/interfaces/IPositionDescriptor.sol"
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
 import {IV4Quoter} from "../../src/interfaces/IV4Quoter.sol";
 import {IStateView} from "../../src/interfaces/IStateView.sol";
-import {PermissionedV4Router} from "../../src/hooks/permissionedPools/PermissionedV4Router.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 library Deploy {
