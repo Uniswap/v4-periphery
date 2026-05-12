@@ -209,22 +209,16 @@ contract PermissionedPositionManager is PositionManager {
         }
         // token is permissioned, wrap the token and transfer it to the pool manager
         IPermissionsAdapter permissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
-        if (payer == address(this)) {
-            // Check liquidity permission for the actual user
-            if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
-                revert Unauthorized();
-            }
-            Currency.wrap(permissionedToken).transfer(address(permissionsAdapter), amount);
-            permissionsAdapter.wrapToPoolManager(amount);
-        } else {
-            // Check liquidity permission for the actual user
-            if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
-                revert Unauthorized();
-            }
-            // token is a permissioned token, wrap the token
-            permit2.transferFrom(payer, address(permissionsAdapter), uint160(amount), permissionedToken);
-            permissionsAdapter.wrapToPoolManager(amount);
+        // Check liquidity permission for the actual user
+        if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
+            revert Unauthorized();
         }
+        if (payer == address(this)) {
+            Currency.wrap(permissionedToken).transfer(address(permissionsAdapter), amount);
+        } else {
+            permit2.transferFrom(payer, address(permissionsAdapter), uint160(amount), permissionedToken);
+        }
+        permissionsAdapter.wrapToPoolManager(amount);
     }
 
     function _verifiedPermissionedTokenOf(Currency currency) internal view returns (address) {
