@@ -106,6 +106,16 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
         permissionsAdapter.updateAllowListChecker(newAllowListCheckerContract);
     }
 
+    /// @dev ERC-165 compliant contracts must return `false` for `0xffffffff`. A checker that returns
+    ///      `true` for any interfaceId would bypass a direct `supportsInterface` check. The new
+    ///      `ERC165Checker.supportsInterface` pre-check catches this.
+    function testRevert_WhenBypassFakeSupportsInterface() public {
+        IAllowlistChecker bypassChecker = new BypassAllowlistChecker();
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IPermissionsAdapter.InvalidAllowListChecker.selector, bypassChecker));
+        permissionsAdapter.updateAllowListChecker(bypassChecker);
+    }
+
     function test_UpdateAllowListChecker() public {
         IAllowlistChecker newAllowListChecker = new MockAllowlistChecker();
         vm.prank(owner);
@@ -376,5 +386,17 @@ contract ImproperAllowlistChecker is IAllowlistChecker {
 
     function supportsInterface(bytes4) external pure returns (bool) {
         return false;
+    }
+}
+
+/// @dev Returns `true` for every interfaceId, including `0xffffffff`. Defeats a naive direct
+///      `supportsInterface` check; rejected by ERC-165's required pre-checks.
+contract BypassAllowlistChecker is IAllowlistChecker {
+    function checkAllowlist(address, address) public pure returns (PermissionFlag) {
+        return PermissionFlags.ALL_ALLOWED;
+    }
+
+    function supportsInterface(bytes4) external pure returns (bool) {
+        return true;
     }
 }

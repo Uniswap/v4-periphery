@@ -5,6 +5,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC20 as SafeERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {IPermissionsAdapter} from "./interfaces/IPermissionsAdapter.sol";
@@ -75,7 +76,7 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
     }
 
     function _updateAllowListChecker(IAllowlistChecker newAllowListChecker) internal {
-        if (!newAllowListChecker.supportsInterface(type(IAllowlistChecker).interfaceId)) {
+        if (!ERC165Checker.supportsInterface(address(newAllowListChecker), type(IAllowlistChecker).interfaceId)) {
             revert InvalidAllowListChecker(newAllowListChecker);
         }
         allowListChecker = newAllowListChecker;
