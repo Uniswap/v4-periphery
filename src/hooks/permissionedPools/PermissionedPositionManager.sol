@@ -164,9 +164,10 @@ contract PermissionedPositionManager is PositionManager {
     }
 
     /// @dev Re-validate the hook allowlist on every liquidity increase so that a revoked hook cannot
-    ///      continue to accept new inflows on existing positions. Decrease and burn paths are intentionally
-    ///      left unchecked so that holders can always exit positions even after a hook has been removed
-    ///      from the allowlist.
+    ///      continue to accept new inflows on existing positions. Also re-check that the position owner
+    ///      still clears `LIQUIDITY_ALLOWED` for each permissioned currency. Decrease and burn paths are
+    ///      intentionally left unchecked so that holders can always exit positions even after their
+    ///      permissions or the hook have been revoked.
     function _increase(
         uint256 tokenId,
         uint256 liquidity,
@@ -176,6 +177,9 @@ contract PermissionedPositionManager is PositionManager {
     ) internal override {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
         if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
+        address owner = ownerOf(tokenId);
+        _checkRecipientAllowed(poolKey.currency0, owner);
+        _checkRecipientAllowed(poolKey.currency1, owner);
         super._increase(tokenId, liquidity, amount0Max, amount1Max, hookData);
     }
 
@@ -186,6 +190,9 @@ contract PermissionedPositionManager is PositionManager {
     {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
         if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
+        address owner = ownerOf(tokenId);
+        _checkRecipientAllowed(poolKey.currency0, owner);
+        _checkRecipientAllowed(poolKey.currency1, owner);
         super._increaseFromDeltas(tokenId, amount0Max, amount1Max, hookData);
     }
 
