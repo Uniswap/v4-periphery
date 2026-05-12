@@ -736,11 +736,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         // Initialize directly on the PoolManager with no hooks so initialization isn't gated.
         PoolKey memory ordinaryKey = PoolKey({
-            currency0: ordinary0,
-            currency1: ordinary1,
-            fee: 3000,
-            tickSpacing: 60,
-            hooks: IHooks(address(0))
+            currency0: ordinary0, currency1: ordinary1, fee: 3000, tickSpacing: 60, hooks: IHooks(address(0))
         });
         manager.initialize(ordinaryKey, SQRT_PRICE_1_1);
 
