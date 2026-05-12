@@ -69,7 +69,7 @@ interface IPermissionsAdapter is IERC20 {
     function allowListChecker() external view returns (IAllowlistChecker);
 
     /// @notice Returns the allowed wrappers that can wrap the permissioned token
-    /// @dev e.g., the permissioned pool manager, quoters or the swap router
+    /// @dev Wrappers must honestly report `msgSender()` to maintain permission guarantees.
     function allowedWrappers(address wrapper) external view returns (bool);
 
     /// @notice Returns the swapping enabled status
