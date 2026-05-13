@@ -1624,6 +1624,113 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         _setHookAllowed(revoked, key.hooks, true);
     }
 
+    // =============================================================================
+    // Owner LIQUIDITY_ALLOWED enforcement on liquidity increases (ECO-347 / Cantina #17)
+    // =============================================================================
+    //
+    // An ERC-721-approved operator that retains LIQUIDITY_ALLOWED must not be able to grow
+    // a delisted owner's position by paying with their own funds. `_increase` and
+    // `_increaseFromDeltas` re-check `_checkRecipientAllowed(currency, ownerOf(tokenId))`.
+
+    function test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator() public {
+        _test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator(key0);
+        _test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator(key1);
+        _test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator(key2);
+    }
+
+    function _test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator(PoolKey memory key)
+        internal
+    {
+        address bob = makeAddr("BOB");
+        // Bob holds LIQUIDITY_ALLOWED on every permissioned underlying and is funded so he can
+        // pay for the increase from his own balance.
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(bob, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(bob, PermissionFlags.ALL_ALLOWED);
+        seedBalance(bob);
+        approvePosmFor(bob);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        // Alice mints a position while she still has LIQUIDITY_ALLOWED.
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        uint128 liquidityBefore = lpm.getPositionLiquidity(tokenId);
+
+        // Alice approves Bob via ERC-721 so he can operate on her tokenId.
+        vm.prank(alice);
+        IERC721(address(lpm)).approve(bob, tokenId);
+
+        // Alice's adapter revokes her permissions on every permissioned underlying.
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.NONE);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.NONE);
+
+        // Bob — still allowlisted, still ERC-721-approved — must not be able to grow Alice's
+        // position by paying with his own funds.
+        vm.prank(bob);
+        vm.expectRevert(Unauthorized.selector);
+        increaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+
+        // Position size unchanged.
+        assertEq(lpm.getPositionLiquidity(tokenId), liquidityBefore);
+
+        // Restore so the fan-out across keys is independent.
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+    }
+
+    function test_permissioned_increaseFromDeltas_reverts_when_owner_liquidity_revoked_via_operator() public {
+        _test_permissioned_increaseFromDeltas_reverts_when_owner_liquidity_revoked_via_operator(key0);
+        _test_permissioned_increaseFromDeltas_reverts_when_owner_liquidity_revoked_via_operator(key1);
+        _test_permissioned_increaseFromDeltas_reverts_when_owner_liquidity_revoked_via_operator(key2);
+    }
+
+    function _test_permissioned_increaseFromDeltas_reverts_when_owner_liquidity_revoked_via_operator(PoolKey memory key)
+        internal
+    {
+        address bob = makeAddr("BOB_DELTAS");
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(bob, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(bob, PermissionFlags.ALL_ALLOWED);
+        seedBalance(bob);
+        approvePosmFor(bob);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 initialLiquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.prank(alice);
+        mint(config, initialLiquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        uint128 liquidityBefore = lpm.getPositionLiquidity(tokenId);
+
+        vm.prank(alice);
+        IERC721(address(lpm)).approve(bob, tokenId);
+
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.NONE);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.NONE);
+
+        // Build a plan that pre-settles both currencies then drives INCREASE_LIQUIDITY_FROM_DELTAS.
+        // The owner-allowlist check runs at the top of the override, so the whole batch reverts
+        // atomically and no funds move.
+        Plan memory planner = Planner.init();
+        planner.add(Actions.SETTLE, abi.encode(key.currency0, uint256(10e18), true));
+        planner.add(Actions.SETTLE, abi.encode(key.currency1, uint256(10e18), true));
+        planner.add(
+            Actions.INCREASE_LIQUIDITY_FROM_DELTAS,
+            abi.encode(tokenId, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+        bytes memory calls = planner.encode();
+
+        vm.prank(bob);
+        vm.expectRevert(Unauthorized.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+
+        assertEq(lpm.getPositionLiquidity(tokenId), liquidityBefore);
+
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+    }
+
     // Helpers for toggling the hook allowlist in tests. Uses a raw selector call to mirror the
     // pattern established by `setAllowedHooks` (line 227).
     function _setHookAllowedForKey(PoolKey memory key, bool allowed) internal {
