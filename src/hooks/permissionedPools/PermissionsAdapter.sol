@@ -112,6 +112,8 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
             // if the pool manager is the sender, the permissioned token is automatically released, skip the checks
             revert InvalidTransfer(from, to);
         }
+        // reject self-transfer: would unwrap raw underlying into PoolManager
+        if (to == POOL_MANAGER) revert InvalidTransfer(from, to);
         super._update(from, to, amount);
         _unwrap(to, amount);
         // the pool manager must always be the only holder of the permissions adapter

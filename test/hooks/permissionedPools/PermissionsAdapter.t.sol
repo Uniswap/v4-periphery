@@ -154,6 +154,25 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
         permissionsAdapter.transfer(to, 0);
     }
 
+    function testRevert_PoolManagerSelfTransfer(uint256 mintAmount, uint256 transferAmount) public {
+        // Cantina ECO-340: a TAKE(adapter, poolManager, ...) would otherwise unwrap raw underlying
+        // back into the pool manager, breaking the adapter accounting boundary.
+        transferAmount = bound(transferAmount, 0, mintAmount);
+        permissionedToken.mint(address(permissionsAdapter), mintAmount);
+        permissionsAdapter.wrapToPoolManager(mintAmount);
+
+        vm.prank(mockPoolManager);
+        vm.expectRevert(
+            abi.encodeWithSelector(IPermissionsAdapter.InvalidTransfer.selector, mockPoolManager, mockPoolManager)
+        );
+        permissionsAdapter.transfer(mockPoolManager, transferAmount);
+
+        // adapter and underlying state are unchanged
+        assertEq(permissionsAdapter.balanceOf(mockPoolManager), mintAmount);
+        assertEq(permissionedToken.balanceOf(mockPoolManager), 0);
+        assertEq(permissionedToken.balanceOf(address(permissionsAdapter)), mintAmount);
+    }
+
     function test_UnwrapOnPoolManagerTransfer(uint256 mintAmount, uint256 transferAmount, address recipient) public {
         vm.assume(recipient != address(0) && recipient != mockPoolManager && recipient != address(permissionsAdapter));
         assertEq(permissionedToken.balanceOf(recipient), 0);
