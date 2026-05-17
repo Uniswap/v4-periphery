@@ -2126,9 +2126,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     /// @dev BURN_6909 must reject a `from` that is not the action executor, even when the holder has authorized
     ///      permPosm as a PoolManager operator. Otherwise a third party could drain the claim via raw
     ///      `modifyLiquidities([BURN_6909(currency, victim, amount), TAKE(currency, attacker, amount)])`.
-    function test_modifyLiquidities_burn6909_reverts_when_from_is_not_executor(address admin1, address admin2)
-        public
-    {
+    function test_burn6909_reverts_when_from_is_not_executor(address admin1, address admin2) public {
         _setupUnwindPositionTests(admin1, admin2);
         address bob = makeAddr("BOB");
         vm.assume(bob != admin1 && bob != admin2 && bob != alice);
