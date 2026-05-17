@@ -2123,6 +2123,41 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(ok, false);
     }
 
+    /// @dev BURN_6909 must reject a `from` that is not the action executor, even when the holder has authorized
+    ///      permPosm as a PoolManager operator. Otherwise a third party could drain the claim via raw
+    ///      `modifyLiquidities([BURN_6909(currency, victim, amount), TAKE(currency, attacker, amount)])`.
+    function test_modifyLiquidities_burn6909_reverts_when_from_is_not_executor(address admin1, address admin2)
+        public
+    {
+        _setupUnwindPositionTests(admin1, admin2);
+        address bob = makeAddr("BOB");
+        vm.assume(bob != admin1 && bob != admin2 && bob != alice);
+
+        // produce a 6909 claim held by admin1 via the unwind cascade
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0);
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(alice, false);
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(admin1, false);
+        vm.prank(admin1);
+        _unwind(tokenId);
+
+        uint256 claim = manager.balanceOf(admin1, key0.currency0.toId());
+        assertGt(claim, 0);
+
+        // admin1 follows the documented withdrawClaim approval pattern
+        vm.prank(admin1);
+        manager.setOperator(address(lpm), true);
+
+        bytes memory actions = abi.encodePacked(uint8(Actions.BURN_6909), uint8(Actions.TAKE));
+        bytes[] memory params = new bytes[](2);
+        params[0] = abi.encode(key0.currency0, admin1, claim);
+        params[1] = abi.encode(key0.currency0, bob, claim);
+
+        vm.prank(bob);
+        vm.expectRevert(Unauthorized.selector);
+        lpm.modifyLiquidities(abi.encode(actions, params), block.timestamp + 1);
+    }
+
     /// @dev TAKE(adapter, ADDRESS_THIS) leaves the POSM holding the underlying permissioned token
     /// (because PermissionsAdapter._update auto-unwraps on transfer out of the PoolManager).
     /// SWEEP(adapter, ...) must therefore resolve to and transfer the underlying — not the adapter —
