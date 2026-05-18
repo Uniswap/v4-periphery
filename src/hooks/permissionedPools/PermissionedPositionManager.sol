@@ -287,6 +287,8 @@ contract PermissionedPositionManager is PositionManager {
         }
         if (action == Actions.BURN_6909) {
             (Currency currency, address from, uint256 amount) = params.decodeCurrencyAddressAndUint256();
+            // validate claim owner is the action executor before burning
+            if (from != msgSender()) revert Unauthorized();
             poolManager.burn(from, currency.toId(), amount);
             return;
         }
