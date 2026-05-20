@@ -2323,7 +2323,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     // ===== Action handler authorization =====
 
-    /// @dev Cantina #35: a third party cannot detach a subscriber via the UNSUBSCRIBE action.
+    /// @dev A third party cannot detach a subscriber via the UNSUBSCRIBE action.
     function test_handleAction_unsubscribe_reverts_for_unauthorized_caller() public {
         uint256 tokenId = lpm.nextTokenId();
         _test_permissioned_mint_allowed_user(key2);
