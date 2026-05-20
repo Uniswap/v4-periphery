@@ -37,6 +37,7 @@ import {INotifier} from "../../../src/interfaces/INotifier.sol";
 import {MockUnsubscribeRevertingSubscriber} from "../../mocks/MockUnsubscribeRevertingSubscriber.sol";
 import {MockBurnRevertingSubscriber} from "../../mocks/MockBurnRevertingSubscriber.sol";
 import {MockReentrantSubscriber} from "../../mocks/MockReentrantSubscriber.sol";
+import {MockSubscriber} from "../../mocks/MockSubscriber.sol";
 
 contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, LiquidityFuzzers {
     using FixedPointMathLib for uint256;
@@ -2318,5 +2319,77 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.prank(alice);
         vm.expectRevert();
         burn(tokenId, config, ZERO_BYTES);
+    }
+
+    // ===== Action handler authorization =====
+
+    /// @dev A third party cannot detach a subscriber via the UNSUBSCRIBE action.
+    function test_handleAction_unsubscribe_reverts_for_unauthorized_caller() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        MockSubscriber sub = new MockSubscriber(IPositionManager(address(lpm)));
+        vm.prank(alice);
+        INotifier(address(lpm)).subscribe(tokenId, address(sub), "");
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.UNSUBSCRIBE, abi.encode(tokenId));
+        bytes memory calls = planner.encode();
+
+        vm.prank(unauthorizedUser);
+        vm.expectRevert(abi.encodeWithSelector(IPositionManager.NotApproved.selector, unauthorizedUser));
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
+
+        // subscriber stays attached
+        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(sub));
+    }
+
+    /// @dev The position owner can use the UNSUBSCRIBE action directly.
+    function test_handleAction_unsubscribe_succeeds_for_owner() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        MockSubscriber sub = new MockSubscriber(IPositionManager(address(lpm)));
+        vm.prank(alice);
+        INotifier(address(lpm)).subscribe(tokenId, address(sub), "");
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.UNSUBSCRIBE, abi.encode(tokenId));
+        bytes memory calls = planner.encode();
+
+        vm.prank(alice);
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
+
+        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(0));
+    }
+
+    /// @dev UNWIND_WITH_FALLBACK is restricted to permissions-adapter admins of the position's pool.
+    function test_handleAction_unwindWithFallback_reverts_for_non_admin() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        Plan memory planner = Planner.init();
+        planner.add(Actions.UNWIND_WITH_FALLBACK, abi.encode(key2, key2.currency0, unauthorizedUser, tokenId));
+        bytes memory calls = planner.encode();
+
+        vm.prank(unauthorizedUser);
+        vm.expectRevert(Unauthorized.selector);
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
+    /// @dev UNWIND_WITH_FALLBACK rejects a currency that does not belong to the supplied PoolKey,
+    ///      preventing spoofed `CurrencyUnwound` events even from a legitimate adapter admin.
+    function test_handleAction_unwindWithFallback_reverts_for_mismatched_currency() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        // currency1 is the non-permissioned ERC-20 and is not part of key2.
+        Plan memory planner = Planner.init();
+        planner.add(Actions.UNWIND_WITH_FALLBACK, abi.encode(key2, currency1, alice, tokenId));
+        bytes memory calls = planner.encode();
+
+        // address(this) is the admin of both adapters in default setUp.
+        vm.expectRevert(Unauthorized.selector);
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
     }
 }

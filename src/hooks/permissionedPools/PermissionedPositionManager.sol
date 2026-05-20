@@ -100,8 +100,9 @@ contract PermissionedPositionManager is PositionManager {
         bytes[] memory params = new bytes[](4);
         params[0] = abi.encode(tokenId);
         params[1] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
-        params[2] = abi.encode(poolKey.currency0, lp, tokenId);
-        params[3] = abi.encode(poolKey.currency1, lp, tokenId);
+        // PoolKey is encoded into the unwind params because BURN_POSITION clears positionInfo[tokenId].
+        params[2] = abi.encode(poolKey, poolKey.currency0, lp, tokenId);
+        params[3] = abi.encode(poolKey, poolKey.currency1, lp, tokenId);
         poolManager.unlock(abi.encode(actions, params));
     }
 
@@ -276,12 +277,19 @@ contract PermissionedPositionManager is PositionManager {
     ///      `withdrawClaim`. All other actions fall through to the base PositionManager dispatcher.
     function _handleAction(uint256 action, bytes calldata params) internal override {
         if (action == Actions.UNWIND_WITH_FALLBACK) {
-            (Currency currency, address lp, uint256 tokenId) = abi.decode(params, (Currency, address, uint256));
+            (PoolKey memory poolKey, Currency currency, address lp, uint256 tokenId) =
+                abi.decode(params, (PoolKey, Currency, address, uint256));
+            // Caller must be an admin of a permissions adapter in the position.
+            address sender = msgSender();
+            if (!((currency == poolKey.currency0 || currency == poolKey.currency1)
+                        && (sender == _getOwner(poolKey.currency0) || sender == _getOwner(poolKey.currency1)))) revert Unauthorized();
             _unwindWithFallback(currency, lp, tokenId);
             return;
         }
         if (action == Actions.UNSUBSCRIBE) {
             uint256 tokenId = abi.decode(params, (uint256));
+            // Caller must own or be approved on the position.
+            if (!_isApprovedOrOwner(msgSender(), tokenId)) revert NotApproved(msgSender());
             if (positionInfo[tokenId].hasSubscriber()) _unsubscribe(tokenId);
             return;
         }
