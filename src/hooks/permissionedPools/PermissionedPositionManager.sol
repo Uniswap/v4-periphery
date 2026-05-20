@@ -280,13 +280,13 @@ contract PermissionedPositionManager is PositionManager {
             (PoolKey memory poolKey, Currency currency, address lp, uint256 tokenId) =
                 abi.decode(params, (PoolKey, Currency, address, uint256));
             // Caller must be an admin of a permissions adapter in the position.
+            address sender = msgSender();
             if (
-                Currency.unwrap(currency) != Currency.unwrap(poolKey.currency0)
-                    && Currency.unwrap(currency) != Currency.unwrap(poolKey.currency1)
+                !(
+                    (currency == poolKey.currency0 || currency == poolKey.currency1)
+                        && (sender == _getOwner(poolKey.currency0) || sender == _getOwner(poolKey.currency1))
+                )
             ) revert Unauthorized();
-            if (msgSender() != _getOwner(poolKey.currency0) && msgSender() != _getOwner(poolKey.currency1)) {
-                revert Unauthorized();
-            }
             _unwindWithFallback(currency, lp, tokenId);
             return;
         }
