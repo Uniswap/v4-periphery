@@ -100,8 +100,7 @@ contract PermissionedPositionManager is PositionManager {
         bytes[] memory params = new bytes[](4);
         params[0] = abi.encode(tokenId);
         params[1] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
-        // PoolKey is encoded into the unwind params because BURN_POSITION clears positionInfo[tokenId]
-        // before these actions run, so it cannot be re-derived from the tokenId.
+        // PoolKey is encoded into the unwind params because BURN_POSITION clears positionInfo[tokenId].
         params[2] = abi.encode(poolKey, poolKey.currency0, lp, tokenId);
         params[3] = abi.encode(poolKey, poolKey.currency1, lp, tokenId);
         poolManager.unlock(abi.encode(actions, params));
