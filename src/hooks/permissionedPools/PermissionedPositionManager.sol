@@ -40,6 +40,7 @@ contract PermissionedPositionManager is PositionManager {
     error InvalidHook();
     error TransferDisabled();
     error NotPermissionsAdapterAdmin();
+    error NoVerifiedAdapter();
 
     /// @dev as this contract must know the hooks address in advance, it must be passed in as a constructor argument
     constructor(
@@ -139,6 +140,9 @@ contract PermissionedPositionManager is PositionManager {
     }
 
     /// @dev When minting a position, verify that the sender is allowed to mint the position. This prevents a disallowed user from minting one sided liquidity.
+    ///      Also rejects pools where neither side is a verified permissions adapter — those positions provide no
+    ///      permissioning value over the base PositionManager and would otherwise be permanently non-transferable
+    ///      (see `transferFrom`), so the manager refuses to mint them.
     function _mint(
         PoolKey calldata poolKey,
         int24 tickLower,
@@ -149,6 +153,11 @@ contract PermissionedPositionManager is PositionManager {
         address owner,
         bytes calldata hookData
     ) internal override {
+        // require at least one currency to be a verified permissions adapter
+        if (
+            _verifiedPermissionedTokenOf(poolKey.currency0) == address(0)
+                && _verifiedPermissionedTokenOf(poolKey.currency1) == address(0)
+        ) revert NoVerifiedAdapter();
         // allowlist is verified in the hook call
         if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
         _checkRecipientAllowed(poolKey.currency0, owner);
@@ -157,9 +166,10 @@ contract PermissionedPositionManager is PositionManager {
     }
 
     /// @dev Re-validate the hook allowlist on every liquidity increase so that a revoked hook cannot
-    ///      continue to accept new inflows on existing positions. Decrease and burn paths are intentionally
-    ///      left unchecked so that holders can always exit positions even after a hook has been removed
-    ///      from the allowlist.
+    ///      continue to accept new inflows on existing positions. Also re-check that the position owner
+    ///      still clears `LIQUIDITY_ALLOWED` for each permissioned currency. Decrease and burn paths are
+    ///      intentionally left unchecked so that holders can always exit positions even after their
+    ///      permissions or the hook have been revoked.
     function _increase(
         uint256 tokenId,
         uint256 liquidity,
@@ -169,6 +179,9 @@ contract PermissionedPositionManager is PositionManager {
     ) internal override {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
         if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
+        address owner = ownerOf(tokenId);
+        _checkRecipientAllowed(poolKey.currency0, owner);
+        _checkRecipientAllowed(poolKey.currency1, owner);
         super._increase(tokenId, liquidity, amount0Max, amount1Max, hookData);
     }
 
@@ -179,6 +192,9 @@ contract PermissionedPositionManager is PositionManager {
     {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
         if (!_checkAllowedHooks(poolKey)) revert InvalidHook();
+        address owner = ownerOf(tokenId);
+        _checkRecipientAllowed(poolKey.currency0, owner);
+        _checkRecipientAllowed(poolKey.currency1, owner);
         super._increaseFromDeltas(tokenId, amount0Max, amount1Max, hookData);
     }
 
@@ -211,22 +227,16 @@ contract PermissionedPositionManager is PositionManager {
         }
         // token is permissioned, wrap the token and transfer it to the pool manager
         IPermissionsAdapter permissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
-        if (payer == address(this)) {
-            // Check liquidity permission for the actual user
-            if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
-                revert Unauthorized();
-            }
-            Currency.wrap(permissionedToken).transfer(address(permissionsAdapter), amount);
-            permissionsAdapter.wrapToPoolManager(amount);
-        } else {
-            // Check liquidity permission for the actual user
-            if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
-                revert Unauthorized();
-            }
-            // token is a permissioned token, wrap the token
-            permit2.transferFrom(payer, address(permissionsAdapter), uint160(amount), permissionedToken);
-            permissionsAdapter.wrapToPoolManager(amount);
+        // Check liquidity permission for the actual user
+        if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.LIQUIDITY_ALLOWED)) {
+            revert Unauthorized();
         }
+        if (payer == address(this)) {
+            Currency.wrap(permissionedToken).transfer(address(permissionsAdapter), amount);
+        } else {
+            permit2.transferFrom(payer, address(permissionsAdapter), uint160(amount), permissionedToken);
+        }
+        permissionsAdapter.wrapToPoolManager(amount);
     }
 
     function _verifiedPermissionedTokenOf(Currency currency) internal view returns (address) {
@@ -290,6 +300,8 @@ contract PermissionedPositionManager is PositionManager {
         }
         if (action == Actions.BURN_6909) {
             (Currency currency, address from, uint256 amount) = params.decodeCurrencyAddressAndUint256();
+            // validate claim owner is the action executor before burning
+            if (from != msgSender()) revert Unauthorized();
             poolManager.burn(from, currency.toId(), amount);
             return;
         }

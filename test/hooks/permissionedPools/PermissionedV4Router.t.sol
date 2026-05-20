@@ -216,6 +216,22 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 
+    /// @notice Standalone SETTLE+TAKE bypasses the hook's swap pause. Router-side check must catch it.
+    function test_settle_revert_when_swapping_disabled_on_input_adapter() public {
+        IERC20(Currency.unwrap(currency0)).transfer(alice, 2 ether);
+        IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
+
+        plan = plan.add(Actions.SETTLE, abi.encode(permissionsAdapter0Currency, uint256(100), true));
+        plan = plan.add(Actions.TAKE, abi.encode(permissionsAdapter0Currency, alice, uint256(100)));
+        bytes memory data = plan.encode();
+
+        permissionsAdapter0.updateSwappingEnabled(false);
+
+        vm.prank(alice);
+        vm.expectRevert(SwappingDisabled.selector);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+    }
+
     function test_swap_succeeds_authorized_user() public {
         IERC20(Currency.unwrap(currency0)).transfer(alice, 2 ether);
         IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);

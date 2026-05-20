@@ -722,6 +722,34 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.stopPrank();
     }
 
+    /// @dev A pool with no verified permissions adapter on either side has nothing for the
+    ///      PermissionedPositionManager to enforce; minting such a position would only produce
+    ///      a non-transferable NFT (see ECO-221 / `transferFrom`). Reject the mint outright.
+    function test_mint_reverts_when_no_verified_adapter() public {
+        // Two ordinary ERC-20s — neither is a verified permissions adapter.
+        Currency ordinary0 = deployMintAndApproveCurrency(false);
+        Currency ordinary1 = deployMintAndApproveCurrency(false);
+        if (Currency.unwrap(ordinary1) < Currency.unwrap(ordinary0)) {
+            (ordinary0, ordinary1) = (ordinary1, ordinary0);
+        }
+        approvePosmCurrency(ordinary0);
+        approvePosmCurrency(ordinary1);
+
+        // Initialize directly on the PoolManager with no hooks so initialization isn't gated.
+        PoolKey memory ordinaryKey = PoolKey({
+            currency0: ordinary0, currency1: ordinary1, fee: 3000, tickSpacing: 60, hooks: IHooks(address(0))
+        });
+        manager.initialize(ordinaryKey, SQRT_PRICE_1_1);
+
+        PositionConfig memory config = PositionConfig({poolKey: ordinaryKey, tickLower: -120, tickUpper: 120});
+        bytes memory calls = getMintEncoded(config, 1e18, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        // Use the literal selector to avoid pulling in PermissionedPositionManager imports here.
+        // bytes4(keccak256("NoVerifiedAdapter()")) = 0x36a01ad4
+        vm.expectRevert(bytes4(keccak256("NoVerifiedAdapter()")));
+        lpm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
     function test_permissioned_mint_increase_allowed_user() public {
         _test_permissioned_mint_increase_allowed_user(key0);
         _test_permissioned_mint_increase_allowed_user(key1);
@@ -1597,6 +1625,113 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         _setHookAllowed(revoked, key.hooks, true);
     }
 
+    // =============================================================================
+    // Owner LIQUIDITY_ALLOWED enforcement on liquidity increases (ECO-347 / Cantina #17)
+    // =============================================================================
+    //
+    // An ERC-721-approved operator that retains LIQUIDITY_ALLOWED must not be able to grow
+    // a delisted owner's position by paying with their own funds. `_increase` and
+    // `_increaseFromDeltas` re-check `_checkRecipientAllowed(currency, ownerOf(tokenId))`.
+
+    function test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator() public {
+        _test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator(key0);
+        _test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator(key1);
+        _test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator(key2);
+    }
+
+    function _test_permissioned_increase_reverts_when_owner_liquidity_revoked_via_operator(PoolKey memory key)
+        internal
+    {
+        address bob = makeAddr("BOB");
+        // Bob holds LIQUIDITY_ALLOWED on every permissioned underlying and is funded so he can
+        // pay for the increase from his own balance.
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(bob, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(bob, PermissionFlags.ALL_ALLOWED);
+        seedBalance(bob);
+        approvePosmFor(bob);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 liquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        // Alice mints a position while she still has LIQUIDITY_ALLOWED.
+        vm.prank(alice);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        uint128 liquidityBefore = lpm.getPositionLiquidity(tokenId);
+
+        // Alice approves Bob via ERC-721 so he can operate on her tokenId.
+        vm.prank(alice);
+        IERC721(address(lpm)).approve(bob, tokenId);
+
+        // Alice's adapter revokes her permissions on every permissioned underlying.
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.NONE);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.NONE);
+
+        // Bob — still allowlisted, still ERC-721-approved — must not be able to grow Alice's
+        // position by paying with his own funds.
+        vm.prank(bob);
+        vm.expectRevert(Unauthorized.selector);
+        increaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
+
+        // Position size unchanged.
+        assertEq(lpm.getPositionLiquidity(tokenId), liquidityBefore);
+
+        // Restore so the fan-out across keys is independent.
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+    }
+
+    function test_permissioned_increaseFromDeltas_reverts_when_owner_liquidity_revoked_via_operator() public {
+        _test_permissioned_increaseFromDeltas_reverts_when_owner_liquidity_revoked_via_operator(key0);
+        _test_permissioned_increaseFromDeltas_reverts_when_owner_liquidity_revoked_via_operator(key1);
+        _test_permissioned_increaseFromDeltas_reverts_when_owner_liquidity_revoked_via_operator(key2);
+    }
+
+    function _test_permissioned_increaseFromDeltas_reverts_when_owner_liquidity_revoked_via_operator(PoolKey memory key)
+        internal
+    {
+        address bob = makeAddr("BOB_DELTAS");
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(bob, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(bob, PermissionFlags.ALL_ALLOWED);
+        seedBalance(bob);
+        approvePosmFor(bob);
+
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+        uint256 initialLiquidity = 1e18;
+        uint256 tokenId = lpm.nextTokenId();
+
+        vm.prank(alice);
+        mint(config, initialLiquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        uint128 liquidityBefore = lpm.getPositionLiquidity(tokenId);
+
+        vm.prank(alice);
+        IERC721(address(lpm)).approve(bob, tokenId);
+
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.NONE);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.NONE);
+
+        // Build a plan that pre-settles both currencies then drives INCREASE_LIQUIDITY_FROM_DELTAS.
+        // The owner-allowlist check runs at the top of the override, so the whole batch reverts
+        // atomically and no funds move.
+        Plan memory planner = Planner.init();
+        planner.add(Actions.SETTLE, abi.encode(key.currency0, uint256(10e18), true));
+        planner.add(Actions.SETTLE, abi.encode(key.currency1, uint256(10e18), true));
+        planner.add(
+            Actions.INCREASE_LIQUIDITY_FROM_DELTAS,
+            abi.encode(tokenId, MAX_SLIPPAGE_INCREASE, MAX_SLIPPAGE_INCREASE, ZERO_BYTES)
+        );
+        bytes memory calls = planner.encode();
+
+        vm.prank(bob);
+        vm.expectRevert(Unauthorized.selector);
+        lpm.modifyLiquidities(calls, _deadline);
+
+        assertEq(lpm.getPositionLiquidity(tokenId), liquidityBefore);
+
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
+    }
+
     // Helpers for toggling the hook allowlist in tests. Uses a raw selector call to mirror the
     // pattern established by `setAllowedHooks` (line 227).
     function _setHookAllowedForKey(PoolKey memory key, bool allowed) internal {
@@ -1987,6 +2122,39 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         (bool ok,) = address(lpm).call(abi.encodeWithSelector(_WITHDRAW_CLAIM_SELECTOR, key2.currency0, 1, alice));
         vm.stopPrank();
         assertEq(ok, false);
+    }
+
+    /// @dev BURN_6909 must reject a `from` that is not the action executor, even when the holder has authorized
+    ///      permPosm as a PoolManager operator. Otherwise a third party could drain the claim via raw
+    ///      `modifyLiquidities([BURN_6909(currency, victim, amount), TAKE(currency, attacker, amount)])`.
+    function test_burn6909_reverts_when_from_is_not_executor(address admin1, address admin2) public {
+        _setupUnwindPositionTests(admin1, admin2);
+        address bob = makeAddr("BOB");
+        vm.assume(bob != admin1 && bob != admin2 && bob != alice);
+
+        // produce a 6909 claim held by admin1 via the unwind cascade
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0);
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(alice, false);
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(admin1, false);
+        vm.prank(admin1);
+        _unwind(tokenId);
+
+        uint256 claim = manager.balanceOf(admin1, key0.currency0.toId());
+        assertGt(claim, 0);
+
+        // admin1 follows the documented withdrawClaim approval pattern
+        vm.prank(admin1);
+        manager.setOperator(address(lpm), true);
+
+        bytes memory actions = abi.encodePacked(uint8(Actions.BURN_6909), uint8(Actions.TAKE));
+        bytes[] memory params = new bytes[](2);
+        params[0] = abi.encode(key0.currency0, admin1, claim);
+        params[1] = abi.encode(key0.currency0, bob, claim);
+
+        vm.prank(bob);
+        vm.expectRevert(Unauthorized.selector);
+        lpm.modifyLiquidities(abi.encode(actions, params), block.timestamp + 1);
     }
 
     /// @dev TAKE(adapter, ADDRESS_THIS) leaves the POSM holding the underlying permissioned token
