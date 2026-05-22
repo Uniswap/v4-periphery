@@ -51,7 +51,7 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
 
     /// @inheritdoc IPermissionsAdapter
     function depositForVerification(uint256 amount) external {
-        PERMISSIONED_TOKEN.transferFrom(msg.sender, address(this), amount);
+        SafeERC20(address(PERMISSIONED_TOKEN)).safeTransferFrom(msg.sender, address(this), amount);
         emit VerificationDeposit(msg.sender, amount);
     }
 
