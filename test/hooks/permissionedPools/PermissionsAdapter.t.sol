@@ -138,6 +138,32 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
         assertEq(permissionedToken.balanceOf(address(permissionsAdapter)), amount);
     }
 
+    /// @dev USDT-style underlying tokens omit the bool return value on transferFrom. The raw
+    ///      `transferFrom` call would revert when Solidity tries to decode bool from empty
+    ///      returndata; `safeTransferFrom` accepts empty returndata as success.
+    function test_DepositForVerification_NonReturningUnderlying() public {
+        NonReturningToken usdtLike = new NonReturningToken();
+        bytes memory args = abi.encode(IERC20(address(usdtLike)), mockPoolManager, owner, allowlistChecker);
+        bytes memory initcode = abi.encodePacked(vm.getCode("PermissionsAdapter.sol:PermissionsAdapter"), args);
+        address adapter;
+        assembly {
+            adapter := create(0, add(initcode, 0x20), mload(initcode))
+        }
+
+        address depositor = makeAddr("noReturnDepositor");
+        uint256 amount = 1e18;
+        usdtLike.mint(depositor, amount);
+        vm.prank(depositor);
+        usdtLike.approve(adapter, amount);
+
+        vm.expectEmit(true, true, true, true);
+        emit IPermissionsAdapter.VerificationDeposit(depositor, amount);
+        vm.prank(depositor);
+        IPermissionsAdapter(adapter).depositForVerification(amount);
+
+        assertEq(usdtLike.balanceOf(adapter), amount);
+    }
+
     function test_UpdateSwappingEnabled(bool enabled) public {
         vm.prank(owner);
         vm.expectEmit(true, true, true, true);
@@ -417,5 +443,40 @@ contract BypassAllowlistChecker is IAllowlistChecker {
 
     function supportsInterface(bytes4) external pure returns (bool) {
         return true;
+    }
+}
+
+/// @notice USDT-style ERC20: omits the bool return value on transfer/transferFrom. Used to confirm
+///         that `PermissionsAdapter.depositForVerification` tolerates non-standard return shapes.
+contract NonReturningToken {
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    string public name = "NonReturning";
+    string public symbol = "NORET";
+    uint8 public decimals = 18;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external {
+        allowance[msg.sender][spender] = amount;
+    }
+
+    function transfer(address to, uint256 amount) external {
+        require(balanceOf[msg.sender] >= amount, "balance");
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        // intentionally no return value
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external {
+        require(allowance[from][msg.sender] >= amount, "allowance");
+        require(balanceOf[from] >= amount, "balance");
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        // intentionally no return value
     }
 }
