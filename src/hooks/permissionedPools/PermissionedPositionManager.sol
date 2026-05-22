@@ -110,18 +110,19 @@ contract PermissionedPositionManager is PositionManager {
     /// @dev Caller must hold the claim or have called PoolManager.setOperator(permPosm, true). For permissioned
     ///      currencies, `to` must clear the underlying token's issuer compliance on unwrap. `to` follows the
     ///      standard `Actions.TAKE` recipient sentinels: `address(1)` remaps to the caller, `address(2)` to this
-    ///      contract.
+    ///      contract. Sentinels are resolved before both the underlying delivery and the `ClaimWithdrawn` event.
     /// @param currency The currency whose 6909 claim is being burned
     /// @param amount The amount of claim to burn (and underlying to deliver)
     /// @param to The recipient of the underlying currency
     function withdrawClaim(Currency currency, uint256 amount, address to) external isNotLocked {
+        address resolvedTo = _mapRecipient(to);
         bytes memory actions = abi.encodePacked(uint8(Actions.BURN_6909), uint8(Actions.TAKE));
         bytes[] memory params = new bytes[](2);
         params[0] = abi.encode(currency, msg.sender, amount);
-        params[1] = abi.encode(currency, to, amount);
+        params[1] = abi.encode(currency, resolvedTo, amount);
         poolManager.unlock(abi.encode(actions, params));
 
-        emit ClaimWithdrawn(currency, msg.sender, to, amount);
+        emit ClaimWithdrawn(currency, msg.sender, resolvedTo, amount);
     }
 
     /// @inheritdoc PositionManager

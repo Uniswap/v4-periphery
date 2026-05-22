@@ -2104,6 +2104,67 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(_balanceOf(currency0, to) - toBefore, claim);
     }
 
+    /// @dev `MSG_SENDER` sentinel must resolve to the action executor in both the underlying delivery and
+    ///      the `ClaimWithdrawn` event. Same cascade-to-6909 setup as the round-trip test.
+    function test_withdrawClaim_resolves_msg_sender_sentinel() public {
+        address admin = makeAddr("WC_ADMIN_MS");
+        address other = makeAddr("WC_OTHER_MS");
+        _setupUnwindPositionTests(admin, other);
+
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0);
+
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(alice, false);
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(admin, false);
+
+        vm.prank(admin);
+        _unwind(tokenId);
+
+        uint256 claim = manager.balanceOf(admin, key0.currency0.toId());
+        assertGt(claim, 0);
+
+        // re-list admin so the unwrap on TAKE can deliver underlying back to it
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(admin, PermissionFlags.ALL_ALLOWED);
+
+        vm.prank(admin);
+        manager.setOperator(address(lpm), true);
+
+        vm.expectEmit(true, true, true, true);
+        emit ClaimWithdrawn(key0.currency0, admin, admin, claim);
+        vm.prank(admin);
+        _withdrawClaim(key0.currency0, claim, ActionConstants.MSG_SENDER);
+    }
+
+    /// @dev `ADDRESS_THIS` sentinel must resolve to the position manager in both the delivery and the event.
+    function test_withdrawClaim_resolves_address_this_sentinel() public {
+        address admin = makeAddr("WC_ADMIN_AT");
+        address other = makeAddr("WC_OTHER_AT");
+        _setupUnwindPositionTests(admin, other);
+
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key0);
+
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(alice, false);
+        MockPermissionedToken(Currency.unwrap(currency0)).setTokenAllowlist(admin, false);
+
+        vm.prank(admin);
+        _unwind(tokenId);
+
+        uint256 claim = manager.balanceOf(admin, key0.currency0.toId());
+        assertGt(claim, 0);
+
+        // permPosm must be allowed to receive the underlying when the TAKE unwraps into it
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(lpm), PermissionFlags.ALL_ALLOWED);
+
+        vm.prank(admin);
+        manager.setOperator(address(lpm), true);
+
+        vm.expectEmit(true, true, true, true);
+        emit ClaimWithdrawn(key0.currency0, admin, address(lpm), claim);
+        vm.prank(admin);
+        _withdrawClaim(key0.currency0, claim, ActionConstants.ADDRESS_THIS);
+    }
+
     /// @dev Caller has not authorized permPosm via `setOperator` → BURN_6909 underflows on the allowance check.
     function test_withdrawClaim_reverts_without_operator() public {
         vm.startPrank(alice);
