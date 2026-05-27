@@ -292,7 +292,7 @@ contract PositionManager is
         uint128 amount0Max,
         uint128 amount1Max,
         bytes calldata hookData
-    ) internal onlyIfApproved(msgSender(), tokenId) {
+    ) internal virtual onlyIfApproved(msgSender(), tokenId) {
         (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
 
         // Note: The tokenId is used as the salt for this position, so every minted position has unique storage in the pool manager.
@@ -307,6 +307,7 @@ contract PositionManager is
     /// liquidity protection. Use _increase() instead.
     function _increaseFromDeltas(uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData)
         internal
+        virtual
         onlyIfApproved(msgSender(), tokenId)
     {
         (PoolKey memory poolKey, PositionInfo info) = getPoolAndPositionInfo(tokenId);
@@ -358,7 +359,7 @@ contract PositionManager is
         uint128 amount1Max,
         address owner,
         bytes calldata hookData
-    ) internal {
+    ) internal virtual {
         // mint receipt token
         uint256 tokenId;
         // tokenId is assigned to current nextTokenId before incrementing it
@@ -441,6 +442,9 @@ contract PositionManager is
                 salt: bytes32(tokenId)
             });
             (liquidityDelta, feesAccrued) = poolManager.modifyLiquidity(poolKey, params, hookData);
+            emit ModifyPosition(
+                poolKey.toId(), msgSender(), params.tickLower, params.tickUpper, params.liquidityDelta, params.salt
+            );
             // Slippage checks should be done on the principal liquidityDelta which is the liquidityDelta - feesAccrued
             (liquidityDelta - feesAccrued).validateMinOut(amount0Min, amount1Min);
         }
@@ -492,7 +496,7 @@ contract PositionManager is
     }
 
     /// @notice Sweeps the entire contract balance of specified currency to the recipient
-    function _sweep(Currency currency, address to) internal {
+    function _sweep(Currency currency, address to) internal virtual {
         uint256 balance = currency.balanceOfSelf();
         if (balance > 0) currency.transfer(to, balance);
     }
@@ -513,13 +517,15 @@ contract PositionManager is
             hookData
         );
 
+        emit ModifyPosition(poolKey.toId(), msgSender(), info.tickLower(), info.tickUpper(), liquidityChange, salt);
+
         if (info.hasSubscriber()) {
             _notifyModifyLiquidity(uint256(salt), liquidityChange, feesAccrued);
         }
     }
 
     // implementation of abstract function DeltaResolver._pay
-    function _pay(Currency currency, address payer, uint256 amount) internal override {
+    function _pay(Currency currency, address payer, uint256 amount) internal virtual override {
         if (payer == address(this)) {
             currency.transfer(address(poolManager), amount);
         } else {

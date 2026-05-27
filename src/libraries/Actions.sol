@@ -56,4 +56,11 @@ library Actions {
     // note this is not supported in the position manager or router
     uint256 internal constant MINT_6909 = 0x17;
     uint256 internal constant BURN_6909 = 0x18;
+
+    // permissioned-pools specific actions
+    // routes a currency's positive delta with a fallback cascade: LP → defaultRecipient → 6909 mint to defaultRecipient
+    uint256 internal constant UNWIND_WITH_FALLBACK = 0x19;
+    // subscribing/unsubscribing via position manager
+    uint256 internal constant SUBSCRIBE = 0x1a;
+    uint256 internal constant UNSUBSCRIBE = 0x1b;
 }
