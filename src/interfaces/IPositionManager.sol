@@ -67,6 +67,8 @@ interface IPositionManager is
     function positionInfo(uint256 tokenId) external view returns (PositionInfo);
 
     /// @notice Returns the pool key for a given pool ID
+    /// @dev This poolId is NOT compatible with the PoolId type from v4-core (https://github.com/Uniswap/v4-core).
+    /// It is the truncated bytes25 value stored in PositionInfo.
     /// @param poolId the truncated pool ID (bytes25)
     /// @return poolKey the pool key associated with the pool ID
     function poolKeys(bytes25 poolId) external view returns (PoolKey memory);
