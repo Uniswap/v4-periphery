@@ -109,6 +109,9 @@ contract PositionManager is
     Permit2Forwarder,
     NativeWrapper
 {
+    using CurrencyLibrary for Currency;
+    using PoolIdLibrary for PoolKey;
+    using PositionConfigLibrary for PositionConfig;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using SafeCast for uint256;
@@ -169,11 +172,23 @@ contract PositionManager is
     }
 
     /// @inheritdoc IPositionManager
+    modifier setMsgValue() {
+        _setMsgValue(msg.value);
+        _;
+        _refundETH(msg.sender, _getMsgValue());
+        _setMsgValue(0);
+    }
+
+    /// @inheritdoc IPositionManager
+    /// @param unlockData is an encoding of actions, params, and currencies
+    /// @return returnData is the endocing of each actions return information
     function modifyLiquidities(bytes calldata unlockData, uint256 deadline)
         external
         payable
         isNotLocked
         checkDeadline(deadline)
+        setMsgValue
+        returns (bytes[] memory)
     {
         _executeActions(unlockData);
     }
@@ -475,7 +490,7 @@ contract PositionManager is
         if (currencyDelta < 0) {
             // Casting is safe due to limits on the total supply of a pool
             _settle(currency, caller, uint256(-currencyDelta));
-        } else {
+        } else if (currencyDelta > 0) {
             _take(currency, caller, uint256(currencyDelta));
         }
     }
@@ -570,5 +585,11 @@ contract PositionManager is
     {
         bytes32 positionId = Position.calculatePositionKey(address(this), tickLower, tickUpper, bytes32(tokenId));
         liquidity = poolManager.getPositionLiquidity(poolKey.toId(), positionId);
+    }
+
+    // implementation of abstract function DeltaResolver._pay
+    function _pay(Currency token, address payer, uint256 amount) internal override {
+        // TODO: Should we also support direct transfer?
+        permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(token));
     }
 }
