@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
+import {Market} from "../../src/types/Market.sol";
+import {Ltv, toLtv} from "../../src/types/Ltv.sol";
+
+/// @notice Minimal configurable test double for `ILendingAdapter`. Encodes calls against a
+///         configurable `lendingProtocol` target and lets tests set positions and LTVs. Later
+///         milestones extend or specialize as their tests require.
+contract MockLendingAdapter is ILendingAdapter {
+    address public lendingProtocol;
+    Ltv internal _maxLtv = toLtv(0.86e18);
+
+    mapping(bytes32 pairKey => bool supported) internal _supported;
+    mapping(bytes32 posKey => uint256 collateral) internal _collateral;
+    mapping(bytes32 posKey => uint256 debt) internal _debt;
+
+    constructor(address lendingProtocol_) {
+        lendingProtocol = lendingProtocol_;
+    }
+
+    function _pairKey(Market calldata m) internal pure returns (bytes32) {
+        return keccak256(abi.encode(m.collateral, m.debt));
+    }
+
+    function _posKey(address account, Market calldata m) internal pure returns (bytes32) {
+        return keccak256(abi.encode(account, m.collateral, m.debt));
+    }
+
+    // --- test configuration ---
+
+    function setSupported(Market calldata m, bool supported) external {
+        _supported[_pairKey(m)] = supported;
+    }
+
+    function setPosition(address account, Market calldata m, uint256 collateral, uint256 debt) external {
+        _collateral[_posKey(account, m)] = collateral;
+        _debt[_posKey(account, m)] = debt;
+    }
+
+    function setMaxLtv(Ltv v) external {
+        _maxLtv = v;
+    }
+
+    // --- ILendingAdapter ---
+
+    function isSupportedMarket(Market calldata m) external view returns (bool) {
+        return _supported[_pairKey(m)];
+    }
+
+    function encodeSupplyCollateral(address account, Market calldata, uint256 amount)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        return (lendingProtocol, 0, abi.encodeWithSignature("supplyCollateral(address,uint256)", account, amount));
+    }
+
+    function encodeWithdrawCollateral(address account, Market calldata, uint256 amount, address receiver)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        return (
+            lendingProtocol,
+            0,
+            abi.encodeWithSignature("withdrawCollateral(address,uint256,address)", account, amount, receiver)
+        );
+    }
+
+    function encodeBorrow(address account, Market calldata, uint256 amount, address receiver)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        return (lendingProtocol, 0, abi.encodeWithSignature("borrow(address,uint256,address)", account, amount, receiver));
+    }
+
+    function encodeRepay(address account, Market calldata, uint256 amount)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        return (lendingProtocol, 0, abi.encodeWithSignature("repay(address,uint256)", account, amount));
+    }
+
+    function positionOf(address account, Market calldata m)
+        external
+        view
+        returns (uint256 collateralAmount, uint256 debtAmount)
+    {
+        return (_collateral[_posKey(account, m)], _debt[_posKey(account, m)]);
+    }
+
+    function maxLtvWad(Market calldata) external view returns (Ltv) {
+        return _maxLtv;
+    }
+
+    function currentLtvWad(address, Market calldata) external view returns (Ltv) {
+        return _maxLtv;
+    }
+}
