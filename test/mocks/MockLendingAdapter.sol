@@ -16,8 +16,20 @@ contract MockLendingAdapter is ILendingAdapter {
     mapping(bytes32 posKey => uint256 collateral) internal _collateral;
     mapping(bytes32 posKey => uint256 debt) internal _debt;
 
+    // when set non-zero, encode* returns this instead of lendingProtocol (to exercise the
+    // account's target == lendingProtocol() check)
+    address public forcedTarget;
+
     constructor(address lendingProtocol_) {
         lendingProtocol = lendingProtocol_;
+    }
+
+    function setForcedTarget(address t) external {
+        forcedTarget = t;
+    }
+
+    function _callTarget() internal view returns (address) {
+        return forcedTarget == address(0) ? lendingProtocol : forcedTarget;
     }
 
     function _pairKey(Market calldata m) internal pure returns (bytes32) {
@@ -54,7 +66,7 @@ contract MockLendingAdapter is ILendingAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        return (lendingProtocol, 0, abi.encodeWithSignature("supplyCollateral(address,uint256)", account, amount));
+        return (_callTarget(), 0, abi.encodeWithSignature("supplyCollateral(address,uint256)", account, amount));
     }
 
     function encodeWithdrawCollateral(address account, Market calldata, uint256 amount, address receiver)
@@ -63,7 +75,7 @@ contract MockLendingAdapter is ILendingAdapter {
         returns (address, uint256, bytes memory)
     {
         return (
-            lendingProtocol,
+            _callTarget(),
             0,
             abi.encodeWithSignature("withdrawCollateral(address,uint256,address)", account, amount, receiver)
         );
@@ -74,7 +86,7 @@ contract MockLendingAdapter is ILendingAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        return (lendingProtocol, 0, abi.encodeWithSignature("borrow(address,uint256,address)", account, amount, receiver));
+        return (_callTarget(), 0, abi.encodeWithSignature("borrow(address,uint256,address)", account, amount, receiver));
     }
 
     function encodeRepay(address account, Market calldata, uint256 amount)
@@ -82,7 +94,7 @@ contract MockLendingAdapter is ILendingAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        return (lendingProtocol, 0, abi.encodeWithSignature("repay(address,uint256)", account, amount));
+        return (_callTarget(), 0, abi.encodeWithSignature("repay(address,uint256)", account, amount));
     }
 
     function positionOf(address account, Market calldata m)
