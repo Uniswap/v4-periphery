@@ -31,7 +31,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
-    function _handleAction(uint256 action, bytes calldata params) internal override {
+    function _handleAction(uint256 action, bytes calldata params) internal virtual override {
         // swap actions and payment actions in different blocks for gas efficiency
         if (action < Actions.SETTLE) {
             if (action == Actions.SWAP_EXACT_IN) {
