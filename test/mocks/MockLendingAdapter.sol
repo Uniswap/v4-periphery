@@ -4,6 +4,7 @@ pragma solidity 0.8.26;
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
+import {MockLendingProtocol} from "./MockLendingProtocol.sol";
 
 /// @notice Minimal configurable test double for `ILendingAdapter`. Encodes calls against a
 ///         configurable `lendingProtocol` target and lets tests set positions and LTVs. Later
@@ -13,8 +14,6 @@ contract MockLendingAdapter is ILendingAdapter {
     Ltv internal _maxLtv = toLtv(0.86e18);
 
     mapping(bytes32 pairKey => bool supported) internal _supported;
-    mapping(bytes32 posKey => uint256 collateral) internal _collateral;
-    mapping(bytes32 posKey => uint256 debt) internal _debt;
 
     // when set non-zero, encode* returns this instead of lendingProtocol (to exercise the
     // account's target == lendingProtocol() check)
@@ -36,19 +35,10 @@ contract MockLendingAdapter is ILendingAdapter {
         return keccak256(abi.encode(m.collateral, m.debt));
     }
 
-    function _posKey(address account, Market calldata m) internal pure returns (bytes32) {
-        return keccak256(abi.encode(account, m.collateral, m.debt));
-    }
-
     // --- test configuration ---
 
     function setSupported(Market calldata m, bool supported) external {
         _supported[_pairKey(m)] = supported;
-    }
-
-    function setPosition(address account, Market calldata m, uint256 collateral, uint256 debt) external {
-        _collateral[_posKey(account, m)] = collateral;
-        _debt[_posKey(account, m)] = debt;
     }
 
     function setMaxLtv(Ltv v) external {
@@ -97,12 +87,14 @@ contract MockLendingAdapter is ILendingAdapter {
         return (_callTarget(), 0, abi.encodeWithSignature("repay(address,uint256)", account, amount));
     }
 
-    function positionOf(address account, Market calldata m)
+    function positionOf(address account, Market calldata)
         external
         view
         returns (uint256 collateralAmount, uint256 debtAmount)
     {
-        return (_collateral[_posKey(account, m)], _debt[_posKey(account, m)]);
+        // reflect the live state of the mock lending protocol so close/withdraw flows read real debt
+        MockLendingProtocol p = MockLendingProtocol(lendingProtocol);
+        return (p.collateralOf(account), p.debtOf(account));
     }
 
     function maxLtvWad(Market calldata) external view returns (Ltv) {
