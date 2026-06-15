@@ -20,6 +20,7 @@ contract MarginAccountFactoryTest is Test {
     function test_accountOf_matchesDeployedAddress() public {
         address predicted = factory.accountOf(owner, 0);
         address deployed = factory.createAccount(owner, 0);
+        vm.snapshotGasLastCall("MarginAccountFactory_createAccount");
         assertEq(deployed, predicted);
         assertGt(deployed.code.length, 0);
     }

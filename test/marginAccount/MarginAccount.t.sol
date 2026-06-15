@@ -94,6 +94,7 @@ contract MarginAccountTest is Test {
     function test_borrow_toManager_succeeds() public {
         vm.prank(manager);
         account.borrow(adapter, market, 5e18, manager);
+        vm.snapshotGasLastCall("MarginAccount_borrow");
         assertEq(debtToken.balanceOf(manager), 5e18);
         assertEq(protocol.lastReceiver(), manager);
     }
@@ -117,6 +118,7 @@ contract MarginAccountTest is Test {
         protocol.setDebt(address(account), 7e18);
         vm.prank(manager);
         uint256 repaid = account.repay(adapter, market, type(uint256).max);
+        vm.snapshotGasLastCall("MarginAccount_repay");
         assertEq(repaid, 7e18);
         assertEq(protocol.debtOf(address(account)), 0);
         assertEq(debtToken.balanceOf(address(account)), 93e18);

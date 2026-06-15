@@ -73,6 +73,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
 
     function test_openLong_buildsLeveragedPosition() public {
         address account = _open(1 ether, 2 ether);
+        vm.snapshotGasLastCall("MarginRouter_openLong");
 
         assertEq(protocol.collateralOf(account), 3 ether, "collateral = equity + bought");
         uint256 owed = protocol.debtOf(account);
@@ -102,6 +103,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
                 deadline: block.timestamp + 1
             })
         );
+        vm.snapshotGasLastCall("MarginRouter_closeLong");
 
         assertEq(protocol.debtOf(account), 0, "debt fully repaid");
         assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
@@ -155,6 +157,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
                 deadline: block.timestamp + 1
             })
         );
+        vm.snapshotGasLastCall("MarginRouter_increasePosition");
 
         assertEq(protocol.collateralOf(account), 4 ether, "collateral grew by the bought amount");
         assertGt(protocol.debtOf(account), debtAfterOpen, "debt grew");
@@ -178,6 +181,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
                 deadline: block.timestamp + 1
             })
         );
+        vm.snapshotGasLastCall("MarginRouter_decreasePosition");
 
         assertLt(protocol.debtOf(account), debtAfterOpen, "debt reduced");
         assertGt(protocol.debtOf(account), 0, "position still open");

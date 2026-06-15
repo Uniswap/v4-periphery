@@ -56,6 +56,7 @@ contract MarginRouterNativeTest is Test {
                 deadline: block.timestamp + 1
             })
         );
+        vm.snapshotGasLastCall("MarginRouter_addCollateral_native");
 
         assertEq(protocol.collateralOf(account), 1 ether, "native equity wrapped and supplied as WETH");
         assertEq(weth.balanceOf(address(protocol)), 1 ether, "protocol holds the WETH");
