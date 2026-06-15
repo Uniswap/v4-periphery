@@ -23,6 +23,8 @@ interface IMarginRouter {
     error PositionUnhealthy();
     /// @notice Thrown when a flow is called with a lending adapter that governance has not allowed.
     error AdapterNotAllowed(address adapter);
+    /// @notice Thrown when native ETH is sent but the market's collateral is not WETH.
+    error NativeCollateralMismatch();
 
     /// @notice Emitted when a position is opened.
     event PositionOpened(
@@ -99,16 +101,18 @@ interface IMarginRouter {
     }
 
     /// @notice Opens a leveraged position for the caller, deploying their account if needed.
-    /// @dev v1 handles ERC20 collateral pulled via Permit2. Native-ETH equity (wrapping to WETH) is
-    ///      a follow-up; callers wrap to WETH themselves for now.
+    /// @dev Equity is ERC20 collateral pulled via Permit2, OR native ETH sent as msg.value (which
+    ///      the router wraps to WETH; the market collateral must then be WETH). When msg.value is
+    ///      non-zero it is used as the equity and params.equity is ignored.
     /// @return account The caller's MarginAccount holding the position.
-    function openPosition(OpenParams calldata params) external returns (address account);
+    function openPosition(OpenParams calldata params) external payable returns (address account);
 
     /// @notice Adds leverage to the caller's existing position. Mechanically identical to opening:
     ///         borrow more debt, swap it into collateral, and supply it. Optional added equity is
-    ///         pulled via Permit2 (set equity to zero for a pure leverage increase).
+    ///         pulled via Permit2, or sent as native ETH (wrapped to WETH); set equity to zero and
+    ///         send no value for a pure leverage increase.
     /// @return account The caller's MarginAccount.
-    function increasePosition(OpenParams calldata params) external returns (address account);
+    function increasePosition(OpenParams calldata params) external payable returns (address account);
 
     /// @notice Fully closes the caller's position, returning collateral (realized PnL) to the caller.
     /// @return account The caller's MarginAccount.
@@ -119,9 +123,10 @@ interface IMarginRouter {
     /// @return account The caller's MarginAccount.
     function decreasePosition(DecreaseParams calldata params) external returns (address account);
 
-    /// @notice Adds collateral to the caller's position, deploying their account if needed.
+    /// @notice Adds collateral to the caller's position, deploying their account if needed. Collateral
+    ///         is pulled via Permit2, or sent as native ETH (wrapped to WETH; collateral must be WETH).
     /// @return account The caller's MarginAccount.
-    function addCollateral(AddCollateralParams calldata params) external returns (address account);
+    function addCollateral(AddCollateralParams calldata params) external payable returns (address account);
 
     /// @notice The deterministic account address for an owner and subId.
     function accountOf(address owner, uint256 subId) external view returns (address);

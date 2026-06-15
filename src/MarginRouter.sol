@@ -96,6 +96,7 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
     /// @inheritdoc IMarginRouter
     function openPosition(OpenParams calldata params)
         external
+        payable
         isNotLocked
         checkDeadline(params.deadline)
         returns (address account)
@@ -109,6 +110,7 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
     /// @inheritdoc IMarginRouter
     function increasePosition(OpenParams calldata params)
         external
+        payable
         isNotLocked
         checkDeadline(params.deadline)
         returns (address account)
@@ -128,8 +130,12 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         account = factory.createAccount(msgSender(), params.subId);
         _setActiveAccount(account);
 
-        // pull the caller's equity (in the collateral currency) into the account
-        if (params.equity > 0) {
+        // provide equity: native ETH (wrapped to WETH) when sent, else ERC20 pulled via Permit2
+        if (msg.value > 0) {
+            if (Currency.unwrap(params.market.collateral) != address(WETH9)) revert NativeCollateralMismatch();
+            _wrap(msg.value);
+            Currency.wrap(address(WETH9)).transfer(account, msg.value);
+        } else if (params.equity > 0) {
             permit2.transferFrom(
                 msgSender(), account, params.equity.toUint160(), Currency.unwrap(params.market.collateral)
             );
@@ -280,20 +286,31 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
     /// @inheritdoc IMarginRouter
     function addCollateral(AddCollateralParams calldata params)
         external
+        payable
         isNotLocked
         checkDeadline(params.deadline)
         returns (address account)
     {
-        if (params.amount == 0) revert SlippageBoundRequired();
         _requireAllowedAdapter(params.adapter);
-
         account = factory.createAccount(msgSender(), params.subId);
-        permit2.transferFrom(
-            msgSender(), account, params.amount.toUint160(), Currency.unwrap(params.market.collateral)
-        );
+
+        uint256 amount;
+        if (msg.value > 0) {
+            // native collateral: wrap to WETH and credit the account
+            if (Currency.unwrap(params.market.collateral) != address(WETH9)) revert NativeCollateralMismatch();
+            amount = msg.value;
+            _wrap(msg.value);
+            Currency.wrap(address(WETH9)).transfer(account, msg.value);
+        } else {
+            if (params.amount == 0) revert SlippageBoundRequired();
+            amount = params.amount;
+            permit2.transferFrom(
+                msgSender(), account, params.amount.toUint160(), Currency.unwrap(params.market.collateral)
+            );
+        }
         // the router is the account manager, so it can supply directly without an unlock
-        IMarginAccount(account).supplyCollateral(params.adapter, params.market, params.amount);
-        emit CollateralAdded(msgSender(), account, params.market.collateral, params.amount);
+        IMarginAccount(account).supplyCollateral(params.adapter, params.market, amount);
+        emit CollateralAdded(msgSender(), account, params.market.collateral, amount);
     }
 
     /// @inheritdoc IMarginRouter
