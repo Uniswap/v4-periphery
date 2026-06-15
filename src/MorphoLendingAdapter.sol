@@ -100,7 +100,11 @@ contract MorphoLendingAdapter is ILendingAdapter {
     {
         MarketParams memory marketParams = store.markets.resolve(market);
         return
-            (address(morpho), 0, abi.encodeCall(IMorphoBase.withdrawCollateral, (marketParams, amount, account, receiver)));
+            (
+                address(morpho),
+                0,
+                abi.encodeCall(IMorphoBase.withdrawCollateral, (marketParams, amount, account, receiver))
+            );
     }
 
     /// @inheritdoc ILendingAdapter

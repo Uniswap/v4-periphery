@@ -88,8 +88,7 @@ contract MarginAccount is IMarginAccount {
     {
         (address ownerAddr, address managerAddr) = _authCaller();
         _requireReceiver(to, ownerAddr, managerAddr);
-        (address target, uint256 value, bytes memory callData) =
-            adapter.encodeBorrow(address(this), market, amount, to);
+        (address target, uint256 value, bytes memory callData) = adapter.encodeBorrow(address(this), market, amount, to);
         _execCall(adapter, target, value, callData);
         return amount;
     }
@@ -98,13 +97,9 @@ contract MarginAccount is IMarginAccount {
     /// @dev Approves the lending protocol for `amount` (or the full balance for `type(uint256).max`)
     ///      before the call and resets the allowance to zero afterward. `repaid` is measured as the
     ///      debt token balance decrease, which is accurate for both partial and full-share repays.
-    function repay(ILendingAdapter adapter, Market calldata market, uint256 amount)
-        external
-        returns (uint256 repaid)
-    {
+    function repay(ILendingAdapter adapter, Market calldata market, uint256 amount) external returns (uint256 repaid) {
         _authCaller();
-        (address target, uint256 value, bytes memory callData) =
-            adapter.encodeRepay(address(this), market, amount);
+        (address target, uint256 value, bytes memory callData) = adapter.encodeRepay(address(this), market, amount);
         IERC20 debt = IERC20(Currency.unwrap(market.debt));
         uint256 balanceBefore = debt.balanceOf(address(this));
         uint256 approveAmount = amount == type(uint256).max ? balanceBefore : amount;

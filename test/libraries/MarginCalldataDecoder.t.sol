@@ -16,18 +16,18 @@ contract MarginCalldataDecoderTest is Test {
     Currency internal debt = Currency.wrap(address(0xDB));
 
     // external wrappers so the library's calldata decoders run on calldata
-    function decAmount(bytes calldata p) external pure returns (address adapter, Currency c, Currency d, uint256 amount) {
+    function decAmount(bytes calldata p)
+        external
+        pure
+        returns (address adapter, Currency c, Currency d, uint256 amount)
+    {
         ILendingAdapter a;
         Market memory m;
         (a, m, amount) = MarginCalldataDecoder.decodeAdapterMarketAmount(p);
         return (address(a), m.collateral, m.debt, amount);
     }
 
-    function decReceiver(bytes calldata p)
-        external
-        pure
-        returns (address adapter, uint256 amount, address to)
-    {
+    function decReceiver(bytes calldata p) external pure returns (address adapter, uint256 amount, address to) {
         ILendingAdapter a;
         Market memory m;
         (a, m, amount, to) = MarginCalldataDecoder.decodeAdapterMarketAmountReceiver(p);

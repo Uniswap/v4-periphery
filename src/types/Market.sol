@@ -72,8 +72,6 @@ function toSwapParams(
     if (!(input == self.collateral || input == self.debt)) revert MarketSwapMismatch();
     // zeroForOne is a pure function of which currency is sold and the canonical pool ordering
     params = SwapParams({
-        zeroForOne: input == key.currency0,
-        amountSpecified: amountSpecified,
-        sqrtPriceLimitX96: sqrtPriceLimitX96
+        zeroForOne: input == key.currency0, amountSpecified: amountSpecified, sqrtPriceLimitX96: sqrtPriceLimitX96
     });
 }

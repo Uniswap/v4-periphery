@@ -43,9 +43,10 @@ abstract contract MarginAccountFactory {
     /// @param subId The sub-account index, allowing one owner to hold multiple independent accounts.
     /// @return The CREATE2 address of the (owner, manager, subId) account clone.
     function accountOf(address owner, uint256 subId) public view virtual returns (address) {
-        return LibClone.predictDeterministicAddress(
-            accountImplementation, _args(owner), _salt(owner, subId), address(this)
-        );
+        return
+            LibClone.predictDeterministicAddress(
+                accountImplementation, _args(owner), _salt(owner, subId), address(this)
+            );
     }
 
     /// @notice Deploys an owner's account for a subId if it does not yet exist, returning its

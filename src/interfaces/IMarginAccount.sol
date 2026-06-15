@@ -73,9 +73,7 @@ interface IMarginAccount {
     ///        for a full share-based repay.
     /// @return repaid The assets actually repaid, measured as the account's debt-token balance
     ///         decrease after the call.
-    function repay(ILendingAdapter adapter, Market calldata market, uint256 amount)
-        external
-        returns (uint256 repaid);
+    function repay(ILendingAdapter adapter, Market calldata market, uint256 amount) external returns (uint256 repaid);
 
     /// @notice Transfer `amount` of `currency` out of the account to `to` (residual or realized
     ///         PnL). `to` must be the manager or owner. Callable by the manager or owner.

@@ -47,11 +47,7 @@ library MarginCalldataDecoder {
     /// @return currency The ERC-20 token to transfer.
     /// @return amount The amount to transfer in the token's native decimals.
     /// @return to The recipient address; must be the manager or owner (enforced by the account).
-    function decodeSweep(bytes calldata params)
-        internal
-        pure
-        returns (Currency currency, uint256 amount, address to)
-    {
+    function decodeSweep(bytes calldata params) internal pure returns (Currency currency, uint256 amount, address to) {
         return abi.decode(params, (Currency, uint256, address));
     }
 

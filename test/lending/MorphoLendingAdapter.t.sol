@@ -50,22 +50,14 @@ contract MorphoLendingAdapterTest is Test {
     }
 
     // calldata decode helpers (slice the 4-byte selector, then abi.decode the args)
-    function decodeSupply(bytes calldata d)
-        external
-        pure
-        returns (uint256 amount, address onBehalf, uint256 dataLen)
-    {
+    function decodeSupply(bytes calldata d) external pure returns (uint256 amount, address onBehalf, uint256 dataLen) {
         MarketParams memory mp;
         bytes memory inner;
         (mp, amount, onBehalf, inner) = abi.decode(d[4:], (MarketParams, uint256, address, bytes));
         dataLen = inner.length;
     }
 
-    function decodeRepay(bytes calldata d)
-        external
-        pure
-        returns (uint256 assets, uint256 shares, address onBehalf)
-    {
+    function decodeRepay(bytes calldata d) external pure returns (uint256 assets, uint256 shares, address onBehalf) {
         MarketParams memory mp;
         bytes memory inner;
         (mp, assets, shares, onBehalf, inner) = abi.decode(d[4:], (MarketParams, uint256, uint256, address, bytes));
@@ -94,9 +86,7 @@ contract MorphoLendingAdapterTest is Test {
     }
 
     function test_encodeBorrow_revertsWhenMarketNotSupported() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(MarketNotSupported.selector, market.collateral, market.debt)
-        );
+        vm.expectRevert(abi.encodeWithSelector(MarketNotSupported.selector, market.collateral, market.debt));
         adapter.encodeBorrow(account, market, 1e18, receiver);
     }
 

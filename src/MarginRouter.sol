@@ -88,9 +88,7 @@ contract MarginRouter is
         returns (address account)
     {
         account = _open(params);
-        emit PositionOpened(
-            msgSender(), account, params.market.collateral, params.market.debt, params.collateralToBuy
-        );
+        emit PositionOpened(msgSender(), account, params.market.collateral, params.market.debt, params.collateralToBuy);
     }
 
     /// @inheritdoc IMarginRouter
@@ -202,8 +200,7 @@ contract MarginRouter is
         actionParams[1] = abi.encode(params.market.debt, account, ActionConstants.OPEN_DELTA);
         actionParams[2] = abi.encode(params.adapter, params.market, params.debtToRepay);
         // withdraw only the collateral the swap consumed (OPEN_DELTA = collateral owed to the pool)
-        actionParams[3] =
-            abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
+        actionParams[3] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
         actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
         // assert the resulting health
         actionParams[5] = abi.encode(params.adapter, params.market, account, params.maxLtvAfter);
@@ -346,8 +343,7 @@ contract MarginRouter is
         // supply the account's full collateral balance (equity + bought)
         actionParams[2] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA));
         // borrow the debt owed for the swap, sent to the router for settling
-        actionParams[3] =
-            abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
+        actionParams[3] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
         // settle the swap's debt from the router (payer is this contract)
         actionParams[4] = abi.encode(params.market.debt, uint256(ActionConstants.OPEN_DELTA), false);
 

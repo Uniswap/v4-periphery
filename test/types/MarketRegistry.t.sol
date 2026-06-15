@@ -16,11 +16,7 @@ contract MarketRegistryTest is Test {
 
     function _mp(address coll, address loan, uint256 lltv) internal pure returns (MarketParams memory) {
         return MarketParams({
-            loanToken: loan,
-            collateralToken: coll,
-            oracle: address(0x07AC1E),
-            irm: address(0x12),
-            lltv: lltv
+            loanToken: loan, collateralToken: coll, oracle: address(0x07AC1E), irm: address(0x12), lltv: lltv
         });
     }
 

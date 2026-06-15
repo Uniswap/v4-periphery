@@ -222,11 +222,7 @@ contract MarginRouterE2EForkTest is Test {
         vm.deal(address(this), 0.5 ether);
         router.addCollateral{value: 0.5 ether}(
             IMarginRouter.AddCollateralParams({
-                adapter: adapter,
-                market: market,
-                amount: 0,
-                subId: 0,
-                deadline: block.timestamp + 1 hours
+                adapter: adapter, market: market, amount: 0, subId: 0, deadline: block.timestamp + 1 hours
             })
         );
 
@@ -440,10 +436,7 @@ contract MarginRouterE2EForkTest is Test {
     }
 
     /// @notice Opens a position for `who` at `subId` with `equity` WETH supplied via real Permit2.
-    function _openPermit2(address who, uint256 subId, uint256 equity, uint128 buy)
-        internal
-        returns (address account)
-    {
+    function _openPermit2(address who, uint256 subId, uint256 equity, uint128 buy) internal returns (address account) {
         account = router.accountOf(who, subId);
         deal(WETH, who, equity);
         vm.startPrank(who);

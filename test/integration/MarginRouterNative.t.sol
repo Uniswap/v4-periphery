@@ -49,11 +49,7 @@ contract MarginRouterNativeTest is Test {
 
         router.addCollateral{value: 1 ether}(
             IMarginRouter.AddCollateralParams({
-                adapter: adapter,
-                market: market,
-                amount: 0,
-                subId: 0,
-                deadline: block.timestamp + 1
+                adapter: adapter, market: market, amount: 0, subId: 0, deadline: block.timestamp + 1
             })
         );
         vm.snapshotGasLastCall("MarginRouter_addCollateral_native");
@@ -72,11 +68,7 @@ contract MarginRouterNativeTest is Test {
         vm.expectRevert(IMarginRouter.NativeCollateralMismatch.selector);
         router.addCollateral{value: 1 ether}(
             IMarginRouter.AddCollateralParams({
-                adapter: adapter,
-                market: wrongMarket,
-                amount: 0,
-                subId: 0,
-                deadline: block.timestamp + 1
+                adapter: adapter, market: wrongMarket, amount: 0, subId: 0, deadline: block.timestamp + 1
             })
         );
     }
