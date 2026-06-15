@@ -50,34 +50,6 @@ contract MorphoLendingAdapter is ILendingAdapter {
         store.owner.write(owner_);
     }
 
-    /// @notice The current adapter owner (governance).
-    function owner() external view returns (address) {
-        return store.owner.read();
-    }
-
-    /// @notice Transfers adapter ownership. Owner-gated.
-    function transferOwnership(address newOwner) external {
-        store.owner.onlyOwner(msg.sender);
-        store.owner.write(newOwner);
-    }
-
-    /// @notice Registers or replaces the canonical Morpho market for its (collateral, debt) pair.
-    ///         Owner-gated, and requires the market to already exist on Morpho.
-    function setMarket(MarketParams calldata marketParams) external {
-        store.owner.onlyOwner(msg.sender);
-        Id id = marketParams.id();
-        if (morpho.idToMarketParams(id).loanToken == address(0)) revert MorphoMarketNotCreated();
-        store.markets.register(marketParams);
-        emit MarketSet(
-            marketParams.collateralToken,
-            marketParams.loanToken,
-            id,
-            marketParams.oracle,
-            marketParams.irm,
-            marketParams.lltv
-        );
-    }
-
     /// @inheritdoc ILendingAdapter
     function lendingProtocol() external view returns (address) {
         return address(morpho);
@@ -161,5 +133,33 @@ contract MorphoLendingAdapter is ILendingAdapter {
         uint256 collateralValue = collateral * IOracle(marketParams.oracle).price() / ORACLE_PRICE_SCALE;
         if (collateralValue == 0) return toLtv(debt == 0 ? 0 : type(uint256).max);
         return toLtv(debt * WAD / collateralValue);
+    }
+
+    /// @notice The current adapter owner (governance).
+    function owner() external view returns (address) {
+        return store.owner.read();
+    }
+
+    /// @notice Registers or replaces the canonical Morpho market for its (collateral, debt) pair.
+    ///         Owner-gated, and requires the market to already exist on Morpho.
+    function setMarket(MarketParams calldata marketParams) external {
+        store.owner.onlyOwner(msg.sender);
+        Id id = marketParams.id();
+        if (morpho.idToMarketParams(id).loanToken == address(0)) revert MorphoMarketNotCreated();
+        store.markets.register(marketParams);
+        emit MarketSet(
+            marketParams.collateralToken,
+            marketParams.loanToken,
+            id,
+            marketParams.oracle,
+            marketParams.irm,
+            marketParams.lltv
+        );
+    }
+
+    /// @notice Transfers adapter ownership. Owner-gated.
+    function transferOwnership(address newOwner) external {
+        store.owner.onlyOwner(msg.sender);
+        store.owner.write(newOwner);
     }
 }

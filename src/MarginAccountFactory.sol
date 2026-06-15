@@ -15,11 +15,11 @@ contract MarginAccountFactory {
     /// @notice The trusted manager (the margin router) baked into every clone this factory deploys.
     address public immutable manager;
 
-    /// @notice Emitted when an account clone is deployed.
-    event AccountCreated(address indexed owner, address indexed account, uint256 subId);
-
     /// @notice Thrown when constructed with a zero implementation or manager.
     error ZeroAddress();
+
+    /// @notice Emitted when an account clone is deployed.
+    event AccountCreated(address indexed owner, address indexed account, uint256 subId);
 
     constructor(address accountImplementation_, address manager_) {
         if (accountImplementation_ == address(0) || manager_ == address(0)) revert ZeroAddress();

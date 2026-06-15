@@ -53,6 +53,11 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
     /// @notice Emitted when governance allows or disallows a lending adapter.
     event AdapterAllowed(address indexed adapter, bool allowed);
 
+    modifier checkDeadline(uint256 deadline) {
+        if (block.timestamp > deadline) revert DeadlinePassed(deadline);
+        _;
+    }
+
     constructor(IPoolManager poolManager_, IAllowanceTransfer permit2_, IWETH9 weth9_, address accountImplementation)
         V4Router(poolManager_)
         Permit2Forwarder(permit2_)
@@ -61,36 +66,6 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         factory = new MarginAccountFactory(accountImplementation, address(this));
         // the deployer is the initial governance; hand off to a timelock or multisig after setup
         _governance.write(msg.sender);
-    }
-
-    /// @notice The governance address that curates the adapter allowlist.
-    function governance() external view returns (address) {
-        return _governance.read();
-    }
-
-    /// @notice Hands governance to a new address. Governance-gated.
-    function transferGovernance(address newGovernance) external {
-        _governance.onlyOwner(msg.sender);
-        _governance.write(newGovernance);
-    }
-
-    /// @notice Allows or disallows a lending adapter for use in the flows. Governance-gated.
-    /// @dev Only allowlisted adapters can be passed to the position flows. A hostile adapter can
-    ///      otherwise siphon the caller's own equity, so the set is curated.
-    function setAdapterAllowed(ILendingAdapter adapter, bool allowed) external {
-        _governance.onlyOwner(msg.sender);
-        _allowedAdapters[adapter] = allowed;
-        emit AdapterAllowed(address(adapter), allowed);
-    }
-
-    /// @notice Whether `adapter` is allowlisted.
-    function isAdapterAllowed(ILendingAdapter adapter) external view returns (bool) {
-        return _allowedAdapters[adapter];
-    }
-
-    modifier checkDeadline(uint256 deadline) {
-        if (block.timestamp > deadline) revert DeadlinePassed(deadline);
-        _;
     }
 
     /// @inheritdoc IMarginRouter
@@ -119,62 +94,6 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         emit PositionIncreased(
             msgSender(), account, params.market.collateral, params.market.debt, params.collateralToBuy
         );
-    }
-
-    /// @notice Shared lever-up: deploy the account if needed, pull optional equity, then build and
-    ///         run the flash-style plan (swap debt to collateral, supply, borrow, settle).
-    function _open(OpenParams calldata params) private returns (address account) {
-        if (params.maxDebtIn == 0) revert SlippageBoundRequired();
-        _requireAllowedAdapter(params.adapter);
-
-        account = factory.createAccount(msgSender(), params.subId);
-        _setActiveAccount(account);
-
-        // provide equity: native ETH (wrapped to WETH) when sent, else ERC20 pulled via Permit2
-        if (msg.value > 0) {
-            if (Currency.unwrap(params.market.collateral) != address(WETH9)) revert NativeCollateralMismatch();
-            _wrap(msg.value);
-            Currency.wrap(address(WETH9)).transfer(account, msg.value);
-        } else if (params.equity > 0) {
-            permit2.transferFrom(
-                msgSender(), account, params.equity.toUint160(), Currency.unwrap(params.market.collateral)
-            );
-        }
-
-        // single choke point: validate the pool matches the market and derive the swap direction.
-        // opening sells the debt to buy the collateral.
-        bool zeroForOne = params.market.toSwapParams(params.market.debt, 0, 0, params.poolKey).zeroForOne;
-
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.SWAP_EXACT_OUT_SINGLE),
-            uint8(Actions.TAKE),
-            uint8(MarginActions.ACCOUNT_SUPPLY_COLLATERAL),
-            uint8(MarginActions.ACCOUNT_BORROW),
-            uint8(Actions.SETTLE)
-        );
-        bytes[] memory actionParams = new bytes[](5);
-        actionParams[0] = abi.encode(
-            IV4Router.ExactOutputSingleParams({
-                poolKey: params.poolKey,
-                zeroForOne: zeroForOne,
-                amountOut: params.collateralToBuy,
-                amountInMaximum: params.maxDebtIn,
-                minHopPriceX36: params.minHopPriceX36,
-                hookData: ""
-            })
-        );
-        // take the bought collateral to the account
-        actionParams[1] = abi.encode(params.market.collateral, account, ActionConstants.OPEN_DELTA);
-        // supply the account's full collateral balance (equity + bought)
-        actionParams[2] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA));
-        // borrow the debt owed for the swap, sent to the router for settling
-        actionParams[3] =
-            abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
-        // settle the swap's debt from the router (payer is this contract)
-        actionParams[4] = abi.encode(params.market.debt, uint256(ActionConstants.OPEN_DELTA), false);
-
-        poolManager.unlock(abi.encode(actions, actionParams));
-        _setActiveAccount(address(0));
     }
 
     /// @inheritdoc IMarginRouter
@@ -318,6 +237,98 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         return factory.accountOf(owner, subId);
     }
 
+    /// @notice The governance address that curates the adapter allowlist.
+    function governance() external view returns (address) {
+        return _governance.read();
+    }
+
+    /// @notice Whether `adapter` is allowlisted.
+    function isAdapterAllowed(ILendingAdapter adapter) external view returns (bool) {
+        return _allowedAdapters[adapter];
+    }
+
+    /// @notice The authenticated caller for the current lock. Load-bearing base override: the active
+    ///         account is derived from this, so it must return the locker.
+    function msgSender() public view override returns (address) {
+        return _getLocker();
+    }
+
+    /// @notice Allows or disallows a lending adapter for use in the flows. Governance-gated.
+    /// @dev Only allowlisted adapters can be passed to the position flows. A hostile adapter can
+    ///      otherwise siphon the caller's own equity, so the set is curated.
+    function setAdapterAllowed(ILendingAdapter adapter, bool allowed) external {
+        _governance.onlyOwner(msg.sender);
+        _allowedAdapters[adapter] = allowed;
+        emit AdapterAllowed(address(adapter), allowed);
+    }
+
+    /// @notice Hands governance to a new address. Governance-gated.
+    function transferGovernance(address newGovernance) external {
+        _governance.onlyOwner(msg.sender);
+        _governance.write(newGovernance);
+    }
+
+    /// @notice Shared lever-up: deploy the account if needed, pull optional equity, then build and
+    ///         run the flash-style plan (swap debt to collateral, supply, borrow, settle).
+    function _open(OpenParams calldata params) private returns (address account) {
+        if (params.maxDebtIn == 0) revert SlippageBoundRequired();
+        _requireAllowedAdapter(params.adapter);
+
+        account = factory.createAccount(msgSender(), params.subId);
+        _setActiveAccount(account);
+
+        // provide equity: native ETH (wrapped to WETH) when sent, else ERC20 pulled via Permit2
+        if (msg.value > 0) {
+            if (Currency.unwrap(params.market.collateral) != address(WETH9)) revert NativeCollateralMismatch();
+            _wrap(msg.value);
+            Currency.wrap(address(WETH9)).transfer(account, msg.value);
+        } else if (params.equity > 0) {
+            permit2.transferFrom(
+                msgSender(), account, params.equity.toUint160(), Currency.unwrap(params.market.collateral)
+            );
+        }
+
+        // single choke point: validate the pool matches the market and derive the swap direction.
+        // opening sells the debt to buy the collateral.
+        bool zeroForOne = params.market.toSwapParams(params.market.debt, 0, 0, params.poolKey).zeroForOne;
+
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.SWAP_EXACT_OUT_SINGLE),
+            uint8(Actions.TAKE),
+            uint8(MarginActions.ACCOUNT_SUPPLY_COLLATERAL),
+            uint8(MarginActions.ACCOUNT_BORROW),
+            uint8(Actions.SETTLE)
+        );
+        bytes[] memory actionParams = new bytes[](5);
+        actionParams[0] = abi.encode(
+            IV4Router.ExactOutputSingleParams({
+                poolKey: params.poolKey,
+                zeroForOne: zeroForOne,
+                amountOut: params.collateralToBuy,
+                amountInMaximum: params.maxDebtIn,
+                minHopPriceX36: params.minHopPriceX36,
+                hookData: ""
+            })
+        );
+        // take the bought collateral to the account
+        actionParams[1] = abi.encode(params.market.collateral, account, ActionConstants.OPEN_DELTA);
+        // supply the account's full collateral balance (equity + bought)
+        actionParams[2] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA));
+        // borrow the debt owed for the swap, sent to the router for settling
+        actionParams[3] =
+            abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
+        // settle the swap's debt from the router (payer is this contract)
+        actionParams[4] = abi.encode(params.market.debt, uint256(ActionConstants.OPEN_DELTA), false);
+
+        poolManager.unlock(abi.encode(actions, actionParams));
+        _setActiveAccount(address(0));
+    }
+
+    /// @notice Reverts unless `adapter` is on the governance allowlist.
+    function _requireAllowedAdapter(ILendingAdapter adapter) internal view {
+        if (!_allowedAdapters[adapter]) revert AdapterNotAllowed(address(adapter));
+    }
+
     /// @notice Dispatches margin opcodes to the active account; everything else falls through to the
     ///         inherited V4Router handlers (swap, take, settle).
     function _handleAction(uint256 action, bytes calldata params) internal override {
@@ -360,12 +371,6 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         }
     }
 
-    /// @notice The authenticated caller for the current lock. Load-bearing: the active account is
-    ///         derived from this, so it must return the locker.
-    function msgSender() public view override returns (address) {
-        return _getLocker();
-    }
-
     /// @notice Pays the pool manager. The router (address(this)) transfers directly; any other payer
     ///         pays through Permit2. Mirrors the PositionManager two-payer settle.
     function _pay(Currency currency, address payer, uint256 amount) internal override {
@@ -374,11 +379,6 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         } else {
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
         }
-    }
-
-    /// @notice Reverts unless `adapter` is on the governance allowlist.
-    function _requireAllowedAdapter(ILendingAdapter adapter) internal view {
-        if (!_allowedAdapters[adapter]) revert AdapterNotAllowed(address(adapter));
     }
 
     /// @notice Stores the active account for the current unlock in transient storage (EIP-1153). It
