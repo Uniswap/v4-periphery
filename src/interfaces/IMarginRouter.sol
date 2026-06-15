@@ -6,6 +6,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ILendingAdapter} from "./ILendingAdapter.sol";
 import {Market} from "../types/Market.sol";
 import {Direction} from "../types/Direction.sol";
+import {Ltv} from "../types/Ltv.sol";
 
 /// @notice Entry points for opening, closing, and topping up leveraged spot positions. Each call
 ///         operates on the caller's own MarginAccount, derived from the authenticated caller and a
@@ -50,6 +51,22 @@ interface IMarginRouter {
         uint256 deadline;
     }
 
+    /// @notice Parameters for partially reducing (delevering) a position.
+    /// @dev Sells collateral to buy and repay `debtToRepay` of debt; the position stays open and
+    ///      shrinks by the swap's collateral cost and the repaid debt. `maxLtvAfter` asserts the
+    ///      resulting LTV (zero to skip the check).
+    struct DecreaseParams {
+        ILendingAdapter adapter;
+        Market market;
+        PoolKey poolKey;
+        uint256 debtToRepay;
+        uint128 maxCollateralIn;
+        uint256 minHopPriceX36;
+        Ltv maxLtvAfter;
+        uint256 subId;
+        uint256 deadline;
+    }
+
     /// @notice Parameters for adding collateral to an existing position.
     struct AddCollateralParams {
         ILendingAdapter adapter;
@@ -65,9 +82,20 @@ interface IMarginRouter {
     /// @return account The caller's MarginAccount holding the position.
     function openPosition(OpenParams calldata params) external returns (address account);
 
+    /// @notice Adds leverage to the caller's existing position. Mechanically identical to opening:
+    ///         borrow more debt, swap it into collateral, and supply it. Optional added equity is
+    ///         pulled via Permit2 (set equity to zero for a pure leverage increase).
+    /// @return account The caller's MarginAccount.
+    function increasePosition(OpenParams calldata params) external returns (address account);
+
     /// @notice Fully closes the caller's position, returning collateral (realized PnL) to the caller.
     /// @return account The caller's MarginAccount.
     function closePosition(CloseParams calldata params) external returns (address account);
+
+    /// @notice Partially reduces the caller's position by repaying `debtToRepay`, funded by selling
+    ///         collateral. The position stays open.
+    /// @return account The caller's MarginAccount.
+    function decreasePosition(DecreaseParams calldata params) external returns (address account);
 
     /// @notice Adds collateral to the caller's position, deploying their account if needed.
     /// @return account The caller's MarginAccount.

@@ -62,6 +62,22 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         checkDeadline(params.deadline)
         returns (address account)
     {
+        return _open(params);
+    }
+
+    /// @inheritdoc IMarginRouter
+    function increasePosition(OpenParams calldata params)
+        external
+        isNotLocked
+        checkDeadline(params.deadline)
+        returns (address account)
+    {
+        return _open(params);
+    }
+
+    /// @notice Shared lever-up: deploy the account if needed, pull optional equity, then build and
+    ///         run the flash-style plan (swap debt to collateral, supply, borrow, settle).
+    function _open(OpenParams calldata params) private returns (address account) {
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
 
         account = factory.createAccount(msgSender(), params.subId);
@@ -123,7 +139,7 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         _setActiveAccount(account);
 
         // buy exactly the current debt, then repay it; sell collateral to fund the purchase
-        (, uint256 debt) = params.adapter.positionOf(account, params.market);
+        (uint256 collateral, uint256 debt) = params.adapter.positionOf(account, params.market);
         bool zeroForOne = params.market.toSwapParams(params.market.collateral, 0, 0, params.poolKey).zeroForOne;
 
         bytes memory actions = abi.encodePacked(
@@ -144,11 +160,10 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
                 hookData: ""
             })
         );
-        // take the bought debt to the account, repay exactly it, then withdraw all collateral
+        // take the bought debt to the account, repay exactly it, then withdraw ALL collateral
         actionParams[1] = abi.encode(params.market.debt, account, ActionConstants.OPEN_DELTA);
         actionParams[2] = abi.encode(params.adapter, params.market, debt);
-        actionParams[3] =
-            abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
+        actionParams[3] = abi.encode(params.adapter, params.market, collateral, address(this));
         // settle the collateral spent on the swap from the router
         actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
 
@@ -158,6 +173,53 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         // return the remaining collateral (realized PnL) to the caller
         uint256 residual = params.market.collateral.balanceOfSelf();
         if (residual > 0) params.market.collateral.transfer(msgSender(), residual);
+    }
+
+    /// @inheritdoc IMarginRouter
+    function decreasePosition(DecreaseParams calldata params)
+        external
+        isNotLocked
+        checkDeadline(params.deadline)
+        returns (address account)
+    {
+        if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
+
+        account = factory.accountOf(msgSender(), params.subId);
+        _setActiveAccount(account);
+
+        // sell collateral to buy and repay `debtToRepay`; the position stays open and shrinks
+        bool zeroForOne = params.market.toSwapParams(params.market.collateral, 0, 0, params.poolKey).zeroForOne;
+
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.SWAP_EXACT_OUT_SINGLE),
+            uint8(Actions.TAKE),
+            uint8(MarginActions.ACCOUNT_REPAY),
+            uint8(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL),
+            uint8(Actions.SETTLE),
+            uint8(MarginActions.ASSERT_HEALTH)
+        );
+        bytes[] memory actionParams = new bytes[](6);
+        actionParams[0] = abi.encode(
+            IV4Router.ExactOutputSingleParams({
+                poolKey: params.poolKey,
+                zeroForOne: zeroForOne,
+                amountOut: params.debtToRepay.toUint128(),
+                amountInMaximum: params.maxCollateralIn,
+                minHopPriceX36: params.minHopPriceX36,
+                hookData: ""
+            })
+        );
+        actionParams[1] = abi.encode(params.market.debt, account, ActionConstants.OPEN_DELTA);
+        actionParams[2] = abi.encode(params.adapter, params.market, params.debtToRepay);
+        // withdraw only the collateral the swap consumed (OPEN_DELTA = collateral owed to the pool)
+        actionParams[3] =
+            abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
+        actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
+        // assert the resulting health (maxLtvAfter == 0 skips the check)
+        actionParams[5] = abi.encode(params.adapter, params.market, account, params.maxLtvAfter);
+
+        poolManager.unlock(abi.encode(actions, actionParams));
+        _setActiveAccount(address(0));
     }
 
     /// @inheritdoc IMarginRouter
@@ -198,7 +260,9 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         } else if (action == MarginActions.ACCOUNT_WITHDRAW_COLLATERAL) {
             (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
                 params.decodeAdapterMarketAmountReceiver();
-            if (amount == 0) (amount,) = adapter.positionOf(account, market);
+            // OPEN_DELTA withdraws exactly the collateral owed to the pool for the swap (partial
+            // delever); a full close passes the explicit full collateral amount instead
+            if (amount == 0) amount = _getFullDebt(market.collateral);
             IMarginAccount(account).withdrawCollateral(adapter, market, amount, to);
         } else if (action == MarginActions.ACCOUNT_BORROW) {
             (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
@@ -213,7 +277,10 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
             IMarginAccount(account).sweep(currency, amount, to);
         } else if (action == MarginActions.ASSERT_HEALTH) {
             (ILendingAdapter adapter, Market memory market,, Ltv maxLtv) = params.decodeHealthCheck();
-            if (adapter.currentLtvWad(account, market).gt(maxLtv)) revert PositionUnhealthy();
+            // a zero bound skips the check
+            if (Ltv.unwrap(maxLtv) != 0 && adapter.currentLtvWad(account, market).gt(maxLtv)) {
+                revert PositionUnhealthy();
+            }
         } else {
             revert UnsupportedAction(action);
         }

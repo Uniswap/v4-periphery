@@ -14,6 +14,7 @@ import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Direction} from "../../src/types/Direction.sol";
+import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {MockLendingAdapter} from "../mocks/MockLendingAdapter.sol";
 import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 
@@ -110,5 +111,71 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         );
         assertEq(IERC20(Currency.unwrap(collateral)).balanceOf(address(marginRouter)), 0, "router holds no collateral");
         assertEq(IERC20(Currency.unwrap(debt)).balanceOf(address(marginRouter)), 0, "router holds no debt");
+    }
+
+    function test_increasePosition_addsLeverage() public {
+        address account = _open(1 ether, 2 ether);
+        uint256 debtAfterOpen = protocol.debtOf(account);
+
+        marginRouter.increasePosition(
+            IMarginRouter.OpenParams({
+                adapter: adapter,
+                market: market,
+                direction: Direction.Long,
+                poolKey: poolKey,
+                equity: 0,
+                collateralToBuy: 1 ether,
+                maxDebtIn: 3 ether,
+                minHopPriceX36: 0,
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+
+        assertEq(protocol.collateralOf(account), 4 ether, "collateral grew by the bought amount");
+        assertGt(protocol.debtOf(account), debtAfterOpen, "debt grew");
+    }
+
+    function test_decreasePosition_delevers() public {
+        address account = _open(1 ether, 2 ether);
+        uint256 debtAfterOpen = protocol.debtOf(account);
+        uint256 collateralAfterOpen = protocol.collateralOf(account);
+
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                adapter: adapter,
+                market: market,
+                poolKey: poolKey,
+                debtToRepay: 1 ether,
+                maxCollateralIn: 2 ether,
+                minHopPriceX36: 0,
+                maxLtvAfter: toLtv(0.9e18),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+
+        assertLt(protocol.debtOf(account), debtAfterOpen, "debt reduced");
+        assertGt(protocol.debtOf(account), 0, "position still open");
+        assertLt(protocol.collateralOf(account), collateralAfterOpen, "collateral reduced");
+        assertGt(protocol.collateralOf(account), 0, "collateral remains");
+    }
+
+    function test_decreasePosition_revertsWhenResultingLtvTooHigh() public {
+        _open(1 ether, 2 ether);
+        vm.expectRevert(IMarginRouter.PositionUnhealthy.selector);
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                adapter: adapter,
+                market: market,
+                poolKey: poolKey,
+                debtToRepay: 1 ether,
+                maxCollateralIn: 2 ether,
+                minHopPriceX36: 0,
+                maxLtvAfter: toLtv(0.5e18),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
     }
 }
