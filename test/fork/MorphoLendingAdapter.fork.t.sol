@@ -83,10 +83,20 @@ contract MorphoLendingAdapterForkTest is Test {
         assertGt(Ltv.unwrap(current), 0, "ltv positive");
         assertLt(Ltv.unwrap(current), LLTV, "ltv under max");
 
-        // repay everything (top up the account to cover any accrual)
+        // accrue interest, then fully unwind. Repay-all by shares clears the borrow shares, so the
+        // subsequent full-collateral withdrawal passes Morpho's health check. This is the exact
+        // sequence closePosition performs; an asset-denominated repay would leave dust shares and
+        // make the withdrawal revert INSUFFICIENT_COLLATERAL.
+        vm.warp(block.timestamp + 1 days);
         deal(USDC, address(account), borrowAmount + 10e6);
         account.repay(adapter, market, type(uint256).max);
-        (, uint256 debt2) = adapter.positionOf(address(account), market);
-        assertEq(debt2, 0, "debt fully repaid");
+        (uint256 collateralAfter, uint256 debtAfter) = adapter.positionOf(address(account), market);
+        assertEq(debtAfter, 0, "debt fully repaid");
+
+        uint256 wethBefore = IERC20(WETH).balanceOf(address(this));
+        account.withdrawCollateral(adapter, market, collateralAfter, address(this));
+        (uint256 collateralEnd,) = adapter.positionOf(address(account), market);
+        assertEq(collateralEnd, 0, "all collateral withdrawn after full repay");
+        assertEq(IERC20(WETH).balanceOf(address(this)) - wethBefore, collateralAfter, "collateral returned");
     }
 }

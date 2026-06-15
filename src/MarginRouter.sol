@@ -160,9 +160,13 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
                 hookData: ""
             })
         );
-        // take the bought debt to the account, repay exactly it, then withdraw ALL collateral
+        // take the bought debt to the account, then repay ALL by shares so no borrow-share dust
+        // remains (an asset-denominated repay rounds down to shares and leaves dust, which would
+        // make the full-collateral withdrawal fail the lending market's health check). The bought
+        // `debt` equals expectedBorrowAssets, which is exactly what a full-share repay pulls in the
+        // same block.
         actionParams[1] = abi.encode(params.market.debt, account, ActionConstants.OPEN_DELTA);
-        actionParams[2] = abi.encode(params.adapter, params.market, debt);
+        actionParams[2] = abi.encode(params.adapter, params.market, type(uint256).max);
         actionParams[3] = abi.encode(params.adapter, params.market, collateral, address(this));
         // settle the collateral spent on the swap from the router
         actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
