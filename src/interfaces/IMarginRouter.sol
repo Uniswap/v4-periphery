@@ -20,6 +20,8 @@ interface IMarginRouter {
     error SlippageBoundRequired();
     /// @notice Thrown when a position would be left or made unhealthy by an operation.
     error PositionUnhealthy();
+    /// @notice Thrown when a flow is called with a lending adapter that governance has not allowed.
+    error AdapterNotAllowed(address adapter);
 
     /// @notice Parameters for opening a leveraged position.
     /// @dev The swap always sells the market's debt to buy its collateral; `direction` records

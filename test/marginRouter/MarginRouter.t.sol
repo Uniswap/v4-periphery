@@ -13,8 +13,10 @@ import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Direction} from "../../src/types/Direction.sol";
+import {NotOwner} from "../../src/types/Owner.sol";
 
 /// @dev Unit tests for the router's wiring and pre-unlock guards. The swap-coupled leverage flows
 ///      (open, close end-to-end) run through a real PoolManager and are validated by the integration
@@ -75,5 +77,22 @@ contract MarginRouterTest is Test {
         p.maxCollateralIn = 0;
         vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
         router.closePosition(p);
+    }
+
+    function test_governance_isDeployer() public view {
+        assertEq(router.governance(), address(this));
+    }
+
+    function test_setAdapterAllowed_onlyGovernance() public {
+        vm.prank(makeAddr("stranger"));
+        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, makeAddr("stranger")));
+        router.setAdapterAllowed(ILendingAdapter(address(0xA)), true);
+    }
+
+    function test_openPosition_revertsWhenAdapterNotAllowed() public {
+        // _openParams leaves adapter as the zero address, which is not allowlisted
+        IMarginRouter.OpenParams memory p = _openParams();
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(0)));
+        router.openPosition(p);
     }
 }

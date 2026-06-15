@@ -25,6 +25,7 @@ import {MarginActions} from "./libraries/MarginActions.sol";
 import {MarginCalldataDecoder} from "./libraries/MarginCalldataDecoder.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv} from "./types/Ltv.sol";
+import {Owner} from "./types/Owner.sol";
 
 /// @notice The brain of the margin-trading suite. Composes the v4 action machinery and builds each
 ///         leveraged position as a single flash-style swap inside one PoolManager unlock: borrow the
@@ -42,12 +43,45 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
     /// @notice The factory that deploys and addresses per-user accounts. Manager of every account.
     MarginAccountFactory public immutable factory;
 
+    Owner internal _governance;
+    mapping(ILendingAdapter adapter => bool isAllowed) internal _allowedAdapters;
+
+    /// @notice Emitted when governance allows or disallows a lending adapter.
+    event AdapterAllowed(address indexed adapter, bool allowed);
+
     constructor(IPoolManager poolManager_, IAllowanceTransfer permit2_, IWETH9 weth9_, address accountImplementation)
         V4Router(poolManager_)
         Permit2Forwarder(permit2_)
         NativeWrapper(weth9_)
     {
         factory = new MarginAccountFactory(accountImplementation, address(this));
+        // the deployer is the initial governance; hand off to a timelock or multisig after setup
+        _governance.write(msg.sender);
+    }
+
+    /// @notice The governance address that curates the adapter allowlist.
+    function governance() external view returns (address) {
+        return _governance.read();
+    }
+
+    /// @notice Hands governance to a new address. Governance-gated.
+    function transferGovernance(address newGovernance) external {
+        _governance.onlyOwner(msg.sender);
+        _governance.write(newGovernance);
+    }
+
+    /// @notice Allows or disallows a lending adapter for use in the flows. Governance-gated.
+    /// @dev Only allowlisted adapters can be passed to the position flows. A hostile adapter can
+    ///      otherwise siphon the caller's own equity, so the set is curated.
+    function setAdapterAllowed(ILendingAdapter adapter, bool allowed) external {
+        _governance.onlyOwner(msg.sender);
+        _allowedAdapters[adapter] = allowed;
+        emit AdapterAllowed(address(adapter), allowed);
+    }
+
+    /// @notice Whether `adapter` is allowlisted.
+    function isAdapterAllowed(ILendingAdapter adapter) external view returns (bool) {
+        return _allowedAdapters[adapter];
     }
 
     modifier checkDeadline(uint256 deadline) {
@@ -79,6 +113,7 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
     ///         run the flash-style plan (swap debt to collateral, supply, borrow, settle).
     function _open(OpenParams calldata params) private returns (address account) {
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
+        _requireAllowedAdapter(params.adapter);
 
         account = factory.createAccount(msgSender(), params.subId);
         _setActiveAccount(account);
@@ -134,6 +169,7 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         returns (address account)
     {
         if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
+        _requireAllowedAdapter(params.adapter);
 
         account = factory.accountOf(msgSender(), params.subId);
         _setActiveAccount(account);
@@ -186,7 +222,10 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         checkDeadline(params.deadline)
         returns (address account)
     {
-        if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
+        // both the collateral slippage bound and the resulting-health bound are mandatory: a delever
+        // must not be left free to worsen the position's LTV
+        if (params.maxCollateralIn == 0 || Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
+        _requireAllowedAdapter(params.adapter);
 
         account = factory.accountOf(msgSender(), params.subId);
         _setActiveAccount(account);
@@ -233,12 +272,13 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         checkDeadline(params.deadline)
         returns (address account)
     {
+        if (params.amount == 0) revert SlippageBoundRequired();
+        _requireAllowedAdapter(params.adapter);
+
         account = factory.createAccount(msgSender(), params.subId);
-        if (params.amount > 0) {
-            permit2.transferFrom(
-                msgSender(), account, params.amount.toUint160(), Currency.unwrap(params.market.collateral)
-            );
-        }
+        permit2.transferFrom(
+            msgSender(), account, params.amount.toUint160(), Currency.unwrap(params.market.collateral)
+        );
         // the router is the account manager, so it can supply directly without an unlock
         IMarginAccount(account).supplyCollateral(params.adapter, params.market, params.amount);
     }
@@ -304,6 +344,11 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         } else {
             permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
         }
+    }
+
+    /// @notice Reverts unless `adapter` is on the governance allowlist.
+    function _requireAllowedAdapter(ILendingAdapter adapter) internal view {
+        if (!_allowedAdapters[adapter]) revert AdapterNotAllowed(address(adapter));
     }
 
     /// @notice Stores the active account for the current unlock in transient storage (EIP-1153). It

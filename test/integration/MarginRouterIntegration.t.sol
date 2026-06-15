@@ -45,6 +45,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
 
         address impl = address(new MarginAccount());
         marginRouter = new MarginRouter(manager, IAllowanceTransfer(address(0xdead)), IWETH9(address(0xbeef)), impl);
+        marginRouter.setAdapterAllowed(adapter, true);
 
         // fund the lending protocol with debt to lend out
         MockERC20(Currency.unwrap(debt)).transfer(address(protocol), 1_000_000 ether);
