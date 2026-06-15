@@ -50,11 +50,13 @@ contract MarginRouterTest is Test {
     }
 
     function test_factory_managerIsRouter() public view {
-        assertEq(router.factory().manager(), address(router));
+        // the router inherits the factory mixin, so it is the manager baked into every account
+        assertEq(router.manager(), address(router));
     }
 
-    function test_accountOf_matchesFactory() public view {
-        assertEq(router.accountOf(owner, 0), router.factory().accountOf(owner, 0));
+    function test_accountOf_isDeterministic() public view {
+        assertEq(router.accountOf(owner, 0), router.accountOf(owner, 0));
+        assertTrue(router.accountOf(owner, 0) != router.accountOf(owner, 1));
     }
 
     function test_openPosition_revertsWhenSlippageBoundZero() public {

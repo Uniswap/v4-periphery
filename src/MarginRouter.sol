@@ -40,16 +40,20 @@ import {Owner} from "./types/Owner.sol";
 ///         curate standard ERC-20 markets only (Morpho Blue does not support fee-on-transfer or
 ///         rebasing tokens). Under that constraint every flow nets to zero with no router residual.
 /// @custom:security-contact security@uniswap.org
-contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forwarder, Multicall_v4, NativeWrapper {
+contract MarginRouter is
+    IMarginRouter,
+    V4Router,
+    ReentrancyLock,
+    Permit2Forwarder,
+    Multicall_v4,
+    NativeWrapper,
+    MarginAccountFactory
+{
     using MarginCalldataDecoder for bytes;
     using SafeCast for uint256;
 
     // transient slot holding the account for the current unlock, set from the authenticated caller
     bytes32 private constant ACTIVE_ACCOUNT_SLOT = keccak256("uniswap.marginRouter.activeAccount");
-
-    /// @notice The factory that deploys and addresses per-user MarginAccount clones. The router is
-    ///         the manager of every account the factory creates.
-    MarginAccountFactory public immutable factory;
 
     Owner internal _governance;
     mapping(ILendingAdapter adapter => bool isAllowed) internal _allowedAdapters;
@@ -69,8 +73,8 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         V4Router(poolManager_)
         Permit2Forwarder(permit2_)
         NativeWrapper(weth9_)
+        MarginAccountFactory(accountImplementation)
     {
-        factory = new MarginAccountFactory(accountImplementation, address(this));
         // the deployer is the initial governance; hand off to a timelock or multisig after setup
         _governance.write(msg.sender);
     }
@@ -113,7 +117,7 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
         _requireAllowedAdapter(params.adapter);
 
-        account = factory.accountOf(msgSender(), params.subId);
+        account = accountOf(msgSender(), params.subId);
         _setActiveAccount(account);
 
         // buy exactly the current debt, then repay it; sell collateral to fund the purchase
@@ -170,7 +174,7 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         if (params.maxCollateralIn == 0 || Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
         _requireAllowedAdapter(params.adapter);
 
-        account = factory.accountOf(msgSender(), params.subId);
+        account = accountOf(msgSender(), params.subId);
         _setActiveAccount(account);
 
         // sell collateral to buy and repay `debtToRepay`; the position stays open and shrinks
@@ -218,7 +222,7 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         returns (address account)
     {
         _requireAllowedAdapter(params.adapter);
-        account = factory.createAccount(msgSender(), params.subId);
+        account = createAccount(msgSender(), params.subId);
 
         uint256 amount;
         if (msg.value > 0) {
@@ -240,8 +244,15 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
     }
 
     /// @inheritdoc IMarginRouter
-    function accountOf(address owner, uint256 subId) external view returns (address) {
-        return factory.accountOf(owner, subId);
+    /// @dev Resolves the inherited MarginAccountFactory implementation; the manager baked into the
+    ///      predicted address is this router.
+    function accountOf(address owner, uint256 subId)
+        public
+        view
+        override(IMarginRouter, MarginAccountFactory)
+        returns (address)
+    {
+        return super.accountOf(owner, subId);
     }
 
     /// @notice The governance address that curates the adapter allowlist.
@@ -294,7 +305,7 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
         _requireAllowedAdapter(params.adapter);
 
-        account = factory.createAccount(msgSender(), params.subId);
+        account = createAccount(msgSender(), params.subId);
         _setActiveAccount(account);
 
         // provide equity: native ETH (wrapped to WETH) when sent, else ERC20 pulled via Permit2

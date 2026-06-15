@@ -6,15 +6,23 @@ import {Test} from "forge-std/Test.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {MarginAccountFactory} from "../../src/MarginAccountFactory.sol";
 
+/// @dev Concrete harness for the abstract factory mixin. The manager baked into every clone is the
+///      harness's own address, mirroring how MarginRouter inherits the factory and becomes the
+///      manager of all accounts it deploys.
+contract FactoryHarness is MarginAccountFactory {
+    constructor(address impl) MarginAccountFactory(impl) {}
+}
+
 contract MarginAccountFactoryTest is Test {
-    MarginAccountFactory internal factory;
+    FactoryHarness internal factory;
     address internal impl;
-    address internal manager = makeAddr("manager");
+    address internal manager;
     address internal owner = makeAddr("owner");
 
     function setUp() public {
         impl = address(new MarginAccount());
-        factory = new MarginAccountFactory(impl, manager);
+        factory = new FactoryHarness(impl);
+        manager = address(factory);
     }
 
     function test_accountOf_matchesDeployedAddress() public {
@@ -52,7 +60,8 @@ contract MarginAccountFactoryTest is Test {
     }
 
     function test_accountOf_distinctAcrossManagers() public {
-        MarginAccountFactory other = new MarginAccountFactory(impl, makeAddr("manager2"));
+        // a second harness has a different address, so it is a different manager and the salt differs
+        FactoryHarness other = new FactoryHarness(impl);
         assertTrue(factory.accountOf(owner, 0) != other.accountOf(owner, 0));
     }
 
