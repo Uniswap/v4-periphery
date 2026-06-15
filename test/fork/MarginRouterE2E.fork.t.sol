@@ -77,6 +77,11 @@ contract MarginRouterE2EForkTest is Test {
     Market internal market;
     PoolKey internal poolKey;
 
+    // bystander position snapshots, kept in storage so the multi-borrower flow can record/compare
+    // across many steps without piling locals onto one stack frame (tests compile without via_ir)
+    mapping(address account => uint256 collateral) internal _heldColl;
+    mapping(address account => uint256 debt) internal _heldDebt;
+
     /// @dev Accept ETH: PoolModifyLiquidityTest refunds leftover native dust to the caller, and the
     ///      native add-collateral path is funded from this contract's balance.
     receive() external payable {}
@@ -123,6 +128,73 @@ contract MarginRouterE2EForkTest is Test {
         _stageAccrueInterest(account);
         _stageDecrease(account);
         _stageClose(account);
+    }
+
+    /// @notice Proves the stack stays correct with several independent borrowers contending for the
+    ///         same Morpho market and the same v4 pool at once. This is the non-trivial path: three
+    ///         positions are opened interleaved (two distinct owners, one of whom runs two
+    ///         sub-accounts), they accrue interest together for a week, one borrower levers up while
+    ///         the others are open, and they are closed in a different order than they were opened.
+    ///         Throughout, each borrower's position must remain isolated: another borrower's open,
+    ///         increase, or close must never move my collateral, and may only touch my debt within
+    ///         share-rounding. Each owner receives their own residual PnL; the router never retains
+    ///         dust.
+    function test_fork_e2e_multipleBorrowers() public {
+        address alice = makeAddr("alice");
+        address bob = makeAddr("bob");
+
+        // top up the lender side of the real market so it can fund several borrowers at once. this
+        // is an ordinary Morpho supply by an external lender; the market and its accounting stay real.
+        _seedMorphoLiquidity(5_000_000e6);
+
+        // interleaved opens against the shared market + pool. alice/0 via Permit2; bob via native ETH
+        // (larger, ~0.6 LTV); alice/1 is a second, independent sub-account of the same owner.
+        address aliceAcct0 = _openPermit2(alice, 0, 1 ether, 1 ether);
+        address bobAcct = _openNative(bob, 0, 2 ether, 3 ether);
+        address aliceAcct1 = _openPermit2(alice, 1, 1 ether, 2 ether);
+
+        // (owner, subId) addressing yields three distinct, non-overlapping accounts
+        assertTrue(aliceAcct0 != bobAcct, "alice/0 != bob");
+        assertTrue(aliceAcct0 != aliceAcct1, "alice/0 != alice/1");
+        assertTrue(bobAcct != aliceAcct1, "bob != alice/1");
+
+        _assertOpenHealthy(aliceAcct0, 2 ether);
+        _assertOpenHealthy(bobAcct, 5 ether);
+        _assertOpenHealthy(aliceAcct1, 3 ether);
+        _assertNoDustRouter();
+
+        // a week passes: every borrower's debt grows from the one shared interest-rate model
+        _recordHeld(aliceAcct0);
+        _recordHeld(bobAcct);
+        _recordHeld(aliceAcct1);
+        vm.warp(block.timestamp + 7 days);
+        _assertDebtGrew(aliceAcct0);
+        _assertDebtGrew(bobAcct);
+        _assertDebtGrew(aliceAcct1);
+
+        // bob levers up further (to ~0.71 LTV) while alice's two positions are open; alice untouched
+        _recordHeld(aliceAcct0);
+        _recordHeld(aliceAcct1);
+        _increaseFor(bob, 0, 2 ether);
+        _assertHealthy(bobAcct);
+        _assertStillHeld(aliceAcct0);
+        _assertStillHeld(aliceAcct1);
+        _assertNoDustRouter();
+
+        // close out of order: alice/0 first, then bob, then alice/1. each close fully unwinds its own
+        // account and leaves every still-open account's collateral exact and debt within rounding.
+        _recordHeld(bobAcct);
+        _recordHeld(aliceAcct1);
+        _closeAndZero(alice, 0, aliceAcct0);
+        _assertStillHeld(bobAcct);
+        _assertStillHeld(aliceAcct1);
+
+        _recordHeld(aliceAcct1);
+        _closeAndZero(bob, 0, bobAcct);
+        _assertStillHeld(aliceAcct1);
+
+        _closeAndZero(alice, 1, aliceAcct1);
+        _assertNoDustRouter();
     }
 
     // -------------------------------------------------------------------------
@@ -343,8 +415,137 @@ contract MarginRouterE2EForkTest is Test {
     function _assertNoDust(address account) internal view {
         assertEq(IERC20(WETH).balanceOf(account), 0, "account holds no loose WETH");
         assertEq(IERC20(USDC).balanceOf(account), 0, "account holds no loose USDC");
+        _assertNoDustRouter();
+    }
+
+    /// @notice Asserts the router holds no loose collateral or debt tokens.
+    function _assertNoDustRouter() internal view {
         assertEq(IERC20(WETH).balanceOf(address(router)), 0, "router holds no loose WETH");
         assertEq(IERC20(USDC).balanceOf(address(router)), 0, "router holds no loose USDC");
+    }
+
+    // -------------------------------------------------------------------------
+    // Multi-borrower helpers (each pranks as the borrower; snapshots live in storage)
+    // -------------------------------------------------------------------------
+
+    /// @notice Supplies `assets` USDC to the real Morpho market as an external lender, expanding the
+    ///         idle liquidity available for borrowers.
+    function _seedMorphoLiquidity(uint256 assets) internal {
+        address lender = makeAddr("lender");
+        deal(USDC, lender, assets);
+        vm.startPrank(lender);
+        IERC20(USDC).approve(address(MORPHO), assets);
+        MORPHO.supply(marketParams, assets, 0, lender, "");
+        vm.stopPrank();
+    }
+
+    /// @notice Opens a position for `who` at `subId` with `equity` WETH supplied via real Permit2.
+    function _openPermit2(address who, uint256 subId, uint256 equity, uint128 buy)
+        internal
+        returns (address account)
+    {
+        account = router.accountOf(who, subId);
+        deal(WETH, who, equity);
+        vm.startPrank(who);
+        IERC20(WETH).approve(PERMIT2, type(uint256).max);
+        IAllowanceTransfer(PERMIT2).approve(WETH, address(router), uint160(equity), uint48(block.timestamp + 1 hours));
+        router.openPosition(_openParamsFor(subId, equity, buy));
+        vm.stopPrank();
+    }
+
+    /// @notice Opens a position for `who` at `subId` with `equityEth` of native ETH as equity.
+    function _openNative(address who, uint256 subId, uint256 equityEth, uint128 buy)
+        internal
+        returns (address account)
+    {
+        account = router.accountOf(who, subId);
+        vm.deal(who, equityEth);
+        vm.prank(who);
+        router.openPosition{value: equityEth}(_openParamsFor(subId, 0, buy));
+    }
+
+    /// @notice Adds `buy` WETH of pure leverage (no new equity) to `who`'s position at `subId`.
+    function _increaseFor(address who, uint256 subId, uint128 buy) internal {
+        vm.prank(who);
+        router.increasePosition(_openParamsFor(subId, 0, buy));
+    }
+
+    /// @notice Closes `who`'s position at `subId`, asserts it is fully unwound, and returns the
+    ///         residual WETH (realized PnL) credited to the owner.
+    function _closeAndZero(address who, uint256 subId, address account) internal returns (uint256 residual) {
+        uint256 wethBefore = IERC20(WETH).balanceOf(who);
+        vm.prank(who);
+        router.closePosition(_closeParamsFor(subId));
+        residual = IERC20(WETH).balanceOf(who) - wethBefore;
+
+        (uint256 collateral, uint256 debt) = adapter.positionOf(account, market);
+        assertEq(debt, 0, "closed: debt fully repaid");
+        assertEq(collateral, 0, "closed: all collateral withdrawn");
+        assertGt(residual, 0, "closed: residual returned to owner");
+        _assertNoDust(account);
+    }
+
+    /// @notice Builds open/increase params for `subId` (generous bounds; size set by `equity`/`buy`).
+    function _openParamsFor(uint256 subId, uint256 equity, uint128 buy)
+        internal
+        view
+        returns (IMarginRouter.OpenParams memory)
+    {
+        return IMarginRouter.OpenParams({
+            adapter: adapter,
+            market: market,
+            direction: Direction.Long,
+            poolKey: poolKey,
+            equity: equity,
+            collateralToBuy: buy,
+            maxDebtIn: 20_000e6,
+            minHopPriceX36: 0,
+            subId: subId,
+            deadline: block.timestamp + 1 hours
+        });
+    }
+
+    /// @notice Builds close params for `subId` with a generous collateral-in bound.
+    function _closeParamsFor(uint256 subId) internal view returns (IMarginRouter.CloseParams memory) {
+        return IMarginRouter.CloseParams({
+            adapter: adapter,
+            market: market,
+            poolKey: poolKey,
+            maxCollateralIn: 10 ether,
+            minHopPriceX36: 0,
+            subId: subId,
+            deadline: block.timestamp + 1 hours
+        });
+    }
+
+    /// @notice Asserts a freshly opened position has the expected collateral, positive debt, health.
+    function _assertOpenHealthy(address account, uint256 expectedCollateral) internal view {
+        (uint256 collateral, uint256 debt) = adapter.positionOf(account, market);
+        assertApproxEqAbs(collateral, expectedCollateral, 1, "open: collateral = equity + bought");
+        assertGt(debt, 0, "open: debt drawn against the shared market");
+        _assertHealthy(account);
+    }
+
+    /// @notice Records a bystander account's current (collateral, debt) for later isolation checks.
+    function _recordHeld(address account) internal {
+        (uint256 collateral, uint256 debt) = adapter.positionOf(account, market);
+        _heldColl[account] = collateral;
+        _heldDebt[account] = debt;
+    }
+
+    /// @notice Asserts another borrower's action left this account isolated: collateral exactly
+    ///         unchanged, debt within share-rounding of the recorded value, position still open.
+    function _assertStillHeld(address account) internal view {
+        (uint256 collateral, uint256 debt) = adapter.positionOf(account, market);
+        assertEq(collateral, _heldColl[account], "bystander collateral must be untouched");
+        assertApproxEqAbs(debt, _heldDebt[account], 100, "bystander debt only moves within rounding");
+        assertGt(debt, 0, "bystander position still open");
+    }
+
+    /// @notice Asserts an account's debt strictly grew from its recorded value (shared accrual).
+    function _assertDebtGrew(address account) internal view {
+        (, uint256 debt) = adapter.positionOf(account, market);
+        assertGt(debt, _heldDebt[account], "debt grew from real interest accrual");
     }
 
     /// @notice Logs the position's collateral, debt, and current LTV at a lifecycle stage.
