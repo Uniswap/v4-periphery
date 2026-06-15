@@ -114,6 +114,29 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         assertEq(IERC20(Currency.unwrap(debt)).balanceOf(address(marginRouter)), 0, "router holds no debt");
     }
 
+    function test_openLong_emitsPositionOpened() public {
+        address account = marginRouter.accountOf(address(this), 0);
+        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
+
+        vm.expectEmit(true, true, false, true, address(marginRouter));
+        emit IMarginRouter.PositionOpened(address(this), account, collateral, debt, 2 ether);
+
+        marginRouter.openPosition(
+            IMarginRouter.OpenParams({
+                adapter: adapter,
+                market: market,
+                direction: Direction.Long,
+                poolKey: poolKey,
+                equity: 0,
+                collateralToBuy: 2 ether,
+                maxDebtIn: 5 ether,
+                minHopPriceX36: 0,
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+    }
+
     function test_increasePosition_addsLeverage() public {
         address account = _open(1 ether, 2 ether);
         uint256 debtAfterOpen = protocol.debtOf(account);

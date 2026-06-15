@@ -100,7 +100,10 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         checkDeadline(params.deadline)
         returns (address account)
     {
-        return _open(params);
+        account = _open(params);
+        emit PositionOpened(
+            msgSender(), account, params.market.collateral, params.market.debt, params.collateralToBuy
+        );
     }
 
     /// @inheritdoc IMarginRouter
@@ -110,7 +113,10 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         checkDeadline(params.deadline)
         returns (address account)
     {
-        return _open(params);
+        account = _open(params);
+        emit PositionIncreased(
+            msgSender(), account, params.market.collateral, params.market.debt, params.collateralToBuy
+        );
     }
 
     /// @notice Shared lever-up: deploy the account if needed, pull optional equity, then build and
@@ -217,6 +223,7 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         // return the remaining collateral (realized PnL) to the caller
         uint256 residual = params.market.collateral.balanceOfSelf();
         if (residual > 0) params.market.collateral.transfer(msgSender(), residual);
+        emit PositionClosed(msgSender(), account, params.market.collateral, params.market.debt, residual);
     }
 
     /// @inheritdoc IMarginRouter
@@ -262,11 +269,12 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         actionParams[3] =
             abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
         actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
-        // assert the resulting health (maxLtvAfter == 0 skips the check)
+        // assert the resulting health
         actionParams[5] = abi.encode(params.adapter, params.market, account, params.maxLtvAfter);
 
         poolManager.unlock(abi.encode(actions, actionParams));
         _setActiveAccount(address(0));
+        emit PositionDecreased(msgSender(), account, params.market.collateral, params.market.debt, params.debtToRepay);
     }
 
     /// @inheritdoc IMarginRouter
@@ -285,6 +293,7 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         );
         // the router is the account manager, so it can supply directly without an unlock
         IMarginAccount(account).supplyCollateral(params.adapter, params.market, params.amount);
+        emit CollateralAdded(msgSender(), account, params.market.collateral, params.amount);
     }
 
     /// @inheritdoc IMarginRouter

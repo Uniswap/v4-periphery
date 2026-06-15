@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {ILendingAdapter} from "./ILendingAdapter.sol";
 import {Market} from "../types/Market.sol";
@@ -22,6 +23,25 @@ interface IMarginRouter {
     error PositionUnhealthy();
     /// @notice Thrown when a flow is called with a lending adapter that governance has not allowed.
     error AdapterNotAllowed(address adapter);
+
+    /// @notice Emitted when a position is opened.
+    event PositionOpened(
+        address indexed owner, address indexed account, Currency collateral, Currency debt, uint256 collateralBought
+    );
+    /// @notice Emitted when leverage is added to a position.
+    event PositionIncreased(
+        address indexed owner, address indexed account, Currency collateral, Currency debt, uint256 collateralBought
+    );
+    /// @notice Emitted when a position is fully closed.
+    event PositionClosed(
+        address indexed owner, address indexed account, Currency collateral, Currency debt, uint256 collateralReturned
+    );
+    /// @notice Emitted when a position is partially delevered.
+    event PositionDecreased(
+        address indexed owner, address indexed account, Currency collateral, Currency debt, uint256 debtRepaid
+    );
+    /// @notice Emitted when collateral is added to a position.
+    event CollateralAdded(address indexed owner, address indexed account, Currency collateral, uint256 amount);
 
     /// @notice Parameters for opening a leveraged position.
     /// @dev The swap always sells the market's debt to buy its collateral; `direction` records
