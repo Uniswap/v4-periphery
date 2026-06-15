@@ -13,25 +13,32 @@ import {IMarginAccount} from "./interfaces/IMarginAccount.sol";
 import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {Market} from "./types/Market.sol";
 
+/// @title MarginAccount
+/// @author Uniswap Labs
 /// @notice The per-user position container, deployed as a Solady clone-with-immutable-args. The
 ///         account is the borrower and supplier in the lending protocol, so it acts as itself and
 ///         needs no delegated authorization. The owner and manager are baked into the clone
-///         bytecode (read via LibClone.argsOnClone), so there is no initializer to front-run and no
-///         transfer path: ownership is soulbound.
+///         bytecode (read via `LibClone.argsOnClone`), so there is no initializer to front-run and
+///         no transfer path: ownership is soulbound.
 ///
 ///         The account owns the authority-bearing fields. It always passes itself as the lending
-///         onBehalf, constrains every fund recipient to the manager or owner, asserts each
+///         `onBehalf`, constrains every fund recipient to the manager or owner, asserts each
 ///         adapter-encoded call targets the adapter's lending protocol, and performs a regular call
 ///         (never a delegatecall). Adapter trust is established by the manager (which only routes
-///         registered adapters) or by the owner choosing the adapter for their own funds; the
+///         allowlisted adapters) or by the owner choosing the adapter for their own funds; the
 ///         target check here is defense in depth.
+/// @custom:security-contact security@uniswap.org
 contract MarginAccount is IMarginAccount {
     using CustomRevert for bytes4;
     using SafeERC20 for IERC20;
 
-    /// @notice Thrown when an adapter-encoded call targets something other than its lending protocol.
+    /// @dev Thrown when an adapter-encoded call targets an address other than the adapter's
+    ///      declared `lendingProtocol()`. Prevents a rogue adapter from redirecting the account's
+    ///      call to an arbitrary contract.
     error TargetNotLendingProtocol();
-    /// @notice Thrown when an adapter-encoded call carries value (lending calls are non-payable).
+
+    /// @dev Thrown when an adapter-encoded call carries a non-zero `value`. Lending protocol calls
+    ///      are expected to be non-payable; a non-zero value would indicate a misconfigured adapter.
     error UnexpectedCallValue();
 
     /// @inheritdoc IMarginAccount
@@ -45,6 +52,8 @@ contract MarginAccount is IMarginAccount {
     }
 
     /// @inheritdoc IMarginAccount
+    /// @dev Approves the lending protocol for `amount` before the call and resets the allowance to
+    ///      zero afterward, so no residual approval lingers on the lending contract.
     function supplyCollateral(ILendingAdapter adapter, Market calldata market, uint256 amount)
         external
         returns (uint256)
@@ -86,6 +95,9 @@ contract MarginAccount is IMarginAccount {
     }
 
     /// @inheritdoc IMarginAccount
+    /// @dev Approves the lending protocol for `amount` (or the full balance for `type(uint256).max`)
+    ///      before the call and resets the allowance to zero afterward. `repaid` is measured as the
+    ///      debt token balance decrease, which is accurate for both partial and full-share repays.
     function repay(ILendingAdapter adapter, Market calldata market, uint256 amount)
         external
         returns (uint256 repaid)
@@ -110,6 +122,9 @@ contract MarginAccount is IMarginAccount {
     }
 
     /// @inheritdoc IMarginAccount
+    /// @dev `market` is accepted for interface symmetry but is not inspected here; the call target
+    ///      is constrained to `adapter.lendingProtocol()` by `Address.functionCall`, which also
+    ///      reverts on failure.
     function execute(ILendingAdapter adapter, Market calldata, bytes calldata adapterCall)
         external
         returns (bytes memory)
@@ -119,26 +134,43 @@ contract MarginAccount is IMarginAccount {
         return Address.functionCall(adapter.lendingProtocol(), adapterCall);
     }
 
-    /// @notice Reads the soulbound (owner, manager) from the clone's immutable args. During a clone
-    ///         delegatecall address(this) is the clone, so this reads the clone's appended args.
+    /// @notice Reads the soulbound `(owner, manager)` from the clone's immutable args. During
+    ///         execution, `address(this)` is the clone, so `LibClone.argsOnClone` reads the args
+    ///         appended to that clone's bytecode.
+    /// @return ownerAddr The clone's baked-in owner.
+    /// @return managerAddr The clone's baked-in manager.
     function _ownerAndManager() internal view returns (address ownerAddr, address managerAddr) {
         (ownerAddr, managerAddr) = abi.decode(LibClone.argsOnClone(address(this)), (address, address));
     }
 
-    /// @notice Reverts unless msg.sender is the manager or owner; returns both for reuse.
+    /// @notice Reverts unless `msg.sender` is the manager or owner. Returns both addresses for
+    ///         reuse by callers that need them for further checks (e.g. `_requireReceiver`).
+    /// @return ownerAddr The clone's baked-in owner.
+    /// @return managerAddr The clone's baked-in manager.
     function _authCaller() internal view returns (address ownerAddr, address managerAddr) {
         (ownerAddr, managerAddr) = _ownerAndManager();
         if (msg.sender != managerAddr && msg.sender != ownerAddr) NotAuthorized.selector.revertWith();
     }
 
-    /// @notice Reverts unless `to` is the manager or owner. The account owns the recipient field; it
-    ///         is never taken from adapter-encoded bytes.
+    /// @notice Reverts unless `to` is the manager or owner. The account owns the recipient field;
+    ///         it is never taken from adapter-encoded bytes, preventing fund redirection.
+    /// @param to The proposed recipient address.
+    /// @param ownerAddr The clone's baked-in owner.
+    /// @param managerAddr The clone's baked-in manager.
     function _requireReceiver(address to, address ownerAddr, address managerAddr) internal pure {
         if (to != managerAddr && to != ownerAddr) ReceiverNotAllowed.selector.revertWith(to);
     }
 
-    /// @notice Asserts the adapter-encoded call targets the adapter's lending protocol and carries no
-    ///         value, then performs a regular call. Never a delegatecall.
+    /// @notice Asserts the adapter-encoded call targets the adapter's lending protocol and carries
+    ///         no value, then performs a regular call (never a delegatecall). Reverts on failure via
+    ///         `Address.functionCall`.
+    /// @dev The target and value checks are defense in depth: the manager only routes allowlisted
+    ///      adapters, and the owner deliberately chooses the adapter for their own funds.
+    /// @param adapter The adapter whose `lendingProtocol()` is the permitted target.
+    /// @param target The encoded call target; must equal `adapter.lendingProtocol()`.
+    /// @param value The encoded call value; must be zero.
+    /// @param callData The calldata to forward.
+    /// @return The raw bytes returned by the lending protocol call.
     function _execCall(ILendingAdapter adapter, address target, uint256 value, bytes memory callData)
         internal
         returns (bytes memory)

@@ -27,16 +27,19 @@ import {Market} from "./types/Market.sol";
 import {Ltv} from "./types/Ltv.sol";
 import {Owner} from "./types/Owner.sol";
 
-/// @notice The brain of the margin-trading suite. Composes the v4 action machinery and builds each
-///         leveraged position as a single flash-style swap inside one PoolManager unlock: borrow the
-///         debt, swap it into collateral, supply the collateral, then draw the debt to settle. Each
-///         operation runs against the caller's own MarginAccount, derived from the authenticated
-///         caller (never from a caller-supplied address). The router is the manager of every account
-///         it deploys, so it can drive their lending primitives.
+/// @title MarginRouter
+/// @author Uniswap Labs
+/// @notice The entry point for the margin-trading suite. Composes the v4 action machinery and
+///         builds each leveraged position as a single flash-style swap inside one PoolManager
+///         unlock: borrow the debt, swap it into collateral, supply the collateral, then draw the
+///         debt back to settle. Each operation runs against the caller's own MarginAccount, derived
+///         from the authenticated caller (never from a caller-supplied address). The router is the
+///         manager of every account it deploys, so it can drive their lending primitives.
 ///
 ///         Supported markets are restricted to the governance allowlist of lending adapters, which
-///         curate standard ERC20 markets only (Morpho Blue does not support fee-on-transfer or
+///         curate standard ERC-20 markets only (Morpho Blue does not support fee-on-transfer or
 ///         rebasing tokens). Under that constraint every flow nets to zero with no router residual.
+/// @custom:security-contact security@uniswap.org
 contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forwarder, Multicall_v4, NativeWrapper {
     using MarginCalldataDecoder for bytes;
     using SafeCast for uint256;
@@ -44,15 +47,19 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
     // transient slot holding the account for the current unlock, set from the authenticated caller
     bytes32 private constant ACTIVE_ACCOUNT_SLOT = keccak256("uniswap.marginRouter.activeAccount");
 
-    /// @notice The factory that deploys and addresses per-user accounts. Manager of every account.
+    /// @notice The factory that deploys and addresses per-user MarginAccount clones. The router is
+    ///         the manager of every account the factory creates.
     MarginAccountFactory public immutable factory;
 
     Owner internal _governance;
     mapping(ILendingAdapter adapter => bool isAllowed) internal _allowedAdapters;
 
     /// @notice Emitted when governance allows or disallows a lending adapter.
+    /// @param adapter The adapter address whose allowlist status changed.
+    /// @param allowed True if the adapter was allowed; false if it was disallowed.
     event AdapterAllowed(address indexed adapter, bool allowed);
 
+    /// @dev Reverts `DeadlinePassed` if `block.timestamp` has passed `deadline`.
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed(deadline);
         _;
@@ -238,38 +245,51 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
     }
 
     /// @notice The governance address that curates the adapter allowlist.
+    /// @return The current governance address.
     function governance() external view returns (address) {
         return _governance.read();
     }
 
-    /// @notice Whether `adapter` is allowlisted.
+    /// @notice Whether `adapter` is on the governance allowlist and may be used in position flows.
+    /// @param adapter The lending adapter to check.
+    /// @return True if the adapter is allowlisted.
     function isAdapterAllowed(ILendingAdapter adapter) external view returns (bool) {
         return _allowedAdapters[adapter];
     }
 
-    /// @notice The authenticated caller for the current lock. Load-bearing base override: the active
-    ///         account is derived from this, so it must return the locker.
+    /// @notice The authenticated caller for the current lock. Overrides `BaseActionsRouter.msgSender`
+    ///         to return the address stored by `ReentrancyLock._getLocker`, which is set to
+    ///         `msg.sender` at the start of each `isNotLocked` call. The active account is derived
+    ///         from this value, so correctness here is load-bearing for the entire position system.
     function msgSender() public view override returns (address) {
         return _getLocker();
     }
 
-    /// @notice Allows or disallows a lending adapter for use in the flows. Governance-gated.
-    /// @dev Only allowlisted adapters can be passed to the position flows. A hostile adapter can
-    ///      otherwise siphon the caller's own equity, so the set is curated.
+    /// @notice Allows or disallows a lending adapter for use in the position flows. A non-allowlisted
+    ///         adapter could redirect a caller's equity to an arbitrary destination, so the set is
+    ///         curated by governance.
+    /// @dev Only the current governance address may call this.
+    /// @param adapter The lending adapter to allow or disallow.
+    /// @param allowed True to allow; false to disallow.
     function setAdapterAllowed(ILendingAdapter adapter, bool allowed) external {
         _governance.onlyOwner(msg.sender);
         _allowedAdapters[adapter] = allowed;
         emit AdapterAllowed(address(adapter), allowed);
     }
 
-    /// @notice Hands governance to a new address. Governance-gated.
+    /// @notice Transfers governance to a new address. Only the current governance may call this.
+    /// @param newGovernance The address that will become the new governance.
     function transferGovernance(address newGovernance) external {
         _governance.onlyOwner(msg.sender);
         _governance.write(newGovernance);
     }
 
-    /// @notice Shared lever-up: deploy the account if needed, pull optional equity, then build and
-    ///         run the flash-style plan (swap debt to collateral, supply, borrow, settle).
+    /// @notice Shared implementation for `openPosition` and `increasePosition`. Deploys the account
+    ///         if needed, pulls optional equity, then builds and runs the flash-style unlock:
+    ///         swap debt to collateral (exact-output), supply the collateral, borrow the debt owed,
+    ///         and settle the swap.
+    /// @param params The open/increase parameters; see `OpenParams`.
+    /// @return account The caller's MarginAccount address.
     function _open(OpenParams calldata params) private returns (address account) {
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
         _requireAllowedAdapter(params.adapter);
@@ -324,13 +344,19 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         _setActiveAccount(address(0));
     }
 
-    /// @notice Reverts unless `adapter` is on the governance allowlist.
+    /// @notice Reverts `AdapterNotAllowed` unless `adapter` is on the governance allowlist.
+    /// @param adapter The adapter to check.
     function _requireAllowedAdapter(ILendingAdapter adapter) internal view {
         if (!_allowedAdapters[adapter]) revert AdapterNotAllowed(address(adapter));
     }
 
-    /// @notice Dispatches margin opcodes to the active account; everything else falls through to the
-    ///         inherited V4Router handlers (swap, take, settle).
+    /// @notice Dispatches margin opcodes (`>= 0x1c`) to the active account; opcodes below `0x1c`
+    ///         fall through to the inherited V4Router handlers (swap, take, settle, wrap, unwrap).
+    ///         Called by `BaseActionsRouter._executeActions` for each action in the current plan.
+    /// @dev Overrides `V4Router._handleAction`. The active account is always derived from the
+    ///      authenticated caller stored in transient storage; it is never read from action params.
+    /// @param action The opcode from `MarginActions` or the inherited `Actions` library.
+    /// @param params ABI-encoded parameters for the action; decoded by `MarginCalldataDecoder`.
     function _handleAction(uint256 action, bytes calldata params) internal override {
         if (action < MarginActions.ACCOUNT_SUPPLY_COLLATERAL) {
             super._handleAction(action, params);
@@ -371,8 +397,16 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         }
     }
 
-    /// @notice Pays the pool manager. The router (address(this)) transfers directly; any other payer
-    ///         pays through Permit2. Mirrors the PositionManager two-payer settle.
+    /// @notice Pays the PoolManager. When the payer is this router, transfers directly; any other
+    ///         payer pays through Permit2. Mirrors the two-payer settle pattern used by
+    ///         PositionManager.
+    /// @dev Overrides `DeltaResolver._pay`, called during the `SETTLE` action to clear the
+    ///      router's debt to the PoolManager.
+    /// @param currency The token to transfer.
+    /// @param payer The address bearing the payment. `address(this)` means the router holds the
+    ///        tokens (e.g. after borrowing debt from the account); any other address is an EOA or
+    ///        contract paying via Permit2.
+    /// @param amount The amount to transfer, in the token's native decimals.
     function _pay(Currency currency, address payer, uint256 amount) internal override {
         if (payer == address(this)) {
             currency.transfer(address(poolManager), amount);
@@ -381,9 +415,10 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         }
     }
 
-    /// @notice Stores the active account for the current unlock in transient storage (EIP-1153). It
-    ///         is always derived from the authenticated caller, never from calldata, so the margin
-    ///         handlers operate only on the caller's own account.
+    /// @notice Stores the active account for the current unlock in transient storage (EIP-1153).
+    ///         It is always derived from the authenticated caller stored by `ReentrancyLock`, never
+    ///         from calldata, so margin handlers operate only on the caller's own account.
+    /// @param account The MarginAccount address to store, or `address(0)` to clear after unlock.
     function _setActiveAccount(address account) private {
         bytes32 slot = ACTIVE_ACCOUNT_SLOT;
         assembly ("memory-safe") {
@@ -391,6 +426,9 @@ contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forward
         }
     }
 
+    /// @notice Reads the active account from transient storage (EIP-1153). Returns `address(0)`
+    ///         when no unlock is in progress.
+    /// @return account The MarginAccount address active for the current unlock.
     function _activeAccount() private view returns (address account) {
         bytes32 slot = ACTIVE_ACCOUNT_SLOT;
         assembly ("memory-safe") {

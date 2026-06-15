@@ -7,12 +7,18 @@ import {ILendingAdapter} from "../interfaces/ILendingAdapter.sol";
 import {Market} from "../types/Market.sol";
 import {Ltv} from "../types/Ltv.sol";
 
+/// @title MarginCalldataDecoder
+/// @author Uniswap Labs
 /// @notice Decoders for the parameter blobs of margin actions. Each margin action's params are
-///         abi-encoded by the router's typed entry points and decoded here before dispatch. abi
-///         decoding is used deliberately rather than hand-rolled calldata slicing: these params are
-///         not the hottest path and decode safety matters for a fund-routing contract.
+///         abi-encoded by the router's typed entry points and decoded here before dispatch.
+///         `abi.decode` is used deliberately rather than hand-rolled calldata slicing: these params
+///         are not on the hottest path and decode safety matters for a fund-routing contract.
 library MarginCalldataDecoder {
-    /// @notice (adapter, market, amount), used by supply-collateral and repay.
+    /// @notice Decodes `(adapter, market, amount)`. Used by the supply-collateral and repay actions.
+    /// @param params ABI-encoded `(ILendingAdapter, Market, uint256)`.
+    /// @return adapter The lending adapter.
+    /// @return market The (collateral, debt) market descriptor.
+    /// @return amount The token amount in the token's native decimals.
     function decodeAdapterMarketAmount(bytes calldata params)
         internal
         pure
@@ -21,7 +27,13 @@ library MarginCalldataDecoder {
         return abi.decode(params, (ILendingAdapter, Market, uint256));
     }
 
-    /// @notice (adapter, market, amount, to), used by withdraw-collateral and borrow.
+    /// @notice Decodes `(adapter, market, amount, to)`. Used by the withdraw-collateral and borrow
+    ///         actions, which require a recipient address.
+    /// @param params ABI-encoded `(ILendingAdapter, Market, uint256, address)`.
+    /// @return adapter The lending adapter.
+    /// @return market The (collateral, debt) market descriptor.
+    /// @return amount The token amount in the token's native decimals.
+    /// @return to The recipient address; must be the manager or owner (enforced by the account).
     function decodeAdapterMarketAmountReceiver(bytes calldata params)
         internal
         pure
@@ -30,7 +42,11 @@ library MarginCalldataDecoder {
         return abi.decode(params, (ILendingAdapter, Market, uint256, address));
     }
 
-    /// @notice (currency, amount, to), used by sweep.
+    /// @notice Decodes `(currency, amount, to)`. Used by the sweep action.
+    /// @param params ABI-encoded `(Currency, uint256, address)`.
+    /// @return currency The ERC-20 token to transfer.
+    /// @return amount The amount to transfer in the token's native decimals.
+    /// @return to The recipient address; must be the manager or owner (enforced by the account).
     function decodeSweep(bytes calldata params)
         internal
         pure
@@ -39,7 +55,12 @@ library MarginCalldataDecoder {
         return abi.decode(params, (Currency, uint256, address));
     }
 
-    /// @notice (adapter, market, account, maxLtv), used by the health assertion.
+    /// @notice Decodes `(adapter, market, account, maxLtv)`. Used by the health-assertion action.
+    /// @param params ABI-encoded `(ILendingAdapter, Market, address, Ltv)`.
+    /// @return adapter The lending adapter used to query the current LTV.
+    /// @return market The (collateral, debt) market descriptor.
+    /// @return account The MarginAccount whose LTV is checked.
+    /// @return maxLtv The maximum acceptable LTV (WAD, 1e18 == 100%); zero skips the check.
     function decodeHealthCheck(bytes calldata params)
         internal
         pure
