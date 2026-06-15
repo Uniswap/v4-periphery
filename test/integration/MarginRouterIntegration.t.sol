@@ -150,6 +150,39 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         assertEq(IERC20(Currency.unwrap(collateral)).balanceOf(address(marginRouter)), 0, "router holds no collateral");
     }
 
+    function test_closeLong_doesNotSweepDonatedBalance() public {
+        address account = _open(1 ether, 2 ether);
+
+        // a stray balance lands on the router (e.g. a donation or dust from another flow)
+        uint256 donation = 0.5 ether;
+        MockERC20(Currency.unwrap(collateral)).transfer(address(marginRouter), donation);
+
+        uint256 callerBefore = IERC20(Currency.unwrap(collateral)).balanceOf(address(this));
+
+        marginRouter.closePosition(
+            IMarginRouter.CloseParams({
+                adapter: adapter,
+                market: market,
+                poolKey: poolKey,
+                maxCollateralIn: 5 ether,
+                minHopPriceX36: 0,
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+
+        // the caller receives only their own realized residual; the donation stays in the router
+        uint256 callerGain = IERC20(Currency.unwrap(collateral)).balanceOf(address(this)) - callerBefore;
+        assertGt(callerGain, 0, "caller receives their own residual");
+        assertEq(
+            IERC20(Currency.unwrap(collateral)).balanceOf(address(marginRouter)),
+            donation,
+            "donated balance is left in the router, not swept to the caller"
+        );
+        assertEq(protocol.debtOf(account), 0, "debt fully repaid");
+        assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
+    }
+
     function test_openLong_emitsPositionOpened() public {
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);

@@ -174,11 +174,14 @@ contract MarginRouter is
         // settle the collateral spent on the swap from the router
         actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
 
+        // measure the router's own collateral gain across the unlock so any pre-existing or donated
+        // balance is left untouched; only this position's realized PnL is returned to the caller
+        uint256 balanceBefore = params.market.collateral.balanceOfSelf();
         poolManager.unlock(abi.encode(actions, actionParams));
         _setActiveAccount(address(0));
 
         // return the remaining collateral (realized PnL) to the caller
-        uint256 residual = params.market.collateral.balanceOfSelf();
+        uint256 residual = params.market.collateral.balanceOfSelf() - balanceBefore;
         if (residual > 0) params.market.collateral.transfer(msgSender(), residual);
         emit PositionClosed(msgSender(), account, params.market.collateral, params.market.debt, residual);
     }
