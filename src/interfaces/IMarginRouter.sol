@@ -224,6 +224,11 @@ interface IMarginRouter {
 
     /// @notice Fully closes the caller's position, returning all residual collateral (realized PnL)
     ///         to the caller.
+    /// @dev The adapter allowlist gates only exposure-increasing operations (open, increase, add
+    ///      collateral), so a position can always be unwound even if its adapter is later removed
+    ///      from the allowlist. This is safe because the flow operates only on the caller's own
+    ///      account, and the MarginAccount itself constrains the call target, receiver, and value
+    ///      regardless of the adapter.
     /// @param params See `CloseParams`.
     /// @return account The caller's MarginAccount.
     function closePosition(CloseParams calldata params) external returns (address account);
@@ -231,6 +236,11 @@ interface IMarginRouter {
     /// @notice Partially reduces the caller's position by repaying `debtToRepay`, funded by selling
     ///         collateral. The position stays open and shrinks. A health check on the resulting LTV
     ///         is enforced via `params.maxLtvAfter`.
+    /// @dev The adapter allowlist gates only exposure-increasing operations (open, increase, add
+    ///      collateral), so a position can always be delevered even if its adapter is later removed
+    ///      from the allowlist. This is safe because the flow operates only on the caller's own
+    ///      account, and the MarginAccount itself constrains the call target, receiver, and value
+    ///      regardless of the adapter.
     /// @param params See `DecreaseParams`.
     /// @return account The caller's MarginAccount.
     function decreasePosition(DecreaseParams calldata params) external returns (address account);

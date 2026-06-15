@@ -183,6 +183,55 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
     }
 
+    function test_closeLong_succeedsAfterAdapterDeAllowlisted() public {
+        address account = _open(1 ether, 2 ether);
+
+        // governance removes the adapter from the allowlist while the position is still open
+        marginRouter.setAdapterAllowed(adapter, false);
+        assertFalse(marginRouter.isAdapterAllowed(adapter), "adapter de-allowlisted");
+
+        // the position can still be unwound: the allowlist only gates exposure-increasing operations
+        marginRouter.closePosition(
+            IMarginRouter.CloseParams({
+                adapter: adapter,
+                market: market,
+                poolKey: poolKey,
+                maxCollateralIn: 5 ether,
+                minHopPriceX36: 0,
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+
+        assertEq(protocol.debtOf(account), 0, "debt fully repaid");
+        assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
+    }
+
+    function test_decreasePosition_succeedsAfterAdapterDeAllowlisted() public {
+        address account = _open(1 ether, 2 ether);
+        uint256 debtAfterOpen = protocol.debtOf(account);
+
+        marginRouter.setAdapterAllowed(adapter, false);
+
+        // delevering an open position still works once the adapter is de-allowlisted
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                adapter: adapter,
+                market: market,
+                poolKey: poolKey,
+                debtToRepay: 1 ether,
+                maxCollateralIn: 2 ether,
+                minHopPriceX36: 0,
+                maxLtvAfter: toLtv(0.9e18),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+
+        assertLt(protocol.debtOf(account), debtAfterOpen, "debt reduced");
+        assertGt(protocol.debtOf(account), 0, "position still open");
+    }
+
     function test_openLong_emitsPositionOpened() public {
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);

@@ -139,7 +139,6 @@ contract MarginRouter is
         }
 
         if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
-        _requireAllowedAdapter(params.adapter);
         _setActiveAccount(account);
 
         // buy exactly the current debt, then repay it; sell collateral to fund the purchase
@@ -198,7 +197,6 @@ contract MarginRouter is
         // into the exact-output swap, which the PoolManager rejects.
         if (params.debtToRepay == 0) revert SlippageBoundRequired();
         if (params.maxCollateralIn == 0 || Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
-        _requireAllowedAdapter(params.adapter);
 
         account = accountOf(msgSender(), params.subId);
         _setActiveAccount(account);
