@@ -124,6 +124,8 @@ contract AaveLendingAdapterTest is Test {
 
     function test_encodeWithdrawCollateral_honorsReceiver() public {
         address receiver = makeAddr("receiver");
+        // Aave withdraw burns the caller's own aTokens, so the account must be the caller
+        vm.prank(account);
         (address target, uint256 value, bytes memory data) =
             adapter.encodeWithdrawCollateral(account, market, 500e6, receiver);
         assertEq(target, address(pool));
@@ -133,6 +135,12 @@ contract AaveLendingAdapterTest is Test {
         assertEq(asset, address(usdc));
         assertEq(amount, 500e6);
         assertEq(to, receiver); // Aave withdraw honors the to recipient directly
+    }
+
+    function test_encodeWithdrawCollateral_revertsWhenAccountNotCaller() public {
+        // the encoder only produces a withdrawal for the account that calls it
+        vm.expectRevert(abi.encodeWithSelector(AaveLendingAdapter.AccountMismatch.selector, account, address(this)));
+        adapter.encodeWithdrawCollateral(account, market, 500e6, account);
     }
 
     function test_encodeBorrow_onBehalfIsAccountAndNoReceiver() public view {

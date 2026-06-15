@@ -155,7 +155,8 @@ contract MockAavePool is IPool {
             totalDebtBase += dBalance * r.priceBase / scale;
         }
         // availableBorrowsBase, ltv, and healthFactor are unused by the adapter.
-        return (totalCollateralBase, totalDebtBase, availableBorrowsBase, currentLiquidationThreshold, ltv, healthFactor);
+        return
+            (totalCollateralBase, totalDebtBase, availableBorrowsBase, currentLiquidationThreshold, ltv, healthFactor);
     }
 
     /// @notice The variable debt receipt token for a reserve. Test helper for driving the pool.

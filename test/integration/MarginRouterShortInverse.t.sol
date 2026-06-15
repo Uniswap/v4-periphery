@@ -89,7 +89,9 @@ contract MarginRouterShortInverseTest is Test {
         adapter.setMarket(market.collateral, market.debt, true);
 
         address impl = address(new MarginAccount());
-        router = new MarginRouter(IPoolManager(address(manager)), IAllowanceTransfer(address(0xdead)), IWETH9(address(0xbeef)), impl);
+        router = new MarginRouter(
+            IPoolManager(address(manager)), IAllowanceTransfer(address(0xdead)), IWETH9(address(0xbeef)), impl
+        );
         router.setAdapterAllowed(adapter, true);
     }
 
@@ -215,10 +217,7 @@ contract MarginRouterShortInverseTest is Test {
     /// @notice Funds the predicted account with `equity` USDC (skipping Permit2 by passing equity=0)
     ///         and opens a short buying `collateralToBuy` USDC of collateral, capped at `maxDebtIn`
     ///         WETH of borrow.
-    function _openShort(uint256 equity, uint128 collateralToBuy, uint128 maxDebtIn)
-        internal
-        returns (address account)
-    {
+    function _openShort(uint256 equity, uint128 collateralToBuy, uint128 maxDebtIn) internal returns (address account) {
         account = router.accountOf(address(this), 0);
         // provide equity directly to the account; equity=0 in params avoids the Permit2 pull
         usdc.mint(account, equity);
@@ -276,9 +275,8 @@ contract MarginRouterShortInverseTest is Test {
     ///         are the bundle's raw amounts assigned by sort order; sqrtPriceX96 = sqrt(amt1 * 2^192
     ///         / amt0), the v4 token1/token0 price.
     function _sqrtPriceX96() internal view returns (uint160 sqrtPriceX96) {
-        (uint256 amt0, uint256 amt1) = address(usdc) < address(weth)
-            ? (USDC_BUNDLE, WETH_BUNDLE)
-            : (WETH_BUNDLE, USDC_BUNDLE);
+        (uint256 amt0, uint256 amt1) =
+            address(usdc) < address(weth) ? (USDC_BUNDLE, WETH_BUNDLE) : (WETH_BUNDLE, USDC_BUNDLE);
         uint256 priceX192 = FullMath.mulDiv(amt1, uint256(1) << 192, amt0);
         sqrtPriceX96 = uint160(FixedPointMathLib.sqrt(priceX192));
         require(sqrtPriceX96 > TickMath.MIN_SQRT_PRICE && sqrtPriceX96 < TickMath.MAX_SQRT_PRICE, "price bounds");
