@@ -90,13 +90,14 @@ contract MarginCalldataDecoderTest is Test {
     }
 
     function test_opcodes_areContiguousAndDisjointFromActions() public pure {
-        assertEq(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, 0x1c);
-        assertEq(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL, 0x1d);
-        assertEq(MarginActions.ACCOUNT_BORROW, 0x1e);
-        assertEq(MarginActions.ACCOUNT_REPAY, 0x1f);
-        assertEq(MarginActions.ACCOUNT_SWEEP, 0x20);
-        assertEq(MarginActions.ASSERT_HEALTH, 0x21);
-        // all margin opcodes sit above the inherited Actions space (which ends at 0x1b)
-        assertGt(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, Actions.UNSUBSCRIBE);
+        assertEq(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, 0x30);
+        assertEq(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL, 0x31);
+        assertEq(MarginActions.ACCOUNT_BORROW, 0x32);
+        assertEq(MarginActions.ACCOUNT_REPAY, 0x33);
+        assertEq(MarginActions.ACCOUNT_SWEEP, 0x34);
+        assertEq(MarginActions.ASSERT_HEALTH, 0x35);
+        // margin opcodes start at 0x30, leaving a reserved gap above the inherited Actions space
+        // (which ends at 0x1b) for future core actions to grow into without colliding
+        assertGe(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, Actions.UNSUBSCRIBE + 4);
     }
 }

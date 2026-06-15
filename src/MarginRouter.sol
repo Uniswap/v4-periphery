@@ -357,7 +357,7 @@ contract MarginRouter is
         if (!_allowedAdapters[adapter]) revert AdapterNotAllowed(address(adapter));
     }
 
-    /// @notice Dispatches margin opcodes (`>= 0x1c`) to the active account; opcodes below `0x1c`
+    /// @notice Dispatches margin opcodes (`>= 0x30`) to the active account; opcodes below `0x30`
     ///         fall through to the inherited V4Router handlers (swap, take, settle, wrap, unwrap).
     ///         Called by `BaseActionsRouter._executeActions` for each action in the current plan.
     /// @dev Overrides `V4Router._handleAction`. The active account is always derived from the
