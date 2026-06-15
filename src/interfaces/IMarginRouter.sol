@@ -116,10 +116,14 @@ interface IMarginRouter {
     ///        token's native decimals. Ignored when `msg.value > 0` (native ETH is used instead).
     /// @param collateralToBuy The exact amount of collateral to purchase from the swap (exact-output
     ///        side), in the collateral token's native decimals.
-    /// @param maxDebtIn The maximum debt the caller will accept as the swap input (slippage bound),
-    ///        in the debt token's native decimals. Must be non-zero.
-    /// @param minHopPriceX36 The minimum acceptable pool price for the swap hop, encoded as a
-    ///        per-hop price in X36 fixed-point. Zero disables the per-hop price check.
+    /// @param maxDebtIn The maximum debt the caller will accept as the swap input, in the debt
+    ///        token's native decimals. Must be non-zero. The swap is a single-hop exact-output swap,
+    ///        so this absolute cap fully bounds the worst-case swap input and is the binding slippage
+    ///        protection. Derive it from a quote, not from spot price.
+    /// @param minHopPriceX36 An optional additional per-hop price bound, encoded as a per-hop price
+    ///        in X36 fixed-point. Zero disables only this secondary check; it does not relax the
+    ///        binding `maxDebtIn` cap. Redundant with the absolute cap for a single hop, so it may be
+    ///        left zero.
     /// @param subId A caller-chosen sub-account index allowing one address to hold multiple
     ///        independent positions. The (caller, subId) pair determines the MarginAccount address.
     /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
@@ -142,10 +146,14 @@ interface IMarginRouter {
     /// @param adapter The allowlisted lending adapter.
     /// @param market The (collateral, debt) pair defining the margin market.
     /// @param poolKey The v4 pool through which the closing swap is routed.
-    /// @param maxCollateralIn The maximum collateral the caller will accept as the swap input
-    ///        (slippage bound), in the collateral token's native decimals. Must be non-zero.
-    /// @param minHopPriceX36 The minimum acceptable pool price for the swap hop (X36 fixed-point).
-    ///        Zero disables the per-hop price check.
+    /// @param maxCollateralIn The maximum collateral the caller will accept as the swap input, in
+    ///        the collateral token's native decimals. Must be non-zero on the swap path. The swap is
+    ///        a single-hop exact-output swap, so this absolute cap fully bounds the worst-case swap
+    ///        input and is the binding slippage protection. Derive it from a quote, not from spot
+    ///        price. A zero-debt close takes a swap-free path and ignores this field.
+    /// @param minHopPriceX36 An optional additional per-hop price bound (X36 fixed-point). Zero
+    ///        disables only this secondary check; it does not relax the binding `maxCollateralIn`
+    ///        cap. Redundant with the absolute cap for a single hop, so it may be left zero.
     /// @param subId The sub-account index identifying which MarginAccount to close.
     /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
     struct CloseParams {
@@ -167,9 +175,13 @@ interface IMarginRouter {
     /// @param poolKey The v4 pool through which the decrease swap is routed.
     /// @param debtToRepay The exact amount of debt to repay (exact-output side of the swap), in
     ///        the debt token's native decimals.
-    /// @param maxCollateralIn The maximum collateral the caller will accept selling (slippage
-    ///        bound), in the collateral token's native decimals. Must be non-zero.
-    /// @param minHopPriceX36 The minimum acceptable pool price for the swap hop (X36 fixed-point).
+    /// @param maxCollateralIn The maximum collateral the caller will accept selling, in the
+    ///        collateral token's native decimals. Must be non-zero. The swap is a single-hop
+    ///        exact-output swap, so this absolute cap fully bounds the worst-case swap input and is
+    ///        the binding slippage protection. Derive it from a quote, not from spot price.
+    /// @param minHopPriceX36 An optional additional per-hop price bound (X36 fixed-point). Zero
+    ///        disables only this secondary check; it does not relax the binding `maxCollateralIn`
+    ///        cap. Redundant with the absolute cap for a single hop, so it may be left zero.
     /// @param maxLtvAfter The maximum LTV the position may have after the decrease (WAD, 1e18 ==
     ///        100%). Must be non-zero; prevents a partial delever from inadvertently worsening LTV.
     /// @param subId The sub-account index identifying which MarginAccount to decrease.
