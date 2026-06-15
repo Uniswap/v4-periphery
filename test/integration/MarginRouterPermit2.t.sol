@@ -14,7 +14,6 @@ import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
-import {Direction} from "../../src/types/Direction.sol";
 import {MockLendingAdapter} from "../mocks/MockLendingAdapter.sol";
 import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 
@@ -62,7 +61,6 @@ contract MarginRouterPermit2Test is RoutingTestHelpers, DeployPermit2 {
             IMarginRouter.OpenParams({
                 adapter: adapter,
                 market: market,
-                direction: Direction.Long,
                 poolKey: poolKey,
                 equity: 1 ether,
                 collateralToBuy: 2 ether,

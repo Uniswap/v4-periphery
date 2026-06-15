@@ -6,7 +6,6 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {ILendingAdapter} from "./ILendingAdapter.sol";
 import {Market} from "../types/Market.sol";
-import {Direction} from "../types/Direction.sol";
 import {Ltv} from "../types/Ltv.sol";
 
 /// @title IMarginRouter
@@ -104,13 +103,12 @@ interface IMarginRouter {
     // -------------------------------------------------------------------------
 
     /// @notice Parameters for opening or increasing a leveraged position.
-    /// @dev The swap always sells the market's debt to buy its collateral. `direction` records
-    ///      whether the exposure asset is the collateral (Long) or the debt (Short). Equity is
-    ///      provided in the collateral currency.
+    /// @dev The swap always sells the market's debt to buy its collateral. The trade direction is
+    ///      set entirely by the market's (collateral, debt) assignment: the position is long the
+    ///      collateral and short the debt. Equity is provided in the collateral currency.
     /// @param adapter The allowlisted lending adapter that encodes and reads lending protocol calls.
-    /// @param market The (collateral, debt) pair defining the margin market.
-    /// @param direction Long if exposure is in the collateral token; Short if exposure is in the
-    ///        debt token. Used for position tracking; does not alter swap mechanics.
+    /// @param market The (collateral, debt) pair defining the margin market. This pairing sets the
+    ///        trade direction: long the collateral, short the debt.
     /// @param poolKey The v4 pool through which the leverage swap is routed.
     /// @param equity The amount of collateral the caller contributes as equity, in the collateral
     ///        token's native decimals. Ignored when `msg.value > 0` (native ETH is used instead).
@@ -130,7 +128,6 @@ interface IMarginRouter {
     struct OpenParams {
         ILendingAdapter adapter;
         Market market;
-        Direction direction;
         PoolKey poolKey;
         uint256 equity;
         uint128 collateralToBuy;

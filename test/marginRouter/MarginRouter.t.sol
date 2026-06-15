@@ -15,7 +15,6 @@ import {MarginAccount} from "../../src/MarginAccount.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {Market} from "../../src/types/Market.sol";
-import {Direction} from "../../src/types/Direction.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
 
@@ -42,7 +41,6 @@ contract MarginRouterTest is Test {
 
     function _openParams() internal view returns (IMarginRouter.OpenParams memory p) {
         p.market = Market({collateral: c0, debt: c1});
-        p.direction = Direction.Long;
         p.poolKey = PoolKey({currency0: c0, currency1: c1, fee: 3000, tickSpacing: 60, hooks: IHooks(address(0))});
         p.equity = 1e18;
         p.collateralToBuy = 2e18;

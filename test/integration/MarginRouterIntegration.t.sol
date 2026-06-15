@@ -13,7 +13,6 @@ import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
-import {Direction} from "../../src/types/Direction.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {MockLendingAdapter} from "../mocks/MockLendingAdapter.sol";
 import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
@@ -59,7 +58,6 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
             IMarginRouter.OpenParams({
                 adapter: adapter,
                 market: market,
-                direction: Direction.Long,
                 poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: buy,
@@ -243,7 +241,6 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
             IMarginRouter.OpenParams({
                 adapter: adapter,
                 market: market,
-                direction: Direction.Long,
                 poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: 2 ether,
@@ -263,7 +260,6 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
             IMarginRouter.OpenParams({
                 adapter: adapter,
                 market: market,
-                direction: Direction.Long,
                 poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: 1 ether,

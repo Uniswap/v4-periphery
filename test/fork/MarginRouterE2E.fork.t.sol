@@ -27,7 +27,6 @@ import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {MorphoLendingAdapter} from "../../src/MorphoLendingAdapter.sol";
 import {Market} from "../../src/types/Market.sol";
-import {Direction} from "../../src/types/Direction.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 
 /// @notice Full-stack end-to-end test of the margin suite in composition, on a mainnet fork.
@@ -325,7 +324,6 @@ contract MarginRouterE2EForkTest is Test {
             IMarginRouter.OpenParams({
                 adapter: adapter,
                 market: market,
-                direction: Direction.Long,
                 poolKey: poolKey,
                 equity: equity,
                 collateralToBuy: buy,
@@ -343,7 +341,6 @@ contract MarginRouterE2EForkTest is Test {
             IMarginRouter.OpenParams({
                 adapter: adapter,
                 market: market,
-                direction: Direction.Long,
                 poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: buy,
@@ -487,7 +484,6 @@ contract MarginRouterE2EForkTest is Test {
         return IMarginRouter.OpenParams({
             adapter: adapter,
             market: market,
-            direction: Direction.Long,
             poolKey: poolKey,
             equity: equity,
             collateralToBuy: buy,
