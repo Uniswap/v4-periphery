@@ -95,8 +95,9 @@ contract MarginAccountTest is Test {
         vm.prank(manager);
         account.borrow(adapter, market, 5e18, manager);
         vm.snapshotGasLastCall("MarginAccount_borrow");
+        // the protocol borrows to the account, which forwards the proceeds to the validated receiver
         assertEq(debtToken.balanceOf(manager), 5e18);
-        assertEq(protocol.lastReceiver(), manager);
+        assertEq(protocol.lastReceiver(), address(account));
     }
 
     function test_borrow_revertsWhenReceiverNotAllowed() public {

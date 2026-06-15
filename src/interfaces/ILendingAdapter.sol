@@ -11,10 +11,12 @@ import {Ltv} from "../types/Ltv.sol";
 ///         (collateral, debt) token pair passed to each call and resolved internally.
 /// @dev The adapter is an ENCODER: each `encode*` returns the call the `MarginAccount` performs as
 ///      itself (`account == msg.sender == position owner`), so no delegated authorization is ever
-///      required. Authority-bearing fields (`onBehalf`, `receiver`) are owned and re-validated by the
-///      account; the account does NOT trust adapter-encoded bytes for them. Encode and read calls
-///      revert `MarketNotSupported` (declared in `MarketRegistry`) for unrouted pairs, never a
-///      silent default market.
+///      required. Authority-bearing fields (`onBehalf` for every call, `receiver` for withdraw) are
+///      owned and re-validated by the account; the account does NOT trust adapter-encoded bytes for
+///      them. Borrowed funds are always delivered to the account, which forwards them to the
+///      validated receiver, so `encodeBorrow` carries no receiver. Encode and read calls revert
+///      `MarketNotSupported` (declared in `MarketRegistry`) for unrouted pairs, never a silent
+///      default market.
 interface ILendingAdapter {
     /// @notice The lending protocol singleton the account must call (the target of the account's
     ///         CALL). One address for every market this adapter routes to (e.g. Morpho Blue).
@@ -53,16 +55,17 @@ interface ILendingAdapter {
         view
         returns (address target, uint256 value, bytes memory callData);
 
-    /// @notice Encode the call to borrow `amount` of `market.debt` to `receiver`.
-    /// @param account The MarginAccount whose borrowing capacity is used; used as `onBehalf`.
+    /// @notice Encode the call to borrow `amount` of `market.debt` to the account itself.
+    /// @dev The borrowed asset is delivered to the account, which forwards it to the manager or
+    ///      owner receiver it validates. The receiver is therefore not an `encodeBorrow` concern.
+    /// @param account The MarginAccount whose borrowing capacity is used; used as `onBehalf` and as
+    ///        the borrow recipient so the account holds the funds before forwarding.
     /// @param market The (collateral, debt) pair identifying the target lending market.
     /// @param amount The amount of debt to borrow, in the debt token's native decimals.
-    /// @param receiver The address that will receive the borrowed tokens. The account enforces
-    ///        that this is the manager or owner before executing.
     /// @return target The call target (always `lendingProtocol()`).
     /// @return value The call value. Always 0 for non-payable lending protocols.
     /// @return callData The calldata the account executes against `target`.
-    function encodeBorrow(address account, Market calldata market, uint256 amount, address receiver)
+    function encodeBorrow(address account, Market calldata market, uint256 amount)
         external
         view
         returns (address target, uint256 value, bytes memory callData);

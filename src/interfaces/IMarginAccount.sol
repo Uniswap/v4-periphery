@@ -53,13 +53,15 @@ interface IMarginAccount {
         external
         returns (uint256 withdrawn);
 
-    /// @notice Borrow `amount` of `market.debt` to `to`, which must be the manager or owner.
-    ///         Callable by the manager or owner.
+    /// @notice Borrow `amount` of `market.debt` to `to`, which must be the manager or owner. The
+    ///         account borrows to itself and forwards the proceeds to `to`. Callable by the manager
+    ///         or owner.
     /// @param adapter The lending adapter that encodes the borrow call.
     /// @param market The (collateral, debt) pair identifying the target lending market.
     /// @param amount The amount to borrow, in the debt token's native decimals.
     /// @param to The recipient address; must be the manager or owner.
-    /// @return borrowed The amount actually borrowed (equal to `amount`).
+    /// @return borrowed The assets actually borrowed, measured as the account's debt-token balance
+    ///         increase across the call.
     function borrow(ILendingAdapter adapter, Market calldata market, uint256 amount, address to)
         external
         returns (uint256 borrowed);

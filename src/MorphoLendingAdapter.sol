@@ -109,15 +109,15 @@ contract MorphoLendingAdapter is ILendingAdapter {
 
     /// @inheritdoc ILendingAdapter
     /// @dev Encodes `IMorphoBase.borrow` with `assets = amount`, `shares = 0` (asset-denominated),
-    ///      `onBehalf = account`, and `receiver = receiver`. The `receiver` is validated by
-    ///      `MarginAccount` before executing.
-    function encodeBorrow(address account, Market calldata market, uint256 amount, address receiver)
+    ///      `onBehalf = account`, and `receiver = account`. The borrowed asset is delivered to the
+    ///      account, which forwards it to the receiver it validates.
+    function encodeBorrow(address account, Market calldata market, uint256 amount)
         external
         view
         returns (address, uint256, bytes memory)
     {
         MarketParams memory marketParams = store.markets.resolve(market);
-        return (address(morpho), 0, abi.encodeCall(IMorphoBase.borrow, (marketParams, amount, 0, account, receiver)));
+        return (address(morpho), 0, abi.encodeCall(IMorphoBase.borrow, (marketParams, amount, 0, account, account)));
     }
 
     /// @inheritdoc ILendingAdapter

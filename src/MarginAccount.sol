@@ -82,15 +82,23 @@ contract MarginAccount is IMarginAccount {
     }
 
     /// @inheritdoc IMarginAccount
+    /// @dev Borrows to the account, then forwards the proceeds to the validated receiver. The
+    ///      borrowed asset is always delivered to the account because lending protocols differ on
+    ///      whether `borrow` exposes a receiver; forwarding here keeps the recipient under the
+    ///      account's control regardless. `borrowed` is measured as the debt token balance increase
+    ///      (mirroring `repay`), which is accurate across protocols rather than trusting `amount`.
     function borrow(ILendingAdapter adapter, Market calldata market, uint256 amount, address to)
         external
-        returns (uint256)
+        returns (uint256 borrowed)
     {
         (address ownerAddr, address managerAddr) = _authCaller();
         _requireReceiver(to, ownerAddr, managerAddr);
-        (address target, uint256 value, bytes memory callData) = adapter.encodeBorrow(address(this), market, amount, to);
+        IERC20 debt = IERC20(Currency.unwrap(market.debt));
+        uint256 balanceBefore = debt.balanceOf(address(this));
+        (address target, uint256 value, bytes memory callData) = adapter.encodeBorrow(address(this), market, amount);
         _execCall(adapter, target, value, callData);
-        return amount;
+        borrowed = debt.balanceOf(address(this)) - balanceBefore;
+        debt.safeTransfer(to, borrowed);
     }
 
     /// @inheritdoc IMarginAccount

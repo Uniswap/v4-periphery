@@ -71,12 +71,13 @@ contract MockLendingAdapter is ILendingAdapter {
         );
     }
 
-    function encodeBorrow(address account, Market calldata, uint256 amount, address receiver)
+    function encodeBorrow(address account, Market calldata, uint256 amount)
         external
         view
         returns (address, uint256, bytes memory)
     {
-        return (_callTarget(), 0, abi.encodeWithSignature("borrow(address,uint256,address)", account, amount, receiver));
+        // borrow to the account; the account forwards to the validated receiver
+        return (_callTarget(), 0, abi.encodeWithSignature("borrow(address,uint256,address)", account, amount, account));
     }
 
     function encodeRepay(address account, Market calldata, uint256 amount)

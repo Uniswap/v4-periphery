@@ -22,7 +22,6 @@ contract MorphoLendingAdapterTest is Test {
     address internal gov = makeAddr("gov");
     address internal stranger = makeAddr("stranger");
     address internal account = makeAddr("account");
-    address internal receiver = makeAddr("receiver");
 
     address internal collateralToken = makeAddr("collateral");
     address internal debtToken = makeAddr("debt");
@@ -87,7 +86,7 @@ contract MorphoLendingAdapterTest is Test {
 
     function test_encodeBorrow_revertsWhenMarketNotSupported() public {
         vm.expectRevert(abi.encodeWithSelector(MarketNotSupported.selector, market.collateral, market.debt));
-        adapter.encodeBorrow(account, market, 1e18, receiver);
+        adapter.encodeBorrow(account, market, 1e18);
     }
 
     function test_encodeSupplyCollateral_targetOnBehalfAndEmptyData() public {
