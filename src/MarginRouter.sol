@@ -33,6 +33,10 @@ import {Owner} from "./types/Owner.sol";
 ///         operation runs against the caller's own MarginAccount, derived from the authenticated
 ///         caller (never from a caller-supplied address). The router is the manager of every account
 ///         it deploys, so it can drive their lending primitives.
+///
+///         Supported markets are restricted to the governance allowlist of lending adapters, which
+///         curate standard ERC20 markets only (Morpho Blue does not support fee-on-transfer or
+///         rebasing tokens). Under that constraint every flow nets to zero with no router residual.
 contract MarginRouter is IMarginRouter, V4Router, ReentrancyLock, Permit2Forwarder, Multicall_v4, NativeWrapper {
     using MarginCalldataDecoder for bytes;
     using SafeCast for uint256;

@@ -41,8 +41,9 @@ contract MorphoLendingAdapter is ILendingAdapter {
     /// @notice Thrown when registering a market that does not exist on Morpho.
     error MorphoMarketNotCreated();
 
-    /// @notice Emitted when a market is registered or replaced in the routing table.
-    event MarketSet(address indexed collateral, address indexed debt, Id id);
+    /// @notice Emitted when a market is registered or replaced in the routing table. Includes the
+    ///         oracle, irm, and lltv so offchain monitoring can vet the routed market.
+    event MarketSet(address indexed collateral, address indexed debt, Id id, address oracle, address irm, uint256 lltv);
 
     constructor(IMorpho morpho_, address owner_) {
         morpho = morpho_;
@@ -67,7 +68,14 @@ contract MorphoLendingAdapter is ILendingAdapter {
         Id id = marketParams.id();
         if (morpho.idToMarketParams(id).loanToken == address(0)) revert MorphoMarketNotCreated();
         store.markets.register(marketParams);
-        emit MarketSet(marketParams.collateralToken, marketParams.loanToken, id);
+        emit MarketSet(
+            marketParams.collateralToken,
+            marketParams.loanToken,
+            id,
+            marketParams.oracle,
+            marketParams.irm,
+            marketParams.lltv
+        );
     }
 
     /// @inheritdoc ILendingAdapter

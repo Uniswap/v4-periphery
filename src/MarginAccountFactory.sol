@@ -18,7 +18,11 @@ contract MarginAccountFactory {
     /// @notice Emitted when an account clone is deployed.
     event AccountCreated(address indexed owner, address indexed account, uint256 subId);
 
+    /// @notice Thrown when constructed with a zero implementation or manager.
+    error ZeroAddress();
+
     constructor(address accountImplementation_, address manager_) {
+        if (accountImplementation_ == address(0) || manager_ == address(0)) revert ZeroAddress();
         accountImplementation = accountImplementation_;
         manager = manager_;
     }
