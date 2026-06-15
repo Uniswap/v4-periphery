@@ -116,6 +116,40 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         assertEq(IERC20(Currency.unwrap(debt)).balanceOf(address(marginRouter)), 0, "router holds no debt");
     }
 
+    function test_closePosition_zeroDebt_returnsCollateral() public {
+        address account = _open(1 ether, 2 ether);
+        // the position holds collateral supplied during the open
+        assertEq(protocol.collateralOf(account), 3 ether, "collateral supplied");
+
+        // simulate the debt being cleared out of band (e.g. repaid directly or fully liquidated),
+        // leaving collateral but no debt
+        protocol.setDebt(account, 0);
+
+        uint256 callerBefore = IERC20(Currency.unwrap(collateral)).balanceOf(address(this));
+
+        // a zero-debt close takes the swap-free path: collateral is withdrawn straight to the caller
+        marginRouter.closePosition(
+            IMarginRouter.CloseParams({
+                adapter: adapter,
+                market: market,
+                poolKey: poolKey,
+                maxCollateralIn: 0, // no swap, so no slippage bound is required
+                minHopPriceX36: 0,
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+
+        assertEq(
+            IERC20(Currency.unwrap(collateral)).balanceOf(address(this)) - callerBefore,
+            3 ether,
+            "collateral returned to caller"
+        );
+        assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
+        assertEq(protocol.debtOf(account), 0, "position empty");
+        assertEq(IERC20(Currency.unwrap(collateral)).balanceOf(address(marginRouter)), 0, "router holds no collateral");
+    }
+
     function test_openLong_emitsPositionOpened() public {
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);

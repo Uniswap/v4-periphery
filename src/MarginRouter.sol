@@ -122,14 +122,27 @@ contract MarginRouter is
         checkDeadline(params.deadline)
         returns (address account)
     {
+        account = accountOf(msgSender(), params.subId);
+
+        // resolve the position before deciding whether a swap is required
+        (uint256 collateral, uint256 debt) = params.adapter.positionOf(account, params.market);
+
+        // a position with no debt (e.g. funded only via addCollateral, repaid out of band, or fully
+        // liquidated) needs no swap: withdraw the collateral straight to the caller and finish. The
+        // router is the account manager and msgSender() is the owner, both allowed receivers.
+        if (debt == 0) {
+            if (collateral > 0) {
+                IMarginAccount(account).withdrawCollateral(params.adapter, params.market, collateral, msgSender());
+            }
+            emit PositionClosed(msgSender(), account, params.market.collateral, params.market.debt, collateral);
+            return account;
+        }
+
         if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
         _requireAllowedAdapter(params.adapter);
-
-        account = accountOf(msgSender(), params.subId);
         _setActiveAccount(account);
 
         // buy exactly the current debt, then repay it; sell collateral to fund the purchase
-        (uint256 collateral, uint256 debt) = params.adapter.positionOf(account, params.market);
         bool zeroForOne = params.market.toSwapParams(params.market.collateral, 0, 0, params.poolKey).zeroForOne;
 
         bytes memory actions = abi.encodePacked(
@@ -178,7 +191,9 @@ contract MarginRouter is
         returns (address account)
     {
         // both the collateral slippage bound and the resulting-health bound are mandatory: a delever
-        // must not be left free to worsen the position's LTV
+        // must not be left free to worsen the position's LTV. A zero repay would feed a zero amount
+        // into the exact-output swap, which the PoolManager rejects.
+        if (params.debtToRepay == 0) revert SlippageBoundRequired();
         if (params.maxCollateralIn == 0 || Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
         _requireAllowedAdapter(params.adapter);
 
@@ -329,6 +344,8 @@ contract MarginRouter is
     /// @param params The open/increase parameters; see `OpenParams`.
     /// @return account The caller's MarginAccount address.
     function _open(OpenParams calldata params) private returns (address account) {
+        // a zero buy would feed a zero amount into the exact-output swap, which the PoolManager rejects
+        if (params.collateralToBuy == 0) revert SlippageBoundRequired();
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
         _requireAllowedAdapter(params.adapter);
 

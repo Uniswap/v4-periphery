@@ -16,6 +16,7 @@ import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Direction} from "../../src/types/Direction.sol";
+import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
 
 /// @dev Unit tests for the router's wiring and pre-unlock guards. The swap-coupled leverage flows
@@ -66,6 +67,30 @@ contract MarginRouterTest is Test {
         router.openPosition(p);
     }
 
+    function test_openPosition_revertsWhenCollateralToBuyZero() public {
+        IMarginRouter.OpenParams memory p = _openParams();
+        p.collateralToBuy = 0;
+        vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
+        router.openPosition(p);
+    }
+
+    function test_increasePosition_revertsWhenCollateralToBuyZero() public {
+        IMarginRouter.OpenParams memory p = _openParams();
+        p.collateralToBuy = 0;
+        vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
+        router.increasePosition(p);
+    }
+
+    function test_decreasePosition_revertsWhenDebtToRepayZero() public {
+        IMarginRouter.DecreaseParams memory p;
+        p.deadline = block.timestamp + 1 hours;
+        p.debtToRepay = 0;
+        p.maxCollateralIn = 1;
+        p.maxLtvAfter = toLtv(0.9e18);
+        vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
+        router.decreasePosition(p);
+    }
+
     function test_openPosition_revertsAfterDeadline() public {
         IMarginRouter.OpenParams memory p = _openParams();
         p.deadline = block.timestamp - 1;
@@ -74,9 +99,16 @@ contract MarginRouterTest is Test {
     }
 
     function test_closePosition_revertsWhenSlippageBoundZero() public {
+        // the slippage bound only gates the swap path, so the position must carry debt to reach it
         IMarginRouter.CloseParams memory p;
+        p.adapter = ILendingAdapter(makeAddr("adapter"));
         p.deadline = block.timestamp + 1 hours;
         p.maxCollateralIn = 0;
+        vm.mockCall(
+            address(p.adapter),
+            abi.encodeWithSelector(ILendingAdapter.positionOf.selector),
+            abi.encode(uint256(1e18), uint256(1e18))
+        );
         vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
         router.closePosition(p);
     }
