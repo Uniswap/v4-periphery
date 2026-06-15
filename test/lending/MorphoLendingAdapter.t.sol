@@ -9,7 +9,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {MorphoLendingAdapter} from "../../src/MorphoLendingAdapter.sol";
 import {Market} from "../../src/types/Market.sol";
 import {MarketNotSupported} from "../../src/types/MarketRegistry.sol";
-import {NotOwner} from "../../src/types/Owner.sol";
+import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
 import {Ltv} from "../../src/types/Ltv.sol";
 import {MockMorpho} from "../mocks/MockMorpho.sol";
 
@@ -125,5 +125,66 @@ contract MorphoLendingAdapterTest is Test {
     function test_maxLtvWad_returnsMarketLltv() public {
         _register();
         assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), 0.86e18);
+    }
+
+    function test_owner_isConstructorOwner() public view {
+        assertEq(adapter.owner(), gov);
+    }
+
+    function test_transferOwnership_revertsForNonOwner() public {
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(NotOwner.selector, stranger));
+        adapter.transferOwnership(makeAddr("newOwner"));
+    }
+
+    function test_transferOwnership_revertsForZeroAddress() public {
+        vm.prank(gov);
+        vm.expectRevert(ZeroOwner.selector);
+        adapter.transferOwnership(address(0));
+    }
+
+    function test_transferOwnership_proposesWithoutChangingOwner() public {
+        address newOwner = makeAddr("newOwner");
+        vm.prank(gov);
+        adapter.transferOwnership(newOwner);
+        // the owner is unchanged until the successor accepts
+        assertEq(adapter.owner(), gov);
+        assertEq(adapter.pendingOwner(), newOwner);
+    }
+
+    function test_acceptOwnership_completesHandoff() public {
+        address newOwner = makeAddr("newOwner");
+        vm.prank(gov);
+        adapter.transferOwnership(newOwner);
+
+        vm.prank(newOwner);
+        adapter.acceptOwnership();
+
+        assertEq(adapter.owner(), newOwner);
+        assertEq(adapter.pendingOwner(), address(0));
+    }
+
+    function test_oldOwnerRetainsPowerUntilAccept() public {
+        morpho.setMarketParams(marketParams); // make the market "exist" on Morpho
+        vm.prank(gov);
+        adapter.transferOwnership(makeAddr("newOwner"));
+        // the old owner can still register markets before the handoff completes
+        vm.prank(gov);
+        adapter.setMarket(marketParams);
+        assertTrue(adapter.isSupportedMarket(market));
+    }
+
+    function test_acceptOwnership_revertsForNonPendingCaller() public {
+        vm.prank(gov);
+        adapter.transferOwnership(makeAddr("newOwner"));
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, stranger));
+        adapter.acceptOwnership();
+    }
+
+    function test_acceptOwnership_revertsWhenNonePending() public {
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, stranger));
+        adapter.acceptOwnership();
     }
 }

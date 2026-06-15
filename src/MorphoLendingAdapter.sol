@@ -184,6 +184,20 @@ contract MorphoLendingAdapter is ILendingAdapter {
         return store.owner.read();
     }
 
+    /// @notice The address proposed to become owner, pending its acceptance. Zero when no handoff is
+    ///         in progress.
+    /// @return The pending owner address.
+    function pendingOwner() external view returns (address) {
+        return store.owner.pendingOwner();
+    }
+
+    /// @notice Completes an ownership handoff. Callable by anyone, but only the address previously
+    ///         named by `transferOwnership` succeeds; all others revert. On success the caller
+    ///         becomes the owner.
+    function acceptOwnership() external {
+        store.owner.acceptOwnership(msg.sender);
+    }
+
     /// @notice Registers or replaces the canonical Morpho Blue market for its `(collateral, debt)`
     ///         pair. The market must already exist on Morpho Blue (verified by checking that
     ///         `idToMarketParams(id).loanToken` is non-zero). Owner-gated.
@@ -204,10 +218,12 @@ contract MorphoLendingAdapter is ILendingAdapter {
         );
     }
 
-    /// @notice Transfers adapter ownership to a new address. Owner-gated.
-    /// @param newOwner The address to set as the new owner.
+    /// @notice Begins a two-step ownership handoff by proposing a successor. The successor takes
+    ///         effect only once it calls `acceptOwnership`; the current owner retains its powers
+    ///         until then, and the zero address is rejected so the role cannot be bricked. Owner-gated.
+    /// @param newOwner The address proposed to become the new owner.
     function transferOwnership(address newOwner) external {
         store.owner.onlyOwner(msg.sender);
-        store.owner.write(newOwner);
+        store.owner.propose(newOwner);
     }
 }

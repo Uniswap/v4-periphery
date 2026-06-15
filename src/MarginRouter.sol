@@ -63,6 +63,16 @@ contract MarginRouter is
     /// @param allowed True if the adapter was allowed; false if it was disallowed.
     event AdapterAllowed(address indexed adapter, bool allowed);
 
+    /// @notice Emitted when the current governance proposes a successor for the two-step handoff.
+    /// @param currentGovernance The governance address that proposed the successor.
+    /// @param pendingGovernance The address proposed as the next governance.
+    event GovernanceTransferStarted(address indexed currentGovernance, address indexed pendingGovernance);
+
+    /// @notice Emitted when a proposed successor accepts governance and the handoff completes.
+    /// @param previousGovernance The governance address that was replaced.
+    /// @param newGovernance The address that became the new governance.
+    event GovernanceTransferred(address indexed previousGovernance, address indexed newGovernance);
+
     /// @dev Reverts `DeadlinePassed` if `block.timestamp` has passed `deadline`.
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed(deadline);
@@ -258,6 +268,22 @@ contract MarginRouter is
         return _governance.read();
     }
 
+    /// @notice The address proposed to become governance, pending its acceptance. Zero when no
+    ///         handoff is in progress.
+    /// @return The pending governance address.
+    function pendingGovernance() external view returns (address) {
+        return _governance.pendingOwner();
+    }
+
+    /// @notice Completes a governance handoff. Callable by anyone, but only the address previously
+    ///         named by `transferGovernance` succeeds; all others revert. On success the caller
+    ///         becomes governance.
+    function acceptGovernance() external {
+        address previousGovernance = _governance.read();
+        _governance.acceptOwnership(msg.sender);
+        emit GovernanceTransferred(previousGovernance, msg.sender);
+    }
+
     /// @notice Whether `adapter` is on the governance allowlist and may be used in position flows.
     /// @param adapter The lending adapter to check.
     /// @return True if the adapter is allowlisted.
@@ -285,11 +311,15 @@ contract MarginRouter is
         emit AdapterAllowed(address(adapter), allowed);
     }
 
-    /// @notice Transfers governance to a new address. Only the current governance may call this.
-    /// @param newGovernance The address that will become the new governance.
+    /// @notice Begins a two-step governance handoff by proposing a successor. The successor takes
+    ///         effect only once it calls `acceptGovernance`; the current governance retains its
+    ///         powers until then, and the zero address is rejected so the role cannot be bricked.
+    /// @dev Only the current governance address may call this.
+    /// @param newGovernance The address proposed to become the new governance.
     function transferGovernance(address newGovernance) external {
         _governance.onlyOwner(msg.sender);
-        _governance.write(newGovernance);
+        _governance.propose(newGovernance);
+        emit GovernanceTransferStarted(msg.sender, newGovernance);
     }
 
     /// @notice Shared implementation for `openPosition` and `increasePosition`. Deploys the account
