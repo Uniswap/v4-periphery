@@ -12,4 +12,8 @@ interface IPoolAddressesProvider {
     /// @notice Returns the address of the protocol data provider.
     /// @return The protocol data provider address.
     function getPoolDataProvider() external view returns (address);
+
+    /// @notice Returns the address of the price oracle.
+    /// @return The price oracle address.
+    function getPriceOracle() external view returns (address);
 }

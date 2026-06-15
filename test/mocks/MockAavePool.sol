@@ -14,10 +14,12 @@ import {IPoolDataProvider} from "../../src/interfaces/external/aave/IPoolDataPro
 contract MockAaveAddressesProvider is IPoolAddressesProvider {
     address internal immutable _pool;
     address internal immutable _dataProvider;
+    address internal immutable _priceOracle;
 
     constructor(address pool_, address dataProvider_) {
         _pool = pool_;
         _dataProvider = dataProvider_;
+        _priceOracle = address(0);
     }
 
     /// @inheritdoc IPoolAddressesProvider
@@ -28,6 +30,12 @@ contract MockAaveAddressesProvider is IPoolAddressesProvider {
     /// @inheritdoc IPoolAddressesProvider
     function getPoolDataProvider() external view returns (address) {
         return _dataProvider;
+    }
+
+    /// @inheritdoc IPoolAddressesProvider
+    /// @dev The local mock prices reserves through `getUserAccountData`, so it has no separate oracle.
+    function getPriceOracle() external view returns (address) {
+        return _priceOracle;
     }
 }
 
