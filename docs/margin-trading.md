@@ -48,7 +48,7 @@ protocol-agnostic intents into the concrete calls the account executes. All impl
   └───────┬─────────┘  onBehalf = account └──────────┬─────────┘
           │                                          │ reads + oracle price
           ▼                                          ▼
-  ┌─────────────────────  Morpho /  ...  ──────────────────────┐
+  ┌──────────  Morpho Blue / Aave v3 Pool / Aave v4 Spoke  ──────────┐
 ```
 
 
@@ -423,8 +423,11 @@ revert.
 ## 7. Front-end integration (TypeScript / viem)
 
 The examples use [viem](https://viem.sh). For wagmi v2, wrap the same calls in `useReadContract` /
-`useWriteContract`. Import the generated ABIs for `MarginRouter` and `MorphoLendingAdapter` (and a
-minimal Permit2 / ERC-20 ABI).
+`useWriteContract`. Import the generated ABIs for `MarginRouter` and your chosen lending adapter (and a
+minimal Permit2 / ERC-20 ABI). The `ILendingAdapter` read surface used below
+(`positionOf` / `currentLtvWad` / `maxLtvWad` / `isSupportedMarket`) is identical across the Morpho,
+Aave v3, and Aave v4 adapters, so the same read code works for any venue — only the adapter address
+changes.
 
 ### 7.1 Setup
 
@@ -435,7 +438,7 @@ import { marginRouterAbi, lendingAdapterAbi } from "./abis";
 
 const ADDR = {
   router:  "0x<MARGIN_ROUTER>",        // fill in per deployment
-  adapter: "0x<MORPHO_ADAPTER>",       // fill in per deployment
+  adapter: "0x<LENDING_ADAPTER>",      // fill in per deployment (Morpho, Aave v3, or Aave v4)
   permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
   weth:    "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
   usdc:    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -911,13 +914,20 @@ struct AddCollateralParams { // addCollateral
 
 ### Lending adapter read functions
 
-Both `MorphoLendingAdapter` and `AaveLendingAdapter` expose the same `ILendingAdapter` reads:
-`lendingProtocol()`, `isSupportedMarket(Market)`, `positionOf(account, Market)`,
-`maxLtvWad(Market)`, `currentLtvWad(account, Market)`, plus `owner()`, `pendingOwner()`,
-`acceptOwnership()`, and `transferOwnership(address)` for the two-step ownership handoff. Market
-routing is curated with `setMarket` (owner-gated): `MorphoLendingAdapter` registers a Morpho
-`MarketParams`, while `AaveLendingAdapter.setMarket(Currency collateral, Currency debt, bool allowed)`
-allowlists a pair after validating both are live Aave reserves.
+All three adapters — `MorphoLendingAdapter`, `AaveLendingAdapter` (Aave v3), and
+`AaveV4LendingAdapter` — expose the same `ILendingAdapter` reads: `lendingProtocol()`,
+`isSupportedMarket(Market)`, `positionOf(account, Market)`, `maxLtvWad(Market)`,
+`currentLtvWad(account, Market)`, plus `owner()`, `pendingOwner()`, `acceptOwnership()`, and
+`transferOwnership(address)` for the two-step ownership handoff. Market routing is curated with
+`setMarket` (owner-gated), and only the `setMarket` signature differs by venue:
+
+- `MorphoLendingAdapter` registers a Morpho `MarketParams` (validating the market exists on Morpho).
+- `AaveLendingAdapter.setMarket(Currency collateral, Currency debt, bool allowed)` allowlists a pair
+after validating both are live Aave v3 reserves.
+- `AaveV4LendingAdapter.setMarket(Currency collateral, Currency debt, uint256 collateralReserveId, uint256 debtReserveId, bool allowed)`
+registers a route after validating on-chain that each reserve's `underlying` matches the currency and
+that both reserves are on the same Hub. Its `lendingProtocol()` is the bound Spoke. (Note: `MarketSet`,
+emitted by all three on `setMarket`, carries the two `reserveId`s for the v4 adapter.)
 
 ### Errors
 
@@ -934,9 +944,11 @@ allowlists a pair after validating both are live Aave reserves.
 | Market   | `MarketSwapMismatch()`                                           | pool currencies do not match the market pair                                                                              |
 | Owner    | `NotOwner(address)` / `ZeroOwner()` / `NotPendingOwner(address)` | ownership guards                                                                                                          |
 | adapter (Morpho) | `MorphoMarketNotCreated()`                              | `setMarket` for a market that does not exist on Morpho                                                                    |
-| adapter (Aave)   | `MarketNotSupported(Currency, Currency)`               | an encode/read or `setMarket` for a `(collateral, debt)` pair that is not allowlisted, or whose assets are not live Aave reserves |
-| adapter (Aave)   | `ZeroAddress()`                                        | the addresses provider resolved the Pool or data provider to the zero address at construction                            |
-| adapter (Aave)   | `AccountMismatch(address, address)`                    | a withdraw was encoded for an account other than the caller (the account always passes its own address)                  |
+| adapter (Aave v3/v4) | `MarketNotSupported(Currency, Currency)`           | an encode/read or `setMarket` for a `(collateral, debt)` pair that is not allowlisted/registered (Aave v3: or whose assets are not live reserves) |
+| adapter (Aave v3/v4) | `ZeroAddress()`                                    | a required address is zero at construction (Aave v3: the resolved Pool or data provider; Aave v4: the Spoke)             |
+| adapter (Aave v3/v4) | `AccountMismatch(address, address)`               | a withdraw was encoded for an account other than the caller (the account always passes its own address)                 |
+| adapter (Aave v4) | `ReserveMismatch(uint256, address, address)`         | `setMarket` where a reserve's on-chain `underlying` does not match the currency it is registered for                     |
+| adapter (Aave v4) | `HubMismatch(address, address)`                      | `setMarket` where the collateral and debt reserves are on different Hubs (a single v4 position cannot span Hubs)         |
 | registry | `MarketNotSupported(Currency, Currency)`                         | the `(collateral, debt)` pair has no registered market (Morpho registry)                                                  |
 
 
