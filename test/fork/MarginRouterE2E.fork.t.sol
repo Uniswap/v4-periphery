@@ -111,7 +111,9 @@ contract MarginRouterE2EForkTest is Test {
         adapter.setMarket(marketParams);
 
         address impl = address(new MarginAccount());
-        router = new MarginRouter(IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl);
+        router = new MarginRouter(
+            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
+        );
         router.setAdapterAllowed(adapter, true);
     }
 

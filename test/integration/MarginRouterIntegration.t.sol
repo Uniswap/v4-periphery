@@ -43,7 +43,9 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         adapter.setSupported(market, true);
 
         address impl = address(new MarginAccount());
-        marginRouter = new MarginRouter(manager, IAllowanceTransfer(address(0xdead)), IWETH9(address(0xbeef)), impl);
+        marginRouter = new MarginRouter(
+            manager, IAllowanceTransfer(address(0xdead)), IWETH9(address(0xbeef)), impl, address(this)
+        );
         marginRouter.setAdapterAllowed(adapter, true);
 
         // fund the lending protocol with debt to lend out

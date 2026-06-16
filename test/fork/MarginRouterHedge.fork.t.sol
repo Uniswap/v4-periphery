@@ -118,7 +118,9 @@ contract MarginRouterHedgeForkTest is Test {
 
         // the full margin stack, wired to the live Aave Pool, canonical Permit2, and WETH9
         address impl = address(new MarginAccount());
-        router = new MarginRouter(IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl);
+        router = new MarginRouter(
+            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
+        );
         router.setAdapterAllowed(adapter, true);
     }
 

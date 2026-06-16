@@ -43,7 +43,7 @@ contract MarginRouterPermit2Test is RoutingTestHelpers, DeployPermit2 {
         adapter.setSupported(market, true);
 
         address impl = address(new MarginAccount());
-        marginRouter = new MarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl);
+        marginRouter = new MarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this));
         marginRouter.setAdapterAllowed(adapter, true);
 
         MockERC20(Currency.unwrap(debt)).transfer(address(protocol), 1_000_000 ether);

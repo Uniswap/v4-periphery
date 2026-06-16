@@ -35,7 +35,8 @@ contract MarginRouterTest is Test {
             IPoolManager(makeAddr("poolManager")),
             IAllowanceTransfer(makeAddr("permit2")),
             IWETH9(makeAddr("weth9")),
-            impl
+            impl,
+            address(this)
         );
     }
 

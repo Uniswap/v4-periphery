@@ -79,14 +79,30 @@ contract MarginRouter is
         _;
     }
 
-    constructor(IPoolManager poolManager_, IAllowanceTransfer permit2_, IWETH9 weth9_, address accountImplementation)
+    /// @notice Deploys the margin router.
+    /// @param poolManager_ The v4 PoolManager singleton the router unlocks for every position flow.
+    /// @param permit2_ The Permit2 contract used to pull caller equity and settle swaps.
+    /// @param weth9_ The canonical WETH9 contract used to wrap native ETH equity.
+    /// @param accountImplementation The MarginAccount implementation cloned for each account.
+    /// @param governance_ The initial governance address (e.g. the deployer, a multisig, or a
+    ///        timelock) that curates the adapter allowlist. Passed explicitly rather than read from
+    ///        `msg.sender` so a deterministic CREATE2 deployment sets the intended owner instead of
+    ///        the CREATE2 factory. Mirrors v4-core's `PoolManager(address initialOwner)` pattern.
+    constructor(
+        IPoolManager poolManager_,
+        IAllowanceTransfer permit2_,
+        IWETH9 weth9_,
+        address accountImplementation,
+        address governance_
+    )
         V4Router(poolManager_)
         Permit2Forwarder(permit2_)
         NativeWrapper(weth9_)
         MarginAccountFactory(accountImplementation)
     {
-        // the deployer is the initial governance; hand off to a timelock or multisig after setup
-        _governance.write(msg.sender);
+        // governance is set explicitly so CREATE2 deployment names the intended owner, not the
+        // CREATE2 factory; hand off to a timelock or multisig after setup
+        _governance.write(governance_);
     }
 
     /// @inheritdoc IMarginRouter
