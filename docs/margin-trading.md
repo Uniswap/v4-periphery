@@ -104,6 +104,12 @@ walkthrough.
 - **One account per `(owner, subId)`.** `subId` is a caller-chosen index so one address can hold many
 independent positions. The address is deterministic: `router.accountOf(owner, subId)` returns it
 whether or not it has been deployed yet.
+- **One Aave position per account.** Aave (v3, and a given v4 Spoke) tracks health and reserve
+balances across the whole account, not per `(collateral, debt)` pair, so each Aave position must live
+in its own `(owner, subId)` account: open a second Aave market under a *new* `subId`, never the same
+one. The router does not enforce this. Re-using a `subId` for two markets on the same Aave deployment
+blends their collateral/debt and can make a later `closePosition`/`decreasePosition` revert or withdraw
+collateral still backing the other debt. Morpho markets are isolated and not subject to this.
 - **Soulbound.** The owner and the manager (the router) are baked into the clone's bytecode at
 deployment. There is no initializer and no transfer path.
 - **Self-custody with a manager.** The account's fund-moving primitives (`supplyCollateral`,
@@ -649,7 +655,10 @@ reserves), and ownership is the same two-step `transferOwnership` / `acceptOwner
 `owner()` / `pendingOwner()` handoff as the Morpho adapter. Reads mirror the Morpho adapter:
 `positionOf` returns the account's aToken and variableDebtToken balances, `maxLtvWad` returns the
 collateral reserve's liquidation threshold, and `currentLtvWad` is the account-level LTV from Aave's
-`getUserAccountData` (denominated in Aave's USD base currency, so it is decimal-agnostic).
+`getUserAccountData` (denominated in Aave's USD base currency, so it is decimal-agnostic). Because
+these reads are account-level (true for both the v3 and v4 adapters), keep one Aave position per
+`(owner, subId)` and use a distinct `subId` for each — co-locating two Aave markets under one account
+blends the reads and can break a later close/decrease (see §3.2).
 
 `AaveV4LendingAdapter` targets Aave v4's **hub-and-spoke** architecture and is constructed against a
 single **Spoke** (`constructor(ISpoke spoke, address owner_)`); the Spoke is `lendingProtocol()` and

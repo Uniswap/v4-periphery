@@ -42,6 +42,13 @@ import {Ltv, toLtv} from "./types/Ltv.sol";
 ///           Aave v3's liquidation threshold). v4's true liquidation point also depends on the
 ///           position's risk premium and dynamic config; `healthFactor < 1e18` is the authoritative
 ///           liquidation signal.
+///         - `currentLtvWad` and `positionOf` read the Spoke's ACCOUNT-LEVEL state (the Spoke tracks
+///           health across the whole account, not per `(collateral, debt)` pair), so they equal the
+///           position's values only when the account holds a single position on this Spoke. This is a
+///           USAGE REQUIREMENT, not a router-enforced invariant: each Spoke position must use its own
+///           `(owner, subId)` account. Co-locating two of this Spoke's markets under one `subId` blends
+///           the reads and can make a close/decrease revert or withdraw collateral still backing
+///           another debt. Use a distinct `subId` per Spoke position.
 ///         - Routing is curated: every `encode*` and read reverts `MarketNotSupported` for a pair the
 ///           owner has not registered, never returning a silent default market.
 /// @custom:security-contact security@uniswap.org
@@ -233,8 +240,10 @@ contract AaveV4LendingAdapter is ILendingAdapter {
     ///      units additionally scaled by RAY, so the WAD LTV is
     ///      `totalDebtValueRay * WAD / (totalCollateralValue * RAY)`. Returns `type(uint256).max` (as
     ///      an `Ltv`) when there is debt but zero collateral, and 0 when there is no debt. This is
-    ///      account-level (Spoke-scoped): it equals the position LTV under the one-position-per-account
-    ///      model the router maintains.
+    ///      ACCOUNT-LEVEL (Spoke-scoped): it equals the position LTV only when the account holds a
+    ///      single position on this Spoke. Co-locating multiple Spoke markets under one `(owner, subId)`
+    ///      blends every reserve into these totals. The router does NOT enforce one position per
+    ///      account; callers must use a distinct `subId` per Spoke position.
     /// @param market Must be a registered pair (only the route gates the call; the account's full
     ///        Spoke position determines the totals).
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {

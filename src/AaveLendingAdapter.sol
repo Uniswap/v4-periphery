@@ -34,8 +34,14 @@ import {Ltv, toLtv} from "./types/Ltv.sol";
 ///           account), which forwards it to the validated receiver. `withdraw` honors its `to`
 ///           recipient and `repay` is encoded directly. Only variable-rate debt is used.
 ///         - Borrowing capacity and liquidation are enforced by Aave at call time; this adapter adds
-///           no independent oracle. `currentLtvWad` reads Aave's account-level health, which equals
-///           the position LTV under the one-position-per-account model the router maintains.
+///           no independent oracle. `currentLtvWad` and `positionOf` read Aave's ACCOUNT-LEVEL state
+///           (Aave tracks health and reserve balances across the whole account, not per
+///           `(collateral, debt)` pair), so they equal the position's values only when the account
+///           holds a single Aave position on this Pool. This is a USAGE REQUIREMENT, not a
+///           router-enforced invariant: each Aave position must use its own `(owner, subId)` account.
+///           Co-locating two of this Pool's markets under one `subId` blends the reads and can make a
+///           close/decrease revert or withdraw collateral still backing another debt. Use a distinct
+///           `subId` per Aave position (Morpho markets are isolated and not subject to this).
 ///         - Routing is curated: every `encode*` and read reverts `MarketNotSupported` for a pair the
 ///           owner has not allowlisted, never returning a silent default market.
 /// @custom:security-contact security@uniswap.org
@@ -211,10 +217,11 @@ contract AaveLendingAdapter is ILendingAdapter {
     ///      account-level `getUserAccountData`, whose totals are denominated in the protocol's USD
     ///      base currency, so the collateral/debt decimal difference of a short needs no special
     ///      handling. Returns `type(uint256).max` (as an `Ltv`) when there is debt but zero
-    ///      collateral, and 0 when there is no debt. This is account-level: it equals the position
-    ///      LTV under the one-position-per-account model the router maintains. The owner escape hatch
-    ///      could in principle supply a second collateral or borrow a second debt into the same
-    ///      account, which would blend into these totals; the router never does this.
+    ///      collateral, and 0 when there is no debt. This is ACCOUNT-LEVEL: it equals the position LTV
+    ///      only when the account holds a single Aave position on this Pool. Co-locating multiple Aave
+    ///      markets under one `(owner, subId)`, or supplying/borrowing extra reserves via the owner
+    ///      escape hatch, blends every reserve into these totals. The router does NOT enforce one
+    ///      position per account; callers must use a distinct `subId` per Aave position.
     /// @param market Must be an allowlisted pair (only its currencies are read; the account's full
     ///        Aave position determines the totals).
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
