@@ -34,6 +34,11 @@ fuzz_runs = 100_000
 [profile.gas]
 gas_limit=30_000_000
 
+[invariant]
+runs = 256
+depth = 128
+fail_on_revert = false
+
 [rpc_endpoints]
 sepolia = "https://rpc.sepolia.org"
 unichain_sepolia = "https://sepolia.unichain.org"
