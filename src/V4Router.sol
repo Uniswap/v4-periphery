@@ -87,8 +87,9 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             amountIn =
                 _getFullCredit(params.zeroForOne ? params.poolKey.currency0 : params.poolKey.currency1).toUint128();
         }
-        uint128 amountOut =
-            _swap(params.poolKey, params.zeroForOne, -int256(uint256(amountIn)), params.hookData).toUint128();
+        uint128 amountOut = _swapOutput(
+            _swap(params.poolKey, params.zeroForOne, -int256(uint256(amountIn)), params.hookData), params.zeroForOne
+        );
         if (amountOut < params.amountOutMinimum) revert V4TooLittleReceived(params.amountOutMinimum, amountOut);
         if (params.minHopPriceX36 != 0) {
             uint256 priceX36 = uint256(amountOut) * PRECISION / amountIn;
@@ -115,7 +116,8 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 pathKey = params.path[i];
                 (PoolKey memory poolKey, bool zeroForOne) = pathKey.getPoolAndSwapDirection(currencyIn);
                 // The output delta will always be positive, except for when interacting with certain hook pools
-                amountOut = _swap(poolKey, zeroForOne, -int256(uint256(amountIn)), pathKey.hookData).toUint128();
+                amountOut =
+                    _swapOutput(_swap(poolKey, zeroForOne, -int256(uint256(amountIn)), pathKey.hookData), zeroForOne);
 
                 if (perHopPriceLength != 0) {
                     uint256 priceX36 = amountOut * PRECISION / amountIn;
@@ -137,13 +139,13 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             amountOut =
                 _getFullDebt(params.zeroForOne ? params.poolKey.currency1 : params.poolKey.currency0).toUint128();
         }
-        uint128 amountIn = (uint256(
-                -int256(_swap(params.poolKey, params.zeroForOne, int256(uint256(amountOut)), params.hookData))
-            ))
-        .toUint128();
+        BalanceDelta delta = _swap(params.poolKey, params.zeroForOne, int256(uint256(amountOut)), params.hookData);
+        uint128 amountIn = _swapInput(delta, params.zeroForOne);
         if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
         if (params.minHopPriceX36 != 0) {
-            uint256 priceX36 = uint256(amountOut) * PRECISION / amountIn;
+            // price the REALIZED output against the actual input: the pool can deliver less than the
+            // requested amountOut, so using amountOut here would overstate the execution price
+            uint256 priceX36 = uint256(_swapOutput(delta, params.zeroForOne)) * PRECISION / amountIn;
             if (priceX36 < params.minHopPriceX36) {
                 revert V4TooMuchRequestedPerHopSingle(params.minHopPriceX36, priceX36);
             }
@@ -170,11 +172,12 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 pathKey = params.path[i - 1];
                 (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
                 // The output delta will always be negative, except for when interacting with certain hook pools
-                amountIn = (uint256(-int256(_swap(poolKey, !oneForZero, int256(uint256(amountOut)), pathKey.hookData))))
-                .toUint128();
+                BalanceDelta delta = _swap(poolKey, !oneForZero, int256(uint256(amountOut)), pathKey.hookData);
+                amountIn = _swapInput(delta, !oneForZero);
 
                 if (perHopPriceLength != 0) {
-                    uint256 priceX36 = amountOut * PRECISION / amountIn;
+                    // price the REALIZED output (which can be a partial fill) against the actual input
+                    uint256 priceX36 = uint256(_swapOutput(delta, !oneForZero)) * PRECISION / amountIn;
                     uint256 minPrice = params.minHopPriceX36[i - 1];
                     if (priceX36 < minPrice) revert V4TooMuchRequestedPerHop(i - 1, minPrice, priceX36);
                 }
@@ -187,19 +190,28 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
 
     function _swap(PoolKey memory poolKey, bool zeroForOne, int256 amountSpecified, bytes calldata hookData)
         private
-        returns (int128 reciprocalAmount)
+        returns (BalanceDelta delta)
     {
         // for protection of exactOut swaps, sqrtPriceLimit is not exposed as a feature in this contract
-        unchecked {
-            BalanceDelta delta = poolManager.swap(
-                poolKey,
-                SwapParams(
-                    zeroForOne, amountSpecified, zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
-                ),
-                hookData
-            );
+        delta = poolManager.swap(
+            poolKey,
+            SwapParams(
+                zeroForOne, amountSpecified, zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+            ),
+            hookData
+        );
+    }
 
-            reciprocalAmount = (zeroForOne == amountSpecified < 0) ? delta.amount1() : delta.amount0();
-        }
+    /// @notice The positive input amount a swap consumed, derived from its balance delta.
+    /// @dev The spent currency's delta is negative (owed to the pool), so negate it to a positive amount.
+    function _swapInput(BalanceDelta delta, bool zeroForOne) private pure returns (uint128) {
+        return (uint256(-int256(zeroForOne ? delta.amount0() : delta.amount1()))).toUint128();
+    }
+
+    /// @notice The positive output amount a swap produced, derived from its balance delta. For an
+    ///         exact-output swap this is the REALIZED output, which can be less than the requested
+    ///         amount when the pool lacks the liquidity to fill it before the price limit.
+    function _swapOutput(BalanceDelta delta, bool zeroForOne) private pure returns (uint128) {
+        return (zeroForOne ? delta.amount1() : delta.amount0()).toUint128();
     }
 }
