@@ -69,16 +69,25 @@ contract MarginAccount is IMarginAccount {
     }
 
     /// @inheritdoc IMarginAccount
+    /// @dev Forwards the withdrawn collateral to the validated receiver, mirroring `borrow`. Lending
+    ///      protocols differ on whether `withdraw` exposes a recipient: some deliver straight to `to`
+    ///      (the account's measured delta is then zero and nothing is forwarded), others deliver to the
+    ///      caller (the account), which forwards the measured delta here. Either way the recipient stays
+    ///      under the account's control. `withdrawn` is measured as the account's collateral-token
+    ///      balance increase across the call, so it is zero when the protocol delivered directly to `to`.
     function withdrawCollateral(ILendingAdapter adapter, Market calldata market, uint256 amount, address to)
         external
-        returns (uint256)
+        returns (uint256 withdrawn)
     {
         (address ownerAddr, address managerAddr) = _authCaller();
         _requireReceiver(to, ownerAddr, managerAddr);
+        IERC20 collateral = IERC20(Currency.unwrap(market.collateral));
+        uint256 balanceBefore = collateral.balanceOf(address(this));
         (address target, uint256 value, bytes memory callData) =
             adapter.encodeWithdrawCollateral(address(this), market, amount, to);
         _execCall(adapter, target, value, callData);
-        return amount;
+        withdrawn = collateral.balanceOf(address(this)) - balanceBefore;
+        if (withdrawn != 0) collateral.safeTransfer(to, withdrawn);
     }
 
     /// @inheritdoc IMarginAccount

@@ -115,6 +115,41 @@ contract MarginAccountTest is Test {
         account.withdrawCollateral(adapter, market, 1e18, stranger);
     }
 
+    function test_withdrawCollateral_protocolDeliversToReceiver_forwardsZero() public {
+        vm.prank(manager);
+        account.supplyCollateral(adapter, market, 10e18);
+
+        // default mock behavior models a protocol (Aave v3 / Morpho) that delivers straight to the
+        // receiver: the account's balance never moves, so the measured delta is zero and nothing is
+        // forwarded, yet the receiver still ends up with the funds
+        uint256 acctBalBefore = collateralToken.balanceOf(address(account));
+        vm.prank(manager);
+        uint256 withdrawn = account.withdrawCollateral(adapter, market, 4e18, manager);
+
+        assertEq(withdrawn, 0, "measured delta zero when protocol delivers to receiver");
+        assertEq(collateralToken.balanceOf(manager), 4e18, "receiver got the withdrawal directly");
+        assertEq(collateralToken.balanceOf(address(account)), acctBalBefore, "account balance unchanged");
+        assertEq(protocol.collateralOf(address(account)), 6e18, "collateral position reduced");
+    }
+
+    function test_withdrawCollateral_protocolDeliversToAccount_forwardsMeasuredDelta() public {
+        vm.prank(manager);
+        account.supplyCollateral(adapter, market, 10e18);
+
+        // model Aave v4: the protocol delivers the withdrawal to the caller (the account), which must
+        // forward the measured delta to the validated receiver
+        protocol.setWithdrawToCaller(true);
+        uint256 managerBalBefore = collateralToken.balanceOf(manager);
+        uint256 acctBalBefore = collateralToken.balanceOf(address(account));
+        vm.prank(manager);
+        uint256 withdrawn = account.withdrawCollateral(adapter, market, 4e18, manager);
+
+        assertEq(withdrawn, 4e18, "measured delta equals the amount the account received");
+        assertEq(collateralToken.balanceOf(manager), managerBalBefore + 4e18, "receiver got the forwarded funds");
+        assertEq(collateralToken.balanceOf(address(account)), acctBalBefore, "account retains no withdrawn collateral");
+        assertEq(protocol.collateralOf(address(account)), 6e18, "collateral position reduced");
+    }
+
     function test_repay_max_repaysOwedAndReturnsAmount() public {
         protocol.setDebt(address(account), 7e18);
         vm.prank(manager);

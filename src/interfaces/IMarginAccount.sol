@@ -48,7 +48,9 @@ interface IMarginAccount {
     /// @param market The (collateral, debt) pair identifying the target lending market.
     /// @param amount The amount of collateral to withdraw, in the collateral token's native decimals.
     /// @param to The recipient address; must be the manager or owner.
-    /// @return withdrawn The amount actually withdrawn (equal to `amount`).
+    /// @return withdrawn The collateral delivered to the account and forwarded to `to`, measured as the
+    ///         account's collateral-token balance increase across the call. Zero when the lending
+    ///         protocol delivers the withdrawal directly to `to`.
     function withdrawCollateral(ILendingAdapter adapter, Market calldata market, uint256 amount, address to)
         external
         returns (uint256 withdrawn);

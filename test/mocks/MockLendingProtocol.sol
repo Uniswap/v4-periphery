@@ -20,6 +20,11 @@ contract MockLendingProtocol {
     address public lastAccount;
     address public lastReceiver;
 
+    // When true, withdraw delivers the underlying to the caller (the account) rather than the encoded
+    // receiver, modeling Aave v4's Spoke.withdraw which sends to msg.sender. Lets the account test
+    // exercise the measure-and-forward path.
+    bool public withdrawToCaller;
+
     constructor(IERC20 collateralToken_, IERC20 debtToken_) {
         collateralToken = collateralToken_;
         debtToken = debtToken_;
@@ -27,6 +32,10 @@ contract MockLendingProtocol {
 
     function setDebt(address account, uint256 amount) external {
         debtOf[account] = amount;
+    }
+
+    function setWithdrawToCaller(bool value) external {
+        withdrawToCaller = value;
     }
 
     function supplyCollateral(address account, uint256 amount) external {
@@ -39,7 +48,7 @@ contract MockLendingProtocol {
         lastAccount = account;
         lastReceiver = receiver;
         collateralOf[account] -= amount;
-        collateralToken.safeTransfer(receiver, amount);
+        collateralToken.safeTransfer(withdrawToCaller ? msg.sender : receiver, amount);
     }
 
     function borrow(address account, uint256 amount, address receiver) external {
