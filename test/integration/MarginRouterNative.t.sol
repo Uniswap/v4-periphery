@@ -38,7 +38,11 @@ contract MarginRouterNativeTest is Test {
         address impl = address(new MarginAccount());
         // poolManager and permit2 are unused on the native addCollateral path
         router = new MarginRouter(
-            IPoolManager(makeAddr("pm")), IAllowanceTransfer(makeAddr("permit2")), IWETH9(address(weth)), impl, address(this)
+            IPoolManager(makeAddr("pm")),
+            IAllowanceTransfer(makeAddr("permit2")),
+            IWETH9(address(weth)),
+            impl,
+            address(this)
         );
         router.setAdapterAllowed(adapter, true);
     }

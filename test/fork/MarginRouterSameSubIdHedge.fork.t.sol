@@ -370,8 +370,9 @@ contract MarginRouterSameSubIdHedgeForkTest is Test {
     ///         long on Morpho and the short on Aave, and sanity-checks each leg's max LTV.
     function _deployAndVerifyAdapters() internal {
         // long leg: live Morpho Blue WETH/USDC market (WETH collateral, USDC debt)
-        morphoMarketParams =
-            MarketParams({loanToken: USDC, collateralToken: WETH, oracle: MORPHO_ORACLE, irm: MORPHO_IRM, lltv: MORPHO_LLTV});
+        morphoMarketParams = MarketParams({
+            loanToken: USDC, collateralToken: WETH, oracle: MORPHO_ORACLE, irm: MORPHO_IRM, lltv: MORPHO_LLTV
+        });
         assertEq(MORPHO.idToMarketParams(morphoMarketParams.id()).collateralToken, WETH, "morpho market collateral");
         assertEq(MORPHO.idToMarketParams(morphoMarketParams.id()).loanToken, USDC, "morpho market loan token");
 

@@ -90,7 +90,11 @@ contract MarginRouterShortInverseTest is Test {
 
         address impl = address(new MarginAccount());
         router = new MarginRouter(
-            IPoolManager(address(manager)), IAllowanceTransfer(address(0xdead)), IWETH9(address(0xbeef)), impl, address(this)
+            IPoolManager(address(manager)),
+            IAllowanceTransfer(address(0xdead)),
+            IWETH9(address(0xbeef)),
+            impl,
+            address(this)
         );
         router.setAdapterAllowed(adapter, true);
     }
