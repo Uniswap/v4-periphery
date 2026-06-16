@@ -141,7 +141,12 @@ contract AaveV4LendingAdapterForkTest is Test {
 
         // the live Spoke position must agree with the adapter read; the supply must be enabled as
         // collateral (otherwise the borrow's health check would have reverted)
-        assertApproxEqAbs(ISpoke(MAIN_SPOKE).getUserSuppliedAssets(USDC_RESERVE_ID, account), collateral, 1, "open: supplied == collateral");
+        assertApproxEqAbs(
+            ISpoke(MAIN_SPOKE).getUserSuppliedAssets(USDC_RESERVE_ID, account),
+            collateral,
+            1,
+            "open: supplied == collateral"
+        );
         assertEq(ISpoke(MAIN_SPOKE).getUserTotalDebt(WETH_RESERVE_ID, account), debt, "open: spoke debt == debt");
 
         // healthy: LTV positive and below the collateral's factor
@@ -220,7 +225,11 @@ contract AaveV4LendingAdapterForkTest is Test {
         console2.log("residual USDC returned:", residual);
 
         assertEq(ISpoke(MAIN_SPOKE).getUserTotalDebt(WETH_RESERVE_ID, account), 0, "close: WETH debt fully repaid");
-        assertEq(ISpoke(MAIN_SPOKE).getUserSuppliedAssets(USDC_RESERVE_ID, account), 0, "close: all USDC collateral withdrawn");
+        assertEq(
+            ISpoke(MAIN_SPOKE).getUserSuppliedAssets(USDC_RESERVE_ID, account),
+            0,
+            "close: all USDC collateral withdrawn"
+        );
 
         (uint256 collateral, uint256 debt) = adapter.positionOf(account, market);
         assertEq(debt, 0, "close: adapter agrees debt is zero");

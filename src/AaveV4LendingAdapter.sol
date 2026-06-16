@@ -295,9 +295,7 @@ contract AaveV4LendingAdapter is ILendingAdapter {
                 revert HubMismatch(collateralReserve.hub, debtReserve.hub);
             }
             store.routes[collateral][debt] = V4MarketRoute({
-                collateralReserveId: collateralReserveId,
-                debtReserveId: debtReserveId,
-                registered: true
+                collateralReserveId: collateralReserveId, debtReserveId: debtReserveId, registered: true
             });
         } else {
             delete store.routes[collateral][debt];

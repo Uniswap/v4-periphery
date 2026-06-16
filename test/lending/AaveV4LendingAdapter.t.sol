@@ -71,7 +71,11 @@ contract AaveV4LendingAdapterTest is Test {
         calls = abi.decode(d[4:], (bytes[]));
     }
 
-    function decodeSupply(bytes calldata d) external pure returns (uint256 reserveId, uint256 amount, address onBehalfOf) {
+    function decodeSupply(bytes calldata d)
+        external
+        pure
+        returns (uint256 reserveId, uint256 amount, address onBehalfOf)
+    {
         (reserveId, amount, onBehalfOf) = abi.decode(d[4:], (uint256, uint256, address));
     }
 
@@ -83,15 +87,27 @@ contract AaveV4LendingAdapterTest is Test {
         (reserveId, usingAsCollateral, onBehalfOf) = abi.decode(d[4:], (uint256, bool, address));
     }
 
-    function decodeWithdraw(bytes calldata d) external pure returns (uint256 reserveId, uint256 amount, address onBehalfOf) {
+    function decodeWithdraw(bytes calldata d)
+        external
+        pure
+        returns (uint256 reserveId, uint256 amount, address onBehalfOf)
+    {
         (reserveId, amount, onBehalfOf) = abi.decode(d[4:], (uint256, uint256, address));
     }
 
-    function decodeBorrow(bytes calldata d) external pure returns (uint256 reserveId, uint256 amount, address onBehalfOf) {
+    function decodeBorrow(bytes calldata d)
+        external
+        pure
+        returns (uint256 reserveId, uint256 amount, address onBehalfOf)
+    {
         (reserveId, amount, onBehalfOf) = abi.decode(d[4:], (uint256, uint256, address));
     }
 
-    function decodeRepay(bytes calldata d) external pure returns (uint256 reserveId, uint256 amount, address onBehalfOf) {
+    function decodeRepay(bytes calldata d)
+        external
+        pure
+        returns (uint256 reserveId, uint256 amount, address onBehalfOf)
+    {
         (reserveId, amount, onBehalfOf) = abi.decode(d[4:], (uint256, uint256, address));
     }
 

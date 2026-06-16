@@ -80,10 +80,7 @@ contract MockAaveV4Spoke is ISpoke {
     }
 
     /// @inheritdoc ISpoke
-    function supply(uint256 reserveId, uint256 amount, address onBehalfOf)
-        external
-        returns (uint256, uint256)
-    {
+    function supply(uint256 reserveId, uint256 amount, address onBehalfOf) external returns (uint256, uint256) {
         lastSupplyCaller = msg.sender;
         IERC20(_reserves[reserveId].underlying).safeTransferFrom(msg.sender, address(this), amount);
         _supplied[reserveId][onBehalfOf] += amount;
@@ -92,10 +89,7 @@ contract MockAaveV4Spoke is ISpoke {
 
     /// @inheritdoc ISpoke
     /// @dev Delivers the underlying to `msg.sender` and caps an over-amount to the supplied balance.
-    function withdraw(uint256 reserveId, uint256 amount, address onBehalfOf)
-        external
-        returns (uint256, uint256)
-    {
+    function withdraw(uint256 reserveId, uint256 amount, address onBehalfOf) external returns (uint256, uint256) {
         uint256 supplied = _supplied[reserveId][onBehalfOf];
         uint256 withdrawn = amount > supplied ? supplied : amount;
         _supplied[reserveId][onBehalfOf] = supplied - withdrawn;
@@ -105,10 +99,7 @@ contract MockAaveV4Spoke is ISpoke {
 
     /// @inheritdoc ISpoke
     /// @dev Delivers the borrowed underlying to `msg.sender`; the mock must be pre-funded.
-    function borrow(uint256 reserveId, uint256 amount, address onBehalfOf)
-        external
-        returns (uint256, uint256)
-    {
+    function borrow(uint256 reserveId, uint256 amount, address onBehalfOf) external returns (uint256, uint256) {
         _debt[reserveId][onBehalfOf] += amount;
         IERC20(_reserves[reserveId].underlying).safeTransfer(msg.sender, amount);
         return (amount, amount);
@@ -116,10 +107,7 @@ contract MockAaveV4Spoke is ISpoke {
 
     /// @inheritdoc ISpoke
     /// @dev Caps an over-amount to the total debt, so `type(uint256).max` repays in full.
-    function repay(uint256 reserveId, uint256 amount, address onBehalfOf)
-        external
-        returns (uint256, uint256)
-    {
+    function repay(uint256 reserveId, uint256 amount, address onBehalfOf) external returns (uint256, uint256) {
         uint256 owed = _debt[reserveId][onBehalfOf];
         uint256 pay = amount > owed ? owed : amount;
         IERC20(_reserves[reserveId].underlying).safeTransferFrom(msg.sender, address(this), pay);
@@ -205,11 +193,7 @@ contract MockAaveV4Spoke is ISpoke {
 
     /// @inheritdoc ISpoke
     /// @dev The mock keeps a single dynamic config (key 0) per reserve carrying its collateral factor.
-    function getDynamicReserveConfig(uint256 reserveId, uint32)
-        external
-        view
-        returns (DynamicReserveConfig memory)
-    {
+    function getDynamicReserveConfig(uint256 reserveId, uint32) external view returns (DynamicReserveConfig memory) {
         return DynamicReserveConfig({
             collateralFactor: _reserves[reserveId].collateralFactorBps,
             maxLiquidationBonus: 10_500,
