@@ -11,16 +11,18 @@ import {IMorpho, MarketParams} from "morpho-blue/interfaces/IMorpho.sol";
 
 import {IWETH9} from "../src/interfaces/external/IWETH9.sol";
 import {IPoolAddressesProvider} from "../src/interfaces/external/aave/IPoolAddressesProvider.sol";
+import {ISpoke} from "../src/interfaces/external/aave-v4/ISpoke.sol";
 
 import {MarginRouter} from "../src/MarginRouter.sol";
 import {MarginAccount} from "../src/MarginAccount.sol";
 import {MorphoLendingAdapter} from "../src/MorphoLendingAdapter.sol";
 import {AaveLendingAdapter} from "../src/AaveLendingAdapter.sol";
+import {AaveV4LendingAdapter} from "../src/AaveV4LendingAdapter.sol";
 
 /// @title DeployMargin
 /// @notice Deploys the margin-trading suite: the deterministic MarginAccount implementation, the
-///         Morpho and Aave lending adapters, and the MarginRouter at a mined vanity salt. Wires the
-///         adapter allowlist and, on mainnet, registers the canonical markets.
+///         Morpho, Aave v3, and Aave v4 lending adapters, and the MarginRouter at a mined vanity salt.
+///         Wires the adapter allowlist and, on mainnet, registers the canonical markets.
 /// @dev    Deployment notes:
 ///         - The broadcaster MUST equal `governance`. The adapters are constructed with `governance`
 ///           as their owner and the router with `governance` as its governance, and this script then
@@ -39,6 +41,7 @@ contract DeployMargin is Script {
     /// @dev Fixed salts for the adapters. Their addresses need not be vanity, only deterministic.
     bytes32 internal constant MORPHO_ADAPTER_SALT = keccak256("uniswap.margin.MorphoLendingAdapter.v1");
     bytes32 internal constant AAVE_ADAPTER_SALT = keccak256("uniswap.margin.AaveLendingAdapter.v1");
+    bytes32 internal constant AAVE_V4_ADAPTER_SALT = keccak256("uniswap.margin.AaveV4LendingAdapter.v1");
 
     // Verified mainnet token addresses, used only for the chainid == 1 market registration.
     address internal constant MAINNET_WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
@@ -47,6 +50,10 @@ contract DeployMargin is Script {
     address internal constant MAINNET_MORPHO_WETH_USDC_ORACLE = 0xdC6fd5831277c693b1054e19E94047cB37c77615;
     address internal constant MAINNET_MORPHO_WETH_USDC_IRM = 0x870aC11D48B15DB9a138Cf899d20F13F79Ba00BC;
     uint256 internal constant MAINNET_MORPHO_WETH_USDC_LLTV = 0.86e18;
+    // Aave v4 Main Spoke reserve ids (verified on-chain): WETH = 0, USDC = 5 on the Hub but reserveId 7
+    // on the Main Spoke. Both reserves are on the Core Hub.
+    uint256 internal constant MAINNET_AAVE_V4_WETH_RESERVE_ID = 0;
+    uint256 internal constant MAINNET_AAVE_V4_USDC_RESERVE_ID = 7;
 
     function setUp() public {}
 
@@ -57,12 +64,15 @@ contract DeployMargin is Script {
     /// @param governance The initial governance/owner of the router and adapters. MUST equal the
     ///        broadcaster so the inline allowlist and market wiring succeed.
     /// @param morpho The Morpho Blue singleton the Morpho adapter routes through.
-    /// @param aaveProvider The Aave v3 PoolAddressesProvider the Aave adapter resolves its Pool from.
+    /// @param aaveProvider The Aave v3 PoolAddressesProvider the Aave v3 adapter resolves its Pool from.
+    /// @param aaveV4Spoke The Aave v4 Spoke the Aave v4 adapter routes through (the Main Spoke on
+    ///        mainnet).
     /// @param routerSalt The vanity salt from MineMarginRouterSalt, valid only for the exact
     ///        (poolManager, permit2, weth9, accountImpl, governance) tuple it was mined against.
     /// @return impl The deployed MarginAccount implementation.
     /// @return morphoAdapter The deployed Morpho lending adapter.
-    /// @return aaveAdapter The deployed Aave lending adapter.
+    /// @return aaveAdapter The deployed Aave v3 lending adapter.
+    /// @return aaveV4Adapter The deployed Aave v4 lending adapter.
     /// @return router The deployed MarginRouter.
     function run(
         address poolManager,
@@ -71,6 +81,7 @@ contract DeployMargin is Script {
         address governance,
         address morpho,
         address aaveProvider,
+        address aaveV4Spoke,
         bytes32 routerSalt
     )
         public
@@ -78,6 +89,7 @@ contract DeployMargin is Script {
             MarginAccount impl,
             MorphoLendingAdapter morphoAdapter,
             AaveLendingAdapter aaveAdapter,
+            AaveV4LendingAdapter aaveV4Adapter,
             MarginRouter router
         )
     {
@@ -95,6 +107,9 @@ contract DeployMargin is Script {
         aaveAdapter = new AaveLendingAdapter{salt: AAVE_ADAPTER_SALT}(IPoolAddressesProvider(aaveProvider), governance);
         console2.log("AaveLendingAdapter", address(aaveAdapter));
 
+        aaveV4Adapter = new AaveV4LendingAdapter{salt: AAVE_V4_ADAPTER_SALT}(ISpoke(aaveV4Spoke), governance);
+        console2.log("AaveV4LendingAdapter", address(aaveV4Adapter));
+
         // router at the mined vanity salt
         router = new MarginRouter{salt: routerSalt}(
             IPoolManager(poolManager), IAllowanceTransfer(permit2), IWETH9(weth9), address(impl), governance
@@ -104,6 +119,7 @@ contract DeployMargin is Script {
         // wire the allowlist; requires the broadcaster to be governance
         router.setAdapterAllowed(morphoAdapter, true);
         router.setAdapterAllowed(aaveAdapter, true);
+        router.setAdapterAllowed(aaveV4Adapter, true);
 
         if (block.chainid == 1) {
             // long ETH on Morpho: collateral WETH, debt USDC
@@ -116,11 +132,27 @@ contract DeployMargin is Script {
                     lltv: MAINNET_MORPHO_WETH_USDC_LLTV
                 })
             );
-            // short ETH on Aave: collateral USDC, debt WETH
+            // short ETH on Aave v3: collateral USDC, debt WETH
             aaveAdapter.setMarket(Currency.wrap(MAINNET_USDC), Currency.wrap(MAINNET_WETH), true);
-            // long ETH on Aave: collateral WETH, debt USDC
+            // long ETH on Aave v3: collateral WETH, debt USDC
             aaveAdapter.setMarket(Currency.wrap(MAINNET_WETH), Currency.wrap(MAINNET_USDC), true);
-            console2.log("Registered canonical mainnet markets (Morpho long ETH, Aave short/long ETH)");
+            // short ETH on Aave v4 Main Spoke: collateral USDC (reserve 7), debt WETH (reserve 0)
+            aaveV4Adapter.setMarket(
+                Currency.wrap(MAINNET_USDC),
+                Currency.wrap(MAINNET_WETH),
+                MAINNET_AAVE_V4_USDC_RESERVE_ID,
+                MAINNET_AAVE_V4_WETH_RESERVE_ID,
+                true
+            );
+            // long ETH on Aave v4 Main Spoke: collateral WETH (reserve 0), debt USDC (reserve 7)
+            aaveV4Adapter.setMarket(
+                Currency.wrap(MAINNET_WETH),
+                Currency.wrap(MAINNET_USDC),
+                MAINNET_AAVE_V4_WETH_RESERVE_ID,
+                MAINNET_AAVE_V4_USDC_RESERVE_ID,
+                true
+            );
+            console2.log("Registered canonical mainnet markets (Morpho long ETH, Aave v3 + v4 short/long ETH)");
         } else {
             console2.log("Non-mainnet chain: skipped market registration, configure markets in a follow-up");
         }

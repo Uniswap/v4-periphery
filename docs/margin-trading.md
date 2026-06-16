@@ -1,10 +1,10 @@
 # Uniswap v4 Margin Trading — Protocol & Integration Guide
 
 A periphery that lets a user open a leveraged spot position in a single transaction by composing a
-Uniswap v4 swap with a borrow/supply against an external lending protocol. Two venues are integrated
-today (Morpho Blue and Aave v3), both behind the same router; the caller selects the venue per call
-by passing the matching adapter. This document explains how the system works and how to integrate
-with it from both smart contracts and a front end.
+Uniswap v4 swap with a borrow/supply against an external lending protocol. Three venues are integrated
+today (Morpho Blue, Aave v3, and Aave v4), all behind the same router; the caller selects the venue
+per call by passing the matching adapter. This document explains how the system works and how to
+integrate with it from both smart contracts and a front end.
 
 ---
 
@@ -21,9 +21,9 @@ The sequence runs inside one `PoolManager` unlock using v4 flash accounting, whi
 Each user's position lives in their own **`MarginAccount`** — a minimal, soulbound contract that is
 itself the borrower/supplier in the lending protocol. The **`MarginRouter`** orchestrates the flows
 and is the trusted manager of every account it deploys. A **lending adapter** (`MorphoLendingAdapter`
-for Morpho Blue, `AaveLendingAdapter` for Aave v3) translates protocol-agnostic intents into the
-concrete calls the account executes. Both implement the same `ILendingAdapter` surface, so the router
-flows are identical regardless of venue.
+for Morpho Blue, `AaveLendingAdapter` for Aave v3, `AaveV4LendingAdapter` for Aave v4) translates
+protocol-agnostic intents into the concrete calls the account executes. All implement the same
+`ILendingAdapter` surface, so the router flows are identical regardless of venue.
 
 ---
 
@@ -56,7 +56,7 @@ flows are identical regardless of venue.
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MarginRouter`         | The entry point. Builds and runs each flow inside a `PoolManager` unlock. Inherits `V4Router`, `ReentrancyLock`, `Permit2Forwarder`, `Multicall_v4`, `NativeWrapper`, and the account factory. The router is the `manager` of every account. |
 | `MarginAccount`        | A per-user clone (Solady clone-with-immutable-args). It is the lending counterparty (`onBehalf == account`), so it acts as itself and needs no delegated authorization. Owner and manager are baked into bytecode (soulbound).               |
-| lending adapters       | Singleton encoders over a governed `(collateral, debt)` routing table. `MorphoLendingAdapter` targets Morpho Blue; `AaveLendingAdapter` targets the Aave v3 Pool. Each returns the `(target, value, callData)` an account executes and holds no funds. The caller picks a venue by passing the matching adapter. |
+| lending adapters       | Singleton encoders over a governed `(collateral, debt)` routing table. `MorphoLendingAdapter` targets Morpho Blue; `AaveLendingAdapter` targets the Aave v3 Pool; `AaveV4LendingAdapter` targets a single Aave v4 Spoke. Each returns the `(target, value, callData)` an account executes and holds no funds. The caller picks a venue by passing the matching adapter. |
 | `ILendingAdapter`      | The protocol-agnostic surface the router and account depend on. New lending protocols are supported by new adapters.                                                                                                                         |
 | value types            | `Market` (the `(collateral, debt)` pair), `Ltv` (WAD ratio), `LeverageX18` (WAD multiplier), `MarketRegistry`, `Owner`.                                                                                                                      |
 
@@ -94,9 +94,10 @@ ERC-20 only (use WETH).
 Which venue serves a pairing depends on which markets each protocol lists:
 
 - **Long ETH** is `Market(collateral: WETH, debt: USDC)`. It is available on Morpho today and also
-works on Aave.
-- **Short ETH** is `Market(collateral: USDC, debt: WETH)`. It is served by Aave v3 today; no Morpho
-market exists for this pairing on mainnet. See §8 for the venue-selection and short-ETH walkthrough.
+works on Aave v3 and Aave v4.
+- **Short ETH** is `Market(collateral: USDC, debt: WETH)`. It is served by Aave v3 and Aave v4 today;
+no Morpho market exists for this pairing on mainnet. See §8 for the venue-selection and short-ETH
+walkthrough.
 
 ### 3.2 The MarginAccount
 
@@ -622,13 +623,14 @@ message.
 
 ### 8.1 Selecting a venue
 
-The venue is chosen per call: pass the `MorphoLendingAdapter` to route through Morpho Blue, or the
-`AaveLendingAdapter` to route through the Aave v3 Pool. Nothing else in the flow changes: both
-implement the same `ILendingAdapter` surface and the router orchestrates them identically. Each
-adapter must be allowlisted by governance (`router.setAdapterAllowed(adapter, true)`) before it can
-be used to *add* exposure; closing and delevering never require an allowlisted adapter, so a position
-opened on either venue can always be unwound. Whether a given `(collateral, debt)` pair is routable
-on a venue is read with `adapter.isSupportedMarket(market)`.
+The venue is chosen per call: pass the `MorphoLendingAdapter` to route through Morpho Blue, the
+`AaveLendingAdapter` to route through the Aave v3 Pool, or the `AaveV4LendingAdapter` to route through
+an Aave v4 Spoke. Nothing else in the flow changes: all implement the same `ILendingAdapter` surface
+and the router orchestrates them identically. Each adapter must be allowlisted by governance
+(`router.setAdapterAllowed(adapter, true)`) before it can be used to *add* exposure; closing and
+delevering never require an allowlisted adapter, so a position opened on any venue can always be
+unwound. Whether a given `(collateral, debt)` pair is routable on a venue is read with
+`adapter.isSupportedMarket(market)`.
 
 `AaveLendingAdapter` is constructed from an Aave v3 `IPoolAddressesProvider`
 (`constructor(IPoolAddressesProvider provider, address owner_)`); it resolves and stores the Pool and
@@ -639,6 +641,35 @@ reserves), and ownership is the same two-step `transferOwnership` / `acceptOwner
 `positionOf` returns the account's aToken and variableDebtToken balances, `maxLtvWad` returns the
 collateral reserve's liquidation threshold, and `currentLtvWad` is the account-level LTV from Aave's
 `getUserAccountData` (denominated in Aave's USD base currency, so it is decimal-agnostic).
+
+`AaveV4LendingAdapter` targets Aave v4's **hub-and-spoke** architecture and is constructed against a
+single **Spoke** (`constructor(ISpoke spoke, address owner_)`); the Spoke is `lendingProtocol()` and
+the call target for every market it routes. To serve a second Spoke, deploy a second adapter instance
+and allowlist it. A v4 market is keyed by a per-Spoke `reserveId` rather than an asset address, so
+governance enables a pairing with
+`setMarket(Currency collateral, Currency debt, uint256 collateralReserveId, uint256 debtReserveId, bool allowed)`;
+the call validates on-chain that each reserve's `underlying` matches the currency and that both
+reserves are on the same Hub. Four v4 specifics are handled entirely inside the adapter, so the router
+and account flows are unchanged:
+
+- **Supply enables collateral atomically.** v4 `supply` does not auto-enable collateral, so
+`encodeSupplyCollateral` batches `supply` and `setUsingAsCollateral` in a `Spoke.multicall`
+(a delegatecall-to-self that preserves `msg.sender`, so the supply still pulls the underlying against
+the account's allowance).
+- **Premium-inclusive debt.** v4 debt is drawn debt plus accrued premium; `positionOf` and the
+full-repay path read `getUserTotalDebt`, and the router's close swap is sized off that figure.
+- **`maxLtvWad`** reads the collateral reserve's `collateralFactor`. v4's true liquidation point also
+depends on the position's risk premium and dynamic config; integrators wanting a strict
+liquidation-distance check should also consult `healthFactor` from the Spoke's `getUserAccountData`.
+- **`currentLtvWad`** is the account-level LTV derived from the Spoke's `getUserAccountData` (Value
+units are USD scaled by the oracle decimals; the debt total carries an extra RAY factor that the
+adapter normalizes), so it is decimal-agnostic like the v3 adapter.
+
+v4's position-manager / intent apparatus (for third-party relayers) is irrelevant here: the account is
+its own `onBehalfOf` and the direct caller, so it needs no registration, activation, or signatures.
+v4 `withdraw` and `borrow` deliver the underlying to the account (not a receiver argument); the account
+forwards it to the validated recipient, the same measure-and-forward `MarginAccount` already uses for
+`borrow`.
 
 ### 8.2 Open a short ETH position via Aave
 
@@ -682,7 +713,9 @@ function openShortEth(
 
 `OpenParams` carries no direction field: passing `Market(collateral: USDC, debt: WETH)` is what makes
 this a short. Everything else (increase, add collateral, decrease, close, reading state) works exactly
-as in §5 and §6, with the adapter set to the Aave adapter and the decimals swapped.
+as in §5 and §6, with the adapter set to the Aave adapter and the decimals swapped. The example routes
+through Aave v3; to route the identical short through Aave v4, pass an allowlisted `AaveV4LendingAdapter`
+instead. The router, account, params, and decimals are unchanged.
 
 > Front-end caveat: the §7.3 `sizeOpen` helper is hardcoded for an 18-decimal collateral / 6-decimal
 > debt long. For a short the decimals are reversed: size `equity` and `collateralToBuy` in 6-decimal
@@ -756,8 +789,8 @@ router-side configuration.
 the adapter; a position can migrate to a new venue by allowlisting a new adapter, with no router or
 account changes.
 - **Lending and oracle risk is inherited.** Health, liquidation, and pricing are the lending
-protocol's responsibility (Morpho Blue or Aave v3, depending on the adapter); the margin layer adds
-no independent oracle.
+protocol's responsibility (Morpho Blue, Aave v3, or Aave v4, depending on the adapter); the margin
+layer adds no independent oracle.
 - **ERC-20 only.** Markets must use standard ERC-20 tokens (no fee-on-transfer or rebasing).
 
 ---
@@ -765,8 +798,8 @@ no independent oracle.
 ## 10. Deployment addresses
 
 Margin contracts are deployment-specific; fill in the deployed `MarginRouter`, `MorphoLendingAdapter`,
-and `AaveLendingAdapter` for your target network. The following external dependencies are verified on
-Ethereum mainnet:
+`AaveLendingAdapter`, and `AaveV4LendingAdapter` for your target network. The following external
+dependencies are verified on Ethereum mainnet:
 
 
 | Contract                      | Address                                      | Notes                                                                             |
@@ -774,12 +807,16 @@ Ethereum mainnet:
 | MarginRouter                  | `0x<MARGIN_ROUTER>`                          | per deployment                                                                    |
 | MorphoLendingAdapter          | `0x<MORPHO_ADAPTER>`                         | per deployment                                                                    |
 | AaveLendingAdapter            | `0x<AAVE_ADAPTER>`                           | per deployment                                                                    |
+| AaveV4LendingAdapter          | `0x<AAVE_V4_ADAPTER>`                        | per deployment; constructed against the Aave v4 Main Spoke                        |
 | v4 PoolManager                | `0x<V4_POOL_MANAGER>`                        | from the official Uniswap v4 deployments for the network; verify with `cast code` |
 | Permit2                       | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | canonical, same on all chains                                                     |
 | Morpho Blue                   | `0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb` | mainnet                                                                           |
 | Aave v3 PoolAddressesProvider | `0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e` | mainnet; resolves the Pool and protocol data provider for `AaveLendingAdapter`    |
 | Aave v3 Pool                  | `0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2` | mainnet; resolved from the addresses provider                                     |
 | Aave v3 protocol data provider | `0x0a16f2FCC0D44FaE41cc54e079281D84A363bECD` | mainnet; resolved from the addresses provider                                   |
+| Aave v4 Main Spoke            | `0x94e7A5dCbE816e498b89aB752661904E2F56c485` | mainnet; the Spoke `AaveV4LendingAdapter` routes through (verify with `cast code`) |
+| Aave v4 Core Hub              | `0xCca852Bc40e560adC3b1Cc58CA5b55638ce826c9` | mainnet; backs the Main Spoke's WETH and USDC reserves                            |
+| Aave v4 Main Spoke oracle     | `0x99B2B6CEa9C3D2fd8F4d90f86741C44B212a6127` | mainnet; reserveId-keyed (`getReservesPrices`), 8-decimal USD base               |
 | WETH                          | `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2` | mainnet                                                                           |
 | USDC                          | `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` | mainnet                                                                           |
 
@@ -791,6 +828,11 @@ id `0x7dde86a1e94561d9690ec678db673c1a6396365f7d1d65e129c5fff0990ff758`.
 Aave v3 USDC reserve (the collateral for a short ETH market): liquidation threshold `7800` bps
 (`0.78`), which `AaveLendingAdapter.maxLtvWad` returns as `0.78e18`. The addresses and this threshold
 were verified on a mainnet fork at block 25319047.
+
+Aave v4 Main Spoke reserve ids: WETH is reserveId `0` (the debt leg of a short, borrowable) and USDC
+is reserveId `7` (the collateral leg, collateral factor `7800` bps, which
+`AaveV4LendingAdapter.maxLtvWad` returns as `0.78e18`). Both reserves are on the Core Hub. The
+addresses, reserve ids, and collateral factor were verified on a mainnet fork at block 25330047.
 
 > Never hardcode an address without verifying it on-chain (`cast code` / `cast call`) for the target
 > network.
