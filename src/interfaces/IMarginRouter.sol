@@ -43,6 +43,14 @@ interface IMarginRouter {
     ///      leave the account funded in the wrong token.
     error NativeCollateralMismatch();
 
+    /// @dev Thrown when an exact-output swap on `openPosition`/`increasePosition` under-fills: the pool
+    ///      delivered less than the requested `collateralToBuy` (a thin pool can hit the price limit
+    ///      before the full output is bought). The open is all-or-nothing, so it reverts rather than
+    ///      opening a smaller position than requested.
+    /// @param requested The collateral amount the open asked the swap to deliver.
+    /// @param received The collateral amount the swap actually delivered.
+    error IncompleteFill(uint256 requested, uint256 received);
+
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------

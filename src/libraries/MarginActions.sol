@@ -38,4 +38,9 @@ library MarginActions {
     ///         reverting `PositionUnhealthy` if it does. Decoded with
     ///         `MarginCalldataDecoder.decodeHealthCheck`.
     uint256 internal constant ASSERT_HEALTH = 0x35;
+
+    /// @notice Asserts that the router holds at least a minimum credit in a currency, i.e. an
+    ///         exact-output swap delivered the full requested amount, reverting `IncompleteFill` on a
+    ///         partial fill. Decoded with `MarginCalldataDecoder.decodeFillCheck`.
+    uint256 internal constant ASSERT_FILL = 0x36;
 }

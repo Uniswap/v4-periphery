@@ -386,12 +386,13 @@ contract MarginRouter is
 
         bytes memory actions = abi.encodePacked(
             uint8(Actions.SWAP_EXACT_OUT_SINGLE),
+            uint8(MarginActions.ASSERT_FILL),
             uint8(Actions.TAKE),
             uint8(MarginActions.ACCOUNT_SUPPLY_COLLATERAL),
             uint8(MarginActions.ACCOUNT_BORROW),
             uint8(Actions.SETTLE)
         );
-        bytes[] memory actionParams = new bytes[](5);
+        bytes[] memory actionParams = new bytes[](6);
         actionParams[0] = abi.encode(
             IV4Router.ExactOutputSingleParams({
                 poolKey: params.poolKey,
@@ -402,14 +403,19 @@ contract MarginRouter is
                 hookData: ""
             })
         );
-        // take the bought collateral to the account
-        actionParams[1] = abi.encode(params.market.collateral, account, ActionConstants.OPEN_DELTA);
+        // assert the exact-output swap fully filled: a v4 swap can partial-fill on a thin pool (the
+        // price hits the global limit before the full output is bought). Without this the open would
+        // take only the realized amount and silently open a smaller position. Asserting the router
+        // holds the full collateralToBuy credit makes the open all-or-nothing with a clear error.
+        actionParams[1] = abi.encode(params.market.collateral, uint256(params.collateralToBuy));
+        // take the bought collateral to the account (OPEN_DELTA == the full fill the assert just proved)
+        actionParams[2] = abi.encode(params.market.collateral, account, ActionConstants.OPEN_DELTA);
         // supply the account's full collateral balance (equity + bought)
-        actionParams[2] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA));
+        actionParams[3] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA));
         // borrow the debt owed for the swap, sent to the router for settling
-        actionParams[3] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
+        actionParams[4] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
         // settle the swap's debt from the router (payer is this contract)
-        actionParams[4] = abi.encode(params.market.debt, uint256(ActionConstants.OPEN_DELTA), false);
+        actionParams[5] = abi.encode(params.market.debt, uint256(ActionConstants.OPEN_DELTA), false);
 
         poolManager.unlock(abi.encode(actions, actionParams));
         _setActiveAccount(address(0));
@@ -463,6 +469,12 @@ contract MarginRouter is
             if (Ltv.unwrap(maxLtv) != 0 && adapter.currentLtvWad(account, market).gt(maxLtv)) {
                 revert PositionUnhealthy();
             }
+        } else if (action == MarginActions.ASSERT_FILL) {
+            // the router's credit in the swap output currency is the realized exact-output fill;
+            // require it covers the requested amount so a partial fill reverts before the take
+            (Currency currency, uint256 minAmount) = params.decodeFillCheck();
+            uint256 received = _getFullCredit(currency);
+            if (received < minAmount) revert IncompleteFill(minAmount, received);
         } else {
             revert UnsupportedAction(action);
         }

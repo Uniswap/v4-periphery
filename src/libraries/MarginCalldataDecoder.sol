@@ -64,4 +64,13 @@ library MarginCalldataDecoder {
     {
         return abi.decode(params, (ILendingAdapter, Market, address, Ltv));
     }
+
+    /// @notice Decodes `(currency, minAmount)`. Used by the fill-assertion action to require that an
+    ///         exact-output swap delivered at least `minAmount` of `currency`.
+    /// @param params ABI-encoded `(Currency, uint256)`.
+    /// @return currency The currency whose router credit is checked.
+    /// @return minAmount The minimum required credit (the requested exact-output amount).
+    function decodeFillCheck(bytes calldata params) internal pure returns (Currency currency, uint256 minAmount) {
+        return abi.decode(params, (Currency, uint256));
+    }
 }

@@ -165,8 +165,14 @@ Every position swap is a **single-hop exact-output** swap:
 slippage bound: the absolute cap on the swap input. Derive it from a quote, not spot price.
 - `minHopPriceX36` is an **optional** additional per-hop price bound (X36 fixed-point). Zero disables
 only that secondary check; it does not relax the binding absolute cap. It is redundant with the
-absolute cap for a single hop, so it may be left zero.
+absolute cap for a single hop, so it may be left zero. When set, it is enforced against the swap's
+**realized** output, so an under-filled swap that executes below the bound reverts
+(`V4TooMuchRequestedPerHopSingle`).
 - `deadline` is a Unix timestamp; the call reverts (`DeadlinePassed`) if `block.timestamp` exceeds it.
+- **Opens are all-or-nothing on amount.** A v4 exact-output swap can partially fill on a thin pool.
+`openPosition` / `increasePosition` require the swap to deliver the full `collateralToBuy` and revert
+(`IncompleteFill`) otherwise, rather than opening a smaller position than requested. `minHopPriceX36`
+bounds the *price*; the exact-output amount is bounded by this all-or-nothing check.
 
 ---
 
@@ -939,6 +945,8 @@ emitted by all three on `setMarket`, carries the two `reserveId`s for the v4 ada
 | router   | `PositionUnhealthy()`                                            | resulting LTV exceeds the bound                                                                                           |
 | router   | `AdapterNotAllowed(address)`                                     | adapter not on the allowlist (exposure-increasing flows)                                                                  |
 | router   | `NativeCollateralMismatch()`                                     | native ETH sent but collateral is not WETH                                                                                |
+| router   | `IncompleteFill(uint256 requested, uint256 received)`            | the exact-output swap on open/increase under-filled (thin pool); the open is all-or-nothing                               |
+| V4Router | `V4TooMuchRequestedPerHopSingle(uint256 minPrice, uint256 priceX36)` | a swap's realized per-hop price fell below the caller's `minHopPriceX36` bound                                        |
 | account  | `NotAuthorized()`                                                | caller is neither manager nor owner                                                                                       |
 | account  | `ReceiverNotAllowed(address)`                                    | recipient is neither manager nor owner                                                                                    |
 | Market   | `MarketSwapMismatch()`                                           | pool currencies do not match the market pair                                                                              |
