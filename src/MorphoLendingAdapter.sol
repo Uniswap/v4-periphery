@@ -38,16 +38,10 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
     ///         routes. All `encode*` functions return this address as `target`.
     IMorpho public immutable morpho;
 
-    /// @notice Internal storage for the market routing table. The owner guard lives in
-    ///         `OwnableAdapter`.
-    /// @param markets The governed routing table mapping `(collateral, debt)` to Morpho
-    ///        `MarketParams`. Managed via `register`, `resolve`, and `isSupported` free functions
-    ///        from `MarketRegistry`.
-    struct AdapterStore {
-        MarketRegistry markets;
-    }
-
-    AdapterStore internal store;
+    /// @notice The governed routing table mapping `(collateral, debt)` to Morpho `MarketParams`,
+    ///         managed via the `register`, `resolve`, and `isSupported` free functions from
+    ///         `MarketRegistry`. The owner guard lives in `OwnableAdapter`.
+    MarketRegistry internal _markets;
 
     /// @dev Thrown when `setMarket` is called with a `MarketParams` whose `id()` does not exist on
     ///      Morpho Blue. Prevents routing to a market that cannot be interacted with.
@@ -76,7 +70,7 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
 
     /// @inheritdoc ILendingAdapter
     function isSupportedMarket(Market calldata market) external view returns (bool) {
-        return store.markets.isSupported(market);
+        return _markets.isSupported(market);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -88,7 +82,7 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        MarketParams memory marketParams = store.markets.resolve(market);
+        MarketParams memory marketParams = _markets.resolve(market);
         return (address(morpho), 0, abi.encodeCall(IMorphoBase.supplyCollateral, (marketParams, amount, account, "")));
     }
 
@@ -100,7 +94,7 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        MarketParams memory marketParams = store.markets.resolve(market);
+        MarketParams memory marketParams = _markets.resolve(market);
         return
             (
                 address(morpho),
@@ -118,7 +112,7 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        MarketParams memory marketParams = store.markets.resolve(market);
+        MarketParams memory marketParams = _markets.resolve(market);
         return (address(morpho), 0, abi.encodeCall(IMorphoBase.borrow, (marketParams, amount, 0, account, account)));
     }
 
@@ -132,7 +126,7 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        MarketParams memory marketParams = store.markets.resolve(market);
+        MarketParams memory marketParams = _markets.resolve(market);
         if (amount == type(uint256).max) {
             // full repay: burn the account's entire borrow share balance (assets resolved by Morpho)
             uint256 shares = uint256(morpho.position(marketParams.id(), account).borrowShares);
@@ -151,7 +145,7 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (uint256 collateralAmount, uint256 debtAmount)
     {
-        MarketParams memory marketParams = store.markets.resolve(market);
+        MarketParams memory marketParams = _markets.resolve(market);
         collateralAmount = uint256(morpho.position(marketParams.id(), account).collateral);
         debtAmount = morpho.expectedBorrowAssets(marketParams, account);
     }
@@ -160,7 +154,7 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
     /// @dev Reads the market's `lltv` field (already a WAD from Morpho Blue) and wraps it as an
     ///      `Ltv` type.
     function maxLtvWad(Market calldata market) external view returns (Ltv) {
-        return toLtv(store.markets.resolve(market).lltv);
+        return toLtv(_markets.resolve(market).lltv);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -169,7 +163,7 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
     ///      `type(uint256).max` (as an `Ltv`) when there is debt but zero collateral value (fully
     ///      undercollateralized). Returns 0 when there is no debt.
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
-        MarketParams memory marketParams = store.markets.resolve(market);
+        MarketParams memory marketParams = _markets.resolve(market);
         uint256 collateral = uint256(morpho.position(marketParams.id(), account).collateral);
         uint256 debt = morpho.expectedBorrowAssets(marketParams, account);
         // collateral value expressed in loan-token units. price() is 1e36-scaled, so mulDiv keeps the
@@ -188,7 +182,7 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
         _onlyOwner();
         Id id = marketParams.id();
         if (morpho.idToMarketParams(id).loanToken == address(0)) revert MorphoMarketNotCreated();
-        store.markets.register(marketParams);
+        _markets.register(marketParams);
         emit MarketSet(
             id,
             marketParams.collateralToken,

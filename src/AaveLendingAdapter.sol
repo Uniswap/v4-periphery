@@ -62,14 +62,9 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
     ///         construction. Used to read reserve token addresses and reserve configuration.
     IPoolDataProvider public immutable dataProvider;
 
-    /// @notice Internal storage for the market allowlist. The owner guard lives in `OwnableAdapter`.
-    /// @param allowed The governed allowlist mapping `(collateral, debt)` to whether the pair is
-    ///        routable. Managed via `setMarket`.
-    struct AdapterStore {
-        mapping(Currency collateral => mapping(Currency debt => bool)) allowed;
-    }
-
-    AdapterStore internal store;
+    /// @notice The governed allowlist mapping `(collateral, debt)` to whether the pair is routable.
+    ///         Managed via `setMarket`. The owner guard lives in `OwnableAdapter`.
+    mapping(Currency collateral => mapping(Currency debt => bool)) internal _allowed;
 
     /// @dev Thrown when the addresses provider resolves the Pool or the data provider to the zero
     ///      address at construction.
@@ -112,7 +107,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
 
     /// @inheritdoc ILendingAdapter
     function isSupportedMarket(Market calldata market) external view returns (bool) {
-        return store.allowed[market.collateral][market.debt];
+        return _allowed[market.collateral][market.debt];
     }
 
     /// @inheritdoc ILendingAdapter
@@ -240,14 +235,14 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
             (address aDebt,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(debt));
             if (aCollateral == address(0) || aDebt == address(0)) revert MarketNotSupported(collateral, debt);
         }
-        store.allowed[collateral][debt] = allowed;
+        _allowed[collateral][debt] = allowed;
         emit MarketSet(Currency.unwrap(collateral), Currency.unwrap(debt), allowed);
     }
 
     /// @notice Reverts `MarketNotSupported` unless the `(collateral, debt)` pair is allowlisted.
     /// @param market The market pair to check.
     function _requireSupportedMarket(Market calldata market) internal view {
-        if (!store.allowed[market.collateral][market.debt]) {
+        if (!_allowed[market.collateral][market.debt]) {
             revert MarketNotSupported(market.collateral, market.debt);
         }
     }

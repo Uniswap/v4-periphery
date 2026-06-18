@@ -75,15 +75,9 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
         bool registered;
     }
 
-    /// @notice Internal storage for the market route registry. The owner guard lives in
-    ///         `OwnableAdapter`.
-    /// @param routes The governed mapping from `(collateral, debt)` to its reserve-id route. Managed
-    ///        via `setMarket`.
-    struct AdapterStore {
-        mapping(Currency collateral => mapping(Currency debt => V4MarketRoute)) routes;
-    }
-
-    AdapterStore internal store;
+    /// @notice The governed registry mapping `(collateral, debt)` to its reserve-id route on the bound
+    ///         Spoke. Managed via `setMarket`. The owner guard lives in `OwnableAdapter`.
+    mapping(Currency collateral => mapping(Currency debt => V4MarketRoute)) internal _routes;
 
     /// @dev Thrown when the Spoke is the zero address at construction.
     error ZeroAddress();
@@ -141,7 +135,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
 
     /// @inheritdoc ILendingAdapter
     function isSupportedMarket(Market calldata market) external view returns (bool) {
-        return store.routes[market.collateral][market.debt].registered;
+        return _routes[market.collateral][market.debt].registered;
     }
 
     /// @inheritdoc ILendingAdapter
@@ -280,11 +274,11 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
             if (collateralReserve.hub != debtReserve.hub) {
                 revert HubMismatch(collateralReserve.hub, debtReserve.hub);
             }
-            store.routes[collateral][debt] = V4MarketRoute({
+            _routes[collateral][debt] = V4MarketRoute({
                 collateralReserveId: collateralReserveId, debtReserveId: debtReserveId, registered: true
             });
         } else {
-            delete store.routes[collateral][debt];
+            delete _routes[collateral][debt];
         }
         emit MarketSet(Currency.unwrap(collateral), Currency.unwrap(debt), collateralReserveId, debtReserveId, allowed);
     }
@@ -294,7 +288,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
     /// @param market The market pair to resolve.
     /// @return route The resolved route for the pair.
     function _resolveRoute(Market calldata market) internal view returns (V4MarketRoute storage route) {
-        route = store.routes[market.collateral][market.debt];
+        route = _routes[market.collateral][market.debt];
         if (!route.registered) revert MarketNotSupported(market.collateral, market.debt);
     }
 }
