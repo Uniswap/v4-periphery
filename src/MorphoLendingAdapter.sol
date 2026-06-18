@@ -22,6 +22,8 @@ import {Ltv, toLtv} from "./types/Ltv.sol";
 ///         all encode and read logic reuses Morpho Blue's own libraries, so no Morpho math is
 ///         reimplemented. Each encoded call is executed by a `MarginAccount` as itself, so
 ///         `onBehalf` is always the account and no delegated authorization is needed.
+/// @dev    Morpho Blue does not support fee-on-transfer or rebasing tokens, so curated markets are
+///         standard ERC-20 only; this is what lets the router's flows net to zero with no residual.
 /// @custom:security-contact security@uniswap.org
 contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
     using MarketParamsLib for MarketParams;
@@ -53,13 +55,15 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
 
     /// @notice Emitted when a market is registered or replaced in the routing table. Includes
     ///         oracle, IRM, and LLTV so offchain monitoring can vet the routed market configuration.
+    /// @param id The Morpho Blue market id derived from the `MarketParams`.
     /// @param collateral The collateral token address of the registered market.
     /// @param debt The debt (loan) token address of the registered market.
-    /// @param id The Morpho Blue market id derived from the `MarketParams`.
     /// @param oracle The price oracle address for this Morpho market.
     /// @param irm The interest rate model address for this Morpho market.
     /// @param lltv The liquidation LTV for this Morpho market (WAD, 1e18 == 100%).
-    event MarketSet(address indexed collateral, address indexed debt, Id id, address oracle, address irm, uint256 lltv);
+    event MarketSet(
+        Id indexed id, address indexed collateral, address indexed debt, address oracle, address irm, uint256 lltv
+    );
 
     constructor(IMorpho morpho_, address owner_) OwnableAdapter(owner_) {
         morpho = morpho_;
@@ -85,8 +89,7 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
         returns (address, uint256, bytes memory)
     {
         MarketParams memory marketParams = store.markets.resolve(market);
-        bytes memory data;
-        return (address(morpho), 0, abi.encodeCall(IMorphoBase.supplyCollateral, (marketParams, amount, account, data)));
+        return (address(morpho), 0, abi.encodeCall(IMorphoBase.supplyCollateral, (marketParams, amount, account, "")));
     }
 
     /// @inheritdoc ILendingAdapter
@@ -130,13 +133,12 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
         returns (address, uint256, bytes memory)
     {
         MarketParams memory marketParams = store.markets.resolve(market);
-        bytes memory data;
         if (amount == type(uint256).max) {
             // full repay: burn the account's entire borrow share balance (assets resolved by Morpho)
             uint256 shares = uint256(morpho.position(marketParams.id(), account).borrowShares);
-            return (address(morpho), 0, abi.encodeCall(IMorphoBase.repay, (marketParams, 0, shares, account, data)));
+            return (address(morpho), 0, abi.encodeCall(IMorphoBase.repay, (marketParams, 0, shares, account, "")));
         }
-        return (address(morpho), 0, abi.encodeCall(IMorphoBase.repay, (marketParams, amount, 0, account, data)));
+        return (address(morpho), 0, abi.encodeCall(IMorphoBase.repay, (marketParams, amount, 0, account, "")));
     }
 
     /// @inheritdoc ILendingAdapter
@@ -188,9 +190,9 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
         if (morpho.idToMarketParams(id).loanToken == address(0)) revert MorphoMarketNotCreated();
         store.markets.register(marketParams);
         emit MarketSet(
+            id,
             marketParams.collateralToken,
             marketParams.loanToken,
-            id,
             marketParams.oracle,
             marketParams.irm,
             marketParams.lltv

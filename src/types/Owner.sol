@@ -9,12 +9,12 @@ pragma solidity 0.8.26;
 ///         and the lending adapters gate `setMarket` through its `_onlyOwner`. Handoffs are two-step: the current
 ///         owner `propose`s a successor, who must then `acceptOwnership`. A zero-address successor is
 ///         rejected, so the role can never be transferred to an unrecoverable address.
-/// @param _inner The current owner address. Read via `read()`; mutated via `write()` and
+/// @param _current The current owner address. Read via `read()`; mutated via `write()` and
 ///        `acceptOwnership()`.
 /// @param _pending The address proposed as the next owner, or `address(0)` when none is pending.
 ///        Read via `pendingOwner()`; set via `propose()`; cleared on `acceptOwnership()`.
 struct Owner {
-    address _inner;
+    address _current;
     address _pending;
 }
 
@@ -37,7 +37,7 @@ error NotPendingOwner(address caller);
 /// @param self The `Owner` storage to read.
 /// @return The current owner address.
 function read(Owner storage self) view returns (address) {
-    return self._inner;
+    return self._current;
 }
 
 /// @notice Sets the owner directly, without the two-step handoff. Used to seed the initial owner at
@@ -47,7 +47,7 @@ function read(Owner storage self) view returns (address) {
 /// @param newOwner The new owner address.
 /// @return The same storage reference, for chaining.
 function write(Owner storage self, address newOwner) returns (Owner storage) {
-    self._inner = newOwner;
+    self._current = newOwner;
     return self;
 }
 
@@ -55,7 +55,7 @@ function write(Owner storage self, address newOwner) returns (Owner storage) {
 /// @param self The `Owner` storage to check against.
 /// @param caller The address to authorize; typically `msg.sender`.
 function onlyOwner(Owner storage self, address caller) view {
-    if (caller != self._inner) revert NotOwner(caller);
+    if (caller != self._current) revert NotOwner(caller);
 }
 
 /// @notice Proposes a successor for the two-step handoff. The successor takes effect only once it
@@ -77,8 +77,10 @@ function propose(Owner storage self, address newOwner) returns (Owner storage) {
 /// @param self The `Owner` storage to update.
 /// @param caller The address accepting ownership; typically `msg.sender`.
 function acceptOwnership(Owner storage self, address caller) {
-    if (self._pending == address(0) || caller != self._pending) revert NotPendingOwner(caller);
-    self._inner = self._pending;
+    // _pending is zero when no handoff is in progress; a real caller is never zero, so this single
+    // check also rejects an accept with nothing pending
+    if (caller != self._pending) revert NotPendingOwner(caller);
+    self._current = self._pending;
     self._pending = address(0);
 }
 

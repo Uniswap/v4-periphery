@@ -2,10 +2,9 @@
 pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
-import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {V4Router} from "./V4Router.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
@@ -37,8 +36,8 @@ import {Owner} from "./types/Owner.sol";
 ///         manager of every account it deploys, so it can drive their lending primitives.
 ///
 ///         Supported markets are restricted to the governance allowlist of lending adapters, which
-///         curate standard ERC-20 markets only (Morpho Blue does not support fee-on-transfer or
-///         rebasing tokens). Under that constraint every flow nets to zero with no router residual.
+///         curate standard ERC-20 markets only (no fee-on-transfer or rebasing tokens). Under that
+///         constraint every flow nets to zero with no router residual.
 /// @custom:security-contact security@uniswap.org
 contract MarginRouter is
     IMarginRouter,
@@ -51,6 +50,7 @@ contract MarginRouter is
 {
     using MarginCalldataDecoder for bytes;
     using SafeCast for uint256;
+    using CurrencyLibrary for Currency;
 
     // transient slot holding the account for the current unlock, set from the authenticated caller
     bytes32 private constant ACTIVE_ACCOUNT_SLOT = keccak256("uniswap.marginRouter.activeAccount");
@@ -82,7 +82,7 @@ contract MarginRouter is
     /// @notice Deploys the margin router.
     /// @param poolManager_ The v4 PoolManager singleton the router unlocks for every position flow.
     /// @param permit2_ The Permit2 contract used to pull caller equity and settle swaps.
-    /// @param weth9_ The canonical WETH9 contract used to wrap native ETH equity.
+    /// @param weth9_ The canonical WETH9 contract used to wrap native token equity.
     /// @param accountImplementation The MarginAccount implementation cloned for each account.
     /// @param governance_ The initial governance address (e.g. the deployer, a multisig, or a
     ///        timelock) that curates the adapter allowlist. Passed explicitly rather than read from
@@ -429,19 +429,19 @@ contract MarginRouter is
         address account = _activeAccount();
         if (action == MarginActions.ACCOUNT_SUPPLY_COLLATERAL) {
             (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
-            if (amount == 0) amount = IERC20(Currency.unwrap(market.collateral)).balanceOf(account);
+            if (amount == ActionConstants.OPEN_DELTA) amount = market.collateral.balanceOf(account);
             IMarginAccount(account).supplyCollateral(adapter, market, amount);
         } else if (action == MarginActions.ACCOUNT_WITHDRAW_COLLATERAL) {
             (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
                 params.decodeAdapterMarketAmountReceiver();
             // OPEN_DELTA withdraws exactly the collateral owed to the pool for the swap (partial
             // delever); a full close passes the explicit full collateral amount instead
-            if (amount == 0) amount = _getFullDebt(market.collateral);
+            if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.collateral);
             IMarginAccount(account).withdrawCollateral(adapter, market, amount, to);
         } else if (action == MarginActions.ACCOUNT_BORROW) {
             (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
                 params.decodeAdapterMarketAmountReceiver();
-            if (amount == 0) amount = _getFullDebt(market.debt);
+            if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.debt);
             IMarginAccount(account).borrow(adapter, market, amount, to);
         } else if (action == MarginActions.ACCOUNT_REPAY) {
             (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();

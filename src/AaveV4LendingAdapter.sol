@@ -155,7 +155,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        V4MarketRoute storage route = _require(market);
+        V4MarketRoute storage route = _resolveRoute(market);
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeCall(ISpoke.supply, (route.collateralReserveId, amount, account));
         calls[1] = abi.encodeCall(ISpoke.setUsingAsCollateral, (route.collateralReserveId, true, account));
@@ -173,7 +173,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        V4MarketRoute storage route = _require(market);
+        V4MarketRoute storage route = _resolveRoute(market);
         if (account != msg.sender) revert AccountMismatch(account, msg.sender);
         return (address(spoke), 0, abi.encodeCall(ISpoke.withdraw, (route.collateralReserveId, amount, account)));
     }
@@ -187,7 +187,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        V4MarketRoute storage route = _require(market);
+        V4MarketRoute storage route = _resolveRoute(market);
         return (address(spoke), 0, abi.encodeCall(ISpoke.borrow, (route.debtReserveId, amount, account)));
     }
 
@@ -201,7 +201,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        V4MarketRoute storage route = _require(market);
+        V4MarketRoute storage route = _resolveRoute(market);
         return (address(spoke), 0, abi.encodeCall(ISpoke.repay, (route.debtReserveId, amount, account)));
     }
 
@@ -214,7 +214,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (uint256 collateralAmount, uint256 debtAmount)
     {
-        V4MarketRoute storage route = _require(market);
+        V4MarketRoute storage route = _resolveRoute(market);
         collateralAmount = spoke.getUserSuppliedAssets(route.collateralReserveId, account);
         debtAmount = spoke.getUserTotalDebt(route.debtReserveId, account);
     }
@@ -225,7 +225,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
     ///      liquidation threshold; v4's true liquidation point also depends on the position's risk
     ///      premium and dynamic config, and `healthFactor < 1e18` is the authoritative signal.
     function maxLtvWad(Market calldata market) external view returns (Ltv) {
-        V4MarketRoute storage route = _require(market);
+        V4MarketRoute storage route = _resolveRoute(market);
         ISpoke.Reserve memory reserve = spoke.getReserve(route.collateralReserveId);
         ISpoke.DynamicReserveConfig memory dynamicConfig =
             spoke.getDynamicReserveConfig(route.collateralReserveId, reserve.dynamicConfigKey);
@@ -245,7 +245,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
     /// @param market Must be a registered pair (only the route gates the call; the account's full
     ///        Spoke position determines the totals).
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
-        _require(market);
+        _resolveRoute(market);
         ISpoke.UserAccountData memory data = spoke.getUserAccountData(account);
         if (data.totalDebtValueRay == 0) return toLtv(0);
         if (data.totalCollateralValue == 0) return toLtv(type(uint256).max);
@@ -293,7 +293,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
     ///         returns its route for reuse by the caller.
     /// @param market The market pair to resolve.
     /// @return route The resolved route for the pair.
-    function _require(Market calldata market) internal view returns (V4MarketRoute storage route) {
+    function _resolveRoute(Market calldata market) internal view returns (V4MarketRoute storage route) {
         route = store.routes[market.collateral][market.debt];
         if (!route.registered) revert MarketNotSupported(market.collateral, market.debt);
     }

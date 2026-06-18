@@ -123,7 +123,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        _require(market);
+        _requireSupportedMarket(market);
         return
             (address(pool), 0, abi.encodeCall(IPool.supply, (Currency.unwrap(market.collateral), amount, account, 0)));
     }
@@ -140,7 +140,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        _require(market);
+        _requireSupportedMarket(market);
         if (account != msg.sender) revert AccountMismatch(account, msg.sender);
         return
             (address(pool), 0, abi.encodeCall(IPool.withdraw, (Currency.unwrap(market.collateral), amount, receiver)));
@@ -155,7 +155,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        _require(market);
+        _requireSupportedMarket(market);
         return (
             address(pool),
             0,
@@ -172,7 +172,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (address, uint256, bytes memory)
     {
-        _require(market);
+        _requireSupportedMarket(market);
         return
             (
                 address(pool),
@@ -191,7 +191,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
         view
         returns (uint256 collateralAmount, uint256 debtAmount)
     {
-        _require(market);
+        _requireSupportedMarket(market);
         (address aCollateral,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.collateral));
         (,, address vDebt) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.debt));
         collateralAmount = IERC20(aCollateral).balanceOf(account);
@@ -203,7 +203,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
     ///      `lltv`), in basis points, and converts it to a WAD-scaled `Ltv`. Uses the liquidation
     ///      threshold, not the `ltv` (max-borrow) field.
     function maxLtvWad(Market calldata market) external view returns (Ltv) {
-        _require(market);
+        _requireSupportedMarket(market);
         (,, uint256 liquidationThreshold,,,,,,,) =
             dataProvider.getReserveConfigurationData(Currency.unwrap(market.collateral));
         return toLtv(liquidationThreshold * WAD / BPS);
@@ -222,7 +222,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
     /// @param market Must be an allowlisted pair (only its currencies are read; the account's full
     ///        Aave position determines the totals).
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
-        _require(market);
+        _requireSupportedMarket(market);
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = pool.getUserAccountData(account);
         if (totalCollateralBase == 0) return toLtv(totalDebtBase == 0 ? 0 : type(uint256).max);
         return toLtv(totalDebtBase * WAD / totalCollateralBase);
@@ -246,7 +246,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
 
     /// @notice Reverts `MarketNotSupported` unless the `(collateral, debt)` pair is allowlisted.
     /// @param market The market pair to check.
-    function _require(Market calldata market) internal view {
+    function _requireSupportedMarket(Market calldata market) internal view {
         if (!store.allowed[market.collateral][market.debt]) {
             revert MarketNotSupported(market.collateral, market.debt);
         }
