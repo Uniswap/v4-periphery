@@ -5,8 +5,8 @@ pragma solidity 0.8.26;
 /// @author Uniswap Labs
 /// @notice Minimal ownership concern: a single owner address with an access guard and a two-step
 ///         handoff. Type-driven: a struct plus free functions bound `using ... for ... global`.
-///         Composed by contracts that need governance gating; for example, the lending adapter gates
-///         `setMarket` with `store.owner.onlyOwner(msg.sender)`. Handoffs are two-step: the current
+///         Composed by contracts that need governance gating; for example, `OwnableAdapter` holds one
+///         and the lending adapters gate `setMarket` through its `_onlyOwner`. Handoffs are two-step: the current
 ///         owner `propose`s a successor, who must then `acceptOwnership`. A zero-address successor is
 ///         rejected, so the role can never be transferred to an unrecoverable address.
 /// @param _inner The current owner address. Read via `read()`; mutated via `write()` and

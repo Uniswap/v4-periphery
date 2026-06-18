@@ -10,9 +10,9 @@ import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
+import {OwnableAdapter} from "./base/OwnableAdapter.sol";
 import {Market} from "./types/Market.sol";
 import {MarketRegistry} from "./types/MarketRegistry.sol";
-import {Owner} from "./types/Owner.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 
 /// @title MorphoLendingAdapter
@@ -23,7 +23,7 @@ import {Ltv, toLtv} from "./types/Ltv.sol";
 ///         reimplemented. Each encoded call is executed by a `MarginAccount` as itself, so
 ///         `onBehalf` is always the account and no delegated authorization is needed.
 /// @custom:security-contact security@uniswap.org
-contract MorphoLendingAdapter is ILendingAdapter {
+contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
 
@@ -36,14 +36,13 @@ contract MorphoLendingAdapter is ILendingAdapter {
     ///         routes. All `encode*` functions return this address as `target`.
     IMorpho public immutable morpho;
 
-    /// @notice Internal storage for the market routing table and the owner guard.
+    /// @notice Internal storage for the market routing table. The owner guard lives in
+    ///         `OwnableAdapter`.
     /// @param markets The governed routing table mapping `(collateral, debt)` to Morpho
     ///        `MarketParams`. Managed via `register`, `resolve`, and `isSupported` free functions
     ///        from `MarketRegistry`.
-    /// @param owner The current adapter owner, gating `setMarket` and `transferOwnership`.
     struct AdapterStore {
         MarketRegistry markets;
-        Owner owner;
     }
 
     AdapterStore internal store;
@@ -62,9 +61,8 @@ contract MorphoLendingAdapter is ILendingAdapter {
     /// @param lltv The liquidation LTV for this Morpho market (WAD, 1e18 == 100%).
     event MarketSet(address indexed collateral, address indexed debt, Id id, address oracle, address irm, uint256 lltv);
 
-    constructor(IMorpho morpho_, address owner_) {
+    constructor(IMorpho morpho_, address owner_) OwnableAdapter(owner_) {
         morpho = morpho_;
-        store.owner.write(owner_);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -179,34 +177,13 @@ contract MorphoLendingAdapter is ILendingAdapter {
         return toLtv(debt * WAD / collateralValue);
     }
 
-    /// @notice The current adapter owner (governance). Only the owner may call `setMarket` and
-    ///         `transferOwnership`.
-    /// @return The current owner address.
-    function owner() external view returns (address) {
-        return store.owner.read();
-    }
-
-    /// @notice The address proposed to become owner, pending its acceptance. Zero when no handoff is
-    ///         in progress.
-    /// @return The pending owner address.
-    function pendingOwner() external view returns (address) {
-        return store.owner.pendingOwner();
-    }
-
-    /// @notice Completes an ownership handoff. Callable by anyone, but only the address previously
-    ///         named by `transferOwnership` succeeds; all others revert. On success the caller
-    ///         becomes the owner.
-    function acceptOwnership() external {
-        store.owner.acceptOwnership(msg.sender);
-    }
-
     /// @notice Registers or replaces the canonical Morpho Blue market for its `(collateral, debt)`
     ///         pair. The market must already exist on Morpho Blue (verified by checking that
     ///         `idToMarketParams(id).loanToken` is non-zero). Owner-gated.
     /// @param marketParams The Morpho Blue `MarketParams` to register. Its `collateralToken` and
     ///        `loanToken` fields determine the routing key.
     function setMarket(MarketParams calldata marketParams) external {
-        store.owner.onlyOwner(msg.sender);
+        _onlyOwner();
         Id id = marketParams.id();
         if (morpho.idToMarketParams(id).loanToken == address(0)) revert MorphoMarketNotCreated();
         store.markets.register(marketParams);
@@ -218,14 +195,5 @@ contract MorphoLendingAdapter is ILendingAdapter {
             marketParams.irm,
             marketParams.lltv
         );
-    }
-
-    /// @notice Begins a two-step ownership handoff by proposing a successor. The successor takes
-    ///         effect only once it calls `acceptOwnership`; the current owner retains its powers
-    ///         until then, and the zero address is rejected so the role cannot be bricked. Owner-gated.
-    /// @param newOwner The address proposed to become the new owner.
-    function transferOwnership(address newOwner) external {
-        store.owner.onlyOwner(msg.sender);
-        store.owner.propose(newOwner);
     }
 }

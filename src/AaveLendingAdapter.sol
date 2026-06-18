@@ -9,8 +9,8 @@ import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {IPool} from "./interfaces/external/aave/IPool.sol";
 import {IPoolAddressesProvider} from "./interfaces/external/aave/IPoolAddressesProvider.sol";
 import {IPoolDataProvider} from "./interfaces/external/aave/IPoolDataProvider.sol";
+import {OwnableAdapter} from "./base/OwnableAdapter.sol";
 import {Market} from "./types/Market.sol";
-import {Owner} from "./types/Owner.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 
 /// @title AaveLendingAdapter
@@ -45,7 +45,7 @@ import {Ltv, toLtv} from "./types/Ltv.sol";
 ///         - Routing is curated: every `encode*` and read reverts `MarketNotSupported` for a pair the
 ///           owner has not allowlisted, never returning a silent default market.
 /// @custom:security-contact security@uniswap.org
-contract AaveLendingAdapter is ILendingAdapter {
+contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
     // WAD scale for loan-to-value ratios.
     uint256 private constant WAD = 1e18;
     // Aave expresses LTV and liquidation thresholds in basis points (1e4 == 100%).
@@ -62,13 +62,11 @@ contract AaveLendingAdapter is ILendingAdapter {
     ///         construction. Used to read reserve token addresses and reserve configuration.
     IPoolDataProvider public immutable dataProvider;
 
-    /// @notice Internal storage for the market allowlist and the owner guard.
+    /// @notice Internal storage for the market allowlist. The owner guard lives in `OwnableAdapter`.
     /// @param allowed The governed allowlist mapping `(collateral, debt)` to whether the pair is
     ///        routable. Managed via `setMarket`.
-    /// @param owner The current adapter owner, gating `setMarket` and `transferOwnership`.
     struct AdapterStore {
         mapping(Currency collateral => mapping(Currency debt => bool)) allowed;
-        Owner owner;
     }
 
     AdapterStore internal store;
@@ -99,13 +97,12 @@ contract AaveLendingAdapter is ILendingAdapter {
     /// @param provider The Aave v3 PoolAddressesProvider for the target market. The Pool and data
     ///        provider proxy addresses are resolved from it and stored immutably.
     /// @param owner_ The initial adapter owner (governance).
-    constructor(IPoolAddressesProvider provider, address owner_) {
+    constructor(IPoolAddressesProvider provider, address owner_) OwnableAdapter(owner_) {
         address pool_ = provider.getPool();
         address dataProvider_ = provider.getPoolDataProvider();
         if (pool_ == address(0) || dataProvider_ == address(0)) revert ZeroAddress();
         pool = IPool(pool_);
         dataProvider = IPoolDataProvider(dataProvider_);
-        store.owner.write(owner_);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -231,34 +228,13 @@ contract AaveLendingAdapter is ILendingAdapter {
         return toLtv(totalDebtBase * WAD / totalCollateralBase);
     }
 
-    /// @notice The current adapter owner (governance). Only the owner may call `setMarket` and
-    ///         `transferOwnership`.
-    /// @return The current owner address.
-    function owner() external view returns (address) {
-        return store.owner.read();
-    }
-
-    /// @notice The address proposed to become owner, pending its acceptance. Zero when no handoff is
-    ///         in progress.
-    /// @return The pending owner address.
-    function pendingOwner() external view returns (address) {
-        return store.owner.pendingOwner();
-    }
-
-    /// @notice Completes an ownership handoff. Callable by anyone, but only the address previously
-    ///         named by `transferOwnership` succeeds; all others revert. On success the caller
-    ///         becomes the owner.
-    function acceptOwnership() external {
-        store.owner.acceptOwnership(msg.sender);
-    }
-
     /// @notice Enables or disables routing for a `(collateral, debt)` pair. When enabling, both
     ///         assets must be live Aave reserves (their aToken addresses are non-zero). Owner-gated.
     /// @param collateral The collateral token of the pair.
     /// @param debt The debt token of the pair.
     /// @param allowed Whether the pair should be routable.
     function setMarket(Currency collateral, Currency debt, bool allowed) external {
-        store.owner.onlyOwner(msg.sender);
+        _onlyOwner();
         if (allowed) {
             (address aCollateral,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(collateral));
             (address aDebt,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(debt));
@@ -266,15 +242,6 @@ contract AaveLendingAdapter is ILendingAdapter {
         }
         store.allowed[collateral][debt] = allowed;
         emit MarketSet(Currency.unwrap(collateral), Currency.unwrap(debt), allowed);
-    }
-
-    /// @notice Begins a two-step ownership handoff by proposing a successor. The successor takes
-    ///         effect only once it calls `acceptOwnership`; the current owner retains its powers
-    ///         until then, and the zero address is rejected so the role cannot be bricked. Owner-gated.
-    /// @param newOwner The address proposed to become the new owner.
-    function transferOwnership(address newOwner) external {
-        store.owner.onlyOwner(msg.sender);
-        store.owner.propose(newOwner);
     }
 
     /// @notice Reverts `MarketNotSupported` unless the `(collateral, debt)` pair is allowlisted.

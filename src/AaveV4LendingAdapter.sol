@@ -7,8 +7,8 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {ISpoke} from "./interfaces/external/aave-v4/ISpoke.sol";
+import {OwnableAdapter} from "./base/OwnableAdapter.sol";
 import {Market} from "./types/Market.sol";
-import {Owner} from "./types/Owner.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 
 /// @title AaveV4LendingAdapter
@@ -52,7 +52,7 @@ import {Ltv, toLtv} from "./types/Ltv.sol";
 ///         - Routing is curated: every `encode*` and read reverts `MarketNotSupported` for a pair the
 ///           owner has not registered, never returning a silent default market.
 /// @custom:security-contact security@uniswap.org
-contract AaveV4LendingAdapter is ILendingAdapter {
+contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
     // WAD scale for loan-to-value ratios (1e18 == 100%).
     uint256 private constant WAD = 1e18;
     // Aave expresses collateral factors in basis points (1e4 == 100%).
@@ -75,13 +75,12 @@ contract AaveV4LendingAdapter is ILendingAdapter {
         bool registered;
     }
 
-    /// @notice Internal storage for the market route registry and the owner guard.
+    /// @notice Internal storage for the market route registry. The owner guard lives in
+    ///         `OwnableAdapter`.
     /// @param routes The governed mapping from `(collateral, debt)` to its reserve-id route. Managed
     ///        via `setMarket`.
-    /// @param owner The current adapter owner, gating `setMarket` and `transferOwnership`.
     struct AdapterStore {
         mapping(Currency collateral => mapping(Currency debt => V4MarketRoute)) routes;
-        Owner owner;
     }
 
     AdapterStore internal store;
@@ -130,10 +129,9 @@ contract AaveV4LendingAdapter is ILendingAdapter {
 
     /// @param spoke_ The Aave v4 Spoke this adapter routes to.
     /// @param owner_ The initial adapter owner (governance).
-    constructor(ISpoke spoke_, address owner_) {
+    constructor(ISpoke spoke_, address owner_) OwnableAdapter(owner_) {
         if (address(spoke_) == address(0)) revert ZeroAddress();
         spoke = spoke_;
-        store.owner.write(owner_);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -254,27 +252,6 @@ contract AaveV4LendingAdapter is ILendingAdapter {
         return toLtv(Math.mulDiv(data.totalDebtValueRay, WAD, data.totalCollateralValue * RAY));
     }
 
-    /// @notice The current adapter owner (governance). Only the owner may call `setMarket` and
-    ///         `transferOwnership`.
-    /// @return The current owner address.
-    function owner() external view returns (address) {
-        return store.owner.read();
-    }
-
-    /// @notice The address proposed to become owner, pending its acceptance. Zero when no handoff is
-    ///         in progress.
-    /// @return The pending owner address.
-    function pendingOwner() external view returns (address) {
-        return store.owner.pendingOwner();
-    }
-
-    /// @notice Completes an ownership handoff. Callable by anyone, but only the address previously
-    ///         named by `transferOwnership` succeeds; all others revert. On success the caller becomes
-    ///         the owner.
-    function acceptOwnership() external {
-        store.owner.acceptOwnership(msg.sender);
-    }
-
     /// @notice Enables or disables routing for a `(collateral, debt)` pair on the bound Spoke. When
     ///         enabling, both reserves are validated on-chain: each reserve's `underlying` must match
     ///         the currency it is registered for, and both reserves must be on the same Hub. Owner-gated.
@@ -290,7 +267,7 @@ contract AaveV4LendingAdapter is ILendingAdapter {
         uint256 debtReserveId,
         bool allowed
     ) external {
-        store.owner.onlyOwner(msg.sender);
+        _onlyOwner();
         if (allowed) {
             ISpoke.Reserve memory collateralReserve = spoke.getReserve(collateralReserveId);
             ISpoke.Reserve memory debtReserve = spoke.getReserve(debtReserveId);
@@ -310,15 +287,6 @@ contract AaveV4LendingAdapter is ILendingAdapter {
             delete store.routes[collateral][debt];
         }
         emit MarketSet(Currency.unwrap(collateral), Currency.unwrap(debt), collateralReserveId, debtReserveId, allowed);
-    }
-
-    /// @notice Begins a two-step ownership handoff by proposing a successor. The successor takes effect
-    ///         only once it calls `acceptOwnership`; the current owner retains its powers until then,
-    ///         and the zero address is rejected so the role cannot be bricked. Owner-gated.
-    /// @param newOwner The address proposed to become the new owner.
-    function transferOwnership(address newOwner) external {
-        store.owner.onlyOwner(msg.sender);
-        store.owner.propose(newOwner);
     }
 
     /// @notice Reverts `MarketNotSupported` unless the `(collateral, debt)` pair is registered, and
