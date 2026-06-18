@@ -172,7 +172,7 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
         } catch {}
     }
 
-    /// @notice Increase an existing long position (mechanically identical to open).
+    /// @notice Add leverage to an existing long via a second open into the same account.
     function increaseLong(uint256 actorSeed, uint256 subIdSeed, uint256 equitySeed, uint256 buySeed) external {
         address actor = _actor(actorSeed);
         uint256 subId = _subId(subIdSeed);
@@ -185,7 +185,7 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
         IMarginRouter.OpenParams memory params = _buildOpenParams(buy, subId);
 
         vm.prank(actor);
-        try marginRouter.increasePosition(params) {
+        try marginRouter.openPosition(params) {
             ghost_totalCollateralIn += equity;
         } catch {}
     }

@@ -515,13 +515,13 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
     }
 
     // -------------------------------------------------------------------------
-    // Property 7: increasePosition is mechanically identical to openPosition (Fix C applies).
+    // Property 7: a second openPosition into the same account adds leverage (Fix C applies).
     //
-    // A second call through increasePosition must also pass ASSERT_FILL, so the collateral
-    // position grows by exactly the second collateralToBuy and the router remains clean.
+    // The second open must also pass ASSERT_FILL, so the collateral position grows by exactly
+    // the second collateralToBuy and the router remains clean.
     // -------------------------------------------------------------------------
 
-    function testFuzz_increasePosition_deepPool_exactFill(uint128 firstBuy, uint128 secondBuy) public {
+    function testFuzz_openPosition_secondOpen_deepPool_exactFill(uint128 firstBuy, uint128 secondBuy) public {
         firstBuy = uint128(bound(firstBuy, 1, DEEP_MAX_BUY / 2));
         secondBuy = uint128(bound(secondBuy, 1, DEEP_MAX_BUY / 2));
 
@@ -544,7 +544,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
 
         uint256 collateralAfterOpen = protocol.collateralOf(account);
 
-        marginRouter.increasePosition(
+        marginRouter.openPosition(
             IMarginRouter.OpenParams({
                 adapter: adapter,
                 market: market,

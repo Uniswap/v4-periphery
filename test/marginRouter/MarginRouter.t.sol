@@ -73,13 +73,6 @@ contract MarginRouterTest is Test {
         router.openPosition(p);
     }
 
-    function test_increasePosition_revertsWhenCollateralToBuyZero() public {
-        IMarginRouter.OpenParams memory p = _openParams();
-        p.collateralToBuy = 0;
-        vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
-        router.increasePosition(p);
-    }
-
     function test_decreasePosition_revertsWhenDebtToRepayZero() public {
         IMarginRouter.DecreaseParams memory p;
         p.deadline = block.timestamp + 1 hours;

@@ -339,7 +339,7 @@ contract MarginRouterE2EForkTest is Test {
 
     /// @notice Builds and submits a pure-leverage increase buying `buy` WETH with no new equity.
     function _increaseCall(uint128 buy) internal {
-        router.increasePosition(
+        router.openPosition(
             IMarginRouter.OpenParams({
                 adapter: adapter,
                 market: market,
@@ -459,7 +459,7 @@ contract MarginRouterE2EForkTest is Test {
     /// @notice Adds `buy` WETH of pure leverage (no new equity) to `who`'s position at `subId`.
     function _increaseFor(address who, uint256 subId, uint128 buy) internal {
         vm.prank(who);
-        router.increasePosition(_openParamsFor(subId, 0, buy));
+        router.openPosition(_openParamsFor(subId, 0, buy));
     }
 
     /// @notice Closes `who`'s position at `subId`, asserts it is fully unwound, and returns the

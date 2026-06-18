@@ -31,7 +31,7 @@ protocol-agnostic intents into the concrete calls the account executes. All impl
 
 ```
    User / EOA / integrating contract
-        │  openPosition · increasePosition · closePosition · decreasePosition · addCollateral
+        │  openPosition · closePosition · decreasePosition · addCollateral
         ▼
   ┌─────────────────┐  unlock + exact-out swap   ┌────────────────────┐
   │  MarginRouter   │ ─────────────────────────▶ │  v4 PoolManager    │
@@ -126,7 +126,7 @@ adapter is removed).
 The adapter is an **encoder**: each `encode`* returns `(target, value, callData)`, and the account
 executes it after checking the target is the adapter's `lendingProtocol()` and the value is zero.
 Governance maintains an **allowlist** of adapters. The allowlist gates only the operations that *add*
-exposure — `openPosition`, `increasePosition`, `addCollateral`. **Closing and delevering never require
+exposure — `openPosition`, `addCollateral`. **Closing and delevering never require
 an allowlisted adapter**, so a position can always be unwound even if its adapter is later removed.
 
 ### 3.4 Leverage and LTV
@@ -176,7 +176,7 @@ absolute cap for a single hop, so it may be left zero. When set, it is enforced 
 (`V4TooMuchRequestedPerHopSingle`).
 - `deadline` is a Unix timestamp; the call reverts (`DeadlinePassed`) if `block.timestamp` exceeds it.
 - **Opens are all-or-nothing on amount.** A v4 exact-output swap can partially fill on a thin pool.
-`openPosition` / `increasePosition` require the swap to deliver the full `collateralToBuy` and revert
+`openPosition` requires the swap to deliver the full `collateralToBuy` and revert
 (`IncompleteFill`) otherwise, rather than opening a smaller position than requested. `minHopPriceX36`
 bounds the *price*; the exact-output amount is bounded by this all-or-nothing check.
 
@@ -190,14 +190,13 @@ All entry points operate on the caller's own account, derived from the authentic
 
 | Operation                    | Params                | Effect                                                                                                                                                                       |
 | ---------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `openPosition` (payable)     | `OpenParams`          | Deploys the account if needed, pulls equity, opens a leveraged position.                                                                                                     |
-| `increasePosition` (payable) | `OpenParams`          | Adds leverage to an existing position (mechanically identical to open). Set `equity = 0` and send no value for a pure leverage increase.                                     |
+| `openPosition` (payable)     | `OpenParams`          | Deploys the account if needed, pulls equity, opens a leveraged position. Calling again on an account that already holds a position adds leverage to it; set `equity = 0` and send no value for a pure leverage increase. |
 | `addCollateral` (payable)    | `AddCollateralParams` | Supplies more collateral without changing debt (delevers / improves health). No swap.                                                                                        |
 | `decreasePosition`           | `DecreaseParams`      | Repays `debtToRepay` by selling collateral; position stays open. Enforces `maxLtvAfter`.                                                                                     |
 | `closePosition`              | `CloseParams`         | Repays all debt by selling collateral, withdraws all collateral, returns the residual (realized PnL) to the caller. A zero-debt position is withdrawn directly with no swap. |
 
 
-**Open / increase mechanics:** swap debt → `collateralToBuy` collateral (exact-out, input capped by
+**Open mechanics:** swap debt → `collateralToBuy` collateral (exact-out, input capped by
 `maxDebtIn`) → take to the account → supply the account's full collateral balance → borrow the debt
 owed → settle.
 
@@ -334,9 +333,9 @@ function openLongWithEth(address weth, address usdc, uint128 collateralToBuy, ui
 ### 6.4 Increase, add collateral, decrease, close
 
 ```solidity
-// add 1 WETH of leverage with no new equity (pure increase)
+// add 1 WETH of leverage with no new equity (a second open into the same account)
 function increase(Market memory market, uint128 buy, uint128 maxDebtIn) external {
-    router.increasePosition(
+    router.openPosition(
         IMarginRouter.OpenParams({
             adapter: adapter, market: market, poolKey: poolKey,
             equity: 0, collateralToBuy: buy, maxDebtIn: maxDebtIn,
@@ -862,7 +861,7 @@ addresses, reserve ids, and collateral factor were verified on a mainnet fork at
 ### Param structs
 
 ```solidity
-struct OpenParams {        // openPosition, increasePosition
+struct OpenParams {        // openPosition
     ILendingAdapter adapter;
     Market market;
     PoolKey poolKey;
@@ -910,8 +909,7 @@ struct AddCollateralParams { // addCollateral
 
 | Function                                             | Access               | Notes                                 |
 | ---------------------------------------------------- | -------------------- | ------------------------------------- |
-| `openPosition(OpenParams) payable`                   | anyone               | own account                           |
-| `increasePosition(OpenParams) payable`               | anyone               | own account                           |
+| `openPosition(OpenParams) payable`                   | anyone               | own account; a second open adds leverage |
 | `closePosition(CloseParams)`                         | anyone               | own account; no allowlist requirement |
 | `decreasePosition(DecreaseParams)`                   | anyone               | own account; no allowlist requirement |
 | `addCollateral(AddCollateralParams) payable`         | anyone               | own account                           |
@@ -971,6 +969,6 @@ emitted by all three on `setMarket`, carries the two `reserveId`s for the v4 ada
 
 ### Events
 
-`PositionOpened`, `PositionIncreased`, `PositionClosed`, `PositionDecreased`, `CollateralAdded`,
+`PositionOpened`, `PositionClosed`, `PositionDecreased`, `CollateralAdded`,
 `AdapterAllowed`, `GovernanceTransferStarted`, `GovernanceTransferred` (router); `MarketSet` (adapter);
 `AccountCreated` (account factory).

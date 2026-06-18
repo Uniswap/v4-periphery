@@ -254,11 +254,12 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         );
     }
 
-    function test_increasePosition_addsLeverage() public {
+    function test_openPosition_addsLeverageToExistingPosition() public {
         address account = _open(1 ether, 2 ether);
         uint256 debtAfterOpen = protocol.debtOf(account);
 
-        marginRouter.increasePosition(
+        // a second open into the same account adds leverage to the existing position
+        marginRouter.openPosition(
             IMarginRouter.OpenParams({
                 adapter: adapter,
                 market: market,
@@ -271,7 +272,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
                 deadline: block.timestamp + 1
             })
         );
-        vm.snapshotGasLastCall("MarginRouter_increasePosition");
+        vm.snapshotGasLastCall("MarginRouter_openPosition_addLeverage");
 
         assertEq(protocol.collateralOf(account), 4 ether, "collateral grew by the bought amount");
         assertGt(protocol.debtOf(account), debtAfterOpen, "debt grew");

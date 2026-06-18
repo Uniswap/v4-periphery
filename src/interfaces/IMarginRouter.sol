@@ -43,10 +43,10 @@ interface IMarginRouter {
     ///      leave the account funded in the wrong token.
     error NativeCollateralMismatch();
 
-    /// @dev Thrown when an exact-output swap on `openPosition`/`increasePosition` under-fills: the pool
-    ///      delivered less than the requested `collateralToBuy` (a thin pool can hit the price limit
-    ///      before the full output is bought). The open is all-or-nothing, so it reverts rather than
-    ///      opening a smaller position than requested.
+    /// @dev Thrown when an exact-output swap on `openPosition` under-fills: the pool delivered less
+    ///      than the requested `collateralToBuy` (a thin pool can hit the price limit before the full
+    ///      output is bought). The open is all-or-nothing, so it reverts rather than opening a smaller
+    ///      position than requested.
     /// @param requested The collateral amount the open asked the swap to deliver.
     /// @param received The collateral amount the swap actually delivered.
     error IncompleteFill(uint256 requested, uint256 received);
@@ -55,7 +55,9 @@ interface IMarginRouter {
     // Events
     // -------------------------------------------------------------------------
 
-    /// @notice Emitted when a new leveraged position is opened.
+    /// @notice Emitted when leverage is opened or added via `openPosition`. The first open for an
+    ///         account is paired with an `AccountCreated` event from the factory; subsequent opens
+    ///         into the same account add leverage to the existing position.
     /// @param owner The position owner (the authenticated caller at the time of the call).
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
@@ -63,17 +65,6 @@ interface IMarginRouter {
     /// @param collateralBought The amount of collateral purchased by the opening swap, in the
     ///        collateral token's native decimals.
     event PositionOpened(
-        address indexed owner, address indexed account, Currency collateral, Currency debt, uint256 collateralBought
-    );
-
-    /// @notice Emitted when leverage is added to an existing position via `increasePosition`.
-    /// @param owner The position owner (the authenticated caller).
-    /// @param account The MarginAccount holding the position.
-    /// @param collateral The collateral currency of the market.
-    /// @param debt The debt currency of the market.
-    /// @param collateralBought The additional collateral purchased by the increase swap, in the
-    ///        collateral token's native decimals.
-    event PositionIncreased(
         address indexed owner, address indexed account, Currency collateral, Currency debt, uint256 collateralBought
     );
 
@@ -223,21 +214,15 @@ interface IMarginRouter {
     // External functions
     // -------------------------------------------------------------------------
 
-    /// @notice Opens a leveraged position for the caller, deploying their MarginAccount if needed.
-    ///         Equity is ERC-20 collateral pulled via Permit2, or native ETH sent as `msg.value`
-    ///         (which the router wraps to WETH; the market collateral must then be WETH). When
-    ///         `msg.value` is non-zero it is used as the equity and `params.equity` is ignored.
+    /// @notice Opens or adds to a leveraged position for the caller, deploying their MarginAccount if
+    ///         needed. Equity is ERC-20 collateral pulled via Permit2, or native ETH sent as
+    ///         `msg.value` (which the router wraps to WETH; the market collateral must then be WETH).
+    ///         When `msg.value` is non-zero it is used as the equity and `params.equity` is ignored.
+    ///         Calling again on an account that already holds a position adds leverage to it; set
+    ///         `equity` to zero and send no value for a pure leverage increase with no new equity.
     /// @param params See `OpenParams`.
-    /// @return account The caller's MarginAccount holding the newly opened position.
+    /// @return account The caller's MarginAccount holding the position.
     function openPosition(OpenParams calldata params) external payable returns (address account);
-
-    /// @notice Adds leverage to the caller's existing position. Mechanically identical to opening:
-    ///         borrow more debt, swap it into collateral, and supply it. Optional added equity is
-    ///         pulled via Permit2, or sent as native ETH (wrapped to WETH). Set `equity` to zero
-    ///         and send no value for a pure leverage increase with no new equity.
-    /// @param params See `OpenParams`.
-    /// @return account The caller's MarginAccount.
-    function increasePosition(OpenParams calldata params) external payable returns (address account);
 
     /// @notice Fully closes the caller's position, returning all residual collateral (realized PnL)
     ///         to the caller.

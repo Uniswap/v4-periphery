@@ -118,20 +118,6 @@ contract MarginRouter is
     }
 
     /// @inheritdoc IMarginRouter
-    function increasePosition(OpenParams calldata params)
-        external
-        payable
-        isNotLocked
-        checkDeadline(params.deadline)
-        returns (address account)
-    {
-        account = _open(params);
-        emit PositionIncreased(
-            msgSender(), account, params.market.collateral, params.market.debt, params.collateralToBuy
-        );
-    }
-
-    /// @inheritdoc IMarginRouter
     function closePosition(CloseParams calldata params)
         external
         isNotLocked
@@ -354,11 +340,11 @@ contract MarginRouter is
         emit GovernanceTransferStarted(msg.sender, newGovernance);
     }
 
-    /// @notice Shared implementation for `openPosition` and `increasePosition`. Deploys the account
-    ///         if needed, pulls optional equity, then builds and runs the flash-style unlock:
-    ///         swap debt to collateral (exact-output), supply the collateral, borrow the debt owed,
-    ///         and settle the swap.
-    /// @param params The open/increase parameters; see `OpenParams`.
+    /// @notice Shared implementation for `openPosition`. Deploys the account if needed, pulls
+    ///         optional equity, then builds and runs the flash-style unlock: swap debt to collateral
+    ///         (exact-output), supply the collateral, borrow the debt owed, and settle the swap.
+    ///         Opening into an account that already holds a position simply adds leverage to it.
+    /// @param params The open parameters; see `OpenParams`.
     /// @return account The caller's MarginAccount address.
     function _open(OpenParams calldata params) private returns (address account) {
         // a zero buy would feed a zero amount into the exact-output swap, which the PoolManager rejects
