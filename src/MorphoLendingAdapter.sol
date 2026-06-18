@@ -5,6 +5,7 @@ import {IMorpho, IMorphoBase, MarketParams, Id, Position} from "morpho-blue/inte
 import {IOracle} from "morpho-blue/interfaces/IOracle.sol";
 import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
 import {MorphoBalancesLib} from "morpho-blue/libraries/periphery/MorphoBalancesLib.sol";
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
 
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
@@ -171,8 +172,9 @@ contract MorphoLendingAdapter is ILendingAdapter {
         MarketParams memory marketParams = store.markets.resolve(market);
         uint256 collateral = uint256(morpho.position(marketParams.id(), account).collateral);
         uint256 debt = morpho.expectedBorrowAssets(marketParams, account);
-        // collateral value expressed in loan-token units
-        uint256 collateralValue = collateral * IOracle(marketParams.oracle).price() / ORACLE_PRICE_SCALE;
+        // collateral value expressed in loan-token units. price() is 1e36-scaled, so mulDiv keeps the
+        // collateral * price product in full 512-bit precision and avoids a phantom-overflow revert.
+        uint256 collateralValue = Math.mulDiv(collateral, IOracle(marketParams.oracle).price(), ORACLE_PRICE_SCALE);
         if (collateralValue == 0) return toLtv(debt == 0 ? 0 : type(uint256).max);
         return toLtv(debt * WAD / collateralValue);
     }
