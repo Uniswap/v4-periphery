@@ -6,7 +6,6 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
@@ -17,8 +16,9 @@ import {SwapAndAdd} from "../src/SwapAndAdd.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
-/// @notice V1 SwapAndAdd tests. Same-pool path (empty route) — exercises sizing, mint-first, flash-take,
-///         reconcile, mint-to-user, dust-in-input-only. UR-route integration is tested separately later.
+/// @notice V1 SwapAndAdd tests (option C: optimistic-mint-and-trim). Same-pool path (empty route) — exercises
+///         optimistic sizing, flash-take, mint-to-contract, same-pool funding swap, the trim, dust sweep, and
+///         the post-unlock NFT transfer to the recipient. UR-route integration is tested separately.
 contract SwapAndAddTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
@@ -43,8 +43,9 @@ contract SwapAndAddTest is PosmTestSetup {
 
         // native pool (currency0 == native ETH) with depth for the native add test.
         vm.deal(address(this), 1_000 ether);
-        (nativeKey,) =
-            initPoolAndAddLiquidityETH(CurrencyLibrary.ADDRESS_ZERO, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, 1 ether);
+        (nativeKey,) = initPoolAndAddLiquidityETH(
+            CurrencyLibrary.ADDRESS_ZERO, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, 1 ether
+        );
         modifyLiquidityRouter.modifyLiquidity{value: 50 ether}(
             nativeKey,
             ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: int256(uint256(200e18)), salt: 0}),
@@ -57,12 +58,7 @@ contract SwapAndAddTest is PosmTestSetup {
         permit2.approve(Currency.unwrap(c), address(zap), type(uint160).max, type(uint48).max);
     }
 
-    // Conservative token1-per-token0 rate for a ~1:1 pool. The conservative *direction* depends on which token
-    // is being bought: buying token0 (surplus token1) wants a rate above spot; buying token1 wants below spot.
-    uint256 constant RATE_BUY_TOKEN0 = FixedPoint96.Q96 * 101 / 100;
-    uint256 constant RATE_BUY_TOKEN1 = FixedPoint96.Q96 * 99 / 100;
-
-    function _addParams(uint256 amount0In, uint256 amount1In, uint256 rateX96)
+    function _addParams(uint256 amount0In, uint256 amount1In)
         internal
         view
         returns (ISwapAndAdd.AddParams memory)
@@ -74,7 +70,6 @@ contract SwapAndAddTest is PosmTestSetup {
             amount0In: amount0In,
             amount1In: amount1In,
             route: "",
-            swapRateX96: rateX96,
             minLiquidity: 0,
             recipient: address(this),
             hookData: "",
@@ -85,18 +80,15 @@ contract SwapAndAddTest is PosmTestSetup {
     function test_add_singleToken1() public {
         uint256 amountIn = 10e18;
         uint256 c0Before = currency0.balanceOf(address(this));
-        uint256 c1Before = currency1.balanceOf(address(this));
 
-        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = zap.add(_addParams(0, amountIn, RATE_BUY_TOKEN0));
+        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = zap.add(_addParams(0, amountIn));
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
         assertGt(a0, 0, "token0 deployed");
         assertGt(a1, 0, "token1 deployed");
-        // no dust in the swapped-into token (token0) returned to the user
-        assertEq(currency0.balanceOf(address(this)), c0Before, "no token0 dust to user");
-        // spent at most the budget; leftover (if any) is in token1 (the input)
-        assertLe(c1Before - currency1.balanceOf(address(this)), amountIn, "spent <= budget");
+        // dust lands in the input token (token1); the swapped-into token0 returns ~nothing.
+        assertApproxEqAbs(currency0.balanceOf(address(this)), c0Before, 5, "no token0 dust to user");
         // contract holds nothing
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
@@ -106,26 +98,44 @@ contract SwapAndAddTest is PosmTestSetup {
         uint256 amountIn = 10e18;
         uint256 c1Before = currency1.balanceOf(address(this));
 
-        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(amountIn, 0, RATE_BUY_TOKEN1));
+        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(amountIn, 0));
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
-        // no dust in the swapped-into token (token1) returned to the user
-        assertEq(currency1.balanceOf(address(this)), c1Before, "no token1 dust to user");
+        // dust lands in the input token (token0); the swapped-into token1 returns ~nothing.
+        assertApproxEqAbs(currency1.balanceOf(address(this)), c1Before, 5, "no token1 dust to user");
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
     function test_add_mixedRatio() public {
-        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(3e18, 10e18, RATE_BUY_TOKEN0));
+        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(3e18, 10e18));
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
+    /// @notice Option C deploys the *actual* max the budget supports, so returned dust is tiny (the genuine
+    ///         slippage shortfall), in the input token.
+    function test_add_lowDust() public {
+        uint256 amountIn = 10e18;
+        uint256 c0Before = currency0.balanceOf(address(this));
+        uint256 c1Before = currency1.balanceOf(address(this));
+
+        zap.add(_addParams(0, amountIn));
+
+        // net token1 spent = pulled budget - swept dust. dust returned should be a small fraction of the budget.
+        uint256 dust1 = currency1.balanceOf(address(this)) + amountIn - c1Before;
+        // measured ~15 bps of budget here (0.3% fee pool, ~half the budget swapped) — the genuine slippage shortfall.
+        assertLt(dust1, amountIn / 50, "token1 dust < 2% of budget");
+        assertApproxEqAbs(currency0.balanceOf(address(this)), c0Before, 5, "no token0 dust");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
     function test_add_revertsOnMinLiquidity() public {
-        ISwapAndAdd.AddParams memory p = _addParams(0, 10e18, RATE_BUY_TOKEN0);
+        ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
         p.minLiquidity = type(uint128).max; // impossible floor
         vm.expectRevert();
         zap.add(p);
@@ -142,7 +152,6 @@ contract SwapAndAddTest is PosmTestSetup {
             newTickLower: -1200,
             newTickUpper: 1200,
             route: "",
-            swapRateX96: RATE_BUY_TOKEN0,
             minLiquidity: 0,
             recipient: address(this),
             hookData: "",
@@ -151,7 +160,7 @@ contract SwapAndAddTest is PosmTestSetup {
     }
 
     function test_rebalance_full() public {
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18, RATE_BUY_TOKEN0));
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
 
         uint128 posLiq = lpm.getPositionLiquidity(tokenId);
@@ -165,7 +174,7 @@ contract SwapAndAddTest is PosmTestSetup {
     }
 
     function test_rebalance_partial() public {
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18, RATE_BUY_TOKEN0));
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
 
         uint128 posLiq = lpm.getPositionLiquidity(tokenId);
@@ -191,7 +200,6 @@ contract SwapAndAddTest is PosmTestSetup {
             amount0In: nativeIn,
             amount1In: 0,
             route: "",
-            swapRateX96: RATE_BUY_TOKEN1, // native (token0) surplus, buying token1
             minLiquidity: 0,
             recipient: address(this),
             hookData: "",
@@ -202,15 +210,15 @@ contract SwapAndAddTest is PosmTestSetup {
 
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
-        // no dust in the swapped-into token (currency1) returned to the user
-        assertEq(currency1.balanceOf(address(this)), c1Before, "no token1 dust to user");
+        // dust lands in the input token (native); the swapped-into currency1 returns ~nothing.
+        assertApproxEqAbs(currency1.balanceOf(address(this)), c1Before, 5, "no token1 dust to user");
         // contract strands nothing
         assertEq(address(zap).balance, 0, "zap eth == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
     function test_rebalance_revertsIfNotAuthorized() public {
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18, RATE_BUY_TOKEN0));
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         // do NOT approve the zap; call from a stranger
         uint128 posLiq = lpm.getPositionLiquidity(tokenId);
         vm.prank(address(0xBEEF));
