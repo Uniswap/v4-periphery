@@ -156,4 +156,54 @@ contract SwapAndAddRouteTest is PosmTestSetup {
         // selling token1 -> token0 (oneForZero) adds token1 / removes token0, so sqrtPrice (~sqrt(token1/token0)) rises
         assertGt(routeSpAfter, routeSpBefore, "selling token1 should raise routeKey's sqrtPrice");
     }
+
+    /// @notice Rebalance whose surplus->deficit leg runs through the real UR within the unlock. The new range is
+    ///         entirely ABOVE the current price, so the new position is single-sided token0 (deficit = token0,
+    ///         surplus = token1) -> the bulk token1->token0 swap routes via UR on routeKey, reconcile finishes.
+    function test_rebalance_viaURRoute() public {
+        // seed a position to rebalance (empty-route single-token1 add)
+        ISwapAndAdd.AddParams memory ap = ISwapAndAdd.AddParams({
+            poolKey: key,
+            tickLower: TICK_LOWER,
+            tickUpper: TICK_UPPER,
+            amount0In: 0,
+            amount1In: 10e18,
+            route: "",
+            minLiquidity: 0,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+        (uint256 tokenId,,,) = zap.add(ap);
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        uint128 posLiq = lpm.getPositionLiquidity(tokenId);
+
+        (uint160 routeSpBefore,,,) = manager.getSlot0(routeKey.toId());
+        // bulk token1 -> token0 via UR on routeKey (within the zap's unlock of `key`)
+        bytes memory route = _v4SwapRoute(routeKey, false, 1e18, currency1, currency0);
+
+        ISwapAndAdd.RebalanceParams memory rp = ISwapAndAdd.RebalanceParams({
+            tokenId: tokenId,
+            liquidityToMove: posLiq,
+            newTickLower: 600, // above current tick (0) -> single-sided token0
+            newTickUpper: 1800,
+            route: route,
+            minLiquidity: 0,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+
+        (uint256 newTokenId, uint128 newLiq,,) = zap.rebalance(rp);
+
+        assertEq(IERC721(address(lpm)).ownerOf(newTokenId), address(this), "user owns new NFT");
+        assertGt(newLiq, 0, "new liquidity minted");
+        assertEq(lpm.getPositionLiquidity(tokenId), 0, "old position emptied");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+
+        // proof the UR route executed on routeKey (touched only by the route leg)
+        (uint160 routeSpAfter,,,) = manager.getSlot0(routeKey.toId());
+        assertGt(routeSpAfter, routeSpBefore, "UR route did not raise routeKey sqrtPrice");
+    }
 }

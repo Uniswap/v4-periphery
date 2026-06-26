@@ -225,4 +225,54 @@ contract SwapAndAddTest is PosmTestSetup {
         vm.expectRevert();
         zap.rebalance(_rebalanceParams(tokenId, posLiq));
     }
+
+    // ─────────────────────────── failure / edge cases ───────────────────────────
+
+    function test_add_revertsAfterDeadline() public {
+        ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
+        vm.warp(p.deadline + 1); // now past the deadline
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.DeadlinePassed.selector, p.deadline));
+        zap.add(p);
+    }
+
+    function test_rebalance_revertsAfterDeadline() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        uint128 posLiq = lpm.getPositionLiquidity(tokenId);
+        ISwapAndAdd.RebalanceParams memory p = _rebalanceParams(tokenId, posLiq);
+        vm.warp(p.deadline + 1);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.DeadlinePassed.selector, p.deadline));
+        zap.rebalance(p);
+    }
+
+    function test_add_native_revertsOnWrongEthValue() public {
+        ISwapAndAdd.AddParams memory p = ISwapAndAdd.AddParams({
+            poolKey: nativeKey,
+            tickLower: TICK_LOWER,
+            tickUpper: TICK_UPPER,
+            amount0In: 1e17, // native budget
+            amount1In: 0,
+            route: "",
+            minLiquidity: 0,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+        // msg.value (1e17 - 1) != amount0In (1e17) -> InvalidEthValue
+        vm.expectRevert(ISwapAndAdd.InvalidEthValue.selector);
+        zap.add{value: 1e17 - 1}(p);
+    }
+
+    /// @notice Reachable-but-violated floor: set minLiquidity one wei above the realized post-trim liquidity, so
+    ///         the trim brings the final position just under the floor -> revert. (Distinct from the impossible
+    ///         type(uint128).max case; this exercises the floor at a realistic boundary.)
+    function test_add_revertsWhenTrimUndercutsFloor() public {
+        ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
+        uint256 snap = vm.snapshotState();
+        (, uint128 liq,,) = zap.add(p); // measure the realized liquidity
+        vm.revertToState(snap); // restore pre-add state -> the next add is identical
+        p.minLiquidity = liq + 1;
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, liq + 1, liq));
+        zap.add(p);
+    }
 }

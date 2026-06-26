@@ -182,6 +182,63 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
+    function _rebalanceParams(uint256 tokenId, uint128 liquidityToMove, int24 lo, int24 hi)
+        internal
+        view
+        returns (ISwapAndAdd.RebalanceParams memory)
+    {
+        return ISwapAndAdd.RebalanceParams({
+            tokenId: tokenId,
+            liquidityToMove: liquidityToMove,
+            newTickLower: lo,
+            newTickUpper: hi,
+            route: "",
+            minLiquidity: 0,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+    }
+
+    // ─────────────────────────── rebalance on the real pool ───────────────────────────
+
+    function test_fork_rebalance_full() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+
+        uint128 posLiq = posm.getPositionLiquidity(tokenId);
+        int24 ts = key.tickSpacing;
+        (uint256 newTokenId, uint128 newLiq,,) =
+            zap.rebalance(_rebalanceParams(tokenId, posLiq, lo - 10 * ts, hi + 10 * ts));
+
+        assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
+        assertGt(newLiq, 0, "new liquidity minted");
+        assertEq(posm.getPositionLiquidity(tokenId), 0, "old position emptied");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    function test_fork_rebalance_partial() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+
+        uint128 posLiq = posm.getPositionLiquidity(tokenId);
+        uint128 half = posLiq / 2;
+        int24 ts = key.tickSpacing;
+        (uint256 newTokenId, uint128 newLiq,,) =
+            zap.rebalance(_rebalanceParams(tokenId, half, lo - 10 * ts, hi + 10 * ts));
+
+        assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
+        assertGt(newLiq, 0, "new liquidity minted");
+        assertApproxEqAbs(posm.getPositionLiquidity(tokenId), posLiq - half, 1, "old keeps remainder");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
     function _v4SwapRoute(PoolKey memory poolKey, bool zeroForOne, uint128 amtIn, Currency inCcy, Currency outCcy)
         internal
         pure
