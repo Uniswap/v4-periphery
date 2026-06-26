@@ -239,6 +239,27 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
+    // Repro: full rebalance into the SAME range as the old position (the UI's default).
+    function test_fork_rebalance_sameRange_full() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+
+        uint128 posLiq = posm.getPositionLiquidity(tokenId);
+        zap.rebalance(_rebalanceParams(tokenId, posLiq, lo, hi)); // new range == old range
+    }
+
+    // Faithful repro of the in-browser flow: 0.5 ETH add, then same-range full rebalance.
+    function test_fork_rebalance_sameRange_full_halfEth() public {
+        (int24 lo, int24 hi) = _ticks();
+        vm.deal(address(this), 100 ether);
+        (uint256 tokenId,,,) = zap.add{value: 0.5 ether}(_addParams(0.5 ether, 0, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+        uint128 posLiq = posm.getPositionLiquidity(tokenId);
+        zap.rebalance(_rebalanceParams(tokenId, posLiq, lo, hi));
+    }
+
     function _v4SwapRoute(PoolKey memory poolKey, bool zeroForOne, uint128 amtIn, Currency inCcy, Currency outCcy)
         internal
         pure

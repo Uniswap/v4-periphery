@@ -300,7 +300,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         return FullMath.mulDiv(uint256(lref), budgetValue, refValue).toUint128();
     }
 
-    /// @dev token amounts required for `liquidity` at the given price/range (rounded down), via SqrtPriceMath.
+    /// @dev token amounts required for `liquidity` at the given price/range, via SqrtPriceMath. Rounded UP to
+    ///      mirror POSM's MINT_POSITION (which rounds the pull up, in the pool's favor): so the flash-take
+    ///      decision in `_executeMint` sees the true required amount and the contract is never a wei short of
+    ///      what POSM pulls. For sizing (`_sizeLiquidity`) rounding the reference up only shrinks L — the safe
+    ///      direction. The ≤1-wei over-estimate is swept as dust.
     function _getAmountsForLiquidity(uint160 sqrtPriceX96, uint160 sqrtA, uint160 sqrtB, uint128 liquidity)
         internal
         pure
@@ -308,12 +312,12 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     {
         if (sqrtA > sqrtB) (sqrtA, sqrtB) = (sqrtB, sqrtA);
         if (sqrtPriceX96 <= sqrtA) {
-            amount0 = SqrtPriceMath.getAmount0Delta(sqrtA, sqrtB, liquidity, false);
+            amount0 = SqrtPriceMath.getAmount0Delta(sqrtA, sqrtB, liquidity, true);
         } else if (sqrtPriceX96 < sqrtB) {
-            amount0 = SqrtPriceMath.getAmount0Delta(sqrtPriceX96, sqrtB, liquidity, false);
-            amount1 = SqrtPriceMath.getAmount1Delta(sqrtA, sqrtPriceX96, liquidity, false);
+            amount0 = SqrtPriceMath.getAmount0Delta(sqrtPriceX96, sqrtB, liquidity, true);
+            amount1 = SqrtPriceMath.getAmount1Delta(sqrtA, sqrtPriceX96, liquidity, true);
         } else {
-            amount1 = SqrtPriceMath.getAmount1Delta(sqrtA, sqrtB, liquidity, false);
+            amount1 = SqrtPriceMath.getAmount1Delta(sqrtA, sqrtB, liquidity, true);
         }
     }
 
