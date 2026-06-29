@@ -34,6 +34,9 @@ interface ISwapAndAdd {
     error InvalidEthValue();
     error InsufficientLiquidity(uint128 minLiquidity, uint128 liquidity);
     error NotAuthorizedForToken(uint256 tokenId);
+    /// @notice `redeployBps` must be in (0, 10_000]: 0 would be a pure withdrawal (not a rebalance) and
+    ///         values above 10_000 are nonsensical.
+    error InvalidRedeployBps(uint256 redeployBps);
 
     /// @param poolKey       Target v4 pool.
     /// @param tickLower     Lower tick of the position.
@@ -69,19 +72,22 @@ interface ISwapAndAdd {
         payable
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
 
-    /// @param tokenId         Existing position to move; caller must be owner or approved.
-    /// @param liquidityToMove Liquidity to withdraw from `tokenId` (partial); equal to the position's full
-    ///                        liquidity for a full rebalance.
-    /// @param newTickLower    Lower tick of the new position.
-    /// @param newTickUpper    Upper tick of the new position.
-    /// @param route           Verbatim Universal Router payload for the surplus->deficit swap (may be empty).
-    /// @param minLiquidity    Slippage floor on the NEW (post-trim) position.
-    /// @param recipient       Receives the new POSM NFT and any swept leftover.
-    /// @param hookData        Hook data forwarded to the mint.
-    /// @param deadline        Tx reverts after this timestamp.
+    /// @param tokenId       Existing position to move; caller must be owner or approved. The position is
+    ///                      withdrawn IN FULL (burned) — see DESIGN NOTE on `redeployBps` below.
+    /// @param redeployBps   Fraction of the fully-withdrawn value to redeploy into the new range, in basis
+    ///                      points (0, 10_000]. 10_000 = redeploy everything (a full move); < 10_000 redeploys
+    ///                      that share and returns the rest to `recipient`'s wallet. Must be > 0 (a 0% redeploy
+    ///                      is a pure withdrawal, not a rebalance) and <= 10_000.
+    /// @param newTickLower  Lower tick of the new position.
+    /// @param newTickUpper  Upper tick of the new position.
+    /// @param route         Verbatim Universal Router payload for the surplus->deficit swap (may be empty).
+    /// @param minLiquidity  Slippage floor on the NEW (post-trim) position.
+    /// @param recipient     Receives the new POSM NFT, the returned (1 - redeployBps) share, and any swept dust.
+    /// @param hookData      Hook data forwarded to the mint.
+    /// @param deadline      Tx reverts after this timestamp.
     struct RebalanceParams {
         uint256 tokenId;
-        uint128 liquidityToMove;
+        uint256 redeployBps;
         int24 newTickLower;
         int24 newTickUpper;
         bytes route;
@@ -91,10 +97,15 @@ interface ISwapAndAdd {
         uint256 deadline;
     }
 
-    /// @notice Withdraw (part of) an existing position and redeposit it into a new range, in one transaction.
-    ///         Reuses the add flow with the withdrawn tokens (+ fees) as the starting budget. Always mints a
-    ///         NEW position (POSM ties a tokenId to a fixed range); a partial rebalance leaves the original
-    ///         position with its remaining liquidity.
+    /// @notice Withdraw an existing position IN FULL and redeposit a chosen fraction into a new range, in one
+    ///         transaction. The position is always burned entirely; `redeployBps` of the withdrawn value is run
+    ///         through the add flow (route + size + reconcile) into the new range, and the remaining
+    ///         (10_000 - redeployBps) is returned to `recipient`'s wallet. Always mints a NEW position (POSM ties
+    ///         a tokenId to a fixed range).
+    /// @dev DESIGN NOTE — why full-burn + return, not partial-decrease: a rebalance is typically triggered by an
+    ///      OUT-OF-RANGE position, whose liquidity earns nothing where it sits. Leaving the un-moved portion in
+    ///      the old range would keep it idle; returning it to the wallet lets the user actually use it. So the
+    ///      whole position is withdrawn and only the redeployed share re-enters the pool.
     /// @return newTokenId The newly minted position id.
     function rebalance(RebalanceParams calldata params)
         external

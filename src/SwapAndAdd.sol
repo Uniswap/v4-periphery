@@ -75,6 +75,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     uint48 private constant ALLOWANCE_EXPIRATION = type(uint48).max;
     /// @dev v4 fees are expressed in pips (millionths).
     uint256 private constant PIPS_DENOMINATOR = 1e6;
+    /// @dev `redeployBps` is in basis points (ten-thousandths).
+    uint256 private constant BPS_DENOMINATOR = 10_000;
     uint256 private constant OP_ADD = 0;
     uint256 private constant OP_REBALANCE = 1;
 
@@ -134,6 +136,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         returns (uint256 newTokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         if (block.timestamp > params.deadline) revert DeadlinePassed(params.deadline);
+        if (params.redeployBps == 0 || params.redeployBps > BPS_DENOMINATOR) {
+            revert InvalidRedeployBps(params.redeployBps);
+        }
         address owner = IERC721Minimal(address(positionManager)).ownerOf(params.tokenId);
         if (
             msg.sender != owner && IERC721Minimal(address(positionManager)).getApproved(params.tokenId) != msg.sender
@@ -162,22 +167,23 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         return abi.encode(tokenId, liq, a0, a1);
     }
 
-    /// @dev Withdraw the moved liquidity and assemble the add inputs for the new range. The withdrawn tokens
-    ///      (+ fees) become the budget; the un-moved liquidity stays earning in the old position/range.
+    /// @dev Option-a rebalance prep: burn the WHOLE position, keep only `redeployBps` of the withdrawn value as
+    ///      the redeploy budget, and return the rest to the recipient up front. Returning the excess BEFORE the
+    ///      add flow runs is what makes the accounting safe: the contract is then left holding exactly the
+    ///      redeploy share, so every `balanceOfSelf()` read in `_addCore` (the route, the reconcile's sell-all,
+    ///      the mint settle) sees only what should be deployed — never the portion owed back to the recipient.
     function _prepareRebalance(RebalanceParams memory p) internal returns (CoreParams memory cp) {
         (PoolKey memory key,) = positionManager.getPoolAndPositionInfo(p.tokenId);
-        bool full = p.liquidityToMove >= positionManager.getPositionLiquidity(p.tokenId);
-        _withdraw(key, p.tokenId, p.liquidityToMove, full, p.hookData);
+        _withdraw(key, p.tokenId, p.hookData); // burn the full position; tokens land in this contract.
+
+        // keep `redeployBps` of each withdrawn token; return the remainder to the recipient now.
+        uint256 keep0 = FullMath.mulDiv(key.currency0.balanceOfSelf(), p.redeployBps, BPS_DENOMINATOR);
+        uint256 keep1 = FullMath.mulDiv(key.currency1.balanceOfSelf(), p.redeployBps, BPS_DENOMINATOR);
+        _returnExcess(key.currency0, keep0, p.recipient);
+        _returnExcess(key.currency1, keep1, p.recipient);
+
         cp = CoreParams(
-            key,
-            p.newTickLower,
-            p.newTickUpper,
-            key.currency0.balanceOfSelf(),
-            key.currency1.balanceOfSelf(),
-            p.route,
-            p.minLiquidity,
-            p.recipient,
-            p.hookData
+            key, p.newTickLower, p.newTickUpper, keep0, keep1, p.route, p.minLiquidity, p.recipient, p.hookData
         );
     }
 
@@ -471,20 +477,19 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         universalRouter.execute{value: value}(commands, inputs);
     }
 
-    function _withdraw(PoolKey memory key, uint256 tokenId, uint128 liquidityToMove, bool full, bytes memory hookData)
-        internal
-    {
-        bytes memory actions;
+    /// @dev Burn the whole position and TAKE both tokens (+ fees) to this contract.
+    function _withdraw(PoolKey memory key, uint256 tokenId, bytes memory hookData) internal {
+        bytes memory actions = abi.encodePacked(uint8(Actions.BURN_POSITION), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
-        if (full) {
-            actions = abi.encodePacked(uint8(Actions.BURN_POSITION), uint8(Actions.TAKE_PAIR));
-            params[0] = abi.encode(tokenId, uint128(0), uint128(0), hookData);
-        } else {
-            actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
-            params[0] = abi.encode(tokenId, uint256(liquidityToMove), uint128(0), uint128(0), hookData);
-        }
+        params[0] = abi.encode(tokenId, uint128(0), uint128(0), hookData);
         params[1] = abi.encode(key.currency0, key.currency1, ActionConstants.MSG_SENDER);
         positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
+    }
+
+    /// @dev Return everything held above `keep` of `currency` to `to` (the un-redeployed rebalance share).
+    function _returnExcess(Currency currency, uint256 keep, address to) internal {
+        uint256 bal = currency.balanceOfSelf();
+        if (bal > keep) currency.transfer(to, bal - keep);
     }
 
     function _decrease(PoolKey memory key, uint256 tokenId, uint128 dl, bytes memory hookData) internal {

@@ -176,7 +176,6 @@ contract SwapAndAddRouteTest is PosmTestSetup {
         });
         (uint256 tokenId,,,) = zap.add(ap);
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
-        uint128 posLiq = lpm.getPositionLiquidity(tokenId);
 
         (uint160 routeSpBefore,,,) = manager.getSlot0(routeKey.toId());
         // bulk token1 -> token0 via UR on routeKey (within the zap's unlock of `key`)
@@ -184,7 +183,7 @@ contract SwapAndAddRouteTest is PosmTestSetup {
 
         ISwapAndAdd.RebalanceParams memory rp = ISwapAndAdd.RebalanceParams({
             tokenId: tokenId,
-            liquidityToMove: posLiq,
+            redeployBps: 10_000, // full move
             newTickLower: 600, // above current tick (0) -> single-sided token0
             newTickUpper: 1800,
             route: route,
