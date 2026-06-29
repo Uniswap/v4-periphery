@@ -182,6 +182,31 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
+    /// @notice Route-first against the REAL UR: with a well-sized route (route does the bulk), almost the entire
+    ///         budget is deployed — the recipient gets back only tiny dust (route-first sizes from real holdings,
+    ///         so it does not return the route's execution slice the way a size-then-swap design would).
+    function test_fork_add_usdcBudget_viaURRoute_lowDust() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+
+        uint256 usdcBefore = IERC20(USDC).balanceOf(address(this));
+        uint256 ethBefore = address(this).balance;
+
+        // route ~half the budget (the bulk) USDC -> ETH on the real pool; reconcile + trim finish it.
+        bytes memory route = _v4SwapRoute(key, false, 5_000e6, key.currency1, key.currency0);
+        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(0, 10_000e6, route, lo, hi));
+
+        uint256 usdcReturned = IERC20(USDC).balanceOf(address(this)) + 10_000e6 - usdcBefore; // budget pulled was 10_000
+        assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        // route-first deploys nearly all of it: returned USDC is a small fraction of the 10_000 budget.
+        assertLt(usdcReturned, 200e6, "returned USDC < 2% of budget");
+        // the swapped-into token (ETH) is not returned to the user beyond dust.
+        assertApproxEqAbs(address(this).balance, ethBefore, 1e12, "no meaningful ETH dust to user");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
     function _rebalanceParams(uint256 tokenId, uint128 liquidityToMove, int24 lo, int24 hi)
         internal
         view
