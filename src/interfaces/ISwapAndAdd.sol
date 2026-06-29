@@ -4,27 +4,31 @@ pragma solidity ^0.8.24;
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @title ISwapAndAdd
-/// @notice V1 swap-and-add / rebalance zap for Uniswap v4. Lets a caller supply the two pool tokens in any
+/// @notice Swap-and-add / rebalance zap for Uniswap v4. Lets a caller supply the two pool tokens in any
 ///         ratio (including only one) and, in a single transaction, receive a standard PositionManager (POSM)
-///         ERC-721 position — the contract sources the missing token via a swap, using an optimistic-mint design.
-/// @dev Flow (optimistic mint + trim):
-///      1. size the OPTIMISTIC max liquidity L the budget could fund if the swap executed at the live mid price
-///         (zero loss) — read from slot0, no off-chain rate needed,
-///      2. flash-`take` the deficit token and mint that L directly to THIS contract (POSM),
-///      3. run the verbatim off-chain Universal Router `route` for the bulk surplus->deficit swap,
-///      4. swap any remaining surplus same-pool (never overshooting), then DECREASE ("trim") the position by
-///         exactly the liquidity whose freed deficit covers what the real swap fell short by,
-///      5. settle, sweep the small in-ratio remainder (input-token dust) to `recipient`, and transfer the NFT to
-///         `recipient` after the unlock closes.
+///         ERC-721 position — the contract sources the missing token via a swap, using a route-first design.
+/// @dev Flow (route first, then size from reality):
+///      1. run the verbatim off-chain Universal Router `route` FIRST, swapping the surplus side toward the
+///         deficit (best execution, off-venue), then read the contract's ACTUAL post-route balances,
+///      2. size the position from those real holdings at the live price — fee-aware (discount the side the
+///         same-pool reconcile will swap by the pool's lpFee+protocolFee) — and mint it to THIS contract (POSM),
+///      3. one same-pool reconcile swap funds whichever side the mint is short of (either direction: top up if
+///         the route under-converted, sell back if it over-converted), then a DECREASE ("trim") lands the
+///         position exactly on what the holdings support,
+///      4. enforce `minLiquidity`, sweep the small remainder (input-token dust) to `recipient`, and transfer the
+///         NFT to `recipient` after the unlock closes.
 ///
-///      DESIGN NOTE — sizing & slippage:
-///      Real execution is always at-or-worse than the mid used to size L, so the position can only ever come up
-///      SHORT and is trimmed DOWN — never the reverse. This deploys the *actual* maximum the budget supports (not
-///      a conservative guess), so leftover dust is just the genuine slippage shortfall, in the input token.
-///      `minLiquidity` is the single slippage knob: a floor on the FINAL (post-trim) position. If price drift or
-///      MEV makes the budget fund less than `minLiquidity`, the call reverts. No swap-rate input, no separate
-///      min-amount params. The position is minted to this contract so it can be trimmed, then transferred to
-///      `recipient`.
+///      DESIGN NOTE — route first, then size:
+///      The route is sized off-chain and executes off-venue, so on-chain we don't know its rate ahead of time —
+///      but by running it FIRST and sizing the position from the *actual* resulting holdings, the contract
+///      deploys whatever the route really returned (it doesn't lose value to a cheaper-than-expected or
+///      better-than-mid route, which a size-then-swap design would return to the wallet). The same-pool reconcile
+///      runs AFTER the mint so its price impact can't invalidate the position's required ratio (the mint is
+///      already fixed at the live price). `minLiquidity` is the single slippage knob: a floor on the FINAL
+///      (post-trim) position; if price drift / MEV makes the holdings fund less than `minLiquidity`, the call
+///      reverts. No swap-rate input, no separate min-amount params. With an empty `route`, the whole deficit is
+///      sourced by the same-pool reconcile (the design degrades to a pure same-pool zap). The position is minted
+///      to this contract so it can be trimmed, then transferred to `recipient`.
 interface ISwapAndAdd {
     error DeadlinePassed(uint256 deadline);
     error InvalidEthValue();

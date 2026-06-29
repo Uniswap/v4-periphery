@@ -38,12 +38,31 @@ interface IERC721Minimal {
     function transferFrom(address from, address to, uint256 id) external;
 }
 
-/// @title SwapAndAdd (V1)
-/// @notice See ISwapAndAdd. Optimistic-mint-and-trim zap: mint the *maximum* position the budget could afford
-///         under perfect (mid-price) execution, fund the deficit via a verbatim UR route + same-pool swap, then
-///         DECREASE ("trim") the position by exactly the shortfall the real swap fell short by. v4-only; ERC-20 +
-///         native ETH; add + rebalance. The position is minted to this contract (so it can be trimmed) and
-///         transferred to the recipient after the unlock closes.
+/// @title SwapAndAdd
+/// @notice See ISwapAndAdd. Route-first swap-and-add / rebalance zap for Uniswap v4.
+///
+///         Flow, all inside one PoolManager unlock:
+///           1. ROUTE FIRST — run the caller's verbatim Universal Router route to swap the surplus side toward
+///              the deficit side (best execution, off-venue). After it, the contract holds the *actual* tokens.
+///           2. SIZE & MINT — size the position from those real holdings at the live price, fee-aware (the
+///              residual same-pool swap will pay the pool fee, so discount the side it consumes), and mint to
+///              this contract.
+///           3. RECONCILE — a single same-pool swap funds whichever side the mint is short of (either
+///              direction), then a DECREASE ("trim") lands the position exactly on what the holdings support.
+///           4. FLOOR — revert unless the final liquidity >= `minLiquidity` (the one slippage knob).
+///           5. SWEEP leftover to the recipient and transfer the position NFT to them after the unlock closes.
+///
+///         Why route *before* mint:
+///           The same-pool reconcile swap moves the pool price. If we sized/minted *after* it, the position's
+///           required ratio would depend on the swap we are still computing — a circular dependency (the
+///           Aperture problem). Minting *first* fixes the position's composition at the live price, so the
+///           reconcile swap can move the price freely without invalidating the mint. The *route* runs before
+///           the mint too, but it is off-venue (it does not touch this pool), so it cannot move this pool's
+///           price out from under the mint — it only tells us the real holdings to size from. `minLiquidity`
+///           checked on the final position is the single slippage gate for the whole operation.
+///
+///         v4-only; ERC-20 + native ETH; add + rebalance. The position is minted to this contract (so it can
+///         be trimmed) and transferred to the recipient after the unlock closes.
 contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarder, ReentrancyLock {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
@@ -51,9 +70,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
 
-    /// @dev Extra wei flash-taken on the deficit side so POSM's round-up never under-funds the mint.
+    /// @dev Extra wei flash-taken / approved on the deficit side so POSM's round-up never under-funds the mint.
     uint256 private constant ROUNDING_BUFFER = 1;
     uint48 private constant ALLOWANCE_EXPIRATION = type(uint48).max;
+    /// @dev v4 fees are expressed in pips (millionths).
+    uint256 private constant PIPS_DENOMINATOR = 1e6;
     uint256 private constant OP_ADD = 0;
     uint256 private constant OP_REBALANCE = 1;
 
@@ -141,7 +162,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         return abi.encode(tokenId, liq, a0, a1);
     }
 
-    /// @dev Withdraw the moved liquidity and assemble the add inputs for the new range.
+    /// @dev Withdraw the moved liquidity and assemble the add inputs for the new range. The withdrawn tokens
+    ///      (+ fees) become the budget; the un-moved liquidity stays earning in the old position/range.
     function _prepareRebalance(RebalanceParams memory p) internal returns (CoreParams memory cp) {
         (PoolKey memory key,) = positionManager.getPoolAndPositionInfo(p.tokenId);
         bool full = p.liquidityToMove >= positionManager.getPositionLiquidity(p.tokenId);
@@ -165,80 +187,93 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         internal
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
-        // 1. size the OPTIMISTIC max liquidity (budget valued at the live mid price) and mint it to this contract.
-        uint128 lopt;
-        uint256 a0opt;
-        uint256 a1opt;
-        (lopt, a0opt, a1opt) = _planMint(cp);
+        // 1. ROUTE FIRST: run the verbatim route (best-execution, off-venue) to convert the surplus toward the
+        //    deficit, then re-read balances — we now size from the *actual* holdings, not an estimate.
+        if (cp.route.length != 0) {
+            _routeSurplus(cp);
+            cp.budget0 = cp.key.currency0.balanceOfSelf();
+            cp.budget1 = cp.key.currency1.balanceOfSelf();
+        }
+
+        // 2. size the position from the holdings (fee-aware, optimistic) and mint it to this contract.
+        (uint128 lopt, uint256 a0opt, uint256 a1opt) = _planMint(cp);
         tokenId = _executeMint(cp, lopt, a0opt, a1opt);
 
-        // 2. fund the deficit (route + same-pool swap) and trim the position by whatever the swap fell short by.
-        uint128 trimmed = _closeResidual(cp, tokenId, a0opt, a1opt);
+        // 3. reconcile any residual same-pool (in whichever direction is short) and trim to the exact funded size.
+        uint128 trimmed = _reconcile(cp, tokenId, a0opt, a1opt);
         liquidity = lopt - trimmed;
+
+        // 4. slippage floor — the single gate for the whole operation.
         if (liquidity < cp.minLiquidity) revert InsufficientLiquidity(uint128(cp.minLiquidity), liquidity);
 
-        // 3. report the position's resulting composition; sweep any remainder (input-token dust) to the recipient.
+        // 5. report the position's composition; sweep any leftover (small, in the input token) to the recipient.
         (amount0, amount1) = _positionAmounts(cp, liquidity);
         _sweep(cp.key.currency0, cp.recipient);
         _sweep(cp.key.currency1, cp.recipient);
     }
 
+    /// @dev Size the position from the current holdings at the live price and mint it to this contract.
+    ///      Sizing is fee-aware: the side that will be swapped same-pool in `_reconcile` is discounted by the
+    ///      pool's total fee, so the optimistic mint isn't over-sized by a fee the trim would otherwise claw back.
     function _planMint(CoreParams memory cp)
         internal
         view
         returns (uint128 liquidity, uint256 amount0, uint256 amount1)
     {
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
+        (uint160 sqrtPriceX96,, uint24 protocolFee, uint24 lpFee) = poolManager.getSlot0(cp.key.toId());
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cp.tickLower);
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cp.tickUpper);
-        // value both budget sides in token1 at the live MID price (token1 per token0, Q96): the largest L the
-        // budget could fund if the surplus->deficit swap executed with zero loss. Real execution is worse, so we
-        // always come up short and trim down — never the reverse.
+        // mid price (token1 per token0, Q96): the value-conservation reference for sizing L from the budget.
         uint256 midRateX96 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, FixedPoint96.Q96);
-        liquidity = _sizeLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, midRateX96);
+        uint256 feePips = uint256(lpFee) + protocolFee; // v4 charges lpFee + protocolFee, both in pips.
+        liquidity = _sizeFeeAware(sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, midRateX96, feePips);
         (amount0, amount1) = _getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
     }
 
+    /// @dev Flash-`take` whichever side the optimistic mint is short of so the mint is fully funded up front,
+    ///      then mint. After a route, the deficit is small (the route already delivered most of it), so the
+    ///      take is small or zero.
     function _executeMint(CoreParams memory cp, uint128 liquidity, uint256 amount0, uint256 amount1)
         internal
         returns (uint256 tokenId)
     {
         Currency c0 = cp.key.currency0;
         Currency c1 = cp.key.currency1;
-        // flash-`take` the deficit side(s) so the optimistic mint is fully funded up front.
         if (amount0 > cp.budget0) _take(c0, address(this), amount0 - cp.budget0 + ROUNDING_BUFFER);
         if (amount1 > cp.budget1) _take(c1, address(this), amount1 - cp.budget1 + ROUNDING_BUFFER);
         tokenId = _mint(cp, liquidity, amount0, amount1);
     }
 
-    /// @dev Fund the still-owed deficit and trim the just-minted position to absorb the swap's shortfall.
-    ///      Returns the liquidity removed by the trim (0 if the budget already covered the optimistic mint).
-    function _closeResidual(CoreParams memory cp, uint256 tokenId, uint256 a0opt, uint256 a1opt)
+    /// @dev Settle the position's funding using a single same-pool swap in whichever direction is short, then
+    ///      trim the just-minted position by any remaining shortfall. The route already ran (in `_routeSurplus`),
+    ///      so this is same-pool only. Bidirectional: if the route under-converted we still hold surplus and
+    ///      swap surplus->deficit; if it over-converted we are short the other side and swap the other way.
+    ///      Returns the liquidity removed by the trim (0 if the holdings already covered the optimistic mint).
+    function _reconcile(CoreParams memory cp, uint256 tokenId, uint256 a0opt, uint256 a1opt)
         internal
         returns (uint128 trimmed)
     {
         bool deficitIs1;
-        if (a0opt > cp.budget0) deficitIs1 = false;
-        else if (a1opt > cp.budget1) deficitIs1 = true;
-        else return 0; // budget already in-ratio: no swap, no trim.
+        if (a0opt > cp.budget0) deficitIs1 = false; // short token0 -> token0 is the deficit
+        else if (a1opt > cp.budget1) deficitIs1 = true; // short token1 -> token1 is the deficit
+        else return 0; // holdings already in-ratio: no swap, no trim.
 
         Currency deficit = deficitIs1 ? cp.key.currency1 : cp.key.currency0;
         Currency surplus = deficitIs1 ? cp.key.currency0 : cp.key.currency1;
-        bool zeroForOne = deficitIs1; // sell surplus(token0) -> deficit(token1) when deficit is token1
+        bool zeroForOne = deficitIs1; // sell surplus(token0) -> deficit(token1) when token1 is the deficit
 
-        // 1. bulk surplus->deficit via the verbatim route; settle whatever real deficit it (and the buffer) hold.
-        if (cp.route.length != 0) _runRoute(cp.route, surplus);
+        // 1. settle the deficit owed (from the flash-take) with whatever deficit tokens we already hold.
         _settleToward(deficit);
 
-        // 2. convert ALL remaining surplus to deficit (exact-input) — never overshoot, so nothing is bought just
-        //    to be handed back by the trim. Settle the surplus the swap consumed.
+        // 2. convert ALL remaining surplus to deficit (exact-input) — never overshoot, so nothing is bought
+        //    just to be handed back by the trim. Settle the surplus the swap consumed.
         uint256 surplusBal = surplus.balanceOfSelf();
         if (surplusBal > 0) {
             _swap(cp.key, zeroForOne, -int256(surplusBal));
             _settleToward(surplus);
         }
 
-        // 3. whatever deficit is still owed (the genuine slippage shortfall) -> free it by trimming the position.
+        // 3. whatever deficit is still owed (the genuine residual) -> free it by trimming the position.
         int256 owed = poolManager.currencyDelta(address(this), deficit);
         if (owed < 0) {
             trimmed = _trim(cp, tokenId, deficitIs1, uint256(-owed));
@@ -281,21 +316,73 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         _decrease(cp.key, tokenId, dl, cp.hookData);
     }
 
-    // ───────────────────────────────────────────── helpers ─────────────────────────────────────────────
+    /// @dev Route-first pre-step: determine which side is the surplus relative to the target ratio (at mid),
+    ///      then run the verbatim route from that side. The route is off-venue, so it does not move this pool.
+    function _routeSurplus(CoreParams memory cp) internal {
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
+        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cp.tickLower);
+        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cp.tickUpper);
+        uint256 midRateX96 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, FixedPoint96.Q96);
+        uint128 lref = _sizeLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, midRateX96);
+        (uint256 a0,) = _getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, lref);
+        Currency surplus = cp.budget0 > a0 ? cp.key.currency0 : cp.key.currency1;
+        _runRoute(cp.route, surplus);
+    }
 
-    /// @dev L = L_ref * budgetValue / refValue, valuing both in token1 units at `rateX96` (token1 per token0).
-    function _sizeLiquidity(
-        uint160 sqrtPriceX96,
-        uint160 sqrtLower,
-        uint160 sqrtUpper,
+    // ───────────────────────────────────────────── sizing helpers ─────────────────────────────────────────────
+
+    /// @dev Fee-aware sizing. First size at mid to find which side is the surplus (the side the same-pool
+    ///      reconcile will swap), then re-size discounting that side's value by the pool fee, so we don't
+    ///      over-mint by a fee the trim would otherwise have to claw back. If the holdings are already in
+    ///      ratio (no swap needed) the mid size is returned unchanged.
+    function _sizeFeeAware(
+        uint160 sp,
+        uint160 sl,
+        uint160 su,
         uint256 b0,
         uint256 b1,
-        uint256 rateX96
+        uint256 midRateX96,
+        uint256 feePips
+    ) internal pure returns (uint128) {
+        uint128 midL = _sizeLiquidity(sp, sl, su, b0, b1, midRateX96);
+        (uint256 a0m, uint256 a1m) = _getAmountsForLiquidity(sp, sl, su, midL);
+        if (b0 > a0m) {
+            // token0 is surplus -> it gets swapped same-pool -> discount its value by the fee.
+            uint256 rate0 = FullMath.mulDiv(midRateX96, PIPS_DENOMINATOR - feePips, PIPS_DENOMINATOR);
+            return _sizeLiquidityWeighted(sp, sl, su, b0, b1, rate0, PIPS_DENOMINATOR);
+        } else if (b1 > a1m) {
+            // token1 is surplus -> discount its weight by the fee.
+            return _sizeLiquidityWeighted(sp, sl, su, b0, b1, midRateX96, PIPS_DENOMINATOR - feePips);
+        }
+        return midL;
+    }
+
+    /// @dev L = lref * budgetValue / refValue, valuing both sides in token1 at `rateX96` (token1 per token0).
+    function _sizeLiquidity(uint160 sp, uint160 sl, uint160 su, uint256 b0, uint256 b1, uint256 rateX96)
+        internal
+        pure
+        returns (uint128)
+    {
+        return _sizeLiquidityWeighted(sp, sl, su, b0, b1, rateX96, PIPS_DENOMINATOR);
+    }
+
+    /// @dev As `_sizeLiquidity`, but token1's value is additionally scaled by `rate1Pips / 1e6` (used by
+    ///      fee-aware sizing to discount whichever side is the surplus).
+    function _sizeLiquidityWeighted(
+        uint160 sp,
+        uint160 sl,
+        uint160 su,
+        uint256 b0,
+        uint256 b1,
+        uint256 rate0X96,
+        uint256 rate1Pips
     ) internal pure returns (uint128) {
         uint128 lref = 1e18;
-        (uint256 a0r, uint256 a1r) = _getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, lref);
-        uint256 refValue = FullMath.mulDiv(a0r, rateX96, FixedPoint96.Q96) + a1r;
-        uint256 budgetValue = FullMath.mulDiv(b0, rateX96, FixedPoint96.Q96) + b1;
+        (uint256 a0r, uint256 a1r) = _getAmountsForLiquidity(sp, sl, su, lref);
+        uint256 refValue =
+            FullMath.mulDiv(a0r, rate0X96, FixedPoint96.Q96) + FullMath.mulDiv(a1r, rate1Pips, PIPS_DENOMINATOR);
+        uint256 budgetValue =
+            FullMath.mulDiv(b0, rate0X96, FixedPoint96.Q96) + FullMath.mulDiv(b1, rate1Pips, PIPS_DENOMINATOR);
         if (refValue == 0) return 0;
         return FullMath.mulDiv(uint256(lref), budgetValue, refValue).toUint128();
     }
@@ -303,8 +390,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev token amounts required for `liquidity` at the given price/range, via SqrtPriceMath. Rounded UP to
     ///      mirror POSM's MINT_POSITION (which rounds the pull up, in the pool's favor): so the flash-take
     ///      decision in `_executeMint` sees the true required amount and the contract is never a wei short of
-    ///      what POSM pulls. For sizing (`_sizeLiquidity`) rounding the reference up only shrinks L — the safe
-    ///      direction. The ≤1-wei over-estimate is swept as dust.
+    ///      what POSM pulls. For sizing, rounding the reference up only shrinks L — the safe direction. The
+    ///      <=1-wei over-estimate is swept as dust.
     function _getAmountsForLiquidity(uint160 sqrtPriceX96, uint160 sqrtA, uint160 sqrtB, uint128 liquidity)
         internal
         pure
@@ -331,6 +418,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             sqrtPriceX96, TickMath.getSqrtPriceAtTick(cp.tickLower), TickMath.getSqrtPriceAtTick(cp.tickUpper), liquidity
         );
     }
+
+    // ───────────────────────────────────────────── POSM / pool actions ─────────────────────────────────────────────
 
     function _mint(CoreParams memory cp, uint128 liquidity, uint256 amount0, uint256 amount1)
         internal
@@ -369,6 +458,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         params[1] = abi.encode(cp.key.currency0, cp.key.currency1);
     }
 
+    /// @dev Run the caller's verbatim Universal Router route. The route encodes its own (fixed) input amount; we
+    ///      grant UR a bounded Permit2 allowance for the surplus (or forward native value) and call execute.
     function _runRoute(bytes memory route, Currency surplus) internal {
         (bytes memory commands, bytes[] memory inputs) = abi.decode(route, (bytes, bytes[]));
         uint256 value;
@@ -416,6 +507,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         );
     }
 
+    // ───────────────────────────────────────────── delta / token helpers ─────────────────────────────────────────────
+
     /// @dev Settle as much of `currency`'s outstanding debt as we currently hold (no-op on a credit/zero debt).
     function _settleToward(Currency currency) internal {
         int256 d = poolManager.currencyDelta(address(this), currency);
@@ -446,6 +539,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (msg.value != expectedValue) revert InvalidEthValue();
     }
 
+    /// @dev One-time max ERC20 approval to Permit2, then a bounded per-call Permit2 allowance to `spender`.
     function _approveSpender(Currency currency, address spender, uint256 amount) internal {
         address token = Currency.unwrap(currency);
         if (!_permit2Approved[token]) {

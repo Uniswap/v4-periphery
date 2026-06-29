@@ -8,24 +8,31 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
+import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
 import {SwapAndAdd} from "../src/SwapAndAdd.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
-/// @notice V1 SwapAndAdd tests (option C: optimistic-mint-and-trim). Same-pool path (empty route) — exercises
-///         optimistic sizing, flash-take, mint-to-contract, same-pool funding swap, the trim, dust sweep, and
-///         the post-unlock NFT transfer to the recipient. UR-route integration is tested separately.
+/// @notice SwapAndAdd tests (route-first + fee-aware). The empty-route cases exercise the same-pool path
+///         (fee-aware sizing, flash-take, mint-to-contract, same-pool reconcile, trim, dust sweep, post-unlock
+///         NFT transfer); the routed cases drive a MockSwapRoute through the route-before-mint path, covering
+///         under/over-conversion (bidirectional reconcile), better-than-mid capture, and cheaper-than-pool-fee
+///         routes. End-to-end integration against the REAL Universal Router lives in test-integration/.
 contract SwapAndAddTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
 
     SwapAndAdd zap;
+    MockSwapRoute route;
     int24 constant TICK_LOWER = -600;
     int24 constant TICK_UPPER = 600;
+    /// @dev abi.encode(bytes commands, bytes[] inputs) — a non-empty route payload the mock ignores.
+    bytes constant ROUTE_PAYLOAD = abi.encode(bytes(""), new bytes[](0));
 
     function setUp() public {
         deployFreshManagerAndRouters();
@@ -35,7 +42,11 @@ contract SwapAndAddTest is PosmTestSetup {
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1);
         seedMoreLiquidity(key, 1_000e18, 1_000e18);
 
-        zap = new SwapAndAdd(manager, permit2, lpm, IUniversalRouter(address(0xdead)));
+        route = new MockSwapRoute(permit2);
+        zap = new SwapAndAdd(manager, permit2, lpm, IUniversalRouter(address(route)));
+        // fund the mock route's off-venue inventory so it can deliver the deficit token.
+        MockERC20(Currency.unwrap(currency0)).mint(address(route), 1_000_000e18);
+        MockERC20(Currency.unwrap(currency1)).mint(address(route), 1_000_000e18);
 
         seedBalance(address(this));
         _approveZap(currency0);
@@ -224,6 +235,75 @@ contract SwapAndAddTest is PosmTestSetup {
         vm.prank(address(0xBEEF));
         vm.expectRevert();
         zap.rebalance(_rebalanceParams(tokenId, posLiq));
+    }
+
+    // ─────────────────────────── routed (route-first) cases ───────────────────────────
+
+    /// @dev Config the mock route for a single-token1 budget: it consumes `inputAmount` of token1 (the surplus)
+    ///      and returns token0 at `rateMultBps` vs the 1:1 mid (10000 = mid, <10000 worse, >10000 beats mid).
+    function _configRoute(uint256 rateMultBps, uint256 inputAmount) internal {
+        route.config(
+            Currency.unwrap(currency1), Currency.unwrap(currency0), FixedPoint96.Q96, rateMultBps, inputAmount, false
+        );
+    }
+
+    function _routeAdd(uint256 amount1In) internal view returns (ISwapAndAdd.AddParams memory p) {
+        p = _addParams(0, amount1In);
+        p.route = ROUTE_PAYLOAD;
+    }
+
+    /// @notice Route under-converts (input below the ideal): the same-pool reconcile tops up the deficit in the
+    ///         normal direction (surplus token1 -> deficit token0). Position lands cleanly, contract strands nothing.
+    function test_add_route_underConverts() public {
+        _configRoute(9970, 3e18); // ~mid-0.3%, under the ~5e18 ideal for a 10e18 single-tok1 budget
+        (uint256 tokenId, uint128 liq,,) = zap.add(_routeAdd(10e18));
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    /// @notice Route over-converts (input above the ideal): the reconcile runs the OTHER direction, selling the
+    ///         over-bought deficit (token0) back to the surplus (token1). Exercises the bidirectional reconcile.
+    function test_add_route_overConverts() public {
+        _configRoute(9970, 7e18); // over the ~5e18 ideal -> ends long token0 -> reconcile sells token0->token1
+        (uint256 tokenId, uint128 liq,,) = zap.add(_routeAdd(10e18));
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    /// @notice Better-than-mid route: route-first sizes from the (richer) post-route holdings and CAPTURES the
+    ///         upside, deploying MORE liquidity than the same-pool (empty-route) path can.
+    function test_add_route_betterThanMid_capturesUpside() public {
+        uint256 snap = vm.snapshotState();
+        (, uint128 samePoolLiq,,) = zap.add(_addParams(0, 10e18)); // same-pool baseline
+        vm.revertToState(snap);
+
+        _configRoute(10200, 5e18); // route beats mid by 2%
+        (, uint128 routedLiq,,) = zap.add(_routeAdd(10e18));
+        assertGt(routedLiq, samePoolLiq, "better-than-mid route deploys MORE than same-pool");
+    }
+
+    /// @notice Cheaper-than-pool-fee route (mid-0.05% vs the 0.30% pool): route-first deploys more and returns
+    ///         less than the same-pool path, because it sizes from the actually-cheap holdings.
+    function test_add_route_cheaper_deploysMoreThanSamePool() public {
+        uint256 snap = vm.snapshotState();
+        uint256 c1Before = currency1.balanceOf(address(this));
+        (, uint128 samePoolLiq,,) = zap.add(_addParams(0, 10e18));
+        uint256 samePoolReturned = currency1.balanceOf(address(this)) + 10e18 - c1Before;
+        vm.revertToState(snap);
+
+        _configRoute(9995, 5e18); // mid-0.05%, cheaper than the 0.30% pool fee
+        c1Before = currency1.balanceOf(address(this));
+        (, uint128 routedLiq,,) = zap.add(_routeAdd(10e18));
+        uint256 routedReturned = currency1.balanceOf(address(this)) + 10e18 - c1Before;
+
+        assertGt(routedLiq, samePoolLiq, "cheaper route deploys MORE than same-pool");
+        assertLt(routedReturned, samePoolReturned, "cheaper route returns LESS than same-pool");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
     // ─────────────────────────── failure / edge cases ───────────────────────────
