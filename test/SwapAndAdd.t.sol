@@ -152,14 +152,14 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.add(p);
     }
 
-    function _rebalanceParams(uint256 tokenId, uint128 liquidityToMove)
+    function _rebalanceParams(uint256 tokenId, uint256 redeployBps)
         internal
         view
         returns (ISwapAndAdd.RebalanceParams memory)
     {
         return ISwapAndAdd.RebalanceParams({
             tokenId: tokenId,
-            liquidityToMove: liquidityToMove,
+            redeployBps: redeployBps,
             newTickLower: -1200,
             newTickUpper: 1200,
             route: "",
@@ -174,30 +174,51 @@ contract SwapAndAddTest is PosmTestSetup {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
 
-        uint128 posLiq = lpm.getPositionLiquidity(tokenId);
-        (uint256 newTokenId, uint128 newLiq,,) = zap.rebalance(_rebalanceParams(tokenId, posLiq));
+        // redeployBps = 10_000 -> full move: burn the whole position, redeploy everything.
+        (uint256 newTokenId, uint128 newLiq,,) = zap.rebalance(_rebalanceParams(tokenId, 10_000));
 
         assertEq(IERC721(address(lpm)).ownerOf(newTokenId), address(this), "user owns new NFT");
         assertGt(newLiq, 0, "new liquidity minted");
-        assertEq(lpm.getPositionLiquidity(tokenId), 0, "old position fully emptied");
+        assertEq(lpm.getPositionLiquidity(tokenId), 0, "old position fully burned");
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    function test_rebalance_partial() public {
-        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+    /// @dev Option-a partial redeploy: the old position is burned IN FULL (not left with a remainder), only
+    ///      `redeployBps` is redeployed, and the rest is returned to the recipient's wallet. Compared against a
+    ///      full (10_000) redeploy of an identical position so the ~half proportionality is exact.
+    function test_rebalance_partialRedeploy_burnsFull_returnsRest() public {
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        (uint256 idFull,,,) = zap.add(_addParams(0, 10e18));
+        (uint256 idHalf,,,) = zap.add(_addParams(0, 10e18));
 
-        uint128 posLiq = lpm.getPositionLiquidity(tokenId);
-        uint128 half = posLiq / 2;
-        (uint256 newTokenId, uint128 newLiq,,) = zap.rebalance(_rebalanceParams(tokenId, half));
+        (, uint128 liqFull,,) = zap.rebalance(_rebalanceParams(idFull, 10_000));
 
-        assertEq(IERC721(address(lpm)).ownerOf(newTokenId), address(this), "user owns new NFT");
-        assertGt(newLiq, 0, "new liquidity minted");
-        // original position keeps roughly the remaining half
-        assertApproxEqAbs(lpm.getPositionLiquidity(tokenId), posLiq - half, 1, "old keeps remainder");
+        uint256 c0Before = currency0.balanceOf(address(this));
+        uint256 c1Before = currency1.balanceOf(address(this));
+        (, uint128 liqHalf,,) = zap.rebalance(_rebalanceParams(idHalf, 5_000));
+        uint256 refund0 = currency0.balanceOf(address(this)) - c0Before;
+        uint256 refund1 = currency1.balanceOf(address(this)) - c1Before;
+
+        // both old positions are fully burned (the option-a invariant — no remainder left in the old range).
+        assertEq(lpm.getPositionLiquidity(idFull), 0, "full burned");
+        assertEq(lpm.getPositionLiquidity(idHalf), 0, "half burned");
+        // a 50% redeploy deploys ~half the liquidity of a full redeploy into the same new range.
+        assertApproxEqRel(liqHalf, liqFull / 2, 0.02e18, "half redeploy ~= half liquidity");
+        // the un-redeployed half is returned to the recipient in BOTH tokens (the burned position held both).
+        assertGt(refund0, 0, "token0 returned to recipient");
+        assertGt(refund1, 0, "token1 returned to recipient");
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    function test_rebalance_revertsOnInvalidBps() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRedeployBps.selector, uint256(0)));
+        zap.rebalance(_rebalanceParams(tokenId, 0));
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRedeployBps.selector, uint256(10_001)));
+        zap.rebalance(_rebalanceParams(tokenId, 10_001));
     }
 
     function test_add_native() public {
@@ -231,10 +252,9 @@ contract SwapAndAddTest is PosmTestSetup {
     function test_rebalance_revertsIfNotAuthorized() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         // do NOT approve the zap; call from a stranger
-        uint128 posLiq = lpm.getPositionLiquidity(tokenId);
         vm.prank(address(0xBEEF));
         vm.expectRevert();
-        zap.rebalance(_rebalanceParams(tokenId, posLiq));
+        zap.rebalance(_rebalanceParams(tokenId, 10_000));
     }
 
     // ─────────────────────────── routed (route-first) cases ───────────────────────────
@@ -318,8 +338,7 @@ contract SwapAndAddTest is PosmTestSetup {
     function test_rebalance_revertsAfterDeadline() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
-        uint128 posLiq = lpm.getPositionLiquidity(tokenId);
-        ISwapAndAdd.RebalanceParams memory p = _rebalanceParams(tokenId, posLiq);
+        ISwapAndAdd.RebalanceParams memory p = _rebalanceParams(tokenId, 10_000);
         vm.warp(p.deadline + 1);
         vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.DeadlinePassed.selector, p.deadline));
         zap.rebalance(p);

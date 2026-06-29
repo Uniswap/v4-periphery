@@ -207,14 +207,14 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
-    function _rebalanceParams(uint256 tokenId, uint128 liquidityToMove, int24 lo, int24 hi)
+    function _rebalanceParams(uint256 tokenId, uint256 redeployBps, int24 lo, int24 hi)
         internal
         view
         returns (ISwapAndAdd.RebalanceParams memory)
     {
         return ISwapAndAdd.RebalanceParams({
             tokenId: tokenId,
-            liquidityToMove: liquidityToMove,
+            redeployBps: redeployBps,
             newTickLower: lo,
             newTickUpper: hi,
             route: "",
@@ -233,33 +233,37 @@ contract SwapAndAddForkMainnetTest is Test {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
 
-        uint128 posLiq = posm.getPositionLiquidity(tokenId);
         int24 ts = key.tickSpacing;
         (uint256 newTokenId, uint128 newLiq,,) =
-            zap.rebalance(_rebalanceParams(tokenId, posLiq, lo - 10 * ts, hi + 10 * ts));
+            zap.rebalance(_rebalanceParams(tokenId, 10_000, lo - 10 * ts, hi + 10 * ts));
 
         assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
         assertGt(newLiq, 0, "new liquidity minted");
-        assertEq(posm.getPositionLiquidity(tokenId), 0, "old position emptied");
+        assertEq(posm.getPositionLiquidity(tokenId), 0, "old position fully burned");
         assertEq(address(zap).balance, 0, "zap eth == 0");
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
-    function test_fork_rebalance_partial() public {
+    // Option-a partial redeploy on the real pool: the old position is burned IN FULL, half is redeployed, and
+    // the other half is returned to the recipient's wallet (in both ETH and USDC).
+    function test_fork_rebalance_partialRedeploy() public {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
-
-        uint128 posLiq = posm.getPositionLiquidity(tokenId);
-        uint128 half = posLiq / 2;
         int24 ts = key.tickSpacing;
+
+        uint256 usdcBefore = IERC20(USDC).balanceOf(address(this));
+        uint256 ethBefore = address(this).balance;
         (uint256 newTokenId, uint128 newLiq,,) =
-            zap.rebalance(_rebalanceParams(tokenId, half, lo - 10 * ts, hi + 10 * ts));
+            zap.rebalance(_rebalanceParams(tokenId, 5_000, lo - 10 * ts, hi + 10 * ts));
 
         assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
         assertGt(newLiq, 0, "new liquidity minted");
-        assertApproxEqAbs(posm.getPositionLiquidity(tokenId), posLiq - half, 1, "old keeps remainder");
+        assertEq(posm.getPositionLiquidity(tokenId), 0, "old position fully burned");
+        // the un-redeployed half is returned to the recipient in BOTH tokens.
+        assertGt(IERC20(USDC).balanceOf(address(this)), usdcBefore, "usdc returned to recipient");
+        assertGt(address(this).balance, ethBefore, "eth returned to recipient");
         assertEq(address(zap).balance, 0, "zap eth == 0");
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
@@ -271,8 +275,7 @@ contract SwapAndAddForkMainnetTest is Test {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
 
-        uint128 posLiq = posm.getPositionLiquidity(tokenId);
-        zap.rebalance(_rebalanceParams(tokenId, posLiq, lo, hi)); // new range == old range
+        zap.rebalance(_rebalanceParams(tokenId, 10_000, lo, hi)); // new range == old range
     }
 
     // Faithful repro of the in-browser flow: 0.5 ETH add, then same-range full rebalance.
@@ -281,8 +284,7 @@ contract SwapAndAddForkMainnetTest is Test {
         vm.deal(address(this), 100 ether);
         (uint256 tokenId,,,) = zap.add{value: 0.5 ether}(_addParams(0.5 ether, 0, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
-        uint128 posLiq = posm.getPositionLiquidity(tokenId);
-        zap.rebalance(_rebalanceParams(tokenId, posLiq, lo, hi));
+        zap.rebalance(_rebalanceParams(tokenId, 10_000, lo, hi));
     }
 
     function _v4SwapRoute(PoolKey memory poolKey, bool zeroForOne, uint128 amtIn, Currency inCcy, Currency outCcy)
