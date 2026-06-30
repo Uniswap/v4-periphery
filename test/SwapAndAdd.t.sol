@@ -128,6 +128,95 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
+    // ─────────────────────────── increase (top up an existing position) ───────────────────────────
+
+    function _increaseParams(uint256 tokenId, uint256 amount0In, uint256 amount1In)
+        internal
+        view
+        returns (ISwapAndAdd.IncreaseParams memory)
+    {
+        return ISwapAndAdd.IncreaseParams({
+            tokenId: tokenId,
+            amount0In: amount0In,
+            amount1In: amount1In,
+            route: "",
+            minLiquidityAdded: 0,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+    }
+
+    /// @dev Increase tops up the SAME tokenId in place: liquidity grows, no new NFT, owner unchanged.
+    ///      POSM gates INCREASE_LIQUIDITY on the locker (zap) being approved, so the owner approves it first.
+    function test_increase_growsSamePosition() public {
+        (uint256 tokenId, uint128 liq0,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        uint256 nextBefore = lpm.nextTokenId();
+
+        (uint128 added, uint256 a0, uint256 a1) = zap.increase(_increaseParams(tokenId, 0, 10e18));
+
+        assertGt(added, 0, "liquidity added");
+        assertGt(a0 + a1, 0, "amounts deployed");
+        assertEq(lpm.getPositionLiquidity(tokenId), liq0 + added, "same position grew by exactly added");
+        assertEq(lpm.nextTokenId(), nextBefore, "no new NFT minted");
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "owner unchanged");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    function test_increase_singleToken0() public {
+        (uint256 tokenId, uint128 liq0,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        (uint128 added,,) = zap.increase(_increaseParams(tokenId, 10e18, 0));
+        assertGt(added, 0, "liquidity added");
+        assertEq(lpm.getPositionLiquidity(tokenId), liq0 + added, "grew by added");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    function test_increase_mixedRatio() public {
+        (uint256 tokenId, uint128 liq0,,) = zap.add(_addParams(3e18, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        (uint128 added,,) = zap.increase(_increaseParams(tokenId, 2e18, 10e18));
+        assertGt(added, 0, "liquidity added");
+        assertEq(lpm.getPositionLiquidity(tokenId), liq0 + added, "grew by added");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    function test_increase_native() public {
+        ISwapAndAdd.AddParams memory ap = _addParams(1e17, 0);
+        ap.poolKey = nativeKey;
+        (uint256 tokenId, uint128 liq0,,) = zap.add{value: 1e17}(ap);
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        uint256 nextBefore = lpm.nextTokenId();
+
+        (uint128 added,,) = zap.increase{value: 1e17}(_increaseParams(tokenId, 1e17, 0));
+
+        assertGt(added, 0, "liquidity added");
+        assertEq(lpm.getPositionLiquidity(tokenId), liq0 + added, "native position grew by added");
+        assertEq(lpm.nextTokenId(), nextBefore, "no new NFT minted");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+    }
+
+    function test_increase_revertsOnMinLiquidity() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        ISwapAndAdd.IncreaseParams memory p = _increaseParams(tokenId, 0, 10e18);
+        p.minLiquidityAdded = type(uint128).max; // impossible floor on the liquidity added
+        vm.expectRevert(); // InsufficientLiquidity
+        zap.increase(p);
+    }
+
+    function test_increase_revertsAfterDeadline() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        ISwapAndAdd.IncreaseParams memory p = _increaseParams(tokenId, 0, 10e18);
+        p.deadline = block.timestamp - 1;
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.DeadlinePassed.selector, p.deadline));
+        zap.increase(p);
+    }
+
     /// @notice Option C deploys the *actual* max the budget supports, so returned dust is tiny (the genuine
     ///         slippage shortfall), in the input token.
     function test_add_lowDust() public {

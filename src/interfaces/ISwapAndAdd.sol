@@ -73,6 +73,41 @@ interface ISwapAndAdd {
         payable
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
 
+    /// @param tokenId           Existing position to top up. Its pool and tick range are read on-chain; the
+    ///                          liquidity is ADDED to this same tokenId (no new NFT, the NFT never moves).
+    /// @param amount0In         Budget of pool token0 to add (may be 0).
+    /// @param amount1In         Budget of pool token1 to add (may be 0).
+    /// @param route             Verbatim Universal Router payload for the surplus->deficit swap (may be empty).
+    /// @param minLiquidityAdded Slippage floor: revert if the liquidity added to the position < this.
+    /// @param recipient         Receives any swept leftover input-token dust (NOT the position — that stays put).
+    /// @param hookData          Hook data forwarded to the increase.
+    /// @param deadline          Tx reverts after this timestamp.
+    struct IncreaseParams {
+        uint256 tokenId;
+        uint256 amount0In;
+        uint256 amount1In;
+        bytes route;
+        uint256 minLiquidityAdded;
+        address recipient;
+        bytes hookData;
+        uint256 deadline;
+    }
+
+    /// @notice Top up an EXISTING position with a one- or two-sided token budget in a single transaction. Same
+    ///         route-first sizing as `add`, but it INCREASEs the given tokenId at its current range instead of
+    ///         minting a new position — the NFT never moves and no new NFT is created. The contract must be
+    ///         POSM-approved on the position (POSM gates INCREASE_LIQUIDITY on the locker being approved).
+    /// @dev No CALLER auth is needed: funds come from `msg.sender` via `_pullBudget`, the position only grows (for
+    ///      whoever owns it), and swept dust goes to `recipient` (the funder) — there is no value-redirect path,
+    ///      so anyone may top up a position the contract is approved on, from their own wallet.
+    /// @return liquidityAdded The liquidity added to the position.
+    /// @return amount0        token0 added to the position.
+    /// @return amount1        token1 added to the position.
+    function increase(IncreaseParams calldata params)
+        external
+        payable
+        returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1);
+
     /// @param tokenId       Existing position to move; caller must be owner or approved. The position is
     ///                      withdrawn IN FULL (burned) — see DESIGN NOTE on the deltas below.
     /// @param additionalA   Signed delta for currency0, applied to the fully-withdrawn holdings of that token:
