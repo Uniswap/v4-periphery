@@ -285,6 +285,41 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.rebalance(_rebalanceParams(tokenId, 0, 0));
     }
 
+    /// @dev SECURITY: an approved operator may rebalance the owner's position but must NOT be able to redirect its
+    ///      value to itself. Even when the operator sets `recipient = self`, the new NFT and any cash-out are forced
+    ///      to the position owner — so a standing NFT approval can never be used to steal the position.
+    function test_rebalance_operatorCannotRedirectToSelf() public {
+        address operator = address(0xBEEF);
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true); // zap may burn/redeploy
+        IERC721(address(lpm)).setApprovalForAll(operator, true); // owner trusts operator to MANAGE the position
+
+        ISwapAndAdd.RebalanceParams memory p = _rebalanceParams(tokenId, 0, -1e18); // cash out 1 token1
+        p.recipient = operator; // operator tries to send the output to itself
+
+        uint256 opC1Before = currency1.balanceOf(operator);
+        uint256 ownerC1Before = currency1.balanceOf(address(this));
+        vm.prank(operator);
+        (uint256 newTokenId,,,) = zap.rebalance(p);
+
+        assertEq(IERC721(address(lpm)).ownerOf(newTokenId), address(this), "new NFT forced to owner, not operator");
+        assertEq(currency1.balanceOf(operator), opC1Before, "operator received NO cash-out");
+        assertGe(currency1.balanceOf(address(this)) - ownerC1Before, 1e18, "owner received the cash-out");
+    }
+
+    /// @dev Counterpart to the guard test: the owner themselves CAN still direct the output to any address.
+    function test_rebalance_ownerMayChooseRecipient() public {
+        address dest = address(0xCAFE);
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+
+        ISwapAndAdd.RebalanceParams memory p = _rebalanceParams(tokenId, 0, 0);
+        p.recipient = dest;
+        (uint256 newTokenId,,,) = zap.rebalance(p); // owner is msg.sender
+
+        assertEq(IERC721(address(lpm)).ownerOf(newTokenId), dest, "owner may send the new NFT to a chosen recipient");
+    }
+
     // ─────────────────────────── routed (route-first) cases ───────────────────────────
 
     /// @dev Config the mock route for a single-token1 budget: it consumes `inputAmount` of token1 (the surplus)
@@ -509,5 +544,27 @@ contract SwapAndAddTest is PosmTestSetup {
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
         vm.expectRevert(ISwapAndAdd.NoFeesToCompound.selector);
         zap.compound(_compoundParams(tokenId, 0));
+    }
+
+    /// @dev SECURITY: an approved operator may compound the owner's fees, but the NFT never moves and any swept
+    ///      dust is forced to the owner — the operator cannot skim even rounding dust by setting recipient = self.
+    function test_compound_operatorCannotRedirectDust() public {
+        address operator = address(0xBEEF);
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        IERC721(address(lpm)).setApprovalForAll(operator, true);
+        _generateFees();
+
+        ISwapAndAdd.CompoundParams memory p = _compoundParams(tokenId, 0);
+        p.recipient = operator; // operator tries to grab any dust
+
+        uint256 opC0Before = currency0.balanceOf(operator);
+        uint256 opC1Before = currency1.balanceOf(operator);
+        vm.prank(operator);
+        zap.compound(p);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "NFT stays with owner");
+        assertEq(currency0.balanceOf(operator), opC0Before, "operator got no token0 dust");
+        assertEq(currency1.balanceOf(operator), opC1Before, "operator got no token1 dust");
     }
 }

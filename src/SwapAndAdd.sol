@@ -138,14 +138,18 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     {
         if (block.timestamp > params.deadline) revert DeadlinePassed(params.deadline);
         (PoolKey memory key,) = positionManager.getPoolAndPositionInfo(params.tokenId);
-        _checkAuth(params.tokenId);
+        address owner = _checkAuth(params.tokenId);
+        // An approved operator may move the owner's position but must NOT be able to redirect its value to
+        // themselves: only the owner may name a custom recipient. For anyone else the entire output (the new
+        // NFT, any negative-delta cash-out, and swept dust) is forced to the owner.
+        address recipient = msg.sender == owner ? params.recipient : owner;
         // pull any positive (add) deltas here, where msg.sender is the caller (mirrors add()'s _pullBudget);
         // negative (return) deltas are handled inside the unlock once we know the withdrawn amounts.
         _pullAdditional(key, params.additionalA, params.additionalB);
 
-        bytes memory result = poolManager.unlock(abi.encode(OP_REBALANCE, abi.encode(params, key)));
+        bytes memory result = poolManager.unlock(abi.encode(OP_REBALANCE, abi.encode(params, key, recipient)));
         (newTokenId, liquidity, amount0, amount1) = abi.decode(result, (uint256, uint128, uint256, uint256));
-        IERC721Minimal(address(positionManager)).transferFrom(address(this), params.recipient, newTokenId);
+        IERC721Minimal(address(positionManager)).transferFrom(address(this), recipient, newTokenId);
     }
 
     /// @inheritdoc ISwapAndAdd
@@ -155,14 +159,17 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
     {
         if (block.timestamp > params.deadline) revert DeadlinePassed(params.deadline);
-        _checkAuth(params.tokenId);
-        bytes memory result = poolManager.unlock(abi.encode(OP_COMPOUND, abi.encode(params)));
+        address owner = _checkAuth(params.tokenId);
+        // Same guard as rebalance: only the owner may direct the (dust) sweep elsewhere; for an approved
+        // operator it goes to the owner. The position NFT never moves and only grows, so this is belt-and-braces.
+        address recipient = msg.sender == owner ? params.recipient : owner;
+        bytes memory result = poolManager.unlock(abi.encode(OP_COMPOUND, abi.encode(params, recipient)));
         (liquidityAdded, amount0, amount1) = abi.decode(result, (uint128, uint256, uint256));
     }
 
-    /// @dev Revert unless msg.sender is the position owner or an ERC-721 approved operator for it.
-    function _checkAuth(uint256 tokenId) internal view {
-        address owner = IERC721Minimal(address(positionManager)).ownerOf(tokenId);
+    /// @dev Revert unless msg.sender is the position owner or an ERC-721 approved operator for it; returns the owner.
+    function _checkAuth(uint256 tokenId) internal view returns (address owner) {
+        owner = IERC721Minimal(address(positionManager)).ownerOf(tokenId);
         if (
             msg.sender != owner && IERC721Minimal(address(positionManager)).getApproved(tokenId) != msg.sender
                 && !IERC721Minimal(address(positionManager)).isApprovedForAll(owner, msg.sender)
@@ -174,7 +181,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         (uint256 op, bytes memory inner) = abi.decode(data, (uint256, bytes));
         if (op == OP_COMPOUND) {
-            (uint128 liq, uint256 a0, uint256 a1) = _compound(abi.decode(inner, (CompoundParams)));
+            (CompoundParams memory cparams, address recipient) = abi.decode(inner, (CompoundParams, address));
+            (uint128 liq, uint256 a0, uint256 a1) = _compound(cparams, recipient);
             return abi.encode(liq, a0, a1);
         }
 
@@ -185,8 +193,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
                 p.poolKey, p.tickLower, p.tickUpper, p.amount0In, p.amount1In, p.route, p.minLiquidity, p.recipient, p.hookData
             );
         } else {
-            (RebalanceParams memory p, PoolKey memory key) = abi.decode(inner, (RebalanceParams, PoolKey));
-            cp = _prepareRebalance(p, key);
+            (RebalanceParams memory p, PoolKey memory key, address recipient) =
+                abi.decode(inner, (RebalanceParams, PoolKey, address));
+            cp = _prepareRebalance(p, key, recipient);
         }
         (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = _addCore(cp);
         return abi.encode(tokenId, liq, a0, a1);
@@ -198,14 +207,17 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      Returning the cash-out share up front is what keeps the accounting safe: the contract is then left
     ///      holding exactly the redeploy budget, so every `balanceOfSelf()` read in `_addCore` (the route, the
     ///      reconcile's sell-all, the mint settle) sees only what should be deployed — never the portion owed back.
-    function _prepareRebalance(RebalanceParams memory p, PoolKey memory key) internal returns (CoreParams memory cp) {
+    function _prepareRebalance(RebalanceParams memory p, PoolKey memory key, address recipient)
+        internal
+        returns (CoreParams memory cp)
+    {
         _withdraw(key, p.tokenId, p.hookData); // burn the full position; tokens land in this contract.
 
-        uint256 budget0 = _resolveBudget(key.currency0, p.additionalA, p.recipient);
-        uint256 budget1 = _resolveBudget(key.currency1, p.additionalB, p.recipient);
+        uint256 budget0 = _resolveBudget(key.currency0, p.additionalA, recipient);
+        uint256 budget1 = _resolveBudget(key.currency1, p.additionalB, recipient);
 
         cp = CoreParams(
-            key, p.newTickLower, p.newTickUpper, budget0, budget1, p.route, p.minLiquidity, p.recipient, p.hookData
+            key, p.newTickLower, p.newTickUpper, budget0, budget1, p.route, p.minLiquidity, recipient, p.hookData
         );
     }
 
@@ -293,7 +305,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      no route (fees are tiny — same-pool only) and an INCREASE in place of a fresh MINT, so the existing NFT
     ///      just grows. Collect fees -> size from them (fee-aware) -> flash-take any deficit -> INCREASE ->
     ///      reconcile residual same-pool + trim -> floor -> sweep dust. The fees never leave to the wallet.
-    function _compound(CompoundParams memory p)
+    function _compound(CompoundParams memory p, address recipient)
         internal
         returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
     {
@@ -311,7 +323,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             key.currency1.balanceOfSelf(),
             "",
             p.minLiquidityAdded,
-            p.recipient,
+            recipient,
             p.hookData
         );
         if (cp.budget0 == 0 && cp.budget1 == 0) revert NoFeesToCompound();
@@ -330,8 +342,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         // 5. report the reinvested amounts; sweep any dust to the recipient (NFT stays with its owner).
         (amount0, amount1) = _positionAmounts(cp, liquidityAdded);
-        _sweep(key.currency0, p.recipient);
-        _sweep(key.currency1, p.recipient);
+        _sweep(key.currency0, recipient);
+        _sweep(key.currency1, recipient);
     }
 
     /// @dev Settle the position's funding using a single same-pool swap in whichever direction is short, then
