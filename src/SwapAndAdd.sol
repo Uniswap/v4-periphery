@@ -19,6 +19,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
+import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
@@ -68,6 +69,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
+    using PositionInfoLibrary for PositionInfo;
     using SafeCast for uint256;
 
     /// @dev Extra wei flash-taken / approved on the deficit side so POSM's round-up never under-funds the mint.
@@ -75,10 +77,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     uint48 private constant ALLOWANCE_EXPIRATION = type(uint48).max;
     /// @dev v4 fees are expressed in pips (millionths).
     uint256 private constant PIPS_DENOMINATOR = 1e6;
-    /// @dev `redeployBps` is in basis points (ten-thousandths).
-    uint256 private constant BPS_DENOMINATOR = 10_000;
     uint256 private constant OP_ADD = 0;
     uint256 private constant OP_REBALANCE = 1;
+    uint256 private constant OP_COMPOUND = 2;
 
     /// @dev internal, stack-friendly bundle of the shared add inputs (budget already held by this contract).
     struct CoreParams {
@@ -136,24 +137,47 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         returns (uint256 newTokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         if (block.timestamp > params.deadline) revert DeadlinePassed(params.deadline);
-        if (params.redeployBps == 0 || params.redeployBps > BPS_DENOMINATOR) {
-            revert InvalidRedeployBps(params.redeployBps);
-        }
-        address owner = IERC721Minimal(address(positionManager)).ownerOf(params.tokenId);
-        if (
-            msg.sender != owner && IERC721Minimal(address(positionManager)).getApproved(params.tokenId) != msg.sender
-                && !IERC721Minimal(address(positionManager)).isApprovedForAll(owner, msg.sender)
-        ) revert NotAuthorizedForToken(params.tokenId);
+        (PoolKey memory key,) = positionManager.getPoolAndPositionInfo(params.tokenId);
+        _checkAuth(params.tokenId);
+        // pull any positive (add) deltas here, where msg.sender is the caller (mirrors add()'s _pullBudget);
+        // negative (return) deltas are handled inside the unlock once we know the withdrawn amounts.
+        _pullAdditional(key, params.additionalA, params.additionalB);
 
-        bytes memory result = poolManager.unlock(abi.encode(OP_REBALANCE, abi.encode(params)));
+        bytes memory result = poolManager.unlock(abi.encode(OP_REBALANCE, abi.encode(params, key)));
         (newTokenId, liquidity, amount0, amount1) = abi.decode(result, (uint256, uint128, uint256, uint256));
         IERC721Minimal(address(positionManager)).transferFrom(address(this), params.recipient, newTokenId);
+    }
+
+    /// @inheritdoc ISwapAndAdd
+    function compound(CompoundParams calldata params)
+        external
+        isNotLocked
+        returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
+    {
+        if (block.timestamp > params.deadline) revert DeadlinePassed(params.deadline);
+        _checkAuth(params.tokenId);
+        bytes memory result = poolManager.unlock(abi.encode(OP_COMPOUND, abi.encode(params)));
+        (liquidityAdded, amount0, amount1) = abi.decode(result, (uint128, uint256, uint256));
+    }
+
+    /// @dev Revert unless msg.sender is the position owner or an ERC-721 approved operator for it.
+    function _checkAuth(uint256 tokenId) internal view {
+        address owner = IERC721Minimal(address(positionManager)).ownerOf(tokenId);
+        if (
+            msg.sender != owner && IERC721Minimal(address(positionManager)).getApproved(tokenId) != msg.sender
+                && !IERC721Minimal(address(positionManager)).isApprovedForAll(owner, msg.sender)
+        ) revert NotAuthorizedForToken(tokenId);
     }
 
     // ───────────────────────────────────────────── unlock callback ─────────────────────────────────────────────
 
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         (uint256 op, bytes memory inner) = abi.decode(data, (uint256, bytes));
+        if (op == OP_COMPOUND) {
+            (uint128 liq, uint256 a0, uint256 a1) = _compound(abi.decode(inner, (CompoundParams)));
+            return abi.encode(liq, a0, a1);
+        }
+
         CoreParams memory cp;
         if (op == OP_ADD) {
             AddParams memory p = abi.decode(inner, (AddParams));
@@ -161,30 +185,41 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
                 p.poolKey, p.tickLower, p.tickUpper, p.amount0In, p.amount1In, p.route, p.minLiquidity, p.recipient, p.hookData
             );
         } else {
-            cp = _prepareRebalance(abi.decode(inner, (RebalanceParams)));
+            (RebalanceParams memory p, PoolKey memory key) = abi.decode(inner, (RebalanceParams, PoolKey));
+            cp = _prepareRebalance(p, key);
         }
         (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = _addCore(cp);
         return abi.encode(tokenId, liq, a0, a1);
     }
 
-    /// @dev Option-a rebalance prep: burn the WHOLE position, keep only `redeployBps` of the withdrawn value as
-    ///      the redeploy budget, and return the rest to the recipient up front. Returning the excess BEFORE the
-    ///      add flow runs is what makes the accounting safe: the contract is then left holding exactly the
-    ///      redeploy share, so every `balanceOfSelf()` read in `_addCore` (the route, the reconcile's sell-all,
-    ///      the mint settle) sees only what should be deployed — never the portion owed back to the recipient.
-    function _prepareRebalance(RebalanceParams memory p) internal returns (CoreParams memory cp) {
-        (PoolKey memory key,) = positionManager.getPoolAndPositionInfo(p.tokenId);
+    /// @dev Rebalance prep: burn the WHOLE position, then resolve each token's redeploy budget from the signed
+    ///      delta — `withdrawn + additional`. Positive deltas were already pulled in `rebalance()` (so they sit in
+    ///      this contract's balance); negative deltas are returned to the recipient HERE, before the add flow runs.
+    ///      Returning the cash-out share up front is what keeps the accounting safe: the contract is then left
+    ///      holding exactly the redeploy budget, so every `balanceOfSelf()` read in `_addCore` (the route, the
+    ///      reconcile's sell-all, the mint settle) sees only what should be deployed — never the portion owed back.
+    function _prepareRebalance(RebalanceParams memory p, PoolKey memory key) internal returns (CoreParams memory cp) {
         _withdraw(key, p.tokenId, p.hookData); // burn the full position; tokens land in this contract.
 
-        // keep `redeployBps` of each withdrawn token; return the remainder to the recipient now.
-        uint256 keep0 = FullMath.mulDiv(key.currency0.balanceOfSelf(), p.redeployBps, BPS_DENOMINATOR);
-        uint256 keep1 = FullMath.mulDiv(key.currency1.balanceOfSelf(), p.redeployBps, BPS_DENOMINATOR);
-        _returnExcess(key.currency0, keep0, p.recipient);
-        _returnExcess(key.currency1, keep1, p.recipient);
+        uint256 budget0 = _resolveBudget(key.currency0, p.additionalA, p.recipient);
+        uint256 budget1 = _resolveBudget(key.currency1, p.additionalB, p.recipient);
 
         cp = CoreParams(
-            key, p.newTickLower, p.newTickUpper, keep0, keep1, p.route, p.minLiquidity, p.recipient, p.hookData
+            key, p.newTickLower, p.newTickUpper, budget0, budget1, p.route, p.minLiquidity, p.recipient, p.hookData
         );
+    }
+
+    /// @dev Resolve one token's redeploy budget from its signed delta. With a positive delta the additional units
+    ///      were already pulled into this contract by `rebalance()`, so the held balance already equals
+    ///      `withdrawn + additional` and is returned as-is. With a negative delta we return `|delta|` to the
+    ///      recipient now (clamped: it may not exceed the withdrawn balance) and redeploy the remainder.
+    function _resolveBudget(Currency currency, int128 delta, address recipient) internal returns (uint256 budget) {
+        uint256 held = currency.balanceOfSelf();
+        if (delta >= 0) return held; // withdrawn + (pre-pulled) additional
+        uint256 toReturn = uint256(uint128(-delta));
+        if (toReturn > held) revert ReturnExceedsWithdrawn(toReturn, held);
+        currency.transfer(recipient, toReturn);
+        return held - toReturn;
     }
 
     // ───────────────────────────────────────────── core flow ─────────────────────────────────────────────
@@ -243,11 +278,60 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         internal
         returns (uint256 tokenId)
     {
-        Currency c0 = cp.key.currency0;
-        Currency c1 = cp.key.currency1;
-        if (amount0 > cp.budget0) _take(c0, address(this), amount0 - cp.budget0 + ROUNDING_BUFFER);
-        if (amount1 > cp.budget1) _take(c1, address(this), amount1 - cp.budget1 + ROUNDING_BUFFER);
+        _flashTakeDeficit(cp, amount0, amount1);
         tokenId = _mint(cp, liquidity, amount0, amount1);
+    }
+
+    /// @dev Flash-`take` from the pool whatever the optimistic mint needs beyond the held budget, on each side,
+    ///      so the subsequent mint/increase is fully funded; `_reconcile` later settles what the swap actually owes.
+    function _flashTakeDeficit(CoreParams memory cp, uint256 amount0, uint256 amount1) internal {
+        if (amount0 > cp.budget0) _take(cp.key.currency0, address(this), amount0 - cp.budget0 + ROUNDING_BUFFER);
+        if (amount1 > cp.budget1) _take(cp.key.currency1, address(this), amount1 - cp.budget1 + ROUNDING_BUFFER);
+    }
+
+    /// @dev Compound: reinvest the position's accrued fees back into the SAME tokenId. Mirrors `_addCore` but with
+    ///      no route (fees are tiny — same-pool only) and an INCREASE in place of a fresh MINT, so the existing NFT
+    ///      just grows. Collect fees -> size from them (fee-aware) -> flash-take any deficit -> INCREASE ->
+    ///      reconcile residual same-pool + trim -> floor -> sweep dust. The fees never leave to the wallet.
+    function _compound(CompoundParams memory p)
+        internal
+        returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
+    {
+        (PoolKey memory key, PositionInfo info) = positionManager.getPoolAndPositionInfo(p.tokenId);
+
+        // 1. collect fees only: DECREASE by 0 liquidity credits the accrued fees, TAKE_PAIR pulls them here.
+        _decrease(key, p.tokenId, 0, p.hookData);
+
+        // budget = the collected fees; target the position's existing range; no route.
+        CoreParams memory cp = CoreParams(
+            key,
+            info.tickLower(),
+            info.tickUpper(),
+            key.currency0.balanceOfSelf(),
+            key.currency1.balanceOfSelf(),
+            "",
+            p.minLiquidityAdded,
+            p.recipient,
+            p.hookData
+        );
+        if (cp.budget0 == 0 && cp.budget1 == 0) revert NoFeesToCompound();
+
+        // 2. size from the fees and INCREASE the same position (flash-taking any side the mint is short of).
+        (uint128 lopt, uint256 a0opt, uint256 a1opt) = _planMint(cp);
+        _flashTakeDeficit(cp, a0opt, a1opt);
+        _increase(cp, p.tokenId, lopt, a0opt, a1opt);
+
+        // 3. reconcile the small residual same-pool and trim; net liquidity added = lopt - trimmed.
+        uint128 trimmed = _reconcile(cp, p.tokenId, a0opt, a1opt);
+        liquidityAdded = lopt - trimmed;
+
+        // 4. slippage floor on the liquidity actually added.
+        if (liquidityAdded < cp.minLiquidity) revert InsufficientLiquidity(uint128(cp.minLiquidity), liquidityAdded);
+
+        // 5. report the reinvested amounts; sweep any dust to the recipient (NFT stays with its owner).
+        (amount0, amount1) = _positionAmounts(cp, liquidityAdded);
+        _sweep(key.currency0, p.recipient);
+        _sweep(key.currency1, p.recipient);
     }
 
     /// @dev Settle the position's funding using a single same-pool swap in whichever direction is short, then
@@ -464,6 +548,40 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         params[1] = abi.encode(cp.key.currency0, cp.key.currency1);
     }
 
+    /// @dev INCREASE the liquidity of an existing position (the compound path). Mirrors `_mint`'s funding —
+    ///      approve POSM for the ERC-20 sides / forward native — but adds to `tokenId` instead of minting anew.
+    function _increase(CoreParams memory cp, uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
+        internal
+    {
+        Currency c0 = cp.key.currency0;
+        if (!c0.isAddressZero()) _approveSpender(c0, address(positionManager), amount0 + ROUNDING_BUFFER);
+        if (!cp.key.currency1.isAddressZero()) {
+            _approveSpender(cp.key.currency1, address(positionManager), amount1 + ROUNDING_BUFFER);
+        }
+        uint256 nativeToForward = c0.isAddressZero() ? amount0 + ROUNDING_BUFFER : 0;
+
+        (bytes memory actions, bytes[] memory params) = _buildIncreaseParams(cp, tokenId, liquidity);
+        positionManager.modifyLiquiditiesWithoutUnlock{value: nativeToForward}(actions, params);
+    }
+
+    function _buildIncreaseParams(CoreParams memory cp, uint256 tokenId, uint128 liquidity)
+        internal
+        view
+        returns (bytes memory actions, bytes[] memory params)
+    {
+        if (cp.key.currency0.isAddressZero()) {
+            actions =
+                abi.encodePacked(uint8(Actions.INCREASE_LIQUIDITY), uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP));
+            params = new bytes[](3);
+            params[2] = abi.encode(cp.key.currency0, ActionConstants.MSG_SENDER);
+        } else {
+            actions = abi.encodePacked(uint8(Actions.INCREASE_LIQUIDITY), uint8(Actions.SETTLE_PAIR));
+            params = new bytes[](2);
+        }
+        params[0] = abi.encode(tokenId, uint256(liquidity), type(uint128).max, type(uint128).max, cp.hookData);
+        params[1] = abi.encode(cp.key.currency0, cp.key.currency1);
+    }
+
     /// @dev Run the caller's verbatim Universal Router route. The route encodes its own (fixed) input amount; we
     ///      grant UR a bounded Permit2 allowance for the surplus (or forward native value) and call execute.
     function _runRoute(bytes memory route, Currency surplus) internal {
@@ -486,10 +604,23 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
     }
 
-    /// @dev Return everything held above `keep` of `currency` to `to` (the un-redeployed rebalance share).
-    function _returnExcess(Currency currency, uint256 keep, address to) internal {
-        uint256 bal = currency.balanceOfSelf();
-        if (bal > keep) currency.transfer(to, bal - keep);
+    /// @dev Pull the positive (add) rebalance deltas from the caller into this contract, before the unlock so
+    ///      msg.sender is still the caller (mirrors `_pullBudget`): native via msg.value, ERC-20 via Permit2.
+    ///      Negative deltas pull nothing here. currency1 is never native, so only currency0 can consume value.
+    function _pullAdditional(PoolKey memory key, int128 additionalA, int128 additionalB) internal {
+        uint256 expectedValue;
+        Currency c0 = key.currency0;
+        if (additionalA > 0) {
+            uint256 amount = uint256(uint128(additionalA));
+            if (c0.isAddressZero()) expectedValue = amount;
+            else permit2.transferFrom(msg.sender, address(this), uint160(amount), Currency.unwrap(c0));
+        }
+        if (additionalB > 0) {
+            permit2.transferFrom(
+                msg.sender, address(this), uint160(uint256(uint128(additionalB))), Currency.unwrap(key.currency1)
+            );
+        }
+        if (msg.value != expectedValue) revert InvalidEthValue();
     }
 
     function _decrease(PoolKey memory key, uint256 tokenId, uint128 dl, bytes memory hookData) internal {
