@@ -88,6 +88,8 @@ interface ISwapAndAdd {
     /// @param route         Verbatim Universal Router payload for the surplus->deficit swap (may be empty).
     /// @param minLiquidity  Slippage floor on the NEW (post-trim) position.
     /// @param recipient     Receives the new POSM NFT, any returned (negative-delta) share, and any swept dust.
+    ///                      HONORED ONLY when the caller is the position owner; if an approved operator calls,
+    ///                      all output is forced to the owner so an operator can never redirect value to itself.
     /// @param hookData      Hook data forwarded to the mint.
     /// @param deadline      Tx reverts after this timestamp.
     struct RebalanceParams {
@@ -123,6 +125,7 @@ interface ISwapAndAdd {
     ///                          contract must be approved on the position (POSM acts on the caller's behalf).
     /// @param minLiquidityAdded Slippage floor: revert if the liquidity added by compounding < this.
     /// @param recipient         Receives any swept rounding dust (the fees themselves are reinvested, not paid out).
+    ///                          Honored only when the caller is the owner; forced to the owner for an operator.
     /// @param hookData          Hook data forwarded to the fee collect and the increase.
     /// @param deadline          Tx reverts after this timestamp.
     struct CompoundParams {
