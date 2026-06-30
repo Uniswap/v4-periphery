@@ -15,7 +15,6 @@ import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 import {PositionConfig} from "./shared/PositionConfig.sol";
 import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
-import {SwapAndAdd} from "../src/SwapAndAdd.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
@@ -28,7 +27,7 @@ contract SwapAndAddTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
 
-    SwapAndAdd zap;
+    ISwapAndAdd zap;
     MockSwapRoute route;
     int24 constant TICK_LOWER = -600;
     int24 constant TICK_UPPER = 600;
@@ -44,7 +43,13 @@ contract SwapAndAddTest is PosmTestSetup {
         seedMoreLiquidity(key, 1_000e18, 1_000e18);
 
         route = new MockSwapRoute(permit2);
-        zap = new SwapAndAdd(manager, permit2, lpm, IUniversalRouter(address(route)));
+        // Deploy SwapAndAdd from its precompiled (via_ir=true/500) artifact rather than `new SwapAndAdd(...)`,
+        // so its source is never pulled into this via_ir=false test unit — mirrors how PosmTestSetup deploys
+        // PositionManager via vm.getCode. This lets SwapAndAdd be pinned to the posm profile for production
+        // (fits the 24576 size limit) without a settings conflict against the test build.
+        zap = ISwapAndAdd(
+            deployCode("SwapAndAdd.sol:SwapAndAdd", abi.encode(manager, permit2, lpm, IUniversalRouter(address(route))))
+        );
         // fund the mock route's off-venue inventory so it can deliver the deficit token.
         MockERC20(Currency.unwrap(currency0)).mint(address(route), 1_000_000e18);
         MockERC20(Currency.unwrap(currency1)).mint(address(route), 1_000_000e18);
