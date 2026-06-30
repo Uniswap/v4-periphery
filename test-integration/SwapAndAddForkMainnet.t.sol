@@ -7,6 +7,9 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
@@ -207,14 +210,15 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
-    function _rebalanceParams(uint256 tokenId, uint256 redeployBps, int24 lo, int24 hi)
+    function _rebalanceParams(uint256 tokenId, int128 additionalA, int128 additionalB, int24 lo, int24 hi)
         internal
         view
         returns (ISwapAndAdd.RebalanceParams memory)
     {
         return ISwapAndAdd.RebalanceParams({
             tokenId: tokenId,
-            redeployBps: redeployBps,
+            additionalA: additionalA,
+            additionalB: additionalB,
             newTickLower: lo,
             newTickUpper: hi,
             route: "",
@@ -235,7 +239,7 @@ contract SwapAndAddForkMainnetTest is Test {
 
         int24 ts = key.tickSpacing;
         (uint256 newTokenId, uint128 newLiq,,) =
-            zap.rebalance(_rebalanceParams(tokenId, 10_000, lo - 10 * ts, hi + 10 * ts));
+            zap.rebalance(_rebalanceParams(tokenId, 0, 0, lo - 10 * ts, hi + 10 * ts));
 
         assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
         assertGt(newLiq, 0, "new liquidity minted");
@@ -244,9 +248,9 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
-    // Option-a partial redeploy on the real pool: the old position is burned IN FULL, half is redeployed, and
-    // the other half is returned to the recipient's wallet (in both ETH and USDC).
-    function test_fork_rebalance_partialRedeploy() public {
+    // Negative delta (cash-out) on the real pool: the old position is burned IN FULL, a chosen amount of USDC is
+    // returned to the recipient's wallet, and only the remainder (plus the withdrawn ETH) is redeployed.
+    function test_fork_rebalance_cashOut() public {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
@@ -254,16 +258,59 @@ contract SwapAndAddForkMainnetTest is Test {
         int24 ts = key.tickSpacing;
 
         uint256 usdcBefore = IERC20(USDC).balanceOf(address(this));
-        uint256 ethBefore = address(this).balance;
         (uint256 newTokenId, uint128 newLiq,,) =
-            zap.rebalance(_rebalanceParams(tokenId, 5_000, lo - 10 * ts, hi + 10 * ts));
+            zap.rebalance(_rebalanceParams(tokenId, 0, -2_000e6, lo - 10 * ts, hi + 10 * ts)); // return 2k USDC
 
         assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
         assertGt(newLiq, 0, "new liquidity minted");
         assertEq(posm.getPositionLiquidity(tokenId), 0, "old position fully burned");
-        // the un-redeployed half is returned to the recipient in BOTH tokens.
-        assertGt(IERC20(USDC).balanceOf(address(this)), usdcBefore, "usdc returned to recipient");
-        assertGt(address(this).balance, ethBefore, "eth returned to recipient");
+        // the cashed-out USDC reaches the recipient (at least the requested 2k).
+        assertGe(IERC20(USDC).balanceOf(address(this)), usdcBefore + 2_000e6, "cashed-out usdc returned");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    // Positive delta (rebalance + add) on the real pool: pull MORE USDC from the wallet on top of the withdrawn
+    // holdings, so the new position is larger than a plain full redeploy of the same burned position.
+    function test_fork_rebalance_addMore() public {
+        (int24 lo, int24 hi) = _ticks();
+        _fundUsdc(50_000e6);
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+        int24 ts = key.tickSpacing;
+        int24 nlo = lo - 10 * ts;
+        int24 nhi = hi + 10 * ts;
+
+        uint256 snap = vm.snapshotState();
+        (, uint128 liqBase,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 0, nlo, nhi));
+        vm.revertToState(snap);
+
+        (, uint128 liqMore,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 5_000e6, nlo, nhi)); // add 5k USDC
+
+        assertGt(liqMore, liqBase, "adding USDC deploys more than a full redeploy");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
+    }
+
+    // Native positive delta on the real ETH/USDC pool: add more native ETH (via msg.value) during a rebalance.
+    function test_fork_rebalance_native_addMore() public {
+        (int24 lo, int24 hi) = _ticks();
+        vm.deal(address(this), 100 ether);
+        (uint256 tokenId,,,) = zap.add{value: 1 ether}(_addParams(1 ether, 0, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+        int24 ts = key.tickSpacing;
+        int24 nlo = lo - 10 * ts;
+        int24 nhi = hi + 10 * ts;
+
+        uint256 snap = vm.snapshotState();
+        (, uint128 liqBase,,) = zap.rebalance(_rebalanceParams(tokenId, 0, 0, nlo, nhi));
+        vm.revertToState(snap);
+
+        int128 addNative = 0.5 ether;
+        (, uint128 liqMore,,) =
+            zap.rebalance{value: uint256(uint128(addNative))}(_rebalanceParams(tokenId, addNative, 0, nlo, nhi));
+
+        assertGt(liqMore, liqBase, "adding native ETH deploys more than a full redeploy");
         assertEq(address(zap).balance, 0, "zap eth == 0");
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
@@ -275,7 +322,7 @@ contract SwapAndAddForkMainnetTest is Test {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10_000e6, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
 
-        zap.rebalance(_rebalanceParams(tokenId, 10_000, lo, hi)); // new range == old range
+        zap.rebalance(_rebalanceParams(tokenId, 0, 0, lo, hi)); // new range == old range
     }
 
     // Faithful repro of the in-browser flow: 0.5 ETH add, then same-range full rebalance.
@@ -284,7 +331,68 @@ contract SwapAndAddForkMainnetTest is Test {
         vm.deal(address(this), 100 ether);
         (uint256 tokenId,,,) = zap.add{value: 0.5 ether}(_addParams(0.5 ether, 0, "", lo, hi));
         IERC721(POSM).setApprovalForAll(address(zap), true);
-        zap.rebalance(_rebalanceParams(tokenId, 10_000, lo, hi));
+        zap.rebalance(_rebalanceParams(tokenId, 0, 0, lo, hi));
+    }
+
+    // ─────────────────────────── compound on the real pool ───────────────────────────
+
+    function _compoundParams(uint256 tokenId, uint256 minLiquidityAdded)
+        internal
+        view
+        returns (ISwapAndAdd.CompoundParams memory)
+    {
+        return ISwapAndAdd.CompoundParams({
+            tokenId: tokenId,
+            minLiquidityAdded: minLiquidityAdded,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+    }
+
+    /// @dev Generate fees on the real pool: balanced round-trip swaps (ETH<->USDC) so the price returns near its
+    ///      start while both sides accrue fees to the in-range position. Large notional so a position of this size
+    ///      captures a non-trivial fee share of the deep pool.
+    function test_fork_compound_reinvestsFees() public {
+        (int24 lo, int24 hi) = _ticks();
+        int24 ts = key.tickSpacing;
+        lo = lo - 40 * ts; // widen so the position stays in range across the fee-generating swaps
+        hi = hi + 40 * ts;
+
+        _fundUsdc(5_000_000e6);
+        vm.deal(address(this), 10_000 ether);
+        // sizable position so it earns a meaningful share of the swap fees.
+        (uint256 tokenId,,,) = zap.add{value: 500 ether}(_addParams(500 ether, 2_000_000e6, "", lo, hi));
+        IERC721(POSM).setApprovalForAll(address(zap), true);
+
+        PoolSwapTest swapRouter = new PoolSwapTest(manager);
+        IERC20(USDC).approve(address(swapRouter), type(uint256).max);
+        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
+        // round-trips: sell ETH -> USDC, then sell that USDC back -> ETH, so the price returns near its start.
+        for (uint256 i = 0; i < 3; i++) {
+            swapRouter.swap{value: 300 ether}(
+                key,
+                SwapParams({zeroForOne: true, amountSpecified: -300 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+                settings,
+                ""
+            );
+            swapRouter.swap(
+                key,
+                SwapParams({zeroForOne: false, amountSpecified: -900_000e6, sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1}),
+                settings,
+                ""
+            );
+        }
+
+        uint128 liqBefore = posm.getPositionLiquidity(tokenId);
+        (uint128 added, uint256 a0, uint256 a1) = zap.compound(_compoundParams(tokenId, 0));
+
+        assertGt(added, 0, "fees reinvested as liquidity");
+        assertGt(a0 + a1, 0, "amounts reinvested");
+        assertEq(posm.getPositionLiquidity(tokenId), liqBefore + added, "position grew by exactly the added liquidity");
+        assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "NFT still owned by user");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
     function _v4SwapRoute(PoolKey memory poolKey, bool zeroForOne, uint128 amtIn, Currency inCcy, Currency outCcy)

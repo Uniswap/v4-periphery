@@ -34,9 +34,10 @@ interface ISwapAndAdd {
     error InvalidEthValue();
     error InsufficientLiquidity(uint128 minLiquidity, uint128 liquidity);
     error NotAuthorizedForToken(uint256 tokenId);
-    /// @notice `redeployBps` must be in (0, 10_000]: 0 would be a pure withdrawal (not a rebalance) and
-    ///         values above 10_000 are nonsensical.
-    error InvalidRedeployBps(uint256 redeployBps);
+    /// @notice A negative `additionalA/additionalB` (return-to-wallet) asked for more than was withdrawn.
+    error ReturnExceedsWithdrawn(uint256 requested, uint256 withdrawn);
+    /// @notice `compound` was called on a position with no accrued fees to reinvest.
+    error NoFeesToCompound();
 
     /// @param poolKey       Target v4 pool.
     /// @param tickLower     Lower tick of the position.
@@ -73,21 +74,26 @@ interface ISwapAndAdd {
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
 
     /// @param tokenId       Existing position to move; caller must be owner or approved. The position is
-    ///                      withdrawn IN FULL (burned) — see DESIGN NOTE on `redeployBps` below.
-    /// @param redeployBps   Fraction of the fully-withdrawn value to redeploy into the new range, in basis
-    ///                      points (0, 10_000]. 10_000 = redeploy everything (a full move); < 10_000 redeploys
-    ///                      that share and returns the rest to `recipient`'s wallet. Must be > 0 (a 0% redeploy
-    ///                      is a pure withdrawal, not a rebalance) and <= 10_000.
+    ///                      withdrawn IN FULL (burned) — see DESIGN NOTE on the deltas below.
+    /// @param additionalA   Signed delta for currency0, applied to the fully-withdrawn holdings of that token:
+    ///                      > 0 pulls that many MORE units from the caller's wallet (rebalance + add in one tx),
+    ///                      < 0 returns that many units to `recipient`'s wallet (rebalance + cash-out), 0 leaves
+    ///                      the withdrawn amount as-is (a full move). The redeploy budget for currency0 is
+    ///                      `withdrawn0 + additionalA`. A negative value may not exceed `withdrawn0`.
+    /// @param additionalB   Signed delta for currency1, same semantics (`withdrawn1 + additionalB`). currency1 is
+    ///                      never native ETH (native sorts to currency0), so a positive value is always an ERC20
+    ///                      Permit2 pull.
     /// @param newTickLower  Lower tick of the new position.
     /// @param newTickUpper  Upper tick of the new position.
     /// @param route         Verbatim Universal Router payload for the surplus->deficit swap (may be empty).
     /// @param minLiquidity  Slippage floor on the NEW (post-trim) position.
-    /// @param recipient     Receives the new POSM NFT, the returned (1 - redeployBps) share, and any swept dust.
+    /// @param recipient     Receives the new POSM NFT, any returned (negative-delta) share, and any swept dust.
     /// @param hookData      Hook data forwarded to the mint.
     /// @param deadline      Tx reverts after this timestamp.
     struct RebalanceParams {
         uint256 tokenId;
-        uint256 redeployBps;
+        int128 additionalA;
+        int128 additionalB;
         int24 newTickLower;
         int24 newTickUpper;
         bytes route;
@@ -97,18 +103,44 @@ interface ISwapAndAdd {
         uint256 deadline;
     }
 
-    /// @notice Withdraw an existing position IN FULL and redeposit a chosen fraction into a new range, in one
-    ///         transaction. The position is always burned entirely; `redeployBps` of the withdrawn value is run
-    ///         through the add flow (route + size + reconcile) into the new range, and the remaining
-    ///         (10_000 - redeployBps) is returned to `recipient`'s wallet. Always mints a NEW position (POSM ties
-    ///         a tokenId to a fixed range).
-    /// @dev DESIGN NOTE — why full-burn + return, not partial-decrease: a rebalance is typically triggered by an
-    ///      OUT-OF-RANGE position, whose liquidity earns nothing where it sits. Leaving the un-moved portion in
-    ///      the old range would keep it idle; returning it to the wallet lets the user actually use it. So the
-    ///      whole position is withdrawn and only the redeployed share re-enters the pool.
+    /// @notice Withdraw an existing position IN FULL and redeposit it into a new range, optionally adding to or
+    ///         cashing out of each token, in one transaction. The position is always burned entirely; the
+    ///         per-token redeploy budget is `withdrawn + additional` (the signed `additionalA/additionalB`), run
+    ///         through the add flow (route + size + reconcile) into the new range. Any negative delta is returned
+    ///         to `recipient`'s wallet up front. Always mints a NEW position (POSM ties a tokenId to a fixed range).
+    /// @dev DESIGN NOTE — one signed knob for both add-more and cash-out: a rebalance is typically triggered by an
+    ///      OUT-OF-RANGE position, whose liquidity earns nothing where it sits, so the whole position is withdrawn.
+    ///      The signed deltas then let the caller redeploy exactly what they want: positive to top up from the
+    ///      wallet, negative to peel a chosen amount back to the wallet, zero to redeploy the lot. Exact token
+    ///      amounts (no basis-point rounding), and any mix of signs across the two tokens is allowed.
     /// @return newTokenId The newly minted position id.
     function rebalance(RebalanceParams calldata params)
         external
         payable
         returns (uint256 newTokenId, uint128 liquidity, uint256 amount0, uint256 amount1);
+
+    /// @param tokenId           Position whose accrued fees to reinvest; caller must be owner or approved, and the
+    ///                          contract must be approved on the position (POSM acts on the caller's behalf).
+    /// @param minLiquidityAdded Slippage floor: revert if the liquidity added by compounding < this.
+    /// @param recipient         Receives any swept rounding dust (the fees themselves are reinvested, not paid out).
+    /// @param hookData          Hook data forwarded to the fee collect and the increase.
+    /// @param deadline          Tx reverts after this timestamp.
+    struct CompoundParams {
+        uint256 tokenId;
+        uint256 minLiquidityAdded;
+        address recipient;
+        bytes hookData;
+        uint256 deadline;
+    }
+
+    /// @notice Reinvest a position's accrued fees back INTO the same position, in one transaction. Collects the
+    ///         fees (without touching principal), balances them to the position's current ratio via a single
+    ///         same-pool swap, and INCREASEs the same tokenId. The fees never reach the caller's wallet
+    ///         (compounding) and the NFT is never moved — only the existing position grows.
+    /// @return liquidityAdded The liquidity added to the position by reinvesting the fees.
+    /// @return amount0        token0 reinvested into the position.
+    /// @return amount1        token1 reinvested into the position.
+    function compound(CompoundParams calldata params)
+        external
+        returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1);
 }
