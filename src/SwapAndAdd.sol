@@ -80,6 +80,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     uint256 private constant OP_ADD = 0;
     uint256 private constant OP_REBALANCE = 1;
     uint256 private constant OP_COMPOUND = 2;
+    uint256 private constant OP_INCREASE = 3;
 
     /// @dev internal, stack-friendly bundle of the shared add inputs (budget already held by this contract).
     struct CoreParams {
@@ -153,6 +154,25 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @inheritdoc ISwapAndAdd
+    function increase(IncreaseParams calldata params)
+        external
+        payable
+        isNotLocked
+        returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
+    {
+        if (block.timestamp > params.deadline) revert DeadlinePassed(params.deadline);
+        // read the position's pool + existing range; the increase deploys into that same range/tokenId.
+        (PoolKey memory key, PositionInfo info) = positionManager.getPoolAndPositionInfo(params.tokenId);
+        // pull the caller's budget here (mirrors add()'s _pullBudget) — funds come from msg.sender, the position
+        // only grows for whoever owns it, so no CALLER auth is needed. POSM still gates INCREASE_LIQUIDITY on this
+        // contract being approved on the tokenId (the owner grants that, same as for compound/rebalance).
+        _pullBudget(key, params.amount0In, params.amount1In);
+        bytes memory result =
+            poolManager.unlock(abi.encode(OP_INCREASE, abi.encode(params, key, info.tickLower(), info.tickUpper())));
+        (liquidityAdded, amount0, amount1) = abi.decode(result, (uint128, uint256, uint256));
+    }
+
+    /// @inheritdoc ISwapAndAdd
     function compound(CompoundParams calldata params)
         external
         isNotLocked
@@ -185,6 +205,16 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             (uint128 liq, uint256 a0, uint256 a1) = _compound(cparams, recipient);
             return abi.encode(liq, a0, a1);
         }
+        if (op == OP_INCREASE) {
+            (IncreaseParams memory p, PoolKey memory key, int24 tickLower, int24 tickUpper) =
+                abi.decode(inner, (IncreaseParams, PoolKey, int24, int24));
+            CoreParams memory icp = CoreParams(
+                key, tickLower, tickUpper, p.amount0In, p.amount1In, p.route, p.minLiquidityAdded, p.recipient, p.hookData
+            );
+            // existing tokenId -> _addCore INCREASEs it in place (no new NFT).
+            (, uint128 liq, uint256 a0, uint256 a1) = _addCore(icp, p.tokenId);
+            return abi.encode(liq, a0, a1);
+        }
 
         CoreParams memory cp;
         if (op == OP_ADD) {
@@ -197,7 +227,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
                 abi.decode(inner, (RebalanceParams, PoolKey, address));
             cp = _prepareRebalance(p, key, recipient);
         }
-        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = _addCore(cp);
+        // tokenId 0 -> _addCore MINTs a new position.
+        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = _addCore(cp, 0);
         return abi.encode(tokenId, liq, a0, a1);
     }
 
@@ -236,7 +267,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     // ───────────────────────────────────────────── core flow ─────────────────────────────────────────────
 
-    function _addCore(CoreParams memory cp)
+    /// @dev Shared route-first core for add / rebalance / increase / compound. With `existingTokenId == 0` it
+    ///      MINTs a new position (to this contract, so it can be trimmed); otherwise it INCREASEs that tokenId in
+    ///      place (no new NFT). Route -> size (fee-aware) -> flash-take deficit -> mint|increase -> reconcile +
+    ///      trim -> floor -> sweep dust to recipient.
+    function _addCore(CoreParams memory cp, uint256 existingTokenId)
         internal
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
@@ -248,9 +283,16 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             cp.budget1 = cp.key.currency1.balanceOfSelf();
         }
 
-        // 2. size the position from the holdings (fee-aware, optimistic) and mint it to this contract.
+        // 2. size from the holdings (fee-aware, optimistic), flash-take whatever side is short, then mint a new
+        //    position or increase the existing one.
         (uint128 lopt, uint256 a0opt, uint256 a1opt) = _planMint(cp);
-        tokenId = _executeMint(cp, lopt, a0opt, a1opt);
+        _flashTakeDeficit(cp, a0opt, a1opt);
+        if (existingTokenId == 0) {
+            tokenId = _mint(cp, lopt, a0opt, a1opt);
+        } else {
+            tokenId = existingTokenId;
+            _increase(cp, tokenId, lopt, a0opt, a1opt);
+        }
 
         // 3. reconcile any residual same-pool (in whichever direction is short) and trim to the exact funded size.
         uint128 trimmed = _reconcile(cp, tokenId, a0opt, a1opt);
@@ -283,17 +325,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         (amount0, amount1) = _getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
     }
 
-    /// @dev Flash-`take` whichever side the optimistic mint is short of so the mint is fully funded up front,
-    ///      then mint. After a route, the deficit is small (the route already delivered most of it), so the
-    ///      take is small or zero.
-    function _executeMint(CoreParams memory cp, uint128 liquidity, uint256 amount0, uint256 amount1)
-        internal
-        returns (uint256 tokenId)
-    {
-        _flashTakeDeficit(cp, amount0, amount1);
-        tokenId = _mint(cp, liquidity, amount0, amount1);
-    }
-
     /// @dev Flash-`take` from the pool whatever the optimistic mint needs beyond the held budget, on each side,
     ///      so the subsequent mint/increase is fully funded; `_reconcile` later settles what the swap actually owes.
     function _flashTakeDeficit(CoreParams memory cp, uint256 amount0, uint256 amount1) internal {
@@ -311,10 +342,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     {
         (PoolKey memory key, PositionInfo info) = positionManager.getPoolAndPositionInfo(p.tokenId);
 
-        // 1. collect fees only: DECREASE by 0 liquidity credits the accrued fees, TAKE_PAIR pulls them here.
+        // collect fees only: DECREASE by 0 liquidity credits the accrued fees, TAKE_PAIR pulls them here.
         _decrease(key, p.tokenId, 0, p.hookData);
 
-        // budget = the collected fees; target the position's existing range; no route.
+        // budget = the collected fees; target the position's existing range; no route. Then run the shared core,
+        // INCREASING the same tokenId in place (the fees never leave to the wallet; the NFT stays with its owner).
         CoreParams memory cp = CoreParams(
             key,
             info.tickLower(),
@@ -328,22 +360,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         );
         if (cp.budget0 == 0 && cp.budget1 == 0) revert NoFeesToCompound();
 
-        // 2. size from the fees and INCREASE the same position (flash-taking any side the mint is short of).
-        (uint128 lopt, uint256 a0opt, uint256 a1opt) = _planMint(cp);
-        _flashTakeDeficit(cp, a0opt, a1opt);
-        _increase(cp, p.tokenId, lopt, a0opt, a1opt);
-
-        // 3. reconcile the small residual same-pool and trim; net liquidity added = lopt - trimmed.
-        uint128 trimmed = _reconcile(cp, p.tokenId, a0opt, a1opt);
-        liquidityAdded = lopt - trimmed;
-
-        // 4. slippage floor on the liquidity actually added.
-        if (liquidityAdded < cp.minLiquidity) revert InsufficientLiquidity(uint128(cp.minLiquidity), liquidityAdded);
-
-        // 5. report the reinvested amounts; sweep any dust to the recipient (NFT stays with its owner).
-        (amount0, amount1) = _positionAmounts(cp, liquidityAdded);
-        _sweep(key.currency0, recipient);
-        _sweep(key.currency1, recipient);
+        (, liquidityAdded, amount0, amount1) = _addCore(cp, p.tokenId);
     }
 
     /// @dev Settle the position's funding using a single same-pool swap in whichever direction is short, then
@@ -673,7 +690,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (d > 0) _take(currency, address(this), uint256(d));
     }
 
-    function _pullBudget(PoolKey calldata key, uint256 amount0In, uint256 amount1In) internal {
+    function _pullBudget(PoolKey memory key, uint256 amount0In, uint256 amount1In) internal {
         uint256 expectedValue;
         Currency c0 = key.currency0;
         if (c0.isAddressZero()) {
