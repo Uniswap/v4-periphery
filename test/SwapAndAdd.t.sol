@@ -15,6 +15,7 @@ import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 import {PositionConfig} from "./shared/PositionConfig.sol";
 import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
+import {MockERC20ApproveNoReturn} from "./mocks/MockERC20ApproveNoReturn.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
@@ -75,11 +76,7 @@ contract SwapAndAddTest is PosmTestSetup {
         permit2.approve(Currency.unwrap(c), address(zap), type(uint160).max, type(uint48).max);
     }
 
-    function _addParams(uint256 amount0In, uint256 amount1In)
-        internal
-        view
-        returns (ISwapAndAdd.AddParams memory)
-    {
+    function _addParams(uint256 amount0In, uint256 amount1In) internal view returns (ISwapAndAdd.AddParams memory) {
         return ISwapAndAdd.AddParams({
             poolKey: key,
             tickLower: TICK_LOWER,
@@ -371,6 +368,38 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
+    /// @dev Regression: a range entirely BELOW spot needs zero token0, so on a native pool there is no buffer
+    ///      wei to forward — the forward amount must clamp to the held balance instead of reverting OutOfFunds.
+    function test_add_native_belowRange_singleToken1() public {
+        ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
+        p.poolKey = nativeKey;
+        p.tickLower = -1200;
+        p.tickUpper = -660;
+
+        (uint256 tokenId, uint128 liq,,) = zap.add(p);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    /// @dev Regression: Slot0's protocolFee packs TWO directional 12-bit fees; treating the packed value as
+    ///      plain pips made `PIPS_DENOMINATOR - feePips` underflow for any nonzero one-for-zero component,
+    ///      bricking every reconcile-needing operation on the pool. Sizing must use the direction's swap fee.
+    function test_add_directionalProtocolFeeSet() public {
+        vm.prank(feeController);
+        manager.setProtocolFee(key, uint24((250 << 12) | 250)); // 0.025% both directions, packed
+
+        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(10e18, 0));
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted with directional protocol fee");
+
+        // and the other surplus direction (token1 surplus -> one-for-zero reconcile)
+        (, uint128 liq1,,) = zap.add(_addParams(0, 10e18));
+        assertGt(liq1, 0, "liquidity minted, token1-surplus direction");
+    }
+
     function test_rebalance_revertsIfNotAuthorized() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         // do NOT approve the zap; call from a stranger
@@ -660,5 +689,114 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "NFT stays with owner");
         assertEq(currency0.balanceOf(operator), opC0Before, "operator got no token0 dust");
         assertEq(currency1.balanceOf(operator), opC1Before, "operator got no token1 dust");
+    }
+
+    // ─────────────────────────── sizing / reconcile extremes ───────────────────────────
+
+    /// @dev ERC-20 counterpart of the native below-range case: the position needs zero token0, the whole
+    ///      budget-side reconcile happens on token1 alone.
+    function test_add_belowRange_singleToken1() public {
+        ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
+        p.tickLower = -1200;
+        p.tickUpper = -660;
+        (uint256 tokenId, uint128 liq,,) = zap.add(p);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    /// @dev Narrow range with a one-sided budget larger than the pool's external depth: the reconcile sell
+    ///      pushes the price BELOW the just-minted range, yet the operation still lands (the surplus input is
+    ///      valued at the pre-swap price, so it exhausts at/before the boundary and the trim can always free
+    ///      the deficit side from the just-added liquidity).
+    function test_add_narrowRange_hugeSingleSided() public {
+        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(-60, 60, 1_500e18, 0));
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    /// @dev Thin pool (1e15 external liquidity vs a 500e18 one-sided budget), narrow range: the reconcile must
+    ///      traverse far more depth than exists outside the just-minted position and still settle cleanly.
+    function test_add_thinPool_hugeSingleSided() public {
+        PoolKey memory thin = _thinPool();
+        ISwapAndAdd.AddParams memory p = _addParams(-60, 60, 500e18, 0);
+        p.poolKey = thin;
+        (, uint128 liq,,) = zap.add(p);
+        assertGt(liq, 0, "liquidity minted on thin pool");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    /// @dev Thin pool with spot exactly AT the range's upper boundary (position = 100% token1) and a token0-only
+    ///      budget: the whole budget is surplus and the whole position is flash-taken deficit — the knife-edge
+    ///      where the reconcile sell must fund the entire mint.
+    function test_add_thinPool_priceAtUpperEdge_token0Only() public {
+        PoolKey memory thin = _thinPool();
+        ISwapAndAdd.AddParams memory p = _addParams(-600, 0, 200e18, 0); // tickUpper == current tick
+        p.poolKey = thin;
+        (, uint128 liq,,) = zap.add(p);
+        assertGt(liq, 0, "liquidity minted at upper edge");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    /// @dev Any two-sided budget must land: hunts the both-sides-short knife-edge where round-up makes BOTH
+    ///      optimistic amounts exceed the budget by a wei (both sides flash-taken), and every in-between ratio.
+    function testFuzz_add_twoSided(uint256 a0, uint256 a1) public {
+        a0 = bound(a0, 1e6, 500e18);
+        a1 = bound(a1, 1e6, 500e18);
+        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(a0, a1));
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    function _addParams(int24 tickLower, int24 tickUpper, uint256 amount0In, uint256 amount1In)
+        internal
+        view
+        returns (ISwapAndAdd.AddParams memory p)
+    {
+        p = _addParams(amount0In, amount1In);
+        p.tickLower = tickLower;
+        p.tickUpper = tickUpper;
+    }
+
+    /// @dev Regression: `_ensureApproved` must tolerate tokens whose approve returns nothing (USDT-style) —
+    ///      a plain IERC20(returns bool) approve reverts on decode and would brick every pool of that token.
+    function test_add_approveNoReturnToken() public {
+        MockERC20ApproveNoReturn usdt = new MockERC20ApproveNoReturn();
+        usdt.mint(address(this), 1_000e18);
+        usdt.approve(address(permit2), type(uint256).max);
+        permit2.approve(address(usdt), address(zap), type(uint160).max, type(uint48).max);
+        usdt.approve(address(modifyLiquidityRouter), type(uint256).max);
+
+        (PoolKey memory k,) = initPoolAndAddLiquidityETH(
+            CurrencyLibrary.ADDRESS_ZERO, Currency.wrap(address(usdt)), IHooks(address(0)), 3000, SQRT_PRICE_1_1, 1 ether
+        );
+        modifyLiquidityRouter.modifyLiquidity{value: 50 ether}(
+            k,
+            ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: int256(uint256(200e18)), salt: 0}),
+            ""
+        );
+
+        ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
+        p.poolKey = k;
+        (uint256 tokenId, uint128 liq,,) = zap.add(p);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted on approve-no-return token pool");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertEq(usdt.balanceOf(address(zap)), 0, "zap token == 0");
+    }
+
+    function _thinPool() internal returns (PoolKey memory thin) {
+        (thin,) = initPool(currency0, currency1, IHooks(address(0)), 500, SQRT_PRICE_1_1);
+        modifyLiquidityRouter.modifyLiquidity(
+            thin, ModifyLiquidityParams({tickLower: -6000, tickUpper: 6000, liquidityDelta: 1e15, salt: 0}), ""
+        );
     }
 }

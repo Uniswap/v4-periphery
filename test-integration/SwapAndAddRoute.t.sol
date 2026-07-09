@@ -8,6 +8,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 
@@ -155,6 +156,52 @@ contract SwapAndAddRouteTest is PosmTestSetup {
         assertTrue(routeSpAfter != routeSpBefore, "UR route did not execute on the route pool");
         // selling token1 -> token0 (oneForZero) adds token1 / removes token0, so sqrtPrice (~sqrt(token1/token0)) rises
         assertGt(routeSpAfter, routeSpBefore, "selling token1 should raise routeKey's sqrtPrice");
+    }
+
+    /// @notice Native-input route that consumes only PART of the forwarded value: the route encodes a fixed
+    ///         2-ether input while the zap forwards its whole 10-ether native balance. The unconsumed 8 ether
+    ///         must be reclaimed from UR (UR's balance is permissionlessly sweepable — anything left there is
+    ///         lost) and put back through the same-pool reconcile instead.
+    function test_add_native_partialRouteValue_reclaimedFromUR() public {
+        (PoolKey memory nativeKey,) = initPoolAndAddLiquidityETH(
+            CurrencyLibrary.ADDRESS_ZERO, currency1, IHooks(address(0)), 3000, SQRT_PRICE_1_1, 1 ether
+        );
+        modifyLiquidityRouter.modifyLiquidity{value: 50 ether}(
+            nativeKey,
+            ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: int256(uint256(200e18)), salt: 0}),
+            ""
+        );
+        (PoolKey memory nativeRouteKey,) = initPoolAndAddLiquidityETH(
+            CurrencyLibrary.ADDRESS_ZERO, currency1, IHooks(address(0)), 500, SQRT_PRICE_1_1, 1 ether
+        );
+        modifyLiquidityRouter.modifyLiquidity{value: 50 ether}(
+            nativeRouteKey,
+            ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: int256(uint256(200e18)), salt: 0}),
+            ""
+        );
+
+        vm.deal(address(this), 100 ether);
+        bytes memory route = _v4SwapRoute(nativeRouteKey, true, 2 ether, CurrencyLibrary.ADDRESS_ZERO, currency1);
+
+        ISwapAndAdd.AddParams memory p = ISwapAndAdd.AddParams({
+            poolKey: nativeKey,
+            tickLower: TICK_LOWER,
+            tickUpper: TICK_UPPER,
+            amount0In: 10 ether,
+            amount1In: 0,
+            route: route,
+            minLiquidity: 0,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+        (uint256 tokenId, uint128 liq,,) = zap.add{value: 10 ether}(p);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertEq(address(router).balance, 0, "native stranded in UR");
+        assertEq(address(zap).balance, 0, "native stranded in zap");
+        assertEq(currency1.balanceOf(address(zap)), 0, "token1 stranded in zap");
     }
 
     /// @notice Rebalance whose surplus->deficit leg runs through the real UR within the unlock. The new range is
