@@ -290,8 +290,10 @@ contract MarginRouterE2EForkTest is Test {
     function _stageClose(address account) internal {
         uint256 wethBefore = IERC20(WETH).balanceOf(address(this));
 
-        router.closePosition(
-            IMarginRouter.CloseParams({
+        router.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -322,8 +324,8 @@ contract MarginRouterE2EForkTest is Test {
 
     /// @notice Builds and submits an open with `equity` WETH and `buy` WETH of collateral.
     function _openCall(uint256 equity, uint128 buy) internal {
-        router.openPosition(
-            IMarginRouter.OpenParams({
+        router.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -339,8 +341,8 @@ contract MarginRouterE2EForkTest is Test {
 
     /// @notice Builds and submits a pure-leverage increase buying `buy` WETH with no new equity.
     function _increaseCall(uint128 buy) internal {
-        router.openPosition(
-            IMarginRouter.OpenParams({
+        router.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -441,7 +443,7 @@ contract MarginRouterE2EForkTest is Test {
         vm.startPrank(who);
         IERC20(WETH).approve(PERMIT2, type(uint256).max);
         IAllowanceTransfer(PERMIT2).approve(WETH, address(router), uint160(equity), uint48(block.timestamp + 1 hours));
-        router.openPosition(_openParamsFor(subId, equity, buy));
+        router.increasePosition(_openParamsFor(subId, equity, buy));
         vm.stopPrank();
     }
 
@@ -453,13 +455,13 @@ contract MarginRouterE2EForkTest is Test {
         account = router.accountOf(who, subId);
         vm.deal(who, equityEth);
         vm.prank(who);
-        router.openPosition{value: equityEth}(_openParamsFor(subId, 0, buy));
+        router.increasePosition{value: equityEth}(_openParamsFor(subId, 0, buy));
     }
 
     /// @notice Adds `buy` WETH of pure leverage (no new equity) to `who`'s position at `subId`.
     function _increaseFor(address who, uint256 subId, uint128 buy) internal {
         vm.prank(who);
-        router.openPosition(_openParamsFor(subId, 0, buy));
+        router.increasePosition(_openParamsFor(subId, 0, buy));
     }
 
     /// @notice Closes `who`'s position at `subId`, asserts it is fully unwound, and returns the
@@ -467,7 +469,7 @@ contract MarginRouterE2EForkTest is Test {
     function _closeAndZero(address who, uint256 subId, address account) internal returns (uint256 residual) {
         uint256 wethBefore = IERC20(WETH).balanceOf(who);
         vm.prank(who);
-        router.closePosition(_closeParamsFor(subId));
+        router.decreasePosition(_closeParamsFor(subId));
         residual = IERC20(WETH).balanceOf(who) - wethBefore;
 
         (uint256 collateral, uint256 debt) = adapter.positionOf(account, market);
@@ -481,9 +483,9 @@ contract MarginRouterE2EForkTest is Test {
     function _openParamsFor(uint256 subId, uint256 equity, uint128 buy)
         internal
         view
-        returns (IMarginRouter.OpenParams memory)
+        returns (IMarginRouter.IncreaseParams memory)
     {
-        return IMarginRouter.OpenParams({
+        return IMarginRouter.IncreaseParams({
             adapter: adapter,
             market: market,
             poolKey: poolKey,
@@ -497,8 +499,10 @@ contract MarginRouterE2EForkTest is Test {
     }
 
     /// @notice Builds close params for `subId` with a generous collateral-in bound.
-    function _closeParamsFor(uint256 subId) internal view returns (IMarginRouter.CloseParams memory) {
-        return IMarginRouter.CloseParams({
+    function _closeParamsFor(uint256 subId) internal view returns (IMarginRouter.DecreaseParams memory) {
+        return IMarginRouter.DecreaseParams({
+            debtToRepay: type(uint256).max,
+            maxLtvAfter: Ltv.wrap(0),
             adapter: adapter,
             market: market,
             poolKey: poolKey,

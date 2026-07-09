@@ -16,11 +16,12 @@ import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
+import {Ltv} from "../../src/types/Ltv.sol";
 import {MockLendingAdapter} from "../mocks/MockLendingAdapter.sol";
 import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 
 /// @notice Regression coverage for two related fixes around v4 exact-output partial fills, exercised
-///         through the real `MarginRouter.openPosition` path against a thin local v4 pool:
+///         through the real `MarginRouter.increasePosition` path against a thin local v4 pool:
 ///           - Fix A: the V4Router per-hop price guard prices the REALIZED output (not the requested
 ///             amount), so a bound the true price violates reverts with `V4TooMuchRequestedPerHopSingle`.
 ///           - Option C: `_open` takes EXACTLY `collateralToBuy`, so an exact-output swap that
@@ -69,7 +70,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
     /// @notice Option C: with no price bound the exact-output swap under-fills, and the ASSERT_FILL
     ///         action reverts with the margin-level `IncompleteFill` error rather than silently opening
     ///         a smaller position. The open is all-or-nothing.
-    function test_openPosition_revertsOnPartialFill() public {
+    function test_increasePosition_revertsOnPartialFill() public {
         _fundEquity();
         vm.expectPartialRevert(IMarginRouter.IncompleteFill.selector);
         _open(0);
@@ -78,7 +79,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
     /// @notice Fix A: a per-hop bound the realized price cannot meet trips the price guard during the
     ///         swap (a clear error), before the all-or-nothing take is reached. Before the fix the guard
     ///         compared the requested output and let an under-filled trade through.
-    function test_openPosition_priceGuardRevertsOnRealizedPrice() public {
+    function test_increasePosition_priceGuardRevertsOnRealizedPrice() public {
         _fundEquity();
         // 2.0 collateral-per-debt is unreachable buying at ~1:1, so the realized price is far below it
         vm.expectPartialRevert(IV4Router.V4TooMuchRequestedPerHopSingle.selector);
@@ -87,7 +88,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
 
     /// @notice A thin pool that cannot buy back the full debt makes the close revert atomically (the
     ///         repay needs more debt token than the swap delivered). Fail-safe: no partial close.
-    function test_closePosition_revertsWhenThinPoolCannotBuyAllDebt() public {
+    function test_close_revertsWhenThinPoolCannotBuyAllDebt() public {
         address account = marginRouter.createAccount(address(this), 7);
 
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
@@ -95,8 +96,10 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
         MarginAccount(account).borrow(adapter, market, 1 ether, address(this));
 
         vm.expectRevert();
-        marginRouter.closePosition(
-            IMarginRouter.CloseParams({
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
                 poolKey: thinClosePoolKey,
@@ -113,8 +116,8 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
     }
 
     function _open(uint256 minHopPriceX36) internal {
-        marginRouter.openPosition(
-            IMarginRouter.OpenParams({
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
                 poolKey: thinOpenPoolKey,

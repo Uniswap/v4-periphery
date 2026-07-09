@@ -195,8 +195,8 @@ contract MarginRouterSameSubIdHedgeForkTest is Test {
     ///         Morpho market.
     function _openLongMorpho(address account) internal {
         deal(WETH, account, 1 ether);
-        router.openPosition(
-            IMarginRouter.OpenParams({
+        router.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: morphoAdapter,
                 market: longMarket,
                 poolKey: poolKey,
@@ -217,8 +217,8 @@ contract MarginRouterSameSubIdHedgeForkTest is Test {
     function _openShortAave(address account) internal {
         uint128 buyUsdc = _usdcWorthOfWeth(TARGET_WETH); // ~2 WETH worth of USDC collateral to buy
         deal(USDC, account, buyUsdc); // equal USDC equity -> total collateral ~= 2 * buyUsdc
-        router.openPosition(
-            IMarginRouter.OpenParams({
+        router.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: aaveAdapter,
                 market: shortMarket,
                 poolKey: poolKey,
@@ -302,8 +302,10 @@ contract MarginRouterSameSubIdHedgeForkTest is Test {
     ///         unwound (zero debt, zero collateral) and that residual WETH was returned to the owner.
     function _closeLongAndAssertUnwound(address account) internal {
         uint256 wethBefore = IERC20(WETH).balanceOf(owner);
-        router.closePosition(
-            IMarginRouter.CloseParams({
+        router.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
                 adapter: morphoAdapter,
                 market: longMarket,
                 poolKey: poolKey,
@@ -337,8 +339,10 @@ contract MarginRouterSameSubIdHedgeForkTest is Test {
     ///         USDC went to the owner.
     function _closeShortAndAssertUnwound(address account) internal {
         uint256 usdcBefore = IERC20(USDC).balanceOf(owner);
-        router.closePosition(
-            IMarginRouter.CloseParams({
+        router.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
                 adapter: aaveAdapter,
                 market: shortMarket,
                 poolKey: poolKey,

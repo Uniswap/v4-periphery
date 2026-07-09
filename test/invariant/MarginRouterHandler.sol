@@ -154,7 +154,7 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
     // Handler actions
     // -------------------------------------------------------------------------
 
-    /// @notice Open a long position: fund equity, call openPosition with equity=0.
+    /// @notice Open a long position: fund equity, call increasePosition with equity=0.
     function openLong(uint256 actorSeed, uint256 subIdSeed, uint256 equitySeed, uint256 buySeed) external {
         address actor = _actor(actorSeed);
         uint256 subId = _subId(subIdSeed);
@@ -164,10 +164,10 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
         _trackAccount(actor, subId);
         _fundAccount(actor, subId, equity);
 
-        IMarginRouter.OpenParams memory params = _buildOpenParams(buy, subId);
+        IMarginRouter.IncreaseParams memory params = _buildIncreaseParams(buy, subId);
 
         vm.prank(actor);
-        try marginRouter.openPosition(params) {
+        try marginRouter.increasePosition(params) {
             ghost_totalCollateralIn += equity;
         } catch {}
     }
@@ -182,10 +182,10 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
         _trackAccount(actor, subId);
         _fundAccount(actor, subId, equity);
 
-        IMarginRouter.OpenParams memory params = _buildOpenParams(buy, subId);
+        IMarginRouter.IncreaseParams memory params = _buildIncreaseParams(buy, subId);
 
         vm.prank(actor);
-        try marginRouter.openPosition(params) {
+        try marginRouter.increasePosition(params) {
             ghost_totalCollateralIn += equity;
         } catch {}
     }
@@ -197,11 +197,11 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
 
         _trackAccount(actor, subId);
 
-        IMarginRouter.CloseParams memory params = _buildCloseParams(subId);
+        IMarginRouter.DecreaseParams memory params = _buildCloseParams(subId);
 
         uint256 before = collateralToken.balanceOf(actor);
         vm.prank(actor);
-        try marginRouter.closePosition(params) {
+        try marginRouter.decreasePosition(params) {
             uint256 returned = collateralToken.balanceOf(actor) - before;
             ghost_totalCollateralOut += returned;
         } catch {}
@@ -225,8 +225,12 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
     // Param builders (split into helpers to reduce locals per frame)
     // -------------------------------------------------------------------------
 
-    function _buildOpenParams(uint128 buy, uint256 subId) internal view returns (IMarginRouter.OpenParams memory) {
-        return IMarginRouter.OpenParams({
+    function _buildIncreaseParams(uint128 buy, uint256 subId)
+        internal
+        view
+        returns (IMarginRouter.IncreaseParams memory)
+    {
+        return IMarginRouter.IncreaseParams({
             adapter: adapter,
             market: market,
             poolKey: poolKey,
@@ -239,8 +243,10 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
         });
     }
 
-    function _buildCloseParams(uint256 subId) internal view returns (IMarginRouter.CloseParams memory) {
-        return IMarginRouter.CloseParams({
+    function _buildCloseParams(uint256 subId) internal view returns (IMarginRouter.DecreaseParams memory) {
+        return IMarginRouter.DecreaseParams({
+            debtToRepay: type(uint256).max,
+            maxLtvAfter: Ltv.wrap(0),
             adapter: adapter,
             market: market,
             poolKey: poolKey,

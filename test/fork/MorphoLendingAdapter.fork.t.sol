@@ -94,7 +94,7 @@ contract MorphoLendingAdapterForkTest is Test {
 
         // accrue interest, then fully unwind. Repay-all by shares clears the borrow shares, so the
         // subsequent full-collateral withdrawal passes Morpho's health check. This is the exact
-        // sequence closePosition performs; an asset-denominated repay would leave dust shares and
+        // sequence close performs; an asset-denominated repay would leave dust shares and
         // make the withdrawal revert INSUFFICIENT_COLLATERAL.
         vm.warp(block.timestamp + 1 days);
         deal(USDC, address(account), borrowAmount + 10e6);

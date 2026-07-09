@@ -40,7 +40,7 @@ contract MarginRouterTest is Test {
         );
     }
 
-    function _openParams() internal view returns (IMarginRouter.OpenParams memory p) {
+    function _openParams() internal view returns (IMarginRouter.IncreaseParams memory p) {
         p.market = Market({collateral: c0, debt: c1});
         p.poolKey = PoolKey({currency0: c0, currency1: c1, fee: 3000, tickSpacing: 60, hooks: IHooks(address(0))});
         p.equity = 1e18;
@@ -59,18 +59,18 @@ contract MarginRouterTest is Test {
         assertTrue(router.accountOf(owner, 0) != router.accountOf(owner, 1));
     }
 
-    function test_openPosition_revertsWhenSlippageBoundZero() public {
-        IMarginRouter.OpenParams memory p = _openParams();
+    function test_increasePosition_revertsWhenSlippageBoundZero() public {
+        IMarginRouter.IncreaseParams memory p = _openParams();
         p.maxDebtIn = 0;
         vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
-        router.openPosition(p);
+        router.increasePosition(p);
     }
 
-    function test_openPosition_revertsWhenCollateralToBuyZero() public {
-        IMarginRouter.OpenParams memory p = _openParams();
+    function test_increasePosition_revertsWhenCollateralToBuyZero() public {
+        IMarginRouter.IncreaseParams memory p = _openParams();
         p.collateralToBuy = 0;
         vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
-        router.openPosition(p);
+        router.increasePosition(p);
     }
 
     function test_decreasePosition_revertsWhenDebtToRepayZero() public {
@@ -83,18 +83,20 @@ contract MarginRouterTest is Test {
         router.decreasePosition(p);
     }
 
-    function test_openPosition_revertsAfterDeadline() public {
-        IMarginRouter.OpenParams memory p = _openParams();
+    function test_increasePosition_revertsAfterDeadline() public {
+        IMarginRouter.IncreaseParams memory p = _openParams();
         p.deadline = block.timestamp - 1;
         vm.expectRevert(abi.encodeWithSelector(IMarginRouter.DeadlinePassed.selector, p.deadline));
-        router.openPosition(p);
+        router.increasePosition(p);
     }
 
-    function test_closePosition_revertsWhenSlippageBoundZero() public {
-        // the slippage bound only gates the swap path, so the position must carry debt to reach it
-        IMarginRouter.CloseParams memory p;
+    function test_fullClose_revertsWhenSlippageBoundZero() public {
+        // maxCollateralIn only gates the swap path, so the position must carry debt to reach it (a
+        // debt-free full close takes the swap-free path and ignores the bound)
+        IMarginRouter.DecreaseParams memory p;
         p.adapter = ILendingAdapter(makeAddr("adapter"));
         p.deadline = block.timestamp + 1 hours;
+        p.debtToRepay = type(uint256).max; // full close
         p.maxCollateralIn = 0;
         vm.mockCall(
             address(p.adapter),
@@ -102,7 +104,7 @@ contract MarginRouterTest is Test {
             abi.encode(uint256(1e18), uint256(1e18))
         );
         vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
-        router.closePosition(p);
+        router.decreasePosition(p);
     }
 
     function test_governance_isDeployer() public view {
@@ -166,10 +168,10 @@ contract MarginRouterTest is Test {
         router.acceptGovernance();
     }
 
-    function test_openPosition_revertsWhenAdapterNotAllowed() public {
+    function test_increasePosition_revertsWhenAdapterNotAllowed() public {
         // _openParams leaves adapter as the zero address, which is not allowlisted
-        IMarginRouter.OpenParams memory p = _openParams();
+        IMarginRouter.IncreaseParams memory p = _openParams();
         vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(0)));
-        router.openPosition(p);
+        router.increasePosition(p);
     }
 }

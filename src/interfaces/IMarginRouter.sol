@@ -43,11 +43,11 @@ interface IMarginRouter {
     ///      leave the account funded in the wrong token.
     error NativeCollateralMismatch();
 
-    /// @dev Thrown when an exact-output swap on `openPosition` under-fills: the pool delivered less
-    ///      than the requested `collateralToBuy` (a thin pool can hit the price limit before the full
-    ///      output is bought). The open is all-or-nothing, so it reverts rather than opening a smaller
-    ///      position than requested.
-    /// @param requested The collateral amount the open asked the swap to deliver.
+    /// @dev Thrown when an exact-output swap on `increasePosition` under-fills: the pool delivered
+    ///      less than the requested `collateralToBuy` (a thin pool can hit the price limit before the
+    ///      full output is bought). The increase is all-or-nothing, so it reverts rather than opening
+    ///      a smaller position than requested.
+    /// @param requested The collateral amount the increase asked the swap to deliver.
     /// @param received The collateral amount the swap actually delivered.
     error IncompleteFill(uint256 requested, uint256 received);
 
@@ -55,27 +55,27 @@ interface IMarginRouter {
     // Events
     // -------------------------------------------------------------------------
 
-    /// @notice Emitted when leverage is opened or added via `openPosition`. The first open for an
-    ///         account is paired with an `AccountCreated` event from the factory; subsequent opens
-    ///         into the same account add leverage to the existing position. The resulting-state
-    ///         fields let an indexer reconstruct the full position from this one log; the entry price
-    ///         is `debtDrawn / collateralBought` in the market's native decimals.
+    /// @notice Emitted when leverage is opened or added via `increasePosition`. The first increase
+    ///         for an account is paired with an `AccountCreated` event from the factory; subsequent
+    ///         increases into the same account add leverage to the existing position. The
+    ///         resulting-state fields let an indexer reconstruct the full position from this one log;
+    ///         the entry price is `debtDrawn / collateralBought` in the market's native decimals.
     /// @param owner The position owner (the authenticated caller at the time of the call).
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
     /// @param debt The debt currency of the market.
     /// @param equity The equity the caller contributed, in the collateral token's native decimals
-    ///        (the wrapped native amount when opened with ETH).
-    /// @param collateralBought The collateral purchased by the opening swap, in the collateral
+    ///        (the wrapped native amount when funded with ETH).
+    /// @param collateralBought The collateral purchased by the increase swap, in the collateral
     ///        token's native decimals.
     /// @param debtDrawn The debt borrowed to fund the swap (the entry notional), in the debt token's
     ///        native decimals.
-    /// @param collateralTotal The account's total collateral after the open.
-    /// @param debtTotal The account's total debt after the open.
-    /// @param currentLtv The position's LTV after the open (WAD, 1e18 == 100%).
+    /// @param collateralTotal The account's total collateral after the increase.
+    /// @param debtTotal The account's total debt after the increase.
+    /// @param currentLtv The position's LTV after the increase (WAD, 1e18 == 100%).
     /// @param maxLtv The market's max (liquidation) LTV (WAD, 1e18 == 100%).
-    /// @param healthFactorWad The position health factor after the open (WAD, 1e18 == 1.0).
-    event PositionOpened(
+    /// @param healthFactorWad The position health factor after the increase (WAD, 1e18 == 1.0).
+    event PositionIncreased(
         address indexed owner,
         address indexed account,
         Currency collateral,
@@ -90,46 +90,33 @@ interface IMarginRouter {
         uint256 healthFactorWad
     );
 
-    /// @notice Emitted when a position is fully closed.
-    /// @param owner The position owner (the authenticated caller).
-    /// @param account The MarginAccount that held the position.
-    /// @param collateral The collateral currency of the market.
-    /// @param debt The debt currency of the market.
-    /// @param debtRepaid The debt cleared by the close, in the debt token's native decimals (zero for
-    ///        a debt-free position).
-    /// @param collateralWithdrawn The collateral pulled from the lending position, in the collateral
-    ///        token's native decimals.
-    /// @param collateralReturned The residual collateral (realized PnL) returned to the caller, in
-    ///        the collateral token's native decimals.
-    event PositionClosed(
-        address indexed owner,
-        address indexed account,
-        Currency collateral,
-        Currency debt,
-        uint256 debtRepaid,
-        uint256 collateralWithdrawn,
-        uint256 collateralReturned
-    );
-
-    /// @notice Emitted when a position is partially delevered via `decreasePosition`.
+    /// @notice Emitted when a position is reduced or fully closed via `decreasePosition`. A full close
+    ///         is indicated by `debtTotal == 0`, and the residual (realized PnL) returned to the caller
+    ///         is `collateralReturned`. The resulting-state fields let an indexer reconstruct the full
+    ///         position from this one log.
     /// @param owner The position owner (the authenticated caller).
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
     /// @param debt The debt currency of the market.
-    /// @param debtRepaid The debt repaid by the decrease, in the debt token's native decimals.
-    /// @param collateralSold The collateral consumed by the delever swap, in the collateral token's
-    ///        native decimals.
-    /// @param collateralTotal The account's total collateral after the decrease.
-    /// @param debtTotal The account's total debt after the decrease.
-    /// @param currentLtv The position's LTV after the decrease (WAD, 1e18 == 100%).
-    /// @param healthFactorWad The position health factor after the decrease (WAD, 1e18 == 1.0).
+    /// @param debtRepaid The debt repaid, in the debt token's native decimals (all outstanding debt on
+    ///        a full close).
+    /// @param collateralWithdrawn The collateral removed from the lending position, in the collateral
+    ///        token's native decimals (the swap cost on a partial decrease; all collateral on a full
+    ///        close).
+    /// @param collateralReturned The collateral returned to the caller, in the collateral token's
+    ///        native decimals: zero on a partial decrease, the realized PnL on a full close.
+    /// @param collateralTotal The account's total collateral after the operation (zero on a full close).
+    /// @param debtTotal The account's total debt after the operation (zero on a full close).
+    /// @param currentLtv The position's LTV after the operation (WAD, 1e18 == 100%).
+    /// @param healthFactorWad The position health factor after the operation (WAD, 1e18 == 1.0).
     event PositionDecreased(
         address indexed owner,
         address indexed account,
         Currency collateral,
         Currency debt,
         uint256 debtRepaid,
-        uint256 collateralSold,
+        uint256 collateralWithdrawn,
+        uint256 collateralReturned,
         uint256 collateralTotal,
         uint256 debtTotal,
         Ltv currentLtv,
@@ -160,7 +147,7 @@ interface IMarginRouter {
     // Param structs
     // -------------------------------------------------------------------------
 
-    /// @notice Parameters for opening or increasing a leveraged position.
+    /// @notice Parameters for opening or increasing a leveraged position (`increasePosition`).
     /// @dev The swap always sells the market's debt to buy its collateral. The trade direction is
     ///      set entirely by the market's (collateral, debt) assignment: the position is long the
     ///      collateral and short the debt. Equity is provided in the collateral currency.
@@ -183,7 +170,7 @@ interface IMarginRouter {
     /// @param subId A caller-chosen sub-account index allowing one address to hold multiple
     ///        independent positions. The (caller, subId) pair determines the MarginAccount address.
     /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
-    struct OpenParams {
+    struct IncreaseParams {
         ILendingAdapter adapter;
         Market market;
         PoolKey poolKey;
@@ -195,51 +182,29 @@ interface IMarginRouter {
         uint256 deadline;
     }
 
-    /// @notice Parameters for fully closing a leveraged position.
-    /// @dev The swap sells collateral to buy exactly the current debt (exact-output), which is
-    ///      then repaid in full. The remaining collateral (realized PnL) is returned to the caller.
-    /// @param adapter The allowlisted lending adapter.
-    /// @param market The (collateral, debt) pair defining the margin market.
-    /// @param poolKey The v4 pool through which the closing swap is routed.
-    /// @param maxCollateralIn The maximum collateral the caller will accept as the swap input, in
-    ///        the collateral token's native decimals. Must be non-zero on the swap path. The swap is
-    ///        a single-hop exact-output swap, so this absolute cap fully bounds the worst-case swap
-    ///        input and is the binding slippage protection. Derive it from a quote, not from spot
-    ///        price. A zero-debt close takes a swap-free path and ignores this field.
-    /// @param minHopPriceX36 An optional additional per-hop price bound (X36 fixed-point). Zero
-    ///        disables only this secondary check; it does not relax the binding `maxCollateralIn`
-    ///        cap. Redundant with the absolute cap for a single hop, so it may be left zero.
-    /// @param subId The sub-account index identifying which MarginAccount to close.
-    /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
-    struct CloseParams {
-        ILendingAdapter adapter;
-        Market market;
-        PoolKey poolKey;
-        uint128 maxCollateralIn;
-        uint256 minHopPriceX36;
-        uint256 subId;
-        uint256 deadline;
-    }
-
-    /// @notice Parameters for partially reducing (delevering) a position.
-    /// @dev Sells collateral to buy and repay `debtToRepay` of debt. The position stays open and
-    ///      shrinks by the swap's collateral cost and the repaid debt. `maxLtvAfter` asserts the
-    ///      resulting LTV after the operation; pass zero to skip the check (not recommended).
+    /// @notice Parameters for reducing (delevering) or fully closing a position.
+    /// @dev Sells collateral to buy and repay `debtToRepay` of debt. A partial decrease keeps the
+    ///      position open and shrinks it by the swap's collateral cost and the repaid debt, with
+    ///      `maxLtvAfter` asserting the resulting LTV. Passing `debtToRepay == type(uint256).max`
+    ///      instead fully closes the position: it repays all debt, withdraws all collateral, and
+    ///      returns the residual (realized PnL) to the caller; a zero-debt position takes a swap-free
+    ///      path, and `maxLtvAfter` is ignored on a full close.
     /// @param adapter The allowlisted lending adapter.
     /// @param market The (collateral, debt) pair defining the margin market.
     /// @param poolKey The v4 pool through which the decrease swap is routed.
-    /// @param debtToRepay The exact amount of debt to repay (exact-output side of the swap), in
-    ///        the debt token's native decimals.
+    /// @param debtToRepay The exact amount of debt to repay (exact-output side of the swap), in the
+    ///        debt token's native decimals, or `type(uint256).max` to fully close the position.
     /// @param maxCollateralIn The maximum collateral the caller will accept selling, in the
-    ///        collateral token's native decimals. Must be non-zero. The swap is a single-hop
-    ///        exact-output swap, so this absolute cap fully bounds the worst-case swap input and is
-    ///        the binding slippage protection. Derive it from a quote, not from spot price.
+    ///        collateral token's native decimals. Must be non-zero on the swap path. The swap is a
+    ///        single-hop exact-output swap, so this absolute cap fully bounds the worst-case swap
+    ///        input and is the binding slippage protection. Derive it from a quote, not from spot
+    ///        price. A zero-debt full close takes a swap-free path and ignores this field.
     /// @param minHopPriceX36 An optional additional per-hop price bound (X36 fixed-point). Zero
     ///        disables only this secondary check; it does not relax the binding `maxCollateralIn`
     ///        cap. Redundant with the absolute cap for a single hop, so it may be left zero.
-    /// @param maxLtvAfter The maximum LTV the position may have after the decrease (WAD, 1e18 ==
-    ///        100%). Must be non-zero; prevents a partial delever from inadvertently worsening LTV.
-    /// @param subId The sub-account index identifying which MarginAccount to decrease.
+    /// @param maxLtvAfter The maximum LTV the position may have after a partial decrease (WAD, 1e18 ==
+    ///        100%). Must be non-zero for a partial decrease; ignored on a full close.
+    /// @param subId The sub-account index identifying which MarginAccount to decrease or close.
     /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
     struct DecreaseParams {
         ILendingAdapter adapter;
@@ -279,28 +244,18 @@ interface IMarginRouter {
     ///         When `msg.value` is non-zero it is used as the equity and `params.equity` is ignored.
     ///         Calling again on an account that already holds a position adds leverage to it; set
     ///         `equity` to zero and send no value for a pure leverage increase with no new equity.
-    /// @param params See `OpenParams`.
+    /// @param params See `IncreaseParams`.
     /// @return account The caller's MarginAccount holding the position.
-    function openPosition(OpenParams calldata params) external payable returns (address account);
+    function increasePosition(IncreaseParams calldata params) external payable returns (address account);
 
-    /// @notice Fully closes the caller's position, returning all residual collateral (realized PnL)
-    ///         to the caller.
-    /// @dev The adapter allowlist gates only exposure-increasing operations (open, increase, add
-    ///      collateral), so a position can always be unwound even if its adapter is later removed
-    ///      from the allowlist. This is safe because the flow operates only on the caller's own
-    ///      account, and the MarginAccount itself constrains the call target, receiver, and value
-    ///      regardless of the adapter.
-    /// @param params See `CloseParams`.
-    /// @return account The caller's MarginAccount.
-    function closePosition(CloseParams calldata params) external returns (address account);
-
-    /// @notice Partially reduces the caller's position by repaying `debtToRepay`, funded by selling
-    ///         collateral. The position stays open and shrinks. A health check on the resulting LTV
-    ///         is enforced via `params.maxLtvAfter`.
-    /// @dev The adapter allowlist gates only exposure-increasing operations (open, increase, add
-    ///      collateral), so a position can always be delevered even if its adapter is later removed
-    ///      from the allowlist. This is safe because the flow operates only on the caller's own
-    ///      account, and the MarginAccount itself constrains the call target, receiver, and value
+    /// @notice Reduces the caller's position by repaying `debtToRepay` (funded by selling collateral),
+    ///         or fully closes it when `debtToRepay == type(uint256).max` (repay all, withdraw all,
+    ///         and return the residual realized PnL to the caller). A partial decrease keeps the
+    ///         position open and enforces `params.maxLtvAfter`; a full close ignores it.
+    /// @dev The adapter allowlist gates only exposure-increasing operations (increase, add
+    ///      collateral), so a position can always be delevered or closed even if its adapter is later
+    ///      removed from the allowlist. This is safe because the flow operates only on the caller's
+    ///      own account, and the MarginAccount itself constrains the call target, receiver, and value
     ///      regardless of the adapter.
     /// @param params See `DecreaseParams`.
     /// @return account The caller's MarginAccount.

@@ -130,8 +130,10 @@ contract MarginRouterShortInverseTest is Test {
 
         uint256 callerUsdcBefore = usdc.balanceOf(address(this));
 
-        router.closePosition(
-            IMarginRouter.CloseParams({
+        router.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -192,8 +194,10 @@ contract MarginRouterShortInverseTest is Test {
 
         uint256 callerBefore = usdc.balanceOf(address(this));
 
-        router.closePosition(
-            IMarginRouter.CloseParams({
+        router.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -225,8 +229,8 @@ contract MarginRouterShortInverseTest is Test {
         account = router.accountOf(address(this), 0);
         // provide equity directly to the account; equity=0 in params avoids the Permit2 pull
         usdc.mint(account, equity);
-        router.openPosition(
-            IMarginRouter.OpenParams({
+        router.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,

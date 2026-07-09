@@ -217,8 +217,10 @@ contract AaveV4LendingAdapterForkTest is Test {
     function _stageClose(address account) internal {
         uint256 usdcBefore = IERC20(USDC).balanceOf(address(this));
 
-        router.closePosition(
-            IMarginRouter.CloseParams({
+        router.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -254,8 +256,8 @@ contract AaveV4LendingAdapterForkTest is Test {
 
     /// @notice Builds and submits an open buying `buy` USDC of collateral, capped at `maxDebtIn` WETH.
     function _openCall(uint128 buy, uint128 maxDebtIn) internal {
-        router.openPosition(
-            IMarginRouter.OpenParams({
+        router.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,

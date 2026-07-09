@@ -31,7 +31,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
     Currency internal collateral;
     Currency internal debt;
 
-    /// @dev Mirrors the non-indexed data of `PositionOpened` for single-variable log decoding.
+    /// @dev Mirrors the non-indexed data of `PositionIncreased` for single-variable log decoding.
     struct OpenedData {
         address collateral;
         address debt;
@@ -71,8 +71,8 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         account = marginRouter.accountOf(address(this), 0);
         // provide equity directly to the account; equity=0 in params avoids the permit2 pull
         MockERC20(Currency.unwrap(collateral)).transfer(account, equity);
-        marginRouter.openPosition(
-            IMarginRouter.OpenParams({
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -107,8 +107,10 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
 
         uint256 callerCollateralBefore = IERC20(Currency.unwrap(collateral)).balanceOf(address(this));
 
-        marginRouter.closePosition(
-            IMarginRouter.CloseParams({
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -131,7 +133,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         assertEq(IERC20(Currency.unwrap(debt)).balanceOf(address(marginRouter)), 0, "router holds no debt");
     }
 
-    function test_closePosition_zeroDebt_returnsCollateral() public {
+    function test_close_zeroDebt_returnsCollateral() public {
         address account = _open(1 ether, 2 ether);
         // the position holds collateral supplied during the open
         assertEq(protocol.collateralOf(account), 3 ether, "collateral supplied");
@@ -143,8 +145,10 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         uint256 callerBefore = IERC20(Currency.unwrap(collateral)).balanceOf(address(this));
 
         // a zero-debt close takes the swap-free path: collateral is withdrawn straight to the caller
-        marginRouter.closePosition(
-            IMarginRouter.CloseParams({
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -174,8 +178,10 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
 
         uint256 callerBefore = IERC20(Currency.unwrap(collateral)).balanceOf(address(this));
 
-        marginRouter.closePosition(
-            IMarginRouter.CloseParams({
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -206,8 +212,10 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         assertFalse(marginRouter.isAdapterAllowed(adapter), "adapter de-allowlisted");
 
         // the position can still be unwound: the allowlist only gates exposure-increasing operations
-        marginRouter.closePosition(
-            IMarginRouter.CloseParams({
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -247,15 +255,15 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         assertGt(protocol.debtOf(account), 0, "position still open");
     }
 
-    function test_openLong_emitsPositionOpened() public {
+    function test_openLong_emitsPositionIncreased() public {
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
 
         // decode the emitted event rather than predict the pool-dependent debt: the enriched fields
         // carry full resulting state so an indexer needs no follow-up RPC
         vm.recordLogs();
-        marginRouter.openPosition(
-            IMarginRouter.OpenParams({
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -270,7 +278,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
 
         uint256 debtOwed = protocol.debtOf(account);
         bytes32 topic0 = keccak256(
-            "PositionOpened(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
+            "PositionIncreased(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
         );
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bool found;
@@ -291,16 +299,16 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
             assertEq(od.maxLtv, 0.86e18, "maxLtv (mock)");
             assertEq(od.healthFactorWad, 1e18, "healthFactor (currentLtv == maxLtv)");
         }
-        assertTrue(found, "PositionOpened emitted");
+        assertTrue(found, "PositionIncreased emitted");
     }
 
-    function test_openPosition_addsLeverageToExistingPosition() public {
+    function test_increasePosition_addsLeverageToExistingPosition() public {
         address account = _open(1 ether, 2 ether);
         uint256 debtAfterOpen = protocol.debtOf(account);
 
         // a second open into the same account adds leverage to the existing position
-        marginRouter.openPosition(
-            IMarginRouter.OpenParams({
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -312,7 +320,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
                 deadline: block.timestamp + 1
             })
         );
-        vm.snapshotGasLastCall("MarginRouter_openPosition_addLeverage");
+        vm.snapshotGasLastCall("MarginRouter_increasePosition_addLeverage");
 
         assertEq(protocol.collateralOf(account), 4 ether, "collateral grew by the bought amount");
         assertGt(protocol.debtOf(account), debtAfterOpen, "debt grew");

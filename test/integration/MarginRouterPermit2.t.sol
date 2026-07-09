@@ -57,8 +57,8 @@ contract MarginRouterPermit2Test is RoutingTestHelpers, DeployPermit2 {
         address account = marginRouter.accountOf(address(this), 0);
 
         // no pre-funding: equity is pulled from the caller through Permit2 by the router
-        marginRouter.openPosition(
-            IMarginRouter.OpenParams({
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,

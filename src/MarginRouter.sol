@@ -107,7 +107,7 @@ contract MarginRouter is
     }
 
     /// @inheritdoc IMarginRouter
-    function openPosition(OpenParams calldata params)
+    function increasePosition(IncreaseParams calldata params)
         external
         payable
         isNotLocked
@@ -115,11 +115,11 @@ contract MarginRouter is
         returns (address account)
     {
         uint256 debtBefore;
-        (account, debtBefore) = _open(params);
-        // one post-open snapshot carries full resulting state (indexers need no extra RPC) and also
-        // yields debtDrawn, so no separate post-unlock position read is needed
+        (account, debtBefore) = _increase(params);
+        // one post-increase snapshot carries full resulting state (indexers need no extra RPC) and
+        // also yields debtDrawn, so no separate post-unlock position read is needed
         PositionData memory position = params.adapter.describePosition(account, params.market);
-        emit PositionOpened(
+        emit PositionIncreased(
             msgSender(),
             account,
             params.market.collateral,
@@ -136,100 +136,59 @@ contract MarginRouter is
     }
 
     /// @inheritdoc IMarginRouter
-    function closePosition(CloseParams calldata params)
-        external
-        isNotLocked
-        checkDeadline(params.deadline)
-        returns (address account)
-    {
-        account = accountOf(msgSender(), params.subId);
-
-        // resolve the position before deciding whether a swap is required
-        (uint256 collateral, uint256 debt) = params.adapter.positionOf(account, params.market);
-
-        // a position with no debt (e.g. funded only via addCollateral, repaid out of band, or fully
-        // liquidated) needs no swap: withdraw the collateral straight to the caller and finish. The
-        // router is the account manager and msgSender() is the owner, both allowed receivers.
-        if (debt == 0) {
-            if (collateral > 0) {
-                IMarginAccount(account).withdrawCollateral(params.adapter, params.market, collateral, msgSender());
-            }
-            emit PositionClosed(
-                msgSender(), account, params.market.collateral, params.market.debt, 0, collateral, collateral
-            );
-            return account;
-        }
-
-        if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
-        _setActiveAccount(account);
-
-        // buy exactly the current debt, then repay it; sell collateral to fund the purchase
-        bool zeroForOne = params.market.toSwapParams(params.market.collateral, 0, 0, params.poolKey).zeroForOne;
-
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.SWAP_EXACT_OUT_SINGLE),
-            uint8(Actions.TAKE),
-            uint8(MarginActions.ACCOUNT_REPAY),
-            uint8(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL),
-            uint8(Actions.SETTLE)
-        );
-        bytes[] memory actionParams = new bytes[](5);
-        actionParams[0] = abi.encode(
-            IV4Router.ExactOutputSingleParams({
-                poolKey: params.poolKey,
-                zeroForOne: zeroForOne,
-                amountOut: debt.toUint128(),
-                amountInMaximum: params.maxCollateralIn,
-                minHopPriceX36: params.minHopPriceX36,
-                hookData: ""
-            })
-        );
-        // take the bought debt to the account, then repay ALL by shares so no borrow-share dust
-        // remains (an asset-denominated repay rounds down to shares and leaves dust, which would
-        // make the full-collateral withdrawal fail the lending market's health check). The bought
-        // `debt` equals expectedBorrowAssets, which is exactly what a full-share repay pulls in the
-        // same block.
-        actionParams[1] = abi.encode(params.market.debt, account, ActionConstants.OPEN_DELTA);
-        actionParams[2] = abi.encode(params.adapter, params.market, type(uint256).max);
-        actionParams[3] = abi.encode(params.adapter, params.market, collateral, address(this));
-        // settle the collateral spent on the swap from the router
-        actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
-
-        // measure the router's own collateral gain across the unlock so any pre-existing or donated
-        // balance is left untouched; only this position's realized PnL is returned to the caller
-        uint256 balanceBefore = params.market.collateral.balanceOfSelf();
-        poolManager.unlock(abi.encode(actions, actionParams));
-        _setActiveAccount(address(0));
-
-        // return the remaining collateral (realized PnL) to the caller
-        uint256 residual = params.market.collateral.balanceOfSelf() - balanceBefore;
-        if (residual > 0) params.market.collateral.transfer(msgSender(), residual);
-        // debt was bought exact-out and repaid in full; the full collateral was withdrawn to the router
-        emit PositionClosed(
-            msgSender(), account, params.market.collateral, params.market.debt, debt, collateral, residual
-        );
-    }
-
-    /// @inheritdoc IMarginRouter
+    /// @dev A partial decrease (`debtToRepay < type(uint256).max`) and a full close
+    ///      (`debtToRepay == type(uint256).max`) share one implementation: buy the target debt
+    ///      exact-output, take it to the account, repay, withdraw collateral, and settle the swap from
+    ///      the router. Only four things vary, all derived from `fullClose`: the swap size, the repay
+    ///      amount, how much collateral is withdrawn, and the health bound. Everything else, including
+    ///      the residual measure-and-forward, is identical: a partial decrease withdraws exactly the
+    ///      swap cost so its residual is zero, while a full close withdraws everything and returns the
+    ///      realized PnL.
     function decreasePosition(DecreaseParams calldata params)
         external
         isNotLocked
         checkDeadline(params.deadline)
         returns (address account)
     {
-        // both the collateral slippage bound and the resulting-health bound are mandatory: a delever
-        // must not be left free to worsen the position's LTV. A zero repay would feed a zero amount
-        // into the exact-output swap, which the PoolManager rejects.
-        if (params.debtToRepay == 0) revert SlippageBoundRequired();
-        if (params.maxCollateralIn == 0 || Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
+        bool fullClose = params.debtToRepay == type(uint256).max;
+
+        // a partial decrease's bounds don't depend on the position, so validate them before any
+        // external read: a non-zero repay (a zero would feed a zero into the exact-output swap, which
+        // the PoolManager rejects) and a resulting-health bound so it cannot worsen the LTV
+        if (!fullClose && (params.debtToRepay == 0 || Ltv.unwrap(params.maxLtvAfter) == 0)) {
+            revert SlippageBoundRequired();
+        }
 
         account = accountOf(msgSender(), params.subId);
-        // snapshot collateral before the swap so the emitted collateralSold is exact
-        (uint256 collateralBefore,) = params.adapter.positionOf(account, params.market);
-        _setActiveAccount(account);
+        (uint256 collateralBefore, uint256 debt) = params.adapter.positionOf(account, params.market);
 
-        // sell collateral to buy and repay `debtToRepay`; the position stays open and shrinks
-        bool zeroForOne = params.market.toSwapParams(params.market.collateral, 0, 0, params.poolKey).zeroForOne;
+        // a full close of a debt-free position (funded only via addCollateral, repaid out of band, or
+        // fully liquidated) needs no swap: withdraw the collateral straight to the caller and finish.
+        if (fullClose && debt == 0) {
+            if (collateralBefore > 0) {
+                IMarginAccount(account).withdrawCollateral(params.adapter, params.market, collateralBefore, msgSender());
+            }
+            // all collateral withdrawn straight to the caller; nothing left in the position
+            emit PositionDecreased(
+                msgSender(),
+                account,
+                params.market.collateral,
+                params.market.debt,
+                0,
+                collateralBefore,
+                collateralBefore,
+                0,
+                0,
+                Ltv.wrap(0),
+                type(uint256).max
+            );
+            return account;
+        }
+
+        // a swap runs from here (the debt-free full close returned above), so the input cap is mandatory
+        if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
+
+        _setActiveAccount(account);
 
         bytes memory actions = abi.encodePacked(
             uint8(Actions.SWAP_EXACT_OUT_SINGLE),
@@ -239,41 +198,77 @@ contract MarginRouter is
             uint8(Actions.SETTLE),
             uint8(MarginActions.ASSERT_HEALTH)
         );
+        // the mode-dependent amounts are inlined (kept out of locals to stay under the stack limit):
+        // full close buys the whole debt and repays ALL by shares so no borrow-share dust remains (an
+        // asset-denominated repay leaves rounding dust that would fail the full-collateral withdrawal's
+        // health check), withdraws all collateral, and passes a zero health bound that ASSERT_HEALTH
+        // skips. A partial decrease buys and repays exactly `debtToRepay`, withdraws only the collateral
+        // the swap consumed (OPEN_DELTA), and enforces `maxLtvAfter`.
         bytes[] memory actionParams = new bytes[](6);
         actionParams[0] = abi.encode(
             IV4Router.ExactOutputSingleParams({
                 poolKey: params.poolKey,
-                zeroForOne: zeroForOne,
-                amountOut: params.debtToRepay.toUint128(),
+                zeroForOne: params.market.toSwapParams(params.market.collateral, 0, 0, params.poolKey).zeroForOne,
+                amountOut: (fullClose ? debt : params.debtToRepay).toUint128(),
                 amountInMaximum: params.maxCollateralIn,
                 minHopPriceX36: params.minHopPriceX36,
                 hookData: ""
             })
         );
         actionParams[1] = abi.encode(params.market.debt, account, ActionConstants.OPEN_DELTA);
-        actionParams[2] = abi.encode(params.adapter, params.market, params.debtToRepay);
-        // withdraw only the collateral the swap consumed (OPEN_DELTA = collateral owed to the pool)
-        actionParams[3] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
+        actionParams[2] = abi.encode(params.adapter, params.market, fullClose ? type(uint256).max : params.debtToRepay);
+        actionParams[3] = abi.encode(
+            params.adapter,
+            params.market,
+            fullClose ? collateralBefore : uint256(ActionConstants.OPEN_DELTA),
+            address(this)
+        );
         actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
-        // assert the resulting health
-        actionParams[5] = abi.encode(params.adapter, params.market, account, params.maxLtvAfter);
+        actionParams[5] =
+            abi.encode(params.adapter, params.market, account, fullClose ? Ltv.wrap(0) : params.maxLtvAfter);
 
+        // measure the router's own collateral gain across the unlock: zero for a partial decrease (it
+        // withdraws exactly the swap cost), the realized PnL for a full close
+        uint256 balanceBefore = params.market.collateral.balanceOfSelf();
         poolManager.unlock(abi.encode(actions, actionParams));
         _setActiveAccount(address(0));
 
-        PositionData memory position = params.adapter.describePosition(account, params.market);
-        emit PositionDecreased(
-            msgSender(),
-            account,
-            params.market.collateral,
-            params.market.debt,
-            params.debtToRepay,
-            collateralBefore - position.collateralAmount,
-            position.collateralAmount,
-            position.debtAmount,
-            position.currentLtv,
-            position.healthFactorWad
-        );
+        uint256 residual = params.market.collateral.balanceOfSelf() - balanceBefore;
+        if (residual > 0) params.market.collateral.transfer(msgSender(), residual);
+
+        // one event for both modes; `residual` is the realized PnL returned (zero on a partial
+        // decrease). A full close ends empty by construction, so its resulting state is a known
+        // zero and needs no position read; only a partial decrease reads back the shrunk position.
+        if (fullClose) {
+            emit PositionDecreased(
+                msgSender(),
+                account,
+                params.market.collateral,
+                params.market.debt,
+                debt,
+                collateralBefore,
+                residual,
+                0,
+                0,
+                Ltv.wrap(0),
+                type(uint256).max
+            );
+        } else {
+            PositionData memory position = params.adapter.describePosition(account, params.market);
+            emit PositionDecreased(
+                msgSender(),
+                account,
+                params.market.collateral,
+                params.market.debt,
+                params.debtToRepay,
+                collateralBefore - position.collateralAmount,
+                residual,
+                position.collateralAmount,
+                position.debtAmount,
+                position.currentLtv,
+                position.healthFactorWad
+            );
+        }
     }
 
     /// @inheritdoc IMarginRouter
@@ -388,15 +383,16 @@ contract MarginRouter is
         emit GovernanceTransferStarted(msg.sender, newGovernance);
     }
 
-    /// @notice Shared implementation for `openPosition`. Deploys the account if needed, pulls
+    /// @notice Shared implementation for `increasePosition`. Deploys the account if needed, pulls
     ///         optional equity, then builds and runs the flash-style unlock: swap debt to collateral
     ///         (exact-output), supply the collateral, borrow the debt owed, and settle the swap.
-    ///         Opening into an account that already holds a position simply adds leverage to it.
-    /// @param params The open parameters; see `OpenParams`.
+    ///         Increasing an account that already holds a position simply adds leverage to it; the
+    ///         first increase opens the position.
+    /// @param params The increase parameters; see `IncreaseParams`.
     /// @return account The caller's MarginAccount address.
-    /// @return debtBefore The account's debt before the open; the caller derives debtDrawn as the
-    ///         post-open debt minus this, correct for both a fresh open and an increase.
-    function _open(OpenParams calldata params) private returns (address account, uint256 debtBefore) {
+    /// @return debtBefore The account's debt before the increase; the caller derives debtDrawn as the
+    ///         post-increase debt minus this, correct for both a fresh open and an increase.
+    function _increase(IncreaseParams calldata params) private returns (address account, uint256 debtBefore) {
         // a zero buy would feed a zero amount into the exact-output swap, which the PoolManager rejects
         if (params.collateralToBuy == 0) revert SlippageBoundRequired();
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
