@@ -22,8 +22,9 @@ Solc `0.8.26`, EVM `cancun`. SwapAndAdd compiles under `via_ir = true, optimizer
 
 One `PoolManager.unlock` per operation:
 
-1. **ROUTE FIRST** — run the caller's verbatim Universal Router payload (off-venue best execution,
-   surplus → deficit). Both pool tokens are funded for it; whatever it does not consume stays for step 3.
+1. **ROUTE FIRST** — run the caller's verbatim Universal Router payload (surplus → deficit, a black box:
+   it may even touch this pool — the post-route balances and pool price are simply the source of truth for
+   every later step). Both pool tokens are funded for it; whatever it does not consume stays for step 3.
    Native value left in the UR is reclaimed via a UR `SWEEP` (UR balances are permissionlessly sweepable).
 2. **SIZE & DEPLOY** — size liquidity from the *actual* post-route holdings at the live price, fee-aware
    (the side the same-pool reconcile will sell is discounted by that direction's total swap fee:
