@@ -12,6 +12,7 @@ import {IPoolDataProvider} from "./interfaces/external/aave/IPoolDataProvider.so
 import {OwnableAdapter} from "./base/OwnableAdapter.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
+import {PositionData} from "./types/PositionData.sol";
 
 /// @title AaveLendingAdapter
 /// @author Uniswap Labs
@@ -221,6 +222,35 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = pool.getUserAccountData(account);
         if (totalCollateralBase == 0) return toLtv(totalDebtBase == 0 ? 0 : type(uint256).max);
         return toLtv(totalDebtBase * WAD / totalCollateralBase);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Composes the aToken/variable-debt balances with a single account-level
+    ///      `getUserAccountData` read, so the health factor is Aave's own (liquidation-threshold
+    ///      weighted) value rather than a re-derivation. `maxLtv` and `currentLtv` are account-level:
+    ///      they equal the position's values only when the account holds a single Aave position on
+    ///      this Pool (one position per `subId`); see the contract-level notes.
+    function describePosition(address account, Market calldata market)
+        external
+        view
+        returns (PositionData memory data)
+    {
+        _requireSupportedMarket(market);
+        (address aCollateral,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.collateral));
+        (,, address vDebt) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.debt));
+        (uint256 totalCollateralBase, uint256 totalDebtBase,, uint256 liquidationThreshold,, uint256 healthFactor) =
+            pool.getUserAccountData(account);
+        data = PositionData({
+            collateralAmount: IERC20(aCollateral).balanceOf(account),
+            debtAmount: IERC20(vDebt).balanceOf(account),
+            // account-weighted liquidation threshold (basis points) as the max LTV, matching the
+            // health factor Aave returns; equals the reserve's threshold for a single-position account
+            maxLtv: toLtv(liquidationThreshold * WAD / BPS),
+            currentLtv: totalCollateralBase == 0
+                ? toLtv(totalDebtBase == 0 ? 0 : type(uint256).max)
+                : toLtv(totalDebtBase * WAD / totalCollateralBase),
+            healthFactorWad: healthFactor
+        });
     }
 
     /// @notice Enables or disables routing for a `(collateral, debt)` pair. When enabling, both

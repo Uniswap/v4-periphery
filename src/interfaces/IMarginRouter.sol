@@ -57,15 +57,37 @@ interface IMarginRouter {
 
     /// @notice Emitted when leverage is opened or added via `openPosition`. The first open for an
     ///         account is paired with an `AccountCreated` event from the factory; subsequent opens
-    ///         into the same account add leverage to the existing position.
+    ///         into the same account add leverage to the existing position. The resulting-state
+    ///         fields let an indexer reconstruct the full position from this one log; the entry price
+    ///         is `debtDrawn / collateralBought` in the market's native decimals.
     /// @param owner The position owner (the authenticated caller at the time of the call).
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
     /// @param debt The debt currency of the market.
-    /// @param collateralBought The amount of collateral purchased by the opening swap, in the
-    ///        collateral token's native decimals.
+    /// @param equity The equity the caller contributed, in the collateral token's native decimals
+    ///        (the wrapped native amount when opened with ETH).
+    /// @param collateralBought The collateral purchased by the opening swap, in the collateral
+    ///        token's native decimals.
+    /// @param debtDrawn The debt borrowed to fund the swap (the entry notional), in the debt token's
+    ///        native decimals.
+    /// @param collateralTotal The account's total collateral after the open.
+    /// @param debtTotal The account's total debt after the open.
+    /// @param currentLtv The position's LTV after the open (WAD, 1e18 == 100%).
+    /// @param maxLtv The market's max (liquidation) LTV (WAD, 1e18 == 100%).
+    /// @param healthFactorWad The position health factor after the open (WAD, 1e18 == 1.0).
     event PositionOpened(
-        address indexed owner, address indexed account, Currency collateral, Currency debt, uint256 collateralBought
+        address indexed owner,
+        address indexed account,
+        Currency collateral,
+        Currency debt,
+        uint256 equity,
+        uint256 collateralBought,
+        uint256 debtDrawn,
+        uint256 collateralTotal,
+        uint256 debtTotal,
+        Ltv currentLtv,
+        Ltv maxLtv,
+        uint256 healthFactorWad
     );
 
     /// @notice Emitted when a position is fully closed.
@@ -73,10 +95,20 @@ interface IMarginRouter {
     /// @param account The MarginAccount that held the position.
     /// @param collateral The collateral currency of the market.
     /// @param debt The debt currency of the market.
+    /// @param debtRepaid The debt cleared by the close, in the debt token's native decimals (zero for
+    ///        a debt-free position).
+    /// @param collateralWithdrawn The collateral pulled from the lending position, in the collateral
+    ///        token's native decimals.
     /// @param collateralReturned The residual collateral (realized PnL) returned to the caller, in
     ///        the collateral token's native decimals.
     event PositionClosed(
-        address indexed owner, address indexed account, Currency collateral, Currency debt, uint256 collateralReturned
+        address indexed owner,
+        address indexed account,
+        Currency collateral,
+        Currency debt,
+        uint256 debtRepaid,
+        uint256 collateralWithdrawn,
+        uint256 collateralReturned
     );
 
     /// @notice Emitted when a position is partially delevered via `decreasePosition`.
@@ -84,10 +116,24 @@ interface IMarginRouter {
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
     /// @param debt The debt currency of the market.
-    /// @param debtRepaid The amount of debt repaid by the decrease, in the debt token's native
-    ///        decimals.
+    /// @param debtRepaid The debt repaid by the decrease, in the debt token's native decimals.
+    /// @param collateralSold The collateral consumed by the delever swap, in the collateral token's
+    ///        native decimals.
+    /// @param collateralTotal The account's total collateral after the decrease.
+    /// @param debtTotal The account's total debt after the decrease.
+    /// @param currentLtv The position's LTV after the decrease (WAD, 1e18 == 100%).
+    /// @param healthFactorWad The position health factor after the decrease (WAD, 1e18 == 1.0).
     event PositionDecreased(
-        address indexed owner, address indexed account, Currency collateral, Currency debt, uint256 debtRepaid
+        address indexed owner,
+        address indexed account,
+        Currency collateral,
+        Currency debt,
+        uint256 debtRepaid,
+        uint256 collateralSold,
+        uint256 collateralTotal,
+        uint256 debtTotal,
+        Ltv currentLtv,
+        uint256 healthFactorWad
     );
 
     /// @notice Emitted when collateral is added to a position via `addCollateral`.
@@ -95,7 +141,20 @@ interface IMarginRouter {
     /// @param account The MarginAccount that received the collateral.
     /// @param collateral The collateral currency supplied.
     /// @param amount The amount of collateral added, in the collateral token's native decimals.
-    event CollateralAdded(address indexed owner, address indexed account, Currency collateral, uint256 amount);
+    /// @param collateralTotal The account's total collateral after the add.
+    /// @param debtTotal The account's total debt after the add (unchanged by the add).
+    /// @param currentLtv The position's LTV after the add (WAD, 1e18 == 100%).
+    /// @param healthFactorWad The position health factor after the add (WAD, 1e18 == 1.0).
+    event CollateralAdded(
+        address indexed owner,
+        address indexed account,
+        Currency collateral,
+        uint256 amount,
+        uint256 collateralTotal,
+        uint256 debtTotal,
+        Ltv currentLtv,
+        uint256 healthFactorWad
+    );
 
     // -------------------------------------------------------------------------
     // Param structs

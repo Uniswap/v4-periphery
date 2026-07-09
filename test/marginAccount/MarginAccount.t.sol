@@ -198,4 +198,57 @@ contract MarginAccountTest is Test {
         vm.expectRevert(IMarginAccount.NotAuthorized.selector);
         account.execute(probeAdapter, market, abi.encodeWithSignature("poke()"));
     }
+
+    // ===== events =====
+
+    function test_supplyCollateral_emitsCollateralSupplied() public {
+        vm.expectEmit(true, true, true, true, address(account));
+        emit IMarginAccount.CollateralSupplied(manager, address(adapter), market.collateral, 10e18);
+        vm.prank(manager);
+        account.supplyCollateral(adapter, market, 10e18);
+    }
+
+    function test_borrow_emitsBorrowed() public {
+        vm.expectEmit(true, true, true, true, address(account));
+        emit IMarginAccount.Borrowed(manager, address(adapter), market.debt, 5e18, manager);
+        vm.prank(manager);
+        account.borrow(adapter, market, 5e18, manager);
+    }
+
+    function test_repay_emitsRepaid() public {
+        protocol.setDebt(address(account), 5e18);
+        vm.expectEmit(true, true, true, true, address(account));
+        emit IMarginAccount.Repaid(manager, address(adapter), market.debt, 5e18);
+        vm.prank(manager);
+        account.repay(adapter, market, 5e18);
+    }
+
+    function test_sweep_emitsSwept() public {
+        vm.expectEmit(true, true, true, true, address(account));
+        emit IMarginAccount.Swept(owner, market.collateral, 3e18, owner);
+        vm.prank(owner);
+        account.sweep(market.collateral, 3e18, owner);
+    }
+
+    // the escape-hatch path: an owner-driven withdraw emits with caller == owner, which is the
+    // activity a router-only indexer would otherwise miss entirely
+    function test_withdrawCollateral_byOwner_emitsCollateralWithdrawnWithOwnerCaller() public {
+        protocol.setWithdrawToCaller(true); // exercise the measure-and-forward path so withdrawn > 0
+        vm.prank(owner);
+        account.supplyCollateral(adapter, market, 10e18);
+
+        vm.expectEmit(true, true, true, true, address(account));
+        emit IMarginAccount.CollateralWithdrawn(owner, address(adapter), market.collateral, 4e18, owner);
+        vm.prank(owner);
+        account.withdrawCollateral(adapter, market, 4e18, owner);
+    }
+
+    function test_execute_emitsExecuted() public {
+        StorageProbe probe = new StorageProbe();
+        MockLendingAdapter probeAdapter = new MockLendingAdapter(address(probe));
+        vm.expectEmit(true, true, false, true, address(account));
+        emit IMarginAccount.Executed(owner, address(probeAdapter), address(probe));
+        vm.prank(owner);
+        account.execute(probeAdapter, market, abi.encodeWithSignature("poke()"));
+    }
 }

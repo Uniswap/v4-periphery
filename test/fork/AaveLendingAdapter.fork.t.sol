@@ -28,6 +28,7 @@ import {IPoolDataProvider} from "../../src/interfaces/external/aave/IPoolDataPro
 import {IAaveOracle} from "../../src/interfaces/external/aave/IAaveOracle.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
+import {PositionData} from "../../src/types/PositionData.sol";
 
 /// @notice Full-stack mainnet-fork test of a real ETH SHORT against the live Aave v3 deployment.
 ///         The position supplies USDC as collateral and borrows real WETH, routed through the entire
@@ -154,6 +155,14 @@ contract AaveLendingAdapterForkTest is Test {
         Ltv current = adapter.currentLtvWad(account, market);
         assertGt(Ltv.unwrap(current), 0, "open: ltv positive");
         assertLt(Ltv.unwrap(current), Ltv.unwrap(adapter.maxLtvWad(market)), "open: ltv under max");
+
+        // describePosition returns the same values as the individual getters, in a single call
+        PositionData memory snapshot = adapter.describePosition(account, market);
+        assertEq(snapshot.collateralAmount, collateral, "describe: collateral matches positionOf");
+        assertEq(snapshot.debtAmount, debt, "describe: debt matches positionOf");
+        assertEq(Ltv.unwrap(snapshot.currentLtv), Ltv.unwrap(current), "describe: currentLtv matches");
+        assertEq(Ltv.unwrap(snapshot.maxLtv), Ltv.unwrap(adapter.maxLtvWad(market)), "describe: maxLtv matches");
+        assertGt(snapshot.healthFactorWad, 1e18, "describe: healthy position has HF > 1");
 
         _assertNoDust(account);
     }

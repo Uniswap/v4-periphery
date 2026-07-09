@@ -12,6 +12,7 @@ import {MorphoLendingAdapter} from "../../src/MorphoLendingAdapter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv} from "../../src/types/Ltv.sol";
+import {PositionData} from "../../src/types/PositionData.sol";
 
 /// @notice Forks mainnet and exercises MorphoLendingAdapter against the real Morpho Blue WETH/USDC
 ///         market, validating the accrual-dependent reads that the unit tests could not. All
@@ -82,6 +83,14 @@ contract MorphoLendingAdapterForkTest is Test {
         Ltv current = adapter.currentLtvWad(address(account), market);
         assertGt(Ltv.unwrap(current), 0, "ltv positive");
         assertLt(Ltv.unwrap(current), LLTV, "ltv under max");
+
+        // describePosition returns the same values as the individual getters, in a single call
+        PositionData memory snapshot = adapter.describePosition(address(account), market);
+        assertEq(snapshot.collateralAmount, collateral, "describe: collateral matches positionOf");
+        assertEq(snapshot.debtAmount, debt1, "describe: debt matches positionOf");
+        assertEq(Ltv.unwrap(snapshot.currentLtv), Ltv.unwrap(current), "describe: currentLtv matches");
+        assertEq(Ltv.unwrap(snapshot.maxLtv), LLTV, "describe: maxLtv is market lltv");
+        assertGt(snapshot.healthFactorWad, 1e18, "describe: healthy position has HF > 1");
 
         // accrue interest, then fully unwind. Repay-all by shares clears the borrow shares, so the
         // subsequent full-collateral withdrawal passes Morpho's health check. This is the exact

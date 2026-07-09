@@ -65,6 +65,7 @@ contract MarginAccount is IMarginAccount {
         collateral.forceApprove(target, amount);
         _execCall(adapter, target, value, callData);
         collateral.forceApprove(target, 0);
+        emit CollateralSupplied(msg.sender, address(adapter), market.collateral, amount);
         return amount;
     }
 
@@ -88,6 +89,7 @@ contract MarginAccount is IMarginAccount {
         _execCall(adapter, target, value, callData);
         withdrawn = collateral.balanceOf(address(this)) - balanceBefore;
         if (withdrawn != 0) collateral.safeTransfer(to, withdrawn);
+        emit CollateralWithdrawn(msg.sender, address(adapter), market.collateral, withdrawn, to);
     }
 
     /// @inheritdoc IMarginAccount
@@ -108,6 +110,7 @@ contract MarginAccount is IMarginAccount {
         _execCall(adapter, target, value, callData);
         borrowed = debt.balanceOf(address(this)) - balanceBefore;
         debt.safeTransfer(to, borrowed);
+        emit Borrowed(msg.sender, address(adapter), market.debt, borrowed, to);
     }
 
     /// @inheritdoc IMarginAccount
@@ -124,6 +127,7 @@ contract MarginAccount is IMarginAccount {
         _execCall(adapter, target, value, callData);
         debt.forceApprove(target, 0);
         repaid = balanceBefore - debt.balanceOf(address(this));
+        emit Repaid(msg.sender, address(adapter), market.debt, repaid);
     }
 
     /// @inheritdoc IMarginAccount
@@ -131,6 +135,7 @@ contract MarginAccount is IMarginAccount {
         (address ownerAddr, address managerAddr) = _authCaller();
         _requireReceiver(to, ownerAddr, managerAddr);
         IERC20(Currency.unwrap(currency)).safeTransfer(to, amount);
+        emit Swept(msg.sender, currency, amount, to);
     }
 
     /// @inheritdoc IMarginAccount
@@ -143,7 +148,10 @@ contract MarginAccount is IMarginAccount {
     {
         (address ownerAddr,) = _ownerAndManager();
         if (msg.sender != ownerAddr) NotAuthorized.selector.revertWith();
-        return Address.functionCall(adapter.lendingProtocol(), adapterCall);
+        address target = adapter.lendingProtocol();
+        bytes memory result = Address.functionCall(target, adapterCall);
+        emit Executed(msg.sender, address(adapter), target);
+        return result;
     }
 
     /// @notice Reads the soulbound `(owner, manager)` from the clone's immutable args. During

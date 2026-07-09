@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -29,6 +30,20 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
 
     Currency internal collateral;
     Currency internal debt;
+
+    /// @dev Mirrors the non-indexed data of `PositionOpened` for single-variable log decoding.
+    struct OpenedData {
+        address collateral;
+        address debt;
+        uint256 equity;
+        uint256 collateralBought;
+        uint256 debtDrawn;
+        uint256 collateralTotal;
+        uint256 debtTotal;
+        uint256 currentLtv;
+        uint256 maxLtv;
+        uint256 healthFactorWad;
+    }
 
     function setUp() public {
         setupRouterCurrenciesAndPoolsWithLiquidity();
@@ -236,9 +251,9 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
 
-        vm.expectEmit(true, true, false, true, address(marginRouter));
-        emit IMarginRouter.PositionOpened(address(this), account, collateral, debt, 2 ether);
-
+        // decode the emitted event rather than predict the pool-dependent debt: the enriched fields
+        // carry full resulting state so an indexer needs no follow-up RPC
+        vm.recordLogs();
         marginRouter.openPosition(
             IMarginRouter.OpenParams({
                 adapter: adapter,
@@ -252,6 +267,31 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
                 deadline: block.timestamp + 1
             })
         );
+
+        uint256 debtOwed = protocol.debtOf(account);
+        bytes32 topic0 = keccak256(
+            "PositionOpened(address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool found;
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].emitter != address(marginRouter) || logs[i].topics[0] != topic0) continue;
+            found = true;
+            assertEq(address(uint160(uint256(logs[i].topics[1]))), address(this), "owner topic");
+            assertEq(address(uint160(uint256(logs[i].topics[2]))), account, "account topic");
+            OpenedData memory od = abi.decode(logs[i].data, (OpenedData));
+            assertEq(od.collateral, Currency.unwrap(collateral), "collateral");
+            assertEq(od.debt, Currency.unwrap(debt), "debt");
+            assertEq(od.equity, 0, "equity is router-pulled only (pre-funded here)");
+            assertEq(od.collateralBought, 2 ether, "collateralBought");
+            assertEq(od.debtDrawn, debtOwed, "debtDrawn equals resulting debt on a fresh open");
+            assertEq(od.collateralTotal, 3 ether, "collateralTotal = equity + bought");
+            assertEq(od.debtTotal, debtOwed, "debtTotal");
+            assertEq(od.currentLtv, 0.86e18, "currentLtv (mock reports maxLtv)");
+            assertEq(od.maxLtv, 0.86e18, "maxLtv (mock)");
+            assertEq(od.healthFactorWad, 1e18, "healthFactor (currentLtv == maxLtv)");
+        }
+        assertTrue(found, "PositionOpened emitted");
     }
 
     function test_openPosition_addsLeverageToExistingPosition() public {

@@ -24,6 +24,7 @@ import {MarginActions} from "./libraries/MarginActions.sol";
 import {MarginCalldataDecoder} from "./libraries/MarginCalldataDecoder.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv} from "./types/Ltv.sol";
+import {PositionData} from "./types/PositionData.sol";
 import {Owner} from "./types/Owner.sol";
 
 /// @title MarginRouter
@@ -113,8 +114,25 @@ contract MarginRouter is
         checkDeadline(params.deadline)
         returns (address account)
     {
-        account = _open(params);
-        emit PositionOpened(msgSender(), account, params.market.collateral, params.market.debt, params.collateralToBuy);
+        uint256 debtBefore;
+        (account, debtBefore) = _open(params);
+        // one post-open snapshot carries full resulting state (indexers need no extra RPC) and also
+        // yields debtDrawn, so no separate post-unlock position read is needed
+        PositionData memory position = params.adapter.describePosition(account, params.market);
+        emit PositionOpened(
+            msgSender(),
+            account,
+            params.market.collateral,
+            params.market.debt,
+            msg.value > 0 ? msg.value : params.equity,
+            params.collateralToBuy,
+            position.debtAmount - debtBefore,
+            position.collateralAmount,
+            position.debtAmount,
+            position.currentLtv,
+            position.maxLtv,
+            position.healthFactorWad
+        );
     }
 
     /// @inheritdoc IMarginRouter
@@ -136,7 +154,9 @@ contract MarginRouter is
             if (collateral > 0) {
                 IMarginAccount(account).withdrawCollateral(params.adapter, params.market, collateral, msgSender());
             }
-            emit PositionClosed(msgSender(), account, params.market.collateral, params.market.debt, collateral);
+            emit PositionClosed(
+                msgSender(), account, params.market.collateral, params.market.debt, 0, collateral, collateral
+            );
             return account;
         }
 
@@ -184,7 +204,10 @@ contract MarginRouter is
         // return the remaining collateral (realized PnL) to the caller
         uint256 residual = params.market.collateral.balanceOfSelf() - balanceBefore;
         if (residual > 0) params.market.collateral.transfer(msgSender(), residual);
-        emit PositionClosed(msgSender(), account, params.market.collateral, params.market.debt, residual);
+        // debt was bought exact-out and repaid in full; the full collateral was withdrawn to the router
+        emit PositionClosed(
+            msgSender(), account, params.market.collateral, params.market.debt, debt, collateral, residual
+        );
     }
 
     /// @inheritdoc IMarginRouter
@@ -201,6 +224,8 @@ contract MarginRouter is
         if (params.maxCollateralIn == 0 || Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
 
         account = accountOf(msgSender(), params.subId);
+        // snapshot collateral before the swap so the emitted collateralSold is exact
+        (uint256 collateralBefore,) = params.adapter.positionOf(account, params.market);
         _setActiveAccount(account);
 
         // sell collateral to buy and repay `debtToRepay`; the position stays open and shrinks
@@ -235,7 +260,20 @@ contract MarginRouter is
 
         poolManager.unlock(abi.encode(actions, actionParams));
         _setActiveAccount(address(0));
-        emit PositionDecreased(msgSender(), account, params.market.collateral, params.market.debt, params.debtToRepay);
+
+        PositionData memory position = params.adapter.describePosition(account, params.market);
+        emit PositionDecreased(
+            msgSender(),
+            account,
+            params.market.collateral,
+            params.market.debt,
+            params.debtToRepay,
+            collateralBefore - position.collateralAmount,
+            position.collateralAmount,
+            position.debtAmount,
+            position.currentLtv,
+            position.healthFactorWad
+        );
     }
 
     /// @inheritdoc IMarginRouter
@@ -265,7 +303,17 @@ contract MarginRouter is
         }
         // the router is the account manager, so it can supply directly without an unlock
         IMarginAccount(account).supplyCollateral(params.adapter, params.market, amount);
-        emit CollateralAdded(msgSender(), account, params.market.collateral, amount);
+        PositionData memory position = params.adapter.describePosition(account, params.market);
+        emit CollateralAdded(
+            msgSender(),
+            account,
+            params.market.collateral,
+            amount,
+            position.collateralAmount,
+            position.debtAmount,
+            position.currentLtv,
+            position.healthFactorWad
+        );
     }
 
     /// @inheritdoc IMarginRouter
@@ -346,7 +394,9 @@ contract MarginRouter is
     ///         Opening into an account that already holds a position simply adds leverage to it.
     /// @param params The open parameters; see `OpenParams`.
     /// @return account The caller's MarginAccount address.
-    function _open(OpenParams calldata params) private returns (address account) {
+    /// @return debtBefore The account's debt before the open; the caller derives debtDrawn as the
+    ///         post-open debt minus this, correct for both a fresh open and an increase.
+    function _open(OpenParams calldata params) private returns (address account, uint256 debtBefore) {
         // a zero buy would feed a zero amount into the exact-output swap, which the PoolManager rejects
         if (params.collateralToBuy == 0) revert SlippageBoundRequired();
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
@@ -354,6 +404,10 @@ contract MarginRouter is
 
         account = createAccount(msgSender(), params.subId);
         _setActiveAccount(account);
+
+        // snapshot debt before drawing leverage so debtDrawn is correct whether this opens a fresh
+        // position or increases an existing one
+        (, debtBefore) = params.adapter.positionOf(account, params.market);
 
         // provide equity: native ETH (wrapped to WETH) when sent, else ERC20 pulled via Permit2
         if (msg.value > 0) {

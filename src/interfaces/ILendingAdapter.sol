@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {Market} from "../types/Market.sol";
 import {Ltv} from "../types/Ltv.sol";
+import {PositionData} from "../types/PositionData.sol";
 
 /// @title ILendingAdapter
 /// @author Uniswap Labs
@@ -112,4 +113,16 @@ interface ILendingAdapter {
     /// @param market The (collateral, debt) pair identifying the target lending market.
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv);
+
+    /// @notice A consolidated snapshot of `account`'s position in `market`: collateral and debt
+    ///         amounts, the market's max (liquidation) LTV, the current LTV, and the health factor.
+    /// @dev Equivalent to reading `positionOf`, `maxLtvWad`, and `currentLtvWad` together, plus a
+    ///      health factor, in a single call. Health factor is `maxLtv / currentLtv` in WAD and is
+    ///      `type(uint256).max` when there is no debt. For cross-collateral adapters (Aave v3/v4)
+    ///      the LTV and health factor are account-level, so they equal the position's values only
+    ///      when the account holds a single position on that protocol (one position per `subId`).
+    /// @param account The MarginAccount to query.
+    /// @param market The (collateral, debt) pair identifying the target lending market.
+    /// @return data The consolidated position snapshot; see `PositionData`.
+    function describePosition(address account, Market calldata market) external view returns (PositionData memory data);
 }

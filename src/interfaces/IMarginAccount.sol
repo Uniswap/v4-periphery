@@ -23,6 +23,55 @@ interface IMarginAccount {
     /// @param to The disallowed recipient address that was supplied.
     error ReceiverNotAllowed(address to);
 
+    /// @notice Emitted when the account supplies collateral to the lending protocol. `caller` is
+    ///         indexed so indexers can distinguish manager-driven activity from owner escape-hatch
+    ///         activity (which the router's own events do not cover) without inspecting the tx.
+    /// @param caller The `msg.sender` that drove the call (the manager or the owner).
+    /// @param adapter The lending adapter used.
+    /// @param collateral The collateral currency supplied.
+    /// @param amount The amount supplied, in the collateral token's native decimals.
+    event CollateralSupplied(
+        address indexed caller, address indexed adapter, Currency indexed collateral, uint256 amount
+    );
+
+    /// @notice Emitted when the account withdraws collateral and forwards it to `to`.
+    /// @param caller The `msg.sender` that drove the call (the manager or the owner).
+    /// @param adapter The lending adapter used.
+    /// @param collateral The collateral currency withdrawn.
+    /// @param amount The amount forwarded to `to`, measured as the account's balance increase.
+    /// @param to The recipient (the manager or the owner).
+    event CollateralWithdrawn(
+        address indexed caller, address indexed adapter, Currency indexed collateral, uint256 amount, address to
+    );
+
+    /// @notice Emitted when the account borrows debt and forwards it to `to`.
+    /// @param caller The `msg.sender` that drove the call (the manager or the owner).
+    /// @param adapter The lending adapter used.
+    /// @param debt The debt currency borrowed.
+    /// @param amount The amount forwarded to `to`, measured as the account's balance increase.
+    /// @param to The recipient (the manager or the owner).
+    event Borrowed(address indexed caller, address indexed adapter, Currency indexed debt, uint256 amount, address to);
+
+    /// @notice Emitted when the account repays debt to the lending protocol.
+    /// @param caller The `msg.sender` that drove the call (the manager or the owner).
+    /// @param adapter The lending adapter used.
+    /// @param debt The debt currency repaid.
+    /// @param amount The amount repaid, measured as the account's balance decrease.
+    event Repaid(address indexed caller, address indexed adapter, Currency indexed debt, uint256 amount);
+
+    /// @notice Emitted when the account sweeps a token balance to `to`.
+    /// @param caller The `msg.sender` that drove the call (the manager or the owner).
+    /// @param currency The token swept.
+    /// @param amount The amount transferred to `to`.
+    /// @param to The recipient (the manager or the owner).
+    event Swept(address indexed caller, Currency indexed currency, uint256 amount, address to);
+
+    /// @notice Emitted when the owner runs the escape-hatch `execute` against the lending protocol.
+    /// @param caller The owner that drove the call.
+    /// @param adapter The lending adapter whose `lendingProtocol()` was called.
+    /// @param target The call target (the adapter's lending protocol).
+    event Executed(address indexed caller, address indexed adapter, address target);
+
     /// @notice The account owner. Baked into the clone bytecode at deployment; cannot be changed.
     /// @return The owner address.
     function owner() external view returns (address);

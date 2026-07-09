@@ -14,6 +14,7 @@ import {OwnableAdapter} from "./base/OwnableAdapter.sol";
 import {Market} from "./types/Market.sol";
 import {MarketRegistry} from "./types/MarketRegistry.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
+import {PositionData} from "./types/PositionData.sol";
 
 /// @title MorphoLendingAdapter
 /// @author Uniswap Labs
@@ -164,11 +165,59 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
     ///      undercollateralized). Returns 0 when there is no debt.
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
         MarketParams memory marketParams = _markets.resolve(market);
-        uint256 collateral = uint256(morpho.position(marketParams.id(), account).collateral);
-        uint256 debt = morpho.expectedBorrowAssets(marketParams, account);
-        // collateral value expressed in loan-token units. price() is 1e36-scaled, so mulDiv keeps the
-        // collateral * price product in full 512-bit precision and avoids a phantom-overflow revert.
-        uint256 collateralValue = Math.mulDiv(collateral, IOracle(marketParams.oracle).price(), ORACLE_PRICE_SCALE);
+        (, uint256 debt, uint256 collateralValue) = _positionValues(marketParams, account);
+        return _ltv(debt, collateralValue);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Reads the account's position once and derives every field from it, so an integrator can
+    ///      compose a position view without separate `positionOf`/`maxLtvWad`/`currentLtvWad` calls.
+    ///      Health factor is `lltv * collateralValue / debt` (WAD), i.e. `maxLtv / currentLtv`, and is
+    ///      `type(uint256).max` when there is no debt and 0 when debt exists against no collateral
+    ///      value.
+    function describePosition(address account, Market calldata market)
+        external
+        view
+        returns (PositionData memory data)
+    {
+        MarketParams memory marketParams = _markets.resolve(market);
+        (uint256 collateral, uint256 debt, uint256 collateralValue) = _positionValues(marketParams, account);
+        data = PositionData({
+            collateralAmount: collateral,
+            debtAmount: debt,
+            maxLtv: toLtv(marketParams.lltv),
+            currentLtv: _ltv(debt, collateralValue),
+            // maxLtv / currentLtv == lltv * collateralValue / debt (WAD); mulDiv keeps full precision
+            healthFactorWad: debt == 0 ? type(uint256).max : Math.mulDiv(collateralValue, marketParams.lltv, debt)
+        });
+    }
+
+    /// @notice Reads the account's collateral, accrued debt, and oracle-priced collateral value (in
+    ///         loan-token units) for an already-resolved market.
+    /// @param marketParams The resolved Morpho market parameters.
+    /// @param account The account to read.
+    /// @return collateral The account's supplied collateral, in the collateral token's native decimals.
+    /// @return debt The account's debt with accrued interest, in the loan token's native decimals.
+    /// @return collateralValue The collateral valued in loan-token units via the market oracle.
+    function _positionValues(MarketParams memory marketParams, address account)
+        internal
+        view
+        returns (uint256 collateral, uint256 debt, uint256 collateralValue)
+    {
+        collateral = uint256(morpho.position(marketParams.id(), account).collateral);
+        debt = morpho.expectedBorrowAssets(marketParams, account);
+        // price() is 1e36-scaled, so mulDiv keeps the collateral * price product in full 512-bit
+        // precision and avoids a phantom-overflow revert.
+        collateralValue = Math.mulDiv(collateral, IOracle(marketParams.oracle).price(), ORACLE_PRICE_SCALE);
+    }
+
+    /// @notice Current LTV from accrued debt and oracle-priced collateral value. `type(uint256).max`
+    ///         when there is debt but no collateral value (fully undercollateralized); zero when
+    ///         there is no debt.
+    /// @param debt The account's debt with accrued interest.
+    /// @param collateralValue The collateral valued in loan-token units.
+    /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
+    function _ltv(uint256 debt, uint256 collateralValue) internal pure returns (Ltv) {
         if (collateralValue == 0) return toLtv(debt == 0 ? 0 : type(uint256).max);
         return toLtv(debt * WAD / collateralValue);
     }

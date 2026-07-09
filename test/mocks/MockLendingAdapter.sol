@@ -4,6 +4,7 @@ pragma solidity 0.8.26;
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
+import {PositionData} from "../../src/types/PositionData.sol";
 import {MockLendingProtocol} from "./MockLendingProtocol.sol";
 
 /// @notice Minimal configurable test double for `ILendingAdapter`. Encodes calls against a
@@ -104,5 +105,18 @@ contract MockLendingAdapter is ILendingAdapter {
 
     function currentLtvWad(address, Market calldata) external view returns (Ltv) {
         return _maxLtv;
+    }
+
+    function describePosition(address account, Market calldata) external view returns (PositionData memory data) {
+        MockLendingProtocol p = MockLendingProtocol(lendingProtocol);
+        uint256 debt = p.debtOf(account);
+        data = PositionData({
+            collateralAmount: p.collateralOf(account),
+            debtAmount: debt,
+            maxLtv: _maxLtv,
+            currentLtv: debt == 0 ? toLtv(0) : _maxLtv,
+            // the mock reports currentLtv == maxLtv, so health factor is 1e18 while debt exists
+            healthFactorWad: debt == 0 ? type(uint256).max : 1e18
+        });
     }
 }

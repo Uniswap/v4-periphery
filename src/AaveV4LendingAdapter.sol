@@ -10,6 +10,7 @@ import {ISpoke} from "./interfaces/external/aave-v4/ISpoke.sol";
 import {OwnableAdapter} from "./base/OwnableAdapter.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
+import {PositionData} from "./types/PositionData.sol";
 
 /// @title AaveV4LendingAdapter
 /// @author Uniswap Labs
@@ -241,6 +242,42 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
         _resolveRoute(market);
         ISpoke.UserAccountData memory data = spoke.getUserAccountData(account);
+        return _currentLtv(data);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Composes the account's supplied/borrowed amounts with a single account-level
+    ///      `getUserAccountData` read, so the health factor is the Spoke's own value (which
+    ///      incorporates the position's risk premium and dynamic config) rather than a re-derivation.
+    ///      `maxLtv` and `currentLtv` are account-level (Spoke-scoped): they equal the position's
+    ///      values only when the account holds a single position on this Spoke (one position per
+    ///      `subId`); see the contract-level notes.
+    function describePosition(address account, Market calldata market)
+        external
+        view
+        returns (PositionData memory data)
+    {
+        V4MarketRoute storage route = _resolveRoute(market);
+        ISpoke.Reserve memory reserve = spoke.getReserve(route.collateralReserveId);
+        ISpoke.DynamicReserveConfig memory dynamicConfig =
+            spoke.getDynamicReserveConfig(route.collateralReserveId, reserve.dynamicConfigKey);
+        ISpoke.UserAccountData memory accountData = spoke.getUserAccountData(account);
+        data = PositionData({
+            collateralAmount: spoke.getUserSuppliedAssets(route.collateralReserveId, account),
+            debtAmount: spoke.getUserTotalDebt(route.debtReserveId, account),
+            maxLtv: toLtv(uint256(dynamicConfig.collateralFactor) * WAD / BPS),
+            currentLtv: _currentLtv(accountData),
+            healthFactorWad: accountData.healthFactor
+        });
+    }
+
+    /// @notice Current LTV from the Spoke's account-level totals. `totalCollateralValue` is in Value
+    ///         units; `totalDebtValueRay` is Value units scaled by RAY, so the WAD LTV is
+    ///         `totalDebtValueRay * WAD / (totalCollateralValue * RAY)`. Returns `type(uint256).max`
+    ///         when there is debt but no collateral, and 0 when there is no debt.
+    /// @param data The Spoke's account-level data for the account.
+    /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
+    function _currentLtv(ISpoke.UserAccountData memory data) internal pure returns (Ltv) {
         if (data.totalDebtValueRay == 0) return toLtv(0);
         if (data.totalCollateralValue == 0) return toLtv(type(uint256).max);
         return toLtv(Math.mulDiv(data.totalDebtValueRay, WAD, data.totalCollateralValue * RAY));
