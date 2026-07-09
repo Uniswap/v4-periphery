@@ -59,7 +59,12 @@ contract SwapAndAddForkMainnetTest is Test {
     PoolKey key;
 
     function setUp() public {
-        vm.createSelectFork(vm.envOr("FORK_URL", string("https://ethereum-rpc.publicnode.com")));
+        // Defaults to the head because the keyless public RPC serves no archive state. For a reproducible run,
+        // set FORK_URL to an archive endpoint and pin with FORK_BLOCK (e.g. 25_495_000, 2026-07-09).
+        uint256 forkBlock = vm.envOr("FORK_BLOCK", uint256(0));
+        string memory forkUrl = vm.envOr("FORK_URL", string("https://ethereum-rpc.publicnode.com"));
+        if (forkBlock == 0) vm.createSelectFork(forkUrl);
+        else vm.createSelectFork(forkUrl, forkBlock);
 
         key = _reconstructKey();
         emit log_named_uint("pool fee", key.fee);

@@ -24,13 +24,13 @@ compilation_restrictions = [
   { paths = "test/**", via_ir = false }
 ]
 
-# Integration profile for the SwapAndAdd <-> Universal Router route test (test/SwapAndAddRoute.t.sol).
+# Integration profile for the SwapAndAdd tests that need the real Universal Router (test-integration/).
 # The real UR requires via_ir, but the default profile disables it for test/**; foundry cannot mix a via_ir
 # unit with a non-via_ir unit that share forge-std. Under FOUNDRY_PROFILE=integration the whole graph compiles
-# with via_ir on (no test/** opt-out), so the route test and the nested UR build cleanly. The default profile
-# is unchanged, so the 8 same-pool SwapAndAdd tests keep running exactly as before.
+# with via_ir on (no test/** opt-out), so these tests and the nested UR build cleanly. The default profile
+# is unchanged, so the SwapAndAdd unit suite in test/ keeps running exactly as before.
 #   Run it with:  FOUNDRY_PROFILE=integration forge test
-# The route test lives in its own `test-integration/` dir, which only this profile compiles — so a plain
+# The integration tests live in their own `test-integration/` dir, which only this profile compiles — so a plain
 # `forge test` on the default profile never pulls in the (via_ir-only) UR and the default suite is unaffected.
 [profile.integration]
 test = 'test-integration'
