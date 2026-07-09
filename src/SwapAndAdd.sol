@@ -43,7 +43,8 @@ interface IERC721Minimal {
 ///
 ///         Flow, all inside one PoolManager unlock:
 ///           1. ROUTE FIRST — run the caller's verbatim Universal Router route to swap the surplus side toward
-///              the deficit side (best execution, off-venue). After it, the contract holds the *actual* tokens.
+///              the deficit side (best execution, typically off-venue). The post-route state — balances and
+///              pool price — is the source of truth for everything after.
 ///           2. SIZE & DEPLOY — size the position from those real holdings at the live price, fee-aware (the
 ///              residual same-pool swap will pay the pool fee, so discount the side it consumes), and mint to
 ///              this contract (or increase the existing tokenId in place).
@@ -56,10 +57,10 @@ interface IERC721Minimal {
 ///           The same-pool reconcile swap moves the pool price. If we sized/minted *after* it, the position's
 ///           required ratio would depend on the swap we are still computing — a circular dependency (the
 ///           Aperture problem). Minting *first* fixes the position's composition at the live price, so the
-///           reconcile swap can move the price freely without invalidating the mint. The *route* runs before
-///           the mint too, but it is off-venue (it does not touch this pool), so it cannot move this pool's
-///           price out from under the mint — it only tells us the real holdings to size from. `minLiquidity`
-///           checked on the final position is the single slippage gate for the whole operation.
+///           reconcile swap can move the price freely without invalidating the mint. The *route* is a black
+///           box that simply runs first — whatever state it leaves (balances and pool price alike, it may even
+///           touch this pool) is re-read and used as the source of truth for sizing. `minLiquidity` checked on
+///           the final position is the single slippage gate for the whole operation.
 ///
 ///         INVARIANT — no funds at rest: outside an active operation this contract holds no tokens, no native
 ///         balance and no positions. Every entrypoint pulls the caller's budget, deploys/settles it in full and
@@ -327,8 +328,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         _ensureApproved(cp.key.currency0);
         _ensureApproved(cp.key.currency1);
 
-        // 1. ROUTE FIRST: run the verbatim route (best-execution, off-venue) to convert the surplus toward the
-        //    deficit, then re-read balances — we now size from the *actual* holdings, not an estimate.
+        // 1. ROUTE FIRST: run the verbatim route (a black box) to convert the surplus toward the deficit, then
+        //    re-read balances — the post-route state is the source of truth we size from, not an estimate.
         if (cp.route.length != 0) {
             _runRoute(cp);
             cp.budget0 = cp.key.currency0.balanceOfSelf();

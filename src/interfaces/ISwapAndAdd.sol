@@ -10,7 +10,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 ///         (increase, compound) — the contract sources the missing token via a swap, using a route-first design.
 /// @dev Flow (route first, then size from reality):
 ///      1. run the verbatim off-chain Universal Router `route` FIRST, swapping the surplus side toward the
-///         deficit (best execution, off-venue), then read the contract's ACTUAL post-route balances,
+///         deficit (best execution, typically off-venue), then read the contract's ACTUAL post-route balances,
 ///      2. size the position from those real holdings at the live price — fee-aware (discount the side the
 ///         same-pool reconcile will swap by that direction's total swap fee: lp fee compounded with the
 ///         directional protocol fee) — and mint it to THIS contract (POSM),
@@ -21,10 +21,11 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 ///         NFT to `recipient` after the unlock closes.
 ///
 ///      DESIGN NOTE — route first, then size:
-///      The route is sized off-chain and executes off-venue, so on-chain we don't know its rate ahead of time —
-///      but by running it FIRST and sizing the position from the *actual* resulting holdings, the contract
-///      deploys whatever the route really returned (it doesn't lose value to a cheaper-than-expected or
-///      better-than-mid route, which a size-then-swap design would return to the wallet). The same-pool reconcile
+///      The route is a black box sized off-chain — on-chain we don't know (or care) what it does or at what
+///      rate; it may even touch this pool. By running it FIRST, the post-route state (balances and pool price)
+///      is the source of truth everything else works from: the contract deploys whatever the route really
+///      returned (it doesn't lose value to a cheaper-than-expected or better-than-mid route, which a
+///      size-then-swap design would return to the wallet). The same-pool reconcile
 ///      runs AFTER the mint so its price impact can't invalidate the position's required ratio (the mint is
 ///      already fixed at the live price). `minLiquidity` is the single slippage knob: a floor on the FINAL
 ///      (post-trim) position; if price drift / MEV makes the holdings fund less than `minLiquidity`, the call
