@@ -4,14 +4,16 @@ pragma solidity ^0.8.24;
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @title ISwapAndAdd
-/// @notice Swap-and-add / rebalance zap for Uniswap v4. Lets a caller supply the two pool tokens in any
-///         ratio (including only one) and, in a single transaction, receive a standard PositionManager (POSM)
-///         ERC-721 position — the contract sources the missing token via a swap, using a route-first design.
+/// @notice Swap-and-add zap for Uniswap v4: add / rebalance / increase / compound. Lets a caller supply the
+///         two pool tokens in any ratio (including only one) and, in a single transaction, end up with a
+///         standard PositionManager (POSM) ERC-721 position — newly minted (add, rebalance) or grown in place
+///         (increase, compound) — the contract sources the missing token via a swap, using a route-first design.
 /// @dev Flow (route first, then size from reality):
 ///      1. run the verbatim off-chain Universal Router `route` FIRST, swapping the surplus side toward the
 ///         deficit (best execution, off-venue), then read the contract's ACTUAL post-route balances,
 ///      2. size the position from those real holdings at the live price — fee-aware (discount the side the
-///         same-pool reconcile will swap by the pool's lpFee+protocolFee) — and mint it to THIS contract (POSM),
+///         same-pool reconcile will swap by that direction's total swap fee: lp fee compounded with the
+///         directional protocol fee) — and mint it to THIS contract (POSM),
 ///      3. one same-pool reconcile swap funds whichever side the mint is short of (either direction: top up if
 ///         the route under-converted, sell back if it over-converted), then a DECREASE ("trim") lands the
 ///         position exactly on what the holdings support,
@@ -29,9 +31,17 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 ///      reverts. No swap-rate input, no separate min-amount params. With an empty `route`, the whole deficit is
 ///      sourced by the same-pool reconcile (the design degrades to a pure same-pool zap). The position is minted
 ///      to this contract so it can be trimmed, then transferred to `recipient`.
+///
+///      KNOWN LIMIT — fee-taking hooks: the reconcile relies on a conservation identity (the same-pool swap's
+///      output plus what the trim frees covers the flash-taken deficit, because both come out of the just-added
+///      liquidity). Hooks that skim swap output or withdrawal amounts break that identity; on such pools the
+///      call may revert atomically inside the unlock (CurrencyNotSettled) — funds are safe, but the operation
+///      can be unusable there.
 interface ISwapAndAdd {
     error DeadlinePassed(uint256 deadline);
     error InvalidEthValue();
+    /// @notice Plain ETH transfers are rejected; only the PoolManager, POSM and the Universal Router may send.
+    error InvalidEthSender();
     error InsufficientLiquidity(uint128 minLiquidity, uint128 liquidity);
     error NotAuthorizedForToken(uint256 tokenId);
     /// @notice A negative `additionalA/additionalB` (return-to-wallet) asked for more than was withdrawn.
@@ -45,7 +55,10 @@ interface ISwapAndAdd {
     /// @param amount0In     Budget of pool token0 (may be 0).
     /// @param amount1In     Budget of pool token1 (may be 0).
     /// @param route         Verbatim Universal Router payload for the bulk swap: abi.encode(bytes commands, bytes[] inputs).
-    ///                      May be empty -> the whole deficit is sourced by the same-pool swap + trim.
+    ///                      May be empty -> the whole deficit is sourced by the same-pool swap + trim. The route
+    ///                      declares its own input token and amount; BOTH pool tokens are funded for it (bounded
+    ///                      Permit2 allowances / native value), whatever it does not consume stays in the contract
+    ///                      for the same-pool reconcile, and native value left in the router is reclaimed.
     /// @param minLiquidity  Slippage floor: revert if the resulting (post-trim) position liquidity < minLiquidity.
     /// @param recipient     Receives the POSM NFT (after the unlock) and any swept leftover input token.
     /// @param hookData      Hook data forwarded to the position mint.
@@ -77,7 +90,8 @@ interface ISwapAndAdd {
     ///                          liquidity is ADDED to this same tokenId (no new NFT, the NFT never moves).
     /// @param amount0In         Budget of pool token0 to add (may be 0).
     /// @param amount1In         Budget of pool token1 to add (may be 0).
-    /// @param route             Verbatim Universal Router payload for the surplus->deficit swap (may be empty).
+    /// @param route             Verbatim Universal Router payload for the surplus->deficit swap (may be empty;
+    ///                          funding semantics as in `AddParams.route`).
     /// @param minLiquidityAdded Slippage floor: revert if the liquidity added to the position < this.
     /// @param recipient         Receives any swept leftover input-token dust (NOT the position — that stays put).
     /// @param hookData          Hook data forwarded to the increase.
@@ -108,8 +122,12 @@ interface ISwapAndAdd {
         payable
         returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1);
 
-    /// @param tokenId       Existing position to move; caller must be owner or approved. The position is
-    ///                      withdrawn IN FULL (burned) — see DESIGN NOTE on the deltas below.
+    /// @param tokenId       Existing position to move; caller must be owner or approved. TWO distinct approvals
+    ///                      are involved: the owner/operator check authorizes the CALLER, and — separately —
+    ///                      this contract must itself be ERC-721-approved on the tokenId (approve /
+    ///                      setApprovalForAll on POSM), because POSM authorizes the burn against this contract
+    ///                      as the locker. The position is withdrawn IN FULL (burned) — see DESIGN NOTE on the
+    ///                      deltas below.
     /// @param additionalA   Signed delta for currency0, applied to the fully-withdrawn holdings of that token:
     ///                      > 0 pulls that many MORE units from the caller's wallet (rebalance + add in one tx),
     ///                      < 0 returns that many units to `recipient`'s wallet (rebalance + cash-out), 0 leaves
@@ -120,7 +138,8 @@ interface ISwapAndAdd {
     ///                      Permit2 pull.
     /// @param newTickLower  Lower tick of the new position.
     /// @param newTickUpper  Upper tick of the new position.
-    /// @param route         Verbatim Universal Router payload for the surplus->deficit swap (may be empty).
+    /// @param route         Verbatim Universal Router payload for the surplus->deficit swap (may be empty;
+    ///                      funding semantics as in `AddParams.route`).
     /// @param minLiquidity  Slippage floor on the NEW (post-trim) position.
     /// @param recipient     Receives the new POSM NFT, any returned (negative-delta) share, and any swept dust.
     ///                      HONORED ONLY when the caller is the position owner; if an approved operator calls,
@@ -150,6 +169,14 @@ interface ISwapAndAdd {
     ///      The signed deltas then let the caller redeploy exactly what they want: positive to top up from the
     ///      wallet, negative to peel a chosen amount back to the wallet, zero to redeploy the lot. Exact token
     ///      amounts (no basis-point rounding), and any mix of signs across the two tokens is allowed.
+    ///
+    ///      TRUST NOTE — operators: a POSM-approved operator can already withdraw the position's entire value
+    ///      through POSM directly, so this contract grants an operator no new power; forcing an operator's output
+    ///      to the owner is defense-in-depth, not the security boundary. Because the call is atomic, an honest
+    ///      `minLiquidity` bounds the total cost of ANY route, so `route` is intentionally unrestricted. A
+    ///      constrained operator system (e.g. a permissionless keeper contract) MUST therefore set `minLiquidity`
+    ///      itself — value the position at the current price and convert all but the accepted cost of that value
+    ///      into liquidity for the new range — and must never forward a caller-supplied `minLiquidity`.
     /// @return newTokenId The newly minted position id.
     function rebalance(RebalanceParams calldata params)
         external
@@ -175,6 +202,8 @@ interface ISwapAndAdd {
     ///         fees (without touching principal), balances them to the position's current ratio via a single
     ///         same-pool swap, and INCREASEs the same tokenId. The fees never reach the caller's wallet
     ///         (compounding) and the NFT is never moved — only the existing position grows.
+    /// @dev Operator trust model: see the TRUST NOTE on `rebalance`. Constrained operator systems must likewise
+    ///      set `minLiquidityAdded` themselves rather than forward a caller-supplied value.
     /// @return liquidityAdded The liquidity added to the position by reinvesting the fees.
     /// @return amount0        token0 reinvested into the position.
     /// @return amount1        token1 reinvested into the position.
