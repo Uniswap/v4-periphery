@@ -107,8 +107,13 @@ The no-funds-at-rest and no-new-NFT/ownership properties are asserted throughout
 - **D-03 — two forge-lint `unsafe-typecast` warnings** (`uint256(-int256(delta))` in `_resolveBudget`,
   `uint256(-owed)` in `_reconcile`) are sign-guarded negations — false positives, left unsuppressed to match
   repo convention.
-- **D-04 — ROUNDING_BUFFER = 1 wei** is flash-taken on the deficit side so POSM's round-up never under-funds
-  the deploy; the excess returns via the trim/sweep path.
+- **D-04 — deficit funding is wei-exact by design (no rounding buffer):** `_getAmountsForLiquidity` rounds up
+  with the pool's own `SqrtPriceMath` on the pool's own inputs, so the deploy's pull equals the flash-taken
+  funding exactly. The one place the formulas could diverge — price exactly on a tick boundary, where the pool
+  branches on `tick` and the zap on `sqrtPrice` — degenerates to equal amounts; both boundary states are
+  engineered and pinned by `test_add_priceExactlyOn*`. An earlier 1-wei buffer existed for this; it was proven
+  unnecessary (all suites pass without it, including those boundary states) and removed — with the effect that
+  every deficit-funded test now verifies wei-exactness continuously.
 
 ## 6. Build & test
 
