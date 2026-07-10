@@ -1,6 +1,6 @@
 {
-  "ReservesLens initcode hash (as uint256)": "4159793417869786952628488771894068776849272484226774657078810442256315282473",
-  "ReservesLens_Bytecode": "13401",
-  "ReservesLens_empty_tickSpacingOne_page512": "2079695",
-  "ReservesLens_empty_tickSpacingOne_singleShot": "33302194"
+  "ReservesLens initcode hash (as uint256)": "74070654346721130412083078172635237849460563382062333419096350316944070206397",
+  "ReservesLens_Bytecode": "13565",
+  "ReservesLens_empty_tickSpacingOne_page512": "2072499",
+  "ReservesLens_empty_tickSpacingOne_singleShot": "33301522"
 }

@@ -74,6 +74,10 @@ interface IReservesLens {
     /// @notice Thrown when a PoolManager storage read fails or has an invalid response size
     error ManagerReadFailed(address manager, bytes32 slot);
 
+    /// @notice Thrown when a batched PoolManager storage read fails or has an invalid response size
+    /// @dev Batch reads fail atomically; firstSlot, lastSlot, and slotCount describe the whole failed batch
+    error ManagerBatchReadFailed(address manager, bytes32 firstSlot, bytes32 lastSlot, uint256 slotCount);
+
     /// @notice Thrown when reconstructed liquidity is inconsistent with PoolManager state
     error LiquidityInvariantFailed(PoolId poolId);
 
@@ -96,8 +100,9 @@ interface IReservesLens {
     error InputLengthMismatch();
 
     /// @notice Computes the complete pool snapshot in one call
-    /// @dev The full initialized-tick domain is scanned. A tick-spacing-one pool can exceed a 30M gas RPC limit even
-    ///      when sparse; callers must fall back to getPoolTVLPaged when the single call exceeds their provider cap.
+    /// @dev The full initialized-tick domain is scanned. Bitmap-word reads alone cost ~33M gas for a tick-spacing-one
+    ///      pool even when it is empty, which exceeds the common 30M eth_call cap; use getPoolTVLPaged for small tick
+    ///      spacings or providers with low simulation gas limits.
     /// @param manager PoolManager whose state is read. The caller is responsible for selecting the canonical manager.
     /// @param key Complete pool key emitted by PoolManager.Initialize
     /// @param statsProvider Optional external URC-3 provider, or address(0) to probe the hook directly

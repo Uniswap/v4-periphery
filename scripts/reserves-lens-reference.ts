@@ -75,20 +75,18 @@ async function rpcBatch(data: string[]): Promise<string[]> {
         })),
       ),
     });
-    let results: Array<{ id: number; result?: string; error?: { message: string } }> | undefined;
+    const byId = new Map<number, string>();
     if (response.ok) {
       const payload = await response.json();
-      if (Array.isArray(payload)) results = payload;
+      if (Array.isArray(payload)) {
+        for (const entry of payload as Array<{ id?: number; result?: string }>) {
+          if (typeof entry?.id === "number" && typeof entry.result === "string") byId.set(entry.id, entry.result);
+        }
+      }
     }
-    if (!results) {
-      results = [];
-      for (let index = 0; index < chunk.length; index++) results.push(await rpcSingle(chunk[index], start + index));
-    }
-    results.sort((a, b) => a.id - b.id);
-    for (let index = 0; index < results.length; index++) {
-      const result = results[index];
-      if (result.result) output.push(result.result);
-      else output.push((await rpcSingle(chunk[index], start + index)).result);
+    for (let index = 0; index < chunk.length; index++) {
+      const id = start + index;
+      output.push(byId.get(id) ?? (await rpcSingle(chunk[index], id)).result);
     }
   }
   return output;

@@ -12,6 +12,16 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IReservesLens} from "../interfaces/IReservesLens.sol";
 import {IHookStats} from "../interfaces/external/IHookStats.sol";
 
+/// @notice Single-overload views of IExtsload so selectors are compile-time-checked; Solidity cannot
+///         disambiguate the overloaded extsload members for .selector or abi.encodeCall
+interface IExtsloadWord {
+    function extsload(bytes32 slot) external view returns (bytes32 value);
+}
+
+interface IExtsloadSparse {
+    function extsload(bytes32[] calldata slots) external view returns (bytes32[] memory values);
+}
+
 /// @title ReservesLens
 /// @notice Stateless view contract for v4 core liquidity TVL and optional URC-3 hook statistics
 /// @dev Reconstructs the aggregate liquidity curve by walking initialized ticks in ascending order, applying each
@@ -31,8 +41,6 @@ contract ReservesLens is IReservesLens {
     uint256 private constant HOOK_STATS_GAS_LIMIT = 500_000;
     uint160 private constant ALL_HOOK_MASK = (1 << 14) - 1;
     uint16 private constant CUSTOM_ACCOUNTING_MASK = (1 << 4) - 1;
-    bytes4 private constant EXTSLOAD_SELECTOR = bytes4(keccak256("extsload(bytes32)"));
-    bytes4 private constant EXTSLOAD_SPARSE_SELECTOR = bytes4(keccak256("extsload(bytes32[])"));
 
     struct ScanState {
         uint8 version;
@@ -425,14 +433,14 @@ contract ReservesLens is IReservesLens {
     }
 
     function _readWord(address manager, bytes32 slot) private view returns (bytes32 value) {
-        (StaticCallStatus status, bytes32 word,) =
-            _boundedStaticcall(manager, gasleft(), abi.encodeWithSelector(EXTSLOAD_SELECTOR, slot), 32);
+        bytes memory input = abi.encodeCall(IExtsloadWord.extsload, (slot));
+        (StaticCallStatus status, bytes32 word,) = _boundedStaticcall(manager, gasleft(), input, 32);
         if (status != StaticCallStatus.SUCCESS) revert ManagerReadFailed(manager, slot);
         return word;
     }
 
     function _readWords(address manager, bytes32[] memory slots) private view returns (bytes32[] memory values) {
-        bytes memory input = abi.encodeWithSelector(EXTSLOAD_SPARSE_SELECTOR, slots);
+        bytes memory input = abi.encodeCall(IExtsloadSparse.extsload, (slots));
         uint256 expectedSize = 64 + slots.length * 32;
         bytes memory output = new bytes(expectedSize);
         bool success;
@@ -441,7 +449,9 @@ contract ReservesLens is IReservesLens {
             success := staticcall(gas(), manager, add(input, 0x20), mload(input), add(output, 0x20), expectedSize)
             returnSize := returndatasize()
         }
-        if (!success || returnSize != expectedSize) revert ManagerReadFailed(manager, slots[0]);
+        if (!success || returnSize != expectedSize) {
+            revert ManagerBatchReadFailed(manager, slots[0], slots[slots.length - 1], slots.length);
+        }
 
         uint256 offset;
         uint256 length;
@@ -449,7 +459,9 @@ contract ReservesLens is IReservesLens {
             offset := mload(add(output, 0x20))
             length := mload(add(output, 0x40))
         }
-        if (offset != 32 || length != slots.length) revert ManagerReadFailed(manager, slots[0]);
+        if (offset != 32 || length != slots.length) {
+            revert ManagerBatchReadFailed(manager, slots[0], slots[slots.length - 1], slots.length);
+        }
 
         values = new bytes32[](length);
         for (uint256 i; i < length; i++) {

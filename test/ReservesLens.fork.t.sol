@@ -39,7 +39,7 @@ contract ReservesLensForkTest is Test {
 
     function test_base_realPoolsMatchStateViewReference() public {
         string memory rpc = vm.envOr("BASE_RPC_URL", string(""));
-        if (bytes(rpc).length == 0) return;
+        vm.skip(bytes(rpc).length == 0);
         vm.createSelectFork(rpc, BASE_BLOCK);
         ReservesLens lens = new ReservesLens();
 
@@ -51,7 +51,7 @@ contract ReservesLensForkTest is Test {
 
     function test_robinhoodChain_realPoolsMatchStateViewReference() public {
         string memory rpc = vm.envOr("ROBINHOOD_RPC_URL", string(""));
-        if (bytes(rpc).length == 0) return;
+        vm.skip(bytes(rpc).length == 0);
         vm.createSelectFork(rpc, ROBINHOOD_BLOCK);
         ReservesLens lens = new ReservesLens();
 
