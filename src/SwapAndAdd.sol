@@ -371,7 +371,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      EXACT to the wei — no rounding buffer: `_getAmountsForLiquidity` rounds up with the pool's own math
     ///      on the pool's own inputs, so the deploy can never pull more than `amount0/1` (the tick/price boundary
     ///      states, the one place the formulas could diverge, are pinned by tests). Requires the PoolManager to
-    ///      hold the taken amount across all pools (see K-05 in the audit scope doc).
+    ///      hold the taken amount across ALL pools; if it is globally drained of that token the take reverts
+    ///      inside the token transfer — the same state leaves the reconcile swap nothing to source the deficit
+    ///      from, so the operation is unviable regardless and no pre-check is spent on it (K-05 in the audit doc).
     function _flashTakeDeficit(CoreParams memory cp, uint256 amount0, uint256 amount1) internal {
         if (amount0 > cp.budget0) _take(cp.key.currency0, address(this), amount0 - cp.budget0);
         if (amount1 > cp.budget1) _take(cp.key.currency1, address(this), amount1 - cp.budget1);
@@ -469,15 +471,18 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cp.tickLower);
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cp.tickUpper);
+        // INVARIANT — the price cannot be past the range's far side (below it when short token1, above it when
+        // short token0): the flash debt is the just-added range's own deficit side, and the exact-input
+        // reconcile sell repays it in full at the latest when it exhausts the range — so a still-owed deficit
+        // means the sell stopped at or before the far edge. The near side needs no such bound (a range fully
+        // beyond spot trims from a price outside it), hence the one-sided clamps.
         if (deficitIs1) {
             // token1 occupies [sqrtLower, min(price, sqrtUpper)]
             uint160 hi = sqrtPriceX96 < sqrtUpper ? sqrtPriceX96 : sqrtUpper;
-            if (hi <= sqrtLower) hi = sqrtUpper; // price below range (all token0 — shouldn't be the token1 deficit)
             dl = LiquidityAmounts.getLiquidityForAmount1(sqrtLower, hi, amountOut);
         } else {
             // token0 occupies [max(price, sqrtLower), sqrtUpper]
             uint160 lo = sqrtPriceX96 > sqrtLower ? sqrtPriceX96 : sqrtLower;
-            if (lo >= sqrtUpper) lo = sqrtLower; // price above range (all token1)
             dl = LiquidityAmounts.getLiquidityForAmount0(lo, sqrtUpper, amountOut);
         }
         // +1 because DECREASE frees rounded-down amounts (so the freed amount covers `amountOut`), capped at lopt.

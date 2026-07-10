@@ -735,6 +735,18 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
+    /// @dev Range entirely BELOW spot funded with token0 only: the position is 100% token1, so the ENTIRE
+    ///      deficit is flash-taken and the reconcile sell starts from a price above the range — the trim's
+    ///      min(price, sqrtUpper) clamp is what sizes the decrease correctly there.
+    function test_add_belowRange_singleToken0() public {
+        ISwapAndAdd.AddParams memory p = _addParams(-1200, -660, 10e18, 0);
+        (uint256 tokenId, uint128 liq,,) = zap.add(p);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
     /// @dev Narrow range with a one-sided budget larger than the pool's external depth: the reconcile sell
     ///      pushes the price BELOW the just-minted range, yet the operation still lands (the surplus input is
     ///      valued at the pre-swap price, so it exhausts at/before the boundary and the trim can always free
