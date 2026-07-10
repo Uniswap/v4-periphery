@@ -96,6 +96,11 @@ The no-funds-at-rest and no-new-NFT/ownership properties are asserted throughout
   `minLiquidity` bounds the outcome.
 - **K-04 — same-pool swaps have no `sqrtPriceLimit`:** input is bounded by the operation's own holdings and
   the outcome by `minLiquidity`. Exercised by the thin-pool and huge-single-sided tests.
+- **K-05 — flash-take needs PoolManager-wide reserves of the deficit token (Low, accepted):** the optimistic
+  deploy flash-`take`s the deficit from the PM's global balance. In the degenerate state where the PM holds
+  ~none of that token (found by `test_add_priceExactlyOnLowerBoundary_tickAt` before its liquidity seed: a
+  boundary swap had bought the entire token0 reserve), even a wei-level take reverts atomically. Requires the
+  PM to be near-empty of a token across ALL pools — academic in production, funds safe.
 - **D-01 — fee-on-transfer / rebasing tokens unsupported** (by design; sizing and settle math assume
   received == sent).
 - **D-02 — native ETH only as `currency0`** (v4 sorts native first); `currency1` never consumes `msg.value`.
