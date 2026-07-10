@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
+import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -30,13 +31,6 @@ import {ReentrancyLock} from "./base/ReentrancyLock.sol";
 import {IPositionManager} from "./interfaces/IPositionManager.sol";
 import {ISwapAndAdd} from "./interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "./interfaces/external/IUniversalRouter.sol";
-
-interface IERC721Minimal {
-    function ownerOf(uint256 id) external view returns (address);
-    function getApproved(uint256 id) external view returns (address);
-    function isApprovedForAll(address owner, address operator) external view returns (bool);
-    function transferFrom(address from, address to, uint256 id) external;
-}
 
 /// @title SwapAndAdd
 /// @notice See ISwapAndAdd. Route-first swap-and-add / rebalance zap for Uniswap v4.
@@ -155,7 +149,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         (tokenId, liquidity, amount0, amount1) = abi.decode(result, (uint256, uint128, uint256, uint256));
         // the position was minted to this contract so it could be trimmed; hand it to the recipient now that
         // the pool is locked again.
-        IERC721Minimal(address(positionManager)).transferFrom(address(this), params.recipient, tokenId);
+        ERC721(address(positionManager)).transferFrom(address(this), params.recipient, tokenId);
     }
 
     /// @inheritdoc ISwapAndAdd
@@ -174,7 +168,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         bytes memory result = poolManager.unlock(abi.encode(OP_REBALANCE, abi.encode(params, key, recipient)));
         (newTokenId, liquidity, amount0, amount1) = abi.decode(result, (uint256, uint128, uint256, uint256));
-        IERC721Minimal(address(positionManager)).transferFrom(address(this), recipient, newTokenId);
+        ERC721(address(positionManager)).transferFrom(address(this), recipient, newTokenId);
     }
 
     /// @inheritdoc ISwapAndAdd
@@ -215,7 +209,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      operator ALL output (a new NFT, any cash-out, swept dust) is forced to the owner, so a standing
     ///      NFT approval can never be used to redirect the position's value to the operator.
     function _authAndResolveRecipient(uint256 tokenId, address requested) internal view returns (address) {
-        IERC721Minimal posm = IERC721Minimal(address(positionManager));
+        // POSM IS a solmate ERC721 (via ERC721Permit_v4); IPositionManager just doesn't declare that surface.
+        ERC721 posm = ERC721(address(positionManager));
         address owner = posm.ownerOf(tokenId);
         if (msg.sender == owner) return requested;
         if (posm.getApproved(tokenId) != msg.sender && !posm.isApprovedForAll(owner, msg.sender)) {
