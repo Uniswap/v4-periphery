@@ -605,6 +605,7 @@ contract SwapAndAddTest is PosmTestSetup {
     {
         return ISwapAndAdd.CompoundParams({
             tokenId: tokenId,
+            route: "",
             minLiquidityAdded: minLiquidityAdded,
             recipient: address(this),
             hookData: "",
@@ -689,6 +690,32 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "NFT stays with owner");
         assertEq(currency0.balanceOf(operator), opC0Before, "operator got no token0 dust");
         assertEq(currency1.balanceOf(operator), opC1Before, "operator got no token1 dust");
+    }
+
+    /// @dev Compound may route the collected fees like every other op; the reconcile absorbs whatever the
+    ///      route leaves. The route input is sized from a dry-run — the onchain stand-in for an integrator
+    ///      quoting the position's unclaimed fees offchain.
+    function test_compound_withRoute() public {
+        (uint256 tokenId, uint128 liq0,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        _generateFees();
+
+        uint256 snap = vm.snapshotState();
+        (,, uint256 a1Base) = zap.compound(_compoundParams(tokenId, 0));
+        vm.revertToState(snap);
+
+        _configRoute(10100, a1Base / 2); // convert half the token1 fees at mid+1%
+        ISwapAndAdd.CompoundParams memory p = _compoundParams(tokenId, 0);
+        p.route = ROUTE_PAYLOAD;
+
+        uint256 routeC1Before = currency1.balanceOf(address(route));
+        (uint128 added,,) = zap.compound(p);
+
+        assertGt(added, 0, "fees compounded");
+        assertEq(lpm.getPositionLiquidity(tokenId), liq0 + added, "same position grew by exactly added");
+        assertEq(currency1.balanceOf(address(route)) - routeC1Before, a1Base / 2, "route consumed its declared input");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
     // ─────────────────────────── sizing / reconcile extremes ───────────────────────────
