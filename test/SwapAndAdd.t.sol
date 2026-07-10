@@ -7,7 +7,9 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
@@ -802,7 +804,12 @@ contract SwapAndAddTest is PosmTestSetup {
         usdt.approve(address(modifyLiquidityRouter), type(uint256).max);
 
         (PoolKey memory k,) = initPoolAndAddLiquidityETH(
-            CurrencyLibrary.ADDRESS_ZERO, Currency.wrap(address(usdt)), IHooks(address(0)), 3000, SQRT_PRICE_1_1, 1 ether
+            CurrencyLibrary.ADDRESS_ZERO,
+            Currency.wrap(address(usdt)),
+            IHooks(address(0)),
+            3000,
+            SQRT_PRICE_1_1,
+            1 ether
         );
         modifyLiquidityRouter.modifyLiquidity{value: 50 ether}(
             k,
@@ -818,6 +825,65 @@ contract SwapAndAddTest is PosmTestSetup {
         assertGt(liq, 0, "liquidity minted on approve-no-return token pool");
         assertEq(address(zap).balance, 0, "zap eth == 0");
         assertEq(usdt.balanceOf(address(zap)), 0, "zap token == 0");
+    }
+
+    /// @dev Land the pool price EXACTLY on `boundaryTick`'s sqrtPrice via a limit-clamped swap, and return the
+    ///      boundary price. Going down (zeroForOne) the pool stores tick = boundary - 1; going up, tick = boundary.
+    function _swapToExactBoundary(int24 boundaryTick, bool zeroForOne) internal returns (uint160 boundary) {
+        boundary = TickMath.getSqrtPriceAtTick(boundaryTick);
+        swapRouter.swap(
+            key,
+            SwapParams({zeroForOne: zeroForOne, amountSpecified: -100_000e18, sqrtPriceLimitX96: boundary}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
+    }
+
+    /// @dev The pool selects its amounts branch by TICK while the zap selects by SQRTPRICE. The one state where
+    ///      they disagree: price exactly on an initialized boundary after a zeroForOne swap (pool stores
+    ///      tick = boundary - 1, price = sqrtPriceAtTick(boundary)). Minting a range whose UPPER edge is that
+    ///      boundary: the zap's price-branch computes single-sided token1 (amount0 = 0) while the pool's
+    ///      tick-branch computes in-range — the in-range amount0 must degenerate to exactly 0, else POSM pulls
+    ///      token0 the zap never funded and the unlock reverts (CurrencyNotSettled).
+    function test_add_priceExactlyOnUpperBoundary_tickBelow() public {
+        zap.add(_addParams(1e18, 1e18)); // initialize ticks ±600 so the swap lands ON an initialized boundary
+        uint160 boundary = _swapToExactBoundary(-600, true);
+
+        (uint160 sp, int24 tick,,) = manager.getSlot0(key.toId());
+        assertEq(sp, boundary, "engineered state: price exactly on the -600 boundary");
+        assertEq(tick, -601, "engineered state: stored tick on the other side of the boundary");
+
+        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(-1200, -600, 0, 5e18));
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted at the inconsistent boundary");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    /// @dev Mirror case at a range's LOWER edge: price exactly on the boundary with tick == boundary (oneForZero
+    ///      landing). The zap's price-branch (<=) computes single-sided token0; the pool's tick-branch computes
+    ///      in-range — its amount1 must degenerate to exactly 0.
+    function test_add_priceExactlyOnLowerBoundary_tickAt() public {
+        zap.add(_addParams(1e18, 1e18));
+        uint160 boundary = _swapToExactBoundary(600, false);
+
+        (uint160 sp, int24 tick,,) = manager.getSlot0(key.toId());
+        assertEq(sp, boundary, "engineered state: price exactly on the 600 boundary");
+        assertEq(tick, 600, "engineered state: tick at the boundary");
+
+        // the boundary swap bought ALL token0 out of the PoolManager (every seeded position is 100% token1 at
+        // the boundary); the sizing round-up's wei-level flash-take needs PM-wide token0 reserves to exist.
+        modifyLiquidityRouter.modifyLiquidity(
+            key, ModifyLiquidityParams({tickLower: 600, tickUpper: 1200, liquidityDelta: 100e18, salt: 0}), ""
+        );
+
+        (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(600, 1200, 5e18, 0));
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted at the boundary");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
     function _thinPool() internal returns (PoolKey memory thin) {
