@@ -34,7 +34,10 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
     // Verified mainnet token addresses, used only for the chainid == 1 market registration.
     address internal constant MAINNET_WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant MAINNET_USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    address internal constant MAINNET_MORPHO_WETH_USDC_ORACLE = 0xdC6fd5831277c693b1054e19E94047cB37c77615;
+    // Oracle of the canonical Morpho WETH/USDC market
+    // (id 0x94b823e6bd8ea533b4e33fbc307faea0b307301bc48763acc4d4aa4def7636cd). Do NOT use oracle
+    // 0xdC6fd583...: it hashes to an unlisted market (see FixMorphoWethUsdcMarket.s.sol).
+    address internal constant MAINNET_MORPHO_WETH_USDC_ORACLE = 0x0F948CBa8231Db7898ef36A4212581Ad7b1B4580;
     address internal constant MAINNET_MORPHO_WETH_USDC_IRM = 0x870aC11D48B15DB9a138Cf899d20F13F79Ba00BC;
     uint256 internal constant MAINNET_MORPHO_WETH_USDC_LLTV = 0.86e18;
     uint256 internal constant MAINNET_AAVE_V4_WETH_RESERVE_ID = 0;
