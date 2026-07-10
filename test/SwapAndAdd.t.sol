@@ -370,8 +370,8 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
-    /// @dev Regression: a range entirely BELOW spot needs zero token0, so on a native pool there is no buffer
-    ///      wei to forward — the forward amount must clamp to the held balance instead of reverting OutOfFunds.
+    /// @dev Regression: a range entirely BELOW spot needs zero token0, so on a native pool the mint must
+    ///      forward zero value — an unheld extra wei (the former rounding buffer) reverted OutOfFunds here.
     function test_add_native_belowRange_singleToken1() public {
         ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
         p.poolKey = nativeKey;

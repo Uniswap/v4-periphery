@@ -75,8 +75,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     using PositionInfoLibrary for PositionInfo;
     using SafeCast for uint256;
 
-    /// @dev Extra wei flash-taken on the deficit side so POSM's round-up never under-funds the mint.
-    uint256 private constant ROUNDING_BUFFER = 1;
     uint48 private constant ALLOWANCE_EXPIRATION = type(uint48).max;
     /// @dev v4 fees are expressed in pips (millionths).
     uint256 private constant PIPS_DENOMINATOR = 1e6;
@@ -370,9 +368,13 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     /// @dev Flash-`take` from the pool whatever the optimistic deploy needs beyond the held budget, on each side,
     ///      so the subsequent mint/increase is fully funded; `_reconcile` later settles what the take actually owes.
+    ///      EXACT to the wei — no rounding buffer: `_getAmountsForLiquidity` rounds up with the pool's own math
+    ///      on the pool's own inputs, so the deploy can never pull more than `amount0/1` (the tick/price boundary
+    ///      states, the one place the formulas could diverge, are pinned by tests). Requires the PoolManager to
+    ///      hold the taken amount across all pools (see K-05 in the audit scope doc).
     function _flashTakeDeficit(CoreParams memory cp, uint256 amount0, uint256 amount1) internal {
-        if (amount0 > cp.budget0) _take(cp.key.currency0, address(this), amount0 - cp.budget0 + ROUNDING_BUFFER);
-        if (amount1 > cp.budget1) _take(cp.key.currency1, address(this), amount1 - cp.budget1 + ROUNDING_BUFFER);
+        if (amount0 > cp.budget0) _take(cp.key.currency0, address(this), amount0 - cp.budget0);
+        if (amount1 > cp.budget1) _take(cp.key.currency1, address(this), amount1 - cp.budget1);
     }
 
     /// @dev Compound: reinvest the position's accrued fees back into the SAME tokenId — the shared core with an
@@ -448,7 +450,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         //    remaining surplus debt in the transient accounting).
         _takeCredit(deficit);
         uint256 excessDeficit = deficit.balanceOfSelf();
-        if (excessDeficit > ROUNDING_BUFFER) {
+        if (excessDeficit > 1) {
             _swap(cp.key, !zeroForOne, -excessDeficit.toInt256()); // deficit -> surplus exact-input
             _settleToward(deficit);
         }
@@ -621,18 +623,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             : abi.encode(tokenId, uint256(liquidity), type(uint128).max, type(uint128).max, cp.hookData);
         params[1] = abi.encode(c0, cp.key.currency1);
 
-        positionManager.modifyLiquiditiesWithoutUnlock{value: _nativeToForward(c0, amount0)}(actions, params);
-    }
-
-    /// @dev Native value to forward to POSM for a mint/increase: the required amount plus the rounding buffer,
-    ///      clamped to what we actually hold — `_flashTakeDeficit` only sources the buffer wei when the need
-    ///      strictly exceeds the budget, so on an exact match (e.g. amount0 == 0 for a range entirely below
-    ///      spot) the buffer is not in the balance and must not be forwarded. POSM SWEEPs back any unused wei.
-    function _nativeToForward(Currency c0, uint256 amount0) internal view returns (uint256 value) {
-        if (!c0.isAddressZero()) return 0;
-        value = amount0 + ROUNDING_BUFFER;
-        uint256 held = address(this).balance;
-        if (value > held) value = held;
+        // forward exactly the required native amount (the funding is wei-exact, see _flashTakeDeficit); the
+        // SWEEP returns whatever POSM does not consume (e.g. an accrued-fee credit reducing an increase's pull).
+        uint256 nativeToForward = c0.isAddressZero() ? amount0 : 0;
+        positionManager.modifyLiquiditiesWithoutUnlock{value: nativeToForward}(actions, params);
     }
 
     /// @dev Run the caller's verbatim Universal Router route. The route encodes its own input token and (fixed)
