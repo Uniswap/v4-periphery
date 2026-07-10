@@ -186,6 +186,11 @@ interface ISwapAndAdd {
 
     /// @param tokenId           Position whose accrued fees to reinvest; caller must be owner or approved, and the
     ///                          contract must be approved on the position (POSM acts on the caller's behalf).
+    /// @param route             Verbatim Universal Router payload for the surplus->deficit swap over the collected
+    ///                          fees (may be empty; funding semantics as in `AddParams.route`). Size its input at
+    ///                          the currently-unclaimed fees: accrual between quote and inclusion only adds to
+    ///                          them and is absorbed by the same-pool reconcile; a competing fee collection makes
+    ///                          the route's pull revert atomically.
     /// @param minLiquidityAdded Slippage floor: revert if the liquidity added by compounding < this.
     /// @param recipient         Receives any swept rounding dust (the fees themselves are reinvested, not paid out).
     ///                          Honored only when the caller is the owner; forced to the owner for an operator.
@@ -193,6 +198,7 @@ interface ISwapAndAdd {
     /// @param deadline          Tx reverts after this timestamp.
     struct CompoundParams {
         uint256 tokenId;
+        bytes route;
         uint256 minLiquidityAdded;
         address recipient;
         bytes hookData;
@@ -200,9 +206,10 @@ interface ISwapAndAdd {
     }
 
     /// @notice Reinvest a position's accrued fees back INTO the same position, in one transaction. Collects the
-    ///         fees (without touching principal), balances them to the position's current ratio via a single
-    ///         same-pool swap, and INCREASEs the same tokenId. The fees never reach the caller's wallet
-    ///         (compounding) and the NFT is never moved — only the existing position grows.
+    ///         fees (without touching principal), balances them to the position's current ratio — via the
+    ///         optional `route` and/or the same-pool reconcile — and INCREASEs the same tokenId. The fees never
+    ///         reach the caller's wallet (compounding) and the NFT is never moved — only the existing position
+    ///         grows.
     /// @dev Operator trust model: see the TRUST NOTE on `rebalance`. Constrained operator systems must likewise
     ///      set `minLiquidityAdded` themselves rather than forward a caller-supplied value.
     /// @return liquidityAdded The liquidity added to the position by reinvesting the fees.

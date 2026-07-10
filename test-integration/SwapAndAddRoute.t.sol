@@ -253,4 +253,57 @@ contract SwapAndAddRouteTest is PosmTestSetup {
         (uint160 routeSpAfter,,,) = manager.getSlot0(routeKey.toId());
         assertGt(routeSpAfter, routeSpBefore, "UR route did not raise routeKey sqrtPrice");
     }
+
+    /// @notice Compound whose fee-balancing leg runs through the real UR within the unlock: the collected fees
+    ///         are routed token1->token0 on routeKey, the same-pool reconcile finishes, and the SAME tokenId
+    ///         grows in place. Also the only existing-tokenId path exercising the nested UR execute.
+    function test_compound_viaURRoute() public {
+        ISwapAndAdd.AddParams memory ap = ISwapAndAdd.AddParams({
+            poolKey: key,
+            tickLower: TICK_LOWER,
+            tickUpper: TICK_UPPER,
+            amount0In: 0,
+            amount1In: 10e18,
+            route: "",
+            minLiquidity: 0,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+        (uint256 tokenId, uint128 liq0,,) = zap.add(ap);
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        // accrue fees on `key`: balanced round-trips so the price returns near 1:1 and both sides collect
+        for (uint256 i = 0; i < 5; i++) {
+            swap(key, true, -50e18, "");
+            swap(key, false, -50e18, "");
+        }
+
+        ISwapAndAdd.CompoundParams memory p = ISwapAndAdd.CompoundParams({
+            tokenId: tokenId,
+            route: "",
+            minLiquidityAdded: 0,
+            recipient: address(this),
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+        // dry-run (the onchain stand-in for quoting the unclaimed fees offchain) to size the route input
+        uint256 snap = vm.snapshotState();
+        (,, uint256 a1Base) = zap.compound(p);
+        vm.revertToState(snap);
+
+        (uint160 routeSpBefore,,,) = manager.getSlot0(routeKey.toId());
+        p.route = _v4SwapRoute(routeKey, false, uint128(a1Base / 2), currency1, currency0);
+
+        (uint128 added,,) = zap.compound(p);
+
+        assertGt(added, 0, "fees compounded");
+        assertEq(lpm.getPositionLiquidity(tokenId), liq0 + added, "same position grew by exactly added");
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "NFT never moved");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+
+        // proof the UR route executed on routeKey (touched only by the route leg)
+        (uint160 routeSpAfter,,,) = manager.getSlot0(routeKey.toId());
+        assertGt(routeSpAfter, routeSpBefore, "UR route did not raise routeKey sqrtPrice");
+    }
 }

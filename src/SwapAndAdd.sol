@@ -380,10 +380,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (amount1 > cp.budget1) _take(cp.key.currency1, address(this), amount1 - cp.budget1 + ROUNDING_BUFFER);
     }
 
-    /// @dev Compound: reinvest the position's accrued fees back into the SAME tokenId. Mirrors `_addCore` but with
-    ///      no route (fees are tiny — same-pool only) and an INCREASE in place of a fresh MINT, so the existing NFT
-    ///      just grows. Collect fees -> size from them (fee-aware) -> flash-take any deficit -> INCREASE ->
-    ///      reconcile residual same-pool + trim -> floor -> sweep dust. The fees never leave to the wallet.
+    /// @dev Compound: reinvest the position's accrued fees back into the SAME tokenId — the shared core with an
+    ///      INCREASE in place of a fresh MINT, so the existing NFT just grows. Collect fees -> optional route ->
+    ///      size from the holdings (fee-aware) -> flash-take any deficit -> INCREASE -> reconcile residual
+    ///      same-pool + trim -> floor -> sweep dust. The fees never leave to the wallet.
     function _compound(CompoundParams memory p, address recipient)
         internal
         returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
@@ -393,7 +393,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // collect fees only: DECREASE by 0 liquidity credits the accrued fees, TAKE_PAIR pulls them here.
         _decrease(key, p.tokenId, 0, p.hookData);
 
-        // budget = the collected fees; target the position's existing range; no route. Then run the shared core,
+        // budget = the collected fees; target the position's existing range. Then run the shared core,
         // INCREASING the same tokenId in place (the fees never leave to the wallet; the NFT stays with its owner).
         CoreParams memory cp = CoreParams({
             key: key,
@@ -401,7 +401,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             tickUpper: info.tickUpper(),
             budget0: key.currency0.balanceOfSelf(),
             budget1: key.currency1.balanceOfSelf(),
-            route: "",
+            route: p.route,
             minLiquidity: p.minLiquidityAdded,
             recipient: recipient,
             hookData: p.hookData

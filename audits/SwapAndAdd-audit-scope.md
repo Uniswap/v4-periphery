@@ -2,7 +2,7 @@
 
 Branch: `feat/swap-and-add` (v4-periphery). Pin the audit to the head commit of this branch at handoff.
 Solc `0.8.26`, EVM `cancun`. SwapAndAdd compiles under `via_ir = true, optimizer_runs = 500`
-(`compilation_restrictions` in `foundry.toml`); runtime size 20,013 B (4,563 B margin to the 24,576 limit).
+(`compilation_restrictions` in `foundry.toml`); runtime size 20,121 B (4,455 B margin to the 24,576 limit).
 
 ## 1. Scope
 
@@ -109,8 +109,8 @@ The no-funds-at-rest and no-new-NFT/ownership properties are asserted throughout
 
 ```bash
 forge build                        # default profile
-forge test --match-path "test/SwapAndAdd*"        # 43 unit tests (incl. fuzz), mock route
-FOUNDRY_PROFILE=integration forge test            # 14 tests: real UR route tests + mainnet fork
+forge test --match-path "test/SwapAndAdd*"        # 44 unit tests (incl. fuzz), mock route
+FOUNDRY_PROFILE=integration forge test            # 15 tests: real UR route tests + mainnet fork
 ```
 
 The integration profile compiles `test-integration/` with the real (via_ir-only) Universal Router from the

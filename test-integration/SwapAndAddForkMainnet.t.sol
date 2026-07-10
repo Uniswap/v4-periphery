@@ -348,6 +348,7 @@ contract SwapAndAddForkMainnetTest is Test {
     {
         return ISwapAndAdd.CompoundParams({
             tokenId: tokenId,
+            route: "",
             minLiquidityAdded: minLiquidityAdded,
             recipient: address(this),
             hookData: "",
