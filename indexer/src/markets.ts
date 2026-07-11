@@ -10,6 +10,7 @@ const VENUE_BY_ADAPTER: Record<string, "MORPHO" | "AAVE_V3" | "AAVE_V4"> = {
   [lower(deployments.mainnet.aaveV4Adapter)]: "AAVE_V4",
 };
 
+
 ponder.on("MarginRouter:AdapterAllowed", async ({ event, context }) => {
   await context.db
     .insert(adapter)

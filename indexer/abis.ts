@@ -2,7 +2,7 @@
  * Event-only ABIs for every log source the indexer consumes.
  *
  * Signatures are copied verbatim from the audited sources:
- * - MarginRouter / MarginAccountFactory / adapters: this repo (src/)
+ * - MarginRouter / MarginAccountFactory / adapters: this repo (src/, current deployment)
  * - Morpho Blue: lib/morpho-blue/src/libraries/EventsLib.sol
  * - Aave v3 Pool: aave-v3 IPool (topic hashes verified against live mainnet logs)
  * - Uniswap v4 PoolManager: lib/v4-core IPoolManager
@@ -20,24 +20,28 @@ export const marginRouterAbi = [
   },
   {
     type: "event",
-    name: "PositionOpened",
+    name: "AdapterAllowed",
     inputs: [
-      { name: "owner", type: "address", indexed: true },
-      { name: "account", type: "address", indexed: true },
-      { name: "collateral", type: "address", indexed: false },
-      { name: "debt", type: "address", indexed: false },
-      { name: "collateralBought", type: "uint256", indexed: false },
+      { name: "adapter", type: "address", indexed: true },
+      { name: "allowed", type: "bool", indexed: false },
     ],
   },
   {
     type: "event",
-    name: "PositionClosed",
+    name: "PositionIncreased",
     inputs: [
       { name: "owner", type: "address", indexed: true },
       { name: "account", type: "address", indexed: true },
       { name: "collateral", type: "address", indexed: false },
       { name: "debt", type: "address", indexed: false },
-      { name: "collateralReturned", type: "uint256", indexed: false },
+      { name: "equity", type: "uint256", indexed: false },
+      { name: "collateralBought", type: "uint256", indexed: false },
+      { name: "debtDrawn", type: "uint256", indexed: false },
+      { name: "collateralTotal", type: "uint256", indexed: false },
+      { name: "debtTotal", type: "uint256", indexed: false },
+      { name: "currentLtv", type: "uint256", indexed: false },
+      { name: "maxLtv", type: "uint256", indexed: false },
+      { name: "healthFactorWad", type: "uint256", indexed: false },
     ],
   },
   {
@@ -49,6 +53,12 @@ export const marginRouterAbi = [
       { name: "collateral", type: "address", indexed: false },
       { name: "debt", type: "address", indexed: false },
       { name: "debtRepaid", type: "uint256", indexed: false },
+      { name: "collateralWithdrawn", type: "uint256", indexed: false },
+      { name: "collateralReturned", type: "uint256", indexed: false },
+      { name: "collateralTotal", type: "uint256", indexed: false },
+      { name: "debtTotal", type: "uint256", indexed: false },
+      { name: "currentLtv", type: "uint256", indexed: false },
+      { name: "healthFactorWad", type: "uint256", indexed: false },
     ],
   },
   {
@@ -59,14 +69,10 @@ export const marginRouterAbi = [
       { name: "account", type: "address", indexed: true },
       { name: "collateral", type: "address", indexed: false },
       { name: "amount", type: "uint256", indexed: false },
-    ],
-  },
-  {
-    type: "event",
-    name: "AdapterAllowed",
-    inputs: [
-      { name: "adapter", type: "address", indexed: true },
-      { name: "allowed", type: "bool", indexed: false },
+      { name: "collateralTotal", type: "uint256", indexed: false },
+      { name: "debtTotal", type: "uint256", indexed: false },
+      { name: "currentLtv", type: "uint256", indexed: false },
+      { name: "healthFactorWad", type: "uint256", indexed: false },
     ],
   },
 ] as const;

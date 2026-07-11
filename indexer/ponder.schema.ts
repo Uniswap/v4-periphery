@@ -160,6 +160,11 @@ export const position = onchainTable(
     liquidationRepaidDebt: t.bigint().notNull(),
     badDebt: t.bigint().notNull(),
 
+    // Resulting state reported by the router on the most recent lifecycle event.
+    // Snapshots, not live values: interest accrual moves the true LTV between events.
+    lastLtvWad: t.bigint(),
+    lastHealthFactorWad: t.bigint(),
+
     updatedAt: t.bigint().notNull(),
   }),
   (table) => ({
@@ -193,6 +198,10 @@ export const positionAction = onchainTable(
     // Execution price for actions that swapped (X18 raw ratio, see position).
     priceX18: t.bigint(),
     poolId: t.hex(),
+    // Resulting position state reported by the router event (null for liquidations,
+    // which are protocol events and carry no router-reported state).
+    ltvAfterWad: t.bigint(),
+    healthFactorWad: t.bigint(),
   }),
   (table) => ({
     positionIdx: index().on(table.positionId),

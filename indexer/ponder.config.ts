@@ -19,7 +19,7 @@ export default createConfig({
     mainnet: { id: 1, rpc: process.env.PONDER_RPC_URL_1 },
   },
   contracts: {
-    /** Lifecycle events: account creation, opens, closes, decreases, adds. */
+    /** Lifecycle events: account creation, increases (open), decreases (close), adds. */
     MarginRouter: {
       abi: marginRouterAbi,
       chain: "mainnet",
@@ -46,7 +46,7 @@ export default createConfig({
       startBlock: mainnet.startBlock,
     },
     /**
-     * Lending protocol truth: collateral/debt flows and liquidations. Not filterable
+     * Lending protocol truth: liquidations and escape-hatch flows. Not filterable
      * by our accounts at the log layer (onBehalf is dynamic), so handlers discard
      * events whose onBehalf/borrower is not a known margin account.
      */

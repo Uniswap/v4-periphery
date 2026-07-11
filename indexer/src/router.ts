@@ -1,24 +1,16 @@
 import type { Context } from "ponder:registry";
 import { ponder } from "ponder:registry";
-import {
-  account,
-  activePosition,
-  lendingEvent,
-  morphoMarketRef,
-  position,
-  positionAction,
-  swapEvent,
-} from "ponder:schema";
+import { account, activePosition, lendingEvent, position, positionAction, swapEvent } from "ponder:schema";
 import { and, eq } from "ponder";
 
 import { clamp0, ensureToken, eventId, pairKey, positionId, txLendingEvents, WAD } from "./helpers";
 
 /**
- * Router lifecycle handlers. Within a position transaction the protocol logs
- * (v4 Swap, lending supply/borrow/repay/withdraw) always precede the router's
- * lifecycle event, so these handlers read the rows staged earlier in the same
- * transaction to derive economics the router does not emit: equity, debt
- * drawn, execution price, venue, and pool.
+ * Router lifecycle handlers. The router events carry the full economics
+ * (equity, debt drawn, resulting totals, LTV, health factor), so unlike the
+ * lending-protocol layer nothing has to be derived by correlation. The staged
+ * lending/swap rows from earlier in the same transaction are still consumed
+ * for venue, Morpho market id, and pool attribution.
  */
 
 ponder.on("MarginRouter:AccountCreated", async ({ event, context }) => {
@@ -49,7 +41,7 @@ async function consumeSwaps(context: Context, txHash: `0x${string}`): Promise<`0
   return swaps[0]?.poolId ?? null;
 }
 
-/** Sum staged flows of a kind, attribute unattributed rows to the pair, mark applied. */
+/** Attribute this tx's staged lending flows to the pair; returns venue context. */
 async function drainFlows(
   context: Context,
   txHash: `0x${string}`,
@@ -58,59 +50,62 @@ async function drainFlows(
   debt: `0x${string}`
 ) {
   const rows = await txLendingEvents(context, txHash, accountAddr);
-  const sums = { supplied: 0n, withdrawn: 0n, drawn: 0n, repaid: 0n };
   let venue: "MORPHO" | "AAVE_V3" | "AAVE_V4" | "UNKNOWN" = "UNKNOWN";
   let morphoMarketId: `0x${string}` | null = null;
-  let appliedAll = true;
 
   for (const row of rows) {
     if (row.kind === "LIQUIDATE") continue;
-    // rows either match the pair or are unattributed (Aave single-reserve events)
     const matches =
       (row.collateral === null && row.debt === null) || (row.collateral === collateral && row.debt === debt);
     if (!matches) continue;
 
-    if (row.kind === "SUPPLY_COLLATERAL") sums.supplied += row.assets;
-    if (row.kind === "WITHDRAW_COLLATERAL") sums.withdrawn += row.assets;
-    if (row.kind === "BORROW") sums.drawn += row.assets;
-    if (row.kind === "REPAY") sums.repaid += row.assets;
     if (row.venue !== "UNKNOWN") venue = row.venue;
     if (row.morphoMarketId) morphoMarketId = row.morphoMarketId;
-    if (!row.applied) appliedAll = false;
-
-    await context.db
-      .update(lendingEvent, { id: row.id })
-      .set({ collateral, debt, applied: true });
+    await context.db.update(lendingEvent, { id: row.id }).set({ collateral, debt, applied: true });
   }
-  return { ...sums, venue, morphoMarketId, appliedAll };
+  return { venue, morphoMarketId };
 }
 
-ponder.on("MarginRouter:PositionOpened", async ({ event, context }) => {
-  const { owner, account: accountAddr, collateral, debt, collateralBought } = event.args;
+ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
+  const {
+    owner,
+    account: accountAddr,
+    collateral,
+    debt,
+    equity,
+    collateralBought,
+    debtDrawn,
+    collateralTotal,
+    debtTotal,
+    currentLtv,
+    maxLtv,
+    healthFactorWad,
+  } = event.args;
   await ensureToken(context, collateral);
   await ensureToken(context, debt);
 
   const flows = await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
-  const openPoolId = await consumeSwaps(context, event.transaction.hash);
-
-  const equityDelta = clamp0(flows.supplied - collateralBought);
-  const priceX18 = collateralBought > 0n ? (flows.drawn * WAD) / collateralBought : null;
+  const poolId = await consumeSwaps(context, event.transaction.hash);
+  const priceX18 = collateralBought > 0n ? (debtDrawn * WAD) / collateralBought : null;
 
   const key = pairKey(accountAddr, collateral, debt);
   const pointer = await context.db.find(activePosition, { id: key });
 
   if (pointer) {
-    // increase: lending flows already applied to running amounts; accumulate economics
+    // add leverage to the live epoch; the event totals are authoritative
     const updated = await context.db.update(position, { id: pointer.positionId }).set((row) => {
       const totalBought = row.totalCollateralBought + collateralBought;
-      const totalDrawn = row.totalDebtDrawn + flows.drawn;
+      const totalDrawn = row.totalDebtDrawn + debtDrawn;
       return {
-        equity: row.equity + equityDelta,
+        equity: row.equity + equity,
         totalCollateralBought: totalBought,
         totalDebtDrawn: totalDrawn,
         avgEntryPriceX18: totalBought > 0n ? (totalDrawn * WAD) / totalBought : row.avgEntryPriceX18,
-        collateralAmount: flows.appliedAll ? row.collateralAmount : row.collateralAmount + flows.supplied,
-        debtPrincipal: flows.appliedAll ? row.debtPrincipal : row.debtPrincipal + flows.drawn,
+        collateralAmount: collateralTotal,
+        debtPrincipal: debtTotal,
+        lltv: maxLtv,
+        lastLtvWad: currentLtv,
+        lastHealthFactorWad: healthFactorWad,
         updatedAt: event.block.timestamp,
       };
     });
@@ -123,21 +118,19 @@ ponder.on("MarginRouter:PositionOpened", async ({ event, context }) => {
       logIndex: event.log.logIndex,
       blockNumber: event.block.number,
       timestamp: event.block.timestamp,
-      collateralDelta: flows.supplied,
-      debtDelta: flows.drawn,
-      equityDelta,
+      collateralDelta: equity + collateralBought,
+      debtDelta: debtDrawn,
+      equityDelta: equity,
       priceX18,
-      poolId: openPoolId,
+      poolId,
+      ltvAfterWad: currentLtv,
+      healthFactorWad,
     });
     return;
   }
 
   // first open of this epoch
   const id = positionId(accountAddr, collateral, debt, event.transaction.hash);
-  const marketRef = flows.morphoMarketId
-    ? await context.db.find(morphoMarketRef, { id: flows.morphoMarketId })
-    : null;
-
   await context.db.insert(position).values({
     id,
     chainId: context.chain.id,
@@ -147,23 +140,25 @@ ponder.on("MarginRouter:PositionOpened", async ({ event, context }) => {
     debt,
     venue: flows.venue,
     status: "OPEN",
-    collateralAmount: flows.supplied,
-    debtPrincipal: flows.drawn,
-    equity: equityDelta,
+    collateralAmount: collateralTotal,
+    debtPrincipal: debtTotal,
+    equity,
     totalCollateralBought: collateralBought,
-    totalDebtDrawn: flows.drawn,
+    totalDebtDrawn: debtDrawn,
     avgEntryPriceX18: priceX18,
-    leverageX18AtOpen: equityDelta > 0n ? (flows.supplied * WAD) / equityDelta : null,
+    leverageX18AtOpen: equity > 0n ? (collateralTotal * WAD) / equity : null,
     openTxHash: event.transaction.hash,
     openedAt: event.block.timestamp,
     openBlock: event.block.number,
-    openPoolId,
+    openPoolId: poolId,
     morphoMarketId: flows.morphoMarketId,
-    lltv: marketRef?.lltv ?? null,
+    lltv: maxLtv,
     liquidated: false,
     seizedCollateral: 0n,
     liquidationRepaidDebt: 0n,
     badDebt: 0n,
+    lastLtvWad: currentLtv,
+    lastHealthFactorWad: healthFactorWad,
     updatedAt: event.block.timestamp,
   });
   await context.db.insert(activePosition).values({ id: key, positionId: id }).onConflictDoUpdate({ positionId: id });
@@ -176,54 +171,94 @@ ponder.on("MarginRouter:PositionOpened", async ({ event, context }) => {
     logIndex: event.log.logIndex,
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
-    collateralDelta: flows.supplied,
-    debtDelta: flows.drawn,
-    equityDelta,
+    collateralDelta: collateralTotal,
+    debtDelta: debtDrawn,
+    equityDelta: equity,
     priceX18,
-    poolId: openPoolId,
+    poolId,
+    ltvAfterWad: currentLtv,
+    healthFactorWad,
   });
 });
 
 ponder.on("MarginRouter:PositionDecreased", async ({ event, context }) => {
-  const { account: accountAddr, collateral, debt, debtRepaid } = event.args;
+  const {
+    account: accountAddr,
+    collateral,
+    debt,
+    debtRepaid,
+    collateralWithdrawn,
+    collateralReturned,
+    collateralTotal,
+    debtTotal,
+    currentLtv,
+    healthFactorWad,
+  } = event.args;
 
-  const flows = await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
+  await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
   const poolId = await consumeSwaps(context, event.transaction.hash);
 
-  const pointer = await context.db.find(activePosition, { id: pairKey(accountAddr, collateral, debt) });
+  const key = pairKey(accountAddr, collateral, debt);
+  const pointer = await context.db.find(activePosition, { id: key });
   if (!pointer) return;
+  const row = await context.db.find(position, { id: pointer.positionId });
+  if (!row) return;
 
-  // the decrease swap sells exactly the withdrawn collateral for the repaid debt
-  const priceX18 = flows.withdrawn > 0n ? (debtRepaid * WAD) / flows.withdrawn : null;
+  // a full close leaves nothing behind; a partial decrease keeps the epoch open
+  const isClose = collateralTotal === 0n && debtTotal === 0n;
+  const collateralSold = clamp0(collateralWithdrawn - collateralReturned);
+  const priceX18 = collateralSold > 0n ? (debtRepaid * WAD) / collateralSold : null;
 
-  await context.db.update(position, { id: pointer.positionId }).set((row) => ({
-    collateralAmount: flows.appliedAll ? row.collateralAmount : clamp0(row.collateralAmount - flows.withdrawn),
-    debtPrincipal: flows.appliedAll ? row.debtPrincipal : clamp0(row.debtPrincipal - flows.repaid),
+  await context.db.update(position, { id: row.id }).set({
+    collateralAmount: collateralTotal,
+    debtPrincipal: debtTotal,
+    lastLtvWad: currentLtv,
+    lastHealthFactorWad: healthFactorWad,
+    ...(isClose
+      ? {
+          status: "CLOSED" as const,
+          closeTxHash: event.transaction.hash,
+          closedAt: event.block.timestamp,
+          collateralReturned,
+          exitPriceX18: priceX18,
+          realizedPnl: collateralReturned - row.equity,
+        }
+      : {}),
     updatedAt: event.block.timestamp,
-  }));
+  });
+  if (isClose) await context.db.delete(activePosition, { id: key });
 
   await context.db.insert(positionAction).values({
     id: eventId(event.transaction.hash, event.log.logIndex),
-    positionId: pointer.positionId,
-    type: "DECREASE",
+    positionId: row.id,
+    type: isClose ? "CLOSE" : "DECREASE",
     txHash: event.transaction.hash,
     logIndex: event.log.logIndex,
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
-    collateralDelta: -flows.withdrawn,
+    collateralDelta: -collateralWithdrawn,
     debtDelta: -debtRepaid,
-    equityDelta: 0n,
+    equityDelta: isClose ? -row.equity : 0n,
     priceX18,
     poolId,
+    ltvAfterWad: currentLtv,
+    healthFactorWad,
   });
 });
 
 ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
-  const { account: accountAddr, collateral, amount } = event.args;
+  const {
+    account: accountAddr,
+    collateral,
+    amount,
+    collateralTotal,
+    debtTotal,
+    currentLtv,
+    healthFactorWad,
+  } = event.args;
 
-  // resolve the pair from this tx's staged supply flow (carries it for Morpho;
-  // Aave rows may be unattributed, in which case fall back to the account's
-  // single open position with this collateral)
+  // resolve the pair: from this tx's staged supply flow (carries it for Morpho), or
+  // fall back to the account's single open position with this collateral token
   const rows = await txLendingEvents(context, event.transaction.hash, accountAddr);
   const supplyRow = rows.find((r) => r.kind === "SUPPLY_COLLATERAL");
   let debt = supplyRow?.debt ?? null;
@@ -231,20 +266,21 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
     const candidates = await context.db.sql
       .select()
       .from(position)
-      .where(
-        and(eq(position.account, accountAddr), eq(position.collateral, collateral), eq(position.status, "OPEN"))
-      );
+      .where(and(eq(position.account, accountAddr), eq(position.collateral, collateral), eq(position.status, "OPEN")));
     if (candidates.length !== 1) return; // ambiguous or none; raw lendingEvent row remains
     debt = candidates[0]!.debt;
   }
 
-  const flows = await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
+  await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
   const pointer = await context.db.find(activePosition, { id: pairKey(accountAddr, collateral, debt) });
   if (!pointer) return;
 
   await context.db.update(position, { id: pointer.positionId }).set((row) => ({
     equity: row.equity + amount,
-    collateralAmount: flows.appliedAll ? row.collateralAmount : row.collateralAmount + flows.supplied,
+    collateralAmount: collateralTotal,
+    debtPrincipal: debtTotal,
+    lastLtvWad: currentLtv,
+    lastHealthFactorWad: healthFactorWad,
     updatedAt: event.block.timestamp,
   }));
 
@@ -261,50 +297,7 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
     equityDelta: amount,
     priceX18: null,
     poolId: null,
-  });
-});
-
-ponder.on("MarginRouter:PositionClosed", async ({ event, context }) => {
-  const { account: accountAddr, collateral, debt, collateralReturned } = event.args;
-
-  const flows = await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
-  const poolId = await consumeSwaps(context, event.transaction.hash);
-
-  const key = pairKey(accountAddr, collateral, debt);
-  const pointer = await context.db.find(activePosition, { id: key });
-  if (!pointer) return;
-  const row = await context.db.find(position, { id: pointer.positionId });
-  if (!row) return;
-
-  // collateral sold into the closing swap = withdrawn minus residual returned
-  const collateralSold = clamp0(flows.withdrawn - collateralReturned);
-  const exitPriceX18 = collateralSold > 0n ? (flows.repaid * WAD) / collateralSold : null;
-
-  await context.db.update(position, { id: row.id }).set({
-    status: "CLOSED",
-    collateralAmount: 0n,
-    debtPrincipal: 0n,
-    closeTxHash: event.transaction.hash,
-    closedAt: event.block.timestamp,
-    collateralReturned,
-    exitPriceX18,
-    realizedPnl: collateralReturned - row.equity,
-    updatedAt: event.block.timestamp,
-  });
-  await context.db.delete(activePosition, { id: key });
-
-  await context.db.insert(positionAction).values({
-    id: eventId(event.transaction.hash, event.log.logIndex),
-    positionId: row.id,
-    type: "CLOSE",
-    txHash: event.transaction.hash,
-    logIndex: event.log.logIndex,
-    blockNumber: event.block.number,
-    timestamp: event.block.timestamp,
-    collateralDelta: -flows.withdrawn,
-    debtDelta: -flows.repaid,
-    equityDelta: -row.equity,
-    priceX18: exitPriceX18,
-    poolId,
+    ltvAfterWad: currentLtv,
+    healthFactorWad,
   });
 });

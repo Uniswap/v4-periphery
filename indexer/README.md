@@ -21,21 +21,22 @@ Production: `npm start` with `DATABASE_URL` pointing at Postgres.
 
 | Source | Address (mainnet) | Purpose |
 |---|---|---|
-| MarginRouter | `0x000000a16bfA211d163C244427acE70dD9014444` | Lifecycle: `AccountCreated`, `PositionOpened/Closed/Decreased`, `CollateralAdded`, `AdapterAllowed` |
-| MorphoLendingAdapter | `0xAc150756CAa1e7b821AE2ef4b6f66030A715d474` | `MarketSet` market registry (market id, oracle, LLTV) |
-| Aave v3 / v4 adapters | `0xFb28...0C21` / `0x9Fe1...486C` | `MarketSet` market registries |
+| MarginRouter | `0x0000000666Adc6Ecc1A344fDB78F369B64F84444` | Lifecycle: `AccountCreated`, `PositionIncreased/Decreased`, `CollateralAdded`, `AdapterAllowed` |
+| MorphoLendingAdapter | `0xe32286F0217d7dF340Fbc002d65d65bf1049A8C4` | `MarketSet` market registry (market id, oracle, LLTV) |
+| Aave v3 / v4 adapters | `0xb0cA...15dB` / `0xCfbd...FC20` | `MarketSet` market registries |
 | Morpho Blue | `0xBBBB...FFCb` | Collateral/debt flows + `Liquidate`, attributed by `onBehalf` ∈ margin accounts |
 | Aave v3 Pool | `0x8787...A4E2` | Flows + `LiquidationCall`, attributed by `onBehalfOf`/`user` |
 | v4 PoolManager | `0x0000...8A90` | `Initialize` (pool metadata) + `Swap` filtered to `sender == MarginRouter` — both from the margin deploy block |
 
 ## How the derivation works
 
-Within every position transaction, the protocol logs (v4 `Swap`, lending
-supply/borrow/repay/withdraw) precede the router's lifecycle event. Handlers stage those
-rows, and the router-event handler joins them by transaction hash to derive the economics
-the router does not emit. The open flow borrows exactly the swap's settle amount, so the
-lending `Borrow` event is the exact execution cost of the levered tranche, fees and price
-impact included — protocol-agnostic across Morpho and Aave, single- or multi-hop.
+The router's lifecycle events carry the full position economics directly: equity, debt
+drawn, resulting totals, current/max LTV, and health factor. Entry price is
+`debtDrawn / collateralBought` from a single log — the exact execution cost including
+fees and price impact, protocol-agnostic across venues. The lending-protocol logs (which
+precede the router event in each transaction) are still staged and joined by tx hash, but
+only for venue/market attribution, liquidations, and flows that bypass the router
+entirely (owner escape-hatch operations).
 
 ## Field derivation map
 
@@ -52,15 +53,15 @@ unit — scale by `10^(collateralDecimals - debtDecimals)` for a human price.
 | Lending venue | `position.venue` | Which protocol's events fired in the open tx |
 | Direction | derived | Long the collateral, short the debt (client-side label) |
 | Size | `position.totalCollateralBought`, `.collateralAmount` | `PositionOpened` accumulation; running amount maintained from lending events (principal only — live reads for interest-accrued debt) |
-| Entry price | `position.avgEntryPriceX18`; per-fill `positionAction.priceX18` | `Borrow.assets * 1e18 / collateralBought` — exact fill incl. fees; volume-weighted across increases |
+| Entry price | `position.avgEntryPriceX18`; per-fill `positionAction.priceX18` | `debtDrawn * 1e18 / collateralBought` from `PositionIncreased`; volume-weighted across increases |
 | Exit price | `position.exitPriceX18` | Repay vs collateral sold on close |
-| Margin (equity) | `position.equity` | `SupplyCollateral.assets − collateralBought` per open, + `CollateralAdded`. **Not** write-through: derived from lending events |
-| Leverage at open | `position.leverageX18AtOpen` | `totalSupplied / equity` at first open (same-token ratio) |
-| Liquidation price | `position.lltv` + amounts | `debtPrincipal / (collateralAmount × lltv)` at any time; for live accuracy use onchain `currentLtvWad` (interest drift) |
+| Margin (equity) | `position.equity` | Emitted directly on `PositionIncreased`; accumulated with `CollateralAdded` |
+| Leverage at open | `position.leverageX18AtOpen` | `collateralTotal / equity` at first open (same-token ratio) |
+| Liquidation price | `position.lltv` + amounts | `debtPrincipal / (collateralAmount × lltv)`; `lastLtvWad`/`lastHealthFactorWad` snapshot router-reported state at the last action; live accuracy needs an onchain `describePosition` read (interest drift) |
 | PnL (completed) | `position.realizedPnl` | `collateralReturned − equity`, collateral units; % = vs `equity` |
 | PnL (active) | client-side | mark vs `avgEntryPriceX18` on live `positionOf` amounts |
 | Created | `position.openedAt` | Block timestamp, no extra RPC |
-| Completed: user-closed | `position.status = CLOSED` | `PositionClosed` |
+| Completed: user-closed | `position.status = CLOSED` | `PositionDecreased` with zero resulting totals (close is folded into decrease) |
 | Completed: liquidated | `position.status = LIQUIDATED`, `liquidat*` columns | Morpho `Liquidate` / Aave `LiquidationCall` with borrower ∈ margin accounts; partial liquidations keep `OPEN` + `liquidated = true` |
 | Raw account feed (incl. owner escape-hatch ops) | `lendingEvent` | Every attributed lending flow, even ones with no router event |
 
