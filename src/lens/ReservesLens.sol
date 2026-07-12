@@ -12,16 +12,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IReservesLens} from "../interfaces/IReservesLens.sol";
 import {IHookStats} from "../interfaces/external/IHookStats.sol";
 
-/// @notice Single-overload views of IExtsload so selectors are compile-time-checked; Solidity cannot
-///         disambiguate the overloaded extsload members for .selector or abi.encodeCall
-interface IExtsloadWord {
-    function extsload(bytes32 slot) external view returns (bytes32 value);
-}
-
-interface IExtsloadSparse {
-    function extsload(bytes32[] calldata slots) external view returns (bytes32[] memory values);
-}
-
 /// @title ReservesLens
 /// @notice Stateless view contract for v4 core liquidity TVL and optional URC-3 hook statistics
 /// @dev Reconstructs the aggregate liquidity curve by walking initialized ticks in ascending order, applying each
@@ -32,6 +22,7 @@ interface IExtsloadSparse {
 ///      PoolManager and obtaining the complete PoolKey from its Initialize event.
 contract ReservesLens is IReservesLens {
     using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
 
     uint8 private constant CURSOR_VERSION = 1;
     uint256 private constant CURSOR_LENGTH = 15 * 32;
@@ -96,7 +87,7 @@ contract ReservesLens is IReservesLens {
     {
         PoolId poolId = key.toId();
         _initialize(manager, key.tickSpacing, poolId);
-        uint256 bitmap = uint256(_readWord(address(manager), _tickBitmapSlot(poolId, wordPos)));
+        uint256 bitmap = manager.getTickBitmap(poolId, wordPos);
         uint256 remaining = bitmap;
         uint256 count;
         while (remaining != 0) {
@@ -165,19 +156,10 @@ contract ReservesLens is IReservesLens {
             revert InvalidTickSpacing(tickSpacing);
         }
 
-        bytes32 poolStateSlot = _poolStateSlot(poolId);
-        bytes32 slot0 = _readWord(address(manager), poolStateSlot);
-        uint160 sqrtPriceX96;
-        int24 currentTick;
-        assembly ("memory-safe") {
-            sqrtPriceX96 := and(slot0, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
-            currentTick := signextend(2, shr(160, slot0))
-        }
+        (uint160 sqrtPriceX96, int24 currentTick,,) = manager.getSlot0(poolId);
         if (sqrtPriceX96 == 0) revert PoolNotInitialized(poolId);
 
-        uint128 activeLiquidity = uint128(
-            uint256(_readWord(address(manager), bytes32(uint256(poolStateSlot) + StateLibrary.LIQUIDITY_OFFSET)))
-        );
+        uint128 activeLiquidity = manager.getLiquidity(poolId);
         int24 minCompressed = TickMath.minUsableTick(tickSpacing) / tickSpacing;
 
         state = ScanState({
@@ -204,34 +186,20 @@ contract ReservesLens is IReservesLens {
         view
         returns (ScanState memory, bool done)
     {
-        int24 maxTick = TickMath.maxUsableTick(tickSpacing);
-        int16 maxWord = int16((maxTick / tickSpacing) >> 8);
+        int16 maxWord = _maxWord(tickSpacing);
         uint32 reads;
 
         while (state.wordPos <= maxWord) {
             if (reads >= maxReads) return (state, false);
 
-            uint256 bitmap = uint256(_readWord(address(manager), _tickBitmapSlot(poolId, state.wordPos)));
+            uint256 bitmap = manager.getTickBitmap(poolId, state.wordPos);
             reads++;
-
-            if (state.bitPos == 256) {
-                state.wordPos = int16(int256(state.wordPos) + 1);
-                state.bitPos = 0;
-                continue;
-            }
+            // resume mid-word; a shift of 256 yields zero, so a bitPos-256 cursor skips the word entirely
             if (state.bitPos != 0) bitmap &= type(uint256).max << state.bitPos;
 
-            while (bitmap != 0) {
-                uint8 bit = BitMath.leastSignificantBit(bitmap);
-                if (reads >= maxReads) {
-                    state.bitPos = bit;
-                    return (state, false);
-                }
-                _processInitializedTick(manager, tickSpacing, poolId, state, bit);
-                reads++;
-                bitmap &= bitmap - 1;
-                state.bitPos = uint16(bit) + 1;
-            }
+            bool wordDone;
+            (reads, wordDone) = _processWord(manager, tickSpacing, poolId, state, bitmap, reads, maxReads);
+            if (!wordDone) return (state, false);
 
             state.wordPos = int16(int256(state.wordPos) + 1);
             state.bitPos = 0;
@@ -246,8 +214,7 @@ contract ReservesLens is IReservesLens {
         view
         returns (ScanState memory)
     {
-        int24 maxTick = TickMath.maxUsableTick(tickSpacing);
-        int16 maxWord = int16((maxTick / tickSpacing) >> 8);
+        int16 maxWord = _maxWord(tickSpacing);
         int256 nextWord = state.wordPos;
 
         while (nextWord <= maxWord) {
@@ -257,16 +224,11 @@ contract ReservesLens is IReservesLens {
             for (uint256 i; i < count; i++) {
                 slots[i] = _tickBitmapSlot(poolId, int16(nextWord + int256(i)));
             }
-            bytes32[] memory bitmaps = _readWords(address(manager), slots);
+            bytes32[] memory bitmaps = manager.extsload(slots);
 
             for (uint256 i; i < count; i++) {
                 state.wordPos = int16(nextWord + int256(i));
-                uint256 bitmap = uint256(bitmaps[i]);
-                while (bitmap != 0) {
-                    uint8 bit = BitMath.leastSignificantBit(bitmap);
-                    _processInitializedTick(manager, tickSpacing, poolId, state, bit);
-                    bitmap &= bitmap - 1;
-                }
+                _processWord(manager, tickSpacing, poolId, state, uint256(bitmaps[i]), 0, type(uint32).max);
             }
             nextWord += int256(count);
         }
@@ -275,6 +237,35 @@ contract ReservesLens is IReservesLens {
         state.bitPos = 0;
         _validateComplete(poolId, state);
         return state;
+    }
+
+    /// @dev Processes every initialized tick in one bitmap word, charging one read per tick against the budget.
+    ///      Returns done=false with state.bitPos positioned on the unprocessed bit when the budget is exhausted.
+    function _processWord(
+        IPoolManager manager,
+        int24 tickSpacing,
+        PoolId poolId,
+        ScanState memory state,
+        uint256 bitmap,
+        uint32 reads,
+        uint32 maxReads
+    ) private view returns (uint32, bool done) {
+        while (bitmap != 0) {
+            uint8 bit = BitMath.leastSignificantBit(bitmap);
+            if (reads >= maxReads) {
+                state.bitPos = bit;
+                return (reads, false);
+            }
+            _processInitializedTick(manager, tickSpacing, poolId, state, bit);
+            reads++;
+            bitmap &= bitmap - 1;
+            state.bitPos = uint16(bit) + 1;
+        }
+        return (reads, true);
+    }
+
+    function _maxWord(int24 tickSpacing) private pure returns (int16) {
+        return int16((TickMath.maxUsableTick(tickSpacing) / tickSpacing) >> 8);
     }
 
     function _validateComplete(PoolId poolId, ScanState memory state) private pure {
@@ -349,11 +340,7 @@ contract ReservesLens is IReservesLens {
         view
         returns (uint128 liquidityGross, int128 liquidityNet)
     {
-        bytes32 tickWord = _readWord(address(manager), _tickInfoSlot(poolId, tick));
-        assembly ("memory-safe") {
-            liquidityGross := and(tickWord, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
-            liquidityNet := signextend(15, shr(128, tickWord))
-        }
+        (liquidityGross, liquidityNet) = manager.getTickLiquidity(poolId, tick);
         if (liquidityGross == 0) revert TickInvariantFailed(poolId, tick);
     }
 
@@ -386,7 +373,7 @@ contract ReservesLens is IReservesLens {
         }
 
         (StaticCallStatus hookStatus, bytes32 hookWord,) =
-            _boundedStaticcall(provider, HOOK_STATS_GAS_LIMIT, abi.encodeCall(IHookStats.hook, ()), 32);
+            _boundedStaticcall(provider, abi.encodeCall(IHookStats.hook, ()), 32);
         if (hookStatus != StaticCallStatus.SUCCESS) {
             result.statsStatus = _hookFailureStatus(hookStatus);
             return;
@@ -398,15 +385,14 @@ contract ReservesLens is IReservesLens {
         }
 
         (StaticCallStatus reservesStatus, bytes32 reserves0, bytes32 reserves1) =
-            _boundedStaticcall(provider, HOOK_STATS_GAS_LIMIT, abi.encodeCall(IHookStats.getReserves, (key)), 64);
+            _boundedStaticcall(provider, abi.encodeCall(IHookStats.getReserves, (key)), 64);
         if (reservesStatus != StaticCallStatus.SUCCESS) {
             result.statsStatus = _hookFailureStatus(reservesStatus);
             return;
         }
 
-        (StaticCallStatus effectiveStatus, bytes32 effective0, bytes32 effective1) = _boundedStaticcall(
-            provider, HOOK_STATS_GAS_LIMIT, abi.encodeCall(IHookStats.getEffectiveLiquidity, (key)), 64
-        );
+        (StaticCallStatus effectiveStatus, bytes32 effective0, bytes32 effective1) =
+            _boundedStaticcall(provider, abi.encodeCall(IHookStats.getEffectiveLiquidity, (key)), 64);
         if (effectiveStatus != StaticCallStatus.SUCCESS) {
             result.statsStatus = _hookFailureStatus(effectiveStatus);
             return;
@@ -432,59 +418,23 @@ contract ReservesLens is IReservesLens {
         return status == StaticCallStatus.FAILED ? HookStatsStatus.CALL_FAILED : HookStatsStatus.INVALID_RESPONSE;
     }
 
-    function _readWord(address manager, bytes32 slot) private view returns (bytes32 value) {
-        bytes memory input = abi.encodeCall(IExtsloadWord.extsload, (slot));
-        (StaticCallStatus status, bytes32 word,) = _boundedStaticcall(manager, gasleft(), input, 32);
-        if (status != StaticCallStatus.SUCCESS) revert ManagerReadFailed(manager, slot);
-        return word;
-    }
-
-    function _readWords(address manager, bytes32[] memory slots) private view returns (bytes32[] memory values) {
-        bytes memory input = abi.encodeCall(IExtsloadSparse.extsload, (slots));
-        uint256 expectedSize = 64 + slots.length * 32;
-        bytes memory output = new bytes(expectedSize);
-        bool success;
-        uint256 returnSize;
-        assembly ("memory-safe") {
-            success := staticcall(gas(), manager, add(input, 0x20), mload(input), add(output, 0x20), expectedSize)
-            returnSize := returndatasize()
-        }
-        if (!success || returnSize != expectedSize) {
-            revert ManagerBatchReadFailed(manager, slots[0], slots[slots.length - 1], slots.length);
-        }
-
-        uint256 offset;
-        uint256 length;
-        assembly ("memory-safe") {
-            offset := mload(add(output, 0x20))
-            length := mload(add(output, 0x40))
-        }
-        if (offset != 32 || length != slots.length) {
-            revert ManagerBatchReadFailed(manager, slots[0], slots[slots.length - 1], slots.length);
-        }
-
-        values = new bytes32[](length);
-        for (uint256 i; i < length; i++) {
-            bytes32 word;
-            assembly ("memory-safe") {
-                word := mload(add(add(output, 0x60), mul(i, 0x20)))
-            }
-            values[i] = word;
-        }
-    }
-
-    function _boundedStaticcall(address target, uint256 gasLimit, bytes memory input, uint256 expectedSize)
+    /// @dev Bounds untrusted provider calls to HOOK_STATS_GAS_LIMIT so a malicious provider cannot consume the
+    ///      caller's whole budget. EIP-150 forwards at most 63/64 of remaining gas, so the requested limit is only
+    ///      honored when enough gas remains; revert rather than let a starved provider be misclassified as CALL_FAILED.
+    function _boundedStaticcall(address target, bytes memory input, uint256 expectedSize)
         private
         view
         returns (StaticCallStatus status, bytes32 word0, bytes32 word1)
     {
+        if (gasleft() < (HOOK_STATS_GAS_LIMIT * 64) / 63 + 1_000) revert InsufficientGasForHookStats();
+
         bool success;
         uint256 returnSize;
         assembly ("memory-safe") {
             let output := mload(0x40)
             mstore(output, 0)
             mstore(add(output, 0x20), 0)
-            success := staticcall(gasLimit, target, add(input, 0x20), mload(input), output, 0x40)
+            success := staticcall(HOOK_STATS_GAS_LIMIT, target, add(input, 0x20), mload(input), output, 0x40)
             returnSize := returndatasize()
             word0 := mload(output)
             word1 := mload(add(output, 0x20))
@@ -498,17 +448,10 @@ contract ReservesLens is IReservesLens {
         return keccak256(abi.encode(address(manager), PoolId.unwrap(poolId)));
     }
 
-    function _poolStateSlot(PoolId poolId) private pure returns (bytes32) {
-        return keccak256(abi.encodePacked(PoolId.unwrap(poolId), StateLibrary.POOLS_SLOT));
-    }
-
+    /// @dev Raw slot for pools[poolId].tickBitmap[wordPos], for the batched extsload in _scanComplete; single-word
+    ///      reads go through StateLibrary getters instead
     function _tickBitmapSlot(PoolId poolId, int16 wordPos) private pure returns (bytes32) {
-        bytes32 mappingSlot = bytes32(uint256(_poolStateSlot(poolId)) + StateLibrary.TICK_BITMAP_OFFSET);
+        bytes32 mappingSlot = bytes32(uint256(StateLibrary._getPoolStateSlot(poolId)) + StateLibrary.TICK_BITMAP_OFFSET);
         return keccak256(abi.encodePacked(int256(wordPos), mappingSlot));
-    }
-
-    function _tickInfoSlot(PoolId poolId, int24 tick) private pure returns (bytes32) {
-        bytes32 mappingSlot = bytes32(uint256(_poolStateSlot(poolId)) + StateLibrary.TICKS_OFFSET);
-        return keccak256(abi.encodePacked(int256(tick), mappingSlot));
     }
 }

@@ -71,12 +71,10 @@ interface IReservesLens {
     /// @notice Thrown when a paged-call work budget is outside supported bounds
     error InvalidScanBudget(uint32 maxReads);
 
-    /// @notice Thrown when a PoolManager storage read fails or has an invalid response size
-    error ManagerReadFailed(address manager, bytes32 slot);
-
-    /// @notice Thrown when a batched PoolManager storage read fails or has an invalid response size
-    /// @dev Batch reads fail atomically; firstSlot, lastSlot, and slotCount describe the whole failed batch
-    error ManagerBatchReadFailed(address manager, bytes32 firstSlot, bytes32 lastSlot, uint256 slotCount);
+    /// @notice Thrown when remaining gas cannot guarantee the hook-stats gas stipend after the EIP-150 63/64 reduction
+    /// @dev Without this check a healthy provider could be gas-starved and misreported as CALL_FAILED, making the
+    ///      reported status depend on the caller's gas budget instead of on-chain state. Retry with more gas.
+    error InsufficientGasForHookStats();
 
     /// @notice Thrown when reconstructed liquidity is inconsistent with PoolManager state
     error LiquidityInvariantFailed(PoolId poolId);
@@ -100,9 +98,10 @@ interface IReservesLens {
     error InputLengthMismatch();
 
     /// @notice Computes the complete pool snapshot in one call
-    /// @dev The full initialized-tick domain is scanned. Bitmap-word reads alone cost ~33M gas for a tick-spacing-one
-    ///      pool even when it is empty, which exceeds the common 30M eth_call cap; use getPoolTVLPaged for small tick
-    ///      spacings or providers with low simulation gas limits.
+    /// @dev The full initialized-tick domain is scanned. Bitmap-word reads alone cost ~32M gas for a tick-spacing-one
+    ///      pool even when it is empty, which exceeds a 30M block-style gas limit (though most providers cap eth_call
+    ///      higher, e.g. geth's 50M default); use getPoolTVLPaged for small tick spacings or providers with low
+    ///      simulation gas limits.
     /// @param manager PoolManager whose state is read. The caller is responsible for selecting the canonical manager.
     /// @param key Complete pool key emitted by PoolManager.Initialize
     /// @param statsProvider Optional external URC-3 provider, or address(0) to probe the hook directly

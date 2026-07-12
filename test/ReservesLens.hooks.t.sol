@@ -103,6 +103,15 @@ contract ReservesLensHookTest is Test, Deployers {
         assertLt(gasUsed, 2_000_000);
     }
 
+    function test_insufficientGasForHookStatsRevertsInsteadOfMisclassifying() public {
+        key = _initializeHookPool(MockHookStats.Mode.VALID);
+        // Enough gas to complete the core scan and ERC165 probe, but not enough to guarantee the 500k
+        // hook-stats stipend after the EIP-150 63/64 reduction. Without the guard this healthy provider
+        // would be gas-starved and misreported as CALL_FAILED.
+        vm.expectRevert(IReservesLens.InsufficientGasForHookStats.selector);
+        lens.getPoolTVL{gas: 650_000}(manager, key, address(0));
+    }
+
     function test_EOAExternalProviderIsInvalid() public {
         key = _initializeHookPool(MockHookStats.Mode.VALID);
         IReservesLens.PoolTVL memory result = lens.getPoolTVL(manager, key, address(0xbeef));

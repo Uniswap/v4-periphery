@@ -11,7 +11,7 @@
  * ABI, deliberately independent of ReservesLens' raw-storage implementation.
  */
 
-const [, , rpcUrl, stateView, poolId, spacingArg, blockTag = "latest"] = process.argv;
+const [, , rpcUrl, stateView, poolId, spacingArg, blockTagArg = "latest"] = process.argv;
 if (!rpcUrl || !stateView || !poolId || !spacingArg) {
   throw new Error("expected: <rpc-url> <state-view> <pool-id> <tick-spacing> [block-tag]");
 }
@@ -20,6 +20,29 @@ const spacing = BigInt(spacingArg);
 if (spacing < 1n || spacing > 32767n) throw new Error("invalid tick spacing");
 if (!/^0x[0-9a-fA-F]{40}$/.test(stateView)) throw new Error("invalid StateView address");
 if (!/^0x[0-9a-fA-F]{64}$/.test(poolId)) throw new Error("invalid pool id");
+
+async function rpcRequest(method: string, params: unknown[]): Promise<unknown> {
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json", "user-agent": "v4-reserves-lens-reference/1.0" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 0, method, params }),
+  });
+  if (!response.ok) throw new Error(`RPC HTTP ${response.status}`);
+  const value = (await response.json()) as { result?: unknown; error?: { message: string } };
+  if (value.result === undefined || value.result === null) throw new Error(value.error?.message ?? `${method} failed`);
+  return value.result;
+}
+
+// Pin floating tags ("latest", "safe", "finalized") to one concrete block. The reads below span thousands of
+// sequential eth_call batches; a new block arriving mid-run would tear the snapshot across blocks, producing
+// either spurious invariant failures or a silently inconsistent reference value.
+const blockTag = /^0x[0-9a-fA-F]+$/.test(blockTagArg)
+  ? blockTagArg
+  : ((await rpcRequest("eth_getBlockByNumber", [blockTagArg, false])) as { number: string }).number;
+
+// A valid eth_call result is one or more 32-byte words; bare "0x" means no contract code at the target.
+const isCallResult = (value: unknown): value is string =>
+  typeof value === "string" && value.startsWith("0x") && value.length > 2 && (value.length - 2) % 64 === 0;
 
 const MIN_TICK = -887272n;
 const MAX_TICK = 887272n;
@@ -51,7 +74,10 @@ async function rpcSingle(calldata: string, id: number): Promise<{ id: number; re
     });
     if (response.ok) {
       const value = (await response.json()) as { id: number; result?: string; error?: { message: string } };
-      if (value.result) return { id, result: value.result };
+      if (isCallResult(value.result)) return { id, result: value.result };
+      if (value.result === "0x") {
+        throw new Error(`eth_call returned no data — is a StateView contract deployed at ${stateView}?`);
+      }
       lastError = value.error?.message ?? lastError;
     } else lastError = `RPC HTTP ${response.status}`;
     await delay(250 * (attempt + 1));
@@ -80,7 +106,7 @@ async function rpcBatch(data: string[]): Promise<string[]> {
       const payload = await response.json();
       if (Array.isArray(payload)) {
         for (const entry of payload as Array<{ id?: number; result?: string }>) {
-          if (typeof entry?.id === "number" && typeof entry.result === "string") byId.set(entry.id, entry.result);
+          if (typeof entry?.id === "number" && isCallResult(entry.result)) byId.set(entry.id, entry.result);
         }
       }
     }
