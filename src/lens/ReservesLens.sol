@@ -61,7 +61,8 @@ contract ReservesLens is IReservesLens {
     enum StaticCallStatus {
         SUCCESS,
         FAILED,
-        INVALID_RESPONSE
+        INVALID_RESPONSE,
+        INSUFFICIENT_GAS
     }
 
     /// @inheritdoc IReservesLens
@@ -471,20 +472,25 @@ contract ReservesLens is IReservesLens {
     }
 
     function _hookFailureStatus(StaticCallStatus status) private pure returns (HookStatsStatus) {
+        if (status == StaticCallStatus.INSUFFICIENT_GAS) return HookStatsStatus.INSUFFICIENT_GAS;
         return status == StaticCallStatus.FAILED ? HookStatsStatus.CALL_FAILED : HookStatsStatus.INVALID_RESPONSE;
     }
 
     /// @dev Bounds untrusted provider calls to HOOK_STATS_GAS_LIMIT so a malicious provider cannot consume the
     ///      caller's whole budget. EIP-150 forwards at most 63/64 of remaining gas, so the requested limit is only
-    ///      honored when enough gas remains. HOOK_STATS_GAS_BUDGET is checked before the probe sequence starts, so
-    ///      this guard is an unreachable backstop: if budgeting is ever wrong it reverts rather than let a starved
-    ///      provider be misclassified as CALL_FAILED.
+    ///      honored when enough gas remains. HOOK_STATS_GAS_BUDGET is checked before the probe sequence starts as a
+    ///      fast path, but memory expansion between the check and the final stats call scales with the free memory
+    ///      pointer (quadratic memory pricing after large scans or batches), so no constant overhead estimate can be
+    ///      guaranteed. A starved call therefore degrades to INSUFFICIENT_GAS status instead of reverting away the
+    ///      caller's completed core scan, and can never be misclassified as CALL_FAILED.
     function _boundedStaticcall(address target, bytes memory input, uint256 expectedSize)
         private
         view
         returns (StaticCallStatus status, bytes32 word0, bytes32 word1)
     {
-        if (gasleft() < (HOOK_STATS_GAS_LIMIT * 64) / 63 + 1_000) revert InsufficientGasForHookStats();
+        if (gasleft() < (HOOK_STATS_GAS_LIMIT * 64) / 63 + 1_000) {
+            return (StaticCallStatus.INSUFFICIENT_GAS, bytes32(0), bytes32(0));
+        }
 
         bool success;
         uint256 returnSize;
