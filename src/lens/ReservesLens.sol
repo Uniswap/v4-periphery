@@ -28,14 +28,15 @@ contract ReservesLens is IReservesLens {
     uint256 private constant CURSOR_LENGTH = 15 * 32;
     uint32 private constant MIN_PAGE_READS = 2;
     uint32 private constant MAX_PAGE_READS = 4096;
+    /// @dev Page budget used when the caller passes maxReads == 0; ~2M gas per page fits any eth_call limit
+    uint32 private constant DEFAULT_PAGE_READS = 512;
     uint256 private constant BITMAP_BATCH_SIZE = 256;
     uint256 private constant HOOK_STATS_GAS_LIMIT = 500_000;
     /// @dev ERC165Checker issues at most three 30k-gas probes before the interface is trusted
     uint256 private constant ERC165_PROBE_GAS = 90_000;
     /// @dev Gas that must remain before probing hook stats: the ERC165 probes, three bounded stats calls, and local
     ///      overhead between them, grossed up so EIP-150's 63/64 forwarding rule cannot starve any single call
-    uint256 private constant HOOK_STATS_GAS_BUDGET =
-        ((3 * HOOK_STATS_GAS_LIMIT + ERC165_PROBE_GAS + 15_000) * 64) / 63;
+    uint256 private constant HOOK_STATS_GAS_BUDGET = ((3 * HOOK_STATS_GAS_LIMIT + ERC165_PROBE_GAS + 15_000) * 64) / 63;
     uint160 private constant ALL_HOOK_MASK = (1 << 14) - 1;
     uint16 private constant CUSTOM_ACCOUNTING_MASK = (1 << 4) - 1;
 
@@ -64,12 +65,29 @@ contract ReservesLens is IReservesLens {
     }
 
     /// @inheritdoc IReservesLens
+    function getPoolTVL(IPoolManager manager, PoolKey calldata key) external view returns (PoolTVL memory result) {
+        return _getPoolTVL(manager, key, address(0));
+    }
+
+    /// @inheritdoc IReservesLens
     function getPoolTVL(IPoolManager manager, PoolKey calldata key, address statsProvider)
         external
         view
         returns (PoolTVL memory result)
     {
         return _getPoolTVL(manager, key, statsProvider);
+    }
+
+    /// @inheritdoc IReservesLens
+    function getPoolTVLBatch(IPoolManager manager, PoolKey[] calldata keys)
+        external
+        view
+        returns (PoolTVL[] memory results)
+    {
+        results = new PoolTVL[](keys.length);
+        for (uint256 i; i < keys.length; i++) {
+            results[i] = _getPoolTVL(manager, keys[i], address(0));
+        }
     }
 
     /// @inheritdoc IReservesLens
@@ -122,6 +140,15 @@ contract ReservesLens is IReservesLens {
     }
 
     /// @inheritdoc IReservesLens
+    function getPoolTVLPaged(IPoolManager manager, PoolKey calldata key, bytes calldata cursor)
+        external
+        view
+        returns (PoolTVL memory result, bytes memory nextCursor, bool done)
+    {
+        return _getPoolTVLPaged(manager, key, address(0), cursor, DEFAULT_PAGE_READS);
+    }
+
+    /// @inheritdoc IReservesLens
     function getPoolTVLPaged(
         IPoolManager manager,
         PoolKey calldata key,
@@ -129,6 +156,17 @@ contract ReservesLens is IReservesLens {
         bytes calldata cursor,
         uint32 maxReads
     ) external view returns (PoolTVL memory result, bytes memory nextCursor, bool done) {
+        if (maxReads == 0) maxReads = DEFAULT_PAGE_READS;
+        return _getPoolTVLPaged(manager, key, statsProvider, cursor, maxReads);
+    }
+
+    function _getPoolTVLPaged(
+        IPoolManager manager,
+        PoolKey calldata key,
+        address statsProvider,
+        bytes calldata cursor,
+        uint32 maxReads
+    ) private view returns (PoolTVL memory result, bytes memory nextCursor, bool done) {
         if (maxReads < MIN_PAGE_READS || maxReads > MAX_PAGE_READS) revert InvalidScanBudget(maxReads);
 
         PoolId poolId = key.toId();
@@ -142,6 +180,7 @@ contract ReservesLens is IReservesLens {
             if (state.contextHash != _contextHash(manager, poolId)) revert CursorContextMismatch();
             if (state.blockNumber != block.number) revert CursorBlockMismatch(state.blockNumber, block.number);
             if (state.bitPos > 256) revert InvalidCursor();
+            _verifyCursorSnapshot(manager, poolId, state);
         }
 
         (state, done) = _scan(manager, key.tickSpacing, poolId, state, maxReads);
@@ -465,6 +504,20 @@ contract ReservesLens is IReservesLens {
 
     function _contextHash(IPoolManager manager, PoolId poolId) private view returns (bytes32) {
         return keccak256(abi.encode(block.chainid, address(manager), PoolId.unwrap(poolId)));
+    }
+
+    /// @dev Anchors a resumed cursor's snapshot fields to live manager state. The scan-position and amount
+    ///      accumulator fields are inherently caller-trusted (only a rescan could validate them), but price, tick,
+    ///      and active liquidity are cheap to re-read, so a resumed page can never return forged snapshot metadata
+    ///      and same-block state drift (e.g. pages evaluated against a pending tag) fails loudly here instead of
+    ///      surfacing as a downstream invariant error attributed to the pool.
+    function _verifyCursorSnapshot(IPoolManager manager, PoolId poolId, ScanState memory state) private view {
+        (uint160 sqrtPriceX96, int24 currentTick,,) = manager.getSlot0(poolId);
+        if (sqrtPriceX96 == 0) revert PoolNotInitialized(poolId);
+        if (
+            sqrtPriceX96 != state.sqrtPriceX96 || currentTick != state.currentTick
+                || manager.getLiquidity(poolId) != state.activeLiquidity
+        ) revert CursorStateMismatch();
     }
 
     /// @dev Raw slot for pools[poolId].tickBitmap[wordPos], for the batched extsload in _scanComplete; single-word

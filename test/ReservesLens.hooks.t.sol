@@ -132,6 +132,49 @@ contract ReservesLensHookTest is Test, Deployers {
         assertEq(uint8(result.statsStatus), uint8(IReservesLens.HookStatsStatus.NOT_SUPPORTED));
     }
 
+    function test_defaultVariantProbesHookDirectly() public {
+        key = _initializeHookPool(MockHookStats.Mode.VALID);
+        IReservesLens.PoolTVL memory result = lens.getPoolTVL(manager, key);
+        assertEq(uint8(result.statsStatus), uint8(IReservesLens.HookStatsStatus.DIRECT));
+        assertEq(result.hookReserves0, 1000);
+        assertEq(result.statsProvider, hookAddress);
+    }
+
+    function test_pagedFinalPageProbesHookStats() public {
+        key = _initializeHookPool(MockHookStats.Mode.VALID);
+        IReservesLens.PoolTVL memory result;
+        bytes memory cursor;
+        bool done;
+        uint256 pages;
+        while (!done) {
+            (result, cursor, done) = lens.getPoolTVLPaged(manager, key, address(0), cursor, 2);
+            pages++;
+            assertLt(pages, 1000);
+        }
+        assertGt(pages, 1);
+        assertEq(uint8(result.statsStatus), uint8(IReservesLens.HookStatsStatus.DIRECT));
+        assertEq(result.hookReserves0, 1000);
+        assertEq(result.hookReserves1, 2000);
+        assertEq(result.hookEffective0, 500);
+        assertEq(result.hookEffective1, 1000);
+        assertEq(result.statsProvider, hookAddress);
+    }
+
+    function test_pagedFinalPageInsufficientGasKeepsCoreResult() public {
+        key = _initializeHookPool(MockHookStats.Mode.VALID);
+        IReservesLens.PoolTVL memory expected = lens.getPoolTVL(manager, key, address(0));
+        // The default 512-read budget covers this pool in a single page, and 1M gas completes the scan but
+        // cannot guarantee the hook-stats probe sequence: the page must come back done with intact core
+        // amounts and an honest INSUFFICIENT_GAS label.
+        (IReservesLens.PoolTVL memory result,, bool done) =
+            lens.getPoolTVLPaged{gas: 1_000_000}(manager, key, bytes(""));
+        assertTrue(done);
+        assertEq(uint8(result.statsStatus), uint8(IReservesLens.HookStatsStatus.INSUFFICIENT_GAS));
+        assertEq(result.coreAmount0, expected.coreAmount0);
+        assertEq(result.coreAmount1, expected.coreAmount1);
+        assertEq(result.hookReserves0, 0);
+    }
+
     function test_EOAExternalProviderIsInvalid() public {
         key = _initializeHookPool(MockHookStats.Mode.VALID);
         IReservesLens.PoolTVL memory result = lens.getPoolTVL(manager, key, address(0xbeef));

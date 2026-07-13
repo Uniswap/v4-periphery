@@ -103,8 +103,19 @@ interface IReservesLens {
     /// @notice Thrown when pages are evaluated at different blocks
     error CursorBlockMismatch(uint256 expected, uint256 actual);
 
+    /// @notice Thrown when a resumed cursor's price, tick, or active liquidity does not match live manager state
+    /// @dev Catches forged snapshot fields and same-block state drift (e.g. pages evaluated against a pending tag)
+    error CursorStateMismatch();
+
     /// @notice Thrown when parallel batch inputs have different lengths
     error InputLengthMismatch();
+
+    /// @notice Computes the complete pool snapshot in one call, probing the pool's hook for URC-3 statistics
+    /// @dev Convenience form of getPoolTVL(manager, key, address(0)); see that overload for gas caveats
+    /// @param manager PoolManager whose state is read. The caller is responsible for selecting the canonical manager.
+    /// @param key Complete pool key emitted by PoolManager.Initialize
+    /// @return result Fee-excluded core amounts and separately labeled optional hook statistics
+    function getPoolTVL(IPoolManager manager, PoolKey calldata key) external view returns (PoolTVL memory result);
 
     /// @notice Computes the complete pool snapshot in one call
     /// @dev The full initialized-tick domain is scanned. Bitmap-word reads alone cost ~32M gas for a tick-spacing-one
@@ -119,6 +130,15 @@ interface IReservesLens {
         external
         view
         returns (PoolTVL memory result);
+
+    /// @notice Computes complete snapshots for multiple pools, probing each pool's hook for URC-3 statistics
+    /// @dev Convenience form of getPoolTVLBatch(manager, keys, statsProviders) with every provider zero
+    /// @param manager PoolManager whose state is read
+    /// @param keys Complete pool keys
+    function getPoolTVLBatch(IPoolManager manager, PoolKey[] calldata keys)
+        external
+        view
+        returns (PoolTVL[] memory results);
 
     /// @notice Computes complete snapshots for multiple pools on one PoolManager
     /// @dev One expensive pool reverts the complete batch. Prefer independent RPC calls for large or untrusted batches.
@@ -137,15 +157,30 @@ interface IReservesLens {
         view
         returns (PopulatedTick[] memory populatedTicks);
 
+    /// @notice Computes a bounded portion of a pool snapshot with the default page budget, probing the pool's hook
+    /// @dev Convenience form of getPoolTVLPaged(manager, key, address(0), cursor, 0); see that overload for cursor
+    ///      handling requirements
+    /// @param manager PoolManager whose state is read
+    /// @param key Complete pool key emitted by PoolManager.Initialize
+    /// @param cursor Empty to start or the exact opaque cursor returned by the prior page
+    function getPoolTVLPaged(IPoolManager manager, PoolKey calldata key, bytes calldata cursor)
+        external
+        view
+        returns (PoolTVL memory result, bytes memory nextCursor, bool done);
+
     /// @notice Computes a bounded portion of a pool snapshot
     /// @dev Pass an empty cursor to start and pass returned cursors unchanged. All pages must use the same explicit block
     ///      tag. Intermediate results are incomplete and must not be treated as TVL. Cursor provenance cannot be
-    ///      authenticated by this stateless contract, so pagination is intended for offchain callers.
+    ///      authenticated by this stateless contract, so pagination is intended for offchain callers. The cursor's
+    ///      price, tick, and active-liquidity fields are verified against live manager state on resume, but the scan
+    ///      position and amount accumulators are trusted as-is: a caller-crafted cursor yields a garbage result for
+    ///      that caller only. Never treat a result resumed from a third party's cursor as authentic.
     /// @param manager PoolManager whose state is read
     /// @param key Complete pool key emitted by PoolManager.Initialize
     /// @param statsProvider Optional external URC-3 provider, or address(0) to probe the hook directly
     /// @param cursor Empty to start or the exact opaque cursor returned by the prior page
-    /// @param maxReads Approximate bitmap/tick storage-read work budget for this page
+    /// @param maxReads Approximate bitmap/tick storage-read work budget for this page; 0 selects the default budget
+    ///                 of 512 reads (~2M gas per page)
     /// @return result Complete only when done is true
     /// @return nextCursor Opaque continuation cursor, empty when done is true
     /// @return done Whether the complete result has been produced
