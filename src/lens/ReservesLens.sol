@@ -30,6 +30,12 @@ contract ReservesLens is IReservesLens {
     uint32 private constant MAX_PAGE_READS = 4096;
     uint256 private constant BITMAP_BATCH_SIZE = 256;
     uint256 private constant HOOK_STATS_GAS_LIMIT = 500_000;
+    /// @dev ERC165Checker issues at most three 30k-gas probes before the interface is trusted
+    uint256 private constant ERC165_PROBE_GAS = 90_000;
+    /// @dev Gas that must remain before probing hook stats: the ERC165 probes, three bounded stats calls, and local
+    ///      overhead between them, grossed up so EIP-150's 63/64 forwarding rule cannot starve any single call
+    uint256 private constant HOOK_STATS_GAS_BUDGET =
+        ((3 * HOOK_STATS_GAS_LIMIT + ERC165_PROBE_GAS + 15_000) * 64) / 63;
     uint160 private constant ALL_HOOK_MASK = (1 << 14) - 1;
     uint16 private constant CUSTOM_ACCOUNTING_MASK = (1 << 4) - 1;
 
@@ -225,6 +231,9 @@ contract ReservesLens is IReservesLens {
                 slots[i] = _tickBitmapSlot(poolId, int16(nextWord + int256(i)));
             }
             bytes32[] memory bitmaps = manager.extsload(slots);
+            if (bitmaps.length != count) {
+                revert ManagerBatchReadFailed(address(manager), slots[0], slots[count - 1], count);
+            }
 
             for (uint256 i; i < count; i++) {
                 state.wordPos = int16(nextWord + int256(i));
@@ -366,9 +375,17 @@ contract ReservesLens is IReservesLens {
 
         address provider = suppliedProvider == address(0) ? hook : suppliedProvider;
         result.statsProvider = provider;
+
+        // A gas-starved ERC165 probe or stats call fails in a way indistinguishable from a provider fault, so the
+        // reported status would depend on the caller's gas budget instead of on-chain state. Check headroom for the
+        // whole probe sequence up front and degrade to INSUFFICIENT_GAS; core fields are already populated.
+        if (gasleft() < HOOK_STATS_GAS_BUDGET) {
+            result.statsStatus = HookStatsStatus.INSUFFICIENT_GAS;
+            return;
+        }
+
         if (!ERC165Checker.supportsInterface(provider, type(IHookStats).interfaceId)) {
-            result.statsStatus =
-                suppliedProvider == address(0) ? HookStatsStatus.NOT_SUPPORTED : HookStatsStatus.INVALID_PROVIDER;
+            result.statsStatus = provider == hook ? HookStatsStatus.NOT_SUPPORTED : HookStatsStatus.INVALID_PROVIDER;
             return;
         }
 
@@ -411,7 +428,7 @@ contract ReservesLens is IReservesLens {
             return;
         }
 
-        result.statsStatus = suppliedProvider == address(0) ? HookStatsStatus.DIRECT : HookStatsStatus.EXTERNAL;
+        result.statsStatus = provider == hook ? HookStatsStatus.DIRECT : HookStatsStatus.EXTERNAL;
     }
 
     function _hookFailureStatus(StaticCallStatus status) private pure returns (HookStatsStatus) {
@@ -420,7 +437,9 @@ contract ReservesLens is IReservesLens {
 
     /// @dev Bounds untrusted provider calls to HOOK_STATS_GAS_LIMIT so a malicious provider cannot consume the
     ///      caller's whole budget. EIP-150 forwards at most 63/64 of remaining gas, so the requested limit is only
-    ///      honored when enough gas remains; revert rather than let a starved provider be misclassified as CALL_FAILED.
+    ///      honored when enough gas remains. HOOK_STATS_GAS_BUDGET is checked before the probe sequence starts, so
+    ///      this guard is an unreachable backstop: if budgeting is ever wrong it reverts rather than let a starved
+    ///      provider be misclassified as CALL_FAILED.
     function _boundedStaticcall(address target, bytes memory input, uint256 expectedSize)
         private
         view
@@ -444,8 +463,8 @@ contract ReservesLens is IReservesLens {
         return (StaticCallStatus.SUCCESS, word0, word1);
     }
 
-    function _contextHash(IPoolManager manager, PoolId poolId) private pure returns (bytes32) {
-        return keccak256(abi.encode(address(manager), PoolId.unwrap(poolId)));
+    function _contextHash(IPoolManager manager, PoolId poolId) private view returns (bytes32) {
+        return keccak256(abi.encode(block.chainid, address(manager), PoolId.unwrap(poolId)));
     }
 
     /// @dev Raw slot for pools[poolId].tickBitmap[wordPos], for the batched extsload in _scanComplete; single-word

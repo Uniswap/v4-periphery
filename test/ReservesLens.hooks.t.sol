@@ -103,13 +103,33 @@ contract ReservesLensHookTest is Test, Deployers {
         assertLt(gasUsed, 2_000_000);
     }
 
-    function test_insufficientGasForHookStatsRevertsInsteadOfMisclassifying() public {
+    function test_insufficientGasReportsStatusInsteadOfMisclassifying() public {
         key = _initializeHookPool(MockHookStats.Mode.VALID);
-        // Enough gas to complete the core scan and ERC165 probe, but not enough to guarantee the 500k
-        // hook-stats stipend after the EIP-150 63/64 reduction. Without the guard this healthy provider
-        // would be gas-starved and misreported as CALL_FAILED.
-        vm.expectRevert(IReservesLens.InsufficientGasForHookStats.selector);
-        lens.getPoolTVL{gas: 650_000}(manager, key, address(0));
+        IReservesLens.PoolTVL memory expected = lens.getPoolTVL(manager, key, address(0));
+        // Enough gas to complete the core scan, but not enough to guarantee the ERC165 probes and the
+        // three 500k hook-stats stipends after the EIP-150 63/64 reduction. Core amounts must come back
+        // intact with an honest INSUFFICIENT_GAS label instead of a revert or a CALL_FAILED
+        // misclassification of this healthy provider.
+        IReservesLens.PoolTVL memory result = lens.getPoolTVL{gas: 1_000_000}(manager, key, address(0));
+        assertEq(uint8(result.statsStatus), uint8(IReservesLens.HookStatsStatus.INSUFFICIENT_GAS));
+        assertEq(result.coreAmount0, expected.coreAmount0);
+        assertEq(result.coreAmount1, expected.coreAmount1);
+        assertEq(result.statsProvider, hookAddress);
+        assertEq(result.hookReserves0, 0);
+        assertEq(result.hookReserves1, 0);
+    }
+
+    function test_explicitHookProviderIsDirect() public {
+        key = _initializeHookPool(MockHookStats.Mode.VALID);
+        IReservesLens.PoolTVL memory result = lens.getPoolTVL(manager, key, hookAddress);
+        assertEq(result.statsProvider, hookAddress);
+        assertEq(uint8(result.statsStatus), uint8(IReservesLens.HookStatsStatus.DIRECT));
+    }
+
+    function test_nonSupportingExplicitHookProviderIsNotSupported() public {
+        key = _initializeHookPool(MockHookStats.Mode.UNIVERSAL_ERC165);
+        IReservesLens.PoolTVL memory result = lens.getPoolTVL(manager, key, hookAddress);
+        assertEq(uint8(result.statsStatus), uint8(IReservesLens.HookStatsStatus.NOT_SUPPORTED));
     }
 
     function test_EOAExternalProviderIsInvalid() public {

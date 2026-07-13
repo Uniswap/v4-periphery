@@ -13,6 +13,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IReservesLens} from "../src/interfaces/IReservesLens.sol";
 import {ReservesLens} from "../src/lens/ReservesLens.sol";
 import {Deploy} from "./shared/Deploy.sol";
+import {MockShortExtsloadManager} from "./mocks/MockShortExtsloadManager.sol";
 
 contract ReservesLensTest is Test, Deployers {
     using StateLibrary for *;
@@ -222,6 +223,20 @@ contract ReservesLensTest is Test, Deployers {
         vm.expectRevert(
             abi.encodeWithSelector(IReservesLens.CursorBlockMismatch.selector, previousBlock, previousBlock + 1)
         );
+        lens.getPoolTVLPaged(manager, key, address(0), cursor, 2);
+    }
+
+    function test_RevertWhen_ManagerBatchReadReturnsWrongLength() public {
+        IPoolManager badManager = IPoolManager(address(new MockShortExtsloadManager()));
+        vm.expectPartialRevert(IReservesLens.ManagerBatchReadFailed.selector);
+        lens.getPoolTVL(badManager, key, address(0));
+    }
+
+    function test_RevertWhen_CursorChainChanges() public {
+        (, bytes memory cursor, bool done) = lens.getPoolTVLPaged(manager, key, address(0), bytes(""), 2);
+        assertFalse(done);
+        vm.chainId(block.chainid + 1);
+        vm.expectRevert(IReservesLens.CursorContextMismatch.selector);
         lens.getPoolTVLPaged(manager, key, address(0), cursor, 2);
     }
 

@@ -13,6 +13,10 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 ///      stored or compared over time.
 interface IReservesLens {
     /// @notice Status of optional URC-3 hook statistics
+    /// @dev DIRECT means the resolved provider is the hook itself (whether resolved from address(0) or passed
+    ///      explicitly); EXTERNAL means a distinct third-party provider. INSUFFICIENT_GAS means the probe was not
+    ///      attempted because remaining gas could not guarantee the stats stipends after the EIP-150 63/64 reduction;
+    ///      core fields are still valid and the caller can retry with more gas to obtain hook statistics.
     enum HookStatsStatus {
         NO_HOOK,
         NOT_SUPPORTED,
@@ -20,7 +24,8 @@ interface IReservesLens {
         EXTERNAL,
         INVALID_PROVIDER,
         CALL_FAILED,
-        INVALID_RESPONSE
+        INVALID_RESPONSE,
+        INSUFFICIENT_GAS
     }
 
     /// @notice Complete pool liquidity-TVL snapshot
@@ -71,10 +76,14 @@ interface IReservesLens {
     /// @notice Thrown when a paged-call work budget is outside supported bounds
     error InvalidScanBudget(uint32 maxReads);
 
-    /// @notice Thrown when remaining gas cannot guarantee the hook-stats gas stipend after the EIP-150 63/64 reduction
-    /// @dev Without this check a healthy provider could be gas-starved and misreported as CALL_FAILED, making the
-    ///      reported status depend on the caller's gas budget instead of on-chain state. Retry with more gas.
+    /// @notice Thrown when remaining gas cannot guarantee a hook-stats gas stipend after the EIP-150 63/64 reduction
+    /// @dev Backstop only: gas headroom for the ERC165 probes and all stats calls is checked up front and reported as
+    ///      INSUFFICIENT_GAS status, so this error should be unreachable. It exists so that a budgeting mistake can
+    ///      never gas-starve a healthy provider and misreport it as CALL_FAILED.
     error InsufficientGasForHookStats();
+
+    /// @notice Thrown when the supplied manager returns a malformed response to a batched extsload
+    error ManagerBatchReadFailed(address manager, bytes32 firstSlot, bytes32 lastSlot, uint256 count);
 
     /// @notice Thrown when reconstructed liquidity is inconsistent with PoolManager state
     error LiquidityInvariantFailed(PoolId poolId);
@@ -88,7 +97,7 @@ interface IReservesLens {
     /// @notice Thrown when a continuation cursor version is unsupported
     error UnsupportedCursorVersion(uint8 version);
 
-    /// @notice Thrown when a cursor is used with a different manager or pool
+    /// @notice Thrown when a cursor is used with a different chain, manager, or pool
     error CursorContextMismatch();
 
     /// @notice Thrown when pages are evaluated at different blocks
