@@ -14,7 +14,8 @@ contract MockHookStats is IHookStats {
         UNIVERSAL_ERC165,
         RETURN_BOMB,
         SHORT_RETURN,
-        GAS_BURN
+        GAS_BURN,
+        VALID_GAS_HEAVY
     }
 
     address private immutable REPORTED_HOOK;
@@ -31,10 +32,18 @@ contract MockHookStats is IHookStats {
     }
 
     function hook() external view returns (address) {
+        if (MODE == Mode.VALID_GAS_HEAVY) _burnMostForwardedGas();
         return MODE == Mode.WRONG_HOOK ? address(0xdead) : REPORTED_HOOK;
     }
 
+    /// @notice Consumes nearly the entire forwarded stipend before answering, to exercise the caller's
+    ///         worst-case gas accounting with responses that are still fully valid
+    function _burnMostForwardedGas() private view {
+        while (gasleft() > 30_000) {}
+    }
+
     function getReserves(PoolKey calldata) external view returns (uint256 amount0, uint256 amount1) {
+        if (MODE == Mode.VALID_GAS_HEAVY) _burnMostForwardedGas();
         if (MODE == Mode.REVERT_STATS) revert("STATS_REVERTED");
         if (MODE == Mode.RETURN_BOMB) {
             assembly ("memory-safe") {
@@ -56,6 +65,7 @@ contract MockHookStats is IHookStats {
     }
 
     function getEffectiveLiquidity(PoolKey calldata) external view returns (uint256 amount0, uint256 amount1) {
+        if (MODE == Mode.VALID_GAS_HEAVY) _burnMostForwardedGas();
         if (MODE == Mode.REVERT_STATS) revert("STATS_REVERTED");
         return MODE == Mode.INVALID_EFFECTIVE ? (1001, 2001) : (500, 1000);
     }

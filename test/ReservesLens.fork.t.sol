@@ -75,6 +75,10 @@ contract ReservesLensForkTest is Test {
         emit log_named_uint("single-shot gas", gasUsed);
     }
 
+    /// @dev Deliberately shares the interval math and core libraries with the lens: this reference validates the
+    ///      raw-extsload read path against the canonical StateView ABI on real pools. Algorithmic independence is
+    ///      provided by test/shared/ReservesReference.sol (position aggregation, no tick walking) and toolchain
+    ///      independence by scripts/reserves-lens-reference.ts.
     function _stateViewReference(IStateView stateView, PoolKey memory poolKey)
         private
         view

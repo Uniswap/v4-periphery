@@ -28,8 +28,15 @@ contract ReservesLens is IReservesLens {
     uint256 private constant CURSOR_LENGTH = 15 * 32;
     uint32 private constant MIN_PAGE_READS = 2;
     uint32 private constant MAX_PAGE_READS = 4096;
+    /// @dev Page budget used when the caller passes maxReads == 0; ~2M gas per page fits any eth_call limit
+    uint32 private constant DEFAULT_PAGE_READS = 512;
     uint256 private constant BITMAP_BATCH_SIZE = 256;
     uint256 private constant HOOK_STATS_GAS_LIMIT = 500_000;
+    /// @dev ERC165Checker issues at most three 30k-gas probes before the interface is trusted
+    uint256 private constant ERC165_PROBE_GAS = 90_000;
+    /// @dev Gas that must remain before probing hook stats: the ERC165 probes, three bounded stats calls, and local
+    ///      overhead between them, grossed up so EIP-150's 63/64 forwarding rule cannot starve any single call
+    uint256 private constant HOOK_STATS_GAS_BUDGET = ((3 * HOOK_STATS_GAS_LIMIT + ERC165_PROBE_GAS + 15_000) * 64) / 63;
     uint160 private constant ALL_HOOK_MASK = (1 << 14) - 1;
     uint16 private constant CUSTOM_ACCOUNTING_MASK = (1 << 4) - 1;
 
@@ -54,7 +61,13 @@ contract ReservesLens is IReservesLens {
     enum StaticCallStatus {
         SUCCESS,
         FAILED,
-        INVALID_RESPONSE
+        INVALID_RESPONSE,
+        INSUFFICIENT_GAS
+    }
+
+    /// @inheritdoc IReservesLens
+    function getPoolTVL(IPoolManager manager, PoolKey calldata key) external view returns (PoolTVL memory result) {
+        return _getPoolTVL(manager, key, address(0));
     }
 
     /// @inheritdoc IReservesLens
@@ -64,6 +77,18 @@ contract ReservesLens is IReservesLens {
         returns (PoolTVL memory result)
     {
         return _getPoolTVL(manager, key, statsProvider);
+    }
+
+    /// @inheritdoc IReservesLens
+    function getPoolTVLBatch(IPoolManager manager, PoolKey[] calldata keys)
+        external
+        view
+        returns (PoolTVL[] memory results)
+    {
+        results = new PoolTVL[](keys.length);
+        for (uint256 i; i < keys.length; i++) {
+            results[i] = _getPoolTVL(manager, keys[i], address(0));
+        }
     }
 
     /// @inheritdoc IReservesLens
@@ -116,6 +141,15 @@ contract ReservesLens is IReservesLens {
     }
 
     /// @inheritdoc IReservesLens
+    function getPoolTVLPaged(IPoolManager manager, PoolKey calldata key, bytes calldata cursor)
+        external
+        view
+        returns (PoolTVL memory result, bytes memory nextCursor, bool done)
+    {
+        return _getPoolTVLPaged(manager, key, address(0), cursor, DEFAULT_PAGE_READS);
+    }
+
+    /// @inheritdoc IReservesLens
     function getPoolTVLPaged(
         IPoolManager manager,
         PoolKey calldata key,
@@ -123,6 +157,17 @@ contract ReservesLens is IReservesLens {
         bytes calldata cursor,
         uint32 maxReads
     ) external view returns (PoolTVL memory result, bytes memory nextCursor, bool done) {
+        if (maxReads == 0) maxReads = DEFAULT_PAGE_READS;
+        return _getPoolTVLPaged(manager, key, statsProvider, cursor, maxReads);
+    }
+
+    function _getPoolTVLPaged(
+        IPoolManager manager,
+        PoolKey calldata key,
+        address statsProvider,
+        bytes calldata cursor,
+        uint32 maxReads
+    ) private view returns (PoolTVL memory result, bytes memory nextCursor, bool done) {
         if (maxReads < MIN_PAGE_READS || maxReads > MAX_PAGE_READS) revert InvalidScanBudget(maxReads);
 
         PoolId poolId = key.toId();
@@ -136,6 +181,7 @@ contract ReservesLens is IReservesLens {
             if (state.contextHash != _contextHash(manager, poolId)) revert CursorContextMismatch();
             if (state.blockNumber != block.number) revert CursorBlockMismatch(state.blockNumber, block.number);
             if (state.bitPos > 256) revert InvalidCursor();
+            _verifyCursorSnapshot(manager, poolId, state);
         }
 
         (state, done) = _scan(manager, key.tickSpacing, poolId, state, maxReads);
@@ -225,6 +271,9 @@ contract ReservesLens is IReservesLens {
                 slots[i] = _tickBitmapSlot(poolId, int16(nextWord + int256(i)));
             }
             bytes32[] memory bitmaps = manager.extsload(slots);
+            if (bitmaps.length != count) {
+                revert ManagerBatchReadFailed(address(manager), slots[0], slots[count - 1], count);
+            }
 
             for (uint256 i; i < count; i++) {
                 state.wordPos = int16(nextWord + int256(i));
@@ -366,9 +415,17 @@ contract ReservesLens is IReservesLens {
 
         address provider = suppliedProvider == address(0) ? hook : suppliedProvider;
         result.statsProvider = provider;
+
+        // A gas-starved ERC165 probe or stats call fails in a way indistinguishable from a provider fault, so the
+        // reported status would depend on the caller's gas budget instead of on-chain state. Check headroom for the
+        // whole probe sequence up front and degrade to INSUFFICIENT_GAS; core fields are already populated.
+        if (gasleft() < HOOK_STATS_GAS_BUDGET) {
+            result.statsStatus = HookStatsStatus.INSUFFICIENT_GAS;
+            return;
+        }
+
         if (!ERC165Checker.supportsInterface(provider, type(IHookStats).interfaceId)) {
-            result.statsStatus =
-                suppliedProvider == address(0) ? HookStatsStatus.NOT_SUPPORTED : HookStatsStatus.INVALID_PROVIDER;
+            result.statsStatus = provider == hook ? HookStatsStatus.NOT_SUPPORTED : HookStatsStatus.INVALID_PROVIDER;
             return;
         }
 
@@ -411,22 +468,29 @@ contract ReservesLens is IReservesLens {
             return;
         }
 
-        result.statsStatus = suppliedProvider == address(0) ? HookStatsStatus.DIRECT : HookStatsStatus.EXTERNAL;
+        result.statsStatus = provider == hook ? HookStatsStatus.DIRECT : HookStatsStatus.EXTERNAL;
     }
 
     function _hookFailureStatus(StaticCallStatus status) private pure returns (HookStatsStatus) {
+        if (status == StaticCallStatus.INSUFFICIENT_GAS) return HookStatsStatus.INSUFFICIENT_GAS;
         return status == StaticCallStatus.FAILED ? HookStatsStatus.CALL_FAILED : HookStatsStatus.INVALID_RESPONSE;
     }
 
     /// @dev Bounds untrusted provider calls to HOOK_STATS_GAS_LIMIT so a malicious provider cannot consume the
     ///      caller's whole budget. EIP-150 forwards at most 63/64 of remaining gas, so the requested limit is only
-    ///      honored when enough gas remains; revert rather than let a starved provider be misclassified as CALL_FAILED.
+    ///      honored when enough gas remains. HOOK_STATS_GAS_BUDGET is checked before the probe sequence starts as a
+    ///      fast path, but memory expansion between the check and the final stats call scales with the free memory
+    ///      pointer (quadratic memory pricing after large scans or batches), so no constant overhead estimate can be
+    ///      guaranteed. A starved call therefore degrades to INSUFFICIENT_GAS status instead of reverting away the
+    ///      caller's completed core scan, and can never be misclassified as CALL_FAILED.
     function _boundedStaticcall(address target, bytes memory input, uint256 expectedSize)
         private
         view
         returns (StaticCallStatus status, bytes32 word0, bytes32 word1)
     {
-        if (gasleft() < (HOOK_STATS_GAS_LIMIT * 64) / 63 + 1_000) revert InsufficientGasForHookStats();
+        if (gasleft() < (HOOK_STATS_GAS_LIMIT * 64) / 63 + 1_000) {
+            return (StaticCallStatus.INSUFFICIENT_GAS, bytes32(0), bytes32(0));
+        }
 
         bool success;
         uint256 returnSize;
@@ -444,8 +508,22 @@ contract ReservesLens is IReservesLens {
         return (StaticCallStatus.SUCCESS, word0, word1);
     }
 
-    function _contextHash(IPoolManager manager, PoolId poolId) private pure returns (bytes32) {
-        return keccak256(abi.encode(address(manager), PoolId.unwrap(poolId)));
+    function _contextHash(IPoolManager manager, PoolId poolId) private view returns (bytes32) {
+        return keccak256(abi.encode(block.chainid, address(manager), PoolId.unwrap(poolId)));
+    }
+
+    /// @dev Anchors a resumed cursor's snapshot fields to live manager state. The scan-position and amount
+    ///      accumulator fields are inherently caller-trusted (only a rescan could validate them), but price, tick,
+    ///      and active liquidity are cheap to re-read, so a resumed page can never return forged snapshot metadata
+    ///      and same-block state drift (e.g. pages evaluated against a pending tag) fails loudly here instead of
+    ///      surfacing as a downstream invariant error attributed to the pool.
+    function _verifyCursorSnapshot(IPoolManager manager, PoolId poolId, ScanState memory state) private view {
+        (uint160 sqrtPriceX96, int24 currentTick,,) = manager.getSlot0(poolId);
+        if (sqrtPriceX96 == 0) revert PoolNotInitialized(poolId);
+        if (
+            sqrtPriceX96 != state.sqrtPriceX96 || currentTick != state.currentTick
+                || manager.getLiquidity(poolId) != state.activeLiquidity
+        ) revert CursorStateMismatch();
     }
 
     /// @dev Raw slot for pools[poolId].tickBitmap[wordPos], for the batched extsload in _scanComplete; single-word
