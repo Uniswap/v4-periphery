@@ -23,6 +23,9 @@ interface IV4Router is IImmutableState {
     error V4TooMuchRequestedPerHopSingle(uint256 minPrice, uint256 price);
     /// @notice Emitted when the length of the per-hop minimum price array is not zero and not equal to the path length
     error InvalidHopPriceLength();
+    /// @notice Emitted when an exactOutput swap (or hop) delivers less than the requested amount, e.g. a
+    ///         pool runs out of liquidity before the price limit. Exact output is all-or-nothing.
+    error V4ExactOutputUnfilled(uint256 amountOutRequested, uint256 amountOutReceived);
 
     /// @notice Parameters for a single-hop exact-input swap
     struct ExactInputSingleParams {

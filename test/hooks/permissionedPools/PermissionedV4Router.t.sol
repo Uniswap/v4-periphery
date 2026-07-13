@@ -1325,8 +1325,11 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     //////////////////////////////////////////////////////////////*/
 
     function test_swapExactOutputSingle_revertsForAmountIn() public {
-        uint256 amountOut = 1 ether;
-        uint256 expectedAmountIn = 369070324193623892281288;
+        // key0 (permissioned adapters) can deliver at most 19992 of output before the price hits the
+        // global limit; request a fillable amount so this exercises the amountInMaximum guard rather
+        // than the all-or-nothing underfill guard (V4ExactOutputUnfilled)
+        uint256 amountOut = 19992;
+        uint256 expectedAmountIn = 434604409;
 
         IV4Router.ExactOutputSingleParams memory params = IV4Router.ExactOutputSingleParams(
             key0, true, uint128(amountOut), uint128(expectedAmountIn - 1), 0, bytes("")
@@ -1336,9 +1339,7 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         bytes memory data = plan.finalizeSwap(key0.currency0, key0.currency1, ActionConstants.MSG_SENDER);
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IV4Router.V4TooMuchRequested.selector, expectedAmountIn - 1, 369070324193623892281288
-            )
+            abi.encodeWithSelector(IV4Router.V4TooMuchRequested.selector, expectedAmountIn - 1, expectedAmountIn)
         );
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
@@ -1406,8 +1407,11 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     }
 
     function test_swapExactOut_revertsForAmountIn() public {
-        uint256 amountOut = 1 ether;
-        uint256 expectedAmountIn = 369070324262815812743748;
+        // key0 (permissioned adapters) can deliver at most 19992 of output before the price hits the
+        // global limit; request a fillable amount so this exercises the amountInMaximum guard rather
+        // than the all-or-nothing underfill guard (V4ExactOutputUnfilled)
+        uint256 amountOut = 19992;
+        uint256 expectedAmountIn = 433302557;
 
         tokenPath.push(permissionsAdapter0Currency);
         tokenPath.push(permissionsAdapter1Currency);
