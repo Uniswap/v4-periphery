@@ -181,6 +181,33 @@ contract ReservesLensHookTest is Test, Deployers {
         assertEq(uint8(result.statsStatus), uint8(IReservesLens.HookStatsStatus.INVALID_PROVIDER));
     }
 
+    /// @dev The hook-stats path must degrade to INSUFFICIENT_GAS at ANY gas budget, never revert away the core
+    ///      scan. The stipend-boundary check inside _boundedStaticcall is exercised by a provider that legally
+    ///      consumes nearly its full stipend on every call, so a caller landing between the up-front budget check
+    ///      and the per-call threshold degrades instead of reverting. Core amounts must be intact either way.
+    function testFuzz_hookStats_anyGasBudgetDegradesNeverReverts(uint32 rawGas) public {
+        key = _initializeHookPool(MockHookStats.Mode.VALID_GAS_HEAVY);
+        IReservesLens.PoolTVL memory expected = lens.getPoolTVL(manager, key, address(0));
+        assertEq(uint8(expected.statsStatus), uint8(IReservesLens.HookStatsStatus.DIRECT));
+
+        // Lower bound comfortably covers the core scan so an out-of-gas in the scan itself (an ordinary OOG,
+        // not the guarantee under test) cannot trip the fuzz run; upper bound is well past the stats budget.
+        uint256 gasBudget = bound(uint256(rawGas), 900_000, 3_000_000);
+        IReservesLens.PoolTVL memory result = lens.getPoolTVL{gas: gasBudget}(manager, key, address(0));
+
+        assertEq(result.coreAmount0, expected.coreAmount0);
+        assertEq(result.coreAmount1, expected.coreAmount1);
+        assertEq(result.activeLiquidity, expected.activeLiquidity);
+        if (result.statsStatus == IReservesLens.HookStatsStatus.DIRECT) {
+            assertEq(result.hookReserves0, expected.hookReserves0);
+            assertEq(result.hookReserves1, expected.hookReserves1);
+        } else {
+            assertEq(uint8(result.statsStatus), uint8(IReservesLens.HookStatsStatus.INSUFFICIENT_GAS));
+            assertEq(result.hookReserves0, 0);
+            assertEq(result.hookReserves1, 0);
+        }
+    }
+
     function _initializeHookPool(MockHookStats.Mode mode) private returns (PoolKey memory poolKey) {
         MockHookStats implementation = new MockHookStats(hookAddress, mode);
         vm.etch(hookAddress, address(implementation).code);
