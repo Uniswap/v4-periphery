@@ -53,7 +53,7 @@ contract MockSwapRoute {
         permit2.transferFrom(msg.sender, address(this), uint160(pull), surplus);
 
         uint256 out = surplusIsToken0
-            ? FullMath.mulDiv(pull, midRateX96, FixedPoint96.Q96) // token0 -> token1
+            ? FullMath.mulDiv(pull, midRateX96, FixedPoint96.Q96)  // token0 -> token1
             : FullMath.mulDiv(pull, FixedPoint96.Q96, midRateX96); // token1 -> token0
         out = (out * rateMultBps) / 10000;
         IERC20Min(deficit).transfer(msg.sender, out);
