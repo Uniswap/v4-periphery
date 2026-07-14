@@ -142,6 +142,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         checkDeadline(params.deadline)
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
+        _validateRecipient(params.recipient);
         _pullBudget(params.poolKey, params.amount0In, params.amount1In);
         // unlock the pool manager and trigger the callback with the ADD operation.
         bytes memory result = poolManager.unlock(abi.encode(OP_ADD, abi.encode(params)));
@@ -163,6 +164,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         (PoolKey memory key,) = positionManager.getPoolAndPositionInfo(params.tokenId);
         // ensure caller is owner or an approved operator. Only the position owner can set a new recipient.
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
+        _validateRecipient(recipient);
         // pull funds from msg.sender (same as add()'s _pullBudget), if additionalA/B is positive. If its
         // negative, funds will be returned during the unlock once we know the withdrawn amounts.
         _pullAdditional(key, params.additionalA, params.additionalB);
@@ -185,6 +187,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     {
         // read the position's pool + existing range; the increase deploys into that same range/tokenId.
         (PoolKey memory key, PositionInfo info) = positionManager.getPoolAndPositionInfo(params.tokenId);
+        _validateRecipient(params.recipient);
         // pull funds from msg.sender (same as add()'s _pullBudget). The position only grows for whoever owns it,
         // so no CALLER auth is needed. POSM still gates INCREASE_LIQUIDITY on this contract being approved on the
         // tokenId (the owner grants that, same as for compound/rebalance).
@@ -207,6 +210,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // fees of the pool are used as funds for the compound operation, so only a valid owner or operator can compound,
         // ensuring a trusted route and liquidity threshold is used. Dust is forced to the owner if caller is an operator.
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
+        _validateRecipient(recipient);
         // unlock the pool manager and trigger the callback with the COMPOUND operation.
         bytes memory result = poolManager.unlock(abi.encode(OP_COMPOUND, abi.encode(params, recipient)));
         // decode the result of the callback.
@@ -450,7 +454,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         //    just to be handed back by the trim. Settle the surplus the swap consumed.
         uint256 surplusBal = surplus.balanceOfSelf();
         if (surplusBal > 0) {
-            _swap(cp.key, zeroForOne, -surplusBal.toInt256());
+            _swap(cp.key, zeroForOne, -surplusBal.toInt256(), cp.hookData);
             _settleToward(surplus);
         }
 
@@ -468,7 +472,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         _takeCredit(deficit);
         uint256 excessDeficit = deficit.balanceOfSelf();
         if (excessDeficit > 1) {
-            _swap(cp.key, !zeroForOne, -excessDeficit.toInt256()); // deficit -> surplus exact-input
+            _swap(cp.key, !zeroForOne, -excessDeficit.toInt256(), cp.hookData); // deficit -> surplus exact-input
             _settleToward(deficit);
         }
         _takeCredit(surplus);
@@ -703,7 +707,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     /// @dev Same-pool swap with no price limit: `minLiquidity` on the final position is the slippage gate, and
     ///      the input is bounded by the operation's own holdings (see the reconcile notes in ISwapAndAdd).
-    function _swap(PoolKey memory key, bool zeroForOne, int256 amountSpecified) internal {
+    ///      Forward the operation's hookData just like the associated liquidity actions.
+    function _swap(PoolKey memory key, bool zeroForOne, int256 amountSpecified, bytes memory hookData) internal {
         poolManager.swap(
             key,
             SwapParams({
@@ -711,7 +716,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
                 amountSpecified: amountSpecified,
                 sqrtPriceLimitX96: zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
             }),
-            ""
+            hookData
         );
     }
 
@@ -815,6 +820,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev Only ever called for this contract settling its own delta; we hold the tokens, so transfer them.
     function _pay(Currency currency, address, uint256 amount) internal override {
         currency.transfer(address(poolManager), amount);
+    }
+
+    /// @dev Sending output here would strand it and violate the no-funds-at-rest invariant.
+    function _validateRecipient(address recipient) internal view {
+        if (recipient == address(this)) revert InvalidRecipient(recipient);
     }
 
     /// @dev Revert unless msg.sender is the position owner or an ERC-721-approved operator for it, and resolve

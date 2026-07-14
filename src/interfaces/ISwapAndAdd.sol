@@ -38,12 +38,28 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 ///      liquidity). Hooks that skim swap output or withdrawal amounts break that identity; on such pools the
 ///      call may revert atomically inside the unlock (CurrencyNotSettled) — funds are safe, but the operation
 ///      can be unusable there.
+///
+///      DYNAMIC-FEE NOTE: optimistic sizing uses the pool's stored Slot0 LP fee. A `beforeSwap` hook may select a
+///      different per-swap override that cannot be generically previewed (it may depend on the caller, amount,
+///      hookData or mutable state). The actual override is charged by the reconcile swap; if it is higher than
+///      the stored fee, the position is trimmed further. `minLiquidity` is checked only after that trim and is
+///      therefore the safety/slippage boundary for dynamic-fee pools as well. The call either meets the floor or
+///      reverts atomically; only the optimistic sizing and gas efficiency can differ from the Slot0 estimate.
+///      The same `hookData` is presented to every hook callback the operation triggers — up to four liquidity
+///      actions (burn/collect, mint/increase, trim) and two reconcile swaps — so hooks must tolerate the
+///      payload being reused; single-use/nonce payload schemes are unsupported.
+///
+///      ETH NOTE: inherited Permit2 forwarding calls are payable for composability even though they consume no
+///      ETH. Do not attach value to them. Such value is an unsolicited donation and may be swept to the recipient
+///      of a later operation involving native ETH; it does not create a claim for the sender.
 interface ISwapAndAdd {
     error DeadlinePassed(uint256 deadline);
     error InvalidEthValue();
     /// @notice Plain ETH transfers are rejected; only the PoolManager, POSM and the Universal Router may send.
     error InvalidEthSender();
     error InsufficientLiquidity(uint128 minLiquidity, uint128 liquidity);
+    /// @notice Output may not be sent to this contract, where it would violate the no-funds-at-rest invariant.
+    error InvalidRecipient(address recipient);
     error NotAuthorizedForToken(uint256 tokenId);
     /// @notice A negative `additionalA/additionalB` (return-to-wallet) asked for more than was withdrawn.
     error ReturnExceedsWithdrawn(uint256 requested, uint256 withdrawn);
@@ -61,8 +77,9 @@ interface ISwapAndAdd {
     ///                      Permit2 allowances / native value), whatever it does not consume stays in the contract
     ///                      for the same-pool reconcile, and native value left in the router is reclaimed.
     /// @param minLiquidity  Slippage floor: revert if the resulting (post-trim) position liquidity < minLiquidity.
-    /// @param recipient     Receives the POSM NFT (after the unlock) and any swept leftover input token.
-    /// @param hookData      Hook data forwarded to the position mint.
+    /// @param recipient     Receives the POSM NFT (after the unlock) and any swept leftover input token. Must not
+    ///                      be this SwapAndAdd contract.
+    /// @param hookData      Hook data forwarded to the position mint, reconcile swaps and any trim.
     /// @param deadline      Tx reverts after this timestamp.
     struct AddParams {
         PoolKey poolKey;
@@ -95,7 +112,8 @@ interface ISwapAndAdd {
     ///                          funding semantics as in `AddParams.route`).
     /// @param minLiquidityAdded Slippage floor: revert if the liquidity added to the position < this.
     /// @param recipient         Receives any swept leftover input-token dust (NOT the position — that stays put).
-    /// @param hookData          Hook data forwarded to the increase.
+    ///                          Must not be this SwapAndAdd contract.
+    /// @param hookData          Hook data forwarded to the increase, reconcile swaps and any trim.
     /// @param deadline          Tx reverts after this timestamp.
     struct IncreaseParams {
         uint256 tokenId;
@@ -145,7 +163,8 @@ interface ISwapAndAdd {
     /// @param recipient     Receives the new POSM NFT, any returned (negative-delta) share, and any swept dust.
     ///                      HONORED ONLY when the caller is the position owner; if an approved operator calls,
     ///                      all output is forced to the owner so an operator can never redirect value to itself.
-    /// @param hookData      Hook data forwarded to the mint.
+    ///                      The resolved recipient must not be this SwapAndAdd contract.
+    /// @param hookData      Hook data forwarded to the burn/mint, reconcile swaps and any trim.
     /// @param deadline      Tx reverts after this timestamp.
     struct RebalanceParams {
         uint256 tokenId;
@@ -194,7 +213,8 @@ interface ISwapAndAdd {
     /// @param minLiquidityAdded Slippage floor: revert if the liquidity added by compounding < this.
     /// @param recipient         Receives any swept rounding dust (the fees themselves are reinvested, not paid out).
     ///                          Honored only when the caller is the owner; forced to the owner for an operator.
-    /// @param hookData          Hook data forwarded to the fee collect and the increase.
+    ///                          The resolved recipient must not be this SwapAndAdd contract.
+    /// @param hookData          Hook data forwarded to the fee collect, increase, reconcile swaps and any trim.
     /// @param deadline          Tx reverts after this timestamp.
     struct CompoundParams {
         uint256 tokenId;
