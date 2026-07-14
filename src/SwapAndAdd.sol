@@ -49,8 +49,8 @@ import {IUniversalRouter} from "./interfaces/external/IUniversalRouter.sol";
 ///
 ///         Why route *before* mint:
 ///           The same-pool reconcile swap moves the pool price. If we sized/minted *after* it, the position's
-///           required ratio would depend on the swap we are still computing — a circular dependency (the
-///           Aperture problem). Minting *first* fixes the position's composition at the live price, so the
+///           required ratio would depend on the swap we are still computing — a circular dependency.
+///           Minting *first* fixes the position's composition at the live price, so the
 ///           reconcile swap can move the price freely without invalidating the mint. The *route* is a black
 ///           box that simply runs first — whatever state it leaves (balances and pool price alike, it may even
 ///           touch this pool) is re-read and used as the source of truth for sizing. `minLiquidity` checked on
@@ -75,6 +75,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     using PositionInfoLibrary for PositionInfo;
     using SafeCast for uint256;
 
+    /// @dev Allowances to POSM and the Universal Router should never expire.
     uint48 private constant ALLOWANCE_EXPIRATION = type(uint48).max;
     /// @dev v4 fees are expressed in pips (millionths).
     uint256 private constant PIPS_DENOMINATOR = 1e6;
@@ -82,6 +83,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     uint128 private constant REFERENCE_LIQUIDITY = 1e18;
     /// @dev universal-router Commands.SWEEP — used to reclaim native value a route left in the UR.
     uint256 private constant UR_SWEEP_COMMAND = 0x04;
+
+    /// @dev Internal operation commands to identify the operation type in the unlock callback.
     uint256 private constant OP_ADD = 0;
     uint256 private constant OP_REBALANCE = 1;
     uint256 private constant OP_COMPOUND = 2;
@@ -102,10 +105,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     IPositionManager public immutable positionManager;
     IUniversalRouter public immutable universalRouter;
-
-    /// @dev Tokens already wired up: max-approved to Permit2, with standing Permit2 allowances for POSM and the
-    ///      UR. Safe under the no-funds-at-rest invariant documented on the contract.
-    mapping(address token => bool) private _tokenApproved;
 
     modifier checkDeadline(uint256 deadline) {
         if (block.timestamp > deadline) revert DeadlinePassed(deadline);
@@ -143,7 +142,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         _pullBudget(params.poolKey, params.amount0In, params.amount1In);
+        // unlock the pool manager and trigger the callback with the ADD operation.
         bytes memory result = poolManager.unlock(abi.encode(OP_ADD, abi.encode(params)));
+        // decode the result of the callback.
         (tokenId, liquidity, amount0, amount1) = abi.decode(result, (uint256, uint128, uint256, uint256));
         // the position was minted to this contract so it could be trimmed; hand it to the recipient now that
         // the pool is locked again.
@@ -159,13 +160,17 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         returns (uint256 newTokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         (PoolKey memory key,) = positionManager.getPoolAndPositionInfo(params.tokenId);
+        // ensure caller is owner or an approved operator. Only the position owner can set a new recipient.
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
-        // pull any positive (add) deltas here, where msg.sender is the caller (mirrors add()'s _pullBudget);
-        // negative (return) deltas are handled inside the unlock once we know the withdrawn amounts.
+        // pull funds from msg.sender (same as add()'s _pullBudget), if additionalA/B is positive. If its
+        // negative, funds will be returned during the unlock once we know the withdrawn amounts.
         _pullAdditional(key, params.additionalA, params.additionalB);
 
+        // unlock the pool manager and trigger the callback with the REBALANCE operation.
         bytes memory result = poolManager.unlock(abi.encode(OP_REBALANCE, abi.encode(params, key, recipient)));
+        // decode the result of the callback.
         (newTokenId, liquidity, amount0, amount1) = abi.decode(result, (uint256, uint128, uint256, uint256));
+        // transfer the newly created position NFT to the recipient.
         ERC721(address(positionManager)).transferFrom(address(this), recipient, newTokenId);
     }
 
@@ -179,13 +184,16 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     {
         // read the position's pool + existing range; the increase deploys into that same range/tokenId.
         (PoolKey memory key, PositionInfo info) = positionManager.getPoolAndPositionInfo(params.tokenId);
-        // pull the caller's budget here (mirrors add()'s _pullBudget) — funds come from msg.sender, the position
-        // only grows for whoever owns it, so no CALLER auth is needed. POSM still gates INCREASE_LIQUIDITY on this
-        // contract being approved on the tokenId (the owner grants that, same as for compound/rebalance).
+        // pull funds from msg.sender (same as add()'s _pullBudget). The position only grows for whoever owns it,
+        // so no CALLER auth is needed. POSM still gates INCREASE_LIQUIDITY on this contract being approved on the
+        // tokenId (the owner grants that, same as for compound/rebalance).
         _pullBudget(key, params.amount0In, params.amount1In);
+        // unlock the pool manager and trigger the callback with the INCREASE operation.
         bytes memory result =
             poolManager.unlock(abi.encode(OP_INCREASE, abi.encode(params, key, info.tickLower(), info.tickUpper())));
+        // decode the result of the callback.
         (liquidityAdded, amount0, amount1) = abi.decode(result, (uint128, uint256, uint256));
+        // positionNFT stays with the original owner, so no transfer is needed.
     }
 
     /// @inheritdoc ISwapAndAdd
@@ -195,37 +203,29 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         checkDeadline(params.deadline)
         returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
     {
-        // the position NFT never moves and only grows, so forcing an operator's (dust) sweep to the owner is
-        // belt-and-braces.
+        // fees of the pool are used as funds for the compound operation, so only a valid owner or operator can compound,
+        // ensuring a trusted route and liquidity threshold is used. Dust is forced to the owner if caller is an operator.
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
+        // unlock the pool manager and trigger the callback with the COMPOUND operation.
         bytes memory result = poolManager.unlock(abi.encode(OP_COMPOUND, abi.encode(params, recipient)));
+        // decode the result of the callback.
         (liquidityAdded, amount0, amount1) = abi.decode(result, (uint128, uint256, uint256));
-    }
-
-    /// @dev Revert unless msg.sender is the position owner or an ERC-721-approved operator for it, and resolve
-    ///      where the operation's output goes: only the owner may name a custom recipient. For an approved
-    ///      operator ALL output (a new NFT, any cash-out, swept dust) is forced to the owner, so a standing
-    ///      NFT approval can never be used to redirect the position's value to the operator.
-    function _authAndResolveRecipient(uint256 tokenId, address requested) internal view returns (address) {
-        // POSM IS a solmate ERC721 (via ERC721Permit_v4); IPositionManager just doesn't declare that surface.
-        ERC721 posm = ERC721(address(positionManager));
-        address owner = posm.ownerOf(tokenId);
-        if (msg.sender == owner) return requested;
-        if (posm.getApproved(tokenId) != msg.sender && !posm.isApprovedForAll(owner, msg.sender)) {
-            revert NotAuthorizedForToken(tokenId);
-        }
-        return owner;
     }
 
     // ───────────────────────────────────────────── unlock callback ─────────────────────────────────────────────
 
+    /// @notice Callback function triggered by the pool manager and handles the different operations.
+    /// @dev Protected by SafeCallback.onlyPoolManager modifier.
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         (uint256 op, bytes memory inner) = abi.decode(data, (uint256, bytes));
+        // handle the COMPOUND operation.
         if (op == OP_COMPOUND) {
             (CompoundParams memory cparams, address recipient) = abi.decode(inner, (CompoundParams, address));
+            // collect the fees to the contract, then calls _addCore, increasing the position in place 
             (uint128 liqAdded, uint256 added0, uint256 added1) = _compound(cparams, recipient);
             return abi.encode(liqAdded, added0, added1);
         }
+        // handle the INCREASE operation.
         if (op == OP_INCREASE) {
             (IncreaseParams memory p, PoolKey memory key, int24 tickLower, int24 tickUpper) =
                 abi.decode(inner, (IncreaseParams, PoolKey, int24, int24));
@@ -245,7 +245,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             return abi.encode(liqAdded, added0, added1);
         }
 
+        // Only reached by ADD or REBALANCE operations.
         CoreParams memory cp;
+        // prepare the ADD operation.
         if (op == OP_ADD) {
             AddParams memory p = abi.decode(inner, (AddParams));
             cp = CoreParams({
@@ -260,11 +262,12 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
                 hookData: p.hookData
             });
         } else {
+            // prepare the REBALANCE operation by burning the position and resolving the budget.
             (RebalanceParams memory p, PoolKey memory key, address recipient) =
                 abi.decode(inner, (RebalanceParams, PoolKey, address));
             cp = _prepareRebalance(p, key, recipient);
         }
-        // tokenId 0 -> _addCore MINTs a new position.
+        // tokenId 0 -> _addCore MINTs a new position. Both ADD and REBALANCE create a new position.
         (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = _addCore(cp, 0);
         return abi.encode(tokenId, liq, a0, a1);
     }
@@ -274,13 +277,16 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      this contract's balance); negative deltas are returned to the recipient HERE, before the add flow runs.
     ///      Returning the cash-out share up front is what keeps the accounting safe: the contract is then left
     ///      holding exactly the redeploy budget, so every `balanceOfSelf()` read in `_addCore` (the route, the
-    ///      reconcile's sell-all, the mint settle) sees only what should be deployed — never the portion owed back.
+    ///      reconcile's sell-all, the mint settle) sees only what should be deployed, never the portion owed back.
+    /// @dev reverts with `ReturnExceedsWithdrawn` if the negative delta exceeds the positions balance.
     function _prepareRebalance(RebalanceParams memory p, PoolKey memory key, address recipient)
         internal
         returns (CoreParams memory cp)
     {
-        _withdraw(key, p.tokenId, p.hookData); // burn the full position; tokens land in this contract.
+        // burn the full position. Tokens land in this contract.
+        _withdraw(key, p.tokenId, p.hookData);
 
+        // Create the CoreParams with the remaining budget of the withdrawal after _resolveBudget.
         cp = CoreParams({
             key: key,
             tickLower: p.newTickLower,
@@ -300,11 +306,14 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      recipient now (clamped: it may not exceed the withdrawn balance) and redeploy the remainder.
     function _resolveBudget(Currency currency, int128 delta, address recipient) internal returns (uint256 budget) {
         uint256 held = currency.balanceOfSelf();
-        if (delta >= 0) return held; // withdrawn + (pre-pulled) additional
+        if (delta >= 0) return held; // withdrawn + (pre-pulled) additional tokens
         // widen before negating: -int128 would overflow on type(int128).min
         uint256 toReturn = uint256(-int256(delta));
+        // Check if the amount to return exceeds the held balance.
         if (toReturn > held) revert ReturnExceedsWithdrawn(toReturn, held);
+        // Return the requested amount of tokens to the recipient.
         currency.transfer(recipient, toReturn);
+        // Return the remaining budget.
         return held - toReturn;
     }
 
@@ -318,6 +327,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         internal
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
+        // ensure the contract has standing allowances for permit2 and UR / PositionManager via Permit2.
         _ensureApproved(cp.key.currency0);
         _ensureApproved(cp.key.currency1);
 
@@ -325,6 +335,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         //    re-read balances — the post-route state is the source of truth we size from, not an estimate.
         if (cp.route.length != 0) {
             _runRoute(cp);
+            // update the budget after the route has run.
             cp.budget0 = cp.key.currency0.balanceOfSelf();
             cp.budget1 = cp.key.currency1.balanceOfSelf();
         }
@@ -335,14 +346,16 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         _flashTakeDeficit(cp, a0opt, a1opt);
         tokenId = _deploy(cp, existingTokenId, lopt, a0opt);
 
-        // 3. reconcile any residual same-pool (in whichever direction is short) and trim to the exact funded size.
+        // 3. same-pool swap to reconcile whichever side is short (if any), then trim the optimistic
+        //    size down to what the holdings actually funded.
         uint128 trimmed = _reconcile(cp, tokenId, lopt, a0opt, a1opt);
         liquidity = lopt - trimmed;
 
         // 4. slippage floor — the single gate for the whole operation.
         if (liquidity < cp.minLiquidity) revert InsufficientLiquidity(uint128(cp.minLiquidity), liquidity);
 
-        // 5. report the position's composition; sweep any leftover (small, in the input token) to the recipient.
+        // 5. report the position's composition; sweep all remaining balances to the recipient (no-funds-at-rest). 
+        // _reconcile parks rounding dust in the surplus side, whichever that is.
         (amount0, amount1) = _positionAmounts(cp, liquidity);
         _sweep(cp.key.currency0, cp.recipient);
         _sweep(cp.key.currency1, cp.recipient);
@@ -387,6 +400,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         internal
         returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
     {
+        // get the pool key and position info.
+        // unlike rebalance/increase, compound pulls no caller funds pre-unlock, so key is first needed here.
         (PoolKey memory key, PositionInfo info) = positionManager.getPoolAndPositionInfo(p.tokenId);
 
         // collect fees only: DECREASE by 0 liquidity credits the accrued fees, TAKE_PAIR pulls them here.
@@ -649,6 +664,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         uint256 urBalanceBefore = address(universalRouter).balance;
         universalRouter.execute{value: value}(commands, inputs);
+        // ensure the route sweeps all native tokens.
         if (address(universalRouter).balance > urBalanceBefore) {
             bytes[] memory sweepInputs = new bytes[](1);
             // token ETH (address(0)), recipient MSG_SENDER (UR maps it back to this contract), no minimum.
@@ -712,14 +728,20 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     function _pullBudget(PoolKey memory key, uint256 amount0In, uint256 amount1In) internal {
         uint256 expectedValue;
         Currency c0 = key.currency0;
+
+        // currency0 can either be native or an ERC-20
         if (c0.isAddressZero()) {
+            // amountIn must match msg.value
             expectedValue = amount0In;
         } else if (amount0In > 0) {
             permit2.transferFrom(msg.sender, address(this), amount0In.toUint160(), Currency.unwrap(c0));
         }
+
+        // currency1 is always an ERC-20
         if (amount1In > 0) {
             permit2.transferFrom(msg.sender, address(this), amount1In.toUint160(), Currency.unwrap(key.currency1));
         }
+        // if currency0 is native, msg.value must match amount0In, otherwise msg.value must be zero
         if (msg.value != expectedValue) revert InvalidEthValue();
     }
 
@@ -742,17 +764,34 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (msg.value != expectedValue) revert InvalidEthValue();
     }
 
-    /// @dev First time a token is seen: max-approve it to Permit2 and grant standing max Permit2 allowances to
-    ///      POSM and the UR — both only ever pull from their direct caller (this contract), which holds nothing
-    ///      at rest (see the contract-level INVARIANT), so a standing allowance grants no more than the bounded
+    /// @dev Wires a token up: max-approves it to Permit2 and grants standing max Permit2 allowances to POSM
+    ///      and the UR — both only ever pull from their direct caller (this contract), which holds nothing at
+    ///      rest (see the contract-level INVARIANT), so a standing allowance grants no more than the bounded
     ///      per-operation allowance it replaces while saving an allowance write on every subsequent operation.
+    ///      Already-wired is detected from live state (cheaper than a flag: both slots are re-read by the
+    ///      operation's own pulls): the Permit2 allowance for POSM is the init marker — only this contract can
+    ///      write it and max never decrements or expires; the token's own allowance can't be it, some tokens
+    ///      hardcode an infinite Permit2 allowance — plus a headroom re-check that heals tokens whose
+    ///      allowance decrements even from max (no single Permit2 pull can exceed uint160).
     function _ensureApproved(Currency currency) internal {
+        // skip approval for native token
         if (currency.isAddressZero()) return;
+
         address token = Currency.unwrap(currency);
-        if (_tokenApproved[token]) return;
-        _tokenApproved[token] = true;
-        // safeApprove: tokens that return nothing (e.g. USDT) would revert a plain IERC20.approve on decode.
-        SafeTransferLib.safeApprove(ERC20(token), address(permit2), type(uint256).max);
+        // check the standing allowance with permit2 for the position manager.
+        (uint160 permitted,,) = permit2.allowance(address(this), token, address(positionManager));
+        // check the standing allowance with the token for permit2.
+        uint256 tokenAllowance = ERC20(token).allowance(address(this), address(permit2));
+        // if both allowances are set, skip renewal. UR is guaranteed to have a standing allowance as well.
+        if (permitted == type(uint160).max && tokenAllowance >= type(uint160).max) return;
+
+        // Skipped entirely when the token hardcodes an infinite Permit2 allowance.
+        if (tokenAllowance != type(uint256).max) {
+            // zero-first for approve-race tokens (USDT). Only reachable on a heal, since a first init starts from zero)
+            if (tokenAllowance != 0) SafeTransferLib.safeApprove(ERC20(token), address(permit2), 0);
+            // safeApprove: tokens that return nothing (e.g. USDT) would revert a plain IERC20.approve on decode.
+            SafeTransferLib.safeApprove(ERC20(token), address(permit2), type(uint256).max);
+        }
         permit2.approve(token, address(positionManager), type(uint160).max, ALLOWANCE_EXPIRATION);
         permit2.approve(token, address(universalRouter), type(uint160).max, ALLOWANCE_EXPIRATION);
     }
@@ -766,5 +805,20 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev Only ever called for this contract settling its own delta; we hold the tokens, so transfer them.
     function _pay(Currency currency, address, uint256 amount) internal override {
         currency.transfer(address(poolManager), amount);
+    }
+
+    /// @dev Revert unless msg.sender is the position owner or an ERC-721-approved operator for it, and resolve
+    ///      where the operation's output goes: only the owner may name a custom recipient. For an approved
+    ///      operator ALL output (a new NFT, any cash-out, swept dust) is forced to the owner, so a standing
+    ///      NFT approval can never be used to redirect the position's value to the operator.
+    function _authAndResolveRecipient(uint256 tokenId, address requested) internal view returns (address) {
+        // POSM IS a solmate ERC721 (via ERC721Permit_v4); IPositionManager just doesn't declare that surface.
+        ERC721 posm = ERC721(address(positionManager));
+        address owner = posm.ownerOf(tokenId);
+        if (msg.sender == owner) return requested;
+        if (posm.getApproved(tokenId) != msg.sender && !posm.isApprovedForAll(owner, msg.sender)) {
+            revert NotAuthorizedForToken(tokenId);
+        }
+        return owner;
     }
 }
