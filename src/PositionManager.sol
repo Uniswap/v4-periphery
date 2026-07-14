@@ -200,7 +200,7 @@ contract PositionManager is
                 _increase(tokenId, liquidity, amount0Max, amount1Max, hookData);
                 return;
             } else if (action == Actions.INCREASE_LIQUIDITY_FROM_DELTAS) {
-                // DEPRECATED - vulnerable to sandwich attacks, do not use. See _increaseFromDeltas().
+                // DEPRECATED - vulnerable to sandwich attacks, do not use. See _increase() instead.
                 (uint256 tokenId, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData) =
                     params.decodeIncreaseLiquidityFromDeltasParams();
                 _increaseFromDeltas(tokenId, amount0Max, amount1Max, hookData);
@@ -224,7 +224,7 @@ contract PositionManager is
                 _mint(poolKey, tickLower, tickUpper, liquidity, amount0Max, amount1Max, _mapRecipient(owner), hookData);
                 return;
             } else if (action == Actions.MINT_POSITION_FROM_DELTAS) {
-                // DEPRECATED - vulnerable to sandwich attacks, do not use. See _mintFromDeltas().
+                // DEPRECATED - vulnerable to sandwich attacks, do not use. See _mint() instead.
                 (
                     PoolKey calldata poolKey,
                     int24 tickLower,
