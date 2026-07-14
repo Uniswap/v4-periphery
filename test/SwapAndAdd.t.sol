@@ -15,6 +15,8 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {LPFeeLibrary} from "@uniswap/v4-core/src/libraries/LPFeeLibrary.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 
@@ -25,6 +27,7 @@ import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
 import {MockERC20ApproveNoReturn} from "./mocks/MockERC20ApproveNoReturn.sol";
 import {MockERC20Permit2Native} from "./mocks/MockERC20Permit2Native.sol";
 import {MockERC20ApproveRace} from "./mocks/MockERC20ApproveRace.sol";
+import {MockDynamicFeeHook} from "./mocks/MockDynamicFeeHook.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
@@ -137,6 +140,31 @@ contract SwapAndAddTest is PosmTestSetup {
         assertGt(liq, 0, "liquidity minted");
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+    }
+
+    /// @dev All output-producing operations reject this contract as recipient, preserving no-funds-at-rest.
+    function test_revertsWhenRecipientIsZap() public {
+        ISwapAndAdd.AddParams memory addParams = _addParams(0, 10e18);
+        addParams.recipient = address(zap);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(zap)));
+        zap.add(addParams);
+
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+
+        ISwapAndAdd.IncreaseParams memory increaseParams = _increaseParams(tokenId, 0, 10e18);
+        increaseParams.recipient = address(zap);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(zap)));
+        zap.increase(increaseParams);
+
+        ISwapAndAdd.RebalanceParams memory rebalanceParams = _rebalanceParams(tokenId, 0, 0);
+        rebalanceParams.recipient = address(zap);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(zap)));
+        zap.rebalance(rebalanceParams);
+
+        ISwapAndAdd.CompoundParams memory compoundParams = _compoundParams(tokenId, 0);
+        compoundParams.recipient = address(zap);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(zap)));
+        zap.compound(compoundParams);
     }
 
     // ─────────────────────────── increase (top up an existing position) ───────────────────────────
@@ -407,6 +435,45 @@ contract SwapAndAddTest is PosmTestSetup {
         // and the other surplus direction (token1 surplus -> one-for-zero reconcile)
         (, uint128 liq1,,) = zap.add(_addParams(0, 10e18));
         assertGt(liq1, 0, "liquidity minted, token1-surplus direction");
+    }
+
+    /// @dev A dynamic `beforeSwap` override is not visible in Slot0 sizing. The real fee is nevertheless applied
+    ///      during reconcile, hookData reaches the hook, trim absorbs the difference, and the final liquidity
+    ///      floor remains authoritative.
+    function test_add_dynamicFeeOverride_forwardsHookDataAndHonorsFinalFloor() public {
+        bytes memory hookData = abi.encode("swap-and-add dynamic hook authorization");
+        address hookAddress = address(uint160(Hooks.BEFORE_SWAP_FLAG));
+        MockDynamicFeeHook implementation = new MockDynamicFeeHook();
+        vm.etch(hookAddress, address(implementation).code);
+        MockDynamicFeeHook hook = MockDynamicFeeHook(hookAddress);
+        hook.configure(hookData, 0);
+
+        (PoolKey memory dynamicKey,) = initPoolAndAddLiquidity(
+            currency0, currency1, IHooks(hookAddress), LPFeeLibrary.DYNAMIC_FEE_FLAG, SQRT_PRICE_1_1
+        );
+        seedMoreLiquidity(dynamicKey, 1_000e18, 1_000e18);
+
+        ISwapAndAdd.AddParams memory p = _addParams(10e18, 0);
+        p.poolKey = dynamicKey;
+        p.hookData = hookData;
+
+        uint256 baselineSnapshot = vm.snapshotState();
+        (, uint128 zeroFeeLiquidity,,) = zap.add(p);
+        assertGt(hook.beforeSwapCalls(), 0, "reconcile forwarded hookData to beforeSwap");
+        vm.revertToState(baselineSnapshot);
+
+        hook.setFee(100_000); // 10% actual fee; Slot0 remains at its stored 0 fee
+        uint256 highFeeSnapshot = vm.snapshotState();
+        (, uint128 highFeeLiquidity,,) = zap.add(p);
+        assertLt(highFeeLiquidity, zeroFeeLiquidity, "override fee caused a larger trim");
+        assertGt(hook.beforeSwapCalls(), 0, "dynamic-fee reconcile swap ran");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+        vm.revertToState(highFeeSnapshot);
+
+        p.minLiquidity = zeroFeeLiquidity;
+        vm.expectPartialRevert(ISwapAndAdd.InsufficientLiquidity.selector);
+        zap.add(p);
     }
 
     function test_rebalance_revertsIfNotAuthorized() public {
