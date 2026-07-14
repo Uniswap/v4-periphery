@@ -79,8 +79,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     uint48 private constant ALLOWANCE_EXPIRATION = type(uint48).max;
     /// @dev v4 fees are expressed in pips (millionths).
     uint256 private constant PIPS_DENOMINATOR = 1e6;
-    /// @dev Reference liquidity the sizing math scales from; see `_sizeLiquidityWeighted`.
-    uint128 private constant REFERENCE_LIQUIDITY = 1e18;
+    /// @dev Reference liquidity the sizing math scales from; max so the reference amounts stay far above their
+    ///      wei rounding even for narrow ranges at extreme ticks (see `_sizeLiquidityWeighted`).
+    uint128 private constant REFERENCE_LIQUIDITY = type(uint128).max;
     /// @dev universal-router Commands.SWEEP — used to reclaim native value a route left in the UR.
     uint256 private constant UR_SWEEP_COMMAND = 0x04;
 
@@ -221,7 +222,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // handle the COMPOUND operation.
         if (op == OP_COMPOUND) {
             (CompoundParams memory cparams, address recipient) = abi.decode(inner, (CompoundParams, address));
-            // collect the fees to the contract, then calls _addCore, increasing the position in place 
+            // collect the fees to the contract, then calls _addCore, increasing the position in place
             (uint128 liqAdded, uint256 added0, uint256 added1) = _compound(cparams, recipient);
             return abi.encode(liqAdded, added0, added1);
         }
@@ -354,7 +355,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // 4. slippage floor — the single gate for the whole operation.
         if (liquidity < cp.minLiquidity) revert InsufficientLiquidity(uint128(cp.minLiquidity), liquidity);
 
-        // 5. report the position's composition; sweep all remaining balances to the recipient (no-funds-at-rest). 
+        // 5. report the position's composition; sweep all remaining balances to the recipient (no-funds-at-rest).
         // _reconcile parks rounding dust in the surplus side, whichever that is.
         (amount0, amount1) = _positionAmounts(cp, liquidity);
         _sweep(cp.key.currency0, cp.recipient);
@@ -370,12 +371,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         returns (uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         (uint160 sqrtPriceX96,, uint24 protocolFee, uint24 lpFee) = poolManager.getSlot0(cp.key.toId());
+        // the sizing math divides by the price; only initialized pools guarantee sp >= MIN_SQRT_PRICE.
+        if (sqrtPriceX96 == 0) revert IPoolManager.PoolNotInitialized();
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cp.tickLower);
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cp.tickUpper);
-        // mid price (token1 per token0, Q96): the value-conservation reference for sizing L from the budget.
-        uint256 midRateX96 = FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, FixedPoint96.Q96);
-        liquidity =
-            _sizeFeeAware(sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, midRateX96, protocolFee, lpFee);
+        liquidity = _sizeFeeAware(sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, protocolFee, lpFee);
         (amount0, amount1) = _getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
     }
 
@@ -509,60 +509,70 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     /// @dev Fee-aware sizing. First size at mid to find which side is the surplus (the side the same-pool
     ///      reconcile will swap), then re-size discounting that side's value by that swap direction's total
-    ///      fee, so we don't over-mint by a fee the trim would otherwise have to claw back. If the holdings
-    ///      are already in ratio (no swap needed) the mid size is returned unchanged. `protocolFee` is the
-    ///      packed directional pair from Slot0; the direction's component compounds with the lp fee
-    ///      (ProtocolFeeLibrary.calculateSwapFee), it does not simply add.
-    function _sizeFeeAware(
-        uint160 sp,
-        uint160 sl,
-        uint160 su,
-        uint256 b0,
-        uint256 b1,
-        uint256 midRateX96,
-        uint24 protocolFee,
-        uint24 lpFee
-    ) internal pure returns (uint128) {
-        uint128 midL = _sizeLiquidityWeighted(sp, sl, su, b0, b1, midRateX96, PIPS_DENOMINATOR);
+    ///      fee, so we don't over-mint by a fee the trim would otherwise have to claw back. Discounting the
+    ///      side on both the budget and the reference nets to charging the fee on exactly the swapped amount.
+    ///      If the holdings are already in ratio (no swap needed) the mid size is returned unchanged.
+    ///      `protocolFee` is the packed directional pair from Slot0; the direction's component compounds with
+    ///      the lp fee (ProtocolFeeLibrary.calculateSwapFee), it does not simply add.
+    function _sizeFeeAware(uint160 sp, uint160 sl, uint160 su, uint256 b0, uint256 b1, uint24 protocolFee, uint24 lpFee)
+        internal
+        pure
+        returns (uint128)
+    {
+        uint128 midL = _sizeLiquidityWeighted(sp, sl, su, b0, b1, PIPS_DENOMINATOR, PIPS_DENOMINATOR);
         (uint256 a0m, uint256 a1m) = _getAmountsForLiquidity(sp, sl, su, midL);
         if (b0 > a0m) {
-            // token0 is surplus -> the reconcile sells it zeroForOne -> discount its value by that direction's fee.
+            // token0 is surplus -> the reconcile sells it zeroForOne -> discount token0 by that direction's fee.
             uint256 feePips =
                 ProtocolFeeLibrary.calculateSwapFee(ProtocolFeeLibrary.getZeroForOneFee(protocolFee), lpFee);
-            uint256 rate0 = FullMath.mulDiv(midRateX96, PIPS_DENOMINATOR - feePips, PIPS_DENOMINATOR);
-            return _sizeLiquidityWeighted(sp, sl, su, b0, b1, rate0, PIPS_DENOMINATOR);
+            return _sizeLiquidityWeighted(sp, sl, su, b0, b1, PIPS_DENOMINATOR - feePips, PIPS_DENOMINATOR);
         } else if (b1 > a1m) {
-            // token1 is surplus -> the reconcile sells it oneForZero -> discount its weight by that direction's fee.
+            // token1 is surplus -> the reconcile sells it oneForZero -> discount token1 by that direction's fee.
             uint256 feePips =
                 ProtocolFeeLibrary.calculateSwapFee(ProtocolFeeLibrary.getOneForZeroFee(protocolFee), lpFee);
-            return _sizeLiquidityWeighted(sp, sl, su, b0, b1, midRateX96, PIPS_DENOMINATOR - feePips);
+            return _sizeLiquidityWeighted(sp, sl, su, b0, b1, PIPS_DENOMINATOR, PIPS_DENOMINATOR - feePips);
         }
         return midL;
     }
 
     /// @dev Size L by value conservation: the budget's value must equal the value of a position of size L at
-    ///      the current price, so L = REFERENCE_LIQUIDITY * value(budget) / value(reference position). Both
-    ///      values are expressed in token1: token0 at `rate0X96` (token1 per token0, Q96) and token1 scaled by
-    ///      `rate1Pips / 1e6`. The fee-aware caller discounts exactly one of the two — whichever side the
-    ///      reconcile will sell — pricing in the swap fee that side will pay; the plain (mid) sizing passes the
-    ///      undiscounted mid rate and 1e6.
-    ///      Precision: the final division truncates at 1 part in value(reference), i.e. the sized L is exact to
-    ///      well below 1 wei of either token for any realistic range, and truncation only under-sizes — the
-    ///      safe direction (the leftover is swept back as dust).
+    ///      the current price, so L = REFERENCE_LIQUIDITY * value(budget) / value(reference position). Values
+    ///      are expressed in the CHEAPER token (token1 when price >= 1, token0 otherwise) so the conversion
+    ///      rate is always >= Q96: the expensive side is multiplied up, never truncated toward zero, keeping
+    ///      the sizing exact (<= 2^-95 rate error) across the full tick domain. `pips0`/`pips1` weight each
+    ///      side's value (1e6 = 100%); the fee-aware caller discounts exactly one — the side the reconcile
+    ///      will sell.
+    ///      Precision: the final division truncates at 1 part in value(reference) and only ever under-sizes —
+    ///      the safe direction (the leftover is swept back as dust).
     function _sizeLiquidityWeighted(
         uint160 sp,
         uint160 sl,
         uint160 su,
         uint256 b0,
         uint256 b1,
-        uint256 rate0X96,
-        uint256 rate1Pips
+        uint256 pips0,
+        uint256 pips1
     ) internal pure returns (uint128) {
         (uint256 a0r, uint256 a1r) = _getAmountsForLiquidity(sp, sl, su, REFERENCE_LIQUIDITY);
-        uint256 refValue =
-            FullMath.mulDiv(a0r, rate0X96, FixedPoint96.Q96) + FullMath.mulDiv(a1r, rate1Pips, PIPS_DENOMINATOR);
-        uint256 budgetValue =
-            FullMath.mulDiv(b0, rate0X96, FixedPoint96.Q96) + FullMath.mulDiv(b1, rate1Pips, PIPS_DENOMINATOR);
+        uint256 refValue;
+        uint256 budgetValue;
+        if (sp >= FixedPoint96.Q96) {
+            // price >= 1: value in token1. rate * pips fits: rate <= sqrtMax^2/Q96 ~ 2^224, pips <= 2^20.
+            uint256 rate0X96 = FullMath.mulDiv(sp, sp, FixedPoint96.Q96);
+            refValue = FullMath.mulDiv(a0r, rate0X96 * pips0, FixedPoint96.Q96 * PIPS_DENOMINATOR)
+                + FullMath.mulDiv(a1r, pips1, PIPS_DENOMINATOR);
+            budgetValue = FullMath.mulDiv(b0, rate0X96 * pips0, FixedPoint96.Q96 * PIPS_DENOMINATOR)
+                + FullMath.mulDiv(b1, pips1, PIPS_DENOMINATOR);
+        } else {
+            // price < 1: value in token0. token0-per-token1 = Q96^3/sp^2, split in two mulDivs (Q96^3 > 2^256);
+            // each factor is >= Q96 since sp < Q96, so both truncations stay below 2^-96.
+            uint256 rate1X96 =
+                FullMath.mulDiv(FullMath.mulDiv(FixedPoint96.Q96, FixedPoint96.Q96, sp), FixedPoint96.Q96, sp);
+            refValue = FullMath.mulDiv(a0r, pips0, PIPS_DENOMINATOR)
+                + FullMath.mulDiv(a1r, rate1X96 * pips1, FixedPoint96.Q96 * PIPS_DENOMINATOR);
+            budgetValue = FullMath.mulDiv(b0, pips0, PIPS_DENOMINATOR)
+                + FullMath.mulDiv(b1, rate1X96 * pips1, FixedPoint96.Q96 * PIPS_DENOMINATOR);
+        }
         if (refValue == 0) return 0;
         return FullMath.mulDiv(REFERENCE_LIQUIDITY, budgetValue, refValue).toUint128();
     }

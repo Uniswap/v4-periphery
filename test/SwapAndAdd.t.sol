@@ -8,16 +8,23 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
+import {LiquidityAmounts} from "../src/libraries/LiquidityAmounts.sol";
 import {PositionConfig} from "./shared/PositionConfig.sol";
 import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
 import {MockERC20ApproveNoReturn} from "./mocks/MockERC20ApproveNoReturn.sol";
+import {MockERC20Permit2Native} from "./mocks/MockERC20Permit2Native.sol";
+import {MockERC20ApproveRace} from "./mocks/MockERC20ApproveRace.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
@@ -806,6 +813,18 @@ contract SwapAndAddTest is PosmTestSetup {
         p.tickUpper = tickUpper;
     }
 
+    /// @dev Spin up a native-ETH/token pool with depth for the weird-token `_ensureApproved` regressions.
+    function _initWeirdTokenPool(address token) internal returns (PoolKey memory k) {
+        (k,) = initPoolAndAddLiquidityETH(
+            CurrencyLibrary.ADDRESS_ZERO, Currency.wrap(token), IHooks(address(0)), 3000, SQRT_PRICE_1_1, 1 ether
+        );
+        modifyLiquidityRouter.modifyLiquidity{value: 50 ether}(
+            k,
+            ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: int256(uint256(200e18)), salt: 0}),
+            ""
+        );
+    }
+
     /// @dev Regression: `_ensureApproved` must tolerate tokens whose approve returns nothing (USDT-style) —
     ///      a plain IERC20(returns bool) approve reverts on decode and would brick every pool of that token.
     function test_add_approveNoReturnToken() public {
@@ -814,20 +833,7 @@ contract SwapAndAddTest is PosmTestSetup {
         usdt.approve(address(permit2), type(uint256).max);
         permit2.approve(address(usdt), address(zap), type(uint160).max, type(uint48).max);
         usdt.approve(address(modifyLiquidityRouter), type(uint256).max);
-
-        (PoolKey memory k,) = initPoolAndAddLiquidityETH(
-            CurrencyLibrary.ADDRESS_ZERO,
-            Currency.wrap(address(usdt)),
-            IHooks(address(0)),
-            3000,
-            SQRT_PRICE_1_1,
-            1 ether
-        );
-        modifyLiquidityRouter.modifyLiquidity{value: 50 ether}(
-            k,
-            ModifyLiquidityParams({tickLower: -600, tickUpper: 600, liquidityDelta: int256(uint256(200e18)), salt: 0}),
-            ""
-        );
+        PoolKey memory k = _initWeirdTokenPool(address(usdt));
 
         ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
         p.poolKey = k;
@@ -837,6 +843,148 @@ contract SwapAndAddTest is PosmTestSetup {
         assertGt(liq, 0, "liquidity minted on approve-no-return token pool");
         assertEq(address(zap).balance, 0, "zap eth == 0");
         assertEq(usdt.balanceOf(address(zap)), 0, "zap token == 0");
+    }
+
+    /// @dev Regression: a Permit2-native token hardcodes an infinite Permit2 allowance (and reverts approve()
+    ///      toward it). `_ensureApproved` must not read that allowance as proof of its own wiring — the
+    ///      Permit2-internal grants to POSM/UR wouldn't exist — and must skip the redundant ERC20 approve,
+    ///      which here would revert and brick every pool of that token.
+    function test_add_permit2NativeToken() public {
+        MockERC20Permit2Native token = new MockERC20Permit2Native(address(permit2));
+        token.mint(address(this), 1_000e18);
+        // no token.approve(permit2) — hardcoded; the user only grants the Permit2 allowance to the zap
+        permit2.approve(address(token), address(zap), type(uint160).max, type(uint48).max);
+        token.approve(address(modifyLiquidityRouter), type(uint256).max);
+        PoolKey memory k = _initWeirdTokenPool(address(token));
+
+        ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
+        p.poolKey = k;
+        (uint256 tokenId, uint128 liq,,) = zap.add(p);
+
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "liquidity minted on permit2-native token pool");
+        // the wiring granted the standing Permit2 allowances despite skipping the ERC20 approve
+        (uint160 posmAmount,,) = permit2.allowance(address(zap), address(token), address(lpm));
+        (uint160 urAmount,,) = permit2.allowance(address(zap), address(token), address(route));
+        assertEq(posmAmount, type(uint160).max, "POSM permit2 allowance granted");
+        assertEq(urAmount, type(uint160).max, "UR permit2 allowance granted");
+
+        // steady state: the wiring is detected from the Permit2 marker, never re-touching the token's approve
+        (, liq,,) = zap.add(p);
+        assertGt(liq, 0, "second add on already-wired token");
+    }
+
+    /// @dev `_pullBudget` assumes currency1 is never native (native sorts to currency0; PoolManager enforces
+    ///      currency0 < currency1, so no pool with currency1 == 0 can ever be initialized). A key smuggling
+    ///      native into currency1 must revert: the Permit2 pull for "token" address(0) has no allowance
+    ///      (AllowanceExpired) — and even a caller who pre-approves address(0), turning Permit2's pull on the
+    ///      codeless address into a silent no-op, dies at the uninitialized pool, unwinding atomically.
+    function test_add_revertsOnNativeAsCurrency1() public {
+        ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
+        p.poolKey = PoolKey({
+            currency0: currency0,
+            currency1: CurrencyLibrary.ADDRESS_ZERO,
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+
+        vm.expectRevert(abi.encodeWithSelector(IAllowanceTransfer.AllowanceExpired.selector, 0));
+        zap.add(p);
+
+        permit2.approve(address(0), address(zap), type(uint160).max, type(uint48).max);
+        vm.expectRevert(Pool.PoolNotInitialized.selector);
+        zap.add(p);
+    }
+
+    /// @dev Regression: `_ensureApproved`'s self-heal — if the ERC20 allowance to Permit2 ever degrades below
+    ///      the uint160.max headroom threshold, the token is re-approved (zero-first, so approve-race tokens
+    ///      don't revert the heal) instead of the operation bricking on the Permit2 pull.
+    function test_add_reapprovesDegradedAllowance() public {
+        MockERC20ApproveRace token = new MockERC20ApproveRace();
+        token.mint(address(this), 1_000e18);
+        token.approve(address(permit2), type(uint256).max);
+        permit2.approve(address(token), address(zap), type(uint160).max, type(uint48).max);
+        token.approve(address(modifyLiquidityRouter), type(uint256).max);
+        PoolKey memory k = _initWeirdTokenPool(address(token));
+
+        ISwapAndAdd.AddParams memory p = _addParams(0, 5e18);
+        p.poolKey = k;
+        zap.add(p); // wires the token: allowance(zap -> permit2) = uint256.max
+        assertEq(token.allowance(address(zap), address(permit2)), type(uint256).max, "wired to max");
+
+        // degrade the allowance below any possible Permit2 pull — nonzero, so a heal that isn't
+        // zero-first would trip the approve race and revert
+        token.setAllowance(address(zap), address(permit2), 1e18);
+
+        (, uint128 liq,,) = zap.add(p);
+
+        assertGt(liq, 0, "add succeeded after self-heal");
+        assertEq(token.allowance(address(zap), address(permit2)), type(uint256).max, "allowance healed to max");
+    }
+
+    /// @dev Extreme-tick sizing regressions: narrow range with the price on its lower edge -> single-sided
+    ///      token0, no swap, no fee — the minted liquidity must be the full budget's worth. Pre-fix, the 1e18
+    ///      reference position's sub-wei amounts rounded up (high ticks, ~1% deployed) and the token1-per-token0
+    ///      rate truncated to zero (ticks <~ -665455, revert / budget ignored).
+    function test_add_extremeHighTick_fullDeployment() public {
+        _assertFullDeploymentAtTick(800000, 2e13);
+    }
+
+    function test_add_extremeLowTick_fullDeployment() public {
+        _assertFullDeploymentAtTick(-700000, 1e30);
+    }
+
+    /// @dev In-range two-sided add at price << 1: exercises the inverse-rate (token0 numeraire) valuation of a
+    ///      token1 budget. Deeper ticks are pinned single-sided above — below ~-665k one wei of token1 outweighs
+    ///      any realistic token0 budget, so two-sided adds there are not physically meaningful.
+    function test_add_lowTick_inRange_valuesToken1ViaInverseRate() public {
+        int24 tick = -400000;
+        PoolKey memory k = _initTickPool(tick);
+        uint160 sp = TickMath.getSqrtPriceAtTick(tick);
+        uint160 sl = TickMath.getSqrtPriceAtTick(tick - 600);
+        uint160 su = TickMath.getSqrtPriceAtTick(tick + 600);
+        // in-ratio budgets for ~1e18 liquidity; the token1 side carries half the value through the inverse rate
+        uint256 b0 = SqrtPriceMath.getAmount0Delta(sp, su, 1e18, false);
+        uint256 b1 = SqrtPriceMath.getAmount1Delta(sl, sp, 1e18, false);
+        MockERC20(Currency.unwrap(currency0)).mint(address(this), b0);
+        MockERC20(Currency.unwrap(currency1)).mint(address(this), b1);
+        uint128 expected = LiquidityAmounts.getLiquidityForAmounts(sp, sl, su, b0, b1);
+
+        ISwapAndAdd.AddParams memory p = _addParams(tick - 600, tick + 600, b0, b1);
+        p.poolKey = k;
+        (, uint128 liq,,) = zap.add(p);
+        assertGe(liq, uint128(uint256(expected) * 999 / 1000), "token1 budget valued at low tick");
+    }
+
+    function testFuzz_add_extremeTick_fullDeployment(int24 tick, uint256 exp) public {
+        tick = int24((bound(int256(tick), -800000, 799990) / 10) * 10);
+        uint256 b0 = 10 ** bound(exp, 6, 30);
+        uint160 spl = TickMath.getSqrtPriceAtTick(tick);
+        uint160 spu = TickMath.getSqrtPriceAtTick(tick + 60);
+        // uint256 replica of getLiquidityForAmount0 — the lib itself would SafeCast-revert on oversized combos
+        uint256 expected = FullMath.mulDiv(b0, FullMath.mulDiv(spl, spu, FixedPoint96.Q96), spu - spl);
+        // meaningful size, under the per-tick liquidity cap for spacing 10
+        vm.assume(expected >= 1e6 && expected < 1e33);
+        _assertFullDeploymentAtTick(tick, b0);
+    }
+
+    function _initTickPool(int24 tick) internal returns (PoolKey memory k) {
+        k = PoolKey({currency0: currency0, currency1: currency1, fee: 3000, tickSpacing: 10, hooks: IHooks(address(0))});
+        manager.initialize(k, TickMath.getSqrtPriceAtTick(tick));
+    }
+
+    function _assertFullDeploymentAtTick(int24 tick, uint256 b0) internal {
+        PoolKey memory k = _initTickPool(tick);
+        MockERC20(Currency.unwrap(currency0)).mint(address(this), b0);
+        uint128 expected = LiquidityAmounts.getLiquidityForAmount0(
+            TickMath.getSqrtPriceAtTick(tick), TickMath.getSqrtPriceAtTick(tick + 60), b0
+        );
+        ISwapAndAdd.AddParams memory p = _addParams(tick, tick + 60, b0, 0);
+        p.poolKey = k;
+        p.minLiquidity = uint256(expected) * 999 / 1000; // contract-enforced floor: >= 99.9% of feasible
+        (, uint128 liq,,) = zap.add(p);
+        assertGe(liq, uint128(p.minLiquidity), "full budget deployed at extreme tick");
     }
 
     /// @dev Land the pool price EXACTLY on `boundaryTick`'s sqrtPrice via a limit-clamped swap, and return the
