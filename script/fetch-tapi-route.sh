@@ -27,7 +27,7 @@ quote=$(curl -sf "$API/quote" -H "x-api-key: $KEY" -H "content-type: application
   "tokenInChainId": $CHAIN_ID,
   "tokenOutChainId": $CHAIN_ID,
   "swapper": "$SWAPPER",
-  "routingPreference": "CLASSIC"
+  "routingPreference": "BEST_PRICE"
 }
 JSON
 )
@@ -43,3 +43,6 @@ echo "── decoded (commands, inputs, deadline) ──"
 cast decode-calldata "execute(bytes,bytes[],uint256)" "$data"
 echo
 echo "Re-encode as the zap's route with:  abi.encode(commands, inputs)   (drop the deadline)"
+echo
+echo "NOTE: v4 legs need canonical->branch action transcoding (minHopPriceX36 ABI drift) — see"
+echo "      _transcodeTapiV4Actions in test-integration/SwapAndAddForkSepolia.t.sol. v2/v3 legs run verbatim."

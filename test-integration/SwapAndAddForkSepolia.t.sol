@@ -13,6 +13,7 @@ import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {Plan, Planner} from "../test/shared/Planner.sol";
+import {PathKey} from "../src/libraries/PathKey.sol";
 import {Actions} from "../src/libraries/Actions.sol";
 import {ActionConstants} from "../src/libraries/ActionConstants.sol";
 import {IV4Router} from "../src/interfaces/IV4Router.sol";
@@ -212,7 +213,8 @@ contract SwapAndAddForkSepoliaTest is Test {
     ///      mode: it opens its own unlock) — also covers the deployed router's plain-swap path.
     function _seedAndEarnFees() internal returns (uint256 tokenId, uint128 liq, uint256 feesSwapped) {
         (tokenId, liq) = _seed(key);
-        (bytes memory c1, bytes[] memory i1) = _decodeRoute(_v4SwapRoute(key, false, 10e18, key.currency1, key.currency0));
+        (bytes memory c1, bytes[] memory i1) =
+            _decodeRoute(_v4SwapRoute(key, false, 10e18, key.currency1, key.currency0));
         IUniversalRouter(UR).execute(c1, i1);
         (bytes memory c2, bytes[] memory i2) = _decodeRoute(_v4SwapRoute(key, true, 9e18, key.currency0, key.currency1));
         IUniversalRouter(UR).execute(c2, i2);
@@ -244,6 +246,95 @@ contract SwapAndAddForkSepoliaTest is Test {
         bytes[] memory inputs = new bytes[](1);
         inputs[0] = plan.encode();
         return abi.encode(commands, inputs);
+    }
+
+    // ── real Trading API route fixture ──
+    // Fetched 2026-07-15 with swapper = the LIVE zap: 50e6 USDC -> WETH through the real, TAPI-indexed
+    // v4 USDC/WETH 0.01%/60 pool. Bytes are the verbatim /v1/swap "data" tail (selector stripped):
+    // abi.encode(commands, inputs, deadline). Pinned to the block the quote priced against, so the route's
+    // own amountOutMinimum stays satisfiable forever. Refresh via script/fetch-tapi-route.sh.
+    address constant USDC = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
+    address constant WETH = 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14;
+    uint256 constant TAPI_FIXTURE_BLOCK = 11277038;
+    bytes constant TAPI_EXECUTE_TAIL =
+        hex"000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000006a575f80000000000000000000000000000000000000000000000000000000000000000110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000003c0000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000003070b0e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000022000000000000000000000000000000000000000000000000000000000000002a000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000001c7d4b196cb0c7b01d743fbc6116a902379c723800000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000002faf080000000000000000000000000000000000000000000000000006d466f6d8e5ae700000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000020000000000000000000000000fff9976782d46cc05630d1f6ebab18b2324d6b140000000000000000000000000000000000000000000000000000000000000064000000000000000000000000000000000000000000000000000000000000003c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000001c7d4b196cb0c7b01d743fbc6116a902379c7238000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000060000000000000000000000000fff9976782d46cc05630d1f6ebab18b2324d6b14000000000000000000000000c6b69cbb1f9eb78d15c3876105b9eda458cb404f0000000000000000000000000000000000000000000000000000000000000000756e69780000d7ff01b6";
+
+    /// @dev The full production flow with real TAPI calldata: route executed by the live zap on the live
+    ///      patched UR, deploying into the real v4 pool the route also swaps through.
+    ///
+    ///      KNOWN INCOMPATIBILITY (pinned here on purpose): the UR feature branch this deployment runs added
+    ///      `minHopPriceX36` to every IV4Router swap-param struct, while TAPI encodes the CANONICAL v4 action
+    ///      ABI — so raw TAPI v4 legs revert on this deployment (v2/v3 legs, being command-level, are
+    ///      unaffected). `_transcodeTapiV4Actions` converts canonical -> branch encoding (hop price limits
+    ///      zeroed) and must be deleted the moment the branch restores canonical ABI or TAPI learns the new
+    ///      one. If this test starts failing to decode, the ABI drifted again.
+    function test_forkSepolia_add_viaRealTapiRoute() public {
+        string memory forkUrl = vm.envOr("SEPOLIA_FORK_URL", string(""));
+        vm.skip(bytes(forkUrl).length == 0); // pinned block needs archive state; skip on public RPC
+        vm.createSelectFork(forkUrl, TAPI_FIXTURE_BLOCK);
+
+        (bytes memory commands, bytes[] memory inputs,) = abi.decode(TAPI_EXECUTE_TAIL, (bytes, bytes[], uint256));
+        inputs[0] = _transcodeTapiV4Actions(inputs[0]);
+        bytes memory route = abi.encode(commands, inputs); // the zap has its own deadline param
+
+        deal(USDC, address(this), 100e6);
+        MockERC20(USDC).approve(PERMIT2, type(uint256).max);
+        permit2.approve(USDC, ZAP, type(uint160).max, type(uint48).max);
+
+        PoolKey memory k = PoolKey({
+            currency0: Currency.wrap(USDC),
+            currency1: Currency.wrap(WETH),
+            fee: 100,
+            tickSpacing: 60,
+            hooks: IHooks(address(0))
+        });
+        (, int24 tick,,) = manager.getSlot0(k.toId());
+        int24 lo = (tick / 60) * 60 - 20 * 60;
+        int24 hi = (tick / 60) * 60 + 20 * 60;
+
+        ISwapAndAdd.AddParams memory p = _addParams(k, 100e6, 0, route);
+        p.tickLower = lo;
+        p.tickUpper = hi;
+        (uint256 tokenId, uint128 liq,,) = zap.add(p);
+
+        assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
+        assertGt(liq, 0, "TAPI-routed budget deployed into the real v4 pool");
+        assertEq(MockERC20(USDC).balanceOf(ZAP), 0, "zap usdc == 0");
+        assertEq(MockERC20(WETH).balanceOf(ZAP), 0, "zap weth == 0");
+    }
+
+    /// @dev TAPI's canonical multi-hop exact-input shape (no minHopPriceX36) — decode-only.
+    struct CanonicalExactInputParams {
+        Currency currencyIn;
+        PathKey[] path;
+        uint128 amountIn;
+        uint128 amountOutMinimum;
+    }
+
+    /// @dev Canonical -> branch v4-action re-encoding; reverts on any action this fixture doesn't carry so a
+    ///      refreshed fixture with new action types fails loudly instead of passing through untranscoded.
+    function _transcodeTapiV4Actions(bytes memory input) internal pure returns (bytes memory) {
+        (bytes memory actions, bytes[] memory params) = abi.decode(input, (bytes, bytes[]));
+        Plan memory plan = Planner.init();
+        for (uint256 i; i < actions.length; i++) {
+            uint8 action = uint8(actions[i]);
+            if (action == uint8(Actions.SWAP_EXACT_IN)) {
+                CanonicalExactInputParams memory c = abi.decode(params[i], (CanonicalExactInputParams));
+                IV4Router.ExactInputParams memory b = IV4Router.ExactInputParams({
+                    currencyIn: c.currencyIn,
+                    path: c.path,
+                    minHopPriceX36: new uint256[](c.path.length),
+                    amountIn: c.amountIn,
+                    amountOutMinimum: c.amountOutMinimum
+                });
+                plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(b));
+            } else if (action == uint8(Actions.SETTLE) || action == uint8(Actions.TAKE)) {
+                plan = plan.add(action, params[i]); // shape-identical on both ABIs
+            } else {
+                revert("transcoder: unhandled TAPI action - extend before trusting the result");
+            }
+        }
+        return plan.encode();
     }
 
     receive() external payable {}
