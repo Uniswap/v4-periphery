@@ -56,7 +56,7 @@ fuzz_runs = 100_000
 gas_limit=50_000_000
 
 [rpc_endpoints]
-sepolia = "https://rpc.sepolia.org"
+sepolia = "https://ethereum-sepolia-rpc.publicnode.com"
 unichain_sepolia = "https://sepolia.unichain.org"
 base_sepolia = "https://sepolia.base.org"
 arbitrum_sepolia = "https://sepolia-rollup.arbitrum.io/rpc"
