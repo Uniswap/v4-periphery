@@ -262,12 +262,15 @@ contract SwapAndAddForkSepoliaTest is Test {
     /// @dev The full production flow with real TAPI calldata: route executed by the live zap on the live
     ///      patched UR, deploying into the real v4 pool the route also swaps through.
     ///
-    ///      KNOWN INCOMPATIBILITY (pinned here on purpose): the UR feature branch this deployment runs added
-    ///      `minHopPriceX36` to every IV4Router swap-param struct, while TAPI encodes the CANONICAL v4 action
-    ///      ABI — so raw TAPI v4 legs revert on this deployment (v2/v3 legs, being command-level, are
-    ///      unaffected). `_transcodeTapiV4Actions` converts canonical -> branch encoding (hop price limits
-    ///      zeroed) and must be deleted the moment the branch restores canonical ABI or TAPI learns the new
-    ///      one. If this test starts failing to decode, the ABI drifted again.
+    ///      KNOWN INCOMPATIBILITY (pinned here on purpose): v4-periphery MAIN carries an unreleased ABI
+    ///      change — `minHopPriceX36` (per-hop price limits) in every IV4Router swap-param struct. Any router
+    ///      built from head (like this deployment's UR: UR-main + the unlock fix, same periphery pin as
+    ///      UR-main) therefore rejects TAPI's v4 action encoding, which targets the DEPLOYED canonical UR
+    ///      built from an older periphery release (v2/v3 legs are command-level and unaffected). The gap
+    ///      closes when the next canonical UR release and TAPI roll out the new ABI together;
+    ///      `_transcodeTapiV4Actions` (canonical -> head encoding, hop price limits zeroed) bridges until
+    ///      then and must be deleted at that point. If this test starts failing to decode, the ABI drifted
+    ///      again.
     function test_forkSepolia_add_viaRealTapiRoute() public {
         string memory forkUrl = vm.envOr("SEPOLIA_FORK_URL", string(""));
         vm.skip(bytes(forkUrl).length == 0); // pinned block needs archive state; skip on public RPC
