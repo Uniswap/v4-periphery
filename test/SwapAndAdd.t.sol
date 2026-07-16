@@ -534,6 +534,26 @@ contract SwapAndAddTest is PosmTestSetup {
         p.route = ROUTE_PAYLOAD;
     }
 
+    /// @dev Native left in the UR after a route is reclaimed even when the operation pushed none there (e.g. a
+    ///      prior donation): UR balances are publicly sweepable, so any remainder is captured as the current
+    ///      caller's budget instead of being left for the next SWEEP caller.
+    function test_add_route_reclaimsDonatedUrNative() public {
+        _configRoute(10000, 0); // no-op route: consumes nothing, the mock just sits on its balance
+        ISwapAndAdd.AddParams memory p = _routeAdd(10e18);
+        p.poolKey = nativeKey; // native/currency1 pool: reclaimed ETH is a pool currency -> joins the budget
+
+        uint256 snap = vm.snapshotState();
+        (, uint128 liqBase,,) = zap.add(p); // baseline: no donation in the UR
+        vm.revertToState(snap);
+
+        vm.deal(address(route), 1 ether); // donated/stranded native sitting in the UR
+        (, uint128 liqDonated,,) = zap.add(p);
+
+        assertEq(address(route).balance, 0, "UR native fully reclaimed");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertGt(liqDonated, liqBase, "donation joined the caller's budget");
+    }
+
     /// @notice Route under-converts (input below the ideal): the same-pool reconcile tops up the deficit in the
     ///         normal direction (surplus token1 -> deficit token0). Position lands cleanly, contract strands nothing.
     function test_add_route_underConverts() public {

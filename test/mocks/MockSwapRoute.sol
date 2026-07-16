@@ -45,7 +45,15 @@ contract MockSwapRoute {
         surplusIsToken0 = _surplusIsToken0;
     }
 
-    function execute(bytes calldata, bytes[] calldata) external payable {
+    function execute(bytes calldata commands, bytes[] calldata inputs) external payable {
+        // Universal Router SWEEP (0x04) — SwapAndAdd reclaims native left in the router after a route.
+        if (commands.length == 1 && uint8(commands[0]) == 0x04) {
+            (address token,,) = abi.decode(inputs[0], (address, address, uint256));
+            require(token == address(0), "mock: only native sweep");
+            (bool ok,) = msg.sender.call{value: address(this).balance}("");
+            require(ok, "mock: sweep failed");
+            return;
+        }
         uint256 avail = IERC20Min(surplus).balanceOf(msg.sender);
         uint256 pull = inputAmount;
         if (pull > avail) pull = avail; // safety clamp only
