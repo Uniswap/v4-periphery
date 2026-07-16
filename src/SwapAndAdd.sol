@@ -676,10 +676,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         Currency c0 = cp.key.currency0;
         uint256 value = c0.isAddressZero() ? c0.balanceOfSelf() : 0;
 
-        uint256 urBalanceBefore = address(universalRouter).balance;
         universalRouter.execute{value: value}(commands, inputs);
-        // ensure the route sweeps all native tokens.
-        if (address(universalRouter).balance > urBalanceBefore) {
+        // Reclaim ALL native left in the UR — ours or donated: UR balances are publicly sweepable, so any
+        // remainder is captured as the current caller's budget (if native is not a pool currency it stays
+        // in this contract for the next native-pool caller, per the donation invariant).
+        if (address(universalRouter).balance > 0) {
             bytes[] memory sweepInputs = new bytes[](1);
             // token ETH (address(0)), recipient MSG_SENDER (UR maps it back to this contract), no minimum.
             sweepInputs[0] = abi.encode(address(0), ActionConstants.MSG_SENDER, 0);
