@@ -9,13 +9,13 @@ export const deployments = {
   mainnet: {
     chainId: 1,
     /** MarginRouter (also emits the factory's AccountCreated). */
-    marginRouter: "0x0000000666Adc6Ecc1A344fDB78F369B64F84444",
+    marginRouter: "0x0000000004BBC92D0657580CAe35aEBF054E5CDC",
     /** MorphoLendingAdapter. */
-    morphoAdapter: "0xe32286F0217d7dF340Fbc002d65d65bf1049A8C4",
+    morphoAdapter: "0x9A7f8F5A9496D3c9dc0BEEfb44cCaC17CAAF28fa",
     /** AaveLendingAdapter (Aave v3). */
-    aaveAdapter: "0xb0cAca4f622E6391dA0Ce6b5fBA8B1c7470b15dB",
+    aaveAdapter: "0x8EeacdB24c7650478496845A61f03fF6BC263222",
     /** AaveV4LendingAdapter. */
-    aaveV4Adapter: "0xCfbdeb0F5281bEd39A57b93cB9C345aD7AB0FC20",
+    aaveV4Adapter: "0x3a9Cc5eEbAC911E5a316de1F2bCD166016d7469E",
     /** Morpho Blue singleton. */
     morphoBlue: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
     /** Aave v3 Pool (resolved from the PoolAddressesProvider). */
@@ -26,6 +26,6 @@ export const deployments = {
      *  here, including PoolManager Initialize: pools created before this block
      *  have no `pool` metadata row, but the fee tier is still available on
      *  `swapEvent.fee`. */
-    startBlock: 25505653,
+    startBlock: 25598384,
   },
 } as const;

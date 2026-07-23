@@ -21,9 +21,9 @@ Production: `npm start` with `DATABASE_URL` pointing at Postgres.
 
 | Source | Address (mainnet) | Purpose |
 |---|---|---|
-| MarginRouter | `0x0000000666Adc6Ecc1A344fDB78F369B64F84444` | Lifecycle: `AccountCreated`, `PositionIncreased/Decreased`, `CollateralAdded`, `AdapterAllowed` |
-| MorphoLendingAdapter | `0xe32286F0217d7dF340Fbc002d65d65bf1049A8C4` | `MarketSet` market registry (market id, oracle, LLTV) |
-| Aave v3 / v4 adapters | `0xb0cA...15dB` / `0xCfbd...FC20` | `MarketSet` market registries |
+| MarginRouter | `0x0000000004BBC92D0657580CAe35aEBF054E5CDC` | Lifecycle: `AccountCreated`, `PositionIncreased/Decreased`, `CollateralAdded`, `AdapterAllowed` |
+| MorphoLendingAdapter | `0x9A7f8F5A9496D3c9dc0BEEfb44cCaC17CAAF28fa` | `MarketSet` market registry (market id, oracle, LLTV) |
+| Aave v3 / v4 adapters | `0x8Eea...3222` / `0x3a9C...469E` | `MarketSet` market registries |
 | Morpho Blue | `0xBBBB...FFCb` | Collateral/debt flows + `Liquidate`, attributed by `onBehalf` ∈ margin accounts |
 | Aave v3 Pool | `0x8787...A4E2` | Flows + `LiquidationCall`, attributed by `onBehalfOf`/`user` |
 | v4 PoolManager | `0x0000...8A90` | `Initialize` (pool metadata) + `Swap` filtered to `sender == MarginRouter` — both from the margin deploy block |

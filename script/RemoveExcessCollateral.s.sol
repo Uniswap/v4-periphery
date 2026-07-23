@@ -34,8 +34,8 @@ import {raw} from "../src/types/Ltv.sol";
 ///        WITHDRAW_WEI (default 0: size automatically from TARGET_LTV_BPS).
 contract RemoveExcessCollateral is Script {
     /// @dev Deployed mainnet margin suite (DeployMargin.s.sol broadcast, chain 1).
-    address internal constant DEFAULT_MARGIN_ROUTER = 0x0000000666Adc6Ecc1A344fDB78F369B64F84444;
-    address internal constant DEFAULT_MORPHO_ADAPTER = 0xe32286F0217d7dF340Fbc002d65d65bf1049A8C4;
+    address internal constant DEFAULT_MARGIN_ROUTER = 0x0000000004BBC92D0657580CAe35aEBF054E5CDC;
+    address internal constant DEFAULT_MORPHO_ADAPTER = 0x9A7f8F5A9496D3c9dc0BEEfb44cCaC17CAAF28fa;
 
     address internal constant MAINNET_WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant MAINNET_USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;

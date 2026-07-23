@@ -891,18 +891,18 @@ layer adds no independent oracle.
 
 ## 10. Deployment addresses
 
-Margin contracts are deployment-specific; fill in the deployed `MarginRouter`, `MorphoLendingAdapter`,
-`AaveLendingAdapter`, and `AaveV4LendingAdapter` for your target network. The following external
-dependencies are verified on Ethereum mainnet:
+The margin contracts below are the Ethereum mainnet deployment (DeployMargin.s.sol, chain 1), verified
+on-chain with `cast code`; the external dependencies follow. Other networks are deployment-specific.
 
 
 | Contract                      | Address                                      | Notes                                                                             |
 | ----------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------- |
-| MarginRouter                  | `0x<MARGIN_ROUTER>`                          | per deployment                                                                    |
-| MorphoLendingAdapter          | `0x<MORPHO_ADAPTER>`                         | per deployment                                                                    |
-| AaveLendingAdapter            | `0x<AAVE_ADAPTER>`                           | per deployment                                                                    |
-| AaveV4LendingAdapter          | `0x<AAVE_V4_ADAPTER>`                        | per deployment; constructed against the Aave v4 Main Spoke                        |
-| v4 PoolManager                | `0x<V4_POOL_MANAGER>`                        | from the official Uniswap v4 deployments for the network; verify with `cast code` |
+| MarginRouter                  | `0x0000000004BBC92D0657580CAe35aEBF054E5CDC` | mainnet (mined vanity)                                                             |
+| MarginAccount implementation  | `0x83Fc96d2B162dAF8532e5677C6Ec32A1Cb7882E4` | mainnet; the soulbound clone template                                             |
+| MorphoLendingAdapter          | `0x9A7f8F5A9496D3c9dc0BEEfb44cCaC17CAAF28fa` | mainnet                                                                           |
+| AaveLendingAdapter            | `0x8EeacdB24c7650478496845A61f03fF6BC263222` | mainnet                                                                           |
+| AaveV4LendingAdapter          | `0x3a9Cc5eEbAC911E5a316de1F2bCD166016d7469E` | mainnet; constructed against the Aave v4 Main Spoke                               |
+| v4 PoolManager                | `0x000000000004444c5dc75cB358380D2e3dE08A90` | mainnet; the official Uniswap v4 deployment                                       |
 | Permit2                       | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | canonical, same on all chains                                                     |
 | Morpho Blue                   | `0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb` | mainnet                                                                           |
 | Aave v3 PoolAddressesProvider | `0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e` | mainnet; resolves the Pool and protocol data provider for `AaveLendingAdapter`    |
