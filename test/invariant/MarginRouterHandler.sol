@@ -375,6 +375,7 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
             collateralToBuy: buy,
             maxDebtIn: MAX_DEBT_CAP,
             minHopPriceX36: 0,
+            maxLtvAfter: Ltv.wrap(0),
             subId: subId,
             deadline: _deadline()
         });

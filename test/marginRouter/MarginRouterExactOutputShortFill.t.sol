@@ -127,6 +127,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
                 collateralToBuy: REQUESTED_COLLATERAL,
                 maxDebtIn: MAX_DEBT_IN,
                 minHopPriceX36: minHopPriceX36,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })

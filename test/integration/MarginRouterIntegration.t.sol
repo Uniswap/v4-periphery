@@ -80,6 +80,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
                 collateralToBuy: buy,
                 maxDebtIn: 5 ether,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -100,6 +101,48 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
         assertEq(IERC20(Currency.unwrap(debt)).balanceOf(account), 0, "account holds no loose debt");
         assertEq(IERC20(Currency.unwrap(collateral)).balanceOf(address(marginRouter)), 0, "router holds no collateral");
         assertEq(IERC20(Currency.unwrap(debt)).balanceOf(address(marginRouter)), 0, "router holds no debt");
+    }
+
+    function test_openLong_revertsWhenResultingLtvExceedsBound() public {
+        // fund equity directly, then open with a health bound below the mock's reported LTV (0.86)
+        address account = marginRouter.accountOf(address(this), 0);
+        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
+        vm.expectRevert(IMarginRouter.PositionUnhealthy.selector);
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: market,
+                poolKey: poolKey,
+                equity: 0,
+                collateralToBuy: 2 ether,
+                maxDebtIn: 5 ether,
+                minHopPriceX36: 0,
+                maxLtvAfter: toLtv(0.5e18),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+    }
+
+    function test_openLong_passesWhenLtvBoundSatisfied() public {
+        // a bound at or above the reported LTV lets the open through (the check is a strict `>`)
+        address account = marginRouter.accountOf(address(this), 0);
+        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: market,
+                poolKey: poolKey,
+                equity: 0,
+                collateralToBuy: 2 ether,
+                maxDebtIn: 5 ether,
+                minHopPriceX36: 0,
+                maxLtvAfter: toLtv(0.86e18),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+        assertEq(protocol.collateralOf(account), 3 ether, "open succeeded within the health bound");
     }
 
     function test_closeLong_repaysAndReturnsResidual() public {
@@ -274,6 +317,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
                 collateralToBuy: 2 ether,
                 maxDebtIn: 5 ether,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -319,6 +363,7 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
                 collateralToBuy: 1 ether,
                 maxDebtIn: 3 ether,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })

@@ -172,6 +172,12 @@ interface IMarginRouter {
     ///        in X36 fixed-point. Zero disables only this secondary check; it does not relax the
     ///        binding `maxDebtIn` cap. Redundant with the absolute cap for a single hop, so it may be
     ///        left zero.
+    /// @param maxLtvAfter The maximum LTV the position may have after the increase (WAD, 1e18 ==
+    ///        100%). Because the open sizes on the pool while liquidation uses the venue oracle,
+    ///        adverse inclusion can consume the full `maxDebtIn` budget and land the position near
+    ///        LLTV; this asserts the resulting oracle-LTV so a caller can bound leverage by health,
+    ///        not just by swap input. Zero skips the check (back-compatible with `maxDebtIn`-only
+    ///        callers).
     /// @param subId A caller-chosen sub-account index allowing one address to hold multiple
     ///        independent positions. The (caller, subId) pair determines the MarginAccount address.
     /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
@@ -183,6 +189,7 @@ interface IMarginRouter {
         uint128 collateralToBuy;
         uint128 maxDebtIn;
         uint256 minHopPriceX36;
+        Ltv maxLtvAfter;
         uint256 subId;
         uint256 deadline;
     }

@@ -146,6 +146,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
                 collateralToBuy: 2 ether,
                 maxDebtIn: 5 ether,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })

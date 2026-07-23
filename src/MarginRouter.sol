@@ -448,9 +448,10 @@ contract MarginRouter is
             uint8(Actions.TAKE),
             uint8(MarginActions.ACCOUNT_SUPPLY_COLLATERAL),
             uint8(MarginActions.ACCOUNT_BORROW),
-            uint8(Actions.SETTLE)
+            uint8(Actions.SETTLE),
+            uint8(MarginActions.ASSERT_HEALTH)
         );
-        bytes[] memory actionParams = new bytes[](6);
+        bytes[] memory actionParams = new bytes[](7);
         actionParams[0] = abi.encode(
             IV4Router.ExactOutputSingleParams({
                 poolKey: params.poolKey,
@@ -474,6 +475,9 @@ contract MarginRouter is
         actionParams[4] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
         // settle the swap's debt from the router (payer is this contract)
         actionParams[5] = abi.encode(params.market.debt, uint256(ActionConstants.OPEN_DELTA), false);
+        // assert the resulting health against the caller's optional bound; a zero bound skips the
+        // check, so callers relying only on `maxDebtIn` are unaffected
+        actionParams[6] = abi.encode(params.adapter, params.market, params.maxLtvAfter);
 
         poolManager.unlock(abi.encode(actions, actionParams));
         _setActiveAccount(address(0));

@@ -14,6 +14,7 @@ import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
+import {Ltv} from "../../src/types/Ltv.sol";
 import {MockLendingAdapter} from "../mocks/MockLendingAdapter.sol";
 import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 
@@ -66,6 +67,7 @@ contract MarginRouterPermit2Test is RoutingTestHelpers, DeployPermit2 {
                 collateralToBuy: 2 ether,
                 maxDebtIn: 5 ether,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })

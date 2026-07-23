@@ -333,6 +333,7 @@ contract MarginRouterE2EForkTest is Test {
                 collateralToBuy: buy,
                 maxDebtIn: 10_000e6,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })
@@ -350,6 +351,7 @@ contract MarginRouterE2EForkTest is Test {
                 collateralToBuy: buy,
                 maxDebtIn: 10_000e6,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })
@@ -493,6 +495,7 @@ contract MarginRouterE2EForkTest is Test {
             collateralToBuy: buy,
             maxDebtIn: 20_000e6,
             minHopPriceX36: 0,
+            maxLtvAfter: Ltv.wrap(0),
             subId: subId,
             deadline: block.timestamp + 1 hours
         });

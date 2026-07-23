@@ -121,6 +121,7 @@ contract MarginRouterExecuteForkTest is Test {
                 collateralToBuy: 1 ether,
                 maxDebtIn: 10_000e6,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })
@@ -268,6 +269,7 @@ contract MarginRouterExecuteForkTest is Test {
                 collateralToBuy: buy,
                 maxDebtIn: 10_000e6,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })

@@ -265,6 +265,7 @@ contract AaveV4LendingAdapterForkTest is Test {
                 collateralToBuy: buy,
                 maxDebtIn: maxDebtIn,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })

@@ -151,6 +151,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -191,6 +192,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: subId,
                 deadline: block.timestamp + 1
             })
@@ -230,6 +232,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -264,6 +267,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
                 minHopPriceX36: unreachableMinHopPrice,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -302,6 +306,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
                 minHopPriceX36: minHopPriceX36,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -338,6 +343,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: maxDebtIn,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -367,6 +373,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: maxDebtIn,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -401,6 +408,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -451,6 +459,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -543,6 +552,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 collateralToBuy: firstBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -559,6 +569,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 collateralToBuy: secondBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })

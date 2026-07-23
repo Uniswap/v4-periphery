@@ -193,6 +193,7 @@ contract MarginRouterCrossVenueHedgeForkTest is Test {
                 collateralToBuy: LONG_BUY_WETH,
                 maxDebtIn: _maxUsdcForWeth(LONG_BUY_WETH),
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })
@@ -215,6 +216,7 @@ contract MarginRouterCrossVenueHedgeForkTest is Test {
                 collateralToBuy: buyUsdc,
                 maxDebtIn: 2.2e18, // generous WETH cap (> ~2 WETH plus slippage/fees)
                 minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
                 subId: 1,
                 deadline: block.timestamp + 1 hours
             })
