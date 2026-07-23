@@ -915,9 +915,13 @@ dependencies are verified on Ethereum mainnet:
 | USDC                          | `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` | mainnet                                                                           |
 
 
-Morpho WETH/USDC market (collateral WETH, loan USDC): oracle `0xdC6fd5831277c693b1054e19E94047cB37c77615`,
+Morpho WETH/USDC market (collateral WETH, loan USDC) — the canonical liquid market the deploy scripts
+register: oracle `0x0F948CBa8231Db7898ef36A4212581Ad7b1B4580`,
 IRM `0x870aC11D48B15DB9a138Cf899d20F13F79Ba00BC`, LLTV `0.86e18`,
-id `0x7dde86a1e94561d9690ec678db673c1a6396365f7d1d65e129c5fff0990ff758`.
+id `0x94b823e6bd8ea533b4e33fbc307faea0b307301bc48763acc4d4aa4def7636cd` (verified on-chain: ~$4M
+supplied / ~$3.7M borrowed). A second, near-empty WETH/USDC market exists at oracle
+`0xdC6fd5831277c693b1054e19E94047cB37c77615` (id `0x7dde86a1…`, ~$16K TVL); do not integrate against
+it. Always confirm the market id and TVL with `cast` before pointing production at an oracle.
 
 Aave v3 USDC reserve (the collateral for a short ETH market): liquidation threshold `7800` bps
 (`0.78`), which `AaveLendingAdapter.maxLtvWad` returns as `0.78e18`. The addresses and this threshold
