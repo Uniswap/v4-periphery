@@ -192,13 +192,16 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers {
             })
         );
 
-        // the caller receives only their own realized residual; the donation stays in the router
+        // the caller receives only their own realized residual; the donation stays in the router.
+        // this is a property of the curated close (it measures its own collateral delta and forwards
+        // exactly that), NOT a global router invariant: an `execute` plan can SWEEP a router balance,
+        // and any residual left by a plan is claimable by the next caller (see MarginRouterExecute).
         uint256 callerGain = IERC20(Currency.unwrap(collateral)).balanceOf(address(this)) - callerBefore;
         assertGt(callerGain, 0, "caller receives their own residual");
         assertEq(
             IERC20(Currency.unwrap(collateral)).balanceOf(address(marginRouter)),
             donation,
-            "donated balance is left in the router, not swept to the caller"
+            "donated balance is left in the router by the curated close, not swept to the caller"
         );
         assertEq(protocol.debtOf(account), 0, "debt fully repaid");
         assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
