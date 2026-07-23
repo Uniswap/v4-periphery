@@ -9,6 +9,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
@@ -224,6 +225,100 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
         marginRouter.execute(plan.encode(), block.timestamp + 1);
     }
 
+    function test_execute_revertsNoActiveAccount_forEveryAccountScopedOpcode() public {
+        // one bare op per account-scoped opcode, each with no preceding SET_ACCOUNT: the shared
+        // guard must trip for all of them, not just the two above
+        _expectNoActiveAccount(
+            MarginActions.ACCOUNT_WITHDRAW_COLLATERAL, abi.encode(adapter, market, uint256(1), address(this))
+        );
+        _expectNoActiveAccount(MarginActions.ACCOUNT_BORROW, abi.encode(adapter, market, uint256(1), address(this)));
+        _expectNoActiveAccount(MarginActions.ACCOUNT_REPAY, abi.encode(adapter, market, uint256(1)));
+        _expectNoActiveAccount(MarginActions.ACCOUNT_SWEEP, abi.encode(collateral, uint256(1), address(this)));
+        _expectNoActiveAccount(MarginActions.ASSERT_HEALTH, abi.encode(adapter, market, address(0), toLtv(0.5e18)));
+    }
+
+    function _expectNoActiveAccount(uint256 action, bytes memory params) internal {
+        Plan memory plan = Planner.init();
+        plan = plan.add(action, params);
+        vm.expectRevert(IMarginRouter.NoActiveAccount.selector);
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+    }
+
+    function test_execute_multicall_clearsActiveAccountBetweenLegs() public {
+        // leg 1 sets an account and no-ops; leg 2 has a bare account-scoped op with no SET_ACCOUNT.
+        // execute clears the transient slot after each call, so leg 2 must see no active account and
+        // revert NoActiveAccount. This pins that the _setActiveAccount(0) at the end of execute is
+        // load-bearing: transient storage persists across multicall's self-delegatecalls otherwise.
+        Plan memory legA = Planner.init();
+        legA = legA.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        legA = legA.add(MarginActions.ACCOUNT_SWEEP, abi.encode(collateral, uint256(0), address(this)));
+
+        Plan memory legB = Planner.init();
+        legB = legB.add(MarginActions.ACCOUNT_SWEEP, abi.encode(collateral, uint256(0), address(this)));
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(MarginRouter.execute, (legA.encode(), block.timestamp + 1));
+        calls[1] = abi.encodeCall(MarginRouter.execute, (legB.encode(), block.timestamp + 1));
+
+        vm.expectRevert(IMarginRouter.NoActiveAccount.selector);
+        marginRouter.multicall(calls);
+    }
+
+    // ─────────────────────────────────────── Health / reentrancy ────────────────────────────────
+
+    function test_execute_assertHealth_revertsWhenBoundExceeded() public {
+        address account = _openViaExecute(0, 1 ether, 2 ether);
+        // the mock reports currentLtv == maxLtv == 0.86e18; a 0.5 bound must trip PositionUnhealthy
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(MarginActions.ASSERT_HEALTH, abi.encode(adapter, market, account, toLtv(0.5e18)));
+        vm.expectRevert(IMarginRouter.PositionUnhealthy.selector);
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+    }
+
+    function test_execute_assertHealth_passesWhenBoundSatisfied() public {
+        address account = _openViaExecute(0, 1 ether, 2 ether);
+        // a bound at the reported LTV passes (the check is a strict `>` overflow)
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(MarginActions.ASSERT_HEALTH, abi.encode(adapter, market, account, toLtv(0.86e18)));
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+        assertGt(protocol.collateralOf(account), 0, "position unchanged by a passing health assert");
+    }
+
+    function test_execute_pullToAccount_contractBalanceRevertsForUserPayer() public {
+        // CONTRACT_BALANCE (1<<255) is not honored on the Permit2 path: it overflows the uint160
+        // cast, so the router-balance sentinel can never be smuggled onto the caller's allowance
+        _openViaExecute(0, 1 ether, 2 ether);
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(MarginActions.PULL_TO_ACCOUNT, abi.encode(collateral, ActionConstants.CONTRACT_BALANCE, true));
+        vm.expectRevert(SafeCast.SafeCastOverflow.selector);
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+    }
+
+    function test_execute_revertsOnReentrancy_viaMaliciousProtocol() public {
+        // a lending protocol that reenters the router during supply must be stopped by isNotLocked.
+        // wire a fresh adapter at the reentrant protocol, allowlist it, fund an account, and supply.
+        ReentrantLendingProtocol evil = new ReentrantLendingProtocol(marginRouter);
+        MockLendingAdapter evilAdapter = new MockLendingAdapter(address(evil));
+        evilAdapter.setSupported(market, true);
+        marginRouter.setAdapterAllowed(evilAdapter, true);
+
+        address account = marginRouter.accountOf(address(this), 0);
+        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
+
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(
+            MarginActions.ACCOUNT_SUPPLY_COLLATERAL, abi.encode(evilAdapter, market, ActionConstants.OPEN_DELTA)
+        );
+
+        // the reentrant execute call inside supply hits isNotLocked and bubbles ContractLocked out
+        vm.expectRevert(ReentrancyLock.ContractLocked.selector);
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+    }
+
     // ─────────────────────────────────────── Allowlist asymmetry ────────────────────────────────
 
     function test_execute_supply_revertsWhenAdapterNotAllowed() public {
@@ -237,6 +332,19 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
             plan.add(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, abi.encode(adapter, market, ActionConstants.OPEN_DELTA));
         vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(adapter)));
         marginRouter.execute(plan.encode(), block.timestamp + 1);
+    }
+
+    function test_execute_borrow_revertsWhenAdapterNotAllowed() public {
+        // open while allowed, then de-allowlist and try to draw more debt via execute
+        address account = _openViaExecute(0, 1 ether, 2 ether);
+        marginRouter.setAdapterAllowed(adapter, false);
+
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(MarginActions.ACCOUNT_BORROW, abi.encode(adapter, market, uint256(1), address(marginRouter)));
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(adapter)));
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+        account; // position untouched; the guard reverts before the borrow
     }
 
     function test_execute_exit_succeedsAfterAdapterDeAllowlisted() public {
@@ -297,6 +405,35 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
         // victim untouched
         assertEq(protocol.collateralOf(victimAccount), victimCollateral, "victim collateral untouched");
         assertEq(protocol.debtOf(victimAccount), victimDebt, "victim debt untouched");
+    }
+
+    function test_execute_cannotDrainAnotherUsersAccount() public {
+        address attacker = makeAddr("attacker");
+        // victim opens a real, funded position on subId 0
+        address victimAccount = _openViaExecute(0, 1 ether, 2 ether);
+        uint256 victimCollateral = protocol.collateralOf(victimAccount);
+        uint256 victimDebt = protocol.debtOf(victimAccount);
+        assertGt(victimCollateral, 0, "victim is funded");
+
+        // the attacker's only lever is subId; there is no account-address field in a plan. A plan
+        // that tries to withdraw the victim's collateral to the attacker binds accountOf(attacker, 0)
+        // — the attacker's own empty account (the receiver check even allows `attacker`, since they
+        // own it) — so the withdrawal underflows the empty position and reverts. The victim's funds
+        // are never reachable.
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(
+            MarginActions.ACCOUNT_WITHDRAW_COLLATERAL, abi.encode(adapter, market, victimCollateral, attacker)
+        );
+
+        vm.prank(attacker);
+        vm.expectRevert(); // arithmetic underflow: the attacker's own account holds no collateral
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+
+        // the victim's position is fully intact and the attacker received nothing
+        assertEq(protocol.collateralOf(victimAccount), victimCollateral, "victim collateral intact");
+        assertEq(protocol.debtOf(victimAccount), victimDebt, "victim debt intact");
+        assertEq(IERC20(Currency.unwrap(collateral)).balanceOf(attacker), 0, "attacker gained no collateral");
     }
 
     function test_execute_setAccount_deploysFreshAccount_emitsAccountCreated() public {
@@ -469,5 +606,22 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
         assertEq(IERC20(Currency.unwrap(debt)).balanceOf(account), 0, "account holds no loose debt");
         assertEq(IERC20(Currency.unwrap(collateral)).balanceOf(address(marginRouter)), 0, "router holds no collateral");
         assertEq(IERC20(Currency.unwrap(debt)).balanceOf(address(marginRouter)), 0, "router holds no debt");
+    }
+}
+
+/// @notice A lending protocol stand-in that reenters the router during `supplyCollateral`. Used to
+///         prove the `isNotLocked` guard on `execute` stops reentrancy through a malicious protocol
+///         reached mid-plan.
+contract ReentrantLendingProtocol {
+    MarginRouter internal immutable router;
+
+    constructor(MarginRouter router_) {
+        router = router_;
+    }
+
+    /// @dev Called by the MarginAccount during the supply leg; reenter the still-locked router.
+    ///      The empty plan is never decoded: `isNotLocked` reverts before the body runs.
+    function supplyCollateral(address, uint256) external {
+        router.execute("", block.timestamp + 1);
     }
 }
