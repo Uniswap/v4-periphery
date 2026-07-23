@@ -31,7 +31,7 @@ protocol-agnostic intents into the concrete calls the account executes. All impl
 
 ```
    User / EOA / integrating contract
-        │  openPosition · closePosition · decreasePosition · addCollateral
+        │  increasePosition · decreasePosition · addCollateral · execute
         ▼
   ┌─────────────────┐  unlock + exact-out swap   ┌────────────────────┐
   │  MarginRouter   │ ─────────────────────────▶ │  v4 PoolManager    │
@@ -108,26 +108,29 @@ whether or not it has been deployed yet.
 balances across the whole account, not per `(collateral, debt)` pair, so each Aave position must live
 in its own `(owner, subId)` account: open a second Aave market under a *new* `subId`, never the same
 one. The router does not enforce this. Re-using a `subId` for two markets on the same Aave deployment
-blends their collateral/debt and can make a later `closePosition`/`decreasePosition` revert or withdraw
-collateral still backing the other debt. Morpho markets are isolated and not subject to this.
+blends their collateral/debt and can make a later `decreasePosition` (partial or full close) revert or
+withdraw collateral still backing the other debt. Morpho markets are isolated and not subject to this.
 - **Soulbound.** The owner and the manager (the router) are baked into the clone's bytecode at
 deployment. There is no initializer and no transfer path.
 - **Self-custody with a manager.** The account's fund-moving primitives (`supplyCollateral`,
 `withdrawCollateral`, `borrow`, `repay`, `sweep`) are callable only by the **manager (router)** or
 the **owner**. Recipients of withdrawals/borrows/sweeps are constrained to the manager or owner, so
 funds can never be redirected to a third party.
-- **Owner escape hatch.** `execute(adapter, market, callData)` is owner-only and forwards a call to
-the adapter's lending protocol as the account. This lets the owner always manage or exit a position
+- **Owner escape hatch.** `execute(adapter, callData)` is owner-only and forwards a call to the
+adapter's lending protocol as the account. This lets the owner always manage or exit a position
 directly on the lending protocol without the router (for example if the router is paused or an
 adapter is removed).
 
 ### 3.3 Lending adapter and the allowlist
 
 The adapter is an **encoder**: each `encode`* returns `(target, value, callData)`, and the account
-executes it after checking the target is the adapter's `lendingProtocol()` and the value is zero.
-Governance maintains an **allowlist** of adapters. The allowlist gates only the operations that *add*
-exposure — `openPosition`, `addCollateral`. **Closing and delevering never require
-an allowlisted adapter**, so a position can always be unwound even if its adapter is later removed.
+performs the call as itself with a regular call (never a delegatecall). The target is the adapter's
+declared `lendingProtocol()`. An allowlisted adapter is trusted (see §9); the account's durable
+guarantees are that it acts as its own `onBehalf` and constrains every fund recipient to the owner or
+manager. Governance maintains an **allowlist** of adapters. The allowlist gates only the operations
+that *add* exposure — `increasePosition`, `addCollateral` (and, under `execute`, `ACCOUNT_SUPPLY_COLLATERAL`
+/ `ACCOUNT_BORROW`). **Closing and delevering never require an allowlisted adapter**, so a position can
+always be unwound even if its adapter is later removed.
 
 ### 3.4 Leverage and LTV
 
@@ -148,8 +151,13 @@ LTV ≈ collateralToBuy / totalCollateral = (L - 1) / L
 ```
 
 So 2x ≈ 50% LTV, 3x ≈ 67% LTV, 4x ≈ 75% LTV. The lending market enforces its own maximum
-(liquidation LTV, `maxLtvWad`) at borrow time, so an open that would exceed it reverts. `decreasePosition`
-additionally enforces a caller-supplied `maxLtvAfter` bound. `Ltv` is a WAD value (`1e18 == 100%`).
+(liquidation LTV, `maxLtvWad`) at borrow time, so an open that would exceed it reverts. Both flows
+also accept a caller-supplied `maxLtvAfter` bound on the resulting LTV, asserted after the position
+settles: it is optional on `increasePosition` (zero skips the check, so callers relying only on
+`maxDebtIn` are unaffected) and mandatory on a partial `decreasePosition`. Because an open sizes on
+the pool while liquidation uses the venue oracle, `maxLtvAfter` lets a caller bound leverage by
+health, not just by swap input, so adverse inclusion cannot land a fresh position near the
+liquidation LTV. `Ltv` is a WAD value (`1e18 == 100%`).
 
 ### 3.5 Equity: Permit2 vs native ETH
 
@@ -175,10 +183,12 @@ absolute cap for a single hop, so it may be left zero. When set, it is enforced 
 **realized** output, so an under-filled swap that executes below the bound reverts
 (`V4TooMuchRequestedPerHopSingle`).
 - `deadline` is a Unix timestamp; the call reverts (`DeadlinePassed`) if `block.timestamp` exceeds it.
-- **Opens are all-or-nothing on amount.** A v4 exact-output swap can partially fill on a thin pool.
-`openPosition` requires the swap to deliver the full `collateralToBuy` and revert
-(`IncompleteFill`) otherwise, rather than opening a smaller position than requested. `minHopPriceX36`
-bounds the *price*; the exact-output amount is bounded by this all-or-nothing check.
+- **Position swaps are all-or-nothing on amount.** A v4 exact-output swap can partially fill on a thin
+pool. Both the increase and the decrease/close assert the swap delivered the full requested output and
+revert (`IncompleteFill`) otherwise, rather than acting on a smaller amount than requested (an open
+that under-filled would open a smaller position; a close that under-bought the debt would fail the
+repay opaquely). `minHopPriceX36` bounds the *price*; the exact-output amount is bounded by this
+all-or-nothing check.
 
 ---
 
@@ -190,22 +200,70 @@ All entry points operate on the caller's own account, derived from the authentic
 
 | Operation                    | Params                | Effect                                                                                                                                                                       |
 | ---------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `openPosition` (payable)     | `OpenParams`          | Deploys the account if needed, pulls equity, opens a leveraged position. Calling again on an account that already holds a position adds leverage to it; set `equity = 0` and send no value for a pure leverage increase. |
+| `increasePosition` (payable) | `IncreaseParams`      | Deploys the account if needed, pulls equity, opens a leveraged position. Calling again on an account that already holds a position adds leverage to it; set `equity = 0` and send no value for a pure leverage increase. Optional `maxLtvAfter` bound. |
 | `addCollateral` (payable)    | `AddCollateralParams` | Supplies more collateral without changing debt (delevers / improves health). No swap.                                                                                        |
-| `decreasePosition`           | `DecreaseParams`      | Repays `debtToRepay` by selling collateral; position stays open. Enforces `maxLtvAfter`.                                                                                     |
-| `closePosition`              | `CloseParams`         | Repays all debt by selling collateral, withdraws all collateral, returns the residual (realized PnL) to the caller. A zero-debt position is withdrawn directly with no swap. |
+| `decreasePosition`           | `DecreaseParams`      | Partial delever: repays `debtToRepay` by selling collateral, position stays open, enforces `maxLtvAfter`. A **full close** is `debtToRepay == type(uint256).max`: repay all debt, withdraw all collateral, return the residual (realized PnL) to the caller (a zero-debt position is withdrawn directly with no swap; `maxLtvAfter` ignored). |
+| `execute` (payable)          | `bytes, uint256`      | Runs an arbitrary caller-supplied plan of routing + margin actions in one unlock. The general-purpose counterpart to the curated entries; see §4.1. |
 
 
-**Open mechanics:** swap debt → `collateralToBuy` collateral (exact-out, input capped by
-`maxDebtIn`) → take to the account → supply the account's full collateral balance → borrow the debt
-owed → settle.
+**Increase mechanics:** swap debt → `collateralToBuy` collateral (exact-out, input capped by
+`maxDebtIn`) → assert full fill → take to the account → supply the account's full collateral balance →
+borrow the debt owed → settle → assert `maxLtvAfter` (skipped when zero).
 
-**Close mechanics:** swap collateral → exactly the current debt (exact-out, input capped by
-`maxCollateralIn`) → take to the account → repay all by shares → withdraw all collateral → settle →
-return the residual collateral delta to the caller.
+**Full-close mechanics** (`decreasePosition` with `debtToRepay == type(uint256).max`): swap collateral
+→ exactly the current debt (exact-out, input capped by `maxCollateralIn`) → assert full fill → take to
+the account → repay all by shares → withdraw all collateral → settle → return the residual collateral
+delta to the caller.
 
-**Decrease mechanics:** swap collateral → `debtToRepay` → repay → withdraw the collateral the swap
-consumed → settle → assert the resulting LTV is `<= maxLtvAfter`.
+**Partial-decrease mechanics:** swap collateral → `debtToRepay` → assert full fill → repay → withdraw
+the collateral the swap consumed → settle → assert the resulting LTV is `<= maxLtvAfter`.
+
+### 4.1 The `execute` entrypoint (advanced)
+
+The curated entries above are fixed plans. `execute(bytes unlockData, uint256 deadline)` is the
+general-purpose counterpart: it runs an **arbitrary** caller-supplied plan of v4 routing actions and
+margin account actions in a single `PoolManager` unlock. Everything the curated flows do internally
+is available as composable opcodes, plus flows they cannot express — adjusting margin and leverage
+together, migrating collateral between sub-accounts, paying equity in a token other than the
+collateral (convert it in the same plan), or repaying from the wallet.
+
+`unlockData` is `abi.encode(bytes actions, bytes[] params)`: `actions` is the packed opcode string and
+`params[i]` is the ABI-encoded parameters for `actions[i]`. The opcodes are the inherited v4 routing
+set (swap / settle / take, and `SWEEP` / `WRAP` / `UNWRAP`) plus the margin opcodes:
+
+| Opcode                       | Purpose                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| `SET_ACCOUNT(subId)`         | Bind the active account for subsequent account-scoped actions. Derived from the authenticated caller and `subId`, never from calldata. May appear multiple times (multi-sub-account plans). |
+| `PULL_TO_ACCOUNT(currency, amount, payerIsUser)` | Move a token into the active account: pulled from the caller via Permit2 (`payerIsUser = true`) or from the router's own balance (`false`). Enables repay-from-wallet and native equity. |
+| `ACCOUNT_SUPPLY_COLLATERAL` / `ACCOUNT_BORROW` | Supply/borrow on the active account. **Allowlist-gated** (exposure-increasing). |
+| `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. Not allowlist-gated (exits stay open). |
+| `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_FILL(currency, minAmount)` | Opt-in health and fill guards; encode them yourself. |
+
+`execute` does no entry validation — it gives exactly the guardrails the plan encodes. Composing plans
+safely:
+
+1. **Active account.** Open each account-scoped section with `SET_ACCOUNT`. A plan can only ever touch
+the caller's own accounts. The active account is cleared when the call returns.
+2. **Bounds are yours.** Encode swap slippage (`amountInMaximum`), `ASSERT_FILL` after an exact-output
+swap, and `ASSERT_HEALTH` after each `SET_ACCOUNT` section — the curated entries remain the
+guard-railed path for callers who want that done for them.
+3. **Net the router to zero.** A plan MUST leave no residual on the router; terminate with `SWEEP` for
+every currency it may touch. Balances left behind are **claimable by the next caller** and are not
+protocol-protected.
+4. **Allowlist asymmetry.** Supply and borrow require an allowlisted adapter; withdraw, repay, and
+account-sweep do not, so a position is always exitable.
+5. **`PULL_TO_ACCOUNT`.** An encoded `0` amount reverts (it is not an `OPEN_DELTA` full-balance
+sentinel, unlike the other opcodes); `CONTRACT_BALANCE` is honored only on the router-balance path;
+native currency is unsupported (wrap to WETH first).
+6. **Events.** `execute` plans emit the account-level events (`CollateralSupplied`, `Borrowed`,
+`Repaid`, `Swept`, `AccountCreated`) but **not** the `Position*` snapshot events the curated entries
+emit. Indexers must reconstruct execute-driven positions from the lending-protocol flows.
+
+> **Signing an `execute` plan is equivalent to handing over the sub-account.** Because the router is
+> the account's manager, a malicious plan can borrow to the market maximum, withdraw all collateral,
+> and direct everything to an arbitrary address — with **no token approval required**, strictly worse
+> than a token approval. Never execute a plan built by an untrusted party; front ends must construct
+> the calldata themselves.
 
 ---
 
@@ -283,8 +341,8 @@ contract MarginIntegrator {
         IERC20(weth).approve(address(permit2), type(uint256).max);
         permit2.approve(weth, address(router), uint160(equity), uint48(block.timestamp + 1 hours));
 
-        account = router.openPosition(
-            IMarginRouter.OpenParams({
+        account = router.increasePosition(
+            IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
                 poolKey: poolKey,
@@ -292,6 +350,7 @@ contract MarginIntegrator {
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: maxDebtIn,
                 minHopPriceX36: 0, // optional secondary bound; maxDebtIn is the binding cap
+                maxLtvAfter: Ltv.wrap(0), // optional resulting-LTV bound; 0 skips the check
                 subId: 0,
                 deadline: block.timestamp + 15 minutes
             })
@@ -314,8 +373,8 @@ function openLongWithEth(address weth, address usdc, uint128 collateralToBuy, ui
     // collateral MUST be WETH for the native path
     Market memory market = Market({collateral: Currency.wrap(weth), debt: Currency.wrap(usdc)});
 
-    account = router.openPosition{value: msg.value}(
-        IMarginRouter.OpenParams({
+    account = router.increasePosition{value: msg.value}(
+        IMarginRouter.IncreaseParams({
             adapter: adapter,
             market: market,
             poolKey: poolKey,
@@ -323,6 +382,7 @@ function openLongWithEth(address weth, address usdc, uint128 collateralToBuy, ui
             collateralToBuy: collateralToBuy,
             maxDebtIn: maxDebtIn,
             minHopPriceX36: 0,
+            maxLtvAfter: Ltv.wrap(0),
             subId: 0,
             deadline: block.timestamp + 15 minutes
         })
@@ -335,11 +395,11 @@ function openLongWithEth(address weth, address usdc, uint128 collateralToBuy, ui
 ```solidity
 // add 1 WETH of leverage with no new equity (a second open into the same account)
 function increase(Market memory market, uint128 buy, uint128 maxDebtIn) external {
-    router.openPosition(
-        IMarginRouter.OpenParams({
+    router.increasePosition(
+        IMarginRouter.IncreaseParams({
             adapter: adapter, market: market, poolKey: poolKey,
             equity: 0, collateralToBuy: buy, maxDebtIn: maxDebtIn,
-            minHopPriceX36: 0, subId: 0, deadline: block.timestamp + 15 minutes
+            minHopPriceX36: 0, maxLtvAfter: Ltv.wrap(0), subId: 0, deadline: block.timestamp + 15 minutes
         })
     );
 }
@@ -365,12 +425,14 @@ function delever(Market memory market, uint256 debtToRepay, uint128 maxCollatera
     );
 }
 
-// fully close; residual collateral (realized PnL) is sent to msg.sender
+// fully close; residual collateral (realized PnL) is sent to msg.sender. A full close is a
+// decreasePosition with debtToRepay == type(uint256).max; maxLtvAfter is ignored on a full close.
 function close(Market memory market, uint128 maxCollateralIn) external {
-    router.closePosition(
-        IMarginRouter.CloseParams({
+    router.decreasePosition(
+        IMarginRouter.DecreaseParams({
             adapter: adapter, market: market, poolKey: poolKey,
-            maxCollateralIn: maxCollateralIn, minHopPriceX36: 0,
+            debtToRepay: type(uint256).max, maxCollateralIn: maxCollateralIn,
+            minHopPriceX36: 0, maxLtvAfter: Ltv.wrap(0),
             subId: 0, deadline: block.timestamp + 15 minutes
         })
     );
@@ -415,14 +477,14 @@ function health(address owner, uint256 subId, Market memory market)
 // the owner can always act directly on the lending protocol, bypassing the router
 function ownerRepayDirect(uint256 subId, Market memory market, bytes calldata morphoRepayCall) external {
     address account = router.accountOf(address(this), subId);
-    IMarginAccount(account).execute(adapter, market, morphoRepayCall);
+    IMarginAccount(account).execute(adapter, morphoRepayCall);
 }
 ```
 
 ### 6.7 Notes for contract integrators
 
 - The router derives the account from the authenticated caller (`msg.sender` of the entry point).
-When your contract calls `openPosition`, the position belongs to your contract, and its residual on
+When your contract calls `increasePosition`, the position belongs to your contract, and its residual on
 close is sent to your contract.
 - Batch multiple actions in one transaction with `multicall(bytes[])` (inherited). Do not batch two
 native-ETH position calls in one `multicall` — `msg.value` is shared and the second wrap would
@@ -508,7 +570,7 @@ async function ensurePermit2(account: `0x${string}`, token: `0x${string}`, amoun
 
 > Gasless alternative: build a Permit2 `PermitSingle`, sign it (EIP-712), and forward it through the
 > router's inherited `permit(owner, permitSingle, signature)` in the same `multicall` as
-> `openPosition`. The on-chain `approve` above is the simplest path.
+> `increasePosition`. The on-chain `approve` above is the simplest path.
 
 ### 7.3 Size the position and open
 
@@ -539,12 +601,13 @@ async function open2xLong(user: `0x${string}`) {
     collateralToBuy,
     maxDebtIn,
     minHopPriceX36: 0n,
+    maxLtvAfter: 0n, // optional resulting-LTV bound (WAD); 0 skips the check
     subId: 0n,
     deadline,
   };
 
   const { request } = await publicClient.simulateContract({
-    account: user, address: ADDR.router, abi: marginRouterAbi, functionName: "openPosition", args: [params],
+    account: user, address: ADDR.router, abi: marginRouterAbi, functionName: "increasePosition", args: [params],
   });
   return walletClient.writeContract(request);
 }
@@ -554,7 +617,7 @@ Native-ETH open is the same call with `equity: 0n` and a `value` field:
 
 ```ts
 await walletClient.writeContract({
-  account: user, address: ADDR.router, abi: marginRouterAbi, functionName: "openPosition",
+  account: user, address: ADDR.router, abi: marginRouterAbi, functionName: "increasePosition",
   args: [{ ...params, equity: 0n }], value: parseUnits("1", 18),
 });
 ```
@@ -596,14 +659,22 @@ async function isDeployed(account: `0x${string}`) {
 ### 7.5 Close and decrease
 
 ```ts
+const MAX_UINT256 = (1n << 256n) - 1n;
+
 async function closePosition(user: `0x${string}`, subId: bigint) {
+  // full close = decreasePosition with debtToRepay == type(uint256).max
   // size maxCollateralIn from current debt + a quote (omitted): cap the WETH sold
   const maxCollateralIn = parseUnits("5", 18);
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 900);
 
   const { request } = await publicClient.simulateContract({
-    account: user, address: ADDR.router, abi: marginRouterAbi, functionName: "closePosition",
-    args: [{ adapter: ADDR.adapter, market, poolKey, maxCollateralIn, minHopPriceX36: 0n, subId, deadline }],
+    account: user, address: ADDR.router, abi: marginRouterAbi, functionName: "decreasePosition",
+    args: [{
+      adapter: ADDR.adapter, market, poolKey,
+      debtToRepay: MAX_UINT256, maxCollateralIn,
+      minHopPriceX36: 0n, maxLtvAfter: 0n, // ignored on a full close
+      subId, deadline,
+    }],
   });
   return walletClient.writeContract(request);
 }
@@ -712,8 +783,8 @@ function openShortEth(
     IERC20(usdc).approve(address(permit2), type(uint256).max);
     permit2.approve(usdc, address(router), uint160(equityUsdc), uint48(block.timestamp + 1 hours));
 
-    account = router.openPosition(
-        IMarginRouter.OpenParams({
+    account = router.increasePosition(
+        IMarginRouter.IncreaseParams({
             adapter: aaveAdapter,            // route through Aave v3
             market: market,                  // collateral USDC, debt WETH
             poolKey: usdcWethKey,
@@ -721,6 +792,7 @@ function openShortEth(
             collateralToBuy: collateralToBuyUsdc, // 6d USDC
             maxDebtIn: maxDebtInWeth,        // 18d WETH binding cap
             minHopPriceX36: 0,
+            maxLtvAfter: Ltv.wrap(0),
             subId: 0,
             deadline: block.timestamp + 15 minutes
         })
@@ -728,7 +800,7 @@ function openShortEth(
 }
 ```
 
-`OpenParams` carries no direction field: passing `Market(collateral: USDC, debt: WETH)` is what makes
+`IncreaseParams` carries no direction field: passing `Market(collateral: USDC, debt: WETH)` is what makes
 this a short. Everything else (increase, add collateral, decrease, close, reading state) works exactly
 as in §5 and §6, with the adapter set to the Aave adapter and the decimals swapped. The example routes
 through Aave v3; to route the identical short through Aave v4, pass an allowlisted `AaveV4LendingAdapter`
@@ -753,8 +825,8 @@ funding-rate spread between the two venues. The two calls differ only by adapter
 
 ```solidity
 // Leg 1: long ETH on subId 0 (collateral WETH, debt USDC)
-router.openPosition(
-    IMarginRouter.OpenParams({
+router.increasePosition(
+    IMarginRouter.IncreaseParams({
         adapter: morphoAdapter,
         market: Market({collateral: Currency.wrap(weth), debt: Currency.wrap(usdc)}),
         poolKey: usdcWethKey,
@@ -762,14 +834,15 @@ router.openPosition(
         collateralToBuy: longBuyWeth,    // 18d WETH
         maxDebtIn: longMaxDebtInUsdc,    // 6d USDC
         minHopPriceX36: 0,
+        maxLtvAfter: Ltv.wrap(0),
         subId: 0,
         deadline: block.timestamp + 15 minutes
     })
 );
 
 // Leg 2: short ETH on subId 1 (collateral USDC, debt WETH)
-router.openPosition(
-    IMarginRouter.OpenParams({
+router.increasePosition(
+    IMarginRouter.IncreaseParams({
         adapter: aaveAdapter,
         market: Market({collateral: Currency.wrap(usdc), debt: Currency.wrap(weth)}),
         poolKey: usdcWethKey,
@@ -777,6 +850,7 @@ router.openPosition(
         collateralToBuy: shortBuyUsdc,   // 6d USDC
         maxDebtIn: shortMaxDebtInWeth,   // 18d WETH
         minHopPriceX36: 0,
+        maxLtvAfter: Ltv.wrap(0),
         subId: 1,
         deadline: block.timestamp + 15 minutes
     })
@@ -793,9 +867,12 @@ coming from swap slippage on each leg), and closing one leg leaves the other unt
 
 - **Soulbound accounts.** Owner and manager are immutable; there is no re-initialization or transfer.
 Only the manager (router) or owner can move an account's funds, and only to the manager or owner.
-- **Adapter trust.** Adapters are governance-curated. The account constrains the call target to the
-adapter's declared lending protocol and forbids value transfers and delegatecall — but an
-allowlisted adapter is trusted; governance is responsible for vetting adapters it allowlists.
+- **Adapter trust.** Adapters are governance-curated and an allowlisted adapter is fully trusted:
+governance is responsible for vetting adapters it allowlists (a malicious adapter could drain funds
+routed through it). The account routes calls only to the adapter's declared `lendingProtocol()` with a
+regular call (never a delegatecall), acts as its own `onBehalf`, and constrains every fund recipient to
+the owner or manager — but these are durable structural guarantees, not a defense against a malicious
+adapter, which the allowlist is what actually gates.
 - **Governance.** The router's adapter allowlist and the adapter's market routing table are
 governance-controlled. Ownership transfers are two-step and reject the zero address. Production
 deployments should put governance behind a timelock or multisig.
@@ -861,7 +938,7 @@ addresses, reserve ids, and collateral factor were verified on a mainnet fork at
 ### Param structs
 
 ```solidity
-struct OpenParams {        // openPosition
+struct IncreaseParams {        // increasePosition
     ILendingAdapter adapter;
     Market market;
     PoolKey poolKey;
@@ -869,28 +946,21 @@ struct OpenParams {        // openPosition
     uint128 collateralToBuy;
     uint128 maxDebtIn;     // mandatory binding slippage cap
     uint256 minHopPriceX36;// optional per-hop bound (0 = off)
+    Ltv maxLtvAfter;       // optional resulting-LTV bound (0 = skip)
     uint256 subId;
     uint256 deadline;
 }
 
-struct CloseParams {       // closePosition
+// closePosition is a decreasePosition with debtToRepay == type(uint256).max (there is no
+// separate close entry point or CloseParams struct).
+struct DecreaseParams {    // decreasePosition (partial decrease, or full close via max debtToRepay)
     ILendingAdapter adapter;
     Market market;
     PoolKey poolKey;
+    uint256 debtToRepay;   // type(uint256).max = full close
     uint128 maxCollateralIn; // mandatory on the swap path (ignored for a zero-debt close)
     uint256 minHopPriceX36;
-    uint256 subId;
-    uint256 deadline;
-}
-
-struct DecreaseParams {    // decreasePosition
-    ILendingAdapter adapter;
-    Market market;
-    PoolKey poolKey;
-    uint256 debtToRepay;
-    uint128 maxCollateralIn;
-    uint256 minHopPriceX36;
-    Ltv maxLtvAfter;       // mandatory; resulting LTV must be <= this
+    Ltv maxLtvAfter;       // mandatory on a partial decrease; ignored on a full close
     uint256 subId;
     uint256 deadline;
 }
@@ -909,10 +979,10 @@ struct AddCollateralParams { // addCollateral
 
 | Function                                             | Access               | Notes                                 |
 | ---------------------------------------------------- | -------------------- | ------------------------------------- |
-| `openPosition(OpenParams) payable`                   | anyone               | own account; a second open adds leverage |
-| `closePosition(CloseParams)`                         | anyone               | own account; no allowlist requirement |
-| `decreasePosition(DecreaseParams)`                   | anyone               | own account; no allowlist requirement |
+| `increasePosition(IncreaseParams) payable`           | anyone               | own account; a second increase adds leverage |
+| `decreasePosition(DecreaseParams)`                   | anyone               | own account; partial delever or full close (`debtToRepay == max`); no allowlist requirement |
 | `addCollateral(AddCollateralParams) payable`         | anyone               | own account                           |
+| `execute(bytes unlockData, uint256 deadline) payable`| anyone               | own accounts; arbitrary plan (§4.1)   |
 | `accountOf(address owner, uint256 subId) view`       | anyone               | predicted account address             |
 | `governance() view` / `pendingGovernance() view`     | anyone               | current / pending governance          |
 | `isAdapterAllowed(ILendingAdapter) view`             | anyone               | allowlist status                      |
@@ -923,7 +993,8 @@ struct AddCollateralParams { // addCollateral
 ### MarginAccount functions
 
 `owner()`, `manager()` (views); `supplyCollateral`, `withdrawCollateral`, `borrow`, `repay`, `sweep`
-(manager or owner; recipients constrained to manager/owner); `execute` (owner only).
+(manager or owner; recipients constrained to manager/owner); `execute(adapter, adapterCall)` (owner
+only escape hatch).
 
 ### Lending adapter read functions
 
@@ -952,7 +1023,8 @@ emitted by all three on `setMarket`, carries the two `reserveId`s for the v4 ada
 | router   | `PositionUnhealthy()`                                            | resulting LTV exceeds the bound                                                                                           |
 | router   | `AdapterNotAllowed(address)`                                     | adapter not on the allowlist (exposure-increasing flows)                                                                  |
 | router   | `NativeCollateralMismatch()`                                     | native ETH sent but collateral is not WETH                                                                                |
-| router   | `IncompleteFill(uint256 requested, uint256 received)`            | the exact-output swap on open/increase under-filled (thin pool); the open is all-or-nothing                               |
+| router   | `IncompleteFill(uint256 requested, uint256 received)`            | the exact-output position swap (increase or decrease/close) under-filled (thin pool); the swap is all-or-nothing           |
+| router   | `NoActiveAccount()`                                              | an `execute` plan ran an account-scoped action with no preceding `SET_ACCOUNT`                                            |
 | V4Router | `V4TooMuchRequestedPerHopSingle(uint256 minPrice, uint256 priceX36)` | a swap's realized per-hop price fell below the caller's `minHopPriceX36` bound                                        |
 | account  | `NotAuthorized()`                                                | caller is neither manager nor owner                                                                                       |
 | account  | `ReceiverNotAllowed(address)`                                    | recipient is neither manager nor owner                                                                                    |
@@ -969,6 +1041,7 @@ emitted by all three on `setMarket`, carries the two `reserveId`s for the v4 ada
 
 ### Events
 
-`PositionOpened`, `PositionClosed`, `PositionDecreased`, `CollateralAdded`,
-`AdapterAllowed`, `GovernanceTransferStarted`, `GovernanceTransferred` (router); `MarketSet` (adapter);
-`AccountCreated` (account factory).
+`PositionIncreased`, `PositionDecreased` (a full close is a `PositionDecreased` with the position
+emptied), `CollateralAdded`, `AdapterAllowed`, `GovernanceTransferStarted`, `GovernanceTransferred`
+(router); `MarketSet` (adapter); `AccountCreated` (account factory). `execute` plans emit no router
+`Position*` events — see §4.1.
