@@ -39,7 +39,13 @@ import {Owner} from "./types/Owner.sol";
 ///
 ///         Supported markets are restricted to the governance allowlist of lending adapters, which
 ///         curate standard ERC-20 markets only (no fee-on-transfer or rebasing tokens). Under that
-///         constraint every flow nets to zero with no router residual.
+///         constraint every curated flow (`increasePosition`/`decreasePosition`/`addCollateral`)
+///         nets to zero with no router residual by construction.
+///
+///         The `execute` entry point runs an arbitrary caller-supplied plan of the same actions.
+///         It does not guarantee zero residual: a plan MUST net the router itself (terminate with
+///         `SWEEP`), because any balance left on the router is claimable by the next caller. See
+///         `IMarginRouter.execute` for the full plan-composition contract.
 /// @custom:security-contact security@uniswap.org
 contract MarginRouter is
     IMarginRouter,
@@ -311,6 +317,16 @@ contract MarginRouter is
             position.currentLtv,
             position.healthFactorWad
         );
+    }
+
+    /// @inheritdoc IMarginRouter
+    function execute(bytes calldata unlockData, uint256 deadline) external payable isNotLocked checkDeadline(deadline) {
+        _executeActions(unlockData);
+        // clear the active account so it cannot leak into a later multicall leg within the same
+        // transaction (transient storage persists for the whole tx, not per external call). The
+        // NoActiveAccount guard is the backstop, and any residual value is scoped to this locker's
+        // own account regardless, so this is defense in depth.
+        _setActiveAccount(address(0));
     }
 
     /// @inheritdoc IMarginRouter

@@ -279,4 +279,48 @@ interface IMarginRouter {
     /// @param subId The sub-account index.
     /// @return The predicted MarginAccount clone address.
     function accountOf(address owner, uint256 subId) external view returns (address);
+
+    /// @notice Executes an arbitrary plan of v4 routing and margin actions atomically in one
+    ///         PoolManager unlock. The general-purpose counterpart to the curated entry points:
+    ///         any composition the interpreter supports (swap, settle, take, wrap/unwrap/sweep,
+    ///         and the account-scoped margin actions) runs as a single flash-accounted sequence.
+    ///         `unlockData` is `abi.encode(bytes actions, bytes[] params)`, where `actions` is the
+    ///         packed opcode string and `params[i]` is the encoded parameters for `actions[i]`.
+    ///
+    ///         Composing plans safely (the curated entry points enforce these for you; `execute`
+    ///         does not):
+    ///
+    ///         1. Active account: open each account-scoped section with `SET_ACCOUNT(subId)`. The
+    ///            account is always derived from the authenticated caller, never from calldata, so
+    ///            a plan can only touch the caller's own accounts. The active account is cleared
+    ///            when the call returns.
+    ///         2. No entry validation: `execute` enforces no slippage, health, or fill bounds.
+    ///            Encode `amountInMaximum`/`amountOutMinimum` on swaps, `ASSERT_FILL` after an
+    ///            exact-output swap, and `ASSERT_HEALTH` yourself. The curated entry points remain
+    ///            the guard-railed path.
+    ///         3. Health: append `ASSERT_HEALTH` per touched (account, market), after each
+    ///            `SET_ACCOUNT` section, not once at the end. A trailing assert only checks the
+    ///            last active account.
+    ///         4. Residuals: a plan MUST net the router to zero. Terminate with `SWEEP` for every
+    ///            currency the plan may leave on the router. Balances left behind are claimable by
+    ///            the next caller and are not protocol-protected.
+    ///         5. Allowlist asymmetry: `ACCOUNT_SUPPLY_COLLATERAL` and `ACCOUNT_BORROW` require an
+    ///            allowlisted adapter; withdraw, repay, and account-sweep do not, so a position is
+    ///            always exitable.
+    ///         6. `PULL_TO_ACCOUNT`: an encoded `0` amount reverts (it is not an `OPEN_DELTA`
+    ///            full-balance sentinel here, unlike every other opcode); `CONTRACT_BALANCE` is
+    ///            honored only on the router-balance path. Native currency is unsupported: wrap to
+    ///            WETH first.
+    ///         7. Signing an `execute` plan is equivalent to handing over the sub-account: a
+    ///            malicious plan can borrow to the market maximum, withdraw all collateral, and
+    ///            direct everything to an arbitrary address, with no token approval required (the
+    ///            router is the account manager) - strictly worse than a token approval. Never
+    ///            execute plans from untrusted builders; frontends must build the calldata.
+    ///         8. Events: `execute` plans emit account-level events (`CollateralSupplied`,
+    ///            `Borrowed`, `Repaid`, `Swept`, `AccountCreated`) but not the `Position*`
+    ///            snapshot events the curated entry points emit.
+    ///
+    /// @param unlockData `abi.encode(bytes actions, bytes[] params)` describing the plan.
+    /// @param deadline The Unix timestamp after which the call reverts `DeadlinePassed`.
+    function execute(bytes calldata unlockData, uint256 deadline) external payable;
 }
