@@ -90,10 +90,11 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
 
   const key = pairKey(accountAddr, collateral, debt);
   const pointer = await context.db.find(activePosition, { id: key });
+  const existing = pointer ? await context.db.find(position, { id: pointer.positionId }) : null;
 
-  if (pointer) {
-    // add leverage to the live epoch; the event totals are authoritative
-    const updated = await context.db.update(position, { id: pointer.positionId }).set((row) => {
+  // A genuine increase: a prior router event already reported this epoch's open.
+  if (existing && existing.openReported) {
+    const updated = await context.db.update(position, { id: existing.id }).set((row) => {
       const totalBought = row.totalCollateralBought + collateralBought;
       const totalDrawn = row.totalDebtDrawn + debtDrawn;
       return {
@@ -129,39 +130,51 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
     return;
   }
 
-  // first open of this epoch
-  const id = positionId(accountAddr, collateral, debt, event.transaction.hash);
-  await context.db.insert(position).values({
-    id,
-    chainId: context.chain.id,
-    owner,
-    account: accountAddr,
-    collateral,
-    debt,
-    venue: flows.venue,
-    status: "OPEN",
-    collateralAmount: collateralTotal,
-    debtPrincipal: debtTotal,
+  // Otherwise this event opens the epoch. Adopt the flow-created row when one exists (the common
+  // Morpho path: the supply/borrow flows created it earlier in this tx), else create it (Aave flows
+  // that could not resolve the pair, so no epoch was opened by the flow layer). Either way the event
+  // totals are authoritative and the economics come only from here.
+  const id = existing ? existing.id : positionId(accountAddr, collateral, debt, event.transaction.hash);
+  const opened = {
+    venue: flows.venue !== "UNKNOWN" ? flows.venue : (existing?.venue ?? flows.venue),
     equity,
     totalCollateralBought: collateralBought,
     totalDebtDrawn: debtDrawn,
     avgEntryPriceX18: priceX18,
     leverageX18AtOpen: equity > 0n ? (collateralTotal * WAD) / equity : null,
-    openTxHash: event.transaction.hash,
-    openedAt: event.block.timestamp,
-    openBlock: event.block.number,
+    collateralAmount: collateralTotal,
+    debtPrincipal: debtTotal,
     openPoolId: poolId,
-    morphoMarketId: flows.morphoMarketId,
+    morphoMarketId: flows.morphoMarketId ?? existing?.morphoMarketId ?? null,
     lltv: maxLtv,
-    liquidated: false,
-    seizedCollateral: 0n,
-    liquidationRepaidDebt: 0n,
-    badDebt: 0n,
     lastLtvWad: currentLtv,
     lastHealthFactorWad: healthFactorWad,
+    openReported: true,
     updatedAt: event.block.timestamp,
-  });
-  await context.db.insert(activePosition).values({ id: key, positionId: id }).onConflictDoUpdate({ positionId: id });
+  };
+
+  if (existing) {
+    await context.db.update(position, { id }).set(opened);
+  } else {
+    await context.db.insert(position).values({
+      id,
+      chainId: context.chain.id,
+      owner,
+      account: accountAddr,
+      collateral,
+      debt,
+      status: "OPEN",
+      openTxHash: event.transaction.hash,
+      openedAt: event.block.timestamp,
+      openBlock: event.block.number,
+      liquidated: false,
+      seizedCollateral: 0n,
+      liquidationRepaidDebt: 0n,
+      badDebt: 0n,
+      ...opened,
+    });
+    await context.db.insert(activePosition).values({ id: key, positionId: id }).onConflictDoUpdate({ positionId: id });
+  }
 
   await context.db.insert(positionAction).values({
     id: eventId(event.transaction.hash, event.log.logIndex),
@@ -281,6 +294,8 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
     debtPrincipal: debtTotal,
     lastLtvWad: currentLtv,
     lastHealthFactorWad: healthFactorWad,
+    // adopt a flow-opened collateral-only epoch as router-reported
+    openReported: true,
     updatedAt: event.block.timestamp,
   }));
 

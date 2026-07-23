@@ -125,6 +125,12 @@ export const position = onchainTable(
     venue: venue("venue").notNull(),
     status: positionStatus("status").notNull(),
 
+    // True once a router lifecycle event has reported this epoch's economics. An epoch first seen
+    // through lending-protocol flows (an `execute` plan or owner escape-hatch op, which emit no
+    // router event) stays false: its amounts are authoritative but equity/leverage/pool/entry price
+    // are unknown. The first router event on such an epoch adopts it and flips this true.
+    openReported: t.boolean().notNull(),
+
     // Running amounts maintained from lending-protocol events (source of truth).
     // debtPrincipal ignores interest accrual; live debt must be read onchain.
     collateralAmount: t.bigint().notNull(),
@@ -174,7 +180,11 @@ export const position = onchainTable(
   })
 );
 
-/** Pointer from (account, pair) to its live position row, if any. */
+/**
+ * Pointer from (account, pair) to its live position row. A curated close clears it; a router-less
+ * close (execute / escape-hatch) terminates the epoch's status but leaves the pointer, so readers
+ * must confirm the target is OPEN (see `findActivePosition`). The next open overwrites it.
+ */
 export const activePosition = onchainTable("active_position", (t) => ({
   id: t.text().primaryKey(), // `${account}-${collateral}-${debt}` (lowercase)
   positionId: t.text().notNull(),

@@ -40,7 +40,9 @@ export async function isMarginAccount(context: Context, addr: `0x${string}`): Pr
   return (await context.db.find(account, { address: addr })) !== null;
 }
 
-/** The live position row for an (account, pair), or null. */
+/** The live position row for an (account, pair), or null. A pointer to a non-OPEN epoch (left
+ *  behind when a router-less close terminated the epoch without clearing the pointer) is treated
+ *  as no live position, so the next opening flow starts a fresh epoch and overwrites the pointer. */
 export async function findActivePosition(
   context: Context,
   accountAddr: `0x${string}`,
@@ -49,7 +51,8 @@ export async function findActivePosition(
 ) {
   const pointer = await context.db.find(activePosition, { id: pairKey(accountAddr, collateral, debt) });
   if (!pointer) return null;
-  return await context.db.find(position, { id: pointer.positionId });
+  const row = await context.db.find(position, { id: pointer.positionId });
+  return row && row.status === "OPEN" ? row : null;
 }
 
 /** Every lending flow staged for a (tx, account), applied or not. */

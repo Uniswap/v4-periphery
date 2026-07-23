@@ -1,7 +1,7 @@
 import type { Context } from "ponder:registry";
-import { activePosition, lendingEvent, position, positionAction } from "ponder:schema";
+import { account, activePosition, lendingEvent, position, positionAction } from "ponder:schema";
 
-import { clamp0, eventId, findActivePosition, pairKey, WAD } from "./helpers";
+import { clamp0, eventId, findActivePosition, pairKey, positionId, WAD } from "./helpers";
 
 type Venue = "MORPHO" | "AAVE_V3" | "AAVE_V4";
 type FlowKind = "SUPPLY_COLLATERAL" | "WITHDRAW_COLLATERAL" | "BORROW" | "REPAY";
@@ -21,26 +21,91 @@ interface FlowEvent {
 }
 
 /**
- * Stage a collateral/debt flow and, when a live position exists for the pair,
- * apply it to the running amounts immediately. Flows with no live position
- * (the legs of a first open, or owner escape-hatch operations after a terminal
- * state) stay staged; the router lifecycle handler that fires later in the
- * same transaction consumes them, and never-consumed rows remain queryable as
- * the raw account history.
+ * Open a new position epoch from a lending flow, when no live epoch exists for the pair. This makes
+ * the lending-protocol layer the source of truth for position existence and amounts, so positions
+ * driven by an `execute` plan or an owner escape-hatch op (neither emits a router event) are
+ * tracked. Economics (equity, leverage, pool, entry price, LTV) are left empty; a curated router
+ * event later in the same tx adopts this epoch and fills them in (see router.ts). Amounts start at
+ * zero and the caller applies the opening flow's delta, so there is no double count.
+ */
+async function openFlowPosition(context: Context, flow: FlowEvent): Promise<{ id: string }> {
+  const acct = await context.db.find(account, { address: flow.account });
+  // the account row is created by AccountCreated, which fires before any flow in the same tx
+  // (SET_ACCOUNT / lazy deploy precede the supply/borrow); fall back defensively to the account.
+  const owner = acct?.owner ?? flow.account;
+  const id = positionId(flow.account, flow.collateral, flow.debt, flow.txHash);
+
+  await context.db
+    .insert(position)
+    .values({
+      id,
+      chainId: context.chain.id,
+      owner,
+      account: flow.account,
+      collateral: flow.collateral,
+      debt: flow.debt,
+      venue: flow.venue,
+      status: "OPEN",
+      openReported: false,
+      collateralAmount: 0n,
+      debtPrincipal: 0n,
+      equity: 0n,
+      totalCollateralBought: 0n,
+      totalDebtDrawn: 0n,
+      avgEntryPriceX18: null,
+      leverageX18AtOpen: null,
+      openTxHash: flow.txHash,
+      openedAt: flow.timestamp,
+      openBlock: flow.blockNumber,
+      openPoolId: null,
+      morphoMarketId: flow.morphoMarketId ?? null,
+      lltv: null,
+      liquidated: false,
+      seizedCollateral: 0n,
+      liquidationRepaidDebt: 0n,
+      badDebt: 0n,
+      lastLtvWad: null,
+      lastHealthFactorWad: null,
+      updatedAt: flow.timestamp,
+    })
+    .onConflictDoNothing();
+  await context.db
+    .insert(activePosition)
+    .values({ id: pairKey(flow.account, flow.collateral, flow.debt), positionId: id })
+    .onConflictDoUpdate({ positionId: id });
+  return { id };
+}
+
+/**
+ * Record a collateral/debt flow and apply it to the pair's live position, opening a new epoch when
+ * an exposure-increasing flow arrives with none live. Amounts (and terminal status) are maintained
+ * here from protocol events as the source of truth; a curated router event later in the same tx
+ * adopts the epoch and adds economics. An epoch whose amounts both reach zero is terminated here so
+ * router-less closes (execute / escape-hatch) do not leave it stuck OPEN; the activePosition pointer
+ * is left for a curated close to enrich and is otherwise overwritten on the next open.
  */
 export async function recordFlow(context: Context, flow: FlowEvent): Promise<void> {
-  const live = await findActivePosition(context, flow.account, flow.collateral, flow.debt);
+  let live = await findActivePosition(context, flow.account, flow.collateral, flow.debt);
 
   const collateralDelta =
     flow.kind === "SUPPLY_COLLATERAL" ? flow.assets : flow.kind === "WITHDRAW_COLLATERAL" ? -flow.assets : 0n;
   const debtDelta = flow.kind === "BORROW" ? flow.assets : flow.kind === "REPAY" ? -flow.assets : 0n;
 
+  if (!live && (flow.kind === "SUPPLY_COLLATERAL" || flow.kind === "BORROW")) {
+    const opened = await openFlowPosition(context, flow);
+    live = await context.db.find(position, { id: opened.id });
+  }
+
   if (live) {
-    await context.db.update(position, { id: live.id }).set((row) => ({
-      collateralAmount: clamp0(row.collateralAmount + collateralDelta),
-      debtPrincipal: clamp0(row.debtPrincipal + debtDelta),
+    const nextCollateral = clamp0(live.collateralAmount + collateralDelta);
+    const nextDebt = clamp0(live.debtPrincipal + debtDelta);
+    const terminal = nextCollateral === 0n && nextDebt === 0n;
+    await context.db.update(position, { id: live.id }).set({
+      collateralAmount: nextCollateral,
+      debtPrincipal: nextDebt,
+      ...(terminal ? { status: "CLOSED" as const } : {}),
       updatedAt: flow.timestamp,
-    }));
+    });
   }
 
   await context.db.insert(lendingEvent).values({
@@ -55,7 +120,7 @@ export async function recordFlow(context: Context, flow: FlowEvent): Promise<voi
     assets: flow.assets,
     blockNumber: flow.blockNumber,
     timestamp: flow.timestamp,
-    applied: live !== null, // unapplied flows are picked up by the router handler in the same tx
+    applied: live !== null, // a flow with no live epoch to apply to remains staged as raw history
   });
 }
 
