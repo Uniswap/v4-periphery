@@ -19,8 +19,13 @@ import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {MarginRouter} from "../../src/MarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
+import {IV4Router} from "../../src/interfaces/IV4Router.sol";
+import {Actions} from "../../src/libraries/Actions.sol";
+import {MarginActions} from "../../src/libraries/MarginActions.sol";
+import {ActionConstants} from "../../src/libraries/ActionConstants.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
+import {Plan, Planner} from "../shared/Planner.sol";
 import {MockLendingAdapter} from "../mocks/MockLendingAdapter.sol";
 import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 
@@ -31,6 +36,8 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 /// @dev Stack-depth kept low throughout: each action is split into small helpers so the compiler
 ///      does not need via_ir. No local frame exceeds ~10 variables.
 contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
+    using Planner for Plan;
+
     // -------------------------------------------------------------------------
     // Constants
     // -------------------------------------------------------------------------
@@ -219,6 +226,136 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
 
         vm.prank(actor);
         try marginRouter.decreasePosition(params) {} catch {}
+    }
+
+    /// @notice Open a long through the generalized `execute` entrypoint instead of the curated
+    ///         increasePosition, so the invariants also hold across arbitrary-plan opens.
+    function executeOpenLong(uint256 actorSeed, uint256 subIdSeed, uint256 equitySeed, uint256 buySeed) external {
+        address actor = _actor(actorSeed);
+        uint256 subId = _subId(subIdSeed);
+        uint256 equity = bound(equitySeed, EQUITY_MIN, EQUITY_MAX);
+        uint128 buy = uint128(bound(buySeed, uint256(BUY_MIN), uint256(BUY_MAX)));
+
+        _trackAccount(actor, subId);
+        _fundAccount(actor, subId, equity);
+
+        bytes memory data = _executeOpenPlan(actor, subId, buy);
+
+        vm.prank(actor);
+        try marginRouter.execute(data, _deadline()) {
+            ghost_totalCollateralIn += equity;
+        } catch {}
+    }
+
+    /// @notice Fully close a position through `execute` (swap-buy the debt, repay all, withdraw all,
+    ///         settle, and SWEEP the realized residual to the actor).
+    function executeCloseLong(uint256 actorSeed, uint256 subIdSeed) external {
+        address actor = _actor(actorSeed);
+        uint256 subId = _subId(subIdSeed);
+        _trackAccount(actor, subId);
+
+        address account = marginRouter.accountOf(actor, subId);
+        uint256 debtOwed = protocol.debtOf(account);
+        uint256 collateralHeld = protocol.collateralOf(account);
+        // the swap-close path needs a non-zero debt to buy and collateral to withdraw
+        if (debtOwed == 0 || collateralHeld == 0) return;
+
+        bytes memory data = _executeClosePlan(account, subId, debtOwed, collateralHeld);
+
+        uint256 before = collateralToken.balanceOf(actor);
+        vm.prank(actor);
+        try marginRouter.execute(data, _deadline()) {
+            ghost_totalCollateralOut += collateralToken.balanceOf(actor) - before;
+        } catch {}
+    }
+
+    /// @notice Fund an account directly, then supply that loose balance via an `execute` plan
+    ///         (SET_ACCOUNT + SUPPLY with OPEN_DELTA). Exercises the account-scoped supply path and
+    ///         its allowlist guard without a swap or Permit2.
+    function executePullSupply(uint256 actorSeed, uint256 subIdSeed, uint256 equitySeed) external {
+        address actor = _actor(actorSeed);
+        uint256 subId = _subId(subIdSeed);
+        uint256 equity = bound(equitySeed, EQUITY_MIN, EQUITY_MAX);
+
+        _trackAccount(actor, subId);
+        _fundAccount(actor, subId, equity);
+
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(subId));
+        plan =
+            plan.add(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, abi.encode(adapter, market, ActionConstants.OPEN_DELTA));
+
+        vm.prank(actor);
+        try marginRouter.execute(plan.encode(), _deadline()) {
+            ghost_totalCollateralIn += equity;
+        } catch {}
+    }
+
+    // -------------------------------------------------------------------------
+    // Execute plan builders (kept in their own helpers to bound frame locals)
+    // -------------------------------------------------------------------------
+
+    function _executeOpenPlan(address actor, uint256 subId, uint128 buy) internal view returns (bytes memory) {
+        Market memory m = market;
+        address account = marginRouter.accountOf(actor, subId);
+        bool zeroForOne = m.toSwapParams(m.debt, 0, 0, poolKey).zeroForOne;
+
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(subId));
+        plan = plan.add(
+            Actions.SWAP_EXACT_OUT_SINGLE,
+            abi.encode(
+                IV4Router.ExactOutputSingleParams({
+                    poolKey: poolKey,
+                    zeroForOne: zeroForOne,
+                    amountOut: buy,
+                    amountInMaximum: MAX_DEBT_CAP,
+                    minHopPriceX36: 0,
+                    hookData: ""
+                })
+            )
+        );
+        plan = plan.add(MarginActions.ASSERT_FILL, abi.encode(m.collateral, uint256(buy)));
+        plan = plan.add(Actions.TAKE, abi.encode(m.collateral, account, ActionConstants.OPEN_DELTA));
+        plan = plan.add(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, abi.encode(adapter, m, ActionConstants.OPEN_DELTA));
+        plan = plan.add(
+            MarginActions.ACCOUNT_BORROW, abi.encode(adapter, m, ActionConstants.OPEN_DELTA, address(marginRouter))
+        );
+        plan = plan.add(Actions.SETTLE, abi.encode(m.debt, ActionConstants.OPEN_DELTA, false));
+        return plan.encode();
+    }
+
+    function _executeClosePlan(address account, uint256 subId, uint256 debtOwed, uint256 collateralHeld)
+        internal
+        view
+        returns (bytes memory)
+    {
+        Market memory m = market;
+        bool zeroForOne = m.toSwapParams(m.collateral, 0, 0, poolKey).zeroForOne;
+
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(subId));
+        plan = plan.add(
+            Actions.SWAP_EXACT_OUT_SINGLE,
+            abi.encode(
+                IV4Router.ExactOutputSingleParams({
+                    poolKey: poolKey,
+                    zeroForOne: zeroForOne,
+                    amountOut: uint128(debtOwed),
+                    amountInMaximum: MAX_COLLATERAL_CAP,
+                    minHopPriceX36: 0,
+                    hookData: ""
+                })
+            )
+        );
+        plan = plan.add(Actions.TAKE, abi.encode(m.debt, account, ActionConstants.OPEN_DELTA));
+        plan = plan.add(MarginActions.ACCOUNT_REPAY, abi.encode(adapter, m, type(uint256).max));
+        plan = plan.add(
+            MarginActions.ACCOUNT_WITHDRAW_COLLATERAL, abi.encode(adapter, m, collateralHeld, address(marginRouter))
+        );
+        plan = plan.add(Actions.SETTLE, abi.encode(m.collateral, ActionConstants.OPEN_DELTA, false));
+        plan = plan.add(Actions.SWEEP, abi.encode(m.collateral, ActionConstants.MSG_SENDER));
+        return plan.encode();
     }
 
     // -------------------------------------------------------------------------

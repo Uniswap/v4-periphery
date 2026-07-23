@@ -235,11 +235,15 @@ contract MarginRouterInvariantTest is StdInvariant, Test {
     function _configureTargets() private {
         targetContract(address(handler));
 
-        bytes4[] memory sels = new bytes4[](4);
+        bytes4[] memory sels = new bytes4[](7);
         sels[0] = MarginRouterHandler.openLong.selector;
         sels[1] = MarginRouterHandler.increaseLong.selector;
         sels[2] = MarginRouterHandler.closeLong.selector;
         sels[3] = MarginRouterHandler.decreaseLong.selector;
+        // execute-driven actions: the invariants must hold across interleaved curated + arbitrary-plan sequences
+        sels[4] = MarginRouterHandler.executeOpenLong.selector;
+        sels[5] = MarginRouterHandler.executeCloseLong.selector;
+        sels[6] = MarginRouterHandler.executePullSupply.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: sels}));
 
         // Prevent the fuzzer from calling the protocol, adapter, or router directly.
