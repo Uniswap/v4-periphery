@@ -24,9 +24,19 @@ contract OwnerTest is Test {
         ownerStore.acceptOwnership(caller);
     }
 
+    function writeExt(address newOwner) external {
+        ownerStore.write(newOwner);
+    }
+
     function test_write_and_read() public {
         ownerStore.write(alice);
         assertEq(ownerStore.read(), alice);
+    }
+
+    function test_write_revertsForZeroAddress() public {
+        // seeding a zero owner would make onlyOwner permanently unsatisfiable; reject it like propose
+        vm.expectRevert(ZeroOwner.selector);
+        this.writeExt(address(0));
     }
 
     function test_onlyOwner_passesForOwner() public {

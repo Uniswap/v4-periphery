@@ -42,11 +42,13 @@ function read(Owner storage self) view returns (address) {
 
 /// @notice Sets the owner directly, without the two-step handoff. Used to seed the initial owner at
 ///         construction. The caller must gate access (e.g. by calling `onlyOwner` first); this
-///         function performs no authorization itself.
+///         function performs no authorization itself. Reverts `ZeroOwner` on the zero address, so a
+///         constructor cannot seed an unrecoverable owner (mirrors the guard on `propose`).
 /// @param self The `Owner` storage to update.
 /// @param newOwner The new owner address.
 /// @return The same storage reference, for chaining.
 function write(Owner storage self, address newOwner) returns (Owner storage) {
+    if (newOwner == address(0)) revert ZeroOwner();
     self._current = newOwner;
     return self;
 }

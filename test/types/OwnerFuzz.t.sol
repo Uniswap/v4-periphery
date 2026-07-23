@@ -50,6 +50,7 @@ contract OwnerFuzzTest is Test {
 
     /// write then read returns the written address.
     function testFuzz_writeRead_roundTrip(address owner) public {
+        vm.assume(owner != address(0));
         harness.writeOwner(owner);
         assertEq(harness.readOwner(), owner);
     }
@@ -61,6 +62,7 @@ contract OwnerFuzzTest is Test {
     /// onlyOwner passes for the owner and reverts NotOwner for any other caller.
     function testFuzz_onlyOwner_revertsForNonOwner(address owner, address caller) public {
         vm.assume(caller != owner);
+        vm.assume(owner != address(0));
         harness.writeOwner(owner);
 
         // owner succeeds
@@ -71,8 +73,9 @@ contract OwnerFuzzTest is Test {
         harness.onlyOwner(caller);
     }
 
-    /// onlyOwner passes for any owner address, including address(0).
+    /// onlyOwner passes for any non-zero owner address (zero can no longer be seeded).
     function testFuzz_onlyOwner_passesForOwner(address owner) public {
+        vm.assume(owner != address(0));
         harness.writeOwner(owner);
         harness.onlyOwner(owner); // must not revert
     }
@@ -84,6 +87,7 @@ contract OwnerFuzzTest is Test {
     /// propose sets pending without changing the current owner.
     function testFuzz_propose_setsPendingWithoutChangingOwner(address owner, address proposed) public {
         vm.assume(proposed != address(0));
+        vm.assume(owner != address(0));
         harness.writeOwner(owner);
         harness.propose(proposed);
         assertEq(harness.readOwner(), owner, "owner must not change yet");
@@ -92,6 +96,7 @@ contract OwnerFuzzTest is Test {
 
     /// propose with address(0) reverts ZeroOwner.
     function testFuzz_propose_revertsForZeroAddress(address owner) public {
+        vm.assume(owner != address(0));
         harness.writeOwner(owner);
         vm.expectRevert(ZeroOwner.selector);
         harness.propose(address(0));
@@ -104,6 +109,7 @@ contract OwnerFuzzTest is Test {
     /// acceptOwnership completes the handoff when called by the pending owner.
     function testFuzz_acceptOwnership_completesHandoff(address owner, address successor) public {
         vm.assume(successor != address(0));
+        vm.assume(owner != address(0));
         harness.writeOwner(owner);
         harness.propose(successor);
 
@@ -119,6 +125,7 @@ contract OwnerFuzzTest is Test {
     {
         vm.assume(successor != address(0));
         vm.assume(other != successor);
+        vm.assume(owner != address(0));
         harness.writeOwner(owner);
         harness.propose(successor);
 
@@ -126,10 +133,13 @@ contract OwnerFuzzTest is Test {
         harness.acceptOwnership(other);
     }
 
-    /// acceptOwnership reverts when no handoff is in progress (pending == address(0)).
+    /// acceptOwnership reverts when no handoff is in progress (pending == address(0)). A real caller
+    /// is never the zero address (msg.sender is never zero), which the single-check accept relies on.
     function testFuzz_acceptOwnership_revertsWhenNonePending(address owner, address caller) public {
+        vm.assume(owner != address(0));
+        vm.assume(caller != address(0));
         harness.writeOwner(owner);
-        // No propose, so pending is address(0) => any caller reverts.
+        // No propose, so pending is address(0) => any real (non-zero) caller reverts.
         vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, caller));
         harness.acceptOwnership(caller);
     }
@@ -143,6 +153,7 @@ contract OwnerFuzzTest is Test {
         vm.assume(successor != address(0));
         vm.assume(stranger != successor);
 
+        vm.assume(owner != address(0));
         harness.writeOwner(owner);
         harness.propose(successor);
 
@@ -165,6 +176,7 @@ contract OwnerFuzzTest is Test {
         vm.assume(successor != address(0));
         vm.assume(owner != successor);
 
+        vm.assume(owner != address(0));
         harness.writeOwner(owner);
         harness.propose(successor);
         harness.acceptOwnership(successor);
