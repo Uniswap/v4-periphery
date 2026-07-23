@@ -86,8 +86,10 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
         _open(2e36);
     }
 
-    /// @notice A thin pool that cannot buy back the full debt makes the close revert atomically (the
-    ///         repay needs more debt token than the swap delivered). Fail-safe: no partial close.
+    /// @notice A thin pool that cannot buy back the full debt makes the close revert atomically. The
+    ///         decrease path's ASSERT_FILL catches the exact-output under-fill and reverts with the
+    ///         explicit `IncompleteFill` error, before the take/repay would fail opaquely. Fail-safe:
+    ///         no partial close.
     function test_close_revertsWhenThinPoolCannotBuyAllDebt() public {
         address account = marginRouter.createAccount(address(this), 7);
 
@@ -95,7 +97,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
         MarginAccount(account).supplyCollateral(adapter, market, 1 ether);
         MarginAccount(account).borrow(adapter, market, 1 ether, address(this));
 
-        vm.expectRevert();
+        vm.expectPartialRevert(IMarginRouter.IncompleteFill.selector);
         marginRouter.decreasePosition(
             IMarginRouter.DecreaseParams({
                 debtToRepay: type(uint256).max,

@@ -200,6 +200,7 @@ contract MarginRouter is
 
         bytes memory actions = abi.encodePacked(
             uint8(Actions.SWAP_EXACT_OUT_SINGLE),
+            uint8(MarginActions.ASSERT_FILL),
             uint8(Actions.TAKE),
             uint8(MarginActions.ACCOUNT_REPAY),
             uint8(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL),
@@ -212,7 +213,7 @@ contract MarginRouter is
         // health check), withdraws all collateral, and passes a zero health bound that ASSERT_HEALTH
         // skips. A partial decrease buys and repays exactly `debtToRepay`, withdraws only the collateral
         // the swap consumed (OPEN_DELTA), and enforces `maxLtvAfter`.
-        bytes[] memory actionParams = new bytes[](6);
+        bytes[] memory actionParams = new bytes[](7);
         actionParams[0] = abi.encode(
             IV4Router.ExactOutputSingleParams({
                 poolKey: params.poolKey,
@@ -223,16 +224,20 @@ contract MarginRouter is
                 hookData: ""
             })
         );
-        actionParams[1] = abi.encode(params.market.debt, account, ActionConstants.OPEN_DELTA);
-        actionParams[2] = abi.encode(params.adapter, params.market, fullClose ? type(uint256).max : params.debtToRepay);
-        actionParams[3] = abi.encode(
+        // assert the exact-output swap fully filled before taking: a thin pool can hit its price limit
+        // before buying the full debt, and an under-fill would otherwise surface as an opaque repay
+        // revert. Require the router's debt credit covers the amount the repay needs.
+        actionParams[1] = abi.encode(params.market.debt, fullClose ? debt : params.debtToRepay);
+        actionParams[2] = abi.encode(params.market.debt, account, ActionConstants.OPEN_DELTA);
+        actionParams[3] = abi.encode(params.adapter, params.market, fullClose ? type(uint256).max : params.debtToRepay);
+        actionParams[4] = abi.encode(
             params.adapter,
             params.market,
             fullClose ? collateralBefore : uint256(ActionConstants.OPEN_DELTA),
             address(this)
         );
-        actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
-        actionParams[5] = abi.encode(params.adapter, params.market, fullClose ? Ltv.wrap(0) : params.maxLtvAfter);
+        actionParams[5] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
+        actionParams[6] = abi.encode(params.adapter, params.market, fullClose ? Ltv.wrap(0) : params.maxLtvAfter);
 
         // measure the router's own collateral gain across the unlock: zero for a partial decrease (it
         // withdraws exactly the swap cost), the realized PnL for a full close
