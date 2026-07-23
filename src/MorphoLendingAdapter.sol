@@ -1,0 +1,244 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+import {IMorpho, IMorphoBase, MarketParams, Id, Position} from "morpho-blue/interfaces/IMorpho.sol";
+import {IOracle} from "morpho-blue/interfaces/IOracle.sol";
+import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
+import {MorphoBalancesLib} from "morpho-blue/libraries/periphery/MorphoBalancesLib.sol";
+import {Math} from "openzeppelin-contracts/contracts/utils/math/Math.sol";
+
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+
+import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
+import {OwnableAdapter} from "./base/OwnableAdapter.sol";
+import {Market} from "./types/Market.sol";
+import {MarketRegistry} from "./types/MarketRegistry.sol";
+import {Ltv, toLtv} from "./types/Ltv.sol";
+import {PositionData} from "./types/PositionData.sol";
+
+/// @title MorphoLendingAdapter
+/// @author Uniswap Labs
+/// @notice A singleton `ILendingAdapter` over all curated Morpho Blue markets. The adapter is a
+///         thin shell composing a governed `(collateral, debt)` routing table and an owner guard;
+///         all encode and read logic reuses Morpho Blue's own libraries, so no Morpho math is
+///         reimplemented. Each encoded call is executed by a `MarginAccount` as itself, so
+///         `onBehalf` is always the account and no delegated authorization is needed.
+/// @dev    Morpho Blue does not support fee-on-transfer or rebasing tokens, so curated markets are
+///         standard ERC-20 only; this is what lets the router's flows net to zero with no residual.
+/// @custom:security-contact security@uniswap.org
+contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
+    using MarketParamsLib for MarketParams;
+    using MorphoBalancesLib for IMorpho;
+
+    // WAD scale for loan-to-value ratios.
+    uint256 private constant WAD = 1e18;
+    // Morpho oracle price scale: price() quotes 1 collateral asset in loan token, scaled by 1e36.
+    uint256 private constant ORACLE_PRICE_SCALE = 1e36;
+
+    /// @notice The Morpho Blue singleton. The single call target for every market this adapter
+    ///         routes. All `encode*` functions return this address as `target`.
+    IMorpho public immutable morpho;
+
+    /// @notice The governed routing table mapping `(collateral, debt)` to Morpho `MarketParams`,
+    ///         managed via the `register`, `resolve`, and `isSupported` free functions from
+    ///         `MarketRegistry`. The owner guard lives in `OwnableAdapter`.
+    MarketRegistry internal _markets;
+
+    /// @dev Thrown when `setMarket` is called with a `MarketParams` whose `id()` does not exist on
+    ///      Morpho Blue. Prevents routing to a market that cannot be interacted with.
+    error MorphoMarketNotCreated();
+
+    /// @notice Emitted when a market is registered or replaced in the routing table. Includes
+    ///         oracle, IRM, and LLTV so offchain monitoring can vet the routed market configuration.
+    /// @param id The Morpho Blue market id derived from the `MarketParams`.
+    /// @param collateral The collateral token address of the registered market.
+    /// @param debt The debt (loan) token address of the registered market.
+    /// @param oracle The price oracle address for this Morpho market.
+    /// @param irm The interest rate model address for this Morpho market.
+    /// @param lltv The liquidation LTV for this Morpho market (WAD, 1e18 == 100%).
+    event MarketSet(
+        Id indexed id, address indexed collateral, address indexed debt, address oracle, address irm, uint256 lltv
+    );
+
+    constructor(IMorpho morpho_, address owner_) OwnableAdapter(owner_) {
+        morpho = morpho_;
+    }
+
+    /// @inheritdoc ILendingAdapter
+    function lendingProtocol() external view returns (address) {
+        return address(morpho);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    function isSupportedMarket(Market calldata market) external view returns (bool) {
+        return _markets.isSupported(market);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Resolves the market pair to `MarketParams`, then encodes `IMorphoBase.supplyCollateral`
+    ///      with `onBehalf = account` and no callback data. The `value` field is always 0 because
+    ///      Morpho Blue is non-payable.
+    function encodeSupplyCollateral(address account, Market calldata market, uint256 amount)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        MarketParams memory marketParams = _markets.resolve(market);
+        return (address(morpho), 0, abi.encodeCall(IMorphoBase.supplyCollateral, (marketParams, amount, account, "")));
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Encodes `IMorphoBase.withdrawCollateral` with `onBehalf = account` and
+    ///      `receiver = receiver`. The `receiver` is validated by `MarginAccount` before executing.
+    function encodeWithdrawCollateral(address account, Market calldata market, uint256 amount, address receiver)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        MarketParams memory marketParams = _markets.resolve(market);
+        return
+            (
+                address(morpho),
+                0,
+                abi.encodeCall(IMorphoBase.withdrawCollateral, (marketParams, amount, account, receiver))
+            );
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Encodes `IMorphoBase.borrow` with `assets = amount`, `shares = 0` (asset-denominated),
+    ///      `onBehalf = account`, and `receiver = account`. The borrowed asset is delivered to the
+    ///      account, which forwards it to the receiver it validates.
+    function encodeBorrow(address account, Market calldata market, uint256 amount)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        MarketParams memory marketParams = _markets.resolve(market);
+        return (address(morpho), 0, abi.encodeCall(IMorphoBase.borrow, (marketParams, amount, 0, account, account)));
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev When `amount == type(uint256).max`, encodes a share-based full repay by reading the
+    ///      account's current `borrowShares` from `morpho.position`. This avoids the interest dust
+    ///      that asset-denominated rounding leaves behind. For partial repays, encodes
+    ///      `IMorphoBase.repay` with `assets = amount` and `shares = 0`.
+    function encodeRepay(address account, Market calldata market, uint256 amount)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        MarketParams memory marketParams = _markets.resolve(market);
+        if (amount == type(uint256).max) {
+            // full repay: burn the account's entire borrow share balance (assets resolved by Morpho)
+            uint256 shares = uint256(morpho.position(marketParams.id(), account).borrowShares);
+            return (address(morpho), 0, abi.encodeCall(IMorphoBase.repay, (marketParams, 0, shares, account, "")));
+        }
+        return (address(morpho), 0, abi.encodeCall(IMorphoBase.repay, (marketParams, amount, 0, account, "")));
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev `collateralAmount` is read from the raw `position.collateral` field (no accrual needed
+    ///      for collateral). `debtAmount` uses `MorphoBalancesLib.expectedBorrowAssets`, which
+    ///      applies interest accrual to give the current obligation rather than the stale stored
+    ///      value.
+    function positionOf(address account, Market calldata market)
+        external
+        view
+        returns (uint256 collateralAmount, uint256 debtAmount)
+    {
+        MarketParams memory marketParams = _markets.resolve(market);
+        collateralAmount = uint256(morpho.position(marketParams.id(), account).collateral);
+        debtAmount = morpho.expectedBorrowAssets(marketParams, account);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Reads the market's `lltv` field (already a WAD from Morpho Blue) and wraps it as an
+    ///      `Ltv` type.
+    function maxLtvWad(Market calldata market) external view returns (Ltv) {
+        return toLtv(_markets.resolve(market).lltv);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Computes the current LTV as `debt * WAD / collateralValue`, where `collateralValue` is
+    ///      the oracle's price of collateral quoted in the loan token (1e36-scaled). Returns
+    ///      `type(uint256).max` (as an `Ltv`) when there is debt but zero collateral value (fully
+    ///      undercollateralized). Returns 0 when there is no debt.
+    function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
+        MarketParams memory marketParams = _markets.resolve(market);
+        (, uint256 debt, uint256 collateralValue) = _positionValues(marketParams, account);
+        return _ltv(debt, collateralValue);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Reads the account's position once and derives every field from it, so an integrator can
+    ///      compose a position view without separate `positionOf`/`maxLtvWad`/`currentLtvWad` calls.
+    ///      Health factor is `lltv * collateralValue / debt` (WAD), i.e. `maxLtv / currentLtv`, and is
+    ///      `type(uint256).max` when there is no debt and 0 when debt exists against no collateral
+    ///      value.
+    function describePosition(address account, Market calldata market)
+        external
+        view
+        returns (PositionData memory data)
+    {
+        MarketParams memory marketParams = _markets.resolve(market);
+        (uint256 collateral, uint256 debt, uint256 collateralValue) = _positionValues(marketParams, account);
+        data = PositionData({
+            collateralAmount: collateral,
+            debtAmount: debt,
+            maxLtv: toLtv(marketParams.lltv),
+            currentLtv: _ltv(debt, collateralValue),
+            // maxLtv / currentLtv == lltv * collateralValue / debt (WAD); mulDiv keeps full precision
+            healthFactorWad: debt == 0 ? type(uint256).max : Math.mulDiv(collateralValue, marketParams.lltv, debt)
+        });
+    }
+
+    /// @notice Reads the account's collateral, accrued debt, and oracle-priced collateral value (in
+    ///         loan-token units) for an already-resolved market.
+    /// @param marketParams The resolved Morpho market parameters.
+    /// @param account The account to read.
+    /// @return collateral The account's supplied collateral, in the collateral token's native decimals.
+    /// @return debt The account's debt with accrued interest, in the loan token's native decimals.
+    /// @return collateralValue The collateral valued in loan-token units via the market oracle.
+    function _positionValues(MarketParams memory marketParams, address account)
+        internal
+        view
+        returns (uint256 collateral, uint256 debt, uint256 collateralValue)
+    {
+        collateral = uint256(morpho.position(marketParams.id(), account).collateral);
+        debt = morpho.expectedBorrowAssets(marketParams, account);
+        // price() is 1e36-scaled, so mulDiv keeps the collateral * price product in full 512-bit
+        // precision and avoids a phantom-overflow revert.
+        collateralValue = Math.mulDiv(collateral, IOracle(marketParams.oracle).price(), ORACLE_PRICE_SCALE);
+    }
+
+    /// @notice Current LTV from accrued debt and oracle-priced collateral value. `type(uint256).max`
+    ///         when there is debt but no collateral value (fully undercollateralized); zero when
+    ///         there is no debt.
+    /// @param debt The account's debt with accrued interest.
+    /// @param collateralValue The collateral valued in loan-token units.
+    /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
+    function _ltv(uint256 debt, uint256 collateralValue) internal pure returns (Ltv) {
+        if (collateralValue == 0) return toLtv(debt == 0 ? 0 : type(uint256).max);
+        return toLtv(debt * WAD / collateralValue);
+    }
+
+    /// @notice Registers or replaces the canonical Morpho Blue market for its `(collateral, debt)`
+    ///         pair. The market must already exist on Morpho Blue (verified by checking that
+    ///         `idToMarketParams(id).loanToken` is non-zero). Owner-gated.
+    /// @param marketParams The Morpho Blue `MarketParams` to register. Its `collateralToken` and
+    ///        `loanToken` fields determine the routing key.
+    function setMarket(MarketParams calldata marketParams) external {
+        _onlyOwner();
+        Id id = marketParams.id();
+        if (morpho.idToMarketParams(id).loanToken == address(0)) revert MorphoMarketNotCreated();
+        _markets.register(marketParams);
+        emit MarketSet(
+            id,
+            marketParams.collateralToken,
+            marketParams.loanToken,
+            marketParams.oracle,
+            marketParams.irm,
+            marketParams.lltv
+        );
+    }
+}

@@ -1,0 +1,247 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+import {Test} from "forge-std/Test.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {LibClone} from "solady/utils/LibClone.sol";
+
+import {MarginAccount} from "../../src/MarginAccount.sol";
+import {IMarginAccount} from "../../src/interfaces/IMarginAccount.sol";
+import {Market} from "../../src/types/Market.sol";
+import {MockLendingAdapter} from "../mocks/MockLendingAdapter.sol";
+import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
+
+// records whether it was called by regular call (slot lives in its own storage) so a delegatecall
+// from the account would instead write the account's storage, which the test asserts does not happen
+contract StorageProbe {
+    uint256 public slot0;
+
+    function poke() external {
+        slot0 = 42;
+    }
+}
+
+contract MarginAccountTest is Test {
+    MockERC20 internal collateralToken;
+    MockERC20 internal debtToken;
+    MockLendingProtocol internal protocol;
+    MockLendingAdapter internal adapter;
+    MarginAccount internal account;
+
+    address internal owner = makeAddr("owner");
+    address internal manager = makeAddr("manager");
+    address internal stranger = makeAddr("stranger");
+
+    Market internal market;
+
+    function setUp() public {
+        collateralToken = new MockERC20("Collateral", "COL", 18);
+        debtToken = new MockERC20("Debt", "DEBT", 18);
+        protocol = new MockLendingProtocol(IERC20(address(collateralToken)), IERC20(address(debtToken)));
+        adapter = new MockLendingAdapter(address(protocol));
+
+        address impl = address(new MarginAccount());
+        account = MarginAccount(LibClone.cloneDeterministic(impl, abi.encode(owner, manager), keccak256("acct")));
+
+        market = Market({collateral: Currency.wrap(address(collateralToken)), debt: Currency.wrap(address(debtToken))});
+
+        collateralToken.mint(address(account), 100e18);
+        debtToken.mint(address(account), 100e18);
+        collateralToken.mint(address(protocol), 1_000e18);
+        debtToken.mint(address(protocol), 1_000e18);
+    }
+
+    function test_owner_and_manager_readFromImmutableArgs() public view {
+        assertEq(account.owner(), owner);
+        assertEq(account.manager(), manager);
+    }
+
+    function test_supplyCollateral_byManager_succeeds() public {
+        vm.prank(manager);
+        account.supplyCollateral(adapter, market, 10e18);
+        assertEq(protocol.collateralOf(address(account)), 10e18);
+        assertEq(collateralToken.balanceOf(address(account)), 90e18);
+    }
+
+    function test_supplyCollateral_byOwner_succeeds() public {
+        vm.prank(owner);
+        account.supplyCollateral(adapter, market, 10e18);
+        assertEq(protocol.collateralOf(address(account)), 10e18);
+    }
+
+    function test_supplyCollateral_passesAccountAsOnBehalf() public {
+        vm.prank(manager);
+        account.supplyCollateral(adapter, market, 10e18);
+        // the account always passes itself as onBehalf, never an adapter-chosen address
+        assertEq(protocol.lastAccount(), address(account));
+    }
+
+    function test_supplyCollateral_revertsWhenCallerNotManagerOrOwner() public {
+        vm.prank(stranger);
+        vm.expectRevert(IMarginAccount.NotAuthorized.selector);
+        account.supplyCollateral(adapter, market, 10e18);
+    }
+
+    function testFuzz_primitives_revertForUnauthorizedCaller(address caller) public {
+        vm.assume(caller != owner && caller != manager);
+        vm.prank(caller);
+        vm.expectRevert(IMarginAccount.NotAuthorized.selector);
+        account.supplyCollateral(adapter, market, 1e18);
+    }
+
+    function test_borrow_toManager_succeeds() public {
+        vm.prank(manager);
+        account.borrow(adapter, market, 5e18, manager);
+        vm.snapshotGasLastCall("MarginAccount_borrow");
+        // the protocol borrows to the account, which forwards the proceeds to the validated receiver
+        assertEq(debtToken.balanceOf(manager), 5e18);
+        assertEq(protocol.lastReceiver(), address(account));
+    }
+
+    function test_borrow_revertsWhenReceiverNotAllowed() public {
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMarginAccount.ReceiverNotAllowed.selector, stranger));
+        account.borrow(adapter, market, 5e18, stranger);
+    }
+
+    function test_withdrawCollateral_revertsWhenReceiverNotAllowed() public {
+        // give the account a collateral position to withdraw from
+        vm.prank(manager);
+        account.supplyCollateral(adapter, market, 10e18);
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMarginAccount.ReceiverNotAllowed.selector, stranger));
+        account.withdrawCollateral(adapter, market, 1e18, stranger);
+    }
+
+    function test_withdrawCollateral_protocolDeliversToReceiver_forwardsZero() public {
+        vm.prank(manager);
+        account.supplyCollateral(adapter, market, 10e18);
+
+        // default mock behavior models a protocol (Aave v3 / Morpho) that delivers straight to the
+        // receiver: the account's balance never moves, so the measured delta is zero and nothing is
+        // forwarded, yet the receiver still ends up with the funds
+        uint256 acctBalBefore = collateralToken.balanceOf(address(account));
+        vm.prank(manager);
+        uint256 withdrawn = account.withdrawCollateral(adapter, market, 4e18, manager);
+
+        assertEq(withdrawn, 0, "measured delta zero when protocol delivers to receiver");
+        assertEq(collateralToken.balanceOf(manager), 4e18, "receiver got the withdrawal directly");
+        assertEq(collateralToken.balanceOf(address(account)), acctBalBefore, "account balance unchanged");
+        assertEq(protocol.collateralOf(address(account)), 6e18, "collateral position reduced");
+    }
+
+    function test_withdrawCollateral_protocolDeliversToAccount_forwardsMeasuredDelta() public {
+        vm.prank(manager);
+        account.supplyCollateral(adapter, market, 10e18);
+
+        // model Aave v4: the protocol delivers the withdrawal to the caller (the account), which must
+        // forward the measured delta to the validated receiver
+        protocol.setWithdrawToCaller(true);
+        uint256 managerBalBefore = collateralToken.balanceOf(manager);
+        uint256 acctBalBefore = collateralToken.balanceOf(address(account));
+        vm.prank(manager);
+        uint256 withdrawn = account.withdrawCollateral(adapter, market, 4e18, manager);
+
+        assertEq(withdrawn, 4e18, "measured delta equals the amount the account received");
+        assertEq(collateralToken.balanceOf(manager), managerBalBefore + 4e18, "receiver got the forwarded funds");
+        assertEq(collateralToken.balanceOf(address(account)), acctBalBefore, "account retains no withdrawn collateral");
+        assertEq(protocol.collateralOf(address(account)), 6e18, "collateral position reduced");
+    }
+
+    function test_repay_max_repaysOwedAndReturnsAmount() public {
+        protocol.setDebt(address(account), 7e18);
+        vm.prank(manager);
+        uint256 repaid = account.repay(adapter, market, type(uint256).max);
+        vm.snapshotGasLastCall("MarginAccount_repay");
+        assertEq(repaid, 7e18);
+        assertEq(protocol.debtOf(address(account)), 0);
+        assertEq(debtToken.balanceOf(address(account)), 93e18);
+    }
+
+    function test_sweep_toOwner_succeeds() public {
+        vm.prank(owner);
+        account.sweep(Currency.wrap(address(collateralToken)), 3e18, owner);
+        assertEq(collateralToken.balanceOf(owner), 3e18);
+    }
+
+    function test_sweep_revertsWhenReceiverNotAllowed() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IMarginAccount.ReceiverNotAllowed.selector, stranger));
+        account.sweep(Currency.wrap(address(collateralToken)), 1e18, stranger);
+    }
+
+    function test_execute_ownerOnly_callsTargetWithoutDelegatecall() public {
+        StorageProbe probe = new StorageProbe();
+        MockLendingAdapter probeAdapter = new MockLendingAdapter(address(probe));
+
+        vm.prank(owner);
+        account.execute(probeAdapter, abi.encodeWithSignature("poke()"));
+
+        // regular call: the probe's own storage changed, the account's did not
+        assertEq(uint256(vm.load(address(probe), 0)), 42);
+        assertEq(uint256(vm.load(address(account), 0)), 0);
+    }
+
+    function test_execute_revertsForManager() public {
+        StorageProbe probe = new StorageProbe();
+        MockLendingAdapter probeAdapter = new MockLendingAdapter(address(probe));
+        vm.prank(manager);
+        vm.expectRevert(IMarginAccount.NotAuthorized.selector);
+        account.execute(probeAdapter, abi.encodeWithSignature("poke()"));
+    }
+
+    // ===== events =====
+
+    function test_supplyCollateral_emitsCollateralSupplied() public {
+        vm.expectEmit(true, true, true, true, address(account));
+        emit IMarginAccount.CollateralSupplied(manager, address(adapter), market.collateral, 10e18);
+        vm.prank(manager);
+        account.supplyCollateral(adapter, market, 10e18);
+    }
+
+    function test_borrow_emitsBorrowed() public {
+        vm.expectEmit(true, true, true, true, address(account));
+        emit IMarginAccount.Borrowed(manager, address(adapter), market.debt, 5e18, manager);
+        vm.prank(manager);
+        account.borrow(adapter, market, 5e18, manager);
+    }
+
+    function test_repay_emitsRepaid() public {
+        protocol.setDebt(address(account), 5e18);
+        vm.expectEmit(true, true, true, true, address(account));
+        emit IMarginAccount.Repaid(manager, address(adapter), market.debt, 5e18);
+        vm.prank(manager);
+        account.repay(adapter, market, 5e18);
+    }
+
+    function test_sweep_emitsSwept() public {
+        vm.expectEmit(true, true, true, true, address(account));
+        emit IMarginAccount.Swept(owner, market.collateral, 3e18, owner);
+        vm.prank(owner);
+        account.sweep(market.collateral, 3e18, owner);
+    }
+
+    // the escape-hatch path: an owner-driven withdraw emits with caller == owner, which is the
+    // activity a router-only indexer would otherwise miss entirely
+    function test_withdrawCollateral_byOwner_emitsCollateralWithdrawnWithOwnerCaller() public {
+        protocol.setWithdrawToCaller(true); // exercise the measure-and-forward path so withdrawn > 0
+        vm.prank(owner);
+        account.supplyCollateral(adapter, market, 10e18);
+
+        vm.expectEmit(true, true, true, true, address(account));
+        emit IMarginAccount.CollateralWithdrawn(owner, address(adapter), market.collateral, 4e18, owner);
+        vm.prank(owner);
+        account.withdrawCollateral(adapter, market, 4e18, owner);
+    }
+
+    function test_execute_emitsExecuted() public {
+        StorageProbe probe = new StorageProbe();
+        MockLendingAdapter probeAdapter = new MockLendingAdapter(address(probe));
+        vm.expectEmit(true, true, false, true, address(account));
+        emit IMarginAccount.Executed(owner, address(probeAdapter), address(probe));
+        vm.prank(owner);
+        account.execute(probeAdapter, abi.encodeWithSignature("poke()"));
+    }
+}
