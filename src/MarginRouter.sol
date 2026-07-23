@@ -15,6 +15,7 @@ import {IWETH9} from "./interfaces/external/IWETH9.sol";
 import {IV4Router} from "./interfaces/IV4Router.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
+import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
 
 import {IMarginRouter} from "./interfaces/IMarginRouter.sol";
 import {IMarginAccount} from "./interfaces/IMarginAccount.sol";
@@ -50,6 +51,7 @@ contract MarginRouter is
     MarginAccountFactory
 {
     using MarginCalldataDecoder for bytes;
+    using CalldataDecoder for bytes;
     using SafeCast for uint256;
     using CurrencyLibrary for Currency;
 
@@ -463,34 +465,90 @@ contract MarginRouter is
         if (!_allowedAdapters[adapter]) revert AdapterNotAllowed(address(adapter));
     }
 
-    /// @notice Dispatches margin opcodes (`>= 0x30`) to the active account; opcodes below `0x30`
-    ///         fall through to the inherited V4Router handlers (swap, take, settle, wrap, unwrap).
-    ///         Called by `BaseActionsRouter._executeActions` for each action in the current plan.
+    /// @notice Dispatches an action to the correct handler across three ranges: (1) opcodes below
+    ///         `0x30` go to the inherited V4Router handlers (swap, settle, take), except the
+    ///         contiguous `SWEEP`/`WRAP`/`UNWRAP` trio, which V4Router does not handle and this
+    ///         contract intercepts with PositionManager-identical semantics; (2) `SET_ACCOUNT` and
+    ///         `ASSERT_FILL`, which do not operate on an active account; (3) the remaining
+    ///         account-scoped margin opcodes, guarded by `NoActiveAccount`. Called by
+    ///         `BaseActionsRouter._executeActions` for each action in the current plan.
     /// @dev Overrides `V4Router._handleAction`. The active account is always derived from the
-    ///      authenticated caller stored in transient storage; it is never read from action params.
+    ///      authenticated caller (via `SET_ACCOUNT` or a curated entry point) and read from
+    ///      transient storage; it is never read from action params.
     /// @param action The opcode from `MarginActions` or the inherited `Actions` library.
-    /// @param params ABI-encoded parameters for the action; decoded by `MarginCalldataDecoder`.
+    /// @param params ABI-encoded parameters for the action; decoded by `MarginCalldataDecoder`
+    ///        (margin opcodes) or `CalldataDecoder` (the intercepted core opcodes).
     function _handleAction(uint256 action, bytes calldata params) internal override {
         if (action < MarginActions.ACCOUNT_SUPPLY_COLLATERAL) {
+            // SWEEP/WRAP/UNWRAP are a contiguous trio (asserted in MarginCalldataDecoder.t.sol)
+            // that V4Router does not handle (it would revert UnsupportedAction); intercept them
+            // here with PositionManager-identical semantics. Swap and settle/take opcodes (below
+            // SWEEP) pay only one failed range comparison before falling through to super.
+            if (action >= Actions.SWEEP && action <= Actions.UNWRAP) {
+                if (action == Actions.SWEEP) {
+                    (Currency currency, address to) = params.decodeCurrencyAndAddress();
+                    _sweep(currency, _mapRecipient(to));
+                } else if (action == Actions.WRAP) {
+                    _wrap(
+                        _mapWrapUnwrapAmount(
+                            CurrencyLibrary.ADDRESS_ZERO, params.decodeUint256(), Currency.wrap(address(WETH9))
+                        )
+                    );
+                } else {
+                    _unwrap(
+                        _mapWrapUnwrapAmount(
+                            Currency.wrap(address(WETH9)), params.decodeUint256(), CurrencyLibrary.ADDRESS_ZERO
+                        )
+                    );
+                }
+                return;
+            }
             super._handleAction(action, params);
             return;
         }
 
+        // SET_ACCOUNT binds the active account; ASSERT_FILL only reads the router's own swap
+        // credit. Neither operates on an already-active account, so both dispatch before the
+        // NoActiveAccount guard below.
+        if (action == MarginActions.SET_ACCOUNT) {
+            // account derived from the authenticated caller, never from calldata; createAccount is
+            // idempotent, so a repeat SET_ACCOUNT on an existing sub-account just re-activates it
+            _setActiveAccount(createAccount(msgSender(), params.decodeSubId()));
+            return;
+        }
+        if (action == MarginActions.ASSERT_FILL) {
+            // the router's credit in the swap output currency is the realized exact-output fill;
+            // require it covers the requested amount so a partial fill reverts before the take
+            (Currency currency, uint256 minAmount) = params.decodeFillCheck();
+            uint256 received = _getFullCredit(currency);
+            if (received < minAmount) revert IncompleteFill(minAmount, received);
+            return;
+        }
+
+        // every remaining opcode operates on the active account; a plan must set it with
+        // SET_ACCOUNT first. Curated entry points set it before unlock and never reach this revert.
         address account = _activeAccount();
+        if (account == address(0)) revert NoActiveAccount();
+
         if (action == MarginActions.ACCOUNT_SUPPLY_COLLATERAL) {
             (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
+            // supplying collateral is exposure-increasing, so it is gated on the adapter allowlist
+            _requireAllowedAdapter(adapter);
             if (amount == ActionConstants.OPEN_DELTA) amount = market.collateral.balanceOf(account);
             IMarginAccount(account).supplyCollateral(adapter, market, amount);
         } else if (action == MarginActions.ACCOUNT_WITHDRAW_COLLATERAL) {
             (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
                 params.decodeAdapterMarketAmountReceiver();
             // OPEN_DELTA withdraws exactly the collateral owed to the pool for the swap (partial
-            // delever); a full close passes the explicit full collateral amount instead
+            // delever); a full close passes the explicit full collateral amount instead. Not
+            // allowlist-gated: a position must always be exitable.
             if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.collateral);
             IMarginAccount(account).withdrawCollateral(adapter, market, amount, to);
         } else if (action == MarginActions.ACCOUNT_BORROW) {
             (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
                 params.decodeAdapterMarketAmountReceiver();
+            // borrowing is exposure-increasing, so it is gated on the adapter allowlist
+            _requireAllowedAdapter(adapter);
             if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.debt);
             IMarginAccount(account).borrow(adapter, market, amount, to);
         } else if (action == MarginActions.ACCOUNT_REPAY) {
@@ -505,15 +563,33 @@ contract MarginRouter is
             if (Ltv.unwrap(maxLtv) != 0 && adapter.currentLtvWad(account, market).gt(maxLtv)) {
                 revert PositionUnhealthy();
             }
-        } else if (action == MarginActions.ASSERT_FILL) {
-            // the router's credit in the swap output currency is the realized exact-output fill;
-            // require it covers the requested amount so a partial fill reverts before the take
-            (Currency currency, uint256 minAmount) = params.decodeFillCheck();
-            uint256 received = _getFullCredit(currency);
-            if (received < minAmount) revert IncompleteFill(minAmount, received);
+        } else if (action == MarginActions.PULL_TO_ACCOUNT) {
+            (Currency currency, uint256 amount, bool payerIsUser) = params.decodePull();
+            // unlike the pool-delta opcodes, 0 is not an OPEN_DELTA full-balance sentinel here; a
+            // pull with no amount is always a plan-builder error, so reject it loudly rather than
+            // silently moving nothing (which would compose badly with opt-in health checks)
+            if (amount == 0) revert SlippageBoundRequired();
+            if (payerIsUser) {
+                // explicit amounts only: CONTRACT_BALANCE (1<<255) overflows the uint160 cast and
+                // reverts, so the router-balance sentinel cannot be smuggled onto the caller
+                permit2.transferFrom(msgSender(), account, amount.toUint160(), Currency.unwrap(currency));
+            } else {
+                if (amount == ActionConstants.CONTRACT_BALANCE) amount = currency.balanceOfSelf();
+                currency.transfer(account, amount);
+            }
         } else {
             revert UnsupportedAction(action);
         }
+    }
+
+    /// @notice Sweeps the router's entire balance of `currency` (native included) to `to`.
+    /// @dev The plan-builder's tool for netting the router to zero at the end of an `execute` plan.
+    ///      Identical to PositionManager's sweep semantics.
+    /// @param currency The token to sweep.
+    /// @param to The recipient (already resolved through `_mapRecipient`).
+    function _sweep(Currency currency, address to) private {
+        uint256 balance = currency.balanceOfSelf();
+        if (balance > 0) currency.transfer(to, balance);
     }
 
     /// @notice Pays the PoolManager. When the payer is this router, transfers directly; any other
