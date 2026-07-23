@@ -46,6 +46,14 @@ contract MarginCalldataDecoderTest is Test {
         return (account, Ltv.unwrap(lim));
     }
 
+    function decSubId(bytes calldata p) external pure returns (uint256 subId) {
+        return MarginCalldataDecoder.decodeSubId(p);
+    }
+
+    function decPull(bytes calldata p) external pure returns (Currency c, uint256 amount, bool payerIsUser) {
+        return MarginCalldataDecoder.decodePull(p);
+    }
+
     function test_decodeAdapterMarketAmount_roundTrips() public view {
         Market memory m = Market({collateral: collateral, debt: debt});
         bytes memory p = abi.encode(ILendingAdapter(address(0xAD)), m, 42e18);
@@ -89,6 +97,31 @@ contract MarginCalldataDecoderTest is Test {
         assertEq(gotTo, to);
     }
 
+    function test_decodeSubId_roundTrips() public view {
+        bytes memory p = abi.encode(uint256(7));
+        assertEq(this.decSubId(p), 7);
+    }
+
+    function test_decodePull_roundTrips() public view {
+        bytes memory p = abi.encode(collateral, 5e18, true);
+        (Currency c, uint256 amount, bool payerIsUser) = this.decPull(p);
+        assertTrue(c == collateral);
+        assertEq(amount, 5e18);
+        assertTrue(payerIsUser);
+    }
+
+    function testFuzz_decodeSubId(uint256 subId) public view {
+        assertEq(this.decSubId(abi.encode(subId)), subId);
+    }
+
+    function testFuzz_decodePull(uint256 amount, bool payerIsUser) public view {
+        bytes memory p = abi.encode(debt, amount, payerIsUser);
+        (Currency c, uint256 gotAmount, bool gotPayerIsUser) = this.decPull(p);
+        assertTrue(c == debt);
+        assertEq(gotAmount, amount);
+        assertEq(gotPayerIsUser, payerIsUser);
+    }
+
     function test_opcodes_areContiguousAndDisjointFromActions() public pure {
         assertEq(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, 0x30);
         assertEq(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL, 0x31);
@@ -96,8 +129,19 @@ contract MarginCalldataDecoderTest is Test {
         assertEq(MarginActions.ACCOUNT_REPAY, 0x33);
         assertEq(MarginActions.ACCOUNT_SWEEP, 0x34);
         assertEq(MarginActions.ASSERT_HEALTH, 0x35);
+        assertEq(MarginActions.ASSERT_FILL, 0x36);
+        assertEq(MarginActions.SET_ACCOUNT, 0x37);
+        assertEq(MarginActions.PULL_TO_ACCOUNT, 0x38);
         // margin opcodes start at 0x30, leaving a reserved gap above the inherited Actions space
         // (which ends at 0x1b) for future core actions to grow into without colliding
         assertGe(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, Actions.UNSUBSCRIBE + 4);
+    }
+
+    function test_sweepWrapUnwrap_areContiguous() public pure {
+        // MarginRouter._handleAction gates the SWEEP/WRAP/UNWRAP interception as a single
+        // `>= SWEEP && <= UNWRAP` range; this pins the contiguity that gate relies on against a
+        // future Actions reordering.
+        assertEq(Actions.SWEEP + 1, Actions.WRAP);
+        assertEq(Actions.WRAP + 1, Actions.UNWRAP);
     }
 }

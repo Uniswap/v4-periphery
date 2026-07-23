@@ -73,4 +73,28 @@ library MarginCalldataDecoder {
     function decodeFillCheck(bytes calldata params) internal pure returns (Currency currency, uint256 minAmount) {
         return abi.decode(params, (Currency, uint256));
     }
+
+    /// @notice Decodes `(subId)`. Used by the set-account action to derive the active account from
+    ///         the authenticated caller and this sub-account id.
+    /// @param params ABI-encoded `(uint256)`.
+    /// @return subId The caller's sub-account id.
+    function decodeSubId(bytes calldata params) internal pure returns (uint256 subId) {
+        return abi.decode(params, (uint256));
+    }
+
+    /// @notice Decodes `(currency, amount, payerIsUser)`. Used by the pull-to-account action.
+    /// @param params ABI-encoded `(Currency, uint256, bool)`.
+    /// @return currency The token to transfer into the active account.
+    /// @return amount The amount in the token's native decimals. A `0` amount is rejected by the
+    ///         handler (it is not an `OPEN_DELTA` sentinel here); `CONTRACT_BALANCE` is honored only
+    ///         when `payerIsUser` is false.
+    /// @return payerIsUser True to pull from the caller via Permit2; false to move the router's
+    ///         own balance.
+    function decodePull(bytes calldata params)
+        internal
+        pure
+        returns (Currency currency, uint256 amount, bool payerIsUser)
+    {
+        return abi.decode(params, (Currency, uint256, bool));
+    }
 }
