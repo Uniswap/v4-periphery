@@ -137,15 +137,10 @@ interface IMarginAccount {
 
     /// @notice Owner-only escape hatch. Runs an adapter-encoded call against the adapter's lending
     ///         protocol as this account, so the owner can always close a position or recover funds
-    ///         without involving the manager. The call target is constrained to the adapter's
-    ///         `lendingProtocol()`.
-    /// @dev Callable only by the owner (not the manager). The `market` parameter is accepted for
-    ///      interface symmetry with other primitives but is unused by the implementation.
-    /// @param adapter The lending adapter whose `lendingProtocol()` is the permitted call target.
-    /// @param market The market context (accepted for symmetry; not validated by this function).
+    ///         without involving the manager. The call target is the adapter's `lendingProtocol()`.
+    /// @dev Callable only by the owner (not the manager).
+    /// @param adapter The lending adapter whose `lendingProtocol()` is the call target.
     /// @param adapterCall Raw calldata to forward to the lending protocol.
     /// @return result The raw bytes returned by the lending protocol call.
-    function execute(ILendingAdapter adapter, Market calldata market, bytes calldata adapterCall)
-        external
-        returns (bytes memory result);
+    function execute(ILendingAdapter adapter, bytes calldata adapterCall) external payable returns (bytes memory result);
 }

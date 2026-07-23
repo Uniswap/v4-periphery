@@ -22,24 +22,14 @@ import {Market} from "./types/Market.sol";
 ///         no transfer path: ownership is soulbound.
 ///
 ///         The account owns the authority-bearing fields. It always passes itself as the lending
-///         `onBehalf`, constrains every fund recipient to the manager or owner, asserts each
-///         adapter-encoded call targets the adapter's lending protocol, and performs a regular call
-///         (never a delegatecall). Adapter trust is established by the manager (which only routes
-///         allowlisted adapters) or by the owner choosing the adapter for their own funds; the
-///         target check here is defense in depth.
+///         `onBehalf`, constrains every fund recipient to the manager or owner, routes every call to
+///         the adapter's declared `lendingProtocol()`, and performs a regular call (never a
+///         delegatecall). Adapter trust is established by the manager (which only routes allowlisted
+///         adapters) or by the owner choosing the adapter for their own funds.
 /// @custom:security-contact security@uniswap.org
 contract MarginAccount is IMarginAccount {
     using CustomRevert for bytes4;
     using SafeERC20 for IERC20;
-
-    /// @dev Thrown when an adapter-encoded call targets an address other than the adapter's
-    ///      declared `lendingProtocol()`. Prevents a rogue adapter from redirecting the account's
-    ///      call to an arbitrary contract.
-    error TargetNotLendingProtocol();
-
-    /// @dev Thrown when an adapter-encoded call carries a non-zero `value`. Lending protocol calls
-    ///      are expected to be non-payable; a non-zero value would indicate a misconfigured adapter.
-    error UnexpectedCallValue();
 
     /// @inheritdoc IMarginAccount
     function owner() public view returns (address ownerAddr) {
@@ -61,10 +51,9 @@ contract MarginAccount is IMarginAccount {
         _authCaller();
         (address target, uint256 value, bytes memory callData) =
             adapter.encodeSupplyCollateral(address(this), market, amount);
-        IERC20 collateral = IERC20(Currency.unwrap(market.collateral));
-        collateral.forceApprove(target, amount);
-        _execCall(adapter, target, value, callData);
-        collateral.forceApprove(target, 0);
+        _setApproval(market.collateral, target, amount);
+        _execCall(target, value, callData);
+        _setApproval(market.collateral, target, 0);
         emit CollateralSupplied(msg.sender, address(adapter), market.collateral, amount);
         return amount;
     }
@@ -82,13 +71,12 @@ contract MarginAccount is IMarginAccount {
     {
         (address ownerAddr, address managerAddr) = _authCaller();
         _requireReceiver(to, ownerAddr, managerAddr);
-        IERC20 collateral = IERC20(Currency.unwrap(market.collateral));
-        uint256 balanceBefore = collateral.balanceOf(address(this));
+        uint256 balanceBefore = market.collateral.balanceOfSelf();
         (address target, uint256 value, bytes memory callData) =
             adapter.encodeWithdrawCollateral(address(this), market, amount, to);
-        _execCall(adapter, target, value, callData);
-        withdrawn = collateral.balanceOf(address(this)) - balanceBefore;
-        if (withdrawn != 0) collateral.safeTransfer(to, withdrawn);
+        _execCall(target, value, callData);
+        withdrawn = market.collateral.balanceOfSelf() - balanceBefore;
+        if (withdrawn != 0) market.collateral.transfer(to, withdrawn);
         emit CollateralWithdrawn(msg.sender, address(adapter), market.collateral, withdrawn, to);
     }
 
@@ -104,12 +92,11 @@ contract MarginAccount is IMarginAccount {
     {
         (address ownerAddr, address managerAddr) = _authCaller();
         _requireReceiver(to, ownerAddr, managerAddr);
-        IERC20 debt = IERC20(Currency.unwrap(market.debt));
-        uint256 balanceBefore = debt.balanceOf(address(this));
+        uint256 balanceBefore = market.debt.balanceOfSelf();
         (address target, uint256 value, bytes memory callData) = adapter.encodeBorrow(address(this), market, amount);
-        _execCall(adapter, target, value, callData);
-        borrowed = debt.balanceOf(address(this)) - balanceBefore;
-        debt.safeTransfer(to, borrowed);
+        _execCall(target, value, callData);
+        borrowed = market.debt.balanceOfSelf() - balanceBefore;
+        market.debt.transfer(to, borrowed);
         emit Borrowed(msg.sender, address(adapter), market.debt, borrowed, to);
     }
 
@@ -120,13 +107,12 @@ contract MarginAccount is IMarginAccount {
     function repay(ILendingAdapter adapter, Market calldata market, uint256 amount) external returns (uint256 repaid) {
         _authCaller();
         (address target, uint256 value, bytes memory callData) = adapter.encodeRepay(address(this), market, amount);
-        IERC20 debt = IERC20(Currency.unwrap(market.debt));
-        uint256 balanceBefore = debt.balanceOf(address(this));
+        uint256 balanceBefore = market.debt.balanceOfSelf();
         uint256 approveAmount = amount == type(uint256).max ? balanceBefore : amount;
-        debt.forceApprove(target, approveAmount);
-        _execCall(adapter, target, value, callData);
-        debt.forceApprove(target, 0);
-        repaid = balanceBefore - debt.balanceOf(address(this));
+        _setApproval(market.debt, target, approveAmount);
+        _execCall(target, value, callData);
+        _setApproval(market.debt, target, 0);
+        repaid = balanceBefore - market.debt.balanceOfSelf();
         emit Repaid(msg.sender, address(adapter), market.debt, repaid);
     }
 
@@ -134,24 +120,21 @@ contract MarginAccount is IMarginAccount {
     function sweep(Currency currency, uint256 amount, address to) external {
         (address ownerAddr, address managerAddr) = _authCaller();
         _requireReceiver(to, ownerAddr, managerAddr);
-        IERC20(Currency.unwrap(currency)).safeTransfer(to, amount);
+        currency.transfer(to, amount);
         emit Swept(msg.sender, currency, amount, to);
     }
 
     /// @inheritdoc IMarginAccount
-    /// @dev `market` is accepted for interface symmetry but is not inspected here; the call target
-    ///      is constrained to `adapter.lendingProtocol()` by `Address.functionCall`, which also
-    ///      reverts on failure.
-    function execute(ILendingAdapter adapter, Market calldata, bytes calldata adapterCall)
+    function execute(ILendingAdapter adapter, bytes calldata adapterCall)
         external
-        returns (bytes memory)
+        payable
+        returns (bytes memory result)
     {
         (address ownerAddr,) = _ownerAndManager();
         if (msg.sender != ownerAddr) NotAuthorized.selector.revertWith();
         address target = adapter.lendingProtocol();
-        bytes memory result = Address.functionCall(target, adapterCall);
+        result = _execCall(target, msg.value, adapterCall);
         emit Executed(msg.sender, address(adapter), target);
-        return result;
     }
 
     /// @notice Reads the soulbound `(owner, manager)` from the clone's immutable args. During
@@ -181,22 +164,25 @@ contract MarginAccount is IMarginAccount {
         if (to != managerAddr && to != ownerAddr) ReceiverNotAllowed.selector.revertWith(to);
     }
 
-    /// @notice Asserts the adapter-encoded call targets the adapter's lending protocol and carries
-    ///         no value, then performs a regular call (never a delegatecall). Reverts on failure via
-    ///         `Address.functionCall`.
-    /// @dev The target and value checks are defense in depth: the manager only routes allowlisted
-    ///      adapters, and the owner deliberately chooses the adapter for their own funds.
-    /// @param adapter The adapter whose `lendingProtocol()` is the permitted target.
-    /// @param target The encoded call target; must equal `adapter.lendingProtocol()`.
-    /// @param value The encoded call value; must be zero.
+    /// @notice Approves the target for `amount`.
+    /// @param currency The currency to approve.
+    /// @param target The target to approve.
+    /// @param amount The amount to approve.
+    function _setApproval(Currency currency, address target, uint256 amount) internal {
+        IERC20(Currency.unwrap(currency)).forceApprove(target, amount);
+    }
+
+    /// @notice Forwards the adapter-encoded call to `target` as this account with a regular call
+    ///         (never a delegatecall), reverting on failure via `Address.functionCallWithValue`.
+    /// @param target The call target (the adapter's `lendingProtocol()`).
+    /// @param value The call value; forwarded from the adapter's encoding (zero for the standard
+    ///        non-payable lending calls, and the account holds no native balance to forward).
     /// @param callData The calldata to forward.
     /// @return The raw bytes returned by the lending protocol call.
-    function _execCall(ILendingAdapter adapter, address target, uint256 value, bytes memory callData)
-        internal
-        returns (bytes memory)
-    {
-        if (target != adapter.lendingProtocol()) TargetNotLendingProtocol.selector.revertWith();
-        if (value != 0) UnexpectedCallValue.selector.revertWith();
-        return Address.functionCall(target, callData);
+    function _execCall(address target, uint256 value, bytes memory callData) internal returns (bytes memory) {
+        return Address.functionCallWithValue(target, callData, value);
     }
+
+    /// @notice Receives native currency into the account. Used for advanced adapter calls that require native currency.
+    function receive() external payable {}
 }

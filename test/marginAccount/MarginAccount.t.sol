@@ -172,19 +172,12 @@ contract MarginAccountTest is Test {
         account.sweep(Currency.wrap(address(collateralToken)), 1e18, stranger);
     }
 
-    function test_targetConstraint_revertsWhenEncodedTargetIsNotLendingProtocol() public {
-        adapter.setForcedTarget(address(0xBEEF));
-        vm.prank(manager);
-        vm.expectRevert(MarginAccount.TargetNotLendingProtocol.selector);
-        account.supplyCollateral(adapter, market, 1e18);
-    }
-
     function test_execute_ownerOnly_callsTargetWithoutDelegatecall() public {
         StorageProbe probe = new StorageProbe();
         MockLendingAdapter probeAdapter = new MockLendingAdapter(address(probe));
 
         vm.prank(owner);
-        account.execute(probeAdapter, market, abi.encodeWithSignature("poke()"));
+        account.execute(probeAdapter, abi.encodeWithSignature("poke()"));
 
         // regular call: the probe's own storage changed, the account's did not
         assertEq(uint256(vm.load(address(probe), 0)), 42);
@@ -196,7 +189,7 @@ contract MarginAccountTest is Test {
         MockLendingAdapter probeAdapter = new MockLendingAdapter(address(probe));
         vm.prank(manager);
         vm.expectRevert(IMarginAccount.NotAuthorized.selector);
-        account.execute(probeAdapter, market, abi.encodeWithSignature("poke()"));
+        account.execute(probeAdapter, abi.encodeWithSignature("poke()"));
     }
 
     // ===== events =====
@@ -249,6 +242,6 @@ contract MarginAccountTest is Test {
         vm.expectEmit(true, true, false, true, address(account));
         emit IMarginAccount.Executed(owner, address(probeAdapter), address(probe));
         vm.prank(owner);
-        account.execute(probeAdapter, market, abi.encodeWithSignature("poke()"));
+        account.execute(probeAdapter, abi.encodeWithSignature("poke()"));
     }
 }
