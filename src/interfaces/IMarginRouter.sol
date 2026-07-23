@@ -51,6 +51,11 @@ interface IMarginRouter {
     /// @param received The collateral amount the swap actually delivered.
     error IncompleteFill(uint256 requested, uint256 received);
 
+    /// @dev Thrown when an account-scoped action in an `execute` plan runs with no active account
+    ///      set. A plan must open each account-scoped section with a `SET_ACCOUNT` action; the
+    ///      curated entry points set the account themselves and never hit this.
+    error NoActiveAccount();
+
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------
