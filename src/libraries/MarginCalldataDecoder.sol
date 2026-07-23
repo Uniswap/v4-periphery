@@ -51,18 +51,19 @@ library MarginCalldataDecoder {
         return abi.decode(params, (Currency, uint256, address));
     }
 
-    /// @notice Decodes `(adapter, market, account, maxLtv)`. Used by the health-assertion action.
-    /// @param params ABI-encoded `(ILendingAdapter, Market, address, Ltv)`.
+    /// @notice Decodes `(adapter, market, maxLtv)`. Used by the health-assertion action. The account
+    ///         is not encoded: the handler always checks the transient active account, never an
+    ///         account named in calldata.
+    /// @param params ABI-encoded `(ILendingAdapter, Market, Ltv)`.
     /// @return adapter The lending adapter used to query the current LTV.
     /// @return market The (collateral, debt) market descriptor.
-    /// @return account The MarginAccount whose LTV is checked.
     /// @return maxLtv The maximum acceptable LTV (WAD, 1e18 == 100%); zero skips the check.
     function decodeHealthCheck(bytes calldata params)
         internal
         pure
-        returns (ILendingAdapter adapter, Market memory market, address account, Ltv maxLtv)
+        returns (ILendingAdapter adapter, Market memory market, Ltv maxLtv)
     {
-        return abi.decode(params, (ILendingAdapter, Market, address, Ltv));
+        return abi.decode(params, (ILendingAdapter, Market, Ltv));
     }
 
     /// @notice Decodes `(currency, minAmount)`. Used by the fill-assertion action to require that an

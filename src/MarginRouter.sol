@@ -232,8 +232,7 @@ contract MarginRouter is
             address(this)
         );
         actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
-        actionParams[5] =
-            abi.encode(params.adapter, params.market, account, fullClose ? Ltv.wrap(0) : params.maxLtvAfter);
+        actionParams[5] = abi.encode(params.adapter, params.market, fullClose ? Ltv.wrap(0) : params.maxLtvAfter);
 
         // measure the router's own collateral gain across the unlock: zero for a partial decrease (it
         // withdraws exactly the swap cost), the realized PnL for a full close
@@ -574,7 +573,7 @@ contract MarginRouter is
             (Currency currency, uint256 amount, address to) = params.decodeSweep();
             IMarginAccount(account).sweep(currency, amount, to);
         } else if (action == MarginActions.ASSERT_HEALTH) {
-            (ILendingAdapter adapter, Market memory market,, Ltv maxLtv) = params.decodeHealthCheck();
+            (ILendingAdapter adapter, Market memory market, Ltv maxLtv) = params.decodeHealthCheck();
             // a zero bound skips the check
             if (Ltv.unwrap(maxLtv) != 0 && adapter.currentLtvWad(account, market).gt(maxLtv)) {
                 revert PositionUnhealthy();

@@ -38,12 +38,12 @@ contract MarginCalldataDecoderTest is Test {
         return MarginCalldataDecoder.decodeSweep(p);
     }
 
-    function decHealth(bytes calldata p) external pure returns (address account, uint256 maxLtv) {
+    function decHealth(bytes calldata p) external pure returns (address adapter, uint256 maxLtv) {
         ILendingAdapter a;
         Market memory m;
         Ltv lim;
-        (a, m, account, lim) = MarginCalldataDecoder.decodeHealthCheck(p);
-        return (account, Ltv.unwrap(lim));
+        (a, m, lim) = MarginCalldataDecoder.decodeHealthCheck(p);
+        return (address(a), Ltv.unwrap(lim));
     }
 
     function decSubId(bytes calldata p) external pure returns (uint256 subId) {
@@ -82,9 +82,9 @@ contract MarginCalldataDecoderTest is Test {
 
     function test_decodeHealthCheck_roundTrips() public view {
         Market memory m = Market({collateral: collateral, debt: debt});
-        bytes memory p = abi.encode(ILendingAdapter(address(0xAD)), m, address(0xACC), toLtv(0.8e18));
-        (address account, uint256 maxLtv) = this.decHealth(p);
-        assertEq(account, address(0xACC));
+        bytes memory p = abi.encode(ILendingAdapter(address(0xAD)), m, toLtv(0.8e18));
+        (address adapter, uint256 maxLtv) = this.decHealth(p);
+        assertEq(adapter, address(0xAD));
         assertEq(maxLtv, 0.8e18);
     }
 

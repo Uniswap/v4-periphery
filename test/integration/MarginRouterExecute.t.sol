@@ -234,7 +234,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
         _expectNoActiveAccount(MarginActions.ACCOUNT_BORROW, abi.encode(adapter, market, uint256(1), address(this)));
         _expectNoActiveAccount(MarginActions.ACCOUNT_REPAY, abi.encode(adapter, market, uint256(1)));
         _expectNoActiveAccount(MarginActions.ACCOUNT_SWEEP, abi.encode(collateral, uint256(1), address(this)));
-        _expectNoActiveAccount(MarginActions.ASSERT_HEALTH, abi.encode(adapter, market, address(0), toLtv(0.5e18)));
+        _expectNoActiveAccount(MarginActions.ASSERT_HEALTH, abi.encode(adapter, market, toLtv(0.5e18)));
     }
 
     function _expectNoActiveAccount(uint256 action, bytes memory params) internal {
@@ -271,7 +271,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
         // the mock reports currentLtv == maxLtv == 0.86e18; a 0.5 bound must trip PositionUnhealthy
         Plan memory plan = Planner.init();
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
-        plan = plan.add(MarginActions.ASSERT_HEALTH, abi.encode(adapter, market, account, toLtv(0.5e18)));
+        plan = plan.add(MarginActions.ASSERT_HEALTH, abi.encode(adapter, market, toLtv(0.5e18)));
         vm.expectRevert(IMarginRouter.PositionUnhealthy.selector);
         marginRouter.execute(plan.encode(), block.timestamp + 1);
     }
@@ -281,7 +281,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
         // a bound at the reported LTV passes (the check is a strict `>` overflow)
         Plan memory plan = Planner.init();
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
-        plan = plan.add(MarginActions.ASSERT_HEALTH, abi.encode(adapter, market, account, toLtv(0.86e18)));
+        plan = plan.add(MarginActions.ASSERT_HEALTH, abi.encode(adapter, market, toLtv(0.86e18)));
         marginRouter.execute(plan.encode(), block.timestamp + 1);
         assertGt(protocol.collateralOf(account), 0, "position unchanged by a passing health assert");
     }
