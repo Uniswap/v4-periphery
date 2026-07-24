@@ -54,7 +54,7 @@ contract MorphoLendingAdapterForkTest is Test {
         // an account owned and managed by this test, so it can drive the primitives directly
         address impl = address(new MarginAccount());
         account = MarginAccount(
-            LibClone.cloneDeterministic(impl, abi.encode(address(this), address(this)), keccak256("fork-acct"))
+            payable(LibClone.cloneDeterministic(impl, abi.encode(address(this), address(this)), keccak256("fork-acct")))
         );
     }
 

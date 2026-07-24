@@ -40,7 +40,7 @@ contract MarginAccountFactoryTest is Test {
     }
 
     function test_createAccount_bakesOwnerAndManagerIntoBytecode() public {
-        MarginAccount account = MarginAccount(factory.createAccount(owner, 0));
+        MarginAccount account = MarginAccount(payable(factory.createAccount(owner, 0)));
         assertEq(account.owner(), owner);
         assertEq(account.manager(), manager);
     }
@@ -50,7 +50,7 @@ contract MarginAccountFactoryTest is Test {
         address victim = makeAddr("victim");
         // the attacker can deploy the victim's account, but it bakes in the victim as owner
         vm.prank(attacker);
-        MarginAccount account = MarginAccount(factory.createAccount(victim, 0));
+        MarginAccount account = MarginAccount(payable(factory.createAccount(victim, 0)));
         assertEq(account.owner(), victim);
         assertEq(account.manager(), manager);
     }

@@ -510,8 +510,8 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
 
         // Seed the position directly, bypassing the open flow (which would fail on the thin pool).
         MockERC20(Currency.unwrap(collateral)).transfer(account, collateralSeed);
-        MarginAccount(account).supplyCollateral(adapter, market, collateralSeed);
-        MarginAccount(account).borrow(adapter, market, debtSeed, address(this));
+        MarginAccount(payable(account)).supplyCollateral(adapter, market, collateralSeed);
+        MarginAccount(payable(account)).borrow(adapter, market, debtSeed, address(this));
 
         vm.expectRevert();
         marginRouter.decreasePosition(

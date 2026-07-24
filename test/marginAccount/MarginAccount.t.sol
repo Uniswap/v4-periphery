@@ -43,7 +43,8 @@ contract MarginAccountTest is Test {
         adapter = new MockLendingAdapter(address(protocol));
 
         address impl = address(new MarginAccount());
-        account = MarginAccount(LibClone.cloneDeterministic(impl, abi.encode(owner, manager), keccak256("acct")));
+        account =
+            MarginAccount(payable(LibClone.cloneDeterministic(impl, abi.encode(owner, manager), keccak256("acct"))));
 
         market = Market({collateral: Currency.wrap(address(collateralToken)), debt: Currency.wrap(address(debtToken))});
 
@@ -243,5 +244,14 @@ contract MarginAccountTest is Test {
         emit IMarginAccount.Executed(owner, address(probeAdapter), address(probe));
         vm.prank(owner);
         account.execute(probeAdapter, abi.encodeWithSignature("poke()"));
+    }
+
+    function test_receive_acceptsNativeCurrency() public {
+        // the account exposes a receive() fallback, so a plain-value transfer (empty calldata) succeeds
+        vm.deal(stranger, 1 ether);
+        vm.prank(stranger);
+        (bool ok,) = address(account).call{value: 1 ether}("");
+        assertTrue(ok, "account must accept plain ETH");
+        assertEq(address(account).balance, 1 ether);
     }
 }

@@ -137,10 +137,10 @@ contract MarginRouterHedgeForkTest is Test {
 
         // (1) the two subIds resolve to distinct accounts, both owned by `owner`, both managed by router
         assertTrue(account0 != account1, "subId 0 and subId 1 yield distinct accounts");
-        assertEq(MarginAccount(account0).owner(), owner, "long account owner is owner");
-        assertEq(MarginAccount(account1).owner(), owner, "short account owner is owner");
-        assertEq(MarginAccount(account0).manager(), address(router), "long account managed by router");
-        assertEq(MarginAccount(account1).manager(), address(router), "short account managed by router");
+        assertEq(MarginAccount(payable(account0)).owner(), owner, "long account owner is owner");
+        assertEq(MarginAccount(payable(account1)).owner(), owner, "short account owner is owner");
+        assertEq(MarginAccount(payable(account0)).manager(), address(router), "long account managed by router");
+        assertEq(MarginAccount(payable(account1)).manager(), address(router), "short account managed by router");
 
         // (2) + (3) each leg is the expected isolated position and is healthy on its own
         _assertLongHealthy(account0);

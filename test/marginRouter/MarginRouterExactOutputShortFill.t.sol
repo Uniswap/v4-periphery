@@ -94,8 +94,8 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
         address account = marginRouter.createAccount(address(this), 7);
 
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
-        MarginAccount(account).supplyCollateral(adapter, market, 1 ether);
-        MarginAccount(account).borrow(adapter, market, 1 ether, address(this));
+        MarginAccount(payable(account)).supplyCollateral(adapter, market, 1 ether);
+        MarginAccount(payable(account)).borrow(adapter, market, 1 ether, address(this));
 
         vm.expectPartialRevert(IMarginRouter.IncompleteFill.selector);
         marginRouter.decreasePosition(

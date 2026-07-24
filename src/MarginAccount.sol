@@ -184,5 +184,5 @@ contract MarginAccount is IMarginAccount {
     }
 
     /// @notice Receives native currency into the account. Used for advanced adapter calls that require native currency.
-    function receive() external payable {}
+    receive() external payable {}
 }

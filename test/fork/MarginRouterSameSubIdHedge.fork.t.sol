@@ -164,8 +164,8 @@ contract MarginRouterSameSubIdHedgeForkTest is Test {
 
         // (1) the single shared account is what both legs used, owned by `owner` and managed by router
         assertEq(router.accountOf(owner, SHARED_SUB_ID), account, "both legs resolve to the one account");
-        assertEq(MarginAccount(account).owner(), owner, "shared account owner is owner");
-        assertEq(MarginAccount(account).manager(), address(router), "shared account managed by router");
+        assertEq(MarginAccount(payable(account)).owner(), owner, "shared account owner is owner");
+        assertEq(MarginAccount(payable(account)).manager(), address(router), "shared account managed by router");
 
         // (2) the Morpho long is the expected isolated position; the Morpho read sees only the Morpho leg
         _assertLongHealthy(account);
