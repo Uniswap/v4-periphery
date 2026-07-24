@@ -34,6 +34,7 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
     // Verified mainnet token addresses, used only for the chainid == 1 market registration.
     address internal constant MAINNET_WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant MAINNET_USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address internal constant MAINNET_UNI = 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984;
     // Oracle of the canonical Morpho WETH/USDC market
     // (id 0x94b823e6bd8ea533b4e33fbc307faea0b307301bc48763acc4d4aa4def7636cd). Do NOT use oracle
     // 0xdC6fd583...: it hashes to an unlisted market (see FixMorphoWethUsdcMarket.s.sol).
@@ -50,6 +51,8 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
     /// @param morpho The Morpho Blue singleton.
     /// @param aaveProvider The Aave v3 PoolAddressesProvider.
     /// @param aaveV4Spoke The Aave v4 Spoke.
+    /// @param compoundComet The Compound v3 Comet the Compound adapter routes through (the USDC Comet
+    ///        on mainnet).
     /// @param finalGovernance The eventual governance/owner proposed via the two-step handoff; pass the
     ///        deployer address (or zero) to skip the handoff and leave the deployer in control.
     /// @param routerSalt The mined vanity salt for the router (mined with governance == deployer).
@@ -60,6 +63,7 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
         address morpho,
         address aaveProvider,
         address aaveV4Spoke,
+        address compoundComet,
         address finalGovernance,
         bytes32 routerSalt
     ) public {
@@ -72,7 +76,8 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
             weth9: weth9,
             morpho: morpho,
             aaveProvider: aaveProvider,
-            aaveV4Spoke: aaveV4Spoke
+            aaveV4Spoke: aaveV4Spoke,
+            compoundComet: compoundComet
         });
 
         // reusable executor at a deterministic address; deploy only if absent (one-time infra)
@@ -86,11 +91,8 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
             console2.log("BatchExecutor already present", executor);
         }
 
-        (MarketParams[] memory morphoMarkets, AaveV3Market[] memory v3Markets, AaveV4Market[] memory v4Markets) =
-            _markets();
-
         (BatchExecutor.Call[] memory calls, Deployed memory addrs) =
-            buildPlan(deps, deployer, routerSalt, morphoMarkets, v3Markets, v4Markets, finalGovernance);
+            buildPlan(deps, deployer, routerSalt, _markets(), finalGovernance);
 
         // the single deploy-and-bootstrap transaction: delegate the EOA to the executor (7702) and
         // self-call execute() with the whole plan
@@ -103,6 +105,7 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
         console2.log("MorphoLendingAdapter", addrs.morphoAdapter);
         console2.log("AaveLendingAdapter", addrs.aaveAdapter);
         console2.log("AaveV4LendingAdapter", addrs.aaveV4Adapter);
+        console2.log("CompoundV3LendingAdapter", addrs.compoundAdapter);
         console2.log("MarginRouter", addrs.router);
         console2.log("Bootstrap governance (deployer)", deployer);
         if (finalGovernance != address(0) && finalGovernance != deployer) {
@@ -112,19 +115,15 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
     }
 
     /// @notice The canonical markets to register, by chain. Mainnet mirrors the legacy DeployMargin
-    ///         wiring (Morpho long ETH, Aave v3 + v4 short/long ETH); other chains register none and
-    ///         are configured in a follow-up.
-    function _markets()
-        internal
-        view
-        returns (MarketParams[] memory morphoMarkets, AaveV3Market[] memory v3Markets, AaveV4Market[] memory v4Markets)
-    {
+    ///         wiring (Morpho long ETH, Aave v3 + v4 short/long ETH, Compound v3 long UNI); other chains
+    ///         register none and are configured in a follow-up.
+    function _markets() internal view returns (Markets memory markets) {
         if (block.chainid != 1) {
-            return (new MarketParams[](0), new AaveV3Market[](0), new AaveV4Market[](0));
+            return markets; // all arrays default to empty
         }
 
-        morphoMarkets = new MarketParams[](1);
-        morphoMarkets[0] = MarketParams({
+        markets.morpho = new MarketParams[](1);
+        markets.morpho[0] = MarketParams({
             loanToken: MAINNET_USDC,
             collateralToken: MAINNET_WETH,
             oracle: MAINNET_MORPHO_WETH_USDC_ORACLE,
@@ -132,22 +131,27 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
             lltv: MAINNET_MORPHO_WETH_USDC_LLTV
         });
 
-        v3Markets = new AaveV3Market[](2);
-        v3Markets[0] = AaveV3Market({collateral: Currency.wrap(MAINNET_USDC), debt: Currency.wrap(MAINNET_WETH)});
-        v3Markets[1] = AaveV3Market({collateral: Currency.wrap(MAINNET_WETH), debt: Currency.wrap(MAINNET_USDC)});
+        markets.v3 = new AaveV3Market[](2);
+        markets.v3[0] = AaveV3Market({collateral: Currency.wrap(MAINNET_USDC), debt: Currency.wrap(MAINNET_WETH)});
+        markets.v3[1] = AaveV3Market({collateral: Currency.wrap(MAINNET_WETH), debt: Currency.wrap(MAINNET_USDC)});
 
-        v4Markets = new AaveV4Market[](2);
-        v4Markets[0] = AaveV4Market({
+        markets.v4 = new AaveV4Market[](2);
+        markets.v4[0] = AaveV4Market({
             collateral: Currency.wrap(MAINNET_USDC),
             debt: Currency.wrap(MAINNET_WETH),
             collateralReserveId: MAINNET_AAVE_V4_USDC_RESERVE_ID,
             debtReserveId: MAINNET_AAVE_V4_WETH_RESERVE_ID
         });
-        v4Markets[1] = AaveV4Market({
+        markets.v4[1] = AaveV4Market({
             collateral: Currency.wrap(MAINNET_WETH),
             debt: Currency.wrap(MAINNET_USDC),
             collateralReserveId: MAINNET_AAVE_V4_WETH_RESERVE_ID,
             debtReserveId: MAINNET_AAVE_V4_USDC_RESERVE_ID
         });
+
+        // long UNI on Compound v3: collateral UNI, debt USDC (the Comet base)
+        markets.compound = new CompoundMarket[](1);
+        markets.compound[0] =
+            CompoundMarket({collateral: Currency.wrap(MAINNET_UNI), debt: Currency.wrap(MAINNET_USDC)});
     }
 }

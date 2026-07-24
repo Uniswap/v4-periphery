@@ -17,6 +17,7 @@ import {Market} from "../../src/types/Market.sol";
 import {MockMorpho} from "../mocks/MockMorpho.sol";
 import {MockAavePool, MockAaveAddressesProvider, MockAaveDataProvider} from "../mocks/MockAavePool.sol";
 import {MockAaveV4Spoke} from "../mocks/MockAaveV4Spoke.sol";
+import {MockComet} from "../mocks/MockComet.sol";
 
 /// @notice Proves the whole margin stack deploys and bootstraps in a single EIP-7702 transaction: the
 ///         deployer EOA delegates to the BatchExecutor and, in one self-call, deploys the account
@@ -29,6 +30,7 @@ contract MarginBootstrap7702Test is Test {
     MockMorpho internal morpho;
     MockAaveAddressesProvider internal aaveProvider;
     MockAaveV4Spoke internal aaveV4Spoke;
+    MockComet internal comet;
 
     // deployer / bootstrap governance
     uint256 internal deployerPk = 0xA11CE;
@@ -57,6 +59,7 @@ contract MarginBootstrap7702Test is Test {
         MockAaveDataProvider dp = new MockAaveDataProvider(pool);
         aaveProvider = new MockAaveAddressesProvider(address(pool), address(dp));
         aaveV4Spoke = new MockAaveV4Spoke(makeAddr("v4Oracle"));
+        comet = new MockComet(makeAddr("cometBase"), makeAddr("cometBaseFeed"), 1e6);
 
         mp = MarketParams({
             loanToken: loanToken,
@@ -79,13 +82,16 @@ contract MarginBootstrap7702Test is Test {
             weth9: weth9,
             morpho: address(morpho),
             aaveProvider: address(aaveProvider),
-            aaveV4Spoke: address(aaveV4Spoke)
+            aaveV4Spoke: address(aaveV4Spoke),
+            compoundComet: address(comet)
         });
     }
 
-    function _morphoMarkets() internal view returns (MarketParams[] memory m) {
-        m = new MarketParams[](1);
-        m[0] = mp;
+    function _markets() internal view returns (MarginBootstrapBuilder.Markets memory m) {
+        m.morpho = new MarketParams[](1);
+        m.morpho[0] = mp;
+        // Aave v3/v4 and Compound left empty: this mock suite proves deploy + allowlist, and the
+        // per-venue market registration is covered by the per-adapter and 7702 fork tests.
     }
 
     function test_bootstrap_deploysAndWiresEntireStackInOneTx() public {
@@ -93,9 +99,7 @@ contract MarginBootstrap7702Test is Test {
             _deps(),
             deployer, // bootstrap governance
             ROUTER_SALT,
-            _morphoMarkets(),
-            new MarginBootstrapBuilder.AaveV3Market[](0),
-            new MarginBootstrapBuilder.AaveV4Market[](0),
+            _markets(),
             deployer // no handoff (finalGovernance == governance)
         );
 
@@ -110,12 +114,14 @@ contract MarginBootstrap7702Test is Test {
         assertGt(addrs.morphoAdapter.code.length, 0, "morpho adapter deployed");
         assertGt(addrs.aaveAdapter.code.length, 0, "aave v3 adapter deployed");
         assertGt(addrs.aaveV4Adapter.code.length, 0, "aave v4 adapter deployed");
+        assertGt(addrs.compoundAdapter.code.length, 0, "compound adapter deployed");
 
         MarginRouter router = MarginRouter(payable(addrs.router));
         // wired: adapters allowlisted, impl and governance set, market registered
         assertTrue(router.isAdapterAllowed(ILendingAdapter(addrs.morphoAdapter)), "morpho allowlisted");
         assertTrue(router.isAdapterAllowed(ILendingAdapter(addrs.aaveAdapter)), "aave v3 allowlisted");
         assertTrue(router.isAdapterAllowed(ILendingAdapter(addrs.aaveV4Adapter)), "aave v4 allowlisted");
+        assertTrue(router.isAdapterAllowed(ILendingAdapter(addrs.compoundAdapter)), "compound allowlisted");
         assertEq(router.accountImplementation(), addrs.impl, "router uses deployed impl");
         assertEq(router.governance(), deployer, "bootstrap governance is the deployer");
         assertTrue(MorphoLendingAdapter(addrs.morphoAdapter).isSupportedMarket(market), "morpho market registered");
@@ -125,15 +131,8 @@ contract MarginBootstrap7702Test is Test {
     function test_bootstrap_withHandoff_proposesFinalGovernanceAtomically() public {
         address finalGovernance = makeAddr("multisig");
 
-        (BatchExecutor.Call[] memory calls, MarginBootstrapBuilder.Deployed memory addrs) = builder.buildPlan(
-            _deps(),
-            deployer,
-            ROUTER_SALT,
-            _morphoMarkets(),
-            new MarginBootstrapBuilder.AaveV3Market[](0),
-            new MarginBootstrapBuilder.AaveV4Market[](0),
-            finalGovernance
-        );
+        (BatchExecutor.Call[] memory calls, MarginBootstrapBuilder.Deployed memory addrs) =
+            builder.buildPlan(_deps(), deployer, ROUTER_SALT, _markets(), finalGovernance);
 
         vm.signAndAttachDelegation(address(executor), deployerPk);
         vm.prank(deployer);
@@ -159,15 +158,7 @@ contract MarginBootstrap7702Test is Test {
     }
 
     function test_execute_revertsForThirdPartyCaller() public {
-        (BatchExecutor.Call[] memory calls,) = builder.buildPlan(
-            _deps(),
-            deployer,
-            ROUTER_SALT,
-            _morphoMarkets(),
-            new MarginBootstrapBuilder.AaveV3Market[](0),
-            new MarginBootstrapBuilder.AaveV4Market[](0),
-            deployer
-        );
+        (BatchExecutor.Call[] memory calls,) = builder.buildPlan(_deps(), deployer, ROUTER_SALT, _markets(), deployer);
         vm.signAndAttachDelegation(address(executor), deployerPk);
         // a caller other than the account itself cannot drive the delegated code
         vm.prank(makeAddr("attacker"));

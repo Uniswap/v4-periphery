@@ -10,6 +10,7 @@ import {MarginRouter} from "../src/MarginRouter.sol";
 import {MorphoLendingAdapter} from "../src/MorphoLendingAdapter.sol";
 import {AaveLendingAdapter} from "../src/AaveLendingAdapter.sol";
 import {AaveV4LendingAdapter} from "../src/AaveV4LendingAdapter.sol";
+import {CompoundV3LendingAdapter} from "../src/CompoundV3LendingAdapter.sol";
 import {BatchExecutor} from "./BatchExecutor.sol";
 
 /// @title MarginBootstrapBuilder
@@ -34,6 +35,7 @@ contract MarginBootstrapBuilder is CommonBase {
     bytes32 internal constant MORPHO_ADAPTER_SALT = keccak256("uniswap.margin.MorphoLendingAdapter.v1");
     bytes32 internal constant AAVE_ADAPTER_SALT = keccak256("uniswap.margin.AaveLendingAdapter.v1");
     bytes32 internal constant AAVE_V4_ADAPTER_SALT = keccak256("uniswap.margin.AaveV4LendingAdapter.v1");
+    bytes32 internal constant COMPOUND_ADAPTER_SALT = keccak256("uniswap.margin.CompoundV3LendingAdapter.v1");
 
     /// @notice External protocol dependencies the stack is wired against.
     struct Deps {
@@ -43,6 +45,7 @@ contract MarginBootstrapBuilder is CommonBase {
         address morpho;
         address aaveProvider;
         address aaveV4Spoke;
+        address compoundComet;
     }
 
     /// @notice An Aave v3 `(collateral, debt)` pair to allowlist.
@@ -59,12 +62,30 @@ contract MarginBootstrapBuilder is CommonBase {
         uint256 debtReserveId;
     }
 
+    /// @notice A Compound v3 `(collateral, debt)` pair to allowlist. `debt` must be the bound Comet's
+    ///         base token and `collateral` a registered Comet collateral asset (the adapter validates).
+    struct CompoundMarket {
+        Currency collateral;
+        Currency debt;
+    }
+
+    /// @notice The markets to register on each adapter, bundled so the plan builder takes one argument
+    ///         per concern rather than one per venue (and to keep the builder within the stack limit
+    ///         under the non-via-IR test profile).
+    struct Markets {
+        MarketParams[] morpho;
+        AaveV3Market[] v3;
+        AaveV4Market[] v4;
+        CompoundMarket[] compound;
+    }
+
     /// @notice The deterministic addresses the batch will deploy.
     struct Deployed {
         address impl;
         address morphoAdapter;
         address aaveAdapter;
         address aaveV4Adapter;
+        address compoundAdapter;
         address router;
     }
 
@@ -82,6 +103,7 @@ contract MarginBootstrapBuilder is CommonBase {
         addrs.morphoAdapter = _create2(MORPHO_ADAPTER_SALT, _morphoInit(deps.morpho, governance));
         addrs.aaveAdapter = _create2(AAVE_ADAPTER_SALT, _aaveInit(deps.aaveProvider, governance));
         addrs.aaveV4Adapter = _create2(AAVE_V4_ADAPTER_SALT, _aaveV4Init(deps.aaveV4Spoke, governance));
+        addrs.compoundAdapter = _create2(COMPOUND_ADAPTER_SALT, _compoundInit(deps.compoundComet, governance));
         addrs.router = _create2(routerSalt, _routerInit(deps, addrs.impl, governance));
     }
 
@@ -89,9 +111,8 @@ contract MarginBootstrapBuilder is CommonBase {
     /// @param deps The external protocol dependencies.
     /// @param governance The bootstrap owner/governance (the deploying EOA) that wires the stack.
     /// @param routerSalt The mined vanity salt for the router.
-    /// @param morphoMarkets The Morpho markets to register (must already exist on Morpho Blue).
-    /// @param v3Markets The Aave v3 pairs to allowlist.
-    /// @param v4Markets The Aave v4 pairs (with reserve ids) to register.
+    /// @param markets The markets to register on each adapter (Morpho markets must already exist on
+    ///        Morpho Blue; Compound pairs' debt must be the Comet base).
     /// @param finalGovernance The address to propose as the eventual governance/owner; pass the same
     ///        value as `governance` (or the zero address) to skip the handoff and leave the deployer
     ///        in control.
@@ -101,65 +122,106 @@ contract MarginBootstrapBuilder is CommonBase {
         Deps memory deps,
         address governance,
         bytes32 routerSalt,
-        MarketParams[] memory morphoMarkets,
-        AaveV3Market[] memory v3Markets,
-        AaveV4Market[] memory v4Markets,
+        Markets memory markets,
         address finalGovernance
     ) public view returns (BatchExecutor.Call[] memory calls, Deployed memory addrs) {
         addrs = computeAddresses(deps, governance, routerSalt);
 
         bool handoff = finalGovernance != address(0) && finalGovernance != governance;
-        // 5 deploys + 3 allowlist + per-market registrations + (4 handoff calls when handing off)
-        uint256 n = 5 + 3 + morphoMarkets.length + v3Markets.length + v4Markets.length + (handoff ? 4 : 0);
+        // 6 deploys + 4 allowlist + per-market registrations + (5 handoff calls when handing off)
+        uint256 n = 6 + 4 + markets.morpho.length + markets.v3.length + markets.v4.length + markets.compound.length
+            + (handoff ? 5 : 0);
         calls = new BatchExecutor.Call[](n);
-        uint256 k;
+        uint256 k = _appendDeploys(calls, deps, governance, routerSalt, addrs);
+        k = _appendAllowlist(calls, k, addrs);
+        k = _appendMarkets(calls, k, addrs, markets);
+        if (handoff) _appendHandoff(calls, k, addrs, finalGovernance);
+    }
 
-        // deploys, in the order the addresses depend on (impl before router)
+    /// @dev Appends the six CREATE2 deploys in dependency order (impl before router). Returns the next
+    ///      free index.
+    function _appendDeploys(
+        BatchExecutor.Call[] memory calls,
+        Deps memory deps,
+        address governance,
+        bytes32 routerSalt,
+        Deployed memory addrs
+    ) internal view returns (uint256 k) {
         calls[k++] = _deploy(ACCOUNT_SALT, _implInit());
         calls[k++] = _deploy(MORPHO_ADAPTER_SALT, _morphoInit(deps.morpho, governance));
         calls[k++] = _deploy(AAVE_ADAPTER_SALT, _aaveInit(deps.aaveProvider, governance));
         calls[k++] = _deploy(AAVE_V4_ADAPTER_SALT, _aaveV4Init(deps.aaveV4Spoke, governance));
+        calls[k++] = _deploy(COMPOUND_ADAPTER_SALT, _compoundInit(deps.compoundComet, governance));
         calls[k++] = _deploy(routerSalt, _routerInit(deps, addrs.impl, governance));
+    }
 
-        // allowlist every adapter (executed as `governance`)
+    /// @dev Appends an allowlist call for every adapter (executed as `governance`).
+    function _appendAllowlist(BatchExecutor.Call[] memory calls, uint256 k, Deployed memory addrs)
+        internal
+        pure
+        returns (uint256)
+    {
         calls[k++] = _call(addrs.router, _allow(addrs.morphoAdapter));
         calls[k++] = _call(addrs.router, _allow(addrs.aaveAdapter));
         calls[k++] = _call(addrs.router, _allow(addrs.aaveV4Adapter));
+        calls[k++] = _call(addrs.router, _allow(addrs.compoundAdapter));
+        return k;
+    }
 
-        // register the supplied markets on each adapter (executed as `governance`)
-        for (uint256 i; i < morphoMarkets.length; i++) {
-            calls[k++] = _call(addrs.morphoAdapter, abi.encodeCall(MorphoLendingAdapter.setMarket, (morphoMarkets[i])));
+    /// @dev Appends the per-market registration calls on each adapter (executed as `governance`).
+    function _appendMarkets(BatchExecutor.Call[] memory calls, uint256 k, Deployed memory addrs, Markets memory markets)
+        internal
+        pure
+        returns (uint256)
+    {
+        for (uint256 i; i < markets.morpho.length; i++) {
+            calls[k++] = _call(addrs.morphoAdapter, abi.encodeCall(MorphoLendingAdapter.setMarket, (markets.morpho[i])));
         }
-        for (uint256 i; i < v3Markets.length; i++) {
+        for (uint256 i; i < markets.v3.length; i++) {
             calls[k++] = _call(
                 addrs.aaveAdapter,
-                abi.encodeCall(AaveLendingAdapter.setMarket, (v3Markets[i].collateral, v3Markets[i].debt, true))
+                abi.encodeCall(AaveLendingAdapter.setMarket, (markets.v3[i].collateral, markets.v3[i].debt, true))
             );
         }
-        for (uint256 i; i < v4Markets.length; i++) {
+        for (uint256 i; i < markets.v4.length; i++) {
             calls[k++] = _call(
                 addrs.aaveV4Adapter,
                 abi.encodeCall(
                     AaveV4LendingAdapter.setMarket,
                     (
-                        v4Markets[i].collateral,
-                        v4Markets[i].debt,
-                        v4Markets[i].collateralReserveId,
-                        v4Markets[i].debtReserveId,
+                        markets.v4[i].collateral,
+                        markets.v4[i].debt,
+                        markets.v4[i].collateralReserveId,
+                        markets.v4[i].debtReserveId,
                         true
                     )
                 )
             );
         }
-
-        // propose the real governance/owner everywhere (two-step; the recipient accepts later)
-        if (handoff) {
-            calls[k++] = _call(addrs.router, abi.encodeCall(MarginRouter.transferGovernance, (finalGovernance)));
-            bytes memory transferOwner = abi.encodeWithSignature("transferOwnership(address)", finalGovernance);
-            calls[k++] = _call(addrs.morphoAdapter, transferOwner);
-            calls[k++] = _call(addrs.aaveAdapter, transferOwner);
-            calls[k++] = _call(addrs.aaveV4Adapter, transferOwner);
+        for (uint256 i; i < markets.compound.length; i++) {
+            calls[k++] = _call(
+                addrs.compoundAdapter,
+                abi.encodeCall(
+                    CompoundV3LendingAdapter.setMarket, (markets.compound[i].collateral, markets.compound[i].debt, true)
+                )
+            );
         }
+        return k;
+    }
+
+    /// @dev Appends the two-step governance/ownership handoff proposals (the recipient accepts later).
+    function _appendHandoff(
+        BatchExecutor.Call[] memory calls,
+        uint256 k,
+        Deployed memory addrs,
+        address finalGovernance
+    ) internal pure {
+        calls[k++] = _call(addrs.router, abi.encodeCall(MarginRouter.transferGovernance, (finalGovernance)));
+        bytes memory transferOwner = abi.encodeWithSignature("transferOwnership(address)", finalGovernance);
+        calls[k++] = _call(addrs.morphoAdapter, transferOwner);
+        calls[k++] = _call(addrs.aaveAdapter, transferOwner);
+        calls[k++] = _call(addrs.aaveV4Adapter, transferOwner);
+        calls[k++] = _call(addrs.compoundAdapter, transferOwner);
     }
 
     // ===== init code =====
@@ -182,6 +244,12 @@ contract MarginBootstrapBuilder is CommonBase {
             bytes.concat(
                 vm.getCode("AaveV4LendingAdapter.sol:AaveV4LendingAdapter"), abi.encode(aaveV4Spoke, governance)
             );
+    }
+
+    function _compoundInit(address compoundComet, address governance) internal view returns (bytes memory) {
+        return bytes.concat(
+            vm.getCode("CompoundV3LendingAdapter.sol:CompoundV3LendingAdapter"), abi.encode(compoundComet, governance)
+        );
     }
 
     function _routerInit(Deps memory deps, address impl, address governance) internal view returns (bytes memory) {
