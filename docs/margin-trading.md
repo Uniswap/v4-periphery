@@ -1,10 +1,10 @@
 # Uniswap v4 Margin Trading — Protocol & Integration Guide
 
 A periphery that lets a user open a leveraged spot position in a single transaction by composing a
-Uniswap v4 swap with a borrow/supply against an external lending protocol. Three venues are integrated
-today (Morpho Blue, Aave v3, and Aave v4), all behind the same router; the caller selects the venue
-per call by passing the matching adapter. This document explains how the system works and how to
-integrate with it from both smart contracts and a front end.
+Uniswap v4 swap with a borrow/supply against an external lending protocol. Four venues are integrated
+today (Morpho Blue, Aave v3, Aave v4, and Compound v3), all behind the same router; the caller selects
+the venue per call by passing the matching adapter. This document explains how the system works and how
+to integrate with it from both smart contracts and a front end.
 
 ---
 
@@ -21,9 +21,10 @@ The sequence runs inside one `PoolManager` unlock using v4 flash accounting, whi
 Each user's position lives in their own **`MarginAccount`** — a minimal, soulbound contract that is
 itself the borrower/supplier in the lending protocol. The **`MarginRouter`** orchestrates the flows
 and is the trusted manager of every account it deploys. A **lending adapter** (`MorphoLendingAdapter`
-for Morpho Blue, `AaveLendingAdapter` for Aave v3, `AaveV4LendingAdapter` for Aave v4) translates
-protocol-agnostic intents into the concrete calls the account executes. All implement the same
-`ILendingAdapter` surface, so the router flows are identical regardless of venue.
+for Morpho Blue, `AaveLendingAdapter` for Aave v3, `AaveV4LendingAdapter` for Aave v4,
+`CompoundV3LendingAdapter` for Compound v3) translates protocol-agnostic intents into the concrete
+calls the account executes. All implement the same `ILendingAdapter` surface, so the router flows are
+identical regardless of venue.
 
 ---
 
@@ -48,7 +49,7 @@ protocol-agnostic intents into the concrete calls the account executes. All impl
   └───────┬─────────┘  onBehalf = account └──────────┬─────────┘
           │                                          │ reads + oracle price
           ▼                                          ▼
-  ┌──────────  Morpho Blue / Aave v3 Pool / Aave v4 Spoke  ──────────┐
+  ┌────  Morpho Blue / Aave v3 Pool / Aave v4 Spoke / Compound v3 Comet  ────┐
 ```
 
 
@@ -56,7 +57,7 @@ protocol-agnostic intents into the concrete calls the account executes. All impl
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MarginRouter`         | The entry point. Builds and runs each flow inside a `PoolManager` unlock. Inherits `V4Router`, `ReentrancyLock`, `Permit2Forwarder`, `Multicall_v4`, `NativeWrapper`, and the account factory. The router is the `manager` of every account. |
 | `MarginAccount`        | A per-user clone (Solady clone-with-immutable-args). It is the lending counterparty (`onBehalf == account`), so it acts as itself and needs no delegated authorization. Owner and manager are baked into bytecode (soulbound).               |
-| lending adapters       | Singleton encoders over a governed `(collateral, debt)` routing table. `MorphoLendingAdapter` targets Morpho Blue; `AaveLendingAdapter` targets the Aave v3 Pool; `AaveV4LendingAdapter` targets a single Aave v4 Spoke. Each returns the `(target, value, callData)` an account executes and holds no funds. The caller picks a venue by passing the matching adapter. |
+| lending adapters       | Singleton encoders over a governed `(collateral, debt)` routing table. `MorphoLendingAdapter` targets Morpho Blue; `AaveLendingAdapter` targets the Aave v3 Pool; `AaveV4LendingAdapter` targets a single Aave v4 Spoke; `CompoundV3LendingAdapter` targets a single Compound v3 Comet (its base token is the only borrowable debt). Each returns the `(target, value, callData)` an account executes and holds no funds. The caller picks a venue by passing the matching adapter. |
 | `ILendingAdapter`      | The protocol-agnostic surface the router and account depend on. New lending protocols are supported by new adapters.                                                                                                                         |
 | value types            | `Market` (the `(collateral, debt)` pair), `Ltv` (WAD ratio), `LeverageX18` (WAD multiplier), `MarketRegistry`, `Owner`.                                                                                                                      |
 
@@ -98,6 +99,9 @@ works on Aave v3 and Aave v4.
 - **Short ETH** is `Market(collateral: USDC, debt: WETH)`. It is served by Aave v3 and Aave v4 today;
 no Morpho market exists for this pairing on mainnet. See §8 for the venue-selection and short-ETH
 walkthrough.
+- **Long UNI** is `Market(collateral: UNI, debt: USDC)`, served by Compound v3. A Comet borrows only
+its single base token, so the Compound adapter's debt is always USDC (the cUSDCv3 base) and its
+collateral is any Comet collateral asset (UNI here).
 
 ### 3.2 The MarginAccount
 
@@ -511,7 +515,7 @@ import { marginRouterAbi, lendingAdapterAbi } from "./abis";
 
 const ADDR = {
   router:  "0x<MARGIN_ROUTER>",        // fill in per deployment
-  adapter: "0x<LENDING_ADAPTER>",      // fill in per deployment (Morpho, Aave v3, or Aave v4)
+  adapter: "0x<LENDING_ADAPTER>",      // fill in per deployment (Morpho, Aave v3, Aave v4, or Compound v3)
   permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
   weth:    "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
   usdc:    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -709,8 +713,9 @@ message.
 ### 8.1 Selecting a venue
 
 The venue is chosen per call: pass the `MorphoLendingAdapter` to route through Morpho Blue, the
-`AaveLendingAdapter` to route through the Aave v3 Pool, or the `AaveV4LendingAdapter` to route through
-an Aave v4 Spoke. Nothing else in the flow changes: all implement the same `ILendingAdapter` surface
+`AaveLendingAdapter` to route through the Aave v3 Pool, the `AaveV4LendingAdapter` to route through
+an Aave v4 Spoke, or the `CompoundV3LendingAdapter` to route through a Compound v3 Comet. Nothing else
+in the flow changes: all implement the same `ILendingAdapter` surface
 and the router orchestrates them identically. Each adapter must be allowlisted by governance
 (`router.setAdapterAllowed(adapter, true)`) before it can be used to *add* exposure; closing and
 delevering never require an allowlisted adapter, so a position opened on any venue can always be
@@ -758,6 +763,31 @@ its own `onBehalfOf` and the direct caller, so it needs no registration, activat
 v4 `withdraw` and `borrow` deliver the underlying to the account (not a receiver argument); the account
 forwards it to the validated recipient, the same measure-and-forward `MarginAccount` already uses for
 `borrow`.
+
+`CompoundV3LendingAdapter` targets a single Compound v3 **Comet** and is constructed against it
+(`constructor(IComet comet, address owner_)`); the Comet is `lendingProtocol()` and the call target for
+every market. A Comet is **single-base**: it has exactly one borrowable base token and a set of
+collateral assets. So every routable pair must have `debt == comet.baseToken()` and a `collateral` that
+is a registered Comet collateral asset — governance enables a pair with
+`setMarket(Currency collateral, Currency debt, bool allowed)`, which validates both on-chain (the base
+match and that the collateral is a Comet collateral asset). To serve a different base, deploy a second
+adapter against that Comet. Two Compound specifics are handled inside the adapter, so the router and
+account flows are unchanged:
+
+- **No separate borrow/repay.** Borrowing the base is `withdraw`ing it (drawing the base balance
+negative) and repaying is `supply`ing it. The four `ILendingAdapter` primitives map onto Comet's
+`supply` / `withdraw` / `withdrawTo` accordingly.
+- **Full repay is the exact accrued balance.** Comet has no share-based "repay all" and no `max`
+sentinel, so a full close (`decreasePosition` with `debtToRepay == type(uint256).max`) supplies exactly
+`borrowBalanceOf(account)`. That balance accrues to `block.timestamp` in the view, so the borrow clears
+to zero with no dust and all collateral can then be withdrawn.
+
+Reads mirror the other adapters: `positionOf` returns `(collateralBalanceOf, borrowBalanceOf)`,
+`maxLtvWad` returns the collateral's **liquidate** collateral factor (Comet enforces the tighter
+**borrow** collateral factor at borrow time, so a borrow can open below `maxLtvWad` yet be rejected by
+Comet), and `currentLtvWad` is USD-valued through Comet's own price feeds (decimal-agnostic). The reads
+are account-level in the base, so keep one Compound position per `(owner, subId)` and use a distinct
+`subId` for each, as with the Aave adapters.
 
 ### 8.2 Open a short ETH position via Aave
 
@@ -883,8 +913,8 @@ router-side configuration.
 the adapter; a position can migrate to a new venue by allowlisting a new adapter, with no router or
 account changes.
 - **Lending and oracle risk is inherited.** Health, liquidation, and pricing are the lending
-protocol's responsibility (Morpho Blue, Aave v3, or Aave v4, depending on the adapter); the margin
-layer adds no independent oracle.
+protocol's responsibility (Morpho Blue, Aave v3, Aave v4, or Compound v3, depending on the adapter);
+the margin layer adds no independent oracle.
 - **ERC-20 only.** Markets must use standard ERC-20 tokens (no fee-on-transfer or rebasing).
 
 ---
@@ -902,6 +932,7 @@ on-chain with `cast code`; the external dependencies follow. Other networks are 
 | MorphoLendingAdapter          | `0x9A7f8F5A9496D3c9dc0BEEfb44cCaC17CAAF28fa` | mainnet                                                                           |
 | AaveLendingAdapter            | `0x8EeacdB24c7650478496845A61f03fF6BC263222` | mainnet                                                                           |
 | AaveV4LendingAdapter          | `0x3a9Cc5eEbAC911E5a316de1F2bCD166016d7469E` | mainnet; constructed against the Aave v4 Main Spoke                               |
+| CompoundV3LendingAdapter      | not in the live deployment yet               | deploys deterministically from `COMPOUND_ADAPTER_SALT` (bound to the cUSDCv3 Comet); allowlist + register the UNI/USDC market before use |
 | v4 PoolManager                | `0x000000000004444c5dc75cB358380D2e3dE08A90` | mainnet; the official Uniswap v4 deployment                                       |
 | Permit2                       | `0x000000000022D473030F116dDEE9F6B43aC78BA3` | canonical, same on all chains                                                     |
 | Morpho Blue                   | `0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb` | mainnet                                                                           |
@@ -911,8 +942,10 @@ on-chain with `cast code`; the external dependencies follow. Other networks are 
 | Aave v4 Main Spoke            | `0x94e7A5dCbE816e498b89aB752661904E2F56c485` | mainnet; the Spoke `AaveV4LendingAdapter` routes through (verify with `cast code`) |
 | Aave v4 Core Hub              | `0xCca852Bc40e560adC3b1Cc58CA5b55638ce826c9` | mainnet; backs the Main Spoke's WETH and USDC reserves                            |
 | Aave v4 Main Spoke oracle     | `0x99B2B6CEa9C3D2fd8F4d90f86741C44B212a6127` | mainnet; reserveId-keyed (`getReservesPrices`), 8-decimal USD base               |
+| Compound v3 USDC Comet        | `0xc3d688B66703497DAA19211EEdff47f25384cdc3` | mainnet (cUSDCv3); base token USDC, the Comet `CompoundV3LendingAdapter` routes through |
 | WETH                          | `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2` | mainnet                                                                           |
 | USDC                          | `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` | mainnet                                                                           |
+| UNI                           | `0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984` | mainnet; the Compound long-UNI market collateral                                 |
 
 
 Morpho WETH/USDC market (collateral WETH, loan USDC) — the canonical liquid market the deploy scripts
@@ -931,6 +964,11 @@ Aave v4 Main Spoke reserve ids: WETH is reserveId `0` (the debt leg of a short, 
 is reserveId `7` (the collateral leg, collateral factor `7800` bps, which
 `AaveV4LendingAdapter.maxLtvWad` returns as `0.78e18`). Both reserves are on the Core Hub. The
 addresses, reserve ids, and collateral factor were verified on a mainnet fork at block 25330047.
+
+Compound v3 long-UNI market (collateral UNI, debt USDC) on the cUSDCv3 Comet: UNI's borrow collateral
+factor is `0.68e18` (Comet enforces this at borrow time, capping leverage near ~3.1x) and its liquidate
+collateral factor is `0.74e18`, which `CompoundV3LendingAdapter.maxLtvWad` returns. These were verified
+on a mainnet fork at block 25598384.
 
 > Never hardcode an address without verifying it on-chain (`cast code` / `cast call`) for the target
 > network.
@@ -1002,8 +1040,8 @@ only escape hatch).
 
 ### Lending adapter read functions
 
-All three adapters — `MorphoLendingAdapter`, `AaveLendingAdapter` (Aave v3), and
-`AaveV4LendingAdapter` — expose the same `ILendingAdapter` reads: `lendingProtocol()`,
+All four adapters — `MorphoLendingAdapter`, `AaveLendingAdapter` (Aave v3), `AaveV4LendingAdapter`, and
+`CompoundV3LendingAdapter` — expose the same `ILendingAdapter` reads: `lendingProtocol()`,
 `isSupportedMarket(Market)`, `positionOf(account, Market)`, `maxLtvWad(Market)`,
 `currentLtvWad(account, Market)`, plus `owner()`, `pendingOwner()`, `acceptOwnership()`, and
 `transferOwnership(address)` for the two-step ownership handoff. Market routing is curated with
@@ -1014,8 +1052,13 @@ All three adapters — `MorphoLendingAdapter`, `AaveLendingAdapter` (Aave v3), a
 after validating both are live Aave v3 reserves.
 - `AaveV4LendingAdapter.setMarket(Currency collateral, Currency debt, uint256 collateralReserveId, uint256 debtReserveId, bool allowed)`
 registers a route after validating on-chain that each reserve's `underlying` matches the currency and
-that both reserves are on the same Hub. Its `lendingProtocol()` is the bound Spoke. (Note: `MarketSet`,
-emitted by all three on `setMarket`, carries the two `reserveId`s for the v4 adapter.)
+that both reserves are on the same Hub. Its `lendingProtocol()` is the bound Spoke.
+- `CompoundV3LendingAdapter.setMarket(Currency collateral, Currency debt, bool allowed)` allowlists a
+pair after validating `debt` is the bound Comet's base token and `collateral` is a registered Comet
+collateral asset. Its `lendingProtocol()` is the bound Comet.
+
+(Note: `MarketSet`, emitted by all four on `setMarket`, carries the two `reserveId`s for the v4
+adapter.)
 
 ### Errors
 
