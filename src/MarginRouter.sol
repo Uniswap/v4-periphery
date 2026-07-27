@@ -163,8 +163,9 @@ contract MarginRouter is
         // a partial decrease's bounds don't depend on the position, so validate them before any
         // external read: a non-zero repay (a zero would feed a zero into the exact-output swap, which
         // the PoolManager rejects) and a resulting-health bound so it cannot worsen the LTV
-        if (!fullClose && (params.debtToRepay == 0 || Ltv.unwrap(params.maxLtvAfter) == 0)) {
-            revert SlippageBoundRequired();
+        if (!fullClose) {
+            if (params.debtToRepay == 0) revert ZeroAmount();
+            if (Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
         }
 
         account = accountOf(msgSender(), params.subId);
@@ -302,7 +303,7 @@ contract MarginRouter is
             _wrap(msg.value);
             Currency.wrap(address(WETH9)).transfer(account, msg.value);
         } else {
-            if (params.amount == 0) revert SlippageBoundRequired();
+            if (params.amount == 0) revert ZeroAmount();
             amount = params.amount;
             permit2.transferFrom(
                 msgSender(), account, params.amount.toUint160(), Currency.unwrap(params.market.collateral)
@@ -417,7 +418,7 @@ contract MarginRouter is
     ///         post-increase debt minus this, correct for both a fresh open and an increase.
     function _increase(IncreaseParams calldata params) private returns (address account, uint256 debtBefore) {
         // a zero buy would feed a zero amount into the exact-output swap, which the PoolManager rejects
-        if (params.collateralToBuy == 0) revert SlippageBoundRequired();
+        if (params.collateralToBuy == 0) revert ZeroAmount();
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
         _requireAllowedAdapter(params.adapter);
 
@@ -593,7 +594,7 @@ contract MarginRouter is
             // unlike the pool-delta opcodes, 0 is not an OPEN_DELTA full-balance sentinel here; a
             // pull with no amount is always a plan-builder error, so reject it loudly rather than
             // silently moving nothing (which would compose badly with opt-in health checks)
-            if (amount == 0) revert SlippageBoundRequired();
+            if (amount == 0) revert ZeroAmount();
             if (payerIsUser) {
                 // explicit amounts only: CONTRACT_BALANCE (1<<255) overflows the uint160 cast and
                 // reverts, so the router-balance sentinel cannot be smuggled onto the caller

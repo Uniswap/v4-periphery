@@ -491,7 +491,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
         Plan memory plan = Planner.init();
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
         plan = plan.add(MarginActions.PULL_TO_ACCOUNT, abi.encode(debt, uint256(0), true));
-        vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
         marginRouter.execute(plan.encode(), block.timestamp + 1);
     }
 
@@ -500,7 +500,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
         Plan memory plan = Planner.init();
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
         plan = plan.add(MarginActions.PULL_TO_ACCOUNT, abi.encode(collateral, uint256(0), false));
-        vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
         marginRouter.execute(plan.encode(), block.timestamp + 1);
     }
 

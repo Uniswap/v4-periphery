@@ -24,13 +24,15 @@ interface IMarginRouter {
     /// @param deadline The deadline that was exceeded.
     error DeadlinePassed(uint256 deadline);
 
-    /// @dev Thrown when a required non-zero input is zero: a slippage bound (e.g. `maxDebtIn`,
-    ///      `maxCollateralIn`), a required health bound (`maxLtvAfter`), or a required amount (e.g.
-    ///      `collateralToBuy`, an `addCollateral` / `PULL_TO_ACCOUNT` amount, a partial `debtToRepay`).
-    ///      Leaving a bound unset would allow a swap to execute at an arbitrary price or leave a
-    ///      position unchecked; a zero amount is always a caller error the flow rejects rather than
-    ///      resolving to a full-balance sentinel.
+    /// @dev Thrown when a required slippage or health bound is zero: `maxDebtIn` / `maxCollateralIn`
+    ///      (swap slippage) or `maxLtvAfter` (resulting health). Leaving a bound unset would allow a
+    ///      swap to execute at an arbitrary price or leave a position in an unchecked state.
     error SlippageBoundRequired();
+
+    /// @dev Thrown when a required non-zero amount is zero: `collateralToBuy`, an `addCollateral` or
+    ///      `PULL_TO_ACCOUNT` amount, or a partial `debtToRepay`. A zero amount is always a caller
+    ///      error, rejected rather than resolved to a full-balance sentinel.
+    error ZeroAmount();
 
     /// @dev Thrown when an operation would create or leave a position with LTV above the adapter's
     ///      maximum liquidation LTV.

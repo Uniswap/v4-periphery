@@ -69,7 +69,7 @@ contract MarginRouterTest is Test {
     function test_increasePosition_revertsWhenCollateralToBuyZero() public {
         IMarginRouter.IncreaseParams memory p = _openParams();
         p.collateralToBuy = 0;
-        vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
         router.increasePosition(p);
     }
 
@@ -79,7 +79,7 @@ contract MarginRouterTest is Test {
         p.debtToRepay = 0;
         p.maxCollateralIn = 1;
         p.maxLtvAfter = toLtv(0.9e18);
-        vm.expectRevert(IMarginRouter.SlippageBoundRequired.selector);
+        vm.expectRevert(IMarginRouter.ZeroAmount.selector);
         router.decreasePosition(p);
     }
 
