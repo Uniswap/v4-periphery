@@ -50,8 +50,6 @@ import {PositionData} from "./types/PositionData.sol";
 ///           owner has not allowlisted, never a silent default market.
 /// @custom:security-contact security@uniswap.org
 contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
-    using Math for uint256;
-
     // WAD scale for loan-to-value ratios and collateral factors (Comet expresses factors in WAD).
     uint256 private constant WAD = 1e18;
 
@@ -62,6 +60,14 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
     /// @notice The Comet's single borrowable base token, cached at construction. Every routed market's
     ///         `debt` must equal this.
     address public immutable baseToken;
+
+    /// @notice The Comet's base-token USD price feed, cached at construction. Immutable per Comet
+    ///         instance (like `baseToken`), so it is read once here rather than on every valuation.
+    address public immutable baseTokenPriceFeed;
+
+    /// @notice `10 ** baseTokenDecimals` for the Comet's base token, cached at construction. Immutable
+    ///         per Comet instance, so it is read once here rather than on every valuation.
+    uint256 public immutable baseScale;
 
     /// @notice The governed allowlist mapping `(collateral, debt)` to whether the pair is routable.
     ///         Managed via `setMarket`. The owner guard lives in `OwnableAdapter`.
@@ -103,6 +109,8 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
         if (base == address(0)) revert ZeroAddress();
         comet = comet_;
         baseToken = base;
+        baseTokenPriceFeed = comet_.baseTokenPriceFeed();
+        baseScale = comet_.baseScale();
     }
 
     /// @inheritdoc ILendingAdapter
@@ -228,7 +236,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
         uint256 collateral = uint256(comet.collateralBalanceOf(account, Currency.unwrap(market.collateral)));
         uint256 debt = comet.borrowBalanceOf(account);
         uint256 collateralValue = _usd(collateral, comet.getPrice(info.priceFeed), info.scale);
-        uint256 debtValue = _usd(debt, comet.getPrice(comet.baseTokenPriceFeed()), comet.baseScale());
+        uint256 debtValue = _usd(debt, comet.getPrice(baseTokenPriceFeed), baseScale);
         data = PositionData({
             collateralAmount: collateral,
             debtAmount: debt,
@@ -258,7 +266,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
         IComet.AssetInfo memory info = comet.getAssetInfoByAddress(Currency.unwrap(market.collateral));
         collateral = uint256(comet.collateralBalanceOf(account, Currency.unwrap(market.collateral)));
         collateralValue = _usd(collateral, comet.getPrice(info.priceFeed), info.scale);
-        debtValue = _usd(comet.borrowBalanceOf(account), comet.getPrice(comet.baseTokenPriceFeed()), comet.baseScale());
+        debtValue = _usd(comet.borrowBalanceOf(account), comet.getPrice(baseTokenPriceFeed), baseScale);
     }
 
     /// @notice Values `amount` of an asset in USD at Comet's price scale: `amount * price / scale`.
