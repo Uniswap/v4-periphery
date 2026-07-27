@@ -11,6 +11,7 @@ import {IPoolAddressesProvider} from "./interfaces/external/aave/IPoolAddressesP
 import {IPoolDataProvider} from "./interfaces/external/aave/IPoolDataProvider.sol";
 import {OwnableAdapter} from "./base/OwnableAdapter.sol";
 import {Market} from "./types/Market.sol";
+import {MarketAllowlist, MarketNotSupported} from "./types/MarketAllowlist.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 import {PositionData} from "./types/PositionData.sol";
 
@@ -63,19 +64,13 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
     ///         construction. Used to read reserve token addresses and reserve configuration.
     IPoolDataProvider public immutable dataProvider;
 
-    /// @notice The governed allowlist mapping `(collateral, debt)` to whether the pair is routable.
-    ///         Managed via `setMarket`. The owner guard lives in `OwnableAdapter`.
-    mapping(Currency collateral => mapping(Currency debt => bool)) internal _allowed;
+    /// @notice The governed allowlist of routable `(collateral, debt)` pairs. Managed via `setMarket`;
+    ///         the owner guard lives in `OwnableAdapter`.
+    MarketAllowlist internal _markets;
 
     /// @dev Thrown when the addresses provider resolves the Pool or the data provider to the zero
     ///      address at construction.
     error ZeroAddress();
-
-    /// @dev Thrown when `setMarket` is called to enable a pair whose collateral or debt asset is not
-    ///      a live Aave reserve, and on any encode or read for an unrouted pair.
-    /// @param collateral The collateral token of the unsupported market.
-    /// @param debt The debt token of the unsupported market.
-    error MarketNotSupported(Currency collateral, Currency debt);
 
     /// @dev Thrown when `encodeWithdrawCollateral` is called with an `account` that is not the caller.
     ///      Aave's withdraw burns the caller's own aTokens (there is no `onBehalfOf`), so the encoder
@@ -108,7 +103,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
 
     /// @inheritdoc ILendingAdapter
     function isSupportedMarket(Market calldata market) external view returns (bool) {
-        return _allowed[market.collateral][market.debt];
+        return _markets.isAllowed(market);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -188,8 +183,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
         returns (uint256 collateralAmount, uint256 debtAmount)
     {
         _requireSupportedMarket(market);
-        (address aCollateral,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.collateral));
-        (,, address vDebt) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.debt));
+        (address aCollateral, address vDebt) = _reserveTokens(market);
         collateralAmount = IERC20(aCollateral).balanceOf(account);
         debtAmount = IERC20(vDebt).balanceOf(account);
     }
@@ -202,7 +196,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
         _requireSupportedMarket(market);
         (,, uint256 liquidationThreshold,,,,,,,) =
             dataProvider.getReserveConfigurationData(Currency.unwrap(market.collateral));
-        return toLtv(liquidationThreshold * WAD / BPS);
+        return _thresholdToLtv(liquidationThreshold);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -220,8 +214,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
         _requireSupportedMarket(market);
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = pool.getUserAccountData(account);
-        if (totalCollateralBase == 0) return toLtv(totalDebtBase == 0 ? 0 : type(uint256).max);
-        return toLtv(totalDebtBase * WAD / totalCollateralBase);
+        return _currentLtv(totalDebtBase, totalCollateralBase);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -236,21 +229,45 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
         returns (PositionData memory data)
     {
         _requireSupportedMarket(market);
-        (address aCollateral,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.collateral));
-        (,, address vDebt) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.debt));
+        (address aCollateral, address vDebt) = _reserveTokens(market);
         (uint256 totalCollateralBase, uint256 totalDebtBase,, uint256 liquidationThreshold,, uint256 healthFactor) =
             pool.getUserAccountData(account);
         data = PositionData({
             collateralAmount: IERC20(aCollateral).balanceOf(account),
             debtAmount: IERC20(vDebt).balanceOf(account),
-            // account-weighted liquidation threshold (basis points) as the max LTV, matching the
-            // health factor Aave returns; equals the reserve's threshold for a single-position account
-            maxLtv: toLtv(liquidationThreshold * WAD / BPS),
-            currentLtv: totalCollateralBase == 0
-                ? toLtv(totalDebtBase == 0 ? 0 : type(uint256).max)
-                : toLtv(totalDebtBase * WAD / totalCollateralBase),
+            // account-weighted liquidation threshold as the max LTV, matching the health factor Aave
+            // returns; equals the reserve's threshold for a single-position account
+            maxLtv: _thresholdToLtv(liquidationThreshold),
+            currentLtv: _currentLtv(totalDebtBase, totalCollateralBase),
             healthFactorWad: healthFactor
         });
+    }
+
+    /// @notice The account's aToken (collateral) and variable-debt-token (debt) addresses for the
+    ///         market's reserves, read from the protocol data provider.
+    /// @param market The market whose reserve receipt tokens are resolved.
+    /// @return aCollateral The collateral reserve's aToken.
+    /// @return vDebt The debt reserve's variable debt token.
+    function _reserveTokens(Market calldata market) internal view returns (address aCollateral, address vDebt) {
+        (aCollateral,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.collateral));
+        (,, vDebt) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.debt));
+    }
+
+    /// @notice Current LTV from Aave's account-level base-currency totals. `type(uint256).max` when
+    ///         there is debt against zero collateral; zero when there is no debt.
+    /// @param totalDebtBase The account's total debt in Aave's base currency.
+    /// @param totalCollateralBase The account's total collateral in Aave's base currency.
+    /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
+    function _currentLtv(uint256 totalDebtBase, uint256 totalCollateralBase) internal pure returns (Ltv) {
+        if (totalCollateralBase == 0) return toLtv(totalDebtBase == 0 ? 0 : type(uint256).max);
+        return toLtv(totalDebtBase * WAD / totalCollateralBase);
+    }
+
+    /// @notice Converts an Aave liquidation threshold (basis points) to a WAD-scaled `Ltv`.
+    /// @param thresholdBps The liquidation threshold in basis points (1e4 == 100%).
+    /// @return The threshold as an `Ltv` (WAD, 1e18 == 100%).
+    function _thresholdToLtv(uint256 thresholdBps) internal pure returns (Ltv) {
+        return toLtv(thresholdBps * WAD / BPS);
     }
 
     /// @notice Enables or disables routing for a `(collateral, debt)` pair. When enabling, both
@@ -265,15 +282,13 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
             (address aDebt,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(debt));
             if (aCollateral == address(0) || aDebt == address(0)) revert MarketNotSupported(collateral, debt);
         }
-        _allowed[collateral][debt] = allowed;
+        _markets.set(collateral, debt, allowed);
         emit MarketSet(Currency.unwrap(collateral), Currency.unwrap(debt), allowed);
     }
 
     /// @notice Reverts `MarketNotSupported` unless the `(collateral, debt)` pair is allowlisted.
     /// @param market The market pair to check.
     function _requireSupportedMarket(Market calldata market) internal view {
-        if (!_allowed[market.collateral][market.debt]) {
-            revert MarketNotSupported(market.collateral, market.debt);
-        }
+        _markets.requireAllowed(market);
     }
 }

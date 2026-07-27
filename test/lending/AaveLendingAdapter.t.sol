@@ -9,6 +9,7 @@ import {AaveLendingAdapter} from "../../src/AaveLendingAdapter.sol";
 import {IPool} from "../../src/interfaces/external/aave/IPool.sol";
 import {IPoolAddressesProvider} from "../../src/interfaces/external/aave/IPoolAddressesProvider.sol";
 import {Market} from "../../src/types/Market.sol";
+import {MarketNotSupported} from "../../src/types/MarketAllowlist.sol";
 import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
 import {Ltv} from "../../src/types/Ltv.sol";
 import {MockAavePool, MockAaveAddressesProvider, MockAaveDataProvider} from "../mocks/MockAavePool.sol";
@@ -262,9 +263,7 @@ contract AaveLendingAdapterTest is Test {
         MockERC20 unlisted = new MockERC20("Unlisted", "UNL", 18);
         Currency unlistedCurrency = Currency.wrap(address(unlisted));
         vm.prank(gov);
-        vm.expectRevert(
-            abi.encodeWithSelector(AaveLendingAdapter.MarketNotSupported.selector, unlistedCurrency, market.debt)
-        );
+        vm.expectRevert(abi.encodeWithSelector(MarketNotSupported.selector, unlistedCurrency, market.debt));
         adapter.setMarket(unlistedCurrency, market.debt, true);
     }
 
@@ -331,6 +330,6 @@ contract AaveLendingAdapterTest is Test {
     }
 
     function _expectMarketNotSupported(Market memory m) internal {
-        vm.expectRevert(abi.encodeWithSelector(AaveLendingAdapter.MarketNotSupported.selector, m.collateral, m.debt));
+        vm.expectRevert(abi.encodeWithSelector(MarketNotSupported.selector, m.collateral, m.debt));
     }
 }
