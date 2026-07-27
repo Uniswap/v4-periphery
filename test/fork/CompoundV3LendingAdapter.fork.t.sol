@@ -168,6 +168,61 @@ contract CompoundV3LendingAdapterForkTest is Test {
         _assertNoDust(account);
     }
 
+    /// @notice A full close after a long idle period (no Comet interaction since the open) still zeroes
+    ///         the borrow and withdraws all collateral with no dust. Comet's `borrowBalanceOf` is
+    ///         re-accrued to `block.timestamp` in the view, so the close swap and the repay are sized
+    ///         off the true current debt even though the close is the first interaction since the open;
+    ///         the repay caps at that borrow, so nothing is left un-repaid or stranded. Unlike the
+    ///         lifecycle test above, there is deliberately no same-block interaction preceding the close.
+    function test_fork_compound_fullClose_afterIdle_noDust() public {
+        address account = router.accountOf(address(this), 0);
+
+        deal(UNI, account, 1_000e18);
+        router.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: market,
+                poolKey: poolKey,
+                equity: 0,
+                collateralToBuy: 1_000e18,
+                maxDebtIn: 20_000e6,
+                minHopPriceX36: 0,
+                maxLtvAfter: Ltv.wrap(0),
+                subId: 0,
+                deadline: block.timestamp + 1 hours
+            })
+        );
+        (, uint256 debtAtOpen) = adapter.positionOf(account, market);
+        assertGt(debtAtOpen, 0, "position open");
+
+        // idle: no Comet interaction since the open; advance both timestamp and block number
+        vm.warp(block.timestamp + 1 days);
+        vm.roll(block.number + 7_200); // ~1 day at 12s/block
+
+        // full close is the first Comet interaction since the open (no same-block interaction to
+        // freshen a stored balance); it clears because borrowBalanceOf reflects the current block
+        uint256 uniBefore = IERC20(UNI).balanceOf(address(this));
+        router.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
+                adapter: adapter,
+                market: market,
+                poolKey: poolKey,
+                maxCollateralIn: 3_000e18,
+                minHopPriceX36: 0,
+                subId: 0,
+                deadline: block.timestamp + 1 hours
+            })
+        );
+
+        (uint256 collEnd, uint256 debtEnd) = adapter.positionOf(account, market);
+        assertEq(debtEnd, 0, "close: borrow fully repaid, no dust");
+        assertEq(collEnd, 0, "close: all collateral withdrawn");
+        assertGt(IERC20(UNI).balanceOf(address(this)), uniBefore, "close: residual returned to caller");
+        _assertNoDust(account);
+    }
+
     // ---- helpers ----
 
     /// @dev Seeds a local UNI/USDC v4 pool at the Comet oracle price so the swap leg and the Comet

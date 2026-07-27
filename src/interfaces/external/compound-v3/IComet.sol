@@ -14,9 +14,11 @@ pragma solidity ^0.8.0;
 ///           recipient (still debiting `msg.sender`).
 ///         - Supplying the base repays the borrow first, then any excess becomes a base supply
 ///           (positive balance). There is NO share-based "repay all" and no `type(uint256).max`
-///           sentinel; a full repay must supply the exact accrued borrow.
-///         - `borrowBalanceOf` is denominated in the base token and reflects interest accrued as of
-///           the last protocol interaction (it is not re-accrued to `block.timestamp` in the view).
+///           sentinel; a full repay supplies the accrued borrow, and supplying more than the borrow
+///           leaves the excess as a base supply rather than reverting.
+///         - `borrowBalanceOf` is denominated in the base token and is re-accrued to `block.timestamp`
+///           in the view: it recomputes the borrow index from the elapsed time since the last protocol
+///           interaction, so it reflects the current obligation, not a stale stored figure.
 ///         - `getPrice` returns a USD price scaled to Comet's price scale (1e8) for any registered
 ///           price feed; collateral factors are WAD (1e18).
 interface IComet {
@@ -72,6 +74,8 @@ interface IComet {
     function collateralBalanceOf(address account, address asset) external view returns (uint128);
 
     /// @notice The account's outstanding base-token borrow (0 if the account has a base supply),
-    ///         accrued to the last protocol interaction.
+    ///         re-accrued to `block.timestamp` in the view: it recomputes the borrow index from the
+    ///         time elapsed since the last protocol interaction, so the returned value is the current
+    ///         obligation rather than a stale stored figure.
     function borrowBalanceOf(address account) external view returns (uint256);
 }

@@ -138,10 +138,20 @@ contract CompoundV3LendingAdapterTest is Test {
         adapter.encodeWithdrawCollateral(stranger, market, 100e18, stranger);
     }
 
-    function test_encodeRepay_partialSuppliesExactAmount() public view {
+    function test_encodeRepay_partialSuppliesRequestedAmountUpToBorrow() public {
+        comet.setBorrowBalance(account, 1_000e6);
+        // a partial repay at or below the outstanding borrow supplies exactly the requested amount
         (address target,, bytes memory data) = adapter.encodeRepay(account, market, 250e6);
         assertEq(target, address(comet));
         assertEq(data, abi.encodeCall(IComet.supply, (address(usdc), 250e6)));
+    }
+
+    function test_encodeRepay_capsSupplyAtOutstandingBorrow() public {
+        comet.setBorrowBalance(account, 1_000e6);
+        // an over-sized repay is capped at the borrow, so the overshoot is never supplied as base and
+        // cannot be stranded as an unintended positive base-supply position
+        (,, bytes memory data) = adapter.encodeRepay(account, market, 2_000e6);
+        assertEq(data, abi.encodeCall(IComet.supply, (address(usdc), 1_000e6)));
     }
 
     function test_encodeRepay_maxSuppliesAccruedBorrow() public {
