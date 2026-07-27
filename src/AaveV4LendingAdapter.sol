@@ -280,7 +280,12 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
     function _currentLtv(ISpoke.UserAccountData memory data) internal pure returns (Ltv) {
         if (data.totalDebtValueRay == 0) return toLtv(0);
         if (data.totalCollateralValue == 0) return toLtv(type(uint256).max);
-        return toLtv(Math.mulDiv(data.totalDebtValueRay, WAD, data.totalCollateralValue * RAY));
+        // totalDebtValueRay is Value scaled by RAY; totalCollateralValue is plain Value. Divide the RAY
+        // out with a trailing division rather than folding it into the denominator: a standalone
+        // `totalCollateralValue * RAY` is a plain uint256 multiply outside mulDiv's full-precision path
+        // and would overflow for a large collateral value. mulDiv here cannot overflow, and the LTV is
+        // recovered exactly by the final RAY division.
+        return toLtv(Math.mulDiv(data.totalDebtValueRay, WAD, data.totalCollateralValue) / RAY);
     }
 
     /// @notice Enables or disables routing for a `(collateral, debt)` pair on the bound Spoke. When
