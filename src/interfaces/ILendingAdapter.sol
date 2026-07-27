@@ -37,8 +37,8 @@ interface ILendingAdapter {
     /// @param market The (collateral, debt) pair identifying the target lending market.
     /// @param amount The amount of collateral to supply, in the collateral token's native decimals.
     /// @return target The call target (always `lendingProtocol()`).
-    /// @return value The call value. Always 0 for Morpho (non-payable); the account treats non-zero
-    ///         as a bug.
+    /// @return value The call value. Always 0 for the in-tree non-payable lending protocols; the
+    ///         account forwards whatever value the adapter encodes (see `MarginAccount._execCall`).
     /// @return callData The calldata the account executes against `target`.
     function encodeSupplyCollateral(address account, Market calldata market, uint256 amount)
         external

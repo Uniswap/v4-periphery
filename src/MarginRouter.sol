@@ -378,6 +378,7 @@ contract MarginRouter is
     ///         to return the address stored by `ReentrancyLock._getLocker`, which is set to
     ///         `msg.sender` at the start of each `isNotLocked` call. The active account is derived
     ///         from this value, so correctness here is load-bearing for the entire position system.
+    /// @return The authenticated caller (the locker set by `ReentrancyLock`) for the current unlock.
     function msgSender() public view override returns (address) {
         return _getLocker();
     }
