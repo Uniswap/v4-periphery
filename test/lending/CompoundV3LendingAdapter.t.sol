@@ -8,6 +8,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {CompoundV3LendingAdapter} from "../../src/CompoundV3LendingAdapter.sol";
 import {IComet} from "../../src/interfaces/external/compound-v3/IComet.sol";
 import {Market} from "../../src/types/Market.sol";
+import {MarketNotSupported} from "../../src/types/MarketAllowlist.sol";
 import {NotOwner, ZeroOwner} from "../../src/types/Owner.sol";
 import {Ltv, raw} from "../../src/types/Ltv.sol";
 import {PositionData} from "../../src/types/PositionData.sol";
@@ -95,9 +96,7 @@ contract CompoundV3LendingAdapterTest is Test {
         vm.prank(gov);
         vm.expectRevert(
             abi.encodeWithSelector(
-                CompoundV3LendingAdapter.MarketNotSupported.selector,
-                Currency.wrap(address(rando)),
-                Currency.wrap(address(usdc))
+                MarketNotSupported.selector, Currency.wrap(address(rando)), Currency.wrap(address(usdc))
             )
         );
         adapter.setMarket(Currency.wrap(address(rando)), Currency.wrap(address(usdc)), true);
@@ -212,9 +211,7 @@ contract CompoundV3LendingAdapterTest is Test {
     // ---- unrouted market guard: every entrypoint reverts ----
 
     function test_unroutedMarket_revertsEverywhere() public {
-        bytes memory err = abi.encodeWithSelector(
-            CompoundV3LendingAdapter.MarketNotSupported.selector, unrouted.collateral, unrouted.debt
-        );
+        bytes memory err = abi.encodeWithSelector(MarketNotSupported.selector, unrouted.collateral, unrouted.debt);
         vm.expectRevert(err);
         adapter.encodeSupplyCollateral(account, unrouted, 1);
         vm.expectRevert(err);

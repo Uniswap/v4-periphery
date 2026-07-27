@@ -9,6 +9,7 @@ import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {IComet} from "./interfaces/external/compound-v3/IComet.sol";
 import {OwnableAdapter} from "./base/OwnableAdapter.sol";
 import {Market} from "./types/Market.sol";
+import {MarketAllowlist, MarketNotSupported} from "./types/MarketAllowlist.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 import {PositionData} from "./types/PositionData.sol";
 
@@ -69,18 +70,12 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
     ///         per Comet instance, so it is read once here rather than on every valuation.
     uint256 public immutable baseScale;
 
-    /// @notice The governed allowlist mapping `(collateral, debt)` to whether the pair is routable.
-    ///         Managed via `setMarket`. The owner guard lives in `OwnableAdapter`.
-    mapping(Currency collateral => mapping(Currency debt => bool)) internal _allowed;
+    /// @notice The governed allowlist of routable `(collateral, debt)` pairs. Managed via `setMarket`;
+    ///         the owner guard lives in `OwnableAdapter`.
+    MarketAllowlist internal _markets;
 
     /// @dev Thrown when the Comet reports a zero base token at construction.
     error ZeroAddress();
-
-    /// @dev Thrown on any encode or read for a pair the owner has not allowlisted, and when
-    ///      `setMarket` is asked to enable a pair whose collateral is not a Comet collateral asset.
-    /// @param collateral The collateral token of the unsupported market.
-    /// @param debt The debt token of the unsupported market.
-    error MarketNotSupported(Currency collateral, Currency debt);
 
     /// @dev Thrown when `setMarket` is asked to enable a pair whose `debt` is not this Comet's base
     ///      token. A Comet can only borrow its single base asset.
@@ -120,7 +115,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
 
     /// @inheritdoc ILendingAdapter
     function isSupportedMarket(Market calldata market) external view returns (bool) {
-        return _allowed[market.collateral][market.debt];
+        return _markets.isAllowed(market);
     }
 
     /// @inheritdoc ILendingAdapter
@@ -218,7 +213,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
     ///      there is no debt.
     function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
         _requireSupportedMarket(market);
-        (, uint256 debtValue, uint256 collateralValue) = _positionValues(account, market);
+        (,, uint256 debtValue, uint256 collateralValue,) = _positionValues(account, market);
         return _ltv(debtValue, collateralValue);
     }
 
@@ -232,41 +227,54 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
         returns (PositionData memory data)
     {
         _requireSupportedMarket(market);
-        IComet.AssetInfo memory info = comet.getAssetInfoByAddress(Currency.unwrap(market.collateral));
-        uint256 collateral = uint256(comet.collateralBalanceOf(account, Currency.unwrap(market.collateral)));
-        uint256 debt = comet.borrowBalanceOf(account);
-        uint256 collateralValue = _usd(collateral, comet.getPrice(info.priceFeed), info.scale);
-        uint256 debtValue = _usd(debt, comet.getPrice(baseTokenPriceFeed), baseScale);
+        (
+            uint256 collateral,
+            uint256 debt,
+            uint256 debtValue,
+            uint256 collateralValue,
+            uint64 liquidateCollateralFactor
+        ) = _positionValues(account, market);
         data = PositionData({
             collateralAmount: collateral,
             debtAmount: debt,
-            maxLtv: toLtv(info.liquidateCollateralFactor),
+            maxLtv: toLtv(liquidateCollateralFactor),
             currentLtv: _ltv(debtValue, collateralValue),
             // maxLtv / currentLtv == liquidateCF * collateralValue / debtValue (WAD). Guard on
             // debtValue (the divisor), not the raw debt amount: a dust debt whose USD value rounds
             // down to zero is non-zero as a raw amount but would still divide by zero here.
             healthFactorWad: debtValue == 0
                 ? type(uint256).max
-                : Math.mulDiv(collateralValue, info.liquidateCollateralFactor, debtValue)
+                : Math.mulDiv(collateralValue, liquidateCollateralFactor, debtValue)
         });
     }
 
-    /// @notice Reads the account's collateral, accrued base debt, and their USD values for a resolved
-    ///         market.
+    /// @notice Reads the account's collateral, accrued base debt, their USD values, and the collateral
+    ///         reserve's liquidation factor for a resolved market in a single pass, so `currentLtvWad`
+    ///         and `describePosition` share one read.
     /// @param account The account to read.
     /// @param market The (collateral, debt) pair; must be allowlisted.
     /// @return collateral The account's supplied collateral, in the collateral token's native decimals.
+    /// @return debt The account's accrued base borrow, in the base token's native decimals.
     /// @return debtValue The base debt valued in USD (Comet price scale).
     /// @return collateralValue The collateral valued in USD (Comet price scale).
+    /// @return liquidateCollateralFactor The collateral's liquidation collateral factor (WAD).
     function _positionValues(address account, Market calldata market)
         internal
         view
-        returns (uint256 collateral, uint256 debtValue, uint256 collateralValue)
+        returns (
+            uint256 collateral,
+            uint256 debt,
+            uint256 debtValue,
+            uint256 collateralValue,
+            uint64 liquidateCollateralFactor
+        )
     {
         IComet.AssetInfo memory info = comet.getAssetInfoByAddress(Currency.unwrap(market.collateral));
         collateral = uint256(comet.collateralBalanceOf(account, Currency.unwrap(market.collateral)));
+        debt = comet.borrowBalanceOf(account);
         collateralValue = _usd(collateral, comet.getPrice(info.priceFeed), info.scale);
-        debtValue = _usd(comet.borrowBalanceOf(account), comet.getPrice(baseTokenPriceFeed), baseScale);
+        debtValue = _usd(debt, comet.getPrice(baseTokenPriceFeed), baseScale);
+        liquidateCollateralFactor = info.liquidateCollateralFactor;
     }
 
     /// @notice Values `amount` of an asset in USD at Comet's price scale: `amount * price / scale`.
@@ -305,15 +313,13 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
                 revert MarketNotSupported(collateral, debt);
             }
         }
-        _allowed[collateral][debt] = allowed;
+        _markets.set(collateral, debt, allowed);
         emit MarketSet(Currency.unwrap(collateral), Currency.unwrap(debt), allowed);
     }
 
     /// @notice Reverts `MarketNotSupported` unless the `(collateral, debt)` pair is allowlisted.
     /// @param market The market pair to check.
     function _requireSupportedMarket(Market calldata market) internal view {
-        if (!_allowed[market.collateral][market.debt]) {
-            revert MarketNotSupported(market.collateral, market.debt);
-        }
+        _markets.requireAllowed(market);
     }
 }
