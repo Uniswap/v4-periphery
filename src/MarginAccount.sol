@@ -21,11 +21,20 @@ import {Market} from "./types/Market.sol";
 ///         bytecode (read via `LibClone.argsOnClone`), so there is no initializer to front-run and
 ///         no transfer path: ownership is soulbound.
 ///
-///         The account owns the authority-bearing fields. It always passes itself as the lending
-///         `onBehalf`, constrains every fund recipient to the manager or owner, routes every call to
-///         the adapter's declared `lendingProtocol()`, and performs a regular call (never a
-///         delegatecall). Adapter trust is established by the manager (which only routes allowlisted
-///         adapters) or by the owner choosing the adapter for their own funds.
+///         The account enforces what it can see: it passes its own address as the `account` argument
+///         to every encoder, validates the `to` it is handed against the manager and owner, and
+///         performs a regular call (never a delegatecall). It does NOT decode the calldata the adapter
+///         returns, so the call `target`, the `value`, and any recipient baked into those bytes are
+///         the adapter's word. Adapter honesty is an assumption this contract does not verify, and
+///         checking `target` against `adapter.lendingProtocol()` would not change that, since both
+///         sides of that comparison come from the same adapter.
+///
+///         Each call path establishes the assumption differently. On the exposure-increasing paths
+///         (`supplyCollateral`, `borrow`) the manager routes only governance-allowlisted adapters. On
+///         the exit paths (`repay`, `withdrawCollateral`) the adapter is unallowlisted and fully
+///         caller-chosen, which is safe because the manager derives the account from the authenticated
+///         caller, so a hostile adapter reaches only the caller's own account, and the owner-only
+///         `execute` already grants that same power outright.
 /// @custom:security-contact security@uniswap.org
 contract MarginAccount is IMarginAccount {
     using CustomRevert for bytes4;
@@ -155,12 +164,12 @@ contract MarginAccount is IMarginAccount {
         if (msg.sender != managerAddr && msg.sender != ownerAddr) NotAuthorized.selector.revertWith();
     }
 
-    /// @notice Reverts unless `to` is the manager or owner. The account owns the recipient field;
-    ///         it is never taken from adapter-encoded bytes, preventing fund redirection.
+    /// @notice Reverts unless `to` is the manager or owner. This bounds the recipient the CALLER
+    ///         may name.
     /// @param to The proposed recipient address.
     /// @param ownerAddr The clone's baked-in owner.
     /// @param managerAddr The clone's baked-in manager.
-    function _requireReceiver(address to, address ownerAddr, address managerAddr) internal pure {
+    function _requireReceiver(address to, address ownerAddr, address managerAddr) internal view {
         if (to != managerAddr && to != ownerAddr) ReceiverNotAllowed.selector.revertWith(to);
     }
 
@@ -174,9 +183,11 @@ contract MarginAccount is IMarginAccount {
 
     /// @notice Forwards the adapter-encoded call to `target` as this account with a regular call
     ///         (never a delegatecall), reverting on failure via `Address.functionCallWithValue`.
-    /// @param target The call target (the adapter's `lendingProtocol()`).
-    /// @param value The call value; forwarded from the adapter's encoding (zero for the standard
-    ///        non-payable lending calls, and the account holds no native balance to forward).
+    /// @param target The call target, taken from the adapter's encoding.
+    /// @param value The call value, taken from the adapter's encoding. Every in-tree adapter
+    ///        returns zero today because the supported lending protocols don't support native
+    ///        currency. However, future adapters may support native currency, so the account
+    ///        can hold native currency (see `receive`), and a non-zero value would spend it.
     /// @param callData The calldata to forward.
     /// @return The raw bytes returned by the lending protocol call.
     function _execCall(address target, uint256 value, bytes memory callData) internal returns (bytes memory) {

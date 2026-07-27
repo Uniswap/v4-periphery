@@ -27,10 +27,10 @@ import {PositionData} from "./types/PositionData.sol";
 ///           held immutably. Both are upgradeable proxies whose addresses are stable across Aave
 ///           upgrades, so caching the addresses is safe even though the implementations may change.
 ///         - The adapter only encodes calls; it never holds funds or moves tokens. The executing
-///           `MarginAccount` enforces that the call target is `lendingProtocol()`, the value is zero,
-///           and the call is a regular call (never a delegatecall), and it owns every authority
-///           bearing field: `onBehalfOf` is the account, and fund recipients are constrained to the
-///           manager or owner.
+///           `MarginAccount` performs a regular call (never a delegatecall) and validates the `to` it
+///           is handed, but it does not decode this calldata, so THIS ADAPTER is what guarantees the
+///           target is `lendingProtocol()`, the value is zero, `onBehalfOf` is the account, and a
+///           withdrawal's `to` is the passed `receiver`.
 ///         - Aave's `borrow` has no receiver: it delivers the borrowed asset to the caller (the
 ///           account), which forwards it to the validated receiver. `withdraw` honors its `to`
 ///           recipient and `repay` is encoded directly. Only variable-rate debt is used.

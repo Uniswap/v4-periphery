@@ -30,9 +30,10 @@ import {PositionData} from "./types/PositionData.sol";
 ///           base balance negative) and repaying is `supply`ing it. The encoders map the four
 ///           `ILendingAdapter` primitives onto `supply`/`withdraw`/`withdrawTo` accordingly.
 ///         - The adapter only encodes calls; it never holds funds or moves tokens. The executing
-///           `MarginAccount` enforces that the call target is `lendingProtocol()`, owns every
-///           authority-bearing field (`onBehalf` is the account; fund recipients are constrained to
-///           the manager or owner), and performs a regular call (never a delegatecall).
+///           `MarginAccount` performs a regular call (never a delegatecall) and validates the `to` it
+///           is handed, but it does not decode this calldata, so THIS ADAPTER is what guarantees the
+///           target is `lendingProtocol()`, the value is zero, the Comet acts on the account's own
+///           balances, and a withdrawal's recipient is the passed `receiver`.
 ///         - Comet's `withdraw`/`withdrawTo` operate on the caller's own account, so `account` must be
 ///           the caller for withdraw-collateral (asserted via `AccountMismatch`); the `MarginAccount`
 ///           always passes its own address.

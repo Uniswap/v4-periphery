@@ -12,9 +12,12 @@ import {PositionData} from "../types/PositionData.sol";
 ///         (collateral, debt) token pair passed to each call and resolved internally.
 /// @dev The adapter is an ENCODER: each `encode*` returns the call the `MarginAccount` performs as
 ///      itself (`account == msg.sender == position owner`), so no delegated authorization is ever
-///      required. Authority-bearing fields (`onBehalf` for every call, `receiver` for withdraw) are
-///      owned and re-validated by the account; the account does NOT trust adapter-encoded bytes for
-///      them. Borrowed funds are always delivered to the account, which forwards them to the
+///      required. An implementation is TRUSTED to encode the authority-bearing fields faithfully:
+///      `target` must be `lendingProtocol()`, `value` must be 0, `onBehalf` must be the `account`
+///      argument, and a withdraw's recipient must be the `receiver` argument. The account validates the
+///      `to` it is handed but never decodes the returned calldata, so nothing structurally verifies
+///      those four obligations; `MarginAccount` documents how that trust is established per call path.
+///      Borrowed funds are always delivered to the account, which forwards them to the
 ///      validated receiver, so `encodeBorrow` carries no receiver. Encode and read calls revert
 ///      `MarketNotSupported` (declared in `MarketRegistry`) for unrouted pairs, never a silent
 ///      default market.

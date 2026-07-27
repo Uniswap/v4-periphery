@@ -18,8 +18,9 @@ interface IMarginAccount {
     error NotAuthorized();
 
     /// @dev Thrown when a withdraw, borrow, or sweep recipient is neither the manager nor the owner.
-    ///      The account enforces the recipient constraint itself, so adapter-encoded bytes cannot
-    ///      redirect funds to an arbitrary address.
+    ///      Constrains the recipient the caller may name. An adapter can still encode a different
+    ///      recipient inside the calldata it returns, which the account does not decode, so this is not
+    ///      a guard against a hostile adapter; see `MarginAccount` for how adapter trust is established.
     /// @param to The disallowed recipient address that was supplied.
     error ReceiverNotAllowed(address to);
 
