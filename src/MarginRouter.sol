@@ -630,7 +630,7 @@ contract MarginRouter is
         if (payer == address(this)) {
             currency.transfer(address(poolManager), amount);
         } else {
-            permit2.transferFrom(payer, address(poolManager), uint160(amount), Currency.unwrap(currency));
+            permit2.transferFrom(payer, address(poolManager), amount.toUint160(), Currency.unwrap(currency));
         }
     }
 
