@@ -44,6 +44,10 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
     ///         `MarketRegistry`. The owner guard lives in `OwnableAdapter`.
     MarketRegistry internal _markets;
 
+    /// @dev Thrown when constructed with a zero Morpho address, which would make every encode and
+    ///      read revert opaquely.
+    error ZeroAddress();
+
     /// @dev Thrown when `setMarket` is called with a `MarketParams` whose `id()` does not exist on
     ///      Morpho Blue. Prevents routing to a market that cannot be interacted with.
     error MorphoMarketNotCreated();
@@ -60,7 +64,10 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
         Id indexed id, address indexed collateral, address indexed debt, address oracle, address irm, uint256 lltv
     );
 
+    /// @param morpho_ The Morpho Blue singleton this adapter routes to.
+    /// @param owner_ The initial adapter owner (governance).
     constructor(IMorpho morpho_, address owner_) OwnableAdapter(owner_) {
+        if (address(morpho_) == address(0)) revert ZeroAddress();
         morpho = morpho_;
     }
 
