@@ -4,6 +4,7 @@ import {
   aaveAdapterAbi,
   aaveV3PoolAbi,
   aaveV4AdapterAbi,
+  compoundAdapterAbi,
   marginRouterAbi,
   morphoAdapterAbi,
   morphoBlueAbi,
@@ -43,6 +44,12 @@ export default createConfig({
       abi: aaveV4AdapterAbi,
       chain: "mainnet",
       address: mainnet.aaveV4Adapter,
+      startBlock: mainnet.startBlock,
+    },
+    CompoundAdapter: {
+      abi: compoundAdapterAbi,
+      chain: "mainnet",
+      address: mainnet.compoundAdapter,
       startBlock: mainnet.startBlock,
     },
     /**

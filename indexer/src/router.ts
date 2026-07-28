@@ -50,7 +50,7 @@ async function drainFlows(
   debt: `0x${string}`
 ) {
   const rows = await txLendingEvents(context, txHash, accountAddr);
-  let venue: "MORPHO" | "AAVE_V3" | "AAVE_V4" | "UNKNOWN" = "UNKNOWN";
+  let venue: "MORPHO" | "AAVE_V3" | "AAVE_V4" | "COMPOUND_V3" | "UNKNOWN" = "UNKNOWN";
   let morphoMarketId: `0x${string}` | null = null;
 
   for (const row of rows) {

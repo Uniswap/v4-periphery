@@ -117,3 +117,15 @@ ponder.on("AaveV3Pool:LiquidationCall", async ({ event, context }) => {
  * contract entry in ponder.config.ts and mirror the handlers above once the
  * event surface is confirmed.
  */
+
+/*
+ * Compound v3 (Comet) flows: the Compound adapter's markets and router-driven lifecycle ARE indexed
+ * (venue COMPOUND_V3, CompoundAdapter:MarketSet in markets.ts, and MarginRouter Position* events),
+ * at parity with Aave v4. The Comet truth layer (out-of-band flows + liquidations) is deferred:
+ * Comet models a liquidation as a two-event `absorb` (AbsorbDebt clears the base borrow; one
+ * AbsorbCollateral per seized asset), which does not map onto the single-event `recordLiquidation`
+ * used above and needs confirmation against live Comet events first. Base Supply/Withdraw also double
+ * as repay/borrow (single-base market), so flow attribution mirrors the Aave single-reserve
+ * resolution. Add the Comet contract (address in addresses.compoundComet) + a `cometAbi` and mirror
+ * the handlers here once the event surface is validated on a fork.
+ */

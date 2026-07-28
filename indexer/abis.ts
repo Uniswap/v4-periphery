@@ -118,6 +118,18 @@ export const aaveV4AdapterAbi = [
   },
 ] as const;
 
+export const compoundAdapterAbi = [
+  {
+    type: "event",
+    name: "MarketSet",
+    inputs: [
+      { name: "collateral", type: "address", indexed: true },
+      { name: "debt", type: "address", indexed: true },
+      { name: "allowed", type: "bool", indexed: false },
+    ],
+  },
+] as const;
+
 export const morphoBlueAbi = [
   {
     type: "event",

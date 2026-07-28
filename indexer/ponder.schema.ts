@@ -1,7 +1,7 @@
 import { index, onchainEnum, onchainTable } from "ponder";
 
 /** Lending venue behind a position. Determined by which protocol's events fired in the open tx. */
-export const venue = onchainEnum("venue", ["MORPHO", "AAVE_V3", "AAVE_V4", "UNKNOWN"]);
+export const venue = onchainEnum("venue", ["MORPHO", "AAVE_V3", "AAVE_V4", "COMPOUND_V3", "UNKNOWN"]);
 
 /**
  * Position lifecycle. LIQUIDATED means the tracked debt principal reached zero via
