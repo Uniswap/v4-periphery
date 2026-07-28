@@ -31,8 +31,10 @@ fuzz.runs = 100
 [profile.ci]
 fuzz_runs = 100_000
 
+# 50M matches geth's default eth_call gas cap (--rpc.gascap); the documented single-shot
+# ReservesLens call exceeds a 30M block-style limit by design (~33M for tick spacing 1)
 [profile.gas]
-gas_limit=30_000_000
+gas_limit=50_000_000
 
 [rpc_endpoints]
 sepolia = "https://rpc.sepolia.org"
