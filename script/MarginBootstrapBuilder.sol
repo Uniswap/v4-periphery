@@ -169,11 +169,12 @@ contract MarginBootstrapBuilder is CommonBase {
     }
 
     /// @dev Appends the per-market registration calls on each adapter (executed as `governance`).
-    function _appendMarkets(BatchExecutor.Call[] memory calls, uint256 k, Deployed memory addrs, Markets memory markets)
-        internal
-        pure
-        returns (uint256)
-    {
+    function _appendMarkets(
+        BatchExecutor.Call[] memory calls,
+        uint256 k,
+        Deployed memory addrs,
+        Markets memory markets
+    ) internal pure returns (uint256) {
         for (uint256 i; i < markets.morpho.length; i++) {
             calls[k++] = _call(addrs.morphoAdapter, abi.encodeCall(MorphoLendingAdapter.setMarket, (markets.morpho[i])));
         }
