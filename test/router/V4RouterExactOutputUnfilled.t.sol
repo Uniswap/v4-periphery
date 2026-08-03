@@ -56,6 +56,32 @@ contract V4RouterExactOutputUnfilledTest is RoutingTestHelpers {
         router.executeActions(data);
     }
 
+    /// @notice An intermediate underfill cannot be left for settlement to catch when the path repeats
+    ///         a currency. Here the middle currency1 -> currency0 hop underfills, and because currency0
+    ///         is also the route's input currency the shortfall merges into the input debt that
+    ///         SETTLE_ALL pays -- so no non-zero delta survives to fail settlement, and the
+    ///         post-loop amountInMaximum check only ever sees the last hop's own input.
+    function test_exactOutput_revertsOnIntermediateUnderfill_repeatedCurrency() public {
+        // deep pool for the final delivered hop, so only the middle hop is thin
+        createPoolWithLiquidity(currency0, currency2, address(0));
+
+        // economic route currency0 -> currency1 -> currency0 -> currency2
+        tokenPath.push(currency0);
+        tokenPath.push(currency1);
+        tokenPath.push(currency0);
+        tokenPath.push(currency2);
+        IV4Router.ExactOutputParams memory params = _getExactOutputParams(tokenPath, 1 ether);
+        // route the middle currency1 -> currency0 hop through the thin pool
+        params.path[1].fee = 500;
+        params.amountInMaximum = 0.8 ether;
+
+        plan = plan.add(Actions.SWAP_EXACT_OUT, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(currency0, currency2, ActionConstants.MSG_SENDER);
+
+        vm.expectPartialRevert(IV4Router.V4ExactOutputUnfilled.selector);
+        router.executeActions(data);
+    }
+
     function test_exactOutputSingle_fullFillSucceeds() public {
         // the deep pool (key0) fully fills, unchanged by the new guard
         uint256 amountOut = 1 ether;

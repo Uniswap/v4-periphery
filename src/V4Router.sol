@@ -174,14 +174,13 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             for (uint256 i = pathLength; i > 0; i--) {
                 pathKey = params.path[i - 1];
                 (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
-                // The output delta will always be negative, except for when interacting with certain hook pools
+                // The output delta will always be positive, except for when interacting with certain hook pools
                 BalanceDelta delta = _swap(poolKey, !oneForZero, int256(uint256(amountOut)), pathKey.hookData);
                 uint128 amountOutActual = _swapOutput(delta, !oneForZero);
-                // Only the first iteration (the last hop in the path) delivers `currencyOut` to the
-                // caller, so its output is the total requested output and must be filled exactly. An
-                // underfill on an intermediate hop needs no explicit check here: it leaves a non-zero
-                // intermediate-currency delta that fails to settle, reverting the whole swap.
-                if (i == pathLength && amountOutActual < amountOut) {
+                // Every hop must fill. PoolManager nets one delta per currency across the whole unlock,
+                // so an intermediate shortfall can be absorbed by same-currency credit and settle
+                // silently rather than reverting.
+                if (amountOutActual < amountOut) {
                     revert V4ExactOutputUnfilled(amountOut, amountOutActual);
                 }
                 amountIn = _swapInput(delta, !oneForZero);
