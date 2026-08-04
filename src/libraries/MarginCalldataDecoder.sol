@@ -98,4 +98,19 @@ library MarginCalldataDecoder {
     {
         return abi.decode(params, (Currency, uint256, bool));
     }
+
+    /// @notice Decodes `(input, maxIn, commands, inputs)`. Used by the route-swap action to run a
+    ///         Universal Router command plan behind a flash-take of the input currency.
+    /// @param params ABI-encoded `(Currency, uint256, bytes, bytes[])`.
+    /// @return input The currency the router flash-takes and the Universal Router spends.
+    /// @return maxIn The maximum input to flash-take and allow the Universal Router to pull.
+    /// @return commands The Universal Router command byte string.
+    /// @return inputs The per-command ABI-encoded inputs for the Universal Router.
+    function decodeRouteSwap(bytes calldata params)
+        internal
+        pure
+        returns (Currency input, uint256 maxIn, bytes memory commands, bytes[] memory inputs)
+    {
+        return abi.decode(params, (Currency, uint256, bytes, bytes[]));
+    }
 }

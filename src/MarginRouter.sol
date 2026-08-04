@@ -5,6 +5,9 @@ import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IUniversalRouter} from "universal-router/contracts/interfaces/IUniversalRouter.sol";
 
 import {V4Router} from "./V4Router.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
@@ -12,7 +15,6 @@ import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
 import {Multicall_v4} from "./base/Multicall_v4.sol";
 import {NativeWrapper} from "./base/NativeWrapper.sol";
 import {IWETH9} from "./interfaces/external/IWETH9.sol";
-import {IV4Router} from "./interfaces/IV4Router.sol";
 import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
 import {CalldataDecoder} from "./libraries/CalldataDecoder.sol";
@@ -60,12 +62,19 @@ contract MarginRouter is
     using CalldataDecoder for bytes;
     using SafeCast for uint256;
     using CurrencyLibrary for Currency;
+    using SafeERC20 for IERC20;
 
     // transient slot holding the account for the current unlock, set from the authenticated caller
     bytes32 private constant ACTIVE_ACCOUNT_SLOT = keccak256("uniswap.marginRouter.activeAccount");
 
     Owner internal _governance;
     mapping(ILendingAdapter adapter => bool isAllowed) internal _allowedAdapters;
+
+    /// @notice The Universal Router the `ROUTE_SWAP` action dispatches swaps to. Set once at
+    ///         construction: it is canonical infrastructure like the PoolManager and Permit2, and must
+    ///         carry the already-unlocked `V4_SWAP` support (a UR built after PR #491). Immutable, so a
+    ///         router cannot be deployed without one.
+    address public immutable universalRouter;
 
     /// @notice Emitted when governance allows or disallows a lending adapter.
     /// @param adapter The adapter address whose allowlist status changed.
@@ -97,12 +106,15 @@ contract MarginRouter is
     ///        timelock) that curates the adapter allowlist. Passed explicitly rather than read from
     ///        `msg.sender` so a deterministic CREATE2 deployment sets the intended owner instead of
     ///        the CREATE2 factory. Mirrors v4-core's `PoolManager(address initialOwner)` pattern.
+    /// @param universalRouter_ The Universal Router the `ROUTE_SWAP` action routes position swaps
+    ///        through. Must be non-zero and carry the already-unlocked `V4_SWAP` support (PR #491).
     constructor(
         IPoolManager poolManager_,
         IAllowanceTransfer permit2_,
         IWETH9 weth9_,
         address accountImplementation,
-        address governance_
+        address governance_,
+        address universalRouter_
     )
         V4Router(poolManager_)
         Permit2Forwarder(permit2_)
@@ -112,6 +124,8 @@ contract MarginRouter is
         // governance is set explicitly so CREATE2 deployment names the intended owner, not the
         // CREATE2 factory; hand off to a timelock or multisig after setup
         _governance.write(governance_);
+        if (universalRouter_ == address(0)) revert UniversalRouterNotSet();
+        universalRouter = universalRouter_;
     }
 
     /// @inheritdoc IMarginRouter
@@ -145,13 +159,14 @@ contract MarginRouter is
 
     /// @inheritdoc IMarginRouter
     /// @dev A partial decrease (`debtToRepay < type(uint256).max`) and a full close
-    ///      (`debtToRepay == type(uint256).max`) share one implementation: buy the target debt
-    ///      exact-output, take it to the account, repay, withdraw collateral, and settle the swap from
-    ///      the router. Only four things vary, all derived from `fullClose`: the swap size, the repay
-    ///      amount, how much collateral is withdrawn, and the health bound. Everything else, including
-    ///      the residual measure-and-forward, is identical: a partial decrease withdraws exactly the
-    ///      swap cost so its residual is zero, while a full close withdraws everything and returns the
-    ///      realized PnL.
+    ///      (`debtToRepay == type(uint256).max`) share one implementation: route the caller's swap to
+    ///      buy the target debt (delivered to the account), assert it arrived, repay, withdraw
+    ///      collateral, and settle the swap from the router. The caller's route sizes the swap; only
+    ///      four plan amounts vary by `fullClose`: the fill-assert threshold, the repay amount, how
+    ///      much collateral is withdrawn, and the health bound. Everything else, including the residual
+    ///      measure-and-forward, is identical: a partial decrease withdraws exactly the swap cost so its
+    ///      residual is zero, while a full close withdraws everything and returns the realized PnL (plus
+    ///      any debt the route over-bought, swept back after the unlock).
     function decreasePosition(DecreaseParams calldata params)
         external
         isNotLocked
@@ -200,51 +215,53 @@ contract MarginRouter is
         _setActiveAccount(account);
 
         bytes memory actions = abi.encodePacked(
-            uint8(Actions.SWAP_EXACT_OUT_SINGLE),
-            uint8(MarginActions.ASSERT_FILL),
-            uint8(Actions.TAKE),
+            uint8(MarginActions.ROUTE_SWAP),
+            uint8(MarginActions.ASSERT_ACCOUNT_BALANCE),
             uint8(MarginActions.ACCOUNT_REPAY),
             uint8(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL),
             uint8(Actions.SETTLE),
             uint8(MarginActions.ASSERT_HEALTH)
         );
-        // the mode-dependent amounts are inlined (kept out of locals to stay under the stack limit):
-        // full close buys the whole debt and repays ALL by shares so no borrow-share dust remains (an
-        // asset-denominated repay leaves rounding dust that would fail the full-collateral withdrawal's
-        // health check), withdraws all collateral, and passes a zero health bound that ASSERT_HEALTH
-        // skips. A partial decrease buys and repays exactly `debtToRepay`, withdraws only the collateral
-        // the swap consumed (OPEN_DELTA), and enforces `maxLtvAfter`.
-        bytes[] memory actionParams = new bytes[](7);
+        // the mode-dependent amounts are inlined (kept out of locals to stay under the stack limit).
+        // full close: require the route delivered AT LEAST the current debt (asserted below), repay
+        // ALL by shares so the borrow clears with no borrow-share dust, withdraw all collateral, and
+        // pass a zero health bound that ASSERT_HEALTH skips; any debt the route over-bought is swept
+        // back after the unlock. A partial requires and repays exactly `debtToRepay`, withdraws only
+        // the collateral the swap consumed (OPEN_DELTA == the router's remaining collateral debt), and
+        // enforces `maxLtvAfter`.
+        bytes[] memory actionParams = new bytes[](6);
+        // route the collateral->debt swap through the Universal Router with the caller-supplied route,
+        // behind a flash-take of up to maxCollateralIn collateral; the route buys the target debt
+        // exact-output and delivers it to the account, and ROUTE_SWAP settles the unspent take so the
+        // router's remaining collateral debt equals what the swap spent
         actionParams[0] = abi.encode(
-            IV4Router.ExactOutputSingleParams({
-                poolKey: params.poolKey,
-                zeroForOne: params.market.toSwapParams(params.market.collateral, 0, 0, params.poolKey).zeroForOne,
-                amountOut: (fullClose ? debt : params.debtToRepay).toUint128(),
-                amountInMaximum: params.maxCollateralIn,
-                minHopPriceX36: params.minHopPriceX36,
-                hookData: ""
-            })
+            params.market.collateral, uint256(params.maxCollateralIn), params.routeCommands, params.routeInputs
         );
-        // assert the exact-output swap fully filled before taking: a thin pool can hit its price limit
-        // before buying the full debt, and an under-fill would otherwise surface as an opaque repay
-        // revert. Require the router's debt credit covers the amount the repay needs.
+        // require the account received the debt the repay needs, so an exact-output under-fill reverts
+        // instead of surfacing as an opaque repay failure
         actionParams[1] = abi.encode(params.market.debt, fullClose ? debt : params.debtToRepay);
-        actionParams[2] = abi.encode(params.market.debt, account, ActionConstants.OPEN_DELTA);
-        actionParams[3] = abi.encode(params.adapter, params.market, fullClose ? type(uint256).max : params.debtToRepay);
-        actionParams[4] = abi.encode(
+        actionParams[2] = abi.encode(params.adapter, params.market, fullClose ? type(uint256).max : params.debtToRepay);
+        actionParams[3] = abi.encode(
             params.adapter,
             params.market,
             fullClose ? collateralBefore : uint256(ActionConstants.OPEN_DELTA),
             address(this)
         );
-        actionParams[5] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
-        actionParams[6] = abi.encode(params.adapter, params.market, fullClose ? Ltv.wrap(0) : params.maxLtvAfter);
+        actionParams[4] = abi.encode(params.market.collateral, uint256(ActionConstants.OPEN_DELTA), false);
+        actionParams[5] = abi.encode(params.adapter, params.market, fullClose ? Ltv.wrap(0) : params.maxLtvAfter);
 
         // measure the router's own collateral gain across the unlock: zero for a partial decrease (it
         // withdraws exactly the swap cost), the realized PnL for a full close
         uint256 balanceBefore = params.market.collateral.balanceOfSelf();
         poolManager.unlock(abi.encode(actions, actionParams));
         _setActiveAccount(address(0));
+
+        // a full close whose route over-bought the debt (buffered for accrual) leaves the excess in the
+        // account after repay-all; return it to the caller so nothing is stranded
+        if (fullClose) {
+            uint256 debtOver = params.market.debt.balanceOf(account);
+            if (debtOver > 0) IMarginAccount(account).sweep(params.market.debt, debtOver, msgSender());
+        }
 
         uint256 residual = params.market.collateral.balanceOfSelf() - balanceBefore;
         if (residual > 0) params.market.collateral.transfer(msgSender(), residual);
@@ -440,46 +457,34 @@ contract MarginRouter is
             );
         }
 
-        // single choke point: validate the pool matches the market and derive the swap direction.
-        // opening sells the debt to buy the collateral.
-        bool zeroForOne = params.market.toSwapParams(params.market.debt, 0, 0, params.poolKey).zeroForOne;
-
         bytes memory actions = abi.encodePacked(
-            uint8(Actions.SWAP_EXACT_OUT_SINGLE),
-            uint8(MarginActions.ASSERT_FILL),
-            uint8(Actions.TAKE),
+            uint8(MarginActions.ROUTE_SWAP),
+            uint8(MarginActions.ASSERT_ACCOUNT_BALANCE),
             uint8(MarginActions.ACCOUNT_SUPPLY_COLLATERAL),
             uint8(MarginActions.ACCOUNT_BORROW),
             uint8(Actions.SETTLE),
             uint8(MarginActions.ASSERT_HEALTH)
         );
-        bytes[] memory actionParams = new bytes[](7);
-        actionParams[0] = abi.encode(
-            IV4Router.ExactOutputSingleParams({
-                poolKey: params.poolKey,
-                zeroForOne: zeroForOne,
-                amountOut: params.collateralToBuy,
-                amountInMaximum: params.maxDebtIn,
-                minHopPriceX36: params.minHopPriceX36,
-                hookData: ""
-            })
-        );
-        // assert the exact-output swap fully filled: a v4 swap can partial-fill on a thin pool (the
-        // price hits the global limit before the full output is bought). Without this the open would
-        // take only the realized amount and silently open a smaller position. Asserting the router
-        // holds the full collateralToBuy credit makes the open all-or-nothing with a clear error.
-        actionParams[1] = abi.encode(params.market.collateral, uint256(params.collateralToBuy));
-        // take the bought collateral to the account (OPEN_DELTA == the full fill the assert just proved)
-        actionParams[2] = abi.encode(params.market.collateral, account, ActionConstants.OPEN_DELTA);
+        bytes[] memory actionParams = new bytes[](6);
+        // route the debt->collateral swap through the Universal Router with the caller-supplied route,
+        // behind a flash-take of up to maxDebtIn debt. The route buys collateralToBuy exact-output and
+        // delivers it to the account, and ROUTE_SWAP settles the unspent take, so the router's remaining
+        // debt equals exactly what the swap spent (the same negative delta a native v4 swap would leave).
+        actionParams[0] =
+            abi.encode(params.market.debt, uint256(params.maxDebtIn), params.routeCommands, params.routeInputs);
+        // require the account received the full bought collateral (equity + collateralToBuy), so an
+        // exact-output under-fill reverts instead of opening a smaller position
+        actionParams[1] =
+            abi.encode(params.market.collateral, (msg.value > 0 ? msg.value : params.equity) + params.collateralToBuy);
         // supply the account's full collateral balance (equity + bought)
-        actionParams[3] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA));
-        // borrow the debt owed for the swap, sent to the router for settling
-        actionParams[4] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
+        actionParams[2] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA));
+        // borrow the debt the swap cost (OPEN_DELTA == the router's remaining debt), to the router
+        actionParams[3] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA), address(this));
         // settle the swap's debt from the router (payer is this contract)
-        actionParams[5] = abi.encode(params.market.debt, uint256(ActionConstants.OPEN_DELTA), false);
+        actionParams[4] = abi.encode(params.market.debt, uint256(ActionConstants.OPEN_DELTA), false);
         // assert the resulting health against the caller's optional bound; a zero bound skips the
         // check, so callers relying only on `maxDebtIn` are unaffected
-        actionParams[6] = abi.encode(params.adapter, params.market, params.maxLtvAfter);
+        actionParams[5] = abi.encode(params.adapter, params.market, params.maxLtvAfter);
 
         poolManager.unlock(abi.encode(actions, actionParams));
         _setActiveAccount(address(0));
@@ -550,6 +555,30 @@ contract MarginRouter is
             if (received < minAmount) revert IncompleteFill(minAmount, received);
             return;
         }
+        if (action == MarginActions.ROUTE_SWAP) {
+            // route the swap through the Universal Router (v2/v3/v4) behind a flash-take of the input.
+            // Operates on the router, not the active account, so it dispatches before the guard; the
+            // caller's UR plan delivers the output to the account it set with SET_ACCOUNT.
+            (Currency input, uint256 maxIn, bytes memory commands, bytes[] memory inputs) = params.decodeRouteSwap();
+            address ur = universalRouter; // immutable, non-zero (set at construction)
+            // flash-borrow the input from the PoolManager: the router now owes `maxIn`
+            _take(input, address(this), maxIn);
+            // fund UR to pull exactly what it spends, via a Permit2 allowance scoped to this call
+            address token = Currency.unwrap(input);
+            if (IERC20(token).allowance(address(this), address(permit2)) < maxIn) {
+                IERC20(token).forceApprove(address(permit2), type(uint256).max);
+            }
+            permit2.approve(token, ur, maxIn.toUint160(), uint48(block.timestamp));
+            // run the caller-built route; it delivers the output to the active account and self-settles
+            // its own swap. UR runs inside this existing unlock (already-unlocked V4_SWAP support)
+            IUniversalRouter(ur).execute(commands, inputs, block.timestamp);
+            // settle the unspent flash-take back, so the router's remaining input debt equals exactly
+            // what UR spent: the same negative delta a native v4 exact-output swap would leave, which
+            // a downstream ACCOUNT_BORROW/SETTLE then nets via OPEN_DELTA
+            uint256 leftover = input.balanceOfSelf();
+            if (leftover > 0) _settle(input, address(this), leftover);
+            return;
+        }
 
         // every remaining opcode operates on the active account; a plan must set it with
         // SET_ACCOUNT first. Curated entry points set it before unlock and never reach this revert.
@@ -583,6 +612,12 @@ contract MarginRouter is
         } else if (action == MarginActions.ACCOUNT_SWEEP) {
             (Currency currency, uint256 amount, address to) = params.decodeSweep();
             IMarginAccount(account).sweep(currency, amount, to);
+        } else if (action == MarginActions.ASSERT_ACCOUNT_BALANCE) {
+            // fill guarantee for the routed swap: require the account received at least `minAmount` of
+            // `currency`, so an exact-output under-fill reverts instead of building a smaller position
+            (Currency currency, uint256 minAmount) = params.decodeFillCheck();
+            uint256 held = currency.balanceOf(account);
+            if (held < minAmount) revert IncompleteFill(minAmount, held);
         } else if (action == MarginActions.ASSERT_HEALTH) {
             (ILendingAdapter adapter, Market memory market, Ltv maxLtv) = params.decodeHealthCheck();
             // a zero bound skips the check

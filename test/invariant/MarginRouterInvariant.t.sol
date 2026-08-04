@@ -3,6 +3,8 @@ pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
+import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -58,7 +60,7 @@ import {MarginRouterHandler} from "./MarginRouterHandler.sol";
 ///   changing operation inside an invariant, which StdInvariant does not support.
 ///   The property is implicitly covered by invariant 2 (no loose tokens remain)
 ///   and by the handler's closeLong action, which exercises the full close path.
-contract MarginRouterInvariantTest is StdInvariant, Test {
+contract MarginRouterInvariantTest is StdInvariant, Test, MarginRouteHelpers, DeployPermit2 {
     // -------------------------------------------------------------------------
     // Full-range tick bounds for tickSpacing = 60
     // -------------------------------------------------------------------------
@@ -217,13 +219,17 @@ contract MarginRouterInvariantTest is StdInvariant, Test {
     }
 
     function _deployRouter() private {
+        address permit2 = deployPermit2();
         address impl = address(new MarginAccount());
+        // curated open/close swaps route through a Universal Router bound to the local PoolManager
+        address ur = deployUniversalRouter(address(poolManager), permit2, address(0xbeef));
         marginRouter = new MarginRouter(
             IPoolManager(address(poolManager)),
-            IAllowanceTransfer(address(0xdead)),
+            IAllowanceTransfer(permit2),
             IWETH9(address(0xbeef)),
             impl,
-            address(this)
+            address(this),
+            ur
         );
         marginRouter.setAdapterAllowed(adapter, true);
     }

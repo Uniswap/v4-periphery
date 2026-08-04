@@ -2,6 +2,8 @@
 pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
+import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
@@ -40,7 +42,7 @@ import {MockAavePool, MockAaveAddressesProvider, MockAaveDataProvider} from "../
 ///         amount to the router, and the router settles it into the opening swap. The key assertion
 ///         after open is that neither the account nor the router retains any loose USDC or WETH,
 ///         which is the settle proof for the borrow-forward change under reversed decimals.
-contract MarginRouterShortInverseTest is Test {
+contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2 {
     // USD base for the mock pool's getUserAccountData (Aave uses 8-decimal USD base; 1e8 == $1).
     uint256 internal constant USD = 1e8;
     // 1 WETH = 2000 USDC. Collateral (USDC) is $1; debt (WETH) is $2000.
@@ -88,13 +90,17 @@ contract MarginRouterShortInverseTest is Test {
         market = Market({collateral: Currency.wrap(address(usdc)), debt: Currency.wrap(address(weth))});
         adapter.setMarket(market.collateral, market.debt, true);
 
+        address permit2 = deployPermit2();
         address impl = address(new MarginAccount());
+        // route position swaps through a Universal Router bound to the local PoolManager
+        address ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
         router = new MarginRouter(
             IPoolManager(address(manager)),
-            IAllowanceTransfer(address(0xdead)),
+            IAllowanceTransfer(permit2),
             IWETH9(address(0xbeef)),
             impl,
-            address(this)
+            address(this),
+            ur
         );
         router.setAdapterAllowed(adapter, true);
     }
@@ -130,15 +136,18 @@ contract MarginRouterShortInverseTest is Test {
 
         uint256 callerUsdcBefore = usdc.balanceOf(address(this));
 
+        (, uint256 curDebt) = adapter.positionOf(account, market);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(curDebt), 6000e6, account);
         router.decreasePosition(
             IMarginRouter.DecreaseParams({
                 debtToRepay: type(uint256).max,
                 maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 maxCollateralIn: 6000e6,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })
@@ -160,14 +169,16 @@ contract MarginRouterShortInverseTest is Test {
         address account = _openShort(2000e6, 2000e6, 1.1e18);
         (uint256 collBefore, uint256 debtBefore) = adapter.positionOf(account, market);
 
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, 0.3e18, 1000e6, account);
         router.decreasePosition(
             IMarginRouter.DecreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 debtToRepay: 0.3e18,
                 maxCollateralIn: 1000e6,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: toLtv(0.7e18),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
@@ -194,15 +205,18 @@ contract MarginRouterShortInverseTest is Test {
 
         uint256 callerBefore = usdc.balanceOf(address(this));
 
+        (, uint256 curDebt) = adapter.positionOf(account, market);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(curDebt), 6000e6, account);
         router.decreasePosition(
             IMarginRouter.DecreaseParams({
                 debtToRepay: type(uint256).max,
                 maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 maxCollateralIn: 6000e6,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })
@@ -229,15 +243,17 @@ contract MarginRouterShortInverseTest is Test {
         account = router.accountOf(address(this), 0);
         // provide equity directly to the account; equity=0 in params avoids the Permit2 pull
         usdc.mint(account, equity);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.debt, market.collateral, collateralToBuy, maxDebtIn, account);
         router.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: maxDebtIn,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours

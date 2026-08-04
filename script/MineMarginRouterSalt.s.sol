@@ -34,6 +34,8 @@ contract MineMarginRouterSalt is Script {
     /// @param permit2 The Permit2 contract the router will be constructed with.
     /// @param weth9 The canonical WETH9 the router will be constructed with.
     /// @param governance The initial governance baked into the router constructor.
+    /// @param universalRouter The Universal Router baked into the router constructor (a constructor
+    ///        immutable, so it is part of the init code the salt is mined against).
     /// @param startSalt The first salt to try; the loop scans `[startSalt, startSalt + iterations)`.
     /// @param iterations The number of salts to scan.
     /// @return bestSalt The best-scoring salt found.
@@ -44,6 +46,7 @@ contract MineMarginRouterSalt is Script {
         address permit2,
         address weth9,
         address governance,
+        address universalRouter,
         bytes32 startSalt,
         uint256 iterations
     ) public view returns (bytes32 bestSalt, address bestAddress, uint256 bestScore) {
@@ -52,11 +55,12 @@ contract MineMarginRouterSalt is Script {
         address accountImpl =
             vm.computeCreate2Address(ACCOUNT_SALT, keccak256(type(MarginAccount).creationCode), CREATE2_DEPLOYER);
 
-        // init code hash of the router for the 5-arg constructor; this plus the deployer fully
+        // init code hash of the router for the 6-arg constructor; this plus the deployer fully
         // determines every candidate address, so it is what an off-chain miner needs
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
-                type(MarginRouter).creationCode, abi.encode(poolManager, permit2, weth9, accountImpl, governance)
+                type(MarginRouter).creationCode,
+                abi.encode(poolManager, permit2, weth9, accountImpl, governance, universalRouter)
             )
         );
 

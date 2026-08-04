@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {CommonBase} from "forge-std/Base.sol";
-import {StdCheats} from "forge-std/StdCheats.sol";
-import {StdUtils} from "forge-std/StdUtils.sol";
 import {Test} from "forge-std/Test.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -35,7 +33,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 ///
 /// @dev Stack-depth kept low throughout: each action is split into small helpers so the compiler
 ///      does not need via_ir. No local frame exceeds ~10 variables.
-contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
+contract MarginRouterHandler is Test, MarginRouteHelpers {
     using Planner for Plan;
 
     // -------------------------------------------------------------------------
@@ -171,7 +169,8 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
         _trackAccount(actor, subId);
         _fundAccount(actor, subId, equity);
 
-        IMarginRouter.IncreaseParams memory params = _buildIncreaseParams(buy, subId);
+        IMarginRouter.IncreaseParams memory params =
+            _buildIncreaseParams(buy, subId, marginRouter.accountOf(actor, subId));
 
         vm.prank(actor);
         try marginRouter.increasePosition(params) {
@@ -189,7 +188,8 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
         _trackAccount(actor, subId);
         _fundAccount(actor, subId, equity);
 
-        IMarginRouter.IncreaseParams memory params = _buildIncreaseParams(buy, subId);
+        IMarginRouter.IncreaseParams memory params =
+            _buildIncreaseParams(buy, subId, marginRouter.accountOf(actor, subId));
 
         vm.prank(actor);
         try marginRouter.increasePosition(params) {
@@ -204,7 +204,7 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
 
         _trackAccount(actor, subId);
 
-        IMarginRouter.DecreaseParams memory params = _buildCloseParams(subId);
+        IMarginRouter.DecreaseParams memory params = _buildCloseParams(subId, marginRouter.accountOf(actor, subId));
 
         uint256 before = collateralToken.balanceOf(actor);
         vm.prank(actor);
@@ -222,7 +222,8 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
 
         _trackAccount(actor, subId);
 
-        IMarginRouter.DecreaseParams memory params = _buildDecreaseParams(repay, subId);
+        IMarginRouter.DecreaseParams memory params =
+            _buildDecreaseParams(repay, subId, marginRouter.accountOf(actor, subId));
 
         vm.prank(actor);
         try marginRouter.decreasePosition(params) {} catch {}
@@ -362,51 +363,65 @@ contract MarginRouterHandler is CommonBase, StdCheats, StdUtils {
     // Param builders (split into helpers to reduce locals per frame)
     // -------------------------------------------------------------------------
 
-    function _buildIncreaseParams(uint128 buy, uint256 subId)
+    function _buildIncreaseParams(uint128 buy, uint256 subId, address account)
         internal
         view
         returns (IMarginRouter.IncreaseParams memory)
     {
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.debt, market.collateral, buy, MAX_DEBT_CAP, account);
         return IMarginRouter.IncreaseParams({
             adapter: adapter,
             market: market,
-            poolKey: poolKey,
             equity: 0,
             collateralToBuy: buy,
             maxDebtIn: MAX_DEBT_CAP,
-            minHopPriceX36: 0,
+            routeCommands: cmds,
+            routeInputs: ins,
             maxLtvAfter: Ltv.wrap(0),
             subId: subId,
             deadline: _deadline()
         });
     }
 
-    function _buildCloseParams(uint256 subId) internal view returns (IMarginRouter.DecreaseParams memory) {
+    function _buildCloseParams(uint256 subId, address account)
+        internal
+        view
+        returns (IMarginRouter.DecreaseParams memory)
+    {
+        // full close buys the account's current debt exact-output (zero-debt accounts take the
+        // swap-free path in the router and ignore this route)
+        (, uint256 curDebt) = adapter.positionOf(account, market);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(curDebt), MAX_COLLATERAL_CAP, account);
         return IMarginRouter.DecreaseParams({
             debtToRepay: type(uint256).max,
             maxLtvAfter: Ltv.wrap(0),
             adapter: adapter,
             market: market,
-            poolKey: poolKey,
             maxCollateralIn: MAX_COLLATERAL_CAP,
-            minHopPriceX36: 0,
+            routeCommands: cmds,
+            routeInputs: ins,
             subId: subId,
             deadline: _deadline()
         });
     }
 
-    function _buildDecreaseParams(uint256 repay, uint256 subId)
+    function _buildDecreaseParams(uint256 repay, uint256 subId, address account)
         internal
         view
         returns (IMarginRouter.DecreaseParams memory)
     {
+        (bytes memory cmds, bytes[] memory ins) = buildV4ExactOutRoute(
+            poolKey, market.collateral, market.debt, uint128(repay), MAX_COLLATERAL_CAP, account
+        );
         return IMarginRouter.DecreaseParams({
             adapter: adapter,
             market: market,
-            poolKey: poolKey,
             debtToRepay: repay,
             maxCollateralIn: MAX_COLLATERAL_CAP,
-            minHopPriceX36: 0,
+            routeCommands: cmds,
+            routeInputs: ins,
             maxLtvAfter: toLtv(0.95e18),
             subId: subId,
             deadline: _deadline()

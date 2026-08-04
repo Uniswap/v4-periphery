@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {ILendingAdapter} from "./ILendingAdapter.sol";
@@ -60,6 +59,11 @@ interface IMarginRouter {
     ///      set. A plan must open each account-scoped section with a `SET_ACCOUNT` action; the
     ///      curated entry points set the account themselves and never hit this.
     error NoActiveAccount();
+
+    /// @dev Thrown when the router is constructed with a zero Universal Router address. The Universal
+    ///      Router is a required, immutable dependency (`ROUTE_SWAP` routes every position swap
+    ///      through it), so it cannot be the zero address.
+    error UniversalRouterNotSet();
 
     // -------------------------------------------------------------------------
     // Events
@@ -164,19 +168,21 @@ interface IMarginRouter {
     /// @param adapter The allowlisted lending adapter that encodes and reads lending protocol calls.
     /// @param market The (collateral, debt) pair defining the margin market. This pairing sets the
     ///        trade direction: long the collateral, short the debt.
-    /// @param poolKey The v4 pool through which the leverage swap is routed.
     /// @param equity The amount of collateral the caller contributes as equity, in the collateral
     ///        token's native decimals. Ignored when `msg.value > 0` (native ETH is used instead).
-    /// @param collateralToBuy The exact amount of collateral to purchase from the swap (exact-output
-    ///        side), in the collateral token's native decimals.
-    /// @param maxDebtIn The maximum debt the caller will accept as the swap input, in the debt
-    ///        token's native decimals. Must be non-zero. The swap is a single-hop exact-output swap,
-    ///        so this absolute cap fully bounds the worst-case swap input and is the binding slippage
-    ///        protection. Derive it from a quote, not from spot price.
-    /// @param minHopPriceX36 An optional additional per-hop price bound, encoded as a per-hop price
-    ///        in X36 fixed-point. Zero disables only this secondary check; it does not relax the
-    ///        binding `maxDebtIn` cap. Redundant with the absolute cap for a single hop, so it may be
-    ///        left zero.
+    /// @param collateralToBuy The exact amount of collateral the route buys (its exact-output amount),
+    ///        in the collateral token's native decimals. The router asserts the account received it, so
+    ///        it must match the `amountOut` encoded in the route.
+    /// @param maxDebtIn The maximum debt the router flash-takes and lets the Universal Router spend, in
+    ///        the debt token's native decimals. Must be non-zero. It is the binding slippage cap (the
+    ///        router grants the Universal Router a Permit2 allowance of exactly this much), independent
+    ///        of the route's own `amountInMaximum`. Derive it from a quote, not spot price, and keep it
+    ///        within the debt token's flash-takeable PoolManager liquidity.
+    /// @param routeCommands The Universal Router command byte string for the debt->collateral swap. The
+    ///        route MUST buy `collateralToBuy` collateral exact-output and deliver it to the caller's
+    ///        MarginAccount, drawing the input from the router (the payer) via Permit2. Built off-chain
+    ///        so the caller can source liquidity across v2/v3/v4.
+    /// @param routeInputs The per-command ABI-encoded inputs for `routeCommands`.
     /// @param maxLtvAfter The maximum LTV the position may have after the increase (WAD, 1e18 ==
     ///        100%). Because the open sizes on the pool while liquidation uses the venue oracle,
     ///        adverse inclusion can consume the full `maxDebtIn` budget and land the position near
@@ -189,11 +195,11 @@ interface IMarginRouter {
     struct IncreaseParams {
         ILendingAdapter adapter;
         Market market;
-        PoolKey poolKey;
         uint256 equity;
         uint128 collateralToBuy;
         uint128 maxDebtIn;
-        uint256 minHopPriceX36;
+        bytes routeCommands;
+        bytes[] routeInputs;
         Ltv maxLtvAfter;
         uint256 subId;
         uint256 deadline;
@@ -208,17 +214,21 @@ interface IMarginRouter {
     ///      path, and `maxLtvAfter` is ignored on a full close.
     /// @param adapter The allowlisted lending adapter.
     /// @param market The (collateral, debt) pair defining the margin market.
-    /// @param poolKey The v4 pool through which the decrease swap is routed.
-    /// @param debtToRepay The exact amount of debt to repay (exact-output side of the swap), in the
-    ///        debt token's native decimals, or `type(uint256).max` to fully close the position.
-    /// @param maxCollateralIn The maximum collateral the caller will accept selling, in the
-    ///        collateral token's native decimals. Must be non-zero on the swap path. The swap is a
-    ///        single-hop exact-output swap, so this absolute cap fully bounds the worst-case swap
-    ///        input and is the binding slippage protection. Derive it from a quote, not from spot
-    ///        price. A zero-debt full close takes a swap-free path and ignores this field.
-    /// @param minHopPriceX36 An optional additional per-hop price bound (X36 fixed-point). Zero
-    ///        disables only this secondary check; it does not relax the binding `maxCollateralIn`
-    ///        cap. Redundant with the absolute cap for a single hop, so it may be left zero.
+    /// @param debtToRepay The exact amount of debt the route buys and repays (its exact-output amount),
+    ///        in the debt token's native decimals, or `type(uint256).max` to fully close. On a full
+    ///        close the route must buy AT LEAST the current debt (quote it with a small accrual buffer);
+    ///        the router asserts coverage, repays all, and returns any over-bought debt to the caller.
+    /// @param maxCollateralIn The maximum collateral the router flash-takes and lets the Universal
+    ///        Router spend, in the collateral token's native decimals. Must be non-zero on the swap
+    ///        path. It is the binding slippage cap (a Permit2 allowance of exactly this much),
+    ///        independent of the route's own `amountInMaximum`. Derive it from a quote; keep it within
+    ///        the collateral token's flash-takeable PoolManager liquidity. A zero-debt full close takes
+    ///        a swap-free path and ignores it.
+    /// @param routeCommands The Universal Router command byte string for the collateral->debt swap. The
+    ///        route MUST buy the target debt exact-output and deliver it to the caller's MarginAccount,
+    ///        drawing the input from the router (the payer) via Permit2. Built off-chain so the caller
+    ///        can source liquidity across v2/v3/v4. Ignored on a zero-debt full close.
+    /// @param routeInputs The per-command ABI-encoded inputs for `routeCommands`.
     /// @param maxLtvAfter The maximum LTV the position may have after a partial decrease (WAD, 1e18 ==
     ///        100%). Must be non-zero for a partial decrease; ignored on a full close.
     /// @param subId The sub-account index identifying which MarginAccount to decrease or close.
@@ -226,10 +236,10 @@ interface IMarginRouter {
     struct DecreaseParams {
         ILendingAdapter adapter;
         Market market;
-        PoolKey poolKey;
         uint256 debtToRepay;
         uint128 maxCollateralIn;
-        uint256 minHopPriceX36;
+        bytes routeCommands;
+        bytes[] routeInputs;
         Ltv maxLtvAfter;
         uint256 subId;
         uint256 deadline;

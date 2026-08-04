@@ -33,7 +33,7 @@ import {CompoundV3LendingAdapter} from "../src/CompoundV3LendingAdapter.sol";
 ///           can hand off each role via the two-step transferGovernance/acceptGovernance (router) and
 ///           transferOwnership/acceptOwnership (adapters).
 ///         - `routerSalt` comes from MineMarginRouterSalt and is only valid for the exact
-///           (poolManager, permit2, weth9, accountImpl, governance) tuple it was mined against. The
+///           (poolManager, permit2, weth9, accountImpl, governance, universalRouter) tuple it was mined against. The
 ///           accountImpl is itself derived from ACCOUNT_SALT, so ACCOUNT_SALT here MUST match the
 ///           miner; otherwise the mined router address will not be produced.
 contract DeployMargin is Script {
@@ -76,8 +76,13 @@ contract DeployMargin is Script {
     ///        mainnet).
     /// @param compoundComet The Compound v3 Comet the Compound adapter routes through (the USDC Comet
     ///        on mainnet).
+    /// @param universalRouter The Universal Router the router's ROUTE_SWAP action routes position swaps
+    ///        through. A constructor immutable, so it is part of the router init code the vanity salt is
+    ///        mined against.
     /// @param routerSalt The vanity salt from MineMarginRouterSalt, valid only for the exact
-    ///        (poolManager, permit2, weth9, accountImpl, governance) tuple it was mined against.
+    ///        (poolManager, permit2, weth9, accountImpl, governance, universalRouter) tuple it was mined
+    ///        against. Adding universalRouter changes the router init-code hash, so the salt must be
+    ///        re-mined.
     /// @return impl The deployed MarginAccount implementation.
     /// @return morphoAdapter The deployed Morpho lending adapter.
     /// @return aaveAdapter The deployed Aave v3 lending adapter.
@@ -93,6 +98,7 @@ contract DeployMargin is Script {
         address aaveProvider,
         address aaveV4Spoke,
         address compoundComet,
+        address universalRouter,
         bytes32 routerSalt
     )
         public
@@ -125,9 +131,15 @@ contract DeployMargin is Script {
         compoundAdapter = new CompoundV3LendingAdapter{salt: COMPOUND_ADAPTER_SALT}(IComet(compoundComet), governance);
         console2.log("CompoundV3LendingAdapter", address(compoundAdapter));
 
-        // router at the mined vanity salt
+        // router at the mined vanity salt; universalRouter is a constructor immutable, so adding it
+        // changes the router init-code hash and the vanity salt must be re-mined for the new tuple
         router = new MarginRouter{salt: routerSalt}(
-            IPoolManager(poolManager), IAllowanceTransfer(permit2), IWETH9(weth9), address(impl), governance
+            IPoolManager(poolManager),
+            IAllowanceTransfer(permit2),
+            IWETH9(weth9),
+            address(impl),
+            governance,
+            universalRouter
         );
         console2.log("MarginRouter", address(router));
 

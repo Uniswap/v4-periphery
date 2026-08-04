@@ -46,6 +46,7 @@ contract MarginBootstrapBuilder is CommonBase {
         address aaveProvider;
         address aaveV4Spoke;
         address compoundComet;
+        address universalRouter;
     }
 
     /// @notice An Aave v3 `(collateral, debt)` pair to allowlist.
@@ -169,12 +170,11 @@ contract MarginBootstrapBuilder is CommonBase {
     }
 
     /// @dev Appends the per-market registration calls on each adapter (executed as `governance`).
-    function _appendMarkets(
-        BatchExecutor.Call[] memory calls,
-        uint256 k,
-        Deployed memory addrs,
-        Markets memory markets
-    ) internal pure returns (uint256) {
+    function _appendMarkets(BatchExecutor.Call[] memory calls, uint256 k, Deployed memory addrs, Markets memory markets)
+        internal
+        pure
+        returns (uint256)
+    {
         for (uint256 i; i < markets.morpho.length; i++) {
             calls[k++] = _call(addrs.morphoAdapter, abi.encodeCall(MorphoLendingAdapter.setMarket, (markets.morpho[i])));
         }
@@ -254,9 +254,11 @@ contract MarginBootstrapBuilder is CommonBase {
     }
 
     function _routerInit(Deps memory deps, address impl, address governance) internal view returns (bytes memory) {
+        // The Universal Router is a constructor immutable, so it is part of the router's init code.
+        // Adding this arg changes the router init-code hash, so the mined vanity salt must be re-mined.
         return bytes.concat(
             vm.getCode("MarginRouter.sol:MarginRouter"),
-            abi.encode(deps.poolManager, deps.permit2, deps.weth9, impl, governance)
+            abi.encode(deps.poolManager, deps.permit2, deps.weth9, impl, governance, deps.universalRouter)
         );
     }
 

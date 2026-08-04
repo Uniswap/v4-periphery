@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -20,7 +21,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 
 /// @notice Validates the Permit2 equity-pull path: the router pulls the caller's equity into their
 ///         account via Permit2, rather than the equity being pre-funded.
-contract MarginRouterPermit2Test is RoutingTestHelpers, DeployPermit2 {
+contract MarginRouterPermit2Test is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
     MarginRouter internal marginRouter;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
@@ -44,7 +45,8 @@ contract MarginRouterPermit2Test is RoutingTestHelpers, DeployPermit2 {
         adapter.setSupported(market, true);
 
         address impl = address(new MarginAccount());
-        marginRouter = new MarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this));
+        address ur = deployUniversalRouter(address(manager), address(permit2), address(0xbeef));
+        marginRouter = new MarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this), ur);
         marginRouter.setAdapterAllowed(adapter, true);
 
         MockERC20(Currency.unwrap(debt)).transfer(address(protocol), 1_000_000 ether);
@@ -58,15 +60,17 @@ contract MarginRouterPermit2Test is RoutingTestHelpers, DeployPermit2 {
         address account = marginRouter.accountOf(address(this), 0);
 
         // no pre-funding: equity is pulled from the caller through Permit2 by the router
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, debt, collateral, 2 ether, 5 ether, account);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 equity: 1 ether,
                 collateralToBuy: 2 ether,
                 maxDebtIn: 5 ether,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1

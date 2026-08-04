@@ -30,19 +30,20 @@ contract MarginRouterTest is Test {
     function setUp() public {
         vm.warp(1_000);
         address impl = address(new MarginAccount());
-        // poolManager / permit2 / weth9 are not called on the tested (pre-unlock) paths
+        // poolManager / permit2 / weth9 are not called on the tested (pre-unlock) paths; the router
+        // requires a non-zero universalRouter at construction but these tests never route a swap
         router = new MarginRouter(
             IPoolManager(makeAddr("poolManager")),
             IAllowanceTransfer(makeAddr("permit2")),
             IWETH9(makeAddr("weth9")),
             impl,
-            address(this)
+            address(this),
+            makeAddr("universalRouter")
         );
     }
 
     function _openParams() internal view returns (IMarginRouter.IncreaseParams memory p) {
         p.market = Market({collateral: c0, debt: c1});
-        p.poolKey = PoolKey({currency0: c0, currency1: c1, fee: 3000, tickSpacing: 60, hooks: IHooks(address(0))});
         p.equity = 1e18;
         p.collateralToBuy = 2e18;
         p.maxDebtIn = 1;

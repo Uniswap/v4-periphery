@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Test, console2} from "forge-std/Test.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 
 import {IMorpho, MarketParams, Id} from "morpho-blue/interfaces/IMorpho.sol";
 import {IOracle} from "morpho-blue/interfaces/IOracle.sol";
@@ -47,7 +48,7 @@ import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 ///         Lifecycle exercised in one transaction stream: open (equity via Permit2) -> addCollateral
 ///         (native ETH) -> increase (pure leverage) -> accrue interest -> decrease (partial delever)
 ///         -> close (full unwind, residual PnL returned).
-contract MarginRouterE2EForkTest is Test {
+contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
     using MarketParamsLib for MarketParams;
 
     // verified on mainnet (see setUp assertions / canonical registries)
@@ -111,8 +112,10 @@ contract MarginRouterE2EForkTest is Test {
         adapter.setMarket(marketParams);
 
         address impl = address(new MarginAccount());
+        // route position swaps through a Universal Router bound to the local flash-take PoolManager
+        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = new MarginRouter(
-            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
+            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
         );
         router.setAdapterAllowed(adapter, true);
     }
@@ -262,14 +265,16 @@ contract MarginRouterE2EForkTest is Test {
     function _stageDecrease(address account) internal {
         (uint256 collBefore, uint256 debtBefore) = adapter.positionOf(account, market);
 
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, 1000e6, 2 ether, account);
         router.decreasePosition(
             IMarginRouter.DecreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 debtToRepay: 1000e6,
                 maxCollateralIn: 2 ether,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: toLtv(0.7e18),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
@@ -290,15 +295,18 @@ contract MarginRouterE2EForkTest is Test {
     function _stageClose(address account) internal {
         uint256 wethBefore = IERC20(WETH).balanceOf(address(this));
 
+        (, uint256 curDebt) = adapter.positionOf(account, market);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(curDebt), 5 ether, account);
         router.decreasePosition(
             IMarginRouter.DecreaseParams({
                 debtToRepay: type(uint256).max,
                 maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 maxCollateralIn: 5 ether,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })
@@ -324,15 +332,18 @@ contract MarginRouterE2EForkTest is Test {
 
     /// @notice Builds and submits an open with `equity` WETH and `buy` WETH of collateral.
     function _openCall(uint256 equity, uint128 buy) internal {
+        address account = router.accountOf(address(this), 0);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.debt, market.collateral, buy, 10_000e6, account);
         router.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 equity: equity,
                 collateralToBuy: buy,
                 maxDebtIn: 10_000e6,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
@@ -342,15 +353,18 @@ contract MarginRouterE2EForkTest is Test {
 
     /// @notice Builds and submits a pure-leverage increase buying `buy` WETH with no new equity.
     function _increaseCall(uint128 buy) internal {
+        address account = router.accountOf(address(this), 0);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.debt, market.collateral, buy, 10_000e6, account);
         router.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: buy,
                 maxDebtIn: 10_000e6,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
@@ -445,7 +459,7 @@ contract MarginRouterE2EForkTest is Test {
         vm.startPrank(who);
         IERC20(WETH).approve(PERMIT2, type(uint256).max);
         IAllowanceTransfer(PERMIT2).approve(WETH, address(router), uint160(equity), uint48(block.timestamp + 1 hours));
-        router.increasePosition(_openParamsFor(subId, equity, buy));
+        router.increasePosition(_openParamsFor(subId, equity, buy, account));
         vm.stopPrank();
     }
 
@@ -457,21 +471,23 @@ contract MarginRouterE2EForkTest is Test {
         account = router.accountOf(who, subId);
         vm.deal(who, equityEth);
         vm.prank(who);
-        router.increasePosition{value: equityEth}(_openParamsFor(subId, 0, buy));
+        router.increasePosition{value: equityEth}(_openParamsFor(subId, 0, buy, account));
     }
 
     /// @notice Adds `buy` WETH of pure leverage (no new equity) to `who`'s position at `subId`.
     function _increaseFor(address who, uint256 subId, uint128 buy) internal {
+        address account = router.accountOf(who, subId);
         vm.prank(who);
-        router.increasePosition(_openParamsFor(subId, 0, buy));
+        router.increasePosition(_openParamsFor(subId, 0, buy, account));
     }
 
     /// @notice Closes `who`'s position at `subId`, asserts it is fully unwound, and returns the
     ///         residual WETH (realized PnL) credited to the owner.
     function _closeAndZero(address who, uint256 subId, address account) internal returns (uint256 residual) {
         uint256 wethBefore = IERC20(WETH).balanceOf(who);
+        IMarginRouter.DecreaseParams memory params = _closeParamsFor(subId, account);
         vm.prank(who);
-        router.decreasePosition(_closeParamsFor(subId));
+        router.decreasePosition(params);
         residual = IERC20(WETH).balanceOf(who) - wethBefore;
 
         (uint256 collateral, uint256 debt) = adapter.positionOf(account, market);
@@ -482,19 +498,21 @@ contract MarginRouterE2EForkTest is Test {
     }
 
     /// @notice Builds open/increase params for `subId` (generous bounds; size set by `equity`/`buy`).
-    function _openParamsFor(uint256 subId, uint256 equity, uint128 buy)
+    function _openParamsFor(uint256 subId, uint256 equity, uint128 buy, address account)
         internal
         view
         returns (IMarginRouter.IncreaseParams memory)
     {
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.debt, market.collateral, buy, 20_000e6, account);
         return IMarginRouter.IncreaseParams({
             adapter: adapter,
             market: market,
-            poolKey: poolKey,
             equity: equity,
             collateralToBuy: buy,
             maxDebtIn: 20_000e6,
-            minHopPriceX36: 0,
+            routeCommands: cmds,
+            routeInputs: ins,
             maxLtvAfter: Ltv.wrap(0),
             subId: subId,
             deadline: block.timestamp + 1 hours
@@ -502,15 +520,22 @@ contract MarginRouterE2EForkTest is Test {
     }
 
     /// @notice Builds close params for `subId` with a generous collateral-in bound.
-    function _closeParamsFor(uint256 subId) internal view returns (IMarginRouter.DecreaseParams memory) {
+    function _closeParamsFor(uint256 subId, address account)
+        internal
+        view
+        returns (IMarginRouter.DecreaseParams memory)
+    {
+        (, uint256 curDebt) = adapter.positionOf(account, market);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(curDebt), 10 ether, account);
         return IMarginRouter.DecreaseParams({
             debtToRepay: type(uint256).max,
             maxLtvAfter: Ltv.wrap(0),
             adapter: adapter,
             market: market,
-            poolKey: poolKey,
             maxCollateralIn: 10 ether,
-            minHopPriceX36: 0,
+            routeCommands: cmds,
+            routeInputs: ins,
             subId: subId,
             deadline: block.timestamp + 1 hours
         });

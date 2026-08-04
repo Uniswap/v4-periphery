@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 import {Plan, Planner} from "../shared/Planner.sol";
 import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {Vm} from "forge-std/Vm.sol";
@@ -33,7 +34,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 ///         parity with the curated flows, the new opcodes (SET_ACCOUNT, PULL_TO_ACCOUNT, and the
 ///         intercepted SWEEP), the handler-level guards, and the security-relevant behaviors from
 ///         the design review (caller-scoped accounts, allowlist asymmetry, residual claimability).
-contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
+contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
     using Planner for Plan;
 
     MarginRouter internal marginRouter;
@@ -59,7 +60,9 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
         adapter.setSupported(market, true);
 
         address impl = address(new MarginAccount());
-        marginRouter = new MarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this));
+        // the curated increasePosition parity test routes its swap through a Universal Router
+        address ur = deployUniversalRouter(address(manager), address(permit2), address(0xbeef));
+        marginRouter = new MarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this), ur);
         marginRouter.setAdapterAllowed(adapter, true);
 
         // fund the lending protocol with debt to lend out
@@ -137,15 +140,17 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
         // curated open on subId 0
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, debt, collateral, 2 ether, 5 ether, account);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: 2 ether,
                 maxDebtIn: 5 ether,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
@@ -566,12 +571,12 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, DeployPermit2 {
     }
 
     function test_execute_revertsOnUnsupportedAction() public {
-        // 0x39 is above the highest margin opcode (PULL_TO_ACCOUNT 0x38) and unhandled. SET_ACCOUNT
-        // first so it passes the NoActiveAccount guard and reaches the trailing UnsupportedAction.
+        // 0x3b is above the highest margin opcode (ASSERT_ACCOUNT_BALANCE 0x3a) and unhandled.
+        // SET_ACCOUNT first so it passes the NoActiveAccount guard and reaches the trailing revert.
         Plan memory plan = Planner.init();
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
-        plan = plan.add(0x39, "");
-        vm.expectRevert(abi.encodeWithSelector(BaseActionsRouter.UnsupportedAction.selector, 0x39));
+        plan = plan.add(0x3b, "");
+        vm.expectRevert(abi.encodeWithSelector(BaseActionsRouter.UnsupportedAction.selector, 0x3b));
         marginRouter.execute(plan.encode(), block.timestamp + 1);
     }
 

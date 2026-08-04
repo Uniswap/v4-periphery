@@ -53,6 +53,9 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
     /// @param aaveV4Spoke The Aave v4 Spoke.
     /// @param compoundComet The Compound v3 Comet the Compound adapter routes through (the USDC Comet
     ///        on mainnet).
+    /// @param universalRouter The Universal Router the router's ROUTE_SWAP action routes position swaps
+    ///        through. A constructor immutable baked into the router init code, so the vanity salt must
+    ///        be mined against it.
     /// @param finalGovernance The eventual governance/owner proposed via the two-step handoff; pass the
     ///        deployer address (or zero) to skip the handoff and leave the deployer in control.
     /// @param routerSalt The mined vanity salt for the router (mined with governance == deployer).
@@ -64,6 +67,7 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
         address aaveProvider,
         address aaveV4Spoke,
         address compoundComet,
+        address universalRouter,
         address finalGovernance,
         bytes32 routerSalt
     ) public {
@@ -77,7 +81,8 @@ contract DeployMarginBootstrap is Script, MarginBootstrapBuilder {
             morpho: morpho,
             aaveProvider: aaveProvider,
             aaveV4Spoke: aaveV4Spoke,
-            compoundComet: compoundComet
+            compoundComet: compoundComet,
+            universalRouter: universalRouter
         });
 
         // reusable executor at a deterministic address; deploy only if absent (one-time infra)

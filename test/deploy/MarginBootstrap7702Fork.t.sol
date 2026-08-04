@@ -15,12 +15,14 @@ import {CompoundV3LendingAdapter} from "../../src/CompoundV3LendingAdapter.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {Market} from "../../src/types/Market.sol";
 
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
+
 /// @notice Mainnet-fork simulation of the single-transaction EIP-7702 bootstrap using the mined
 ///         router salt. The deployer EOA's delegation to the BatchExecutor is modeled with vm.etch
 ///         (the code that a 7702 authorization would install on the account), and the batch is driven
 ///         as a self-call. Proves the whole stack deploys and wires against the LIVE Morpho / Aave v3
 ///         / Aave v4 / PoolManager in one call, and that the router lands at the mined vanity address.
-contract MarginBootstrap7702ForkTest is Test {
+contract MarginBootstrap7702ForkTest is Test, MarginRouteHelpers {
     // mainnet addresses (verified in the per-adapter fork tests)
     address internal constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
     address internal constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
@@ -58,6 +60,9 @@ contract MarginBootstrap7702ForkTest is Test {
 
     BatchExecutor internal executor;
     MarginBootstrapBuilder internal builder;
+    // a Universal Router bound to the live PoolManager; the router requires a non-zero UR at
+    // construction, and this test asserts deploy/wiring rather than routing a curated swap
+    address internal universalRouter;
 
     function setUp() public {
         string memory rpc = vm.envOr("MAINNET_RPC_URL", string(""));
@@ -67,6 +72,7 @@ contract MarginBootstrap7702ForkTest is Test {
 
         executor = new BatchExecutor();
         builder = new MarginBootstrapBuilder();
+        universalRouter = deployUniversalRouter(POOL_MANAGER, PERMIT2, WETH);
     }
 
     function test_fork_bootstrap_oneTx_landsVanityAndWiresStack() public {
@@ -134,7 +140,7 @@ contract MarginBootstrap7702ForkTest is Test {
         assertEq(MorphoLendingAdapter(addrs.morphoAdapter).pendingOwner(), finalGovernance, "morpho adapter handoff");
     }
 
-    function _deps() internal pure returns (MarginBootstrapBuilder.Deps memory) {
+    function _deps() internal view returns (MarginBootstrapBuilder.Deps memory) {
         return MarginBootstrapBuilder.Deps({
             poolManager: POOL_MANAGER,
             permit2: PERMIT2,
@@ -142,7 +148,8 @@ contract MarginBootstrap7702ForkTest is Test {
             morpho: MORPHO,
             aaveProvider: AAVE_V3_PROVIDER,
             aaveV4Spoke: AAVE_V4_SPOKE,
-            compoundComet: COMET_USDC
+            compoundComet: COMET_USDC,
+            universalRouter: universalRouter
         });
     }
 

@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Test, console2} from "forge-std/Test.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -49,7 +50,7 @@ import {PositionData} from "../../src/types/PositionData.sol";
 ///         are all verified on-chain in setUp rather than trusted blindly. The only locally-deployed
 ///         venue is the v4 pool, which is seeded with deep full-range liquidity at the live Aave
 ///         oracle price so the swap leg and the lending leg agree on valuation.
-contract AaveLendingAdapterForkTest is Test {
+contract AaveLendingAdapterForkTest is Test, MarginRouteHelpers {
     // verified on-chain in setUp; the provider is the only address taken as given
     IPoolAddressesProvider internal constant PROVIDER =
         IPoolAddressesProvider(0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e);
@@ -110,8 +111,10 @@ contract AaveLendingAdapterForkTest is Test {
 
         // the full margin stack, wired to the live Aave Pool, canonical Permit2, and WETH9
         address impl = address(new MarginAccount());
+        // route position swaps through a Universal Router bound to the local flash-take PoolManager
+        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = new MarginRouter(
-            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
+            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
         );
         router.setAdapterAllowed(adapter, true);
     }
@@ -183,14 +186,16 @@ contract AaveLendingAdapterForkTest is Test {
 
         // repay a quarter of the current WETH debt; cap the USDC spent generously
         uint256 debtToRepay = debtBefore / 4;
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(debtToRepay), 2000e6, account);
         router.decreasePosition(
             IMarginRouter.DecreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 debtToRepay: debtToRepay,
                 maxCollateralIn: 2000e6,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: toLtv(0.7e18),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
@@ -218,15 +223,18 @@ contract AaveLendingAdapterForkTest is Test {
     function _stageClose(address account) internal {
         uint256 usdcBefore = IERC20(USDC).balanceOf(address(this));
 
+        (, uint256 curDebt) = adapter.positionOf(account, market);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(curDebt), 6000e6, account);
         router.decreasePosition(
             IMarginRouter.DecreaseParams({
                 debtToRepay: type(uint256).max,
                 maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 maxCollateralIn: 6000e6,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })
@@ -253,15 +261,18 @@ contract AaveLendingAdapterForkTest is Test {
 
     /// @notice Builds and submits an open buying `buy` USDC of collateral, capped at `maxDebtIn` WETH.
     function _openCall(uint128 buy, uint128 maxDebtIn) internal {
+        address account = router.accountOf(address(this), 0);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.debt, market.collateral, buy, maxDebtIn, account);
         router.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: buy,
                 maxDebtIn: maxDebtIn,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours

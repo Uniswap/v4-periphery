@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Test, console2} from "forge-std/Test.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 
 import {IMorpho, MarketParams, Id} from "morpho-blue/interfaces/IMorpho.sol";
 import {IOracle} from "morpho-blue/interfaces/IOracle.sol";
@@ -39,7 +40,7 @@ import {Plan, Planner} from "../shared/Planner.sol";
 ///         points do (open parity), supports repay-from-wallet via real Permit2, and can pay equity
 ///         in a token other than the collateral by converting it through a local v4 pool in the same
 ///         atomic plan (the WBTC-funded WETH/USDC long from the design discussion).
-contract MarginRouterExecuteForkTest is Test {
+contract MarginRouterExecuteForkTest is Test, MarginRouteHelpers {
     using MarketParamsLib for MarketParams;
     using Planner for Plan;
 
@@ -95,8 +96,10 @@ contract MarginRouterExecuteForkTest is Test {
         adapter.setMarket(marketParams);
 
         address impl = address(new MarginAccount());
+        // route position swaps through a Universal Router bound to the local flash-take PoolManager
+        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = new MarginRouter(
-            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
+            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
         );
         router.setAdapterAllowed(adapter, true);
 
@@ -112,15 +115,17 @@ contract MarginRouterExecuteForkTest is Test {
 
         uint256 snap = vm.snapshotState();
 
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.debt, market.collateral, 1 ether, 10_000e6, account);
         router.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 equity: 1 ether,
                 collateralToBuy: 1 ether,
                 maxDebtIn: 10_000e6,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
@@ -260,15 +265,17 @@ contract MarginRouterExecuteForkTest is Test {
     function _openViaCurated(uint256 equity, uint128 buy) internal returns (address account) {
         account = router.accountOf(address(this), 0);
         _approvePermit2Equity(WETH, uint160(equity));
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, market.debt, market.collateral, buy, 10_000e6, account);
         router.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 equity: equity,
                 collateralToBuy: buy,
                 maxDebtIn: 10_000e6,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours

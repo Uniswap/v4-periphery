@@ -51,8 +51,15 @@ contract MarginRouterExecuteNativeTest is RoutingTestHelpers {
         adapter.setSupported(market, true);
 
         address impl = address(new MarginAccount());
-        marginRouter =
-            new MarginRouter(manager, IAllowanceTransfer(address(0xdead)), IWETH9(address(weth)), impl, address(this));
+        // the router requires a non-zero universalRouter at construction; this test never routes a swap
+        marginRouter = new MarginRouter(
+            manager,
+            IAllowanceTransfer(address(0xdead)),
+            IWETH9(address(weth)),
+            impl,
+            address(this),
+            makeAddr("universalRouter")
+        );
         marginRouter.setAdapterAllowed(adapter, true);
     }
 

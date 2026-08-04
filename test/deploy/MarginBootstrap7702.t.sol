@@ -14,6 +14,7 @@ import {AaveV4LendingAdapter} from "../../src/AaveV4LendingAdapter.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {Market} from "../../src/types/Market.sol";
 
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 import {MockMorpho} from "../mocks/MockMorpho.sol";
 import {MockAavePool, MockAaveAddressesProvider, MockAaveDataProvider} from "../mocks/MockAavePool.sol";
 import {MockAaveV4Spoke} from "../mocks/MockAaveV4Spoke.sol";
@@ -23,7 +24,7 @@ import {MockComet} from "../mocks/MockComet.sol";
 ///         deployer EOA delegates to the BatchExecutor and, in one self-call, deploys the account
 ///         implementation, all three adapters, and the router through the standard CREATE2 factory,
 ///         then allowlists the adapters and registers a market. Also covers the two-step handoff.
-contract MarginBootstrap7702Test is Test {
+contract MarginBootstrap7702Test is Test, MarginRouteHelpers {
     BatchExecutor internal executor;
     MarginBootstrapBuilder internal builder;
 
@@ -39,6 +40,9 @@ contract MarginBootstrap7702Test is Test {
     address internal poolManager = makeAddr("poolManager");
     address internal permit2 = makeAddr("permit2");
     address internal weth9 = makeAddr("weth9");
+    // a Universal Router the router requires at construction; this test asserts deploy/wiring, not a
+    // curated swap, so it only needs to be a valid non-zero address in the router init code
+    address internal universalRouter;
 
     // a Morpho market to register; tokens/oracle/irm are placeholders (the mock only needs it to exist)
     address internal collateralToken = makeAddr("collateralToken");
@@ -53,6 +57,7 @@ contract MarginBootstrap7702Test is Test {
 
         executor = new BatchExecutor();
         builder = new MarginBootstrapBuilder();
+        universalRouter = deployUniversalRouter(poolManager, permit2, weth9);
 
         morpho = new MockMorpho();
         MockAavePool pool = new MockAavePool();
@@ -83,7 +88,8 @@ contract MarginBootstrap7702Test is Test {
             morpho: address(morpho),
             aaveProvider: address(aaveProvider),
             aaveV4Spoke: address(aaveV4Spoke),
-            compoundComet: address(comet)
+            compoundComet: address(comet),
+            universalRouter: universalRouter
         });
     }
 

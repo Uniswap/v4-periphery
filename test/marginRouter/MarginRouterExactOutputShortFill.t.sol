@@ -2,6 +2,8 @@
 pragma solidity 0.8.26;
 
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
+import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -27,7 +29,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 ///           - Option C: `_open` takes EXACTLY `collateralToBuy`, so an exact-output swap that
 ///             under-fills leaves an unsettled collateral debt and the open reverts (all-or-nothing)
 ///             rather than silently opening a smaller position.
-contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
+contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
     uint256 internal constant INITIAL_EQUITY = 1 ether;
     uint128 internal constant REQUESTED_COLLATERAL = 1 ether;
     uint128 internal constant MAX_DEBT_IN = 2 ether;
@@ -58,22 +60,27 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
         adapter = new MockLendingAdapter(address(protocol));
         adapter.setSupported(market, true);
 
+        address permit2 = deployPermit2();
         address impl = address(new MarginAccount());
-        marginRouter = new MarginRouter(
-            manager, IAllowanceTransfer(address(0xdead)), IWETH9(address(0xbeef)), impl, address(this)
-        );
+        // route position swaps through a Universal Router bound to the local PoolManager
+        address ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
+        marginRouter =
+            new MarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this), ur);
         marginRouter.setAdapterAllowed(adapter, true);
 
         MockERC20(Currency.unwrap(debt)).transfer(address(protocol), 1_000_000 ether);
     }
 
-    /// @notice Option C: with no price bound the exact-output swap under-fills, and the ASSERT_FILL
-    ///         action reverts with the margin-level `IncompleteFill` error rather than silently opening
-    ///         a smaller position. The open is all-or-nothing.
+    /// @notice With no price bound the UR-routed exact-output swap under-fills the thin pool, and the
+    ///         `ASSERT_ACCOUNT_BALANCE` guard reverts the margin-level `IncompleteFill` error rather than
+    ///         silently opening a smaller position. The open is all-or-nothing. No equity is pre-funded,
+    ///         so the account holds only the swap output; `maxDebtIn` (2 ether) sits far above the ~0.6
+    ///         ether the swap actually spends, so the swap partial-fills at the pool's price limit (it
+    ///         does not trip the input cap) and leaves the account below `collateralToBuy`.
     function test_increasePosition_revertsOnPartialFill() public {
-        _fundEquity();
+        (bytes memory cmds, bytes[] memory ins) = _openRoute(0);
         vm.expectPartialRevert(IMarginRouter.IncompleteFill.selector);
-        _open(0);
+        _open(cmds, ins);
     }
 
     /// @notice Fix A: a per-hop bound the realized price cannot meet trips the price guard during the
@@ -82,8 +89,9 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
     function test_increasePosition_priceGuardRevertsOnRealizedPrice() public {
         _fundEquity();
         // 2.0 collateral-per-debt is unreachable buying at ~1:1, so the realized price is far below it
+        (bytes memory cmds, bytes[] memory ins) = _openRoute(2e36);
         vm.expectPartialRevert(IV4Router.V4TooMuchRequestedPerHopSingle.selector);
-        _open(2e36);
+        _open(cmds, ins);
     }
 
     /// @notice A thin pool that cannot buy back the full debt makes the close revert atomically. The
@@ -97,6 +105,9 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
         MarginAccount(payable(account)).supplyCollateral(adapter, market, 1 ether);
         MarginAccount(payable(account)).borrow(adapter, market, 1 ether, address(this));
 
+        (, uint256 curDebt) = adapter.positionOf(account, market);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(thinClosePoolKey, collateral, debt, uint128(curDebt), 2 ether, account);
         vm.expectPartialRevert(IMarginRouter.IncompleteFill.selector);
         marginRouter.decreasePosition(
             IMarginRouter.DecreaseParams({
@@ -104,9 +115,9 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
                 maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
-                poolKey: thinClosePoolKey,
                 maxCollateralIn: 2 ether,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 subId: 7,
                 deadline: block.timestamp + 1
             })
@@ -117,16 +128,26 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers {
         MockERC20(Currency.unwrap(collateral)).transfer(marginRouter.accountOf(address(this), 0), INITIAL_EQUITY);
     }
 
-    function _open(uint256 minHopPriceX36) internal {
+    /// @dev Builds the increase route over the thin open pool with an optional per-hop price bound.
+    ///      Kept separate so the caller computes it BEFORE an `expectRevert` (the `accountOf` read would
+    ///      otherwise be the call the cheatcode expects to revert).
+    function _openRoute(uint256 minHopPriceX36) internal view returns (bytes memory cmds, bytes[] memory ins) {
+        address account = marginRouter.accountOf(address(this), 0);
+        (cmds, ins) = buildV4ExactOutRoute(
+            thinOpenPoolKey, debt, collateral, REQUESTED_COLLATERAL, MAX_DEBT_IN, account, minHopPriceX36
+        );
+    }
+
+    function _open(bytes memory cmds, bytes[] memory ins) internal {
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: thinOpenPoolKey,
                 equity: 0,
                 collateralToBuy: REQUESTED_COLLATERAL,
                 maxDebtIn: MAX_DEBT_IN,
-                minHopPriceX36: minHopPriceX36,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1

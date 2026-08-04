@@ -13,10 +13,12 @@ to integrate with it from both smart contracts and a front end.
 A "margin" position is leveraged spot exposure:
 
 1. Borrow the **debt** token from the lending protocol.
-2. Swap the **debt** token into the **collateral** token through a v4 pool (exact-output).
+2. Swap the **debt** token into the **collateral** token (exact-output).
 3. Supply the collateral (your equity plus the bought amount) to the lending protocol.
 
 The sequence runs inside one `PoolManager` unlock using v4 flash accounting, which lets us swap debt tokens we don't have yet for the collateral we'll use to borrow it. The result is a position that is **long the collateral token and short the debt token**, at a leverage chosen by the caller and bounded only by the maximum LTV of the chosen market.
+
+The swap itself routes through the **Universal Router** (the `ROUTE_SWAP` action), so liquidity can be sourced across v2, v3, and v4 rather than a single v4 pool. Because the Universal Router self-settles its own swap, the router wraps the call in a flash-take envelope: it flash-takes the input from the PoolManager, funds the Universal Router to spend exactly what the swap costs (a scoped Permit2 allowance = `maxDebtIn`/`maxCollateralIn`), and settles the unspent take — leaving the same net delta a native v4 swap would, so the surrounding borrow/supply/settle are unchanged. You supply the route: `increasePosition`/`decreasePosition` take the Universal Router `routeCommands`/`routeInputs` you build off-chain (see §6.5), and the router only requires that the route delivers the bought output to your account (enforced by `ASSERT_ACCOUNT_BALANCE`) and stays within the `maxDebtIn`/`maxCollateralIn` cap — it does not trust the route's internals. The Universal Router is a constructor immutable (`universalRouter`), fixed at deployment; it cannot be the zero address, so a router is always wired to a Universal Router before any position swap can run.
 
 Each user's position lives in their own **`MarginAccount`** — a minimal, soulbound contract that is
 itself the borrower/supplier in the lending protocol. The **`MarginRouter`** orchestrates the flows
@@ -177,22 +179,25 @@ The market collateral must be WETH (`NativeCollateralMismatch` otherwise). When 
 
 ### 3.6 Slippage and deadlines
 
-Every position swap is a **single-hop exact-output** swap:
+A curated position swap is an **exact-output** swap you route through the Universal Router
+(`routeCommands`/`routeInputs`); the route can source liquidity across v2/v3/v4:
 
 - `maxDebtIn` (open/increase) / `maxCollateralIn` (close/decrease) is the **mandatory, binding**
-slippage bound: the absolute cap on the swap input. Derive it from a quote, not spot price.
-- `minHopPriceX36` is an **optional** additional per-hop price bound (X36 fixed-point). Zero disables
-only that secondary check; it does not relax the binding absolute cap. It is redundant with the
-absolute cap for a single hop, so it may be left zero. When set, it is enforced against the swap's
-**realized** output, so an under-filled swap that executes below the bound reverts
-(`V4TooMuchRequestedPerHopSingle`).
+slippage bound: the absolute cap on the swap input. The router flash-takes this amount and grants the
+Universal Router a Permit2 allowance of exactly this much, so it binds regardless of what the route's
+own `amountInMaximum` says. Derive it from a quote, not spot price. It must also stay within the
+flash-takeable PoolManager liquidity of the input token, so size it as a realistic slippage cap, not an
+arbitrary large value.
+- Any per-hop price bound (e.g. v4's `minHopPriceX36`) is encoded **inside your route**, not passed as a
+separate param.
 - `deadline` is a Unix timestamp; the call reverts (`DeadlinePassed`) if `block.timestamp` exceeds it.
-- **Position swaps are all-or-nothing on amount.** A v4 exact-output swap can partially fill on a thin
-pool. Both the increase and the decrease/close assert the swap delivered the full requested output and
-revert (`IncompleteFill`) otherwise, rather than acting on a smaller amount than requested (an open
-that under-filled would open a smaller position; a close that under-bought the debt would fail the
-repay opaquely). `minHopPriceX36` bounds the *price*; the exact-output amount is bounded by this
-all-or-nothing check.
+- **Position swaps are all-or-nothing on amount.** An exact-output swap can partially fill on a thin
+pool. After the routed swap, both the increase and the decrease/close assert the account received the
+requested output (`ASSERT_ACCOUNT_BALANCE`) and revert (`IncompleteFill`) otherwise, rather than acting
+on a smaller amount (an open that under-filled would open a smaller position; a close that under-bought
+the debt would fail the repay opaquely). Your route MUST deliver the bought output to your MarginAccount
+and draw the input from the router as payer via Permit2; the guards above make a wrong route fail
+loudly rather than silently.
 
 ---
 
@@ -241,7 +246,8 @@ set (swap / settle / take, and `SWEEP` / `WRAP` / `UNWRAP`) plus the margin opco
 | `PULL_TO_ACCOUNT(currency, amount, payerIsUser)` | Move a token into the active account: pulled from the caller via Permit2 (`payerIsUser = true`) or from the router's own balance (`false`). Enables repay-from-wallet and native equity. |
 | `ACCOUNT_SUPPLY_COLLATERAL` / `ACCOUNT_BORROW` | Supply/borrow on the active account. **Allowlist-gated** (exposure-increasing). |
 | `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. Not allowlist-gated (exits stay open). |
-| `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_FILL(currency, minAmount)` | Opt-in health and fill guards; encode them yourself. |
+| `ROUTE_SWAP(input, maxIn, commands, inputs)` | Route a swap through the Universal Router across v2/v3/v4: flash-take up to `maxIn` of `input`, fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle the unspent take. Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
+| `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_FILL(currency, minAmount)` / `ASSERT_ACCOUNT_BALANCE(currency, minAmount)` | Opt-in guards; encode them yourself. `ASSERT_FILL` checks the router's swap credit; `ASSERT_ACCOUNT_BALANCE` checks the active account received at least `minAmount` (the fill guard after a routed swap that delivers to the account). |
 
 `execute` does no entry validation — it gives exactly the guardrails the plan encodes. Composing plans
 safely:
@@ -345,23 +351,62 @@ contract MarginIntegrator {
         IERC20(weth).approve(address(permit2), type(uint256).max);
         permit2.approve(weth, address(router), uint160(equity), uint48(block.timestamp + 1 hours));
 
-        account = router.increasePosition(
+        // the account is deterministic in (owner, subId), so we can build the route to it before opening
+        account = router.accountOf(address(this), 0);
+
+        // build the Universal Router route: buy `collateralToBuy` WETH exact-output for USDC over the
+        // v4 pool, pulling the USDC from the router (payer) via Permit2 and delivering WETH to `account`.
+        // This is a standard UR command plan, so you can instead route across v2/v3 or split routes.
+        (bytes memory routeCommands, bytes[] memory routeInputs) =
+            _v4Route(poolKey, market.debt, market.collateral, collateralToBuy, maxDebtIn, account);
+
+        router.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: poolKey,
                 equity: equity,
                 collateralToBuy: collateralToBuy,
-                maxDebtIn: maxDebtIn,
-                minHopPriceX36: 0, // optional secondary bound; maxDebtIn is the binding cap
+                maxDebtIn: maxDebtIn, // binding slippage cap AND the flash-take/Permit2 allowance
+                routeCommands: routeCommands,
+                routeInputs: routeInputs,
                 maxLtvAfter: Ltv.wrap(0), // optional resulting-LTV bound; 0 skips the check
                 subId: 0,
                 deadline: block.timestamp + 15 minutes
             })
         );
     }
+
+    /// @dev Single-pool v4 exact-output UR route: buy `amountOut` of `output` for <= `maxIn` of `input`
+    ///      over `poolKey`, input settled from the router (payer) via Permit2, output taken to `to`.
+    function _v4Route(PoolKey memory key, Currency input, Currency output, uint128 amountOut, uint128 maxIn, address to)
+        internal
+        pure
+        returns (bytes memory commands, bytes[] memory inputs)
+    {
+        bytes memory actions =
+            abi.encodePacked(uint8(Actions.SWAP_EXACT_OUT_SINGLE), uint8(Actions.SETTLE), uint8(Actions.TAKE));
+        bytes[] memory p = new bytes[](3);
+        p[0] = abi.encode(IV4Router.ExactOutputSingleParams({
+            poolKey: key,
+            zeroForOne: Currency.unwrap(input) == Currency.unwrap(key.currency0),
+            amountOut: amountOut,
+            amountInMaximum: maxIn,
+            minHopPriceX36: 0,
+            hookData: ""
+        }));
+        p[1] = abi.encode(input, uint256(ActionConstants.OPEN_DELTA), true);   // SETTLE input from router (Permit2)
+        p[2] = abi.encode(output, to, uint256(ActionConstants.OPEN_DELTA));    // TAKE output to the account
+        inputs = new bytes[](1);
+        inputs[0] = abi.encode(actions, p);
+        commands = abi.encodePacked(uint8(Commands.V4_SWAP));
+    }
 }
 ```
+
+> The remaining Solidity/TypeScript examples in §6–§8 abbreviate the swap: build `routeCommands`/`routeInputs`
+> with the `_v4Route` helper above (or any Universal Router route that buys the exact output to your
+> account and pays from the router via Permit2) and pass them wherever an example still shows a `poolKey`
+> field. `increasePosition`/`decreasePosition` no longer take `poolKey` or `minHopPriceX36`.
 
 The router pulls `equity` from `msg.sender` (this contract) into the account, so this contract must
 hold the WETH and have done the two Permit2 approvals above.
@@ -1029,6 +1074,7 @@ struct AddCollateralParams { // addCollateral
 | `governance() view` / `pendingGovernance() view`     | anyone               | current / pending governance          |
 | `isAdapterAllowed(ILendingAdapter) view`             | anyone               | allowlist status                      |
 | `setAdapterAllowed(ILendingAdapter, bool)`           | governance           | curate allowlist                      |
+| `universalRouter() view`                             | anyone               | the Universal Router `ROUTE_SWAP` uses (constructor immutable) |
 | `transferGovernance(address)` / `acceptGovernance()` | governance / pending | two-step handoff                      |
 
 

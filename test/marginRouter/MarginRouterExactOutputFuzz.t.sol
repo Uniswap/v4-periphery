@@ -2,6 +2,8 @@
 pragma solidity 0.8.26;
 
 import {RoutingTestHelpers} from "../shared/RoutingTestHelpers.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
+import {DeployPermit2} from "permit2/test/utils/DeployPermit2.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -46,7 +48,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 ///   the price ratio is predictably ~0.997 for a 1:1 pool with 0.3% fee.  PRICE_GUARD_SAFE_MAX
 ///   (0.9e36) is the ceiling for the fuzzed bound, sitting safely below the worst-case realized
 ///   price of ~0.949 that occurs for the maximum 10-ether buy.
-contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
+contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
     // -------------------------------------------------------------------------
     // Constants
     // -------------------------------------------------------------------------
@@ -117,10 +119,12 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         adapter = new MockLendingAdapter(address(protocol));
         adapter.setSupported(market, true);
 
+        address permit2 = deployPermit2();
         address impl = address(new MarginAccount());
-        marginRouter = new MarginRouter(
-            manager, IAllowanceTransfer(address(0xdead)), IWETH9(address(0xbeef)), impl, address(this)
-        );
+        // route position swaps through a Universal Router bound to the local PoolManager
+        address ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
+        marginRouter =
+            new MarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this), ur);
         marginRouter.setAdapterAllowed(adapter, true);
 
         // Seed the lending protocol with enough debt liquidity to service any fuzzed borrow.
@@ -142,15 +146,17 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         address account = marginRouter.accountOf(address(this), 0);
         if (equity > 0) MockERC20(Currency.unwrap(collateral)).transfer(account, equity);
 
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(deepPoolKey, debt, collateral, collateralToBuy, DEEP_MAX_DEBT, account);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: deepPoolKey,
                 equity: 0, // equity already in account; avoid permit2
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
@@ -183,15 +189,17 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         address account = marginRouter.accountOf(address(this), subId);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
 
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(deepPoolKey, debt, collateral, collateralToBuy, DEEP_MAX_DEBT, account);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: deepPoolKey,
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: subId,
                 deadline: block.timestamp + 1
@@ -219,19 +227,22 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         // 1.1 ether is comfortably above the band capacity (regression confirms 1 ether overflows).
         collateralToBuy = uint128(bound(collateralToBuy, THIN_MIN_OVERFLOW_BUY, DEEP_MAX_BUY));
 
+        // No equity pre-funded: the account holds only the swap output. The thin band delivers far less
+        // than collateralToBuy, so ASSERT_ACCOUNT_BALANCE reverts IncompleteFill. maxDebtIn is generous,
+        // so the swap partial-fills at the pool's price limit rather than tripping the input cap.
         address account = marginRouter.accountOf(address(this), 0);
-        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
-
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(thinPoolKey, debt, collateral, collateralToBuy, DEEP_MAX_DEBT, account);
         vm.expectPartialRevert(IMarginRouter.IncompleteFill.selector);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: thinPoolKey,
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
@@ -250,23 +261,27 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
     function testFuzz_increasePosition_thinPool_priceGuardRevertsWhenBoundTooHigh(uint128 collateralToBuy) public {
         collateralToBuy = uint128(bound(collateralToBuy, THIN_MIN_OVERFLOW_BUY, DEEP_MAX_BUY));
 
+        // The UR-routed v4 exact-output swap prices the hop as requestedOutput/realizedInput. On this
+        // exhausted single-band pool the realized input is ~0.6 ether regardless of the requested amount,
+        // so the hop price is at most ~16.6 (DEEP_MAX_BUY / ~0.6 ether) across the fuzzed range. A 50e36
+        // bound sits above that for every collateralToBuy, so the swap trips V4TooMuchRequestedPerHopSingle
+        // before the ASSERT_ACCOUNT_BALANCE fill guard is reached.
+        uint256 unreachableMinHopPrice = 50e36;
+
         address account = marginRouter.accountOf(address(this), 0);
-        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
-
-        // 2.0 collateral-per-debt in X36 is far above the achievable ~1:1 ratio on this pool, so
-        // the guard fires during the swap rather than waiting for ASSERT_FILL.
-        uint256 unreachableMinHopPrice = 2e36;
-
+        (bytes memory cmds, bytes[] memory ins) = buildV4ExactOutRoute(
+            thinPoolKey, debt, collateral, collateralToBuy, DEEP_MAX_DEBT, account, unreachableMinHopPrice
+        );
         vm.expectPartialRevert(IV4Router.V4TooMuchRequestedPerHopSingle.selector);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: thinPoolKey,
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
-                minHopPriceX36: unreachableMinHopPrice,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
@@ -297,15 +312,17 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
 
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(deepPoolKey, debt, collateral, collateralToBuy, DEEP_MAX_DEBT, account, minHopPriceX36);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: deepPoolKey,
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
-                minHopPriceX36: minHopPriceX36,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
@@ -333,16 +350,18 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
 
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(deepPoolKey, debt, collateral, collateralToBuy, maxDebtIn, account);
         vm.expectPartialRevert(IV4Router.V4TooMuchRequested.selector);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: deepPoolKey,
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: maxDebtIn,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
@@ -358,21 +377,26 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         public
     {
         collateralToBuy = uint128(bound(collateralToBuy, 1, DEEP_MAX_BUY));
-        // DEEP_MAX_DEBT (12 ether) covers the worst-case cost of a DEEP_MAX_BUY (10 ether) swap.
-        maxDebtIn = uint128(bound(maxDebtIn, DEEP_MAX_DEBT, type(uint128).max));
+        // DEEP_MAX_DEBT (12 ether) covers the worst-case cost of a DEEP_MAX_BUY (10 ether) swap. The
+        // upper bound is a realistic slippage cap: ROUTE_SWAP flash-takes the FULL maxDebtIn from the
+        // PoolManager up front, so an absurd value would underflow the manager's debt balance (the deep
+        // pool holds ~200 ether). 100 ether stays well within the takeable liquidity.
+        maxDebtIn = uint128(bound(maxDebtIn, DEEP_MAX_DEBT, 100 ether));
 
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
 
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(deepPoolKey, debt, collateral, collateralToBuy, maxDebtIn, account);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: deepPoolKey,
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: maxDebtIn,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
@@ -399,30 +423,34 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
 
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(deepPoolKey, debt, collateral, collateralToBuy, DEEP_MAX_DEBT, account);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: deepPoolKey,
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
             })
         );
 
+        (, uint256 curDebt) = adapter.positionOf(account, market);
+        (cmds, ins) = buildV4ExactOutRoute(deepPoolKey, collateral, debt, uint128(curDebt), DEEP_MAX_DEBT, account);
         marginRouter.decreasePosition(
             IMarginRouter.DecreaseParams({
                 debtToRepay: type(uint256).max,
                 maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
-                poolKey: deepPoolKey,
                 maxCollateralIn: DEEP_MAX_DEBT,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 subId: 0,
                 deadline: block.timestamp + 1
             })
@@ -450,15 +478,17 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
 
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(deepPoolKey, debt, collateral, collateralToBuy, DEEP_MAX_DEBT, account);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: deepPoolKey,
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
@@ -470,14 +500,15 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         if (totalDebt < 2) return;
         debtToRepay = uint128(bound(debtToRepay, 1, totalDebt - 1));
 
+        (cmds, ins) = buildV4ExactOutRoute(deepPoolKey, collateral, debt, debtToRepay, DEEP_MAX_DEBT, account);
         marginRouter.decreasePosition(
             IMarginRouter.DecreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: deepPoolKey,
                 debtToRepay: debtToRepay,
                 maxCollateralIn: DEEP_MAX_DEBT,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: toLtv(0.99e18),
                 subId: 0,
                 deadline: block.timestamp + 1
@@ -513,6 +544,10 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         MarginAccount(payable(account)).supplyCollateral(adapter, market, collateralSeed);
         MarginAccount(payable(account)).borrow(adapter, market, debtSeed, address(this));
 
+        // 10 ether flash-take is within the pool's liquidity, so the swap runs and partial-fills on the
+        // thin close band (it cannot buy debtSeed), and ASSERT_ACCOUNT_BALANCE reverts IncompleteFill
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(thinClosePoolKey, collateral, debt, debtSeed, 10 ether, account);
         vm.expectRevert();
         marginRouter.decreasePosition(
             IMarginRouter.DecreaseParams({
@@ -520,9 +555,9 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
                 maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: market,
-                poolKey: thinClosePoolKey,
-                maxCollateralIn: type(uint128).max,
-                minHopPriceX36: 0,
+                maxCollateralIn: 10 ether,
+                routeCommands: cmds,
+                routeInputs: ins,
                 subId: 99,
                 deadline: block.timestamp + 1
             })
@@ -543,15 +578,17 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
         address account = marginRouter.accountOf(address(this), 0);
         MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
 
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(deepPoolKey, debt, collateral, firstBuy, DEEP_MAX_DEBT, account);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: deepPoolKey,
                 equity: 0,
                 collateralToBuy: firstBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1
@@ -560,15 +597,16 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers {
 
         uint256 collateralAfterOpen = protocol.collateralOf(account);
 
+        (cmds, ins) = buildV4ExactOutRoute(deepPoolKey, debt, collateral, secondBuy, DEEP_MAX_DEBT, account);
         marginRouter.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: market,
-                poolKey: deepPoolKey,
                 equity: 0,
                 collateralToBuy: secondBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1

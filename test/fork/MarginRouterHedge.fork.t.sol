@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Test, console2} from "forge-std/Test.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -42,7 +43,7 @@ import {Ltv} from "../../src/types/Ltv.sol";
 ///         selling WETH in the same pool, opposite directions. The Aave Pool, data provider, reserve
 ///         receipt tokens, equity tokens, Permit2, and WETH9 are all live mainnet contracts; only the
 ///         v4 pool is local. Direction is set purely by the market pairing; there is no Direction enum.
-contract MarginRouterHedgeForkTest is Test {
+contract MarginRouterHedgeForkTest is Test, MarginRouteHelpers {
     // Aave v3 PoolAddressesProvider (verified on-chain in setUp); resolves Pool, data provider, oracle
     IPoolAddressesProvider internal constant AAVE_PROVIDER =
         IPoolAddressesProvider(0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e);
@@ -118,8 +119,10 @@ contract MarginRouterHedgeForkTest is Test {
 
         // the full margin stack, wired to the live Aave Pool, canonical Permit2, and WETH9
         address impl = address(new MarginAccount());
+        // route position swaps through a Universal Router bound to the local flash-take PoolManager
+        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = new MarginRouter(
-            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
+            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
         );
         router.setAdapterAllowed(adapter, true);
     }
@@ -166,15 +169,18 @@ contract MarginRouterHedgeForkTest is Test {
     ///         funded by USDC debt, landing ~2 WETH collateral against a USDC loan on Aave.
     function _openLong(address account0) internal {
         deal(WETH, account0, 1 ether);
+        (bytes memory cmds, bytes[] memory ins) = buildV4ExactOutRoute(
+            poolKey, longMarket.debt, longMarket.collateral, LONG_BUY_WETH, _maxUsdcForWeth(LONG_BUY_WETH), account0
+        );
         router.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: longMarket,
-                poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: LONG_BUY_WETH,
                 maxDebtIn: _maxUsdcForWeth(LONG_BUY_WETH),
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
@@ -189,15 +195,17 @@ contract MarginRouterHedgeForkTest is Test {
     function _openShort(address account1) internal {
         uint128 buyUsdc = _usdcWorthOfWeth(TARGET_WETH); // ~2 WETH worth of USDC collateral to buy
         deal(USDC, account1, buyUsdc); // equal USDC equity -> total collateral ~= 2 * buyUsdc
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, shortMarket.debt, shortMarket.collateral, buyUsdc, 2.2e18, account1);
         router.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: adapter,
                 market: shortMarket,
-                poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: buyUsdc,
                 maxDebtIn: 2.2e18, // generous WETH cap (> ~2 WETH plus slippage/fees)
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 1,
                 deadline: block.timestamp + 1 hours
@@ -273,15 +281,18 @@ contract MarginRouterHedgeForkTest is Test {
     ///         collateral, receipt tokens at zero) and that residual WETH was returned to the owner.
     function _closeLongAndAssertUnwound(address account0) internal {
         uint256 wethBefore = IERC20(WETH).balanceOf(owner);
+        (, uint256 curDebt) = adapter.positionOf(account0, longMarket);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, longMarket.collateral, longMarket.debt, uint128(curDebt), 3 ether, account0);
         router.decreasePosition(
             IMarginRouter.DecreaseParams({
                 debtToRepay: type(uint256).max,
                 maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: longMarket,
-                poolKey: poolKey,
                 maxCollateralIn: 3 ether,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })
@@ -311,15 +322,19 @@ contract MarginRouterHedgeForkTest is Test {
     ///         USDC collateral, receipt tokens at zero) and that residual USDC was returned to the owner.
     function _closeShortAndAssertUnwound(address account1) internal {
         uint256 usdcBefore = IERC20(USDC).balanceOf(owner);
+        (, uint256 curDebt) = adapter.positionOf(account1, shortMarket);
+        (bytes memory cmds, bytes[] memory ins) = buildV4ExactOutRoute(
+            poolKey, shortMarket.collateral, shortMarket.debt, uint128(curDebt), _usdcWorthOfWeth(3e18), account1
+        );
         router.decreasePosition(
             IMarginRouter.DecreaseParams({
                 debtToRepay: type(uint256).max,
                 maxLtvAfter: Ltv.wrap(0),
                 adapter: adapter,
                 market: shortMarket,
-                poolKey: poolKey,
                 maxCollateralIn: _usdcWorthOfWeth(3e18), // generous USDC cap (> ~2 WETH worth)
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 subId: 1,
                 deadline: block.timestamp + 1 hours
             })

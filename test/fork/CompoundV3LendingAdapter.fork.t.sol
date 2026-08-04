@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Test, console2} from "forge-std/Test.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
@@ -31,7 +32,7 @@ import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 ///         whole stack over open -> increase -> partial-decrease -> full-close, verifying the
 ///         adapter's encode/read mapping onto Comet's supply/withdraw model and that a full close
 ///         cleanly zeroes the borrow and withdraws all collateral.
-contract CompoundV3LendingAdapterForkTest is Test {
+contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
     IComet internal constant COMET = IComet(0xc3d688B66703497DAA19211EEdff47f25384cdc3); // cUSDCv3
     address internal constant UNI = 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984; // 18 decimals, currency0
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48; // 6 decimals, currency1 (base)
@@ -67,8 +68,10 @@ contract CompoundV3LendingAdapterForkTest is Test {
 
         adapter = new CompoundV3LendingAdapter(COMET, address(this));
         address impl = address(new MarginAccount());
+        // route position swaps through a Universal Router bound to the local flash-take PoolManager
+        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = new MarginRouter(
-            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
+            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
         );
         router.setAdapterAllowed(adapter, true);
         adapter.setMarket(Currency.wrap(UNI), Currency.wrap(USDC), true);
@@ -79,92 +82,123 @@ contract CompoundV3LendingAdapterForkTest is Test {
 
         // ---- open: 1000 UNI equity, buy 1000 UNI more (~2x) with borrowed USDC ----
         deal(UNI, account, 1_000e18); // pre-fund equity to the account (equity = 0 avoids Permit2)
-        router.increasePosition(
-            IMarginRouter.IncreaseParams({
-                adapter: adapter,
-                market: market,
-                poolKey: poolKey,
-                equity: 0,
-                collateralToBuy: 1_000e18,
-                maxDebtIn: 20_000e6,
-                minHopPriceX36: 0,
-                maxLtvAfter: Ltv.wrap(0),
-                subId: 0,
-                deadline: block.timestamp + 1 hours
-            })
-        );
+        {
+            (bytes memory cmds, bytes[] memory ins) =
+                buildV4ExactOutRoute(poolKey, market.debt, market.collateral, 1_000e18, 20_000e6, account);
+            router.increasePosition(
+                IMarginRouter.IncreaseParams({
+                    adapter: adapter,
+                    market: market,
+                    equity: 0,
+                    collateralToBuy: 1_000e18,
+                    maxDebtIn: 20_000e6,
+                    routeCommands: cmds,
+                    routeInputs: ins,
+                    maxLtvAfter: Ltv.wrap(0),
+                    subId: 0,
+                    deadline: block.timestamp + 1 hours
+                })
+            );
+        }
 
-        (uint256 coll, uint256 debt) = adapter.positionOf(account, market);
-        assertApproxEqAbs(coll, 2_000e18, 1, "open: collateral = equity + bought");
-        assertGt(debt, 0, "open: USDC borrowed against UNI on Comet");
-        assertEq(COMET.borrowBalanceOf(account), debt, "positionOf debt matches Comet borrowBalanceOf");
-        _assertHealthy(account);
-        _assertNoDust(account);
-        assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), UNI_LIQUIDATE_CF, "maxLtv = UNI liquidate CF");
+        uint256 debtAfterOpen;
+        {
+            (uint256 coll, uint256 debt) = adapter.positionOf(account, market);
+            assertApproxEqAbs(coll, 2_000e18, 1, "open: collateral = equity + bought");
+            assertGt(debt, 0, "open: USDC borrowed against UNI on Comet");
+            assertEq(COMET.borrowBalanceOf(account), debt, "positionOf debt matches Comet borrowBalanceOf");
+            _assertHealthy(account);
+            _assertNoDust(account);
+            assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), UNI_LIQUIDATE_CF, "maxLtv = UNI liquidate CF");
+            debtAfterOpen = debt;
+        }
 
         // ---- increase: buy +500 UNI of leverage, no new equity ----
-        router.increasePosition(
-            IMarginRouter.IncreaseParams({
-                adapter: adapter,
-                market: market,
-                poolKey: poolKey,
-                equity: 0,
-                collateralToBuy: 500e18,
-                maxDebtIn: 20_000e6,
-                minHopPriceX36: 0,
-                maxLtvAfter: Ltv.wrap(0),
-                subId: 0,
-                deadline: block.timestamp + 1 hours
-            })
-        );
-        (uint256 coll2, uint256 debt2) = adapter.positionOf(account, market);
-        assertApproxEqAbs(coll2, 2_500e18, 1, "increase: collateral grew by bought");
-        assertGt(debt2, debt, "increase: debt grew");
-        _assertHealthy(account);
+        {
+            (bytes memory cmds, bytes[] memory ins) =
+                buildV4ExactOutRoute(poolKey, market.debt, market.collateral, 500e18, 20_000e6, account);
+            router.increasePosition(
+                IMarginRouter.IncreaseParams({
+                    adapter: adapter,
+                    market: market,
+                    equity: 0,
+                    collateralToBuy: 500e18,
+                    maxDebtIn: 20_000e6,
+                    routeCommands: cmds,
+                    routeInputs: ins,
+                    maxLtvAfter: Ltv.wrap(0),
+                    subId: 0,
+                    deadline: block.timestamp + 1 hours
+                })
+            );
+        }
+        uint256 collAfterIncrease;
+        uint256 debtAfterIncrease;
+        {
+            (uint256 coll2, uint256 debt2) = adapter.positionOf(account, market);
+            assertApproxEqAbs(coll2, 2_500e18, 1, "increase: collateral grew by bought");
+            assertGt(debt2, debtAfterOpen, "increase: debt grew");
+            _assertHealthy(account);
+            collAfterIncrease = coll2;
+            debtAfterIncrease = debt2;
+        }
 
         // ---- accrue a day of Comet interest, then partial decrease ----
         vm.warp(block.timestamp + 1 days);
-        router.decreasePosition(
-            IMarginRouter.DecreaseParams({
-                adapter: adapter,
-                market: market,
-                poolKey: poolKey,
-                debtToRepay: 1_000e6,
-                maxCollateralIn: 2_000e18,
-                minHopPriceX36: 0,
-                maxLtvAfter: toLtv(0.7e18),
-                subId: 0,
-                deadline: block.timestamp + 1 hours
-            })
-        );
-        (uint256 coll3, uint256 debt3) = adapter.positionOf(account, market);
-        assertLt(debt3, debt2, "decrease: debt reduced");
-        assertGt(debt3, 0, "decrease: position still open");
-        assertLt(coll3, coll2, "decrease: collateral sold to fund repay");
-        _assertHealthy(account);
+        {
+            (bytes memory cmds, bytes[] memory ins) =
+                buildV4ExactOutRoute(poolKey, market.collateral, market.debt, 1_000e6, 2_000e18, account);
+            router.decreasePosition(
+                IMarginRouter.DecreaseParams({
+                    adapter: adapter,
+                    market: market,
+                    debtToRepay: 1_000e6,
+                    maxCollateralIn: 2_000e18,
+                    routeCommands: cmds,
+                    routeInputs: ins,
+                    maxLtvAfter: toLtv(0.7e18),
+                    subId: 0,
+                    deadline: block.timestamp + 1 hours
+                })
+            );
+        }
+        {
+            (uint256 coll3, uint256 debt3) = adapter.positionOf(account, market);
+            assertLt(debt3, debtAfterIncrease, "decrease: debt reduced");
+            assertGt(debt3, 0, "decrease: position still open");
+            assertLt(coll3, collAfterIncrease, "decrease: collateral sold to fund repay");
+            _assertHealthy(account);
+        }
 
         // ---- full close: repay all, withdraw all UNI, residual returned ----
         uint256 uniBefore = IERC20(UNI).balanceOf(address(this));
-        router.decreasePosition(
-            IMarginRouter.DecreaseParams({
-                debtToRepay: type(uint256).max,
-                maxLtvAfter: Ltv.wrap(0),
-                adapter: adapter,
-                market: market,
-                poolKey: poolKey,
-                maxCollateralIn: 3_000e18,
-                minHopPriceX36: 0,
-                subId: 0,
-                deadline: block.timestamp + 1 hours
-            })
-        );
+        {
+            (, uint256 curDebt) = adapter.positionOf(account, market);
+            (bytes memory cmds, bytes[] memory ins) =
+                buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(curDebt), 3_000e18, account);
+            router.decreasePosition(
+                IMarginRouter.DecreaseParams({
+                    debtToRepay: type(uint256).max,
+                    maxLtvAfter: Ltv.wrap(0),
+                    adapter: adapter,
+                    market: market,
+                    maxCollateralIn: 3_000e18,
+                    routeCommands: cmds,
+                    routeInputs: ins,
+                    subId: 0,
+                    deadline: block.timestamp + 1 hours
+                })
+            );
+        }
 
-        (uint256 collEnd, uint256 debtEnd) = adapter.positionOf(account, market);
-        assertEq(debtEnd, 0, "close: borrow fully repaid on Comet (no dust)");
-        assertEq(collEnd, 0, "close: all UNI collateral withdrawn");
-        uint256 residual = IERC20(UNI).balanceOf(address(this)) - uniBefore;
-        assertGt(residual, 0, "close: residual UNI (realized PnL) returned to caller");
-        console2.log("residual UNI returned:", residual);
+        {
+            (uint256 collEnd, uint256 debtEnd) = adapter.positionOf(account, market);
+            assertEq(debtEnd, 0, "close: borrow fully repaid on Comet (no dust)");
+            assertEq(collEnd, 0, "close: all UNI collateral withdrawn");
+            uint256 residual = IERC20(UNI).balanceOf(address(this)) - uniBefore;
+            assertGt(residual, 0, "close: residual UNI (realized PnL) returned to caller");
+            console2.log("residual UNI returned:", residual);
+        }
         _assertNoDust(account);
     }
 
@@ -178,20 +212,24 @@ contract CompoundV3LendingAdapterForkTest is Test {
         address account = router.accountOf(address(this), 0);
 
         deal(UNI, account, 1_000e18);
-        router.increasePosition(
-            IMarginRouter.IncreaseParams({
-                adapter: adapter,
-                market: market,
-                poolKey: poolKey,
-                equity: 0,
-                collateralToBuy: 1_000e18,
-                maxDebtIn: 20_000e6,
-                minHopPriceX36: 0,
-                maxLtvAfter: Ltv.wrap(0),
-                subId: 0,
-                deadline: block.timestamp + 1 hours
-            })
-        );
+        {
+            (bytes memory cmds, bytes[] memory ins) =
+                buildV4ExactOutRoute(poolKey, market.debt, market.collateral, 1_000e18, 20_000e6, account);
+            router.increasePosition(
+                IMarginRouter.IncreaseParams({
+                    adapter: adapter,
+                    market: market,
+                    equity: 0,
+                    collateralToBuy: 1_000e18,
+                    maxDebtIn: 20_000e6,
+                    routeCommands: cmds,
+                    routeInputs: ins,
+                    maxLtvAfter: Ltv.wrap(0),
+                    subId: 0,
+                    deadline: block.timestamp + 1 hours
+                })
+            );
+        }
         (, uint256 debtAtOpen) = adapter.positionOf(account, market);
         assertGt(debtAtOpen, 0, "position open");
 
@@ -202,19 +240,24 @@ contract CompoundV3LendingAdapterForkTest is Test {
         // full close is the first Comet interaction since the open (no same-block interaction to
         // freshen a stored balance); it clears because borrowBalanceOf reflects the current block
         uint256 uniBefore = IERC20(UNI).balanceOf(address(this));
-        router.decreasePosition(
-            IMarginRouter.DecreaseParams({
-                debtToRepay: type(uint256).max,
-                maxLtvAfter: Ltv.wrap(0),
-                adapter: adapter,
-                market: market,
-                poolKey: poolKey,
-                maxCollateralIn: 3_000e18,
-                minHopPriceX36: 0,
-                subId: 0,
-                deadline: block.timestamp + 1 hours
-            })
-        );
+        {
+            (, uint256 curDebt) = adapter.positionOf(account, market);
+            (bytes memory cmds, bytes[] memory ins) =
+                buildV4ExactOutRoute(poolKey, market.collateral, market.debt, uint128(curDebt), 3_000e18, account);
+            router.decreasePosition(
+                IMarginRouter.DecreaseParams({
+                    debtToRepay: type(uint256).max,
+                    maxLtvAfter: Ltv.wrap(0),
+                    adapter: adapter,
+                    market: market,
+                    maxCollateralIn: 3_000e18,
+                    routeCommands: cmds,
+                    routeInputs: ins,
+                    subId: 0,
+                    deadline: block.timestamp + 1 hours
+                })
+            );
+        }
 
         (uint256 collEnd, uint256 debtEnd) = adapter.positionOf(account, market);
         assertEq(debtEnd, 0, "close: borrow fully repaid, no dust");

@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {Test, console2} from "forge-std/Test.sol";
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 
 import {IMorpho, MarketParams} from "morpho-blue/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
@@ -49,7 +50,7 @@ import {Ltv} from "../../src/types/Ltv.sol";
 ///         local: one deep full-range WETH/USDC pool seeded at the live oracle price. The long buys
 ///         WETH selling USDC and the short buys USDC selling WETH in that same pool, opposite
 ///         directions. Direction is set purely by the market pairing; there is no Direction enum.
-contract MarginRouterCrossVenueHedgeForkTest is Test {
+contract MarginRouterCrossVenueHedgeForkTest is Test, MarginRouteHelpers {
     using MarketParamsLib for MarketParams;
 
     // live Morpho Blue singleton and its WETH/USDC market (verified on-chain in setUp)
@@ -134,8 +135,10 @@ contract MarginRouterCrossVenueHedgeForkTest is Test {
         // the full margin stack, wired to live Morpho, live Aave, canonical Permit2, and WETH9;
         // both adapters are allowlisted so one router can drive positions on either venue
         address impl = address(new MarginAccount());
+        // route position swaps through a Universal Router bound to the local flash-take PoolManager
+        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = new MarginRouter(
-            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
+            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
         );
         router.setAdapterAllowed(morphoAdapter, true);
         router.setAdapterAllowed(aaveAdapter, true);
@@ -184,15 +187,18 @@ contract MarginRouterCrossVenueHedgeForkTest is Test {
     ///         by USDC debt, landing ~2 WETH collateral against a USDC loan on the live Morpho market.
     function _openLongMorpho(address account0) internal {
         deal(WETH, account0, 1 ether);
+        (bytes memory cmds, bytes[] memory ins) = buildV4ExactOutRoute(
+            poolKey, longMarket.debt, longMarket.collateral, LONG_BUY_WETH, _maxUsdcForWeth(LONG_BUY_WETH), account0
+        );
         router.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: morphoAdapter,
                 market: longMarket,
-                poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: LONG_BUY_WETH,
                 maxDebtIn: _maxUsdcForWeth(LONG_BUY_WETH),
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 0,
                 deadline: block.timestamp + 1 hours
@@ -207,15 +213,17 @@ contract MarginRouterCrossVenueHedgeForkTest is Test {
     function _openShortAave(address account1) internal {
         uint128 buyUsdc = _usdcWorthOfWeth(TARGET_WETH); // ~2 WETH worth of USDC collateral to buy
         deal(USDC, account1, buyUsdc); // equal USDC equity -> total collateral ~= 2 * buyUsdc
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, shortMarket.debt, shortMarket.collateral, buyUsdc, 2.2e18, account1);
         router.increasePosition(
             IMarginRouter.IncreaseParams({
                 adapter: aaveAdapter,
                 market: shortMarket,
-                poolKey: poolKey,
                 equity: 0,
                 collateralToBuy: buyUsdc,
                 maxDebtIn: 2.2e18, // generous WETH cap (> ~2 WETH plus slippage/fees)
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
                 subId: 1,
                 deadline: block.timestamp + 1 hours
@@ -290,15 +298,18 @@ contract MarginRouterCrossVenueHedgeForkTest is Test {
     ///         collateral) and that residual WETH was returned to the owner.
     function _closeLongAndAssertUnwound(address account0) internal {
         uint256 wethBefore = IERC20(WETH).balanceOf(owner);
+        (, uint256 curDebt) = morphoAdapter.positionOf(account0, longMarket);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, longMarket.collateral, longMarket.debt, uint128(curDebt), 3 ether, account0);
         router.decreasePosition(
             IMarginRouter.DecreaseParams({
                 debtToRepay: type(uint256).max,
                 maxLtvAfter: Ltv.wrap(0),
                 adapter: morphoAdapter,
                 market: longMarket,
-                poolKey: poolKey,
                 maxCollateralIn: 3 ether,
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 subId: 0,
                 deadline: block.timestamp + 1 hours
             })
@@ -326,15 +337,19 @@ contract MarginRouterCrossVenueHedgeForkTest is Test {
     ///         zero USDC collateral, receipt tokens at zero) and that residual USDC went to the owner.
     function _closeShortAndAssertUnwound(address account1) internal {
         uint256 usdcBefore = IERC20(USDC).balanceOf(owner);
+        (, uint256 curDebt) = aaveAdapter.positionOf(account1, shortMarket);
+        (bytes memory cmds, bytes[] memory ins) = buildV4ExactOutRoute(
+            poolKey, shortMarket.collateral, shortMarket.debt, uint128(curDebt), _usdcWorthOfWeth(3e18), account1
+        );
         router.decreasePosition(
             IMarginRouter.DecreaseParams({
                 debtToRepay: type(uint256).max,
                 maxLtvAfter: Ltv.wrap(0),
                 adapter: aaveAdapter,
                 market: shortMarket,
-                poolKey: poolKey,
                 maxCollateralIn: _usdcWorthOfWeth(3e18), // generous USDC cap (> ~2 WETH worth)
-                minHopPriceX36: 0,
+                routeCommands: cmds,
+                routeInputs: ins,
                 subId: 1,
                 deadline: block.timestamp + 1 hours
             })

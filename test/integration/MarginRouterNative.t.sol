@@ -36,13 +36,15 @@ contract MarginRouterNativeTest is Test {
         adapter.setSupported(market, true);
 
         address impl = address(new MarginAccount());
-        // poolManager and permit2 are unused on the native addCollateral path
+        // poolManager and permit2 are unused on the native addCollateral path; the router requires a
+        // non-zero universalRouter at construction but this test never routes a swap
         router = new MarginRouter(
             IPoolManager(makeAddr("pm")),
             IAllowanceTransfer(makeAddr("permit2")),
             IWETH9(address(weth)),
             impl,
-            address(this)
+            address(this),
+            makeAddr("universalRouter")
         );
         router.setAdapterAllowed(adapter, true);
     }

@@ -60,4 +60,22 @@ library MarginActions {
     ///         `CONTRACT_BALANCE` is honored only on the router-balance path. Decoded with
     ///         `MarginCalldataDecoder.decodePull`.
     uint256 internal constant PULL_TO_ACCOUNT = 0x38;
+
+    /// @notice Routes the position swap through the Universal Router instead of a single v4 pool, so a
+    ///         plan can source liquidity across v2/v3/v4. The router flash-takes up to `maxIn` of the
+    ///         input currency from the PoolManager, funds the Universal Router to pull exactly what it
+    ///         spends (via a scoped Permit2 allowance), runs the caller-built UR command plan (which
+    ///         must deliver the output to the active account), then settles the unspent flash-take
+    ///         back. The router's remaining debt in the input currency then equals exactly what UR
+    ///         spent, so a downstream borrow/settle nets via `OPEN_DELTA` exactly as a native v4 swap
+    ///         would. Decoded with `MarginCalldataDecoder.decodeRouteSwap`.
+    uint256 internal constant ROUTE_SWAP = 0x39;
+
+    /// @notice Asserts that the active account's wallet balance of a currency is at least a minimum,
+    ///         reverting `IncompleteFill` otherwise. Used after `ROUTE_SWAP` to make the curated flows
+    ///         all-or-nothing: an exact-output swap that under-fills (e.g. a v4 hop exhausts liquidity
+    ///         before reaching the requested output) delivers less to the account, and this catches it
+    ///         before the position is built on a short fill. Decoded with
+    ///         `MarginCalldataDecoder.decodeFillCheck` (same `(currency, minAmount)` shape).
+    uint256 internal constant ASSERT_ACCOUNT_BALANCE = 0x3a;
 }
