@@ -132,6 +132,39 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         _assertNoResidual(account);
     }
 
+    /// @dev An execute plan emits a `PositionUpdated` snapshot after each position mutation, so an
+    ///      indexer can reconstruct the resulting state without an archive `describePosition` call.
+    function test_execute_emitsPositionUpdatedSnapshots() public {
+        address account = marginRouter.accountOf(address(this), 0);
+        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
+
+        vm.recordLogs();
+        marginRouter.execute(_openPlan(0, 2 ether, 5 ether), block.timestamp + 1);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        // the open supplies then borrows, so PositionUpdated fires twice; the last carries the
+        // resulting state an indexer keeps
+        uint256 count;
+        bytes memory lastData;
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].emitter != address(marginRouter)) continue;
+            if (logs[i].topics[0] != IMarginRouter.PositionUpdated.selector) continue;
+            count++;
+            assertEq(address(uint160(uint256(logs[i].topics[1]))), address(this), "owner topic");
+            assertEq(address(uint160(uint256(logs[i].topics[2]))), account, "account topic");
+            lastData = logs[i].data;
+        }
+        assertEq(count, 2, "PositionUpdated after supply and after borrow");
+
+        // the final snapshot matches the resulting position on the mock ledger
+        (address c, address d, uint256 collateralTotal, uint256 debtTotal,,,) =
+            abi.decode(lastData, (address, address, uint256, uint256, uint256, uint256, uint256));
+        assertEq(c, Currency.unwrap(collateral), "collateral currency");
+        assertEq(d, Currency.unwrap(debt), "debt currency");
+        assertEq(collateralTotal, protocol.collateralOf(account), "collateralTotal snapshot");
+        assertEq(debtTotal, protocol.debtOf(account), "debtTotal snapshot");
+    }
+
     function test_execute_open_matchesCuratedState() public {
         // both opens must run from identical pool state; a sequential second open would swap at a
         // price the first one moved, so snapshot and revert between them

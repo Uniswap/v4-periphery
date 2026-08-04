@@ -163,6 +163,38 @@ interface IMarginRouter {
         uint256 healthFactorWad
     );
 
+    /// @notice Emitted after a position mutation (supply, withdraw, borrow, or repay) with the
+    ///         account's resulting snapshot in the `(collateral, debt)` market. Fires on every such
+    ///         action, including inside an `execute` plan, so an indexer can reconstruct position state
+    ///         from logs on any path without an archive `describePosition` call. A single transaction
+    ///         may emit several (an open emits one after the supply and one after the borrow); take the
+    ///         last per `(account, collateral, debt)` as the resulting state. The curated entry points
+    ///         additionally emit the richer `Position*` events carrying the per-operation deltas.
+    /// @dev Best-effort: the snapshot reads `adapter.describePosition`, which reverts for a
+    ///      de-registered market. To preserve the exit guarantee (withdraw/repay are never
+    ///      market-gated), a failing read is swallowed and no event is emitted rather than reverting
+    ///      the action.
+    /// @param owner The position owner (the authenticated caller).
+    /// @param account The MarginAccount holding the position.
+    /// @param collateral The collateral currency of the market.
+    /// @param debt The debt currency of the market.
+    /// @param collateralTotal The account's total collateral after the action.
+    /// @param debtTotal The account's total debt after the action.
+    /// @param currentLtv The position's current LTV after the action (WAD, 1e18 == 100%).
+    /// @param maxLtv The market's max (liquidation) LTV (WAD, 1e18 == 100%).
+    /// @param healthFactorWad The position health factor after the action (WAD, 1e18 == 1.0).
+    event PositionUpdated(
+        address indexed owner,
+        address indexed account,
+        Currency collateral,
+        Currency debt,
+        uint256 collateralTotal,
+        uint256 debtTotal,
+        Ltv currentLtv,
+        Ltv maxLtv,
+        uint256 healthFactorWad
+    );
+
     // -------------------------------------------------------------------------
     // Param structs
     // -------------------------------------------------------------------------

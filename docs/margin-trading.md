@@ -267,9 +267,14 @@ account-sweep do not, so a position is always exitable.
 5. **`PULL_TO_ACCOUNT`.** An encoded `0` amount reverts (it is not an `OPEN_DELTA` full-balance
 sentinel, unlike the other opcodes); `CONTRACT_BALANCE` is honored only on the router-balance path;
 native currency is unsupported (wrap to WETH first).
-6. **Events.** `execute` plans emit the account-level events (`CollateralSupplied`, `Borrowed`,
-`Repaid`, `Swept`, `AccountCreated`) but **not** the `Position*` snapshot events the curated entries
-emit. Indexers must reconstruct execute-driven positions from the lending-protocol flows.
+6. **Events.** Every position mutation (supply, withdraw, borrow, repay) — on any path, including
+inside an `execute` plan — emits a `PositionUpdated` snapshot with the account's resulting
+`(collateral, debt)`, LTV, max LTV, and health factor, so an indexer can reconstruct execute-driven
+positions from logs alone (take the last `PositionUpdated` per `(account, collateral, debt)` in a
+transaction as the resulting state). `execute` plans also emit the account-level delta events
+(`CollateralSupplied`, `Borrowed`, `Repaid`, `Swept`, `AccountCreated`). Only the curated entry
+points additionally emit the richer `PositionIncreased`/`PositionDecreased`/`CollateralAdded` events
+that fold the per-operation deltas and resulting snapshot into one log.
 
 > **Signing an `execute` plan is equivalent to handing over the sub-account.** Because the router is
 > the account's manager, a malicious plan can borrow to the market maximum, withdraw all collateral,
@@ -1137,7 +1142,10 @@ adapter.)
 
 ### Events
 
-`PositionIncreased`, `PositionDecreased` (a full close is a `PositionDecreased` with the position
-emptied), `CollateralAdded`, `AdapterAllowed`, `GovernanceTransferStarted`, `GovernanceTransferred`
-(router); `MarketSet` (adapter); `AccountCreated` (account factory). `execute` plans emit no router
-`Position*` events — see §4.1.
+`PositionUpdated` (a resulting-state snapshot emitted after every supply/withdraw/borrow/repay on any
+path, including `execute` plans), `PositionIncreased`, `PositionDecreased` (a full close is a
+`PositionDecreased` with the position emptied), `CollateralAdded`, `AdapterAllowed`,
+`GovernanceTransferStarted`, `GovernanceTransferred` (router); `MarketSet` (adapter); `AccountCreated`
+(account factory). Indexers can key on `PositionUpdated` for resulting state uniformly across curated
+and `execute` paths; the `Position*` increase/decrease events add the per-operation deltas on the
+curated path — see §4.1.

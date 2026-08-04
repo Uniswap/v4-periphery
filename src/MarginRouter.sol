@@ -654,6 +654,7 @@ contract MarginRouter is
         _requireAllowedAdapter(adapter);
         if (amount == ActionConstants.OPEN_DELTA) amount = market.collateral.balanceOf(account);
         IMarginAccount(account).supplyCollateral(adapter, market, amount);
+        _emitPosition(adapter, market, account);
     }
 
     /// @notice Borrows debt to `to`. Allowlist-gated (borrowing is exposure-increasing). `OPEN_DELTA`
@@ -664,6 +665,7 @@ contract MarginRouter is
         _requireAllowedAdapter(adapter);
         if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.debt);
         IMarginAccount(account).borrow(adapter, market, amount, to);
+        _emitPosition(adapter, market, account);
     }
 
     /// @notice Withdraws collateral to `to`. Not allowlist-gated: a position must always be exitable.
@@ -674,6 +676,7 @@ contract MarginRouter is
             params.decodeAdapterMarketAmountReceiver();
         if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.collateral);
         IMarginAccount(account).withdrawCollateral(adapter, market, amount, to);
+        _emitPosition(adapter, market, account);
     }
 
     /// @notice Repays debt to the lending protocol. Not allowlist-gated. `type(uint256).max` repays
@@ -681,6 +684,30 @@ contract MarginRouter is
     function _repay(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
         IMarginAccount(account).repay(adapter, market, amount);
+        _emitPosition(adapter, market, account);
+    }
+
+    /// @notice Emits a `PositionUpdated` snapshot for the account's `(collateral, debt)` market after a
+    ///         mutation, so an `execute` plan is as observable as the curated entry points. Called after
+    ///         every supply, withdraw, borrow, and repay.
+    /// @dev Best-effort: `describePosition` reverts for a de-registered market, but withdraw and repay
+    ///      are intentionally never market-gated (a position must always be exitable), so a failing read
+    ///      is swallowed rather than reverting the action. `describePosition` is `view`, so the call is a
+    ///      STATICCALL and a hostile adapter can neither reenter nor mutate state through it.
+    function _emitPosition(ILendingAdapter adapter, Market memory market, address account) private {
+        try adapter.describePosition(account, market) returns (PositionData memory position) {
+            emit PositionUpdated(
+                msgSender(),
+                account,
+                market.collateral,
+                market.debt,
+                position.collateralAmount,
+                position.debtAmount,
+                position.currentLtv,
+                position.maxLtv,
+                position.healthFactorWad
+            );
+        } catch {}
     }
 
     /// @notice Sweeps a token from the account to `to` (owner/manager only, enforced by the account).
