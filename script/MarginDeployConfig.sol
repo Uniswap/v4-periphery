@@ -35,13 +35,6 @@ abstract contract MarginDeployConfig is Script {
         weth9 = vm.envAddress("WETH9");
     }
 
-    /// @notice The Universal Router baked into the router constructor. A constructor immutable, so it is
-    ///         part of the router init code; it MUST match the value the deploy uses or the mined salt
-    ///         targets a different address. Provided via the `UNIVERSAL_ROUTER` env var on every chain.
-    function _universalRouter() internal view returns (address universalRouter) {
-        universalRouter = vm.envAddress("UNIVERSAL_ROUTER");
-    }
-
     /// @notice Predicted MarginAccount implementation for `ACCOUNT_SALT`.
     function _predictedAccountImpl() internal view returns (address accountImpl) {
         accountImpl =
@@ -49,7 +42,9 @@ abstract contract MarginDeployConfig is Script {
     }
 
     /// @notice Init code hash for
-    ///         `new MarginRouter{salt: ...}(poolManager, permit2, weth9, accountImpl, owner, universalRouter)`.
+    ///         `new MarginRouter{salt: ...}(poolManager, permit2, weth9, accountImpl, owner)`. The
+    ///         Universal Router is no longer a constructor arg (callers pass it per swap), so it does
+    ///         not affect the router address and is not part of this hash.
     function _marginRouterInitCodeHash(address poolManager, address accountImpl, address owner)
         internal
         view
@@ -58,8 +53,7 @@ abstract contract MarginDeployConfig is Script {
         (address permit2, address weth9) = _marginExternalTokenConfig();
         initCodeHash = keccak256(
             abi.encodePacked(
-                vm.getCode("MarginRouter.sol:MarginRouter"),
-                abi.encode(poolManager, permit2, weth9, accountImpl, owner, _universalRouter())
+                vm.getCode("MarginRouter.sol:MarginRouter"), abi.encode(poolManager, permit2, weth9, accountImpl, owner)
             )
         );
     }

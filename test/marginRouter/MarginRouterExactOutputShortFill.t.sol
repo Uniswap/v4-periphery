@@ -34,6 +34,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRoute
     uint128 internal constant MAX_DEBT_IN = 2 ether;
 
     IMarginRouter internal marginRouter;
+    address internal ur;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
 
@@ -62,9 +63,9 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRoute
         address permit2 = deployPermit2();
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local PoolManager
-        address ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
+        ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
         marginRouter = IMarginRouter(
-            deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this), ur)
+            deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this))
         );
         marginRouter.setAdapterAllowed(adapter, true);
 
@@ -116,6 +117,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRoute
                 adapter: adapter,
                 market: market,
                 maxCollateralIn: 2 ether,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 subId: 7,
@@ -146,6 +148,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRoute
                 equity: 0,
                 collateralToBuy: REQUESTED_COLLATERAL,
                 maxDebtIn: MAX_DEBT_IN,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),

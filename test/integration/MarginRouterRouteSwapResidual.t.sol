@@ -34,6 +34,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 ///         donation, and that the donation stays put on the router.
 contract MarginRouterRouteSwapResidualTest is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
     IMarginRouter internal marginRouter;
+    address internal ur;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
     Market internal market;
@@ -58,9 +59,9 @@ contract MarginRouterRouteSwapResidualTest is RoutingTestHelpers, MarginRouteHel
 
         address permit2 = deployPermit2();
         address impl = address(new MarginAccount());
-        address ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
+        ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
         marginRouter = IMarginRouter(
-            deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this), ur)
+            deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this))
         );
         marginRouter.setAdapterAllowed(adapter, true);
 
@@ -78,6 +79,7 @@ contract MarginRouterRouteSwapResidualTest is RoutingTestHelpers, MarginRouteHel
                 equity: 0,
                 collateralToBuy: buy,
                 maxDebtIn: 5 ether,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -97,6 +99,7 @@ contract MarginRouterRouteSwapResidualTest is RoutingTestHelpers, MarginRouteHel
                 market: market,
                 debtToRepay: 1 ether,
                 maxCollateralIn: 2 ether,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: toLtv(0.9e18),

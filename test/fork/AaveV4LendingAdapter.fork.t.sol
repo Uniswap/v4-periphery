@@ -76,6 +76,7 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
     PoolModifyLiquidityTest internal lpRouter;
     AaveV4LendingAdapter internal adapter;
     IMarginRouter internal router;
+    address internal ur;
 
     Market internal market;
     PoolKey internal poolKey;
@@ -104,10 +105,10 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
         // the full margin stack, wired to the live Aave v4 Spoke, canonical Permit2, and WETH9
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
-        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
+        ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = IMarginRouter(
             deployMarginRouter(
-                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
+                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
             )
         );
         router.setAdapterAllowed(adapter, true);
@@ -194,6 +195,7 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
                 market: market,
                 debtToRepay: debtToRepay,
                 maxCollateralIn: 2000e6,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: toLtv(0.7e18),
@@ -233,6 +235,7 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
                 adapter: adapter,
                 market: market,
                 maxCollateralIn: 6000e6,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 subId: 0,
@@ -275,6 +278,7 @@ contract AaveV4LendingAdapterForkTest is Test, MarginRouteHelpers {
                 equity: 0,
                 collateralToBuy: buy,
                 maxDebtIn: maxDebtIn,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),

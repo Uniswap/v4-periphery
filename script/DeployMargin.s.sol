@@ -30,7 +30,7 @@ import {CompoundV3LendingAdapter} from "../src/CompoundV3LendingAdapter.sol";
 ///           can hand off each role via the two-step transferGovernance/acceptGovernance (router) and
 ///           transferOwnership/acceptOwnership (adapters).
 ///         - `routerSalt` comes from MineMarginRouterSalt and is only valid for the exact
-///           (poolManager, permit2, weth9, accountImpl, governance, universalRouter) tuple it was mined against. The
+///           (poolManager, permit2, weth9, accountImpl, governance) tuple it was mined against. The
 ///           accountImpl is itself derived from ACCOUNT_SALT, so ACCOUNT_SALT here MUST match the
 ///           miner; otherwise the mined router address will not be produced.
 contract DeployMargin is Script {
@@ -78,13 +78,10 @@ contract DeployMargin is Script {
     ///        mainnet).
     /// @param compoundComet The Compound v3 Comet the Compound adapter routes through (the USDC Comet
     ///        on mainnet).
-    /// @param universalRouter The Universal Router the router's ROUTE_SWAP action routes position swaps
-    ///        through. A constructor immutable, so it is part of the router init code the vanity salt is
-    ///        mined against.
     /// @param routerSalt The vanity salt from MineMarginRouterSalt, valid only for the exact
-    ///        (poolManager, permit2, weth9, accountImpl, governance, universalRouter) tuple it was mined
-    ///        against. Adding universalRouter changes the router init-code hash, so the salt must be
-    ///        re-mined.
+    ///        (poolManager, permit2, weth9, accountImpl, governance) tuple it was mined against. The
+    ///        Universal Router is no longer a constructor arg (callers pass it per swap), so it does not
+    ///        affect the router address.
     /// @return impl The deployed MarginAccount implementation.
     /// @return morphoAdapter The deployed Morpho lending adapter.
     /// @return aaveAdapter The deployed Aave v3 lending adapter.
@@ -100,7 +97,6 @@ contract DeployMargin is Script {
         address aaveProvider,
         address aaveV4Spoke,
         address compoundComet,
-        address universalRouter,
         bytes32 routerSalt
     )
         public
@@ -137,11 +133,11 @@ contract DeployMargin is Script {
         // factory MineMarginRouterSalt / create2crunch mine against) so the router lands at the mined
         // address; a source-level `new MarginRouter{salt}` would deploy from this script's address
         // instead. getCode reads the router's optimizer-restricted artifact so the deployed runtime
-        // fits under EIP-170; `new` would embed the oversized default-profile bytecode. universalRouter
-        // is a constructor immutable, so it is part of the init code the salt is mined against.
+        // fits under EIP-170; `new` would embed the oversized default-profile bytecode. The Universal
+        // Router is not a constructor arg (callers pass it per swap), so it is not in the init code.
         bytes memory routerInitCode = abi.encodePacked(
             vm.getCode("MarginRouter.sol:MarginRouter"),
-            abi.encode(poolManager, permit2, weth9, address(impl), governance, universalRouter)
+            abi.encode(poolManager, permit2, weth9, address(impl), governance)
         );
         address predictedRouter = vm.computeCreate2Address(routerSalt, keccak256(routerInitCode), CREATE2_DEPLOYER);
         (bool routerDeployed,) = CREATE2_DEPLOYER.call(bytes.concat(routerSalt, routerInitCode));

@@ -31,16 +31,15 @@ contract MarginRouterTest is Test, MarginRouteHelpers {
     function setUp() public {
         vm.warp(1_000);
         address impl = address(new MarginAccount());
-        // poolManager / permit2 / weth9 are not called on the tested (pre-unlock) paths; the router
-        // requires a non-zero universalRouter at construction but these tests never route a swap
+        // poolManager / permit2 / weth9 are not called on the tested (pre-unlock) paths and these
+        // tests never route a swap
         router = IMarginRouter(
             deployMarginRouter(
                 IPoolManager(makeAddr("poolManager")),
                 IAllowanceTransfer(makeAddr("permit2")),
                 IWETH9(makeAddr("weth9")),
                 impl,
-                address(this),
-                makeAddr("universalRouter")
+                address(this)
             )
         );
     }

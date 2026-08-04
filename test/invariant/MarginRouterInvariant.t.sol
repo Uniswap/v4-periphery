@@ -81,6 +81,7 @@ contract MarginRouterInvariantTest is StdInvariant, Test, MarginRouteHelpers, De
     MockLendingProtocol internal protocol;
     MockLendingAdapter internal adapter;
     IMarginRouter internal marginRouter;
+    address internal ur;
 
     MarginRouterHandler internal handler;
 
@@ -221,22 +222,21 @@ contract MarginRouterInvariantTest is StdInvariant, Test, MarginRouteHelpers, De
         address permit2 = deployPermit2();
         address impl = address(new MarginAccount());
         // curated open/close swaps route through a Universal Router bound to the local PoolManager
-        address ur = deployUniversalRouter(address(poolManager), permit2, address(0xbeef));
+        ur = deployUniversalRouter(address(poolManager), permit2, address(0xbeef));
         marginRouter = IMarginRouter(
             deployMarginRouter(
                 IPoolManager(address(poolManager)),
                 IAllowanceTransfer(permit2),
                 IWETH9(address(0xbeef)),
                 impl,
-                address(this),
-                ur
+                address(this)
             )
         );
         marginRouter.setAdapterAllowed(adapter, true);
     }
 
     function _deployHandler() private {
-        handler = new MarginRouterHandler(marginRouter, adapter, protocol, collateralToken, debtToken, poolKey);
+        handler = new MarginRouterHandler(marginRouter, adapter, protocol, collateralToken, debtToken, poolKey, ur);
     }
 
     function _configureTargets() private {

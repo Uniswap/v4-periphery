@@ -69,6 +69,7 @@ contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2
     MockAavePool internal aavePool;
     AaveLendingAdapter internal adapter;
     IMarginRouter internal router;
+    address internal ur;
 
     Market internal market;
     PoolKey internal poolKey;
@@ -92,15 +93,14 @@ contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2
         address permit2 = deployPermit2();
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local PoolManager
-        address ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
+        ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
         router = IMarginRouter(
             deployMarginRouter(
                 IPoolManager(address(manager)),
                 IAllowanceTransfer(permit2),
                 IWETH9(address(0xbeef)),
                 impl,
-                address(this),
-                ur
+                address(this)
             )
         );
         router.setAdapterAllowed(adapter, true);
@@ -147,6 +147,7 @@ contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2
                 adapter: adapter,
                 market: market,
                 maxCollateralIn: 6000e6,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 subId: 0,
@@ -178,6 +179,7 @@ contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2
                 market: market,
                 debtToRepay: 0.3e18,
                 maxCollateralIn: 1000e6,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: toLtv(0.7e18),
@@ -216,6 +218,7 @@ contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2
                 adapter: adapter,
                 market: market,
                 maxCollateralIn: 6000e6,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 subId: 0,
@@ -253,6 +256,7 @@ contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: maxDebtIn,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),

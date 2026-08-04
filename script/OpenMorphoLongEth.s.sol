@@ -154,6 +154,11 @@ contract OpenMorphoLongEth is Script {
             permit2.approve(MAINNET_WETH, address(router), uint160(equity), uint48(deadline));
         }
 
+        // the Universal Router is now supplied per call rather than baked into the router, so the
+        // operator points this open at the UR the route targets (must carry already-unlocked V4_SWAP)
+        address universalRouter = _envAddress("UNIVERSAL_ROUTER", address(0));
+        require(universalRouter != address(0), "set UNIVERSAL_ROUTER env to the Universal Router");
+
         // build the Universal Router route the curated open now takes: a single-pool v4 exact-output
         // swap over `poolKey` that buys `collateralToBuy` WETH for the USDC the router flash-takes,
         // pulling the USDC from the router (payer) via Permit2 and delivering the WETH to the account
@@ -167,6 +172,7 @@ contract OpenMorphoLongEth is Script {
                 equity: equity,
                 collateralToBuy: uint128(collateralToBuy),
                 maxDebtIn: uint128(maxDebtIn),
+                universalRouter: universalRouter,
                 routeCommands: routeCommands,
                 routeInputs: routeInputs,
                 maxLtvAfter: Ltv.wrap(0),

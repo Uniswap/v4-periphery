@@ -62,6 +62,7 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
     // -------------------------------------------------------------------------
 
     IMarginRouter public marginRouter;
+    address public ur;
     MockLendingAdapter public adapter;
     MockLendingProtocol public protocol;
     MockERC20 public collateralToken;
@@ -99,9 +100,11 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
         MockLendingProtocol protocol_,
         MockERC20 collateralToken_,
         MockERC20 debtToken_,
-        PoolKey memory poolKey_
+        PoolKey memory poolKey_,
+        address ur_
     ) {
         marginRouter = marginRouter_;
+        ur = ur_;
         adapter = adapter_;
         protocol = protocol_;
         collateralToken = collateralToken_;
@@ -374,6 +377,7 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
             equity: 0,
             collateralToBuy: buy,
             maxDebtIn: MAX_DEBT_CAP,
+            universalRouter: ur,
             routeCommands: cmds,
             routeInputs: ins,
             maxLtvAfter: Ltv.wrap(0),
@@ -398,6 +402,7 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
             adapter: adapter,
             market: market,
             maxCollateralIn: MAX_COLLATERAL_CAP,
+            universalRouter: ur,
             routeCommands: cmds,
             routeInputs: ins,
             subId: subId,
@@ -418,6 +423,7 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
             market: market,
             debtToRepay: repay,
             maxCollateralIn: MAX_COLLATERAL_CAP,
+            universalRouter: ur,
             routeCommands: cmds,
             routeInputs: ins,
             maxLtvAfter: toLtv(0.95e18),

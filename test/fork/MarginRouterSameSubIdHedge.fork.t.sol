@@ -98,6 +98,7 @@ contract MarginRouterSameSubIdHedgeForkTest is Test, MarginRouteHelpers {
     MorphoLendingAdapter internal morphoAdapter;
     AaveLendingAdapter internal aaveAdapter;
     IMarginRouter internal router;
+    address internal ur;
 
     MarketParams internal morphoMarketParams; // the live Morpho WETH/USDC market for the long leg
     Market internal longMarket; // Morpho: collateral WETH, debt USDC -> long WETH
@@ -143,10 +144,10 @@ contract MarginRouterSameSubIdHedgeForkTest is Test, MarginRouteHelpers {
         // both adapters are allowlisted so one router can drive positions on either venue
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
-        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
+        ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = IMarginRouter(
             deployMarginRouter(
-                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
+                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
             )
         );
         router.setAdapterAllowed(morphoAdapter, true);
@@ -209,6 +210,7 @@ contract MarginRouterSameSubIdHedgeForkTest is Test, MarginRouteHelpers {
                 equity: 0,
                 collateralToBuy: LONG_BUY_WETH,
                 maxDebtIn: _maxUsdcForWeth(LONG_BUY_WETH),
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -234,6 +236,7 @@ contract MarginRouterSameSubIdHedgeForkTest is Test, MarginRouteHelpers {
                 equity: 0,
                 collateralToBuy: buyUsdc,
                 maxDebtIn: 2.2e18, // generous WETH cap (> ~2 WETH plus slippage/fees)
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -323,6 +326,7 @@ contract MarginRouterSameSubIdHedgeForkTest is Test, MarginRouteHelpers {
                 adapter: morphoAdapter,
                 market: longMarket,
                 maxCollateralIn: 3 ether,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 subId: SHARED_SUB_ID,
@@ -364,6 +368,7 @@ contract MarginRouterSameSubIdHedgeForkTest is Test, MarginRouteHelpers {
                 adapter: aaveAdapter,
                 market: shortMarket,
                 maxCollateralIn: _usdcWorthOfWeth(3e18), // generous USDC cap (> ~2 WETH worth)
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 subId: SHARED_SUB_ID,

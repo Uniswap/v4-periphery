@@ -75,12 +75,6 @@ contract MarginRouter is
     Owner internal _governance;
     mapping(ILendingAdapter adapter => bool isAllowed) internal _allowedAdapters;
 
-    /// @notice The Universal Router the `ROUTE_SWAP` action dispatches swaps to. Set once at
-    ///         construction: it is canonical infrastructure like the PoolManager and Permit2, and must
-    ///         carry the already-unlocked `V4_SWAP` support (a UR built after PR #491). Immutable, so a
-    ///         router cannot be deployed without one.
-    address public immutable universalRouter;
-
     /// @notice Emitted when governance allows or disallows a lending adapter.
     /// @param adapter The adapter address whose allowlist status changed.
     /// @param allowed True if the adapter was allowed; false if it was disallowed.
@@ -111,15 +105,12 @@ contract MarginRouter is
     ///        timelock) that curates the adapter allowlist. Passed explicitly rather than read from
     ///        `msg.sender` so a deterministic CREATE2 deployment sets the intended owner instead of
     ///        the CREATE2 factory. Mirrors v4-core's `PoolManager(address initialOwner)` pattern.
-    /// @param universalRouter_ The Universal Router the `ROUTE_SWAP` action routes position swaps
-    ///        through. Must be non-zero and carry the already-unlocked `V4_SWAP` support (PR #491).
     constructor(
         IPoolManager poolManager_,
         IAllowanceTransfer permit2_,
         IWETH9 weth9_,
         address accountImplementation,
-        address governance_,
-        address universalRouter_
+        address governance_
     )
         V4Router(poolManager_)
         Permit2Forwarder(permit2_)
@@ -129,8 +120,6 @@ contract MarginRouter is
         // governance is set explicitly so CREATE2 deployment names the intended owner, not the
         // CREATE2 factory; hand off to a timelock or multisig after setup
         _governance.write(governance_);
-        if (universalRouter_ == address(0)) revert UniversalRouterNotSet();
-        universalRouter = universalRouter_;
     }
 
     /// @inheritdoc IMarginRouter
@@ -243,7 +232,11 @@ contract MarginRouter is
         // exact-output and delivers it to the account, and ROUTE_SWAP settles the unspent take so the
         // router's remaining collateral debt equals what the swap spent
         actionParams[0] = abi.encode(
-            params.market.collateral, uint256(params.maxCollateralIn), params.routeCommands, params.routeInputs
+            params.universalRouter,
+            params.market.collateral,
+            uint256(params.maxCollateralIn),
+            params.routeCommands,
+            params.routeInputs
         );
         // require the account received the debt the repay needs, so an exact-output under-fill reverts
         // instead of surfacing as an opaque repay failure
@@ -494,8 +487,13 @@ contract MarginRouter is
         // behind a flash-take of up to maxDebtIn debt. The route buys collateralToBuy exact-output and
         // delivers it to the account, and ROUTE_SWAP settles the unspent take, so the router's remaining
         // debt equals exactly what the swap spent (the same negative delta a native v4 swap would leave).
-        actionParams[0] =
-            abi.encode(params.market.debt, uint256(params.maxDebtIn), params.routeCommands, params.routeInputs);
+        actionParams[0] = abi.encode(
+            params.universalRouter,
+            params.market.debt,
+            uint256(params.maxDebtIn),
+            params.routeCommands,
+            params.routeInputs
+        );
         // require the account received the full bought collateral (equity + collateralToBuy), so an
         // exact-output under-fill reverts instead of opening a smaller position
         actionParams[1] =
@@ -604,9 +602,13 @@ contract MarginRouter is
     ///         same negative delta a native v4 exact-output swap would leave, which a downstream
     ///         `ACCOUNT_BORROW`/`SETTLE` then nets via `OPEN_DELTA`. Operates only on the router; the
     ///         caller's route delivers the output to the account bound by `SET_ACCOUNT`.
-    /// @param params ABI-encoded `(input, maxIn, commands, inputs)`.
+    /// @param params ABI-encoded `(universalRouter, input, maxIn, commands, inputs)`. The Universal
+    ///        Router is supplied per call (not a router immutable) so callers pick the UR deployment
+    ///        their route targets; it must be non-zero and carry already-unlocked `V4_SWAP` support.
     function _routeSwap(bytes calldata params) private {
-        (Currency input, uint256 maxIn, bytes memory commands, bytes[] memory inputs) = params.decodeRouteSwap();
+        (address universalRouter, Currency input, uint256 maxIn, bytes memory commands, bytes[] memory inputs) =
+            params.decodeRouteSwap();
+        if (universalRouter == address(0)) revert UniversalRouterNotSet();
         address token = Currency.unwrap(input);
 
         // snapshot any balance the router already holds in the input currency, so step 4 settles only

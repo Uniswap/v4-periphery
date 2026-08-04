@@ -47,6 +47,7 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
     PoolModifyLiquidityTest internal lpRouter;
     CompoundV3LendingAdapter internal adapter;
     IMarginRouter internal router;
+    address internal ur;
     Market internal market;
     PoolKey internal poolKey;
 
@@ -68,10 +69,10 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
         adapter = new CompoundV3LendingAdapter(COMET, address(this));
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
-        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
+        ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = IMarginRouter(
             deployMarginRouter(
-                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
+                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
             )
         );
         router.setAdapterAllowed(adapter, true);
@@ -93,6 +94,7 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
                     equity: 0,
                     collateralToBuy: 1_000e18,
                     maxDebtIn: 20_000e6,
+                    universalRouter: ur,
                     routeCommands: cmds,
                     routeInputs: ins,
                     maxLtvAfter: Ltv.wrap(0),
@@ -125,6 +127,7 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
                     equity: 0,
                     collateralToBuy: 500e18,
                     maxDebtIn: 20_000e6,
+                    universalRouter: ur,
                     routeCommands: cmds,
                     routeInputs: ins,
                     maxLtvAfter: Ltv.wrap(0),
@@ -155,6 +158,7 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
                     market: market,
                     debtToRepay: 1_000e6,
                     maxCollateralIn: 2_000e18,
+                    universalRouter: ur,
                     routeCommands: cmds,
                     routeInputs: ins,
                     maxLtvAfter: toLtv(0.7e18),
@@ -184,6 +188,7 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
                     adapter: adapter,
                     market: market,
                     maxCollateralIn: 3_000e18,
+                    universalRouter: ur,
                     routeCommands: cmds,
                     routeInputs: ins,
                     subId: 0,
@@ -223,6 +228,7 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
                     equity: 0,
                     collateralToBuy: 1_000e18,
                     maxDebtIn: 20_000e6,
+                    universalRouter: ur,
                     routeCommands: cmds,
                     routeInputs: ins,
                     maxLtvAfter: Ltv.wrap(0),
@@ -252,6 +258,7 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
                     adapter: adapter,
                     market: market,
                     maxCollateralIn: 3_000e18,
+                    universalRouter: ur,
                     routeCommands: cmds,
                     routeInputs: ins,
                     subId: 0,

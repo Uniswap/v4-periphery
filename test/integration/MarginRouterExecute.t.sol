@@ -37,6 +37,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
     using Planner for Plan;
 
     IMarginRouter internal marginRouter;
+    address internal ur;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
     IAllowanceTransfer internal permit2;
@@ -60,9 +61,8 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
 
         address impl = address(new MarginAccount());
         // the curated increasePosition parity test routes its swap through a Universal Router
-        address ur = deployUniversalRouter(address(manager), address(permit2), address(0xbeef));
-        marginRouter =
-            IMarginRouter(deployMarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this), ur));
+        ur = deployUniversalRouter(address(manager), address(permit2), address(0xbeef));
+        marginRouter = IMarginRouter(deployMarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this)));
         marginRouter.setAdapterAllowed(adapter, true);
 
         // fund the lending protocol with debt to lend out
@@ -182,6 +182,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
                 equity: 0,
                 collateralToBuy: 2 ether,
                 maxDebtIn: 5 ether,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),

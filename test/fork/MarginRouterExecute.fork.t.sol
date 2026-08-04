@@ -66,6 +66,7 @@ contract MarginRouterExecuteForkTest is Test, MarginRouteHelpers {
     PoolModifyLiquidityTest internal lpRouter;
     MorphoLendingAdapter internal adapter;
     IMarginRouter internal router;
+    address internal ur;
 
     MarketParams internal marketParams;
     Market internal market;
@@ -96,10 +97,10 @@ contract MarginRouterExecuteForkTest is Test, MarginRouteHelpers {
 
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
-        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
+        ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = IMarginRouter(
             deployMarginRouter(
-                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
+                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
             )
         );
         router.setAdapterAllowed(adapter, true);
@@ -125,6 +126,7 @@ contract MarginRouterExecuteForkTest is Test, MarginRouteHelpers {
                 equity: 1 ether,
                 collateralToBuy: 1 ether,
                 maxDebtIn: 10_000e6,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -275,6 +277,7 @@ contract MarginRouterExecuteForkTest is Test, MarginRouteHelpers {
                 equity: equity,
                 collateralToBuy: buy,
                 maxDebtIn: 10_000e6,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),

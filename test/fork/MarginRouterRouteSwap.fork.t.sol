@@ -68,12 +68,7 @@ contract MarginRouterRouteSwapForkTest is Test, MarginRouteHelpers {
         address impl = address(new MarginAccount());
         router = IMarginRouter(
             deployMarginRouter(
-                IPoolManager(address(manager)),
-                IAllowanceTransfer(PERMIT2),
-                IWETH9(WETH),
-                impl,
-                address(this),
-                universalRouter
+                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
             )
         );
         router.setAdapterAllowed(adapter, true);
@@ -143,7 +138,7 @@ contract MarginRouterRouteSwapForkTest is Test, MarginRouteHelpers {
         );
         bytes[] memory params = new bytes[](6);
         params[0] = abi.encode(uint256(0)); // subId
-        params[1] = abi.encode(Currency.wrap(USDC), maxIn, commands, urInputs);
+        params[1] = abi.encode(universalRouter, Currency.wrap(USDC), maxIn, commands, urInputs);
         params[2] = abi.encode(adapter, market, uint256(ActionConstants.OPEN_DELTA)); // supply full WETH balance
         params[3] = abi.encode(adapter, market, uint256(ActionConstants.OPEN_DELTA), address(router)); // borrow to router
         params[4] = abi.encode(Currency.wrap(USDC), uint256(ActionConstants.OPEN_DELTA), false); // settle from router

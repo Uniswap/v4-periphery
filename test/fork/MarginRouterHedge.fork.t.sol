@@ -76,6 +76,7 @@ contract MarginRouterHedgeForkTest is Test, MarginRouteHelpers {
     PoolModifyLiquidityTest internal lpRouter;
     AaveLendingAdapter internal adapter;
     IMarginRouter internal router;
+    address internal ur;
 
     Market internal longMarket; // Aave: collateral WETH, debt USDC -> long WETH
     Market internal shortMarket; // Aave: collateral USDC, debt WETH -> short WETH
@@ -119,10 +120,10 @@ contract MarginRouterHedgeForkTest is Test, MarginRouteHelpers {
         // the full margin stack, wired to the live Aave Pool, canonical Permit2, and WETH9
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
-        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
+        ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = IMarginRouter(
             deployMarginRouter(
-                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
+                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
             )
         );
         router.setAdapterAllowed(adapter, true);
@@ -180,6 +181,7 @@ contract MarginRouterHedgeForkTest is Test, MarginRouteHelpers {
                 equity: 0,
                 collateralToBuy: LONG_BUY_WETH,
                 maxDebtIn: _maxUsdcForWeth(LONG_BUY_WETH),
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -205,6 +207,7 @@ contract MarginRouterHedgeForkTest is Test, MarginRouteHelpers {
                 equity: 0,
                 collateralToBuy: buyUsdc,
                 maxDebtIn: 2.2e18, // generous WETH cap (> ~2 WETH plus slippage/fees)
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -292,6 +295,7 @@ contract MarginRouterHedgeForkTest is Test, MarginRouteHelpers {
                 adapter: adapter,
                 market: longMarket,
                 maxCollateralIn: 3 ether,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 subId: 0,
@@ -334,6 +338,7 @@ contract MarginRouterHedgeForkTest is Test, MarginRouteHelpers {
                 adapter: adapter,
                 market: shortMarket,
                 maxCollateralIn: _usdcWorthOfWeth(3e18), // generous USDC cap (> ~2 WETH worth)
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 subId: 1,

@@ -18,7 +18,7 @@ A "margin" position is leveraged spot exposure:
 
 The sequence runs inside one `PoolManager` unlock using v4 flash accounting, which lets us swap debt tokens we don't have yet for the collateral we'll use to borrow it. The result is a position that is **long the collateral token and short the debt token**, at a leverage chosen by the caller and bounded only by the maximum LTV of the chosen market.
 
-The swap itself routes through the **Universal Router** (the `ROUTE_SWAP` action), so liquidity can be sourced across v2, v3, and v4 rather than a single v4 pool. Because the Universal Router self-settles its own swap, the router wraps the call in a flash-take envelope: it flash-takes the input from the PoolManager, funds the Universal Router to spend exactly what the swap costs (a scoped Permit2 allowance = `maxDebtIn`/`maxCollateralIn`), and settles only this call's unspent flash-take (a pre-existing balance on the router is left untouched, never swept into the settle) — leaving the same net delta a native v4 swap would, so the surrounding borrow/supply/settle are unchanged. You supply the route: `increasePosition`/`decreasePosition` take the Universal Router `routeCommands`/`routeInputs` you build off-chain (see §6.5), and the router only requires that the route delivers the bought output to your account (enforced by `ASSERT_ACCOUNT_BALANCE`) and stays within the `maxDebtIn`/`maxCollateralIn` cap — it does not trust the route's internals. The Universal Router is a constructor immutable (`universalRouter`), fixed at deployment; it cannot be the zero address, so a router is always wired to a Universal Router before any position swap can run.
+The swap itself routes through the **Universal Router** (the `ROUTE_SWAP` action), so liquidity can be sourced across v2, v3, and v4 rather than a single v4 pool. Because the Universal Router self-settles its own swap, the router wraps the call in a flash-take envelope: it flash-takes the input from the PoolManager, funds the Universal Router to spend exactly what the swap costs (a scoped Permit2 allowance = `maxDebtIn`/`maxCollateralIn`), and settles only this call's unspent flash-take (a pre-existing balance on the router is left untouched, never swept into the settle) — leaving the same net delta a native v4 swap would, so the surrounding borrow/supply/settle are unchanged. You supply the route: `increasePosition`/`decreasePosition` take the Universal Router `routeCommands`/`routeInputs` you build off-chain (see §6.5), and the router only requires that the route delivers the bought output to your account (enforced by `ASSERT_ACCOUNT_BALANCE`) and stays within the `maxDebtIn`/`maxCollateralIn` cap — it does not trust the route's internals. The Universal Router is supplied per call - in `IncreaseParams`/`DecreaseParams` for the curated flows, and as the first field of the `ROUTE_SWAP` action for `execute` plans - rather than fixed at deployment; it must be non-zero on the swap path (the call reverts `UniversalRouterNotSet` otherwise) and must carry already-unlocked `V4_SWAP` support (a Universal Router built after PR #491). Because the Universal Router is a per-call argument, different calls can point at different Universal Router deployments, so callers can adopt an improved or newer Universal Router over time without redeploying the margin router.
 
 Each user's position lives in their own **`MarginAccount`** — a minimal, soulbound contract that is
 itself the borrower/supplier in the lending protocol. The **`MarginRouter`** orchestrates the flows
@@ -248,7 +248,7 @@ set (swap / settle / take, and `SWEEP` / `WRAP` / `UNWRAP`) plus the margin opco
 | `PULL_TO_ACCOUNT(currency, amount, payerIsUser)` | Move a token into the active account: pulled from the caller via Permit2 (`payerIsUser = true`) or from the router's own balance (`false`). Enables repay-from-wallet and native equity. |
 | `ACCOUNT_SUPPLY_COLLATERAL` / `ACCOUNT_BORROW` | Supply/borrow on the active account. **Allowlist-gated** (exposure-increasing). |
 | `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. Not allowlist-gated (exits stay open). |
-| `ROUTE_SWAP(input, maxIn, commands, inputs)` | Route a swap through the Universal Router across v2/v3/v4: flash-take up to `maxIn` of `input`, fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle only this call's unspent take (any pre-existing router balance is left untouched). Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
+| `ROUTE_SWAP(universalRouter, input, maxIn, commands, inputs)` | Route a swap through the caller-supplied `universalRouter` (a Universal Router carrying already-unlocked `V4_SWAP`; must be non-zero, else `UniversalRouterNotSet`) across v2/v3/v4: flash-take up to `maxIn` of `input`, fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle only this call's unspent take (any pre-existing router balance is left untouched). Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
 | `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_FILL(currency, minAmount)` / `ASSERT_ACCOUNT_BALANCE(currency, minAmount)` | Opt-in guards; encode them yourself. `ASSERT_FILL` checks the router's swap credit; `ASSERT_ACCOUNT_BALANCE` checks the active account received at least `minAmount` (the fill guard after a routed swap that delivers to the account). |
 
 `execute` does no entry validation — it gives exactly the guardrails the plan encodes. Composing plans
@@ -330,14 +330,24 @@ contract MarginIntegrator {
     IMarginRouter public immutable router;
     ILendingAdapter public immutable adapter;
     IAllowanceTransfer public immutable permit2;
+    // Universal Router the position swaps route through; must carry already-unlocked V4_SWAP (a UR
+    // built after PR #491). Supplied per call, so it can be repointed at a newer UR without redeploying.
+    address public immutable universalRouter;
 
     // WETH/USDC pool the leverage swap routes through (currencies sorted: USDC < WETH)
     PoolKey internal poolKey;
 
-    constructor(IMarginRouter _router, ILendingAdapter _adapter, IAllowanceTransfer _permit2, PoolKey memory _key) {
+    constructor(
+        IMarginRouter _router,
+        ILendingAdapter _adapter,
+        IAllowanceTransfer _permit2,
+        address _universalRouter,
+        PoolKey memory _key
+    ) {
         router = _router;
         adapter = _adapter;
         permit2 = _permit2;
+        universalRouter = _universalRouter;
         poolKey = _key;
     }
 
@@ -374,6 +384,7 @@ contract MarginIntegrator {
                 equity: equity,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: maxDebtIn, // binding slippage cap AND the flash-take/Permit2 allowance
+                universalRouter: universalRouter, // UR to route through; must carry already-unlocked V4_SWAP
                 routeCommands: routeCommands,
                 routeInputs: routeInputs,
                 maxLtvAfter: Ltv.wrap(0), // optional resulting-LTV bound; 0 skips the check
@@ -414,7 +425,10 @@ contract MarginIntegrator {
 > `routeCommands`/`routeInputs` (TypeScript) stand for a Universal Router route built with the `_v4Route`
 > helper above — or any UR route that buys the exact output to your account and pays from the router via
 > Permit2. `increasePosition`/`decreasePosition` take `routeCommands`/`routeInputs`; they do not take a
-> `poolKey` or a top-level `minHopPriceX36` (a per-hop price bound lives inside your route).
+> `poolKey` or a top-level `minHopPriceX36` (a per-hop price bound lives inside your route). Likewise
+> `universalRouter` in those examples is the Universal Router the swap routes through - the immutable set
+> in §6.2 (or `ADDR.universalRouter` in TypeScript), a UR carrying already-unlocked `V4_SWAP` - supplied
+> per call so a later call can point at a newer UR.
 
 The router pulls `equity` from `msg.sender` (this contract) into the account, so this contract must
 hold the WETH and have done the two Permit2 approvals above.
@@ -437,6 +451,7 @@ function openLongWithEth(address weth, address usdc, uint128 collateralToBuy, ui
             equity: 0, // ignored when msg.value > 0
             collateralToBuy: collateralToBuy,
             maxDebtIn: maxDebtIn,
+            universalRouter: universalRouter, // UR with already-unlocked V4_SWAP (see §6.2)
             routeCommands: cmds, // built via _v4Route(...) as in §6.2
             routeInputs: ins,
             maxLtvAfter: Ltv.wrap(0),
@@ -456,7 +471,7 @@ function increase(Market memory market, uint128 buy, uint128 maxDebtIn) external
         IMarginRouter.IncreaseParams({
             adapter: adapter, market: market,
             equity: 0, collateralToBuy: buy, maxDebtIn: maxDebtIn,
-            routeCommands: cmds, routeInputs: ins, maxLtvAfter: Ltv.wrap(0), subId: 0, deadline: block.timestamp + 15 minutes
+            universalRouter: universalRouter, routeCommands: cmds, routeInputs: ins, maxLtvAfter: Ltv.wrap(0), subId: 0, deadline: block.timestamp + 15 minutes
         })
     );
 }
@@ -476,7 +491,7 @@ function delever(Market memory market, uint256 debtToRepay, uint128 maxCollatera
         IMarginRouter.DecreaseParams({
             adapter: adapter, market: market,
             debtToRepay: debtToRepay, maxCollateralIn: maxCollateralIn,
-            routeCommands: cmds, routeInputs: ins, maxLtvAfter: Ltv.wrap(0.7e18),
+            universalRouter: universalRouter, routeCommands: cmds, routeInputs: ins, maxLtvAfter: Ltv.wrap(0.7e18),
             subId: 0, deadline: block.timestamp + 15 minutes
         })
     );
@@ -489,7 +504,7 @@ function close(Market memory market, uint128 maxCollateralIn) external {
         IMarginRouter.DecreaseParams({
             adapter: adapter, market: market,
             debtToRepay: type(uint256).max, maxCollateralIn: maxCollateralIn,
-            routeCommands: cmds, routeInputs: ins, maxLtvAfter: Ltv.wrap(0),
+            universalRouter: universalRouter, routeCommands: cmds, routeInputs: ins, maxLtvAfter: Ltv.wrap(0),
             subId: 0, deadline: block.timestamp + 15 minutes
         })
     );
@@ -569,6 +584,7 @@ import { marginRouterAbi, lendingAdapterAbi } from "./abis";
 const ADDR = {
   router:  "0x<MARGIN_ROUTER>",        // fill in per deployment
   adapter: "0x<LENDING_ADAPTER>",      // fill in per deployment (Morpho, Aave v3, Aave v4, or Compound v3)
+  universalRouter: "0x<UNIVERSAL_ROUTER>", // fill in per deployment (a UR with already-unlocked V4_SWAP)
   permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
   weth:    "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
   usdc:    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -656,6 +672,7 @@ async function open2xLong(user: `0x${string}`) {
     equity,
     collateralToBuy,
     maxDebtIn,
+    universalRouter: ADDR.universalRouter, // UR with already-unlocked V4_SWAP; supplied per call
     routeCommands, // Universal Router route bytes (built as in §6.2)
     routeInputs,
     maxLtvAfter: 0n, // optional resulting-LTV bound (WAD); 0 skips the check, a non-zero bound must be < 1e18
@@ -729,7 +746,7 @@ async function closePosition(user: `0x${string}`, subId: bigint) {
     args: [{
       adapter: ADDR.adapter, market,
       debtToRepay: MAX_UINT256, maxCollateralIn,
-      routeCommands, routeInputs, maxLtvAfter: 0n, // ignored on a full close
+      universalRouter: ADDR.universalRouter, routeCommands, routeInputs, maxLtvAfter: 0n, // ignored on a full close
       subId, deadline,
     }],
   });
@@ -744,7 +761,7 @@ async function decreasePosition(user: `0x${string}`, subId: bigint) {
 
   const { request } = await publicClient.simulateContract({
     account: user, address: ADDR.router, abi: marginRouterAbi, functionName: "decreasePosition",
-    args: [{ adapter: ADDR.adapter, market, debtToRepay, maxCollateralIn, routeCommands, routeInputs, maxLtvAfter, subId, deadline }],
+    args: [{ adapter: ADDR.adapter, market, debtToRepay, maxCollateralIn, universalRouter: ADDR.universalRouter, routeCommands, routeInputs, maxLtvAfter, subId, deadline }],
   });
   return walletClient.writeContract(request);
 }
@@ -873,6 +890,7 @@ function openShortEth(
             equity: equityUsdc,              // 6d USDC
             collateralToBuy: collateralToBuyUsdc, // 6d USDC
             maxDebtIn: maxDebtInWeth,        // 18d WETH binding cap
+            universalRouter: universalRouter, // UR with already-unlocked V4_SWAP (see §6.2)
             routeCommands: cmds,             // built via _v4Route (see §6.2)
             routeInputs: ins,
             maxLtvAfter: Ltv.wrap(0),
@@ -915,6 +933,7 @@ router.increasePosition(
         equity: equityWeth,              // 18d WETH
         collateralToBuy: longBuyWeth,    // 18d WETH
         maxDebtIn: longMaxDebtInUsdc,    // 6d USDC
+        universalRouter: universalRouter, // UR with already-unlocked V4_SWAP (see §6.2)
         routeCommands: longCmds,         // route buying WETH for USDC (see §6.2)
         routeInputs: longIns,
         maxLtvAfter: Ltv.wrap(0),
@@ -931,6 +950,7 @@ router.increasePosition(
         equity: equityUsdc,              // 6d USDC
         collateralToBuy: shortBuyUsdc,   // 6d USDC
         maxDebtIn: shortMaxDebtInWeth,   // 18d WETH
+        universalRouter: universalRouter, // UR with already-unlocked V4_SWAP (see §6.2)
         routeCommands: shortCmds,        // route buying USDC for WETH (see §6.2)
         routeInputs: shortIns,
         maxLtvAfter: Ltv.wrap(0),
@@ -1039,6 +1059,7 @@ struct IncreaseParams {        // increasePosition
     uint256 equity;        // collateral equity (ignored if msg.value > 0)
     uint128 collateralToBuy;
     uint128 maxDebtIn;     // mandatory binding slippage cap (flash-take / Permit2 allowance)
+    address universalRouter;   // Universal Router for this swap (must carry already-unlocked V4_SWAP)
     bytes routeCommands;   // Universal Router route (buys collateralToBuy to your account)
     bytes[] routeInputs;   // per-command inputs for routeCommands
     Ltv maxLtvAfter;       // optional resulting-LTV bound (0 = skip; a non-zero bound must be < 1e18)
@@ -1053,6 +1074,7 @@ struct DecreaseParams {    // decreasePosition (partial decrease, or full close 
     Market market;
     uint256 debtToRepay;   // type(uint256).max = full close
     uint128 maxCollateralIn; // mandatory on the swap path (ignored for a zero-debt close)
+    address universalRouter;   // Universal Router for this swap (must carry already-unlocked V4_SWAP)
     bytes routeCommands;   // Universal Router route (buys debtToRepay to your account)
     bytes[] routeInputs;   // per-command inputs for routeCommands
     Ltv maxLtvAfter;       // mandatory on a partial decrease (must be < 1e18); ignored on a full close
@@ -1082,7 +1104,6 @@ struct AddCollateralParams { // addCollateral
 | `governance() view` / `pendingGovernance() view`     | anyone               | current / pending governance          |
 | `isAdapterAllowed(ILendingAdapter) view`             | anyone               | allowlist status                      |
 | `setAdapterAllowed(ILendingAdapter, bool)`           | governance           | curate allowlist                      |
-| `universalRouter() view`                             | anyone               | the Universal Router `ROUTE_SWAP` uses (constructor immutable) |
 | `transferGovernance(address)` / `acceptGovernance()` | governance / pending | two-step handoff                      |
 
 

@@ -44,7 +44,6 @@ contract DeployMarginSaltFlowTest is Test {
     address internal permit2 = makeAddr("permit2");
     address internal weth9 = makeAddr("weth9");
     address internal governance = makeAddr("governance");
-    address internal universalRouter = makeAddr("universalRouter");
 
     function setUp() public {
         // Place the deterministic factory at the canonical address the whole pipeline mines against.
@@ -63,8 +62,7 @@ contract DeployMarginSaltFlowTest is Test {
     /// @dev The exact router init code every stage builds: restricted creation code ++ encoded ctor args.
     function _routerInitCode(address accountImpl) internal view returns (bytes memory) {
         return abi.encodePacked(
-            vm.getCode("MarginRouter.sol:MarginRouter"),
-            abi.encode(pm, permit2, weth9, accountImpl, governance, universalRouter)
+            vm.getCode("MarginRouter.sol:MarginRouter"), abi.encode(pm, permit2, weth9, accountImpl, governance)
         );
     }
 

@@ -82,6 +82,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
     // -------------------------------------------------------------------------
 
     IMarginRouter internal marginRouter;
+    address internal ur;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
 
@@ -121,9 +122,9 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
         address permit2 = deployPermit2();
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local PoolManager
-        address ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
+        ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
         marginRouter = IMarginRouter(
-            deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this), ur)
+            deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this))
         );
         marginRouter.setAdapterAllowed(adapter, true);
 
@@ -155,6 +156,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 equity: 0, // equity already in account; avoid permit2
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -198,6 +200,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -241,6 +244,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -280,6 +284,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -321,6 +326,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -360,6 +366,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: maxDebtIn,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -395,6 +402,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: maxDebtIn,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -432,6 +440,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -449,6 +458,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 adapter: adapter,
                 market: market,
                 maxCollateralIn: DEEP_MAX_DEBT,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 subId: 0,
@@ -487,6 +497,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 equity: 0,
                 collateralToBuy: collateralToBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -507,6 +518,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 market: market,
                 debtToRepay: debtToRepay,
                 maxCollateralIn: DEEP_MAX_DEBT,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: toLtv(0.99e18),
@@ -556,6 +568,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 adapter: adapter,
                 market: market,
                 maxCollateralIn: 10 ether,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 subId: 99,
@@ -587,6 +600,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 equity: 0,
                 collateralToBuy: firstBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -605,6 +619,7 @@ contract MarginRouterExactOutputFuzzTest is RoutingTestHelpers, MarginRouteHelpe
                 equity: 0,
                 collateralToBuy: secondBuy,
                 maxDebtIn: DEEP_MAX_DEBT,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),

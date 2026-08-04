@@ -71,6 +71,7 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
     PoolModifyLiquidityTest internal lpRouter;
     MorphoLendingAdapter internal adapter;
     IMarginRouter internal router;
+    address internal ur;
 
     MarketParams internal marketParams;
     Market internal market;
@@ -112,10 +113,10 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
 
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
-        address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
+        ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
         router = IMarginRouter(
             deployMarginRouter(
-                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
+                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this)
             )
         );
         router.setAdapterAllowed(adapter, true);
@@ -274,6 +275,7 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
                 market: market,
                 debtToRepay: 1000e6,
                 maxCollateralIn: 2 ether,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: toLtv(0.7e18),
@@ -306,6 +308,7 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
                 adapter: adapter,
                 market: market,
                 maxCollateralIn: 5 ether,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 subId: 0,
@@ -343,6 +346,7 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
                 equity: equity,
                 collateralToBuy: buy,
                 maxDebtIn: 10_000e6,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -364,6 +368,7 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
                 equity: 0,
                 collateralToBuy: buy,
                 maxDebtIn: 10_000e6,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
@@ -512,6 +517,7 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
             equity: equity,
             collateralToBuy: buy,
             maxDebtIn: 20_000e6,
+            universalRouter: ur,
             routeCommands: cmds,
             routeInputs: ins,
             maxLtvAfter: Ltv.wrap(0),
@@ -535,6 +541,7 @@ contract MarginRouterE2EForkTest is Test, MarginRouteHelpers {
             adapter: adapter,
             market: market,
             maxCollateralIn: 10 ether,
+            universalRouter: ur,
             routeCommands: cmds,
             routeInputs: ins,
             subId: subId,

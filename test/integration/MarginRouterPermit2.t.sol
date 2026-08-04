@@ -22,6 +22,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 ///         account via Permit2, rather than the equity being pre-funded.
 contract MarginRouterPermit2Test is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
     IMarginRouter internal marginRouter;
+    address internal ur;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
     IAllowanceTransfer internal permit2;
@@ -44,9 +45,8 @@ contract MarginRouterPermit2Test is RoutingTestHelpers, MarginRouteHelpers, Depl
         adapter.setSupported(market, true);
 
         address impl = address(new MarginAccount());
-        address ur = deployUniversalRouter(address(manager), address(permit2), address(0xbeef));
-        marginRouter =
-            IMarginRouter(deployMarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this), ur));
+        ur = deployUniversalRouter(address(manager), address(permit2), address(0xbeef));
+        marginRouter = IMarginRouter(deployMarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this)));
         marginRouter.setAdapterAllowed(adapter, true);
 
         MockERC20(Currency.unwrap(debt)).transfer(address(protocol), 1_000_000 ether);
@@ -69,6 +69,7 @@ contract MarginRouterPermit2Test is RoutingTestHelpers, MarginRouteHelpers, Depl
                 equity: 1 ether,
                 collateralToBuy: 2 ether,
                 maxDebtIn: 5 ether,
+                universalRouter: ur,
                 routeCommands: cmds,
                 routeInputs: ins,
                 maxLtvAfter: Ltv.wrap(0),
