@@ -1,4 +1,7 @@
 {
+  "lib/forge-std": {
+    "rev": "bf647bd6046f2f7da30d0c2bf435e5c76a780c1b"
+  },
   "lib/morpho-blue": {
     "tag": {
       "name": "v1.0.0",
@@ -12,6 +15,24 @@
     "tag": {
       "name": "v0.1.26",
       "rev": "acd959aa4bd04720d640bf4e6a5c71037510cc4b"
+    }
+  },
+  "lib/universal-router": {
+    "tag": {
+      "name": "2.2.0",
+      "rev": "020e1b786ad9a6bad924874752167934734ad1e1"
+    }
+  },
+  "lib/v2-core": {
+    "tag": {
+      "name": "v1.0.1",
+      "rev": "4dd59067c76dea4a0e8e4bfdda41877a6b16dedc"
+    }
+  },
+  "lib/v3-core": {
+    "tag": {
+      "name": "v1.0.0",
+      "rev": "e3589b192d0be27e100cd0daaf6c97204fdb1899"
     }
   },
   "lib/v4-core": {
