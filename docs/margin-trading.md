@@ -18,7 +18,7 @@ A "margin" position is leveraged spot exposure:
 
 The sequence runs inside one `PoolManager` unlock using v4 flash accounting, which lets us swap debt tokens we don't have yet for the collateral we'll use to borrow it. The result is a position that is **long the collateral token and short the debt token**, at a leverage chosen by the caller and bounded only by the maximum LTV of the chosen market.
 
-The swap itself routes through the **Universal Router** (the `ROUTE_SWAP` action), so liquidity can be sourced across v2, v3, and v4 rather than a single v4 pool. Because the Universal Router self-settles its own swap, the router wraps the call in a flash-take envelope: it flash-takes the input from the PoolManager, funds the Universal Router to spend exactly what the swap costs (a scoped Permit2 allowance = `maxDebtIn`/`maxCollateralIn`), and settles the unspent take — leaving the same net delta a native v4 swap would, so the surrounding borrow/supply/settle are unchanged. You supply the route: `increasePosition`/`decreasePosition` take the Universal Router `routeCommands`/`routeInputs` you build off-chain (see §6.5), and the router only requires that the route delivers the bought output to your account (enforced by `ASSERT_ACCOUNT_BALANCE`) and stays within the `maxDebtIn`/`maxCollateralIn` cap — it does not trust the route's internals. The Universal Router is a constructor immutable (`universalRouter`), fixed at deployment; it cannot be the zero address, so a router is always wired to a Universal Router before any position swap can run.
+The swap itself routes through the **Universal Router** (the `ROUTE_SWAP` action), so liquidity can be sourced across v2, v3, and v4 rather than a single v4 pool. Because the Universal Router self-settles its own swap, the router wraps the call in a flash-take envelope: it flash-takes the input from the PoolManager, funds the Universal Router to spend exactly what the swap costs (a scoped Permit2 allowance = `maxDebtIn`/`maxCollateralIn`), and settles only this call's unspent flash-take (a pre-existing balance on the router is left untouched, never swept into the settle) — leaving the same net delta a native v4 swap would, so the surrounding borrow/supply/settle are unchanged. You supply the route: `increasePosition`/`decreasePosition` take the Universal Router `routeCommands`/`routeInputs` you build off-chain (see §6.5), and the router only requires that the route delivers the bought output to your account (enforced by `ASSERT_ACCOUNT_BALANCE`) and stays within the `maxDebtIn`/`maxCollateralIn` cap — it does not trust the route's internals. The Universal Router is a constructor immutable (`universalRouter`), fixed at deployment; it cannot be the zero address, so a router is always wired to a Universal Router before any position swap can run.
 
 Each user's position lives in their own **`MarginAccount`** — a minimal, soulbound contract that is
 itself the borrower/supplier in the lending protocol. The **`MarginRouter`** orchestrates the flows
@@ -61,7 +61,7 @@ identical regardless of venue.
 | `MarginAccount`        | A per-user clone (Solady clone-with-immutable-args). It is the lending counterparty (`onBehalf == account`), so it acts as itself and needs no delegated authorization. Owner and manager are baked into bytecode (soulbound).               |
 | lending adapters       | Singleton encoders over a governed `(collateral, debt)` routing table. `MorphoLendingAdapter` targets Morpho Blue; `AaveLendingAdapter` targets the Aave v3 Pool; `AaveV4LendingAdapter` targets a single Aave v4 Spoke; `CompoundV3LendingAdapter` targets a single Compound v3 Comet (its base token is the only borrowable debt). Each returns the `(target, value, callData)` an account executes and holds no funds. The caller picks a venue by passing the matching adapter. |
 | `ILendingAdapter`      | The protocol-agnostic surface the router and account depend on. New lending protocols are supported by new adapters.                                                                                                                         |
-| value types            | `Market` (the `(collateral, debt)` pair), `Ltv` (WAD ratio), `LeverageX18` (WAD multiplier), `MarketRegistry`, `Owner`.                                                                                                                      |
+| value types            | `Market` (the `(collateral, debt)` pair), `Ltv` (WAD ratio), `MarketRegistry`, `Owner`.                                                                                                                      |
 
 
 ---
@@ -160,8 +160,10 @@ So 2x ≈ 50% LTV, 3x ≈ 67% LTV, 4x ≈ 75% LTV. The lending market enforces i
 (liquidation LTV, `maxLtvWad`) at borrow time, so an open that would exceed it reverts. Both flows
 also accept a caller-supplied `maxLtvAfter` bound on the resulting LTV, asserted after the position
 settles: it is optional on `increasePosition` (zero skips the check, so callers relying only on
-`maxDebtIn` are unaffected) and mandatory on a partial `decreasePosition`. Because an open sizes on
-the pool while liquidation uses the venue oracle, `maxLtvAfter` lets a caller bound leverage by
+`maxDebtIn` are unaffected) and mandatory on a partial `decreasePosition`. A supplied (non-zero)
+bound must be able to bind — strictly below `1e18` (100%); a value at or above 100% can never be
+exceeded by a real LTV, so it would silently disable the check and is rejected with `IneffectiveLtvBound`.
+Because an open sizes on the pool while liquidation uses the venue oracle, `maxLtvAfter` lets a caller bound leverage by
 health, not just by swap input, so adverse inclusion cannot land a fresh position near the
 liquidation LTV. `Ltv` is a WAD value (`1e18 == 100%`).
 
@@ -246,7 +248,7 @@ set (swap / settle / take, and `SWEEP` / `WRAP` / `UNWRAP`) plus the margin opco
 | `PULL_TO_ACCOUNT(currency, amount, payerIsUser)` | Move a token into the active account: pulled from the caller via Permit2 (`payerIsUser = true`) or from the router's own balance (`false`). Enables repay-from-wallet and native equity. |
 | `ACCOUNT_SUPPLY_COLLATERAL` / `ACCOUNT_BORROW` | Supply/borrow on the active account. **Allowlist-gated** (exposure-increasing). |
 | `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. Not allowlist-gated (exits stay open). |
-| `ROUTE_SWAP(input, maxIn, commands, inputs)` | Route a swap through the Universal Router across v2/v3/v4: flash-take up to `maxIn` of `input`, fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle the unspent take. Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
+| `ROUTE_SWAP(input, maxIn, commands, inputs)` | Route a swap through the Universal Router across v2/v3/v4: flash-take up to `maxIn` of `input`, fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle only this call's unspent take (any pre-existing router balance is left untouched). Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
 | `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_FILL(currency, minAmount)` / `ASSERT_ACCOUNT_BALANCE(currency, minAmount)` | Opt-in guards; encode them yourself. `ASSERT_FILL` checks the router's swap credit; `ASSERT_ACCOUNT_BALANCE` checks the active account received at least `minAmount` (the fill guard after a routed swap that delivers to the account). |
 
 `execute` does no entry validation — it gives exactly the guardrails the plan encodes. Composing plans
@@ -403,10 +405,11 @@ contract MarginIntegrator {
 }
 ```
 
-> The remaining Solidity/TypeScript examples in §6–§8 abbreviate the swap: build `routeCommands`/`routeInputs`
-> with the `_v4Route` helper above (or any Universal Router route that buys the exact output to your
-> account and pays from the router via Permit2) and pass them wherever an example still shows a `poolKey`
-> field. `increasePosition`/`decreasePosition` no longer take `poolKey` or `minHopPriceX36`.
+> The remaining Solidity/TypeScript examples in §6–§8 abbreviate the swap: `cmds`/`ins` (Solidity) and
+> `routeCommands`/`routeInputs` (TypeScript) stand for a Universal Router route built with the `_v4Route`
+> helper above — or any UR route that buys the exact output to your account and pays from the router via
+> Permit2. `increasePosition`/`decreasePosition` take `routeCommands`/`routeInputs`; they do not take a
+> `poolKey` or a top-level `minHopPriceX36` (a per-hop price bound lives inside your route).
 
 The router pulls `equity` from `msg.sender` (this contract) into the account, so this contract must
 hold the WETH and have done the two Permit2 approvals above.
@@ -426,11 +429,11 @@ function openLongWithEth(address weth, address usdc, uint128 collateralToBuy, ui
         IMarginRouter.IncreaseParams({
             adapter: adapter,
             market: market,
-            poolKey: poolKey,
             equity: 0, // ignored when msg.value > 0
             collateralToBuy: collateralToBuy,
             maxDebtIn: maxDebtIn,
-            minHopPriceX36: 0,
+            routeCommands: cmds, // built via _v4Route(...) as in §6.2
+            routeInputs: ins,
             maxLtvAfter: Ltv.wrap(0),
             subId: 0,
             deadline: block.timestamp + 15 minutes
@@ -446,9 +449,9 @@ function openLongWithEth(address weth, address usdc, uint128 collateralToBuy, ui
 function increase(Market memory market, uint128 buy, uint128 maxDebtIn) external {
     router.increasePosition(
         IMarginRouter.IncreaseParams({
-            adapter: adapter, market: market, poolKey: poolKey,
+            adapter: adapter, market: market,
             equity: 0, collateralToBuy: buy, maxDebtIn: maxDebtIn,
-            minHopPriceX36: 0, maxLtvAfter: Ltv.wrap(0), subId: 0, deadline: block.timestamp + 15 minutes
+            routeCommands: cmds, routeInputs: ins, maxLtvAfter: Ltv.wrap(0), subId: 0, deadline: block.timestamp + 15 minutes
         })
     );
 }
@@ -466,9 +469,9 @@ function addCollateral(Market memory market, uint256 amount) external {
 function delever(Market memory market, uint256 debtToRepay, uint128 maxCollateralIn) external {
     router.decreasePosition(
         IMarginRouter.DecreaseParams({
-            adapter: adapter, market: market, poolKey: poolKey,
+            adapter: adapter, market: market,
             debtToRepay: debtToRepay, maxCollateralIn: maxCollateralIn,
-            minHopPriceX36: 0, maxLtvAfter: Ltv.wrap(0.7e18),
+            routeCommands: cmds, routeInputs: ins, maxLtvAfter: Ltv.wrap(0.7e18),
             subId: 0, deadline: block.timestamp + 15 minutes
         })
     );
@@ -479,9 +482,9 @@ function delever(Market memory market, uint256 debtToRepay, uint128 maxCollatera
 function close(Market memory market, uint128 maxCollateralIn) external {
     router.decreasePosition(
         IMarginRouter.DecreaseParams({
-            adapter: adapter, market: market, poolKey: poolKey,
+            adapter: adapter, market: market,
             debtToRepay: type(uint256).max, maxCollateralIn: maxCollateralIn,
-            minHopPriceX36: 0, maxLtvAfter: Ltv.wrap(0),
+            routeCommands: cmds, routeInputs: ins, maxLtvAfter: Ltv.wrap(0),
             subId: 0, deadline: block.timestamp + 15 minutes
         })
     );
@@ -645,12 +648,12 @@ async function open2xLong(user: `0x${string}`) {
   const params = {
     adapter: ADDR.adapter,
     market,
-    poolKey,
     equity,
     collateralToBuy,
     maxDebtIn,
-    minHopPriceX36: 0n,
-    maxLtvAfter: 0n, // optional resulting-LTV bound (WAD); 0 skips the check
+    routeCommands, // Universal Router route bytes (built as in §6.2)
+    routeInputs,
+    maxLtvAfter: 0n, // optional resulting-LTV bound (WAD); 0 skips the check, a non-zero bound must be < 1e18
     subId: 0n,
     deadline,
   };
@@ -719,9 +722,9 @@ async function closePosition(user: `0x${string}`, subId: bigint) {
   const { request } = await publicClient.simulateContract({
     account: user, address: ADDR.router, abi: marginRouterAbi, functionName: "decreasePosition",
     args: [{
-      adapter: ADDR.adapter, market, poolKey,
+      adapter: ADDR.adapter, market,
       debtToRepay: MAX_UINT256, maxCollateralIn,
-      minHopPriceX36: 0n, maxLtvAfter: 0n, // ignored on a full close
+      routeCommands, routeInputs, maxLtvAfter: 0n, // ignored on a full close
       subId, deadline,
     }],
   });
@@ -736,7 +739,7 @@ async function decreasePosition(user: `0x${string}`, subId: bigint) {
 
   const { request } = await publicClient.simulateContract({
     account: user, address: ADDR.router, abi: marginRouterAbi, functionName: "decreasePosition",
-    args: [{ adapter: ADDR.adapter, market, poolKey, debtToRepay, maxCollateralIn, minHopPriceX36: 0n, maxLtvAfter, subId, deadline }],
+    args: [{ adapter: ADDR.adapter, market, debtToRepay, maxCollateralIn, routeCommands, routeInputs, maxLtvAfter, subId, deadline }],
   });
   return walletClient.writeContract(request);
 }
@@ -862,11 +865,11 @@ function openShortEth(
         IMarginRouter.IncreaseParams({
             adapter: aaveAdapter,            // route through Aave v3
             market: market,                  // collateral USDC, debt WETH
-            poolKey: usdcWethKey,
             equity: equityUsdc,              // 6d USDC
             collateralToBuy: collateralToBuyUsdc, // 6d USDC
             maxDebtIn: maxDebtInWeth,        // 18d WETH binding cap
-            minHopPriceX36: 0,
+            routeCommands: cmds,             // built via _v4Route (see §6.2)
+            routeInputs: ins,
             maxLtvAfter: Ltv.wrap(0),
             subId: 0,
             deadline: block.timestamp + 15 minutes
@@ -904,11 +907,11 @@ router.increasePosition(
     IMarginRouter.IncreaseParams({
         adapter: morphoAdapter,
         market: Market({collateral: Currency.wrap(weth), debt: Currency.wrap(usdc)}),
-        poolKey: usdcWethKey,
         equity: equityWeth,              // 18d WETH
         collateralToBuy: longBuyWeth,    // 18d WETH
         maxDebtIn: longMaxDebtInUsdc,    // 6d USDC
-        minHopPriceX36: 0,
+        routeCommands: longCmds,         // route buying WETH for USDC (see §6.2)
+        routeInputs: longIns,
         maxLtvAfter: Ltv.wrap(0),
         subId: 0,
         deadline: block.timestamp + 15 minutes
@@ -920,11 +923,11 @@ router.increasePosition(
     IMarginRouter.IncreaseParams({
         adapter: aaveAdapter,
         market: Market({collateral: Currency.wrap(usdc), debt: Currency.wrap(weth)}),
-        poolKey: usdcWethKey,
         equity: equityUsdc,              // 6d USDC
         collateralToBuy: shortBuyUsdc,   // 6d USDC
         maxDebtIn: shortMaxDebtInWeth,   // 18d WETH
-        minHopPriceX36: 0,
+        routeCommands: shortCmds,        // route buying USDC for WETH (see §6.2)
+        routeInputs: shortIns,
         maxLtvAfter: Ltv.wrap(0),
         subId: 1,
         deadline: block.timestamp + 15 minutes
@@ -1028,12 +1031,12 @@ on a mainnet fork at block 25598384.
 struct IncreaseParams {        // increasePosition
     ILendingAdapter adapter;
     Market market;
-    PoolKey poolKey;
     uint256 equity;        // collateral equity (ignored if msg.value > 0)
     uint128 collateralToBuy;
-    uint128 maxDebtIn;     // mandatory binding slippage cap
-    uint256 minHopPriceX36;// optional per-hop bound (0 = off)
-    Ltv maxLtvAfter;       // optional resulting-LTV bound (0 = skip)
+    uint128 maxDebtIn;     // mandatory binding slippage cap (flash-take / Permit2 allowance)
+    bytes routeCommands;   // Universal Router route (buys collateralToBuy to your account)
+    bytes[] routeInputs;   // per-command inputs for routeCommands
+    Ltv maxLtvAfter;       // optional resulting-LTV bound (0 = skip; a non-zero bound must be < 1e18)
     uint256 subId;
     uint256 deadline;
 }
@@ -1043,11 +1046,11 @@ struct IncreaseParams {        // increasePosition
 struct DecreaseParams {    // decreasePosition (partial decrease, or full close via max debtToRepay)
     ILendingAdapter adapter;
     Market market;
-    PoolKey poolKey;
     uint256 debtToRepay;   // type(uint256).max = full close
     uint128 maxCollateralIn; // mandatory on the swap path (ignored for a zero-debt close)
-    uint256 minHopPriceX36;
-    Ltv maxLtvAfter;       // mandatory on a partial decrease; ignored on a full close
+    bytes routeCommands;   // Universal Router route (buys debtToRepay to your account)
+    bytes[] routeInputs;   // per-command inputs for routeCommands
+    Ltv maxLtvAfter;       // mandatory on a partial decrease (must be < 1e18); ignored on a full close
     uint256 subId;
     uint256 deadline;
 }
@@ -1113,6 +1116,7 @@ adapter.)
 | -------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | router   | `DeadlinePassed(uint256)`                                        | `block.timestamp` past `deadline`                                                                                         |
 | router   | `SlippageBoundRequired()`                                        | a mandatory bound (`maxDebtIn` / `maxCollateralIn` / `maxLtvAfter`) or amount (`collateralToBuy` / `debtToRepay`) is zero |
+| router   | `IneffectiveLtvBound(Ltv)`                                       | a non-zero `maxLtvAfter` is at or above 100% (`1e18`), so it could never bind (supply a bound below 100%, or 0 to skip)   |
 | router   | `PositionUnhealthy()`                                            | resulting LTV exceeds the bound                                                                                           |
 | router   | `AdapterNotAllowed(address)`                                     | adapter not on the allowlist (exposure-increasing flows)                                                                  |
 | router   | `NativeCollateralMismatch()`                                     | native ETH sent but collateral is not WETH                                                                                |
@@ -1121,7 +1125,6 @@ adapter.)
 | V4Router | `V4TooMuchRequestedPerHopSingle(uint256 minPrice, uint256 priceX36)` | a swap's realized per-hop price fell below the caller's `minHopPriceX36` bound                                        |
 | account  | `NotAuthorized()`                                                | caller is neither manager nor owner                                                                                       |
 | account  | `ReceiverNotAllowed(address)`                                    | recipient is neither manager nor owner                                                                                    |
-| Market   | `MarketSwapMismatch()`                                           | pool currencies do not match the market pair                                                                              |
 | Owner    | `NotOwner(address)` / `ZeroOwner()` / `NotPendingOwner(address)` | ownership guards                                                                                                          |
 | adapter (Morpho) | `MorphoMarketNotCreated()`                              | `setMarket` for a market that does not exist on Morpho                                                                    |
 | adapter (Aave v3/v4) | `MarketNotSupported(Currency, Currency)`           | an encode/read or `setMarket` for a `(collateral, debt)` pair that is not allowlisted/registered (Aave v3: or whose assets are not live reserves) |
