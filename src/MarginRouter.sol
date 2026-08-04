@@ -496,114 +496,140 @@ contract MarginRouter is
         if (!_allowedAdapters[adapter]) revert AdapterNotAllowed(address(adapter));
     }
 
-    /// @notice Dispatches an action to the correct handler across three ranges: (1) opcodes below
-    ///         `0x30` go to the inherited V4Router handlers (swap, settle, take), except the
-    ///         contiguous `SWEEP`/`WRAP`/`UNWRAP` trio, which V4Router does not handle and this
-    ///         contract intercepts with PositionManager-identical semantics; (2) `SET_ACCOUNT` and
-    ///         `ASSERT_FILL`, which do not operate on an active account; (3) the remaining
-    ///         account-scoped margin opcodes, guarded by `NoActiveAccount`. Called by
-    ///         `BaseActionsRouter._executeActions` for each action in the current plan.
+    /// @notice Dispatches one action from the current plan to its handler. Called by
+    ///         `BaseActionsRouter._executeActions` for each action. Opcodes fall into three ranges,
+    ///         checked in order:
+    ///           1. below the margin range (`< ACCOUNT_SUPPLY_COLLATERAL`): inherited V4Router core
+    ///              actions (swap/settle/take), plus the `SWEEP`/`WRAP`/`UNWRAP` trio this router
+    ///              intercepts because V4Router does not handle it (`_handleCoreAction`).
+    ///           2. account-independent margin actions (`SET_ACCOUNT`/`ASSERT_FILL`/`ROUTE_SWAP`):
+    ///              they act on the router itself, so they run before the active-account guard.
+    ///           3. account-scoped margin actions: everything else, which requires an active account
+    ///              (`_handleAccountAction`).
     /// @dev Overrides `V4Router._handleAction`. The active account is always derived from the
-    ///      authenticated caller (via `SET_ACCOUNT` or a curated entry point) and read from
-    ///      transient storage; it is never read from action params.
+    ///      authenticated caller and read from transient storage; it is never read from action params.
     /// @param action The opcode from `MarginActions` or the inherited `Actions` library.
     /// @param params ABI-encoded parameters for the action; decoded by `MarginCalldataDecoder`
     ///        (margin opcodes) or `CalldataDecoder` (the intercepted core opcodes).
     function _handleAction(uint256 action, bytes calldata params) internal override {
+        // range 1: inherited core actions (swap/settle/take) and the intercepted SWEEP/WRAP/UNWRAP trio
         if (action < MarginActions.ACCOUNT_SUPPLY_COLLATERAL) {
-            // SWEEP/WRAP/UNWRAP are a contiguous trio (asserted in MarginCalldataDecoder.t.sol)
-            // that V4Router does not handle (it would revert UnsupportedAction); intercept them
-            // here with PositionManager-identical semantics. Swap and settle/take opcodes (below
-            // SWEEP) pay only one failed range comparison before falling through to super.
-            if (action >= Actions.SWEEP && action <= Actions.UNWRAP) {
-                if (action == Actions.SWEEP) {
-                    (Currency currency, address to) = params.decodeCurrencyAndAddress();
-                    _sweep(currency, _mapRecipient(to));
-                } else if (action == Actions.WRAP) {
-                    _wrap(
-                        _mapWrapUnwrapAmount(
-                            CurrencyLibrary.ADDRESS_ZERO, params.decodeUint256(), Currency.wrap(address(WETH9))
-                        )
-                    );
-                } else {
-                    _unwrap(
-                        _mapWrapUnwrapAmount(
-                            Currency.wrap(address(WETH9)), params.decodeUint256(), CurrencyLibrary.ADDRESS_ZERO
-                        )
-                    );
-                }
-                return;
-            }
-            super._handleAction(action, params);
+            _handleCoreAction(action, params);
             return;
         }
 
-        // SET_ACCOUNT binds the active account; ASSERT_FILL only reads the router's own swap
-        // credit. Neither operates on an already-active account, so both dispatch before the
-        // NoActiveAccount guard below.
+        // range 2: margin actions that operate on the router, not an active account, so they run
+        // before the NoActiveAccount guard below
         if (action == MarginActions.SET_ACCOUNT) {
-            // account derived from the authenticated caller, never from calldata; createAccount is
-            // idempotent, so a repeat SET_ACCOUNT on an existing sub-account just re-activates it
+            // account derived from the authenticated caller and this subId, never from calldata;
+            // createAccount is idempotent, so re-selecting a live sub-account just re-binds it
             _setActiveAccount(createAccount(msgSender(), params.decodeSubId()));
             return;
         }
         if (action == MarginActions.ASSERT_FILL) {
-            // the router's credit in the swap output currency is the realized exact-output fill;
-            // require it covers the requested amount so a partial fill reverts before the take
+            // require the router's own credit in the output currency covers `minAmount`, so a partial
+            // exact-output fill reverts before it is taken
             (Currency currency, uint256 minAmount) = params.decodeFillCheck();
             uint256 received = _getFullCredit(currency);
             if (received < minAmount) revert IncompleteFill(minAmount, received);
             return;
         }
         if (action == MarginActions.ROUTE_SWAP) {
-            // route the swap through the Universal Router (v2/v3/v4) behind a flash-take of the input.
-            // Operates on the router, not the active account, so it dispatches before the guard; the
-            // caller's UR plan delivers the output to the account it set with SET_ACCOUNT.
-            (Currency input, uint256 maxIn, bytes memory commands, bytes[] memory inputs) = params.decodeRouteSwap();
-            address ur = universalRouter; // immutable, non-zero (set at construction)
-            // flash-borrow the input from the PoolManager: the router now owes `maxIn`
-            _take(input, address(this), maxIn);
-            // fund UR to pull exactly what it spends, via a Permit2 allowance scoped to this call
-            address token = Currency.unwrap(input);
-            if (IERC20(token).allowance(address(this), address(permit2)) < maxIn) {
-                IERC20(token).forceApprove(address(permit2), type(uint256).max);
-            }
-            permit2.approve(token, ur, maxIn.toUint160(), uint48(block.timestamp));
-            // run the caller-built route; it delivers the output to the active account and self-settles
-            // its own swap. UR runs inside this existing unlock (already-unlocked V4_SWAP support)
-            IUniversalRouter(ur).execute(commands, inputs, block.timestamp);
-            // settle the unspent flash-take back, so the router's remaining input debt equals exactly
-            // what UR spent: the same negative delta a native v4 exact-output swap would leave, which
-            // a downstream ACCOUNT_BORROW/SETTLE then nets via OPEN_DELTA
-            uint256 leftover = input.balanceOfSelf();
-            if (leftover > 0) _settle(input, address(this), leftover);
+            _routeSwap(params);
             return;
         }
 
-        // every remaining opcode operates on the active account; a plan must set it with
-        // SET_ACCOUNT first. Curated entry points set it before unlock and never reach this revert.
+        // range 3: account-scoped. A plan must have bound the account with SET_ACCOUNT first; curated
+        // entry points bind it before the unlock, so they never reach this revert.
         address account = _activeAccount();
         if (account == address(0)) revert NoActiveAccount();
+        _handleAccountAction(action, params, account);
+    }
 
+    /// @notice Handles an opcode below the margin range. V4Router handles swaps and settle/take; this
+    ///         router additionally intercepts the contiguous `SWEEP`/`WRAP`/`UNWRAP` trio (asserted
+    ///         contiguous in MarginCalldataDecoder.t.sol), which V4Router would reject, with
+    ///         PositionManager-identical semantics. A swap/settle/take opcode fails the first range
+    ///         comparison and falls through to `super`.
+    function _handleCoreAction(uint256 action, bytes calldata params) private {
+        if (action >= Actions.SWEEP && action <= Actions.UNWRAP) {
+            if (action == Actions.SWEEP) {
+                (Currency currency, address to) = params.decodeCurrencyAndAddress();
+                _sweep(currency, _mapRecipient(to));
+            } else if (action == Actions.WRAP) {
+                _wrap(
+                    _mapWrapUnwrapAmount(
+                        CurrencyLibrary.ADDRESS_ZERO, params.decodeUint256(), Currency.wrap(address(WETH9))
+                    )
+                );
+            } else {
+                _unwrap(
+                    _mapWrapUnwrapAmount(
+                        Currency.wrap(address(WETH9)), params.decodeUint256(), CurrencyLibrary.ADDRESS_ZERO
+                    )
+                );
+            }
+            return;
+        }
+        super._handleAction(action, params);
+    }
+
+    /// @notice Runs the `ROUTE_SWAP` action: route a swap through the Universal Router (v2/v3/v4)
+    ///         behind a flash-take of the input. Because UR self-settles its own swap, wrapping the
+    ///         call in a flash-take/settle envelope leaves the router owing exactly what UR spent — the
+    ///         same negative delta a native v4 exact-output swap would leave, which a downstream
+    ///         `ACCOUNT_BORROW`/`SETTLE` then nets via `OPEN_DELTA`. Operates only on the router; the
+    ///         caller's route delivers the output to the account bound by `SET_ACCOUNT`.
+    /// @param params ABI-encoded `(input, maxIn, commands, inputs)`.
+    function _routeSwap(bytes calldata params) private {
+        (Currency input, uint256 maxIn, bytes memory commands, bytes[] memory inputs) = params.decodeRouteSwap();
+        address token = Currency.unwrap(input);
+
+        // 1. flash-borrow up to `maxIn` of the input from the PoolManager; the router now owes it
+        _take(input, address(this), maxIn);
+
+        // 2. fund the Universal Router to pull exactly what it spends, via a Permit2 allowance scoped
+        //    to this call (approve the token to Permit2 once, lazily)
+        if (IERC20(token).allowance(address(this), address(permit2)) < maxIn) {
+            IERC20(token).forceApprove(address(permit2), type(uint256).max);
+        }
+        permit2.approve(token, universalRouter, maxIn.toUint160(), uint48(block.timestamp));
+
+        // 3. run the caller-built route inside this existing unlock (already-unlocked V4_SWAP support);
+        //    it delivers the output to the active account and self-settles its own swap
+        IUniversalRouter(universalRouter).execute(commands, inputs, block.timestamp);
+
+        // 4. settle the unspent flash-take back, so the router's remaining input debt equals exactly
+        //    what UR spent
+        uint256 leftover = input.balanceOfSelf();
+        if (leftover > 0) _settle(input, address(this), leftover);
+    }
+
+    /// @notice Dispatches an account-scoped margin opcode against the bound `account`. Exposure-
+    ///         increasing actions (supply, borrow) are gated on the adapter allowlist; exits (withdraw,
+    ///         repay, sweep) and the assertions are not, so a position can always be unwound.
+    /// @param action The account-scoped opcode.
+    /// @param params ABI-encoded parameters for the action.
+    /// @param account The active account (non-zero; the caller checked the guard).
+    function _handleAccountAction(uint256 action, bytes calldata params, address account) private {
         if (action == MarginActions.ACCOUNT_SUPPLY_COLLATERAL) {
             (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
-            // supplying collateral is exposure-increasing, so it is gated on the adapter allowlist
-            _requireAllowedAdapter(adapter);
+            _requireAllowedAdapter(adapter); // supplying collateral is exposure-increasing
+            // OPEN_DELTA supplies the account's full collateral balance (equity plus what the swap bought)
             if (amount == ActionConstants.OPEN_DELTA) amount = market.collateral.balanceOf(account);
             IMarginAccount(account).supplyCollateral(adapter, market, amount);
         } else if (action == MarginActions.ACCOUNT_WITHDRAW_COLLATERAL) {
             (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
                 params.decodeAdapterMarketAmountReceiver();
-            // OPEN_DELTA withdraws exactly the collateral owed to the pool for the swap (partial
-            // delever); a full close passes the explicit full collateral amount instead. Not
-            // allowlist-gated: a position must always be exitable.
+            // OPEN_DELTA withdraws exactly the collateral the swap owes the pool (partial delever); a
+            // full close passes the explicit full collateral amount instead
             if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.collateral);
             IMarginAccount(account).withdrawCollateral(adapter, market, amount, to);
         } else if (action == MarginActions.ACCOUNT_BORROW) {
             (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
                 params.decodeAdapterMarketAmountReceiver();
-            // borrowing is exposure-increasing, so it is gated on the adapter allowlist
-            _requireAllowedAdapter(adapter);
+            _requireAllowedAdapter(adapter); // borrowing is exposure-increasing
+            // OPEN_DELTA borrows exactly the debt the swap owes the pool
             if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.debt);
             IMarginAccount(account).borrow(adapter, market, amount, to);
         } else if (action == MarginActions.ACCOUNT_REPAY) {
@@ -613,8 +639,8 @@ contract MarginRouter is
             (Currency currency, uint256 amount, address to) = params.decodeSweep();
             IMarginAccount(account).sweep(currency, amount, to);
         } else if (action == MarginActions.ASSERT_ACCOUNT_BALANCE) {
-            // fill guarantee for the routed swap: require the account received at least `minAmount` of
-            // `currency`, so an exact-output under-fill reverts instead of building a smaller position
+            // routed-swap fill guarantee: require the account received at least `minAmount`, so an
+            // exact-output under-fill reverts instead of building a smaller position
             (Currency currency, uint256 minAmount) = params.decodeFillCheck();
             uint256 held = currency.balanceOf(account);
             if (held < minAmount) revert IncompleteFill(minAmount, held);
@@ -626,9 +652,9 @@ contract MarginRouter is
             }
         } else if (action == MarginActions.PULL_TO_ACCOUNT) {
             (Currency currency, uint256 amount, bool payerIsUser) = params.decodePull();
-            // unlike the pool-delta opcodes, 0 is not an OPEN_DELTA full-balance sentinel here; a
-            // pull with no amount is always a plan-builder error, so reject it loudly rather than
-            // silently moving nothing (which would compose badly with opt-in health checks)
+            // unlike the pool-delta opcodes, 0 is not an OPEN_DELTA full-balance sentinel here; a pull
+            // with no amount is always a plan-builder error, so reject it loudly rather than silently
+            // moving nothing (which would compose badly with opt-in health checks)
             if (amount == 0) revert ZeroAmount();
             if (payerIsUser) {
                 // explicit amounts only: CONTRACT_BALANCE (1<<255) overflows the uint160 cast and
