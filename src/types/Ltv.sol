@@ -3,9 +3,8 @@ pragma solidity 0.8.26;
 
 /// @title Ltv
 /// @author Uniswap Labs
-/// @notice A loan-to-value ratio as a WAD value where `1e18` == 100%. A type distinct from token
-///         amounts and from `LeverageX18`, so health math cannot accidentally add an LTV to an
-///         amount or pass a leverage value where an LTV is expected.
+/// @notice A loan-to-value ratio as a WAD value where `1e18` == 100%. A type distinct from raw token
+///         amounts, so health math cannot accidentally add an LTV to a plain token amount.
 type Ltv is uint256;
 
 using {raw, lte, gt} for Ltv global;

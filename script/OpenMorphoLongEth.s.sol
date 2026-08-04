@@ -94,7 +94,7 @@ contract OpenMorphoLongEth is Script {
 
         Ltv maxLtv = adapter.maxLtvWad(market);
         IV4Quoter quoter = _quoter(router.poolManager());
-        bool zeroForOne = market.toSwapParams(market.debt, 0, 0, poolKey).zeroForOne;
+        bool zeroForOne = market.debt == poolKey.currency0;
 
         uint256 maxLtvWad = raw(maxLtv);
         require(leverageX10 > 10, "LEVERAGE_X10 must exceed 10 (1.0x)");

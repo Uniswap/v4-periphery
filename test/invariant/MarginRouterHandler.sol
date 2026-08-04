@@ -299,7 +299,7 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
     function _executeOpenPlan(address actor, uint256 subId, uint128 buy) internal view returns (bytes memory) {
         Market memory m = market;
         address account = marginRouter.accountOf(actor, subId);
-        bool zeroForOne = m.toSwapParams(m.debt, 0, 0, poolKey).zeroForOne;
+        bool zeroForOne = m.debt == poolKey.currency0;
 
         Plan memory plan = Planner.init();
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(subId));
@@ -332,7 +332,7 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
         returns (bytes memory)
     {
         Market memory m = market;
-        bool zeroForOne = m.toSwapParams(m.collateral, 0, 0, poolKey).zeroForOne;
+        bool zeroForOne = m.collateral == poolKey.currency0;
 
         Plan memory plan = Planner.init();
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(subId));

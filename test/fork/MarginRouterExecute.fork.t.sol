@@ -137,7 +137,7 @@ contract MarginRouterExecuteForkTest is Test, MarginRouteHelpers {
 
         // execute-built open with identical inputs: pull equity via Permit2 into the account, buy
         // 1 WETH exact-out, take, supply, borrow the USDC owed, settle
-        bool zeroForOne = market.toSwapParams(market.debt, 0, 0, poolKey).zeroForOne;
+        bool zeroForOne = market.debt == poolKey.currency0;
         Plan memory plan = Planner.init();
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
         plan = plan.add(MarginActions.PULL_TO_ACCOUNT, abi.encode(market.collateral, uint256(1 ether), true));
@@ -205,7 +205,7 @@ contract MarginRouterExecuteForkTest is Test, MarginRouteHelpers {
         _approvePermit2Equity(WBTC, uint160(equityWbtc));
 
         bool wbtcZeroForOne = wbtcKey.currency0 == Currency.wrap(WBTC); // selling WBTC
-        bool debtZeroForOne = market.toSwapParams(market.debt, 0, 0, poolKey).zeroForOne;
+        bool debtZeroForOne = market.debt == poolKey.currency0;
 
         Plan memory plan = Planner.init();
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));

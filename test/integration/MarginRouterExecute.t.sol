@@ -83,7 +83,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
     ///      integration harness), so `equity == 0` in the plan.
     function _openPlan(uint256 subId, uint128 buy, uint128 maxDebtIn) internal view returns (bytes memory) {
         address account = marginRouter.accountOf(address(this), subId);
-        bool zeroForOne = market.toSwapParams(market.debt, 0, 0, poolKey).zeroForOne;
+        bool zeroForOne = market.debt == poolKey.currency0;
 
         Plan memory plan = Planner.init();
         plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(subId));
@@ -172,7 +172,7 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         address account = _openViaExecute(0, 1 ether, 2 ether);
         uint256 debtOwed = protocol.debtOf(account);
         uint256 collateralHeld = protocol.collateralOf(account);
-        bool zeroForOne = market.toSwapParams(market.collateral, 0, 0, poolKey).zeroForOne;
+        bool zeroForOne = market.collateral == poolKey.currency0;
 
         uint256 callerBefore = IERC20(Currency.unwrap(collateral)).balanceOf(address(this));
 
