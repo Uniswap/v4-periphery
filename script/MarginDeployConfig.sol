@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Script.sol";
 
-import {MarginRouter} from "../src/MarginRouter.sol";
 import {MarginAccount} from "../src/MarginAccount.sol";
 
 /// @notice Shared CREATE2 constants and init-code helpers for margin deployment and salt mining.
@@ -59,7 +58,7 @@ abstract contract MarginDeployConfig is Script {
         (address permit2, address weth9) = _marginExternalTokenConfig();
         initCodeHash = keccak256(
             abi.encodePacked(
-                type(MarginRouter).creationCode,
+                vm.getCode("MarginRouter.sol:MarginRouter"),
                 abi.encode(poolManager, permit2, weth9, accountImpl, owner, _universalRouter())
             )
         );

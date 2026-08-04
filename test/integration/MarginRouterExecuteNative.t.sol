@@ -10,7 +10,6 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
@@ -26,10 +25,12 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 ///         native, WETH, and the account without touching pool deltas. The CONTRACT_BALANCE paths
 ///         resolve the input currency's own balance, so a WETH/native argument transposition in the
 ///         intercepted bodies would wrap/unwrap the wrong balance and fail here.
-contract MarginRouterExecuteNativeTest is RoutingTestHelpers {
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
+
+contract MarginRouterExecuteNativeTest is RoutingTestHelpers, MarginRouteHelpers {
     using Planner for Plan;
 
-    MarginRouter internal marginRouter;
+    IMarginRouter internal marginRouter;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
     WETH internal weth;
@@ -52,13 +53,15 @@ contract MarginRouterExecuteNativeTest is RoutingTestHelpers {
 
         address impl = address(new MarginAccount());
         // the router requires a non-zero universalRouter at construction; this test never routes a swap
-        marginRouter = new MarginRouter(
-            manager,
-            IAllowanceTransfer(address(0xdead)),
-            IWETH9(address(weth)),
-            impl,
-            address(this),
-            makeAddr("universalRouter")
+        marginRouter = IMarginRouter(
+            deployMarginRouter(
+                manager,
+                IAllowanceTransfer(address(0xdead)),
+                IWETH9(address(weth)),
+                impl,
+                address(this),
+                makeAddr("universalRouter")
+            )
         );
         marginRouter.setAdapterAllowed(adapter, true);
     }

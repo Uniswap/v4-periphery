@@ -11,7 +11,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
@@ -22,7 +21,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 /// @notice Validates the Permit2 equity-pull path: the router pulls the caller's equity into their
 ///         account via Permit2, rather than the equity being pre-funded.
 contract MarginRouterPermit2Test is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
-    MarginRouter internal marginRouter;
+    IMarginRouter internal marginRouter;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
     IAllowanceTransfer internal permit2;
@@ -46,7 +45,8 @@ contract MarginRouterPermit2Test is RoutingTestHelpers, MarginRouteHelpers, Depl
 
         address impl = address(new MarginAccount());
         address ur = deployUniversalRouter(address(manager), address(permit2), address(0xbeef));
-        marginRouter = new MarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this), ur);
+        marginRouter =
+            IMarginRouter(deployMarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this), ur));
         marginRouter.setAdapterAllowed(adapter, true);
 
         MockERC20(Currency.unwrap(debt)).transfer(address(protocol), 1_000_000 ether);

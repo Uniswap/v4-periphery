@@ -13,8 +13,6 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
-
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
@@ -63,7 +61,7 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
     // Immutable system under test
     // -------------------------------------------------------------------------
 
-    MarginRouter public marginRouter;
+    IMarginRouter public marginRouter;
     MockLendingAdapter public adapter;
     MockLendingProtocol public protocol;
     MockERC20 public collateralToken;
@@ -96,7 +94,7 @@ contract MarginRouterHandler is Test, MarginRouteHelpers {
     // -------------------------------------------------------------------------
 
     constructor(
-        MarginRouter marginRouter_,
+        IMarginRouter marginRouter_,
         MockLendingAdapter adapter_,
         MockLendingProtocol protocol_,
         MockERC20 collateralToken_,

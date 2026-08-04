@@ -371,6 +371,17 @@ contract MarginRouter is
         return super.accountOf(owner, subId);
     }
 
+    /// @inheritdoc IMarginRouter
+    /// @dev Resolves the inherited MarginAccountFactory implementation; the manager baked into every
+    ///      account is this router.
+    function createAccount(address owner, uint256 subId)
+        public
+        override(IMarginRouter, MarginAccountFactory)
+        returns (address)
+    {
+        return super.createAccount(owner, subId);
+    }
+
     /// @notice The governance address that curates the adapter allowlist.
     /// @return The current governance address.
     function governance() external view returns (address) {

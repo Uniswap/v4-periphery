@@ -4,9 +4,13 @@ pragma solidity 0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {RouterParameters} from "universal-router/contracts/types/RouterParameters.sol";
 import {Commands} from "universal-router/contracts/libraries/Commands.sol";
+
+import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
 import {Actions} from "../../src/libraries/Actions.sol";
@@ -32,6 +36,28 @@ abstract contract MarginRouteHelpers is Test {
             ur := create(0, add(initcode, 0x20), mload(initcode))
         }
         require(ur != address(0), "UR deploy failed");
+    }
+
+    /// @notice Deploys a MarginRouter from its own compiled artifact via `vm.getCode`, so the router's
+    ///         source is never pulled into a test's (via_ir=false) compilation profile — the same reason
+    ///         `deployUniversalRouter` uses `getCode`. This lets MarginRouter be pinned to a smaller
+    ///         optimizer-runs profile (which fits under the EIP-170 runtime size limit) without a
+    ///         source-level construction in a test forcing it to co-compile at the test profile. Returns
+    ///         the raw address; cast it to `MarginRouter` at the call site.
+    function deployMarginRouter(
+        IPoolManager poolManager,
+        IAllowanceTransfer permit2,
+        IWETH9 weth9,
+        address accountImplementation,
+        address governance,
+        address universalRouter
+    ) internal returns (address router) {
+        bytes memory args = abi.encode(poolManager, permit2, weth9, accountImplementation, governance, universalRouter);
+        bytes memory initcode = abi.encodePacked(vm.getCode("MarginRouter.sol:MarginRouter"), args);
+        assembly {
+            router := create(0, add(initcode, 0x20), mload(initcode))
+        }
+        require(router != address(0), "MarginRouter deploy failed");
     }
 
     /// @notice Builds a UR command plan for a single v4 exact-output swap: buy `amountOut` of `output`

@@ -22,7 +22,6 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {MorphoLendingAdapter} from "../../src/MorphoLendingAdapter.sol";
@@ -90,7 +89,7 @@ contract MarginRouterCrossVenueHedgeForkTest is Test, MarginRouteHelpers {
     PoolModifyLiquidityTest internal lpRouter;
     MorphoLendingAdapter internal morphoAdapter;
     AaveLendingAdapter internal aaveAdapter;
-    MarginRouter internal router;
+    IMarginRouter internal router;
 
     MarketParams internal morphoMarketParams; // the live Morpho WETH/USDC market for the long leg
     Market internal longMarket; // Morpho: collateral WETH, debt USDC -> long WETH
@@ -137,8 +136,10 @@ contract MarginRouterCrossVenueHedgeForkTest is Test, MarginRouteHelpers {
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
         address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
-        router = new MarginRouter(
-            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
+        router = IMarginRouter(
+            deployMarginRouter(
+                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
+            )
         );
         router.setAdapterAllowed(morphoAdapter, true);
         router.setAdapterAllowed(aaveAdapter, true);

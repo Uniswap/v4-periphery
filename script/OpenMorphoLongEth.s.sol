@@ -21,7 +21,6 @@ import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/Safe
 
 import {IV4Quoter} from "../src/interfaces/IV4Quoter.sol";
 import {V4Quoter} from "../src/lens/V4Quoter.sol";
-import {MarginRouter} from "../src/MarginRouter.sol";
 import {IMarginRouter} from "../src/interfaces/IMarginRouter.sol";
 import {MorphoLendingAdapter} from "../src/MorphoLendingAdapter.sol";
 import {Market} from "../src/types/Market.sol";
@@ -67,7 +66,7 @@ contract OpenMorphoLongEth is Script {
     uint256 internal constant BPS = 10_000;
 
     function run() external {
-        MarginRouter router = MarginRouter(payable(_envAddress("MARGIN_ROUTER", DEFAULT_MARGIN_ROUTER)));
+        IMarginRouter router = IMarginRouter(_envAddress("MARGIN_ROUTER", DEFAULT_MARGIN_ROUTER));
         MorphoLendingAdapter adapter = MorphoLendingAdapter(_envAddress("MORPHO_ADAPTER", DEFAULT_MORPHO_ADAPTER));
 
         require(
@@ -318,7 +317,7 @@ contract OpenMorphoLongEth is Script {
     }
 
     function _logPlan(
-        MarginRouter router,
+        IMarginRouter router,
         MorphoLendingAdapter adapter,
         address account,
         PoolKey memory poolKey,

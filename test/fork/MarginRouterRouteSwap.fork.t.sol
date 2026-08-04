@@ -15,7 +15,6 @@ import {RouterParameters} from "universal-router/contracts/types/RouterParameter
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IComet} from "../../src/interfaces/external/compound-v3/IComet.sol";
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {CompoundV3LendingAdapter} from "../../src/CompoundV3LendingAdapter.sol";
@@ -30,7 +29,9 @@ import {Ltv, toLtv, raw} from "../../src/types/Ltv.sol";
 ///         mainnet USDC/WETH 0.05% pool and delivers it to the account, the router settles the unspent
 ///         take, and the composed supply/borrow/settle nets to zero. Driven through the generalized
 ///         `execute` entrypoint (the account-scoped plan a curated entry will later build internally).
-contract MarginRouterRouteSwapForkTest is Test {
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
+
+contract MarginRouterRouteSwapForkTest is Test, MarginRouteHelpers {
     IComet internal constant COMET = IComet(0xc3d688B66703497DAA19211EEdff47f25384cdc3); // cUSDCv3
     address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // collateral (18 dec)
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48; // debt/base (6 dec)
@@ -44,7 +45,7 @@ contract MarginRouterRouteSwapForkTest is Test {
     uint256 internal constant FORK_BLOCK = 25_598_384;
 
     PoolManager internal manager;
-    MarginRouter internal router;
+    IMarginRouter internal router;
     CompoundV3LendingAdapter internal adapter;
     address internal universalRouter;
     Market internal market;
@@ -65,13 +66,15 @@ contract MarginRouterRouteSwapForkTest is Test {
 
         adapter = new CompoundV3LendingAdapter(COMET, address(this));
         address impl = address(new MarginAccount());
-        router = new MarginRouter(
-            IPoolManager(address(manager)),
-            IAllowanceTransfer(PERMIT2),
-            IWETH9(WETH),
-            impl,
-            address(this),
-            universalRouter
+        router = IMarginRouter(
+            deployMarginRouter(
+                IPoolManager(address(manager)),
+                IAllowanceTransfer(PERMIT2),
+                IWETH9(WETH),
+                impl,
+                address(this),
+                universalRouter
+            )
         );
         router.setAdapterAllowed(adapter, true);
         adapter.setMarket(Currency.wrap(WETH), Currency.wrap(USDC), true);

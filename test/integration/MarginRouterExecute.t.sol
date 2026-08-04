@@ -14,7 +14,6 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {IMarginAccount} from "../../src/interfaces/IMarginAccount.sol";
@@ -37,7 +36,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
     using Planner for Plan;
 
-    MarginRouter internal marginRouter;
+    IMarginRouter internal marginRouter;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
     IAllowanceTransfer internal permit2;
@@ -62,7 +61,8 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         address impl = address(new MarginAccount());
         // the curated increasePosition parity test routes its swap through a Universal Router
         address ur = deployUniversalRouter(address(manager), address(permit2), address(0xbeef));
-        marginRouter = new MarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this), ur);
+        marginRouter =
+            IMarginRouter(deployMarginRouter(manager, permit2, IWETH9(address(0xbeef)), impl, address(this), ur));
         marginRouter.setAdapterAllowed(adapter, true);
 
         // fund the lending protocol with debt to lend out
@@ -296,8 +296,8 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         legB = legB.add(MarginActions.ACCOUNT_SWEEP, abi.encode(collateral, uint256(0), address(this)));
 
         bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeCall(MarginRouter.execute, (legA.encode(), block.timestamp + 1));
-        calls[1] = abi.encodeCall(MarginRouter.execute, (legB.encode(), block.timestamp + 1));
+        calls[0] = abi.encodeCall(IMarginRouter.execute, (legA.encode(), block.timestamp + 1));
+        calls[1] = abi.encodeCall(IMarginRouter.execute, (legB.encode(), block.timestamp + 1));
 
         vm.expectRevert(IMarginRouter.NoActiveAccount.selector);
         marginRouter.multicall(calls);
@@ -652,9 +652,9 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
 ///         prove the `isNotLocked` guard on `execute` stops reentrancy through a malicious protocol
 ///         reached mid-plan.
 contract ReentrantLendingProtocol {
-    MarginRouter internal immutable router;
+    IMarginRouter internal immutable router;
 
-    constructor(MarginRouter router_) {
+    constructor(IMarginRouter router_) {
         router = router_;
     }
 

@@ -18,8 +18,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
-
-import {MarginRouter} from "../../src/MarginRouter.sol";
+import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
 import {MockLendingAdapter} from "../mocks/MockLendingAdapter.sol";
@@ -81,7 +80,7 @@ contract MarginRouterInvariantTest is StdInvariant, Test, MarginRouteHelpers, De
 
     MockLendingProtocol internal protocol;
     MockLendingAdapter internal adapter;
-    MarginRouter internal marginRouter;
+    IMarginRouter internal marginRouter;
 
     MarginRouterHandler internal handler;
 
@@ -223,13 +222,15 @@ contract MarginRouterInvariantTest is StdInvariant, Test, MarginRouteHelpers, De
         address impl = address(new MarginAccount());
         // curated open/close swaps route through a Universal Router bound to the local PoolManager
         address ur = deployUniversalRouter(address(poolManager), permit2, address(0xbeef));
-        marginRouter = new MarginRouter(
-            IPoolManager(address(poolManager)),
-            IAllowanceTransfer(permit2),
-            IWETH9(address(0xbeef)),
-            impl,
-            address(this),
-            ur
+        marginRouter = IMarginRouter(
+            deployMarginRouter(
+                IPoolManager(address(poolManager)),
+                IAllowanceTransfer(permit2),
+                IWETH9(address(0xbeef)),
+                impl,
+                address(this),
+                ur
+            )
         );
         marginRouter.setAdapterAllowed(adapter, true);
     }

@@ -17,6 +17,13 @@ contract MockLendingProtocol {
     mapping(address account => uint256 amount) public collateralOf;
     mapping(address account => uint256 amount) public debtOf;
 
+    // Cumulative token movement per account, measured as this contract's own balance delta rather
+    // than the requested amount, so a ledger write that does not match the transfer is observable.
+    mapping(address account => uint256 amount) public suppliedOf;
+    mapping(address account => uint256 amount) public withdrawnOf;
+    mapping(address account => uint256 amount) public borrowedOf;
+    mapping(address account => uint256 amount) public repaidOf;
+
     address public lastAccount;
     address public lastReceiver;
 
@@ -40,7 +47,9 @@ contract MockLendingProtocol {
 
     function supplyCollateral(address account, uint256 amount) external {
         lastAccount = account;
+        uint256 balanceBefore = collateralToken.balanceOf(address(this));
         collateralToken.safeTransferFrom(msg.sender, address(this), amount);
+        suppliedOf[account] += collateralToken.balanceOf(address(this)) - balanceBefore;
         collateralOf[account] += amount;
     }
 
@@ -48,21 +57,27 @@ contract MockLendingProtocol {
         lastAccount = account;
         lastReceiver = receiver;
         collateralOf[account] -= amount;
+        uint256 balanceBefore = collateralToken.balanceOf(address(this));
         collateralToken.safeTransfer(withdrawToCaller ? msg.sender : receiver, amount);
+        withdrawnOf[account] += balanceBefore - collateralToken.balanceOf(address(this));
     }
 
     function borrow(address account, uint256 amount, address receiver) external {
         lastAccount = account;
         lastReceiver = receiver;
         debtOf[account] += amount;
+        uint256 balanceBefore = debtToken.balanceOf(address(this));
         debtToken.safeTransfer(receiver, amount);
+        borrowedOf[account] += balanceBefore - debtToken.balanceOf(address(this));
     }
 
     function repay(address account, uint256 amount) external {
         lastAccount = account;
         uint256 owed = debtOf[account];
         uint256 pay = amount == type(uint256).max ? owed : amount;
+        uint256 balanceBefore = debtToken.balanceOf(address(this));
         debtToken.safeTransferFrom(msg.sender, address(this), pay);
+        repaidOf[account] += debtToken.balanceOf(address(this)) - balanceBefore;
         debtOf[account] = owed - pay;
     }
 }

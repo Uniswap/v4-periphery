@@ -9,7 +9,6 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
@@ -21,8 +20,10 @@ import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
 /// @dev Unit tests for the router's wiring and pre-unlock guards. The swap-coupled leverage flows
 ///      (open, close end-to-end) run through a real PoolManager and are validated by the integration
 ///      and fork suite, not here.
-contract MarginRouterTest is Test {
-    MarginRouter internal router;
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
+
+contract MarginRouterTest is Test, MarginRouteHelpers {
+    IMarginRouter internal router;
     address internal owner = makeAddr("owner");
     Currency internal c0 = Currency.wrap(address(0x1111));
     Currency internal c1 = Currency.wrap(address(0x2222));
@@ -32,13 +33,15 @@ contract MarginRouterTest is Test {
         address impl = address(new MarginAccount());
         // poolManager / permit2 / weth9 are not called on the tested (pre-unlock) paths; the router
         // requires a non-zero universalRouter at construction but these tests never route a swap
-        router = new MarginRouter(
-            IPoolManager(makeAddr("poolManager")),
-            IAllowanceTransfer(makeAddr("permit2")),
-            IWETH9(makeAddr("weth9")),
-            impl,
-            address(this),
-            makeAddr("universalRouter")
+        router = IMarginRouter(
+            deployMarginRouter(
+                IPoolManager(makeAddr("poolManager")),
+                IAllowanceTransfer(makeAddr("permit2")),
+                IWETH9(makeAddr("weth9")),
+                impl,
+                address(this),
+                makeAddr("universalRouter")
+            )
         );
     }
 
@@ -50,9 +53,10 @@ contract MarginRouterTest is Test {
         p.deadline = block.timestamp + 1 hours;
     }
 
-    function test_factory_managerIsRouter() public view {
-        // the router inherits the factory mixin, so it is the manager baked into every account
-        assertEq(router.manager(), address(router));
+    function test_factory_managerIsRouter() public {
+        // the router is the manager baked into every account it deploys
+        address account = router.createAccount(address(this), 0);
+        assertEq(MarginAccount(payable(account)).manager(), address(router));
     }
 
     function test_accountOf_isDeterministic() public view {

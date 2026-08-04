@@ -103,20 +103,38 @@ contract MockLendingAdapter is ILendingAdapter {
         return _maxLtv;
     }
 
-    function currentLtvWad(address, Market calldata) external view returns (Ltv) {
-        return _maxLtv;
+    /// @dev Derived from the live protocol ledger rather than the configurable `maxLtv` stub, so
+    ///      `ASSERT_HEALTH` is a real guard instead of a constant that can never bind.
+    function currentLtvWad(address account, Market calldata) external view returns (Ltv) {
+        MockLendingProtocol p = MockLendingProtocol(lendingProtocol);
+        return _ledgerLtv(p.collateralOf(account), p.debtOf(account));
     }
 
     function describePosition(address account, Market calldata) external view returns (PositionData memory data) {
         MockLendingProtocol p = MockLendingProtocol(lendingProtocol);
+        uint256 collateral = p.collateralOf(account);
         uint256 debt = p.debtOf(account);
+        Ltv currentLtv = _ledgerLtv(collateral, debt);
         data = PositionData({
-            collateralAmount: p.collateralOf(account),
+            collateralAmount: collateral,
             debtAmount: debt,
             maxLtv: _maxLtv,
-            currentLtv: debt == 0 ? toLtv(0) : _maxLtv,
-            // the mock reports currentLtv == maxLtv, so health factor is 1e18 while debt exists
-            healthFactorWad: debt == 0 ? type(uint256).max : 1e18
+            currentLtv: currentLtv,
+            healthFactorWad: _healthFactor(currentLtv)
         });
+    }
+
+    /// @dev Zero debt is LTV 0; debt with no collateral is unbounded LTV; otherwise `debt/collateral`.
+    function _ledgerLtv(uint256 collateral, uint256 debt) internal pure returns (Ltv) {
+        if (debt == 0) return toLtv(0);
+        if (collateral == 0) return toLtv(type(uint256).max);
+        return toLtv(debt * 1e18 / collateral);
+    }
+
+    /// @dev The `ILendingAdapter` obligation: `maxLtv / currentLtv` in WAD, max when there is no debt.
+    function _healthFactor(Ltv currentLtv) internal view returns (uint256) {
+        uint256 current = Ltv.unwrap(currentLtv);
+        if (current == 0) return type(uint256).max;
+        return Ltv.unwrap(_maxLtv) * 1e18 / current;
     }
 }

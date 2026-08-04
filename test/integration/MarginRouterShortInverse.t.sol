@@ -22,7 +22,6 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {AaveLendingAdapter} from "../../src/AaveLendingAdapter.sol";
@@ -69,7 +68,7 @@ contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2
     PoolModifyLiquidityTest internal lpRouter;
     MockAavePool internal aavePool;
     AaveLendingAdapter internal adapter;
-    MarginRouter internal router;
+    IMarginRouter internal router;
 
     Market internal market;
     PoolKey internal poolKey;
@@ -94,13 +93,15 @@ contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local PoolManager
         address ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
-        router = new MarginRouter(
-            IPoolManager(address(manager)),
-            IAllowanceTransfer(permit2),
-            IWETH9(address(0xbeef)),
-            impl,
-            address(this),
-            ur
+        router = IMarginRouter(
+            deployMarginRouter(
+                IPoolManager(address(manager)),
+                IAllowanceTransfer(permit2),
+                IWETH9(address(0xbeef)),
+                impl,
+                address(this),
+                ur
+            )
         );
         router.setAdapterAllowed(adapter, true);
     }

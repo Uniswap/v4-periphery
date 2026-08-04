@@ -20,7 +20,6 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IComet} from "../../src/interfaces/external/compound-v3/IComet.sol";
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {CompoundV3LendingAdapter} from "../../src/CompoundV3LendingAdapter.sol";
@@ -47,7 +46,7 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
     PoolManager internal manager;
     PoolModifyLiquidityTest internal lpRouter;
     CompoundV3LendingAdapter internal adapter;
-    MarginRouter internal router;
+    IMarginRouter internal router;
     Market internal market;
     PoolKey internal poolKey;
 
@@ -70,8 +69,10 @@ contract CompoundV3LendingAdapterForkTest is Test, MarginRouteHelpers {
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local flash-take PoolManager
         address ur = deployUniversalRouter(address(manager), PERMIT2, WETH);
-        router = new MarginRouter(
-            IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
+        router = IMarginRouter(
+            deployMarginRouter(
+                IPoolManager(address(manager)), IAllowanceTransfer(PERMIT2), IWETH9(WETH), impl, address(this), ur
+            )
         );
         router.setAdapterAllowed(adapter, true);
         adapter.setMarket(Currency.wrap(UNI), Currency.wrap(USDC), true);

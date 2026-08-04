@@ -8,7 +8,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
-import {MarginRouter} from "../src/MarginRouter.sol";
+import {IMarginRouter} from "../src/interfaces/IMarginRouter.sol";
 import {IMarginAccount} from "../src/interfaces/IMarginAccount.sol";
 import {ILendingAdapter} from "../src/interfaces/ILendingAdapter.sol";
 import {Market} from "../src/types/Market.sol";
@@ -44,7 +44,7 @@ contract RemoveExcessCollateral is Script {
     uint256 internal constant BPS = 10_000;
 
     function run() external {
-        MarginRouter router = MarginRouter(payable(vm.envOr("MARGIN_ROUTER", DEFAULT_MARGIN_ROUTER)));
+        IMarginRouter router = IMarginRouter(vm.envOr("MARGIN_ROUTER", DEFAULT_MARGIN_ROUTER));
         ILendingAdapter adapter = ILendingAdapter(vm.envOr("LENDING_ADAPTER", DEFAULT_MORPHO_ADAPTER));
 
         uint256 subId = vm.envOr("SUB_ID", uint256(0));

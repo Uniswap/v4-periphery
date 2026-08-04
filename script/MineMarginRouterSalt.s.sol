@@ -5,7 +5,6 @@ import "forge-std/console2.sol";
 import "forge-std/Script.sol";
 
 import {VanityAddressLib} from "../src/libraries/VanityAddressLib.sol";
-import {MarginRouter} from "../src/MarginRouter.sol";
 import {MarginAccount} from "../src/MarginAccount.sol";
 
 /// @title MineMarginRouterSalt
@@ -59,7 +58,7 @@ contract MineMarginRouterSalt is Script {
         // determines every candidate address, so it is what an off-chain miner needs
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
-                type(MarginRouter).creationCode,
+                vm.getCode("MarginRouter.sol:MarginRouter"),
                 abi.encode(poolManager, permit2, weth9, accountImpl, governance, universalRouter)
             )
         );

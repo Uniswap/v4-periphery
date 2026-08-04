@@ -10,7 +10,6 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
@@ -19,8 +18,10 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 
 /// @notice Validates native-ETH equity: the router wraps msg.value to WETH and supplies it. Uses
 ///         addCollateral, which exercises the wrap path without needing a swap pool.
-contract MarginRouterNativeTest is Test {
-    MarginRouter internal router;
+import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
+
+contract MarginRouterNativeTest is Test, MarginRouteHelpers {
+    IMarginRouter internal router;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
     WETH internal weth;
@@ -38,13 +39,15 @@ contract MarginRouterNativeTest is Test {
         address impl = address(new MarginAccount());
         // poolManager and permit2 are unused on the native addCollateral path; the router requires a
         // non-zero universalRouter at construction but this test never routes a swap
-        router = new MarginRouter(
-            IPoolManager(makeAddr("pm")),
-            IAllowanceTransfer(makeAddr("permit2")),
-            IWETH9(address(weth)),
-            impl,
-            address(this),
-            makeAddr("universalRouter")
+        router = IMarginRouter(
+            deployMarginRouter(
+                IPoolManager(makeAddr("pm")),
+                IAllowanceTransfer(makeAddr("permit2")),
+                IWETH9(address(weth)),
+                impl,
+                address(this),
+                makeAddr("universalRouter")
+            )
         );
         router.setAdapterAllowed(adapter, true);
     }

@@ -4,17 +4,22 @@ pragma solidity 0.8.26;
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {ILendingAdapter} from "./ILendingAdapter.sol";
+import {IMulticall_v4} from "./IMulticall_v4.sol";
+import {IImmutableState} from "./IImmutableState.sol";
+import {IPermit2Forwarder} from "./IPermit2Forwarder.sol";
 import {Market} from "../types/Market.sol";
 import {Ltv} from "../types/Ltv.sol";
 
 /// @title IMarginRouter
 /// @author Uniswap Labs
-/// @notice Entry points for opening, closing, and topping up leveraged spot positions. Each call
+/// @notice The full external surface of the margin router: opening, closing, and topping up leveraged
+///         spot positions, the general-purpose `execute` plan interpreter, account addressing, the
+///         governance-curated adapter allowlist, and the inherited `multicall`. Each position call
 ///         operates on the caller's own MarginAccount, derived from the authenticated caller and a
 ///         subId, never from a caller-supplied account address. Leverage is built as a single
 ///         flash-style swap inside one PoolManager unlock: borrow the debt, swap it into collateral,
 ///         supply the collateral, and draw the debt to settle the swap.
-interface IMarginRouter {
+interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     // -------------------------------------------------------------------------
     // Errors
     // -------------------------------------------------------------------------
@@ -383,4 +388,44 @@ interface IMarginRouter {
     /// @param unlockData `abi.encode(bytes actions, bytes[] params)` describing the plan.
     /// @param deadline The Unix timestamp after which the call reverts `DeadlinePassed`.
     function execute(bytes calldata unlockData, uint256 deadline) external payable;
+
+    /// @notice Deploys the caller's MarginAccount for `subId` if it does not yet exist, returning its
+    ///         address. Idempotent: a repeat call returns the existing account.
+    /// @param owner The account owner baked into the clone.
+    /// @param subId The sub-account index.
+    /// @return account The deployed (or already-existing) account address.
+    function createAccount(address owner, uint256 subId) external returns (address account);
+
+    // -------------------------------------------------------------------------
+    // Governance
+    // -------------------------------------------------------------------------
+
+    /// @notice The governance address that curates the adapter allowlist.
+    /// @return The current governance address.
+    function governance() external view returns (address);
+
+    /// @notice The address proposed to become governance, pending its acceptance. Zero when no
+    ///         handoff is in progress.
+    /// @return The pending governance address.
+    function pendingGovernance() external view returns (address);
+
+    /// @notice Completes a governance handoff. Callable by anyone, but only the address previously
+    ///         named by `transferGovernance` succeeds; all others revert.
+    function acceptGovernance() external;
+
+    /// @notice Begins a two-step governance handoff by proposing a successor. Only the current
+    ///         governance may call this; the zero address is rejected.
+    /// @param newGovernance The address proposed to become the new governance.
+    function transferGovernance(address newGovernance) external;
+
+    /// @notice Allows or disallows a lending adapter for the exposure-increasing flows. Only the
+    ///         current governance may call this.
+    /// @param adapter The lending adapter to allow or disallow.
+    /// @param allowed True to allow; false to disallow.
+    function setAdapterAllowed(ILendingAdapter adapter, bool allowed) external;
+
+    /// @notice Whether `adapter` is on the governance allowlist and may be used in position flows.
+    /// @param adapter The lending adapter to check.
+    /// @return True if the adapter is allowlisted.
+    function isAdapterAllowed(ILendingAdapter adapter) external view returns (bool);
 }

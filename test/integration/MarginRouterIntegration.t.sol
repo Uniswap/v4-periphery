@@ -12,7 +12,6 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
@@ -24,7 +23,7 @@ import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 ///         with a mock lending protocol standing in for Morpho. Validates that the flash-style plan
 ///         assembly nets to zero and produces the expected position.
 contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, DeployPermit2 {
-    MarginRouter internal marginRouter;
+    IMarginRouter internal marginRouter;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
     Market internal market;
@@ -63,8 +62,9 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local PoolManager
         address ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
-        marginRouter =
-            new MarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this), ur);
+        marginRouter = IMarginRouter(
+            deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this), ur)
+        );
         marginRouter.setAdapterAllowed(adapter, true);
 
         // fund the lending protocol with debt to lend out
@@ -365,9 +365,10 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
             assertEq(od.debtDrawn, debtOwed, "debtDrawn equals resulting debt on a fresh open");
             assertEq(od.collateralTotal, 3 ether, "collateralTotal = equity + bought");
             assertEq(od.debtTotal, debtOwed, "debtTotal");
-            assertEq(od.currentLtv, 0.86e18, "currentLtv (mock reports maxLtv)");
+            uint256 expectedLtv = od.debtTotal * 1e18 / od.collateralTotal;
+            assertEq(od.currentLtv, expectedLtv, "currentLtv (mock reports the ledger ratio)");
             assertEq(od.maxLtv, 0.86e18, "maxLtv (mock)");
-            assertEq(od.healthFactorWad, 1e18, "healthFactor (currentLtv == maxLtv)");
+            assertEq(od.healthFactorWad, 0.86e18 * 1e18 / expectedLtv, "healthFactor == maxLtv / currentLtv");
         }
         assertTrue(found, "PositionIncreased emitted");
     }

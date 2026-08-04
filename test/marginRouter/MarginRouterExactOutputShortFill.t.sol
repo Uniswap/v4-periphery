@@ -14,7 +14,6 @@ import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.so
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IV4Router} from "../../src/interfaces/IV4Router.sol";
-import {MarginRouter} from "../../src/MarginRouter.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
@@ -34,7 +33,7 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRoute
     uint128 internal constant REQUESTED_COLLATERAL = 1 ether;
     uint128 internal constant MAX_DEBT_IN = 2 ether;
 
-    MarginRouter internal marginRouter;
+    IMarginRouter internal marginRouter;
     MockLendingAdapter internal adapter;
     MockLendingProtocol internal protocol;
 
@@ -64,8 +63,9 @@ contract MarginRouterExactOutputShortFillTest is RoutingTestHelpers, MarginRoute
         address impl = address(new MarginAccount());
         // route position swaps through a Universal Router bound to the local PoolManager
         address ur = deployUniversalRouter(address(manager), permit2, address(0xbeef));
-        marginRouter =
-            new MarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this), ur);
+        marginRouter = IMarginRouter(
+            deployMarginRouter(manager, IAllowanceTransfer(permit2), IWETH9(address(0xbeef)), impl, address(this), ur)
+        );
         marginRouter.setAdapterAllowed(adapter, true);
 
         MockERC20(Currency.unwrap(debt)).transfer(address(protocol), 1_000_000 ether);

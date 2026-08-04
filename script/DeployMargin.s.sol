@@ -4,17 +4,14 @@ pragma solidity ^0.8.20;
 import "forge-std/console2.sol";
 import "forge-std/Script.sol";
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {IMorpho, MarketParams} from "morpho-blue/interfaces/IMorpho.sol";
 
-import {IWETH9} from "../src/interfaces/external/IWETH9.sol";
 import {IPoolAddressesProvider} from "../src/interfaces/external/aave/IPoolAddressesProvider.sol";
 import {ISpoke} from "../src/interfaces/external/aave-v4/ISpoke.sol";
 import {IComet} from "../src/interfaces/external/compound-v3/IComet.sol";
 
-import {MarginRouter} from "../src/MarginRouter.sol";
+import {IMarginRouter} from "../src/interfaces/IMarginRouter.sol";
 import {MarginAccount} from "../src/MarginAccount.sol";
 import {MorphoLendingAdapter} from "../src/MorphoLendingAdapter.sol";
 import {AaveLendingAdapter} from "../src/AaveLendingAdapter.sol";
@@ -37,6 +34,11 @@ import {CompoundV3LendingAdapter} from "../src/CompoundV3LendingAdapter.sol";
 ///           accountImpl is itself derived from ACCOUNT_SALT, so ACCOUNT_SALT here MUST match the
 ///           miner; otherwise the mined router address will not be produced.
 contract DeployMargin is Script {
+    /// @dev The canonical CREATE2 deployer that Foundry routes `new X{salt}` through and that
+    ///      MineMarginRouterSalt / MarginRouterInitCode mine against. The router is deployed through it
+    ///      explicitly (rather than a source-level `new`) so it lands at the mined vanity address.
+    address internal constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+
     /// @dev Salt for the deterministic MarginAccount implementation. Must match MineMarginRouterSalt.
     bytes32 internal constant ACCOUNT_SALT = keccak256("uniswap.margin.MarginAccount.v1");
 
@@ -108,7 +110,7 @@ contract DeployMargin is Script {
             AaveLendingAdapter aaveAdapter,
             AaveV4LendingAdapter aaveV4Adapter,
             CompoundV3LendingAdapter compoundAdapter,
-            MarginRouter router
+            IMarginRouter router
         )
     {
         vm.startBroadcast();
@@ -131,16 +133,20 @@ contract DeployMargin is Script {
         compoundAdapter = new CompoundV3LendingAdapter{salt: COMPOUND_ADAPTER_SALT}(IComet(compoundComet), governance);
         console2.log("CompoundV3LendingAdapter", address(compoundAdapter));
 
-        // router at the mined vanity salt; universalRouter is a constructor immutable, so adding it
-        // changes the router init-code hash and the vanity salt must be re-mined for the new tuple
-        router = new MarginRouter{salt: routerSalt}(
-            IPoolManager(poolManager),
-            IAllowanceTransfer(permit2),
-            IWETH9(weth9),
-            address(impl),
-            governance,
-            universalRouter
+        // router at the mined vanity salt. Deploy through the canonical CREATE2 deployer (the same
+        // factory MineMarginRouterSalt / create2crunch mine against) so the router lands at the mined
+        // address; a source-level `new MarginRouter{salt}` would deploy from this script's address
+        // instead. getCode reads the router's optimizer-restricted artifact so the deployed runtime
+        // fits under EIP-170; `new` would embed the oversized default-profile bytecode. universalRouter
+        // is a constructor immutable, so it is part of the init code the salt is mined against.
+        bytes memory routerInitCode = abi.encodePacked(
+            vm.getCode("MarginRouter.sol:MarginRouter"),
+            abi.encode(poolManager, permit2, weth9, address(impl), governance, universalRouter)
         );
+        address predictedRouter = vm.computeCreate2Address(routerSalt, keccak256(routerInitCode), CREATE2_DEPLOYER);
+        (bool routerDeployed,) = CREATE2_DEPLOYER.call(bytes.concat(routerSalt, routerInitCode));
+        require(routerDeployed && predictedRouter.code.length != 0, "MarginRouter deploy failed");
+        router = IMarginRouter(predictedRouter);
         console2.log("MarginRouter", address(router));
 
         // wire the allowlist; requires the broadcaster to be governance
