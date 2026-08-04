@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Vm} from "forge-std/Vm.sol";
 import {IPositionDescriptor} from "../../src/interfaces/IPositionDescriptor.sol";
 import {IPositionManager} from "../../src/interfaces/IPositionManager.sol";
+import {IReservesLens} from "../../src/interfaces/IReservesLens.sol";
 import {IV4Quoter} from "../../src/interfaces/IV4Quoter.sol";
 import {IStateView} from "../../src/interfaces/IStateView.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
@@ -59,6 +60,11 @@ library Deploy {
         assembly {
             quoter := create2(0, add(initcode, 0x20), mload(initcode), salt)
         }
+    }
+
+    function reservesLens(bytes32 salt) internal returns (IReservesLens lens) {
+        bytes memory initcode = vm.getCode("ReservesLens.sol:ReservesLens");
+        lens = IReservesLens(create2(initcode, salt));
     }
 
     function transparentUpgradeableProxy(address implementation, address admin, bytes memory data, bytes memory salt)

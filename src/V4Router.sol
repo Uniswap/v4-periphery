@@ -140,12 +140,15 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 _getFullDebt(params.zeroForOne ? params.poolKey.currency1 : params.poolKey.currency0).toUint128();
         }
         BalanceDelta delta = _swap(params.poolKey, params.zeroForOne, int256(uint256(amountOut)), params.hookData);
+        // exact output is all-or-nothing: a pool can deliver less than requested if it runs out of
+        // liquidity before the price limit. Reverting on a shortfall keeps "exact output" exact;
+        // over-delivery (possible only via hook pools) is allowed.
+        uint128 amountOutActual = _swapOutput(delta, params.zeroForOne);
+        if (amountOutActual < amountOut) revert V4ExactOutputUnfilled(amountOut, amountOutActual);
         uint128 amountIn = _swapInput(delta, params.zeroForOne);
         if (amountIn > params.amountInMaximum) revert V4TooMuchRequested(params.amountInMaximum, amountIn);
         if (params.minHopPriceX36 != 0) {
-            // price the REALIZED output against the actual input: the pool can deliver less than the
-            // requested amountOut, so using amountOut here would overstate the execution price
-            uint256 priceX36 = uint256(_swapOutput(delta, params.zeroForOne)) * PRECISION / amountIn;
+            uint256 priceX36 = uint256(amountOutActual) * PRECISION / amountIn;
             if (priceX36 < params.minHopPriceX36) {
                 revert V4TooMuchRequestedPerHopSingle(params.minHopPriceX36, priceX36);
             }
@@ -171,13 +174,19 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
             for (uint256 i = pathLength; i > 0; i--) {
                 pathKey = params.path[i - 1];
                 (PoolKey memory poolKey, bool oneForZero) = pathKey.getPoolAndSwapDirection(currencyOut);
-                // The output delta will always be negative, except for when interacting with certain hook pools
+                // The output delta will always be positive, except for when interacting with certain hook pools
                 BalanceDelta delta = _swap(poolKey, !oneForZero, int256(uint256(amountOut)), pathKey.hookData);
+                uint128 amountOutActual = _swapOutput(delta, !oneForZero);
+                // Every hop must fill. PoolManager nets one delta per currency across the whole unlock,
+                // so an intermediate shortfall can be absorbed by same-currency credit and settle
+                // silently rather than reverting.
+                if (amountOutActual < amountOut) {
+                    revert V4ExactOutputUnfilled(amountOut, amountOutActual);
+                }
                 amountIn = _swapInput(delta, !oneForZero);
 
                 if (perHopPriceLength != 0) {
-                    // price the REALIZED output (which can be a partial fill) against the actual input
-                    uint256 priceX36 = uint256(_swapOutput(delta, !oneForZero)) * PRECISION / amountIn;
+                    uint256 priceX36 = uint256(amountOutActual) * PRECISION / amountIn;
                     uint256 minPrice = params.minHopPriceX36[i - 1];
                     if (priceX36 < minPrice) revert V4TooMuchRequestedPerHop(i - 1, minPrice, priceX36);
                 }
