@@ -67,6 +67,11 @@ contract MarginRouter is
     // transient slot holding the account for the current unlock, set from the authenticated caller
     bytes32 private constant ACTIVE_ACCOUNT_SLOT = keccak256("uniswap.marginRouter.activeAccount");
 
+    // 1e18 == 100% LTV. A resulting-health bound at or above this can never be exceeded by a real LTV,
+    // so passing one (e.g. type(uint256).max, the codebase's "no limit" sentinel elsewhere) would
+    // satisfy a "bound is set" check yet leave ASSERT_HEALTH a no-op; a supplied bound must sit below it.
+    uint256 private constant WAD = 1e18;
+
     Owner internal _governance;
     mapping(ILendingAdapter adapter => bool isAllowed) internal _allowedAdapters;
 
@@ -181,6 +186,9 @@ contract MarginRouter is
         if (!fullClose) {
             if (params.debtToRepay == 0) revert ZeroAmount();
             if (Ltv.unwrap(params.maxLtvAfter) == 0) revert SlippageBoundRequired();
+            // reject a bound that cannot bind (>= 100%): it satisfies the require above yet leaves
+            // ASSERT_HEALTH a no-op, so the "mandatory" partial-decrease health bound stays real
+            if (Ltv.unwrap(params.maxLtvAfter) >= WAD) revert IneffectiveLtvBound(params.maxLtvAfter);
         }
 
         account = accountOf(msgSender(), params.subId);
@@ -437,6 +445,11 @@ contract MarginRouter is
         // a zero buy would feed a zero amount into the exact-output swap, which the PoolManager rejects
         if (params.collateralToBuy == 0) revert ZeroAmount();
         if (params.maxDebtIn == 0) revert SlippageBoundRequired();
+        // maxLtvAfter stays optional here (zero skips the check), but a supplied bound must be able to
+        // bind: reject >= 100%, which would otherwise read as "set" yet disable ASSERT_HEALTH
+        if (Ltv.unwrap(params.maxLtvAfter) != 0 && Ltv.unwrap(params.maxLtvAfter) >= WAD) {
+            revert IneffectiveLtvBound(params.maxLtvAfter);
+        }
         _requireAllowedAdapter(params.adapter);
 
         account = createAccount(msgSender(), params.subId);
@@ -585,6 +598,13 @@ contract MarginRouter is
         (Currency input, uint256 maxIn, bytes memory commands, bytes[] memory inputs) = params.decodeRouteSwap();
         address token = Currency.unwrap(input);
 
+        // snapshot any balance the router already holds in the input currency, so step 4 settles only
+        // THIS call's unspent flash-take and never a pre-existing balance. Anyone can inflate that
+        // balance with a plain transfer to the router; folding it into the settle would flip the
+        // router's delta positive (reverting the curated flow) or silently subsidize the position. The
+        // pre-existing balance is left untouched, recoverable through the SWEEP action.
+        uint256 balanceBeforeTake = input.balanceOfSelf();
+
         // 1. flash-borrow up to `maxIn` of the input from the PoolManager; the router now owes it
         _take(input, address(this), maxIn);
 
@@ -599,9 +619,11 @@ contract MarginRouter is
         //    it delivers the output to the active account and self-settles its own swap
         IUniversalRouter(universalRouter).execute(commands, inputs, block.timestamp);
 
-        // 4. settle the unspent flash-take back, so the router's remaining input debt equals exactly
-        //    what UR spent
-        uint256 leftover = input.balanceOfSelf();
+        // 4. settle only the unspent portion of this call's flash-take (current balance minus what the
+        //    router held before the take), so its remaining input debt equals exactly what UR spent and
+        //    a donated/residual balance can neither flip the delta positive nor subsidize the position
+        uint256 balanceAfter = input.balanceOfSelf();
+        uint256 leftover = balanceAfter > balanceBeforeTake ? balanceAfter - balanceBeforeTake : 0;
         if (leftover > 0) _settle(input, address(this), leftover);
     }
 

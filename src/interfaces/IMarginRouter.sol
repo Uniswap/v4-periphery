@@ -28,6 +28,12 @@ interface IMarginRouter {
     ///      swap to execute at an arbitrary price or leave a position in an unchecked state.
     error SlippageBoundRequired();
 
+    /// @dev Thrown when a non-zero `maxLtvAfter` is at or above 100% (`1e18`). Such a bound can never
+    ///      be exceeded by a real LTV, so it would satisfy the "bound is set" check yet leave the
+    ///      resulting-health assertion a no-op. A supplied bound must sit strictly below 100%.
+    /// @param maxLtvAfter The ineffective bound that was supplied.
+    error IneffectiveLtvBound(Ltv maxLtvAfter);
+
     /// @dev Thrown when a required non-zero amount is zero: `collateralToBuy`, an `addCollateral` or
     ///      `PULL_TO_ACCOUNT` amount, or a partial `debtToRepay`. A zero amount is always a caller
     ///      error, rejected rather than resolved to a full-balance sentinel.

@@ -175,4 +175,40 @@ contract MarginRouterTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(0)));
         router.increasePosition(p);
     }
+
+    // ── a supplied health bound must be able to bind (non-zero maxLtvAfter must be < 100%) ──
+
+    function test_increasePosition_revertsWhenMaxLtvAfterAtOrAbove100pct() public {
+        // a non-zero bound at/above 100% (e.g. type(uint256).max, the codebase's "no limit" sentinel)
+        // would read as "set" yet leave ASSERT_HEALTH a no-op; it is rejected up front
+        IMarginRouter.IncreaseParams memory p = _openParams();
+        p.maxLtvAfter = toLtv(1e18);
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.IneffectiveLtvBound.selector, toLtv(1e18)));
+        router.increasePosition(p);
+
+        p.maxLtvAfter = toLtv(type(uint256).max);
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.IneffectiveLtvBound.selector, toLtv(type(uint256).max)));
+        router.increasePosition(p);
+    }
+
+    function test_increasePosition_allowsZeroMaxLtvAfter() public {
+        // zero still means "skip the check" (documented, back-compatible); it passes the new guard and
+        // proceeds to the allowlist check, proving the ineffective-bound guard did not trip on zero
+        IMarginRouter.IncreaseParams memory p = _openParams();
+        p.maxLtvAfter = Ltv.wrap(0);
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.AdapterNotAllowed.selector, address(0)));
+        router.increasePosition(p);
+    }
+
+    function test_decreasePosition_revertsWhenMaxLtvAfterAtOrAbove100pct() public {
+        // the partial-decrease bound is mandatory; it must also be effective (< 100%), so a
+        // max-uint value can no longer satisfy the requirement while disabling the health assert
+        IMarginRouter.DecreaseParams memory p;
+        p.deadline = block.timestamp + 1 hours;
+        p.debtToRepay = 1e18; // partial (not type(uint256).max)
+        p.maxCollateralIn = 1;
+        p.maxLtvAfter = toLtv(type(uint256).max);
+        vm.expectRevert(abi.encodeWithSelector(IMarginRouter.IneffectiveLtvBound.selector, toLtv(type(uint256).max)));
+        router.decreasePosition(p);
+    }
 }
