@@ -605,67 +605,96 @@ contract MarginRouter is
         if (leftover > 0) _settle(input, address(this), leftover);
     }
 
-    /// @notice Dispatches an account-scoped margin opcode against the bound `account`. Exposure-
-    ///         increasing actions (supply, borrow) are gated on the adapter allowlist; exits (withdraw,
-    ///         repay, sweep) and the assertions are not, so a position can always be unwound.
+    /// @notice Dispatches an account-scoped margin opcode to its handler. Exposure-increasing
+    ///         actions (supply, borrow) gate on the adapter allowlist inside their handlers;
+    ///         exits (withdraw, repay, sweep) and assertions do not, so a position can always be
+    ///         unwound even if the adapter has been deprecated.
     /// @param action The account-scoped opcode.
     /// @param params ABI-encoded parameters for the action.
     /// @param account The active account (non-zero; the caller checked the guard).
     function _handleAccountAction(uint256 action, bytes calldata params, address account) private {
-        if (action == MarginActions.ACCOUNT_SUPPLY_COLLATERAL) {
-            (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
-            _requireAllowedAdapter(adapter); // supplying collateral is exposure-increasing
-            // OPEN_DELTA supplies the account's full collateral balance (equity plus what the swap bought)
-            if (amount == ActionConstants.OPEN_DELTA) amount = market.collateral.balanceOf(account);
-            IMarginAccount(account).supplyCollateral(adapter, market, amount);
-        } else if (action == MarginActions.ACCOUNT_WITHDRAW_COLLATERAL) {
-            (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
-                params.decodeAdapterMarketAmountReceiver();
-            // OPEN_DELTA withdraws exactly the collateral the swap owes the pool (partial delever); a
-            // full close passes the explicit full collateral amount instead
-            if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.collateral);
-            IMarginAccount(account).withdrawCollateral(adapter, market, amount, to);
-        } else if (action == MarginActions.ACCOUNT_BORROW) {
-            (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
-                params.decodeAdapterMarketAmountReceiver();
-            _requireAllowedAdapter(adapter); // borrowing is exposure-increasing
-            // OPEN_DELTA borrows exactly the debt the swap owes the pool
-            if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.debt);
-            IMarginAccount(account).borrow(adapter, market, amount, to);
-        } else if (action == MarginActions.ACCOUNT_REPAY) {
-            (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
-            IMarginAccount(account).repay(adapter, market, amount);
-        } else if (action == MarginActions.ACCOUNT_SWEEP) {
-            (Currency currency, uint256 amount, address to) = params.decodeSweep();
-            IMarginAccount(account).sweep(currency, amount, to);
-        } else if (action == MarginActions.ASSERT_ACCOUNT_BALANCE) {
-            // routed-swap fill guarantee: require the account received at least `minAmount`, so an
-            // exact-output under-fill reverts instead of building a smaller position
-            (Currency currency, uint256 minAmount) = params.decodeFillCheck();
-            uint256 held = currency.balanceOf(account);
-            if (held < minAmount) revert IncompleteFill(minAmount, held);
-        } else if (action == MarginActions.ASSERT_HEALTH) {
-            (ILendingAdapter adapter, Market memory market, Ltv maxLtv) = params.decodeHealthCheck();
-            // a zero bound skips the check
-            if (Ltv.unwrap(maxLtv) != 0 && adapter.currentLtvWad(account, market).gt(maxLtv)) {
-                revert PositionUnhealthy();
-            }
-        } else if (action == MarginActions.PULL_TO_ACCOUNT) {
-            (Currency currency, uint256 amount, bool payerIsUser) = params.decodePull();
-            // unlike the pool-delta opcodes, 0 is not an OPEN_DELTA full-balance sentinel here; a pull
-            // with no amount is always a plan-builder error, so reject it loudly rather than silently
-            // moving nothing (which would compose badly with opt-in health checks)
-            if (amount == 0) revert ZeroAmount();
-            if (payerIsUser) {
-                // explicit amounts only: CONTRACT_BALANCE (1<<255) overflows the uint160 cast and
-                // reverts, so the router-balance sentinel cannot be smuggled onto the caller
-                permit2.transferFrom(msgSender(), account, amount.toUint160(), Currency.unwrap(currency));
-            } else {
-                if (amount == ActionConstants.CONTRACT_BALANCE) amount = currency.balanceOfSelf();
-                currency.transfer(account, amount);
-            }
+        if (action == MarginActions.ACCOUNT_SUPPLY_COLLATERAL) _supplyCollateral(params, account);
+        else if (action == MarginActions.ACCOUNT_WITHDRAW_COLLATERAL) _withdrawCollateral(params, account);
+        else if (action == MarginActions.ACCOUNT_BORROW) _borrow(params, account);
+        else if (action == MarginActions.ACCOUNT_REPAY) _repay(params, account);
+        else if (action == MarginActions.ACCOUNT_SWEEP) _accountSweep(params, account);
+        else if (action == MarginActions.ASSERT_ACCOUNT_BALANCE) _assertAccountBalance(params, account);
+        else if (action == MarginActions.ASSERT_HEALTH) _assertHealth(params, account);
+        else if (action == MarginActions.PULL_TO_ACCOUNT) _pullToAccount(params, account);
+        else revert UnsupportedAction(action);
+    }
+
+    /// @notice Supplies collateral to the lending protocol on the account's behalf. Allowlist-gated
+    ///         (supplying is exposure-increasing). `OPEN_DELTA` supplies the account's full collateral
+    ///         balance (equity plus what the swap bought).
+    function _supplyCollateral(bytes calldata params, address account) private {
+        (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
+        _requireAllowedAdapter(adapter);
+        if (amount == ActionConstants.OPEN_DELTA) amount = market.collateral.balanceOf(account);
+        IMarginAccount(account).supplyCollateral(adapter, market, amount);
+    }
+
+    /// @notice Borrows debt to `to`. Allowlist-gated (borrowing is exposure-increasing). `OPEN_DELTA`
+    ///         borrows exactly the debt the swap owes the pool.
+    function _borrow(bytes calldata params, address account) private {
+        (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
+            params.decodeAdapterMarketAmountReceiver();
+        _requireAllowedAdapter(adapter);
+        if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.debt);
+        IMarginAccount(account).borrow(adapter, market, amount, to);
+    }
+
+    /// @notice Withdraws collateral to `to`. Not allowlist-gated: a position must always be exitable.
+    ///         `OPEN_DELTA` withdraws exactly the collateral the swap owes the pool (partial delever);
+    ///         a full close passes the explicit full collateral amount.
+    function _withdrawCollateral(bytes calldata params, address account) private {
+        (ILendingAdapter adapter, Market memory market, uint256 amount, address to) =
+            params.decodeAdapterMarketAmountReceiver();
+        if (amount == ActionConstants.OPEN_DELTA) amount = _getFullDebt(market.collateral);
+        IMarginAccount(account).withdrawCollateral(adapter, market, amount, to);
+    }
+
+    /// @notice Repays debt to the lending protocol. Not allowlist-gated. `type(uint256).max` repays
+    ///         all by shares (resolved by the adapter against the accrued balance).
+    function _repay(bytes calldata params, address account) private {
+        (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
+        IMarginAccount(account).repay(adapter, market, amount);
+    }
+
+    /// @notice Sweeps a token from the account to `to` (owner/manager only, enforced by the account).
+    function _accountSweep(bytes calldata params, address account) private {
+        (Currency currency, uint256 amount, address to) = params.decodeSweep();
+        IMarginAccount(account).sweep(currency, amount, to);
+    }
+
+    /// @notice Routed-swap fill guarantee: require the account received at least `minAmount`, so an
+    ///         exact-output under-fill reverts instead of building a smaller position.
+    function _assertAccountBalance(bytes calldata params, address account) private view {
+        (Currency currency, uint256 minAmount) = params.decodeFillCheck();
+        uint256 held = currency.balanceOf(account);
+        if (held < minAmount) revert IncompleteFill(minAmount, held);
+    }
+
+    /// @notice Asserts the position's current LTV does not exceed `maxLtv`; a zero bound skips the check.
+    function _assertHealth(bytes calldata params, address account) private view {
+        (ILendingAdapter adapter, Market memory market, Ltv maxLtv) = params.decodeHealthCheck();
+        if (Ltv.unwrap(maxLtv) != 0 && adapter.currentLtvWad(account, market).gt(maxLtv)) revert PositionUnhealthy();
+    }
+
+    /// @notice Moves a token into the account: pulled from the caller via Permit2 (`payerIsUser`) or
+    ///         from the router's own balance. Unlike the pool-delta opcodes, `0` is not an `OPEN_DELTA`
+    ///         full-balance sentinel here — a pull with no amount is a plan-builder error, rejected
+    ///         loudly. `CONTRACT_BALANCE` is honored only on the router-balance path.
+    function _pullToAccount(bytes calldata params, address account) private {
+        (Currency currency, uint256 amount, bool payerIsUser) = params.decodePull();
+        if (amount == 0) revert ZeroAmount();
+        if (payerIsUser) {
+            // explicit amounts only: CONTRACT_BALANCE (1<<255) overflows the uint160 cast and reverts,
+            // so the router-balance sentinel cannot be smuggled onto the caller
+            permit2.transferFrom(msgSender(), account, amount.toUint160(), Currency.unwrap(currency));
         } else {
-            revert UnsupportedAction(action);
+            if (amount == ActionConstants.CONTRACT_BALANCE) amount = currency.balanceOfSelf();
+            currency.transfer(account, amount);
         }
     }
 
