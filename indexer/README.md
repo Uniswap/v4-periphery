@@ -21,7 +21,7 @@ Production: `npm start` with `DATABASE_URL` pointing at Postgres.
 
 | Source | Address (mainnet) | Purpose |
 |---|---|---|
-| MarginRouter | `0x0000000004BBC92D0657580CAe35aEBF054E5CDC` | Lifecycle: `AccountCreated`, `PositionIncreased/Decreased`, `CollateralAdded`, `AdapterAllowed` |
+| MarginRouter | `0x0000000004BBC92D0657580CAe35aEBF054E5CDC` | Lifecycle: `AccountCreated`, `PositionIncreased/Decreased`, `CollateralAdded`, `AdapterAllowed`, and `PositionUpdated` (resulting-state snapshot on every mutation, including `execute` plans) |
 | MorphoLendingAdapter | `0x9A7f8F5A9496D3c9dc0BEEfb44cCaC17CAAF28fa` | `MarketSet` market registry (market id, oracle, LLTV) |
 | Aave v3 / v4 adapters | `0x8Eea...3222` / `0x3a9C...469E` | `MarketSet` market registries |
 | Morpho Blue | `0xBBBB...FFCb` | Collateral/debt flows + `Liquidate`, attributed by `onBehalf` ∈ margin accounts |
@@ -30,13 +30,24 @@ Production: `npm start` with `DATABASE_URL` pointing at Postgres.
 
 ## How the derivation works
 
-The router's lifecycle events carry the full position economics directly: equity, debt
-drawn, resulting totals, current/max LTV, and health factor. Entry price is
-`debtDrawn / collateralBought` from a single log — the exact execution cost including
-fees and price impact, protocol-agnostic across venues. The lending-protocol logs (which
-precede the router event in each transaction) are still staged and joined by tx hash, but
-only for venue/market attribution, liquidations, and flows that bypass the router
-entirely (owner escape-hatch operations).
+The curated lifecycle events (`PositionIncreased`/`Decreased`, `CollateralAdded`) carry the
+full position economics directly: equity, debt drawn, resulting totals, current/max LTV, and
+health factor. Entry price is `debtDrawn / collateralBought` from a single log — the exact
+execution cost including fees and price impact, protocol-agnostic across venues. The
+lending-protocol logs (which precede the router event in each transaction) are still staged and
+joined by tx hash, but only for venue/market attribution, liquidations, and flows that bypass the
+router entirely (owner escape-hatch operations).
+
+Positions composed through the general-purpose `execute` entrypoint emit no curated lifecycle
+event, so the router also emits a `PositionUpdated` resulting-state snapshot (owner, account,
+pair, resulting totals, current LTV, max/liquidation LTV, health factor) after every
+supply/withdraw/borrow/repay on any path. The handler uses it to (1) fill the LTV/health/max-LTV
+snapshot and reconcile totals on a live epoch, and (2) open an epoch for an `execute` position the
+flow layer never created — an Aave v3 open whose single-reserve events could not resolve the pair,
+or an Aave v4 / Compound v3 open (which have no flow-truth layer indexed yet). Such epochs carry
+authoritative amounts, LTV, and health but leave economics (equity, entry price, leverage) empty
+until a curated event adopts them; `openReported` stays false until then. `execute`-composed
+positions are therefore observable at parity with curated ones, without any extra RPC.
 
 ## Field derivation map
 
@@ -57,7 +68,7 @@ unit — scale by `10^(collateralDecimals - debtDecimals)` for a human price.
 | Exit price | `position.exitPriceX18` | Repay vs collateral sold on close |
 | Margin (equity) | `position.equity` | Emitted directly on `PositionIncreased`; accumulated with `CollateralAdded` |
 | Leverage at open | `position.leverageX18AtOpen` | `collateralTotal / equity` at first open (same-token ratio) |
-| Liquidation price | `position.lltv` + amounts | `debtPrincipal / (collateralAmount × lltv)`; `lastLtvWad`/`lastHealthFactorWad` snapshot router-reported state at the last action; live accuracy needs an onchain `describePosition` read (interest drift) |
+| Liquidation price | `position.lltv` + amounts | `debtPrincipal / (collateralAmount × lltv)`; `lltv` (max/liquidation LTV) and `lastLtvWad`/`lastHealthFactorWad` snapshot router-reported state at the last mutation on any path (`PositionUpdated`, curated or `execute`); live accuracy needs an onchain `describePosition` read (interest drift) |
 | PnL (completed) | `position.realizedPnl` | `collateralReturned − equity`, collateral units; % = vs `equity` |
 | PnL (active) | client-side | mark vs `avgEntryPriceX18` on live `positionOf` amounts |
 | Created | `position.openedAt` | Block timestamp, no extra RPC |
@@ -97,8 +108,11 @@ History feed for a position:
 
 - **Interest accrual**: `debtPrincipal` tracks principal from events; live debt (and
   therefore live liquidation price / PnL) needs an onchain `positionOf` read.
-- **Aave v4**: lifecycle rows work (router events), but flow amounts, equity derivation,
-  and liquidation detection await the Spoke event ABI (see `src/aave.ts`).
+- **Aave v4 / Compound v3**: lifecycle rows (curated router events) and resulting-state
+  snapshots (`PositionUpdated`, including `execute`-composed opens) both work, so amounts, LTV,
+  and health are tracked. Still pending the venue truth layer (Aave Spoke / Comet event ABIs):
+  per-flow `lendingEvent` rows, equity for `execute`-only positions (no curated event to supply
+  it, so `openReported` stays false), and liquidation detection (see `src/aave.ts`).
 - **Aave pair ambiguity**: Aave events carry one reserve; when several registered pairs
   share it, attribution falls back to the account's live positions and, failing that, the
   router event in the same tx. Supply-only actions to an account with multiple positions

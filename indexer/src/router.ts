@@ -3,7 +3,7 @@ import { ponder } from "ponder:registry";
 import { account, activePosition, lendingEvent, position, positionAction, swapEvent } from "ponder:schema";
 import { and, eq } from "ponder";
 
-import { clamp0, ensureToken, eventId, pairKey, positionId, txLendingEvents, WAD } from "./helpers";
+import { clamp0, ensureToken, eventId, findActivePosition, pairKey, positionId, txLendingEvents, WAD } from "./helpers";
 
 /**
  * Router lifecycle handlers. The router events carry the full economics
@@ -315,4 +315,102 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
     ltvAfterWad: currentLtv,
     healthFactorWad,
   });
+});
+
+/**
+ * Resulting-state snapshot, emitted after every supply/withdraw/borrow/repay on any path (a curated
+ * flow OR an `execute` plan). It carries the full pair and the adapter's describePosition totals, so it
+ * fills the resulting-state fields that the curated Position* events would otherwise be the only source
+ * of. It never touches economics (equity, entry price, leverage) or writes a positionAction row: those
+ * come from the curated events and the lending-flow layer. Two jobs:
+ *
+ *  1. On a live epoch, reconcile the router-authoritative snapshot: LTV, health, max/liquidation LTV,
+ *     and the running totals. For a curated flow this matches the Position* event that follows in the
+ *     same tx (redundant but idempotent); for an execute plan it is the ONLY source of the LTV/health
+ *     snapshot, and for Aave v4 / Compound v3 (no flow-truth layer indexed) it is also the only source
+ *     of the running totals.
+ *  2. When no epoch is live, open one. This is an execute-composed open the flow layer never created:
+ *     an Aave v3 open whose pair its single-reserve events could not resolve, or an Aave v4 / Compound
+ *     v3 open with no flow-truth layer. Economics stay empty (openReported = false); a later curated
+ *     event adopts and fills them, exactly as it adopts a flow-created epoch.
+ */
+ponder.on("MarginRouter:PositionUpdated", async ({ event, context }) => {
+  const {
+    owner,
+    account: accountAddr,
+    collateral,
+    debt,
+    collateralTotal,
+    debtTotal,
+    currentLtv,
+    maxLtv,
+    healthFactorWad,
+  } = event.args;
+  await ensureToken(context, collateral);
+  await ensureToken(context, debt);
+
+  const terminal = collateralTotal === 0n && debtTotal === 0n;
+  const live = await findActivePosition(context, accountAddr, collateral, debt);
+
+  if (live) {
+    await context.db.update(position, { id: live.id }).set({
+      collateralAmount: collateralTotal,
+      debtPrincipal: debtTotal,
+      lltv: maxLtv,
+      lastLtvWad: currentLtv,
+      lastHealthFactorWad: healthFactorWad,
+      // an execute / escape-hatch close nets the position to zero and emits no curated close; terminate
+      // the epoch here. Leave the activePosition pointer (as the flow layer does) so a curated close in
+      // the same tx can still enrich it and the next open overwrites it.
+      ...(terminal ? { status: "CLOSED" as const } : {}),
+      updatedAt: event.block.timestamp,
+    });
+    return;
+  }
+
+  // No live epoch: a terminal snapshot has nothing to open.
+  if (terminal) return;
+
+  // Open the epoch from the snapshot. Venue comes from this tx's staged flows when resolvable (Aave v3
+  // unattributed opens), else UNKNOWN (Aave v4 / Compound, which stage no flows).
+  const flows = await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
+  const id = positionId(accountAddr, collateral, debt, event.transaction.hash);
+  await context.db
+    .insert(position)
+    .values({
+      id,
+      chainId: context.chain.id,
+      owner,
+      account: accountAddr,
+      collateral,
+      debt,
+      venue: flows.venue,
+      status: "OPEN",
+      openReported: false,
+      collateralAmount: collateralTotal,
+      debtPrincipal: debtTotal,
+      equity: 0n,
+      totalCollateralBought: 0n,
+      totalDebtDrawn: 0n,
+      avgEntryPriceX18: null,
+      leverageX18AtOpen: null,
+      openTxHash: event.transaction.hash,
+      openedAt: event.block.timestamp,
+      openBlock: event.block.number,
+      openPoolId: null,
+      morphoMarketId: flows.morphoMarketId ?? null,
+      lltv: maxLtv,
+      liquidated: false,
+      seizedCollateral: 0n,
+      liquidationRepaidDebt: 0n,
+      badDebt: 0n,
+      lastLtvWad: currentLtv,
+      lastHealthFactorWad: healthFactorWad,
+      updatedAt: event.block.timestamp,
+    })
+    .onConflictDoNothing();
+  await context.db
+    .insert(activePosition)
+    .values({ id: pairKey(accountAddr, collateral, debt), positionId: id })
+    .onConflictDoUpdate({ positionId: id });
 });

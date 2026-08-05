@@ -125,14 +125,16 @@ export const position = onchainTable(
     venue: venue("venue").notNull(),
     status: positionStatus("status").notNull(),
 
-    // True once a router lifecycle event has reported this epoch's economics. An epoch first seen
-    // through lending-protocol flows (an `execute` plan or owner escape-hatch op, which emit no
-    // router event) stays false: its amounts are authoritative but equity/leverage/pool/entry price
-    // are unknown. The first router event on such an epoch adopts it and flips this true.
+    // True once a curated Position* event has reported this epoch's economics. An epoch first seen
+    // through lending flows or a PositionUpdated snapshot (an `execute` plan or owner escape-hatch op,
+    // which emit no curated Position* event) stays false: its amounts, LTV, and health are authoritative
+    // but equity/leverage/pool/entry price are unknown. The first curated event adopts it and flips true.
     openReported: t.boolean().notNull(),
 
-    // Running amounts maintained from lending-protocol events (source of truth).
-    // debtPrincipal ignores interest accrual; live debt must be read onchain.
+    // Running amounts, from lending-protocol events where a flow-truth layer exists (Morpho, Aave v3) and
+    // reconciled to the router's describePosition totals on every PositionUpdated. For venues with no
+    // flow layer yet (Aave v4, Compound v3) PositionUpdated / the curated Position* totals are the only
+    // source. debtPrincipal ignores interest accrual between events; live debt must be read onchain.
     collateralAmount: t.bigint().notNull(),
     debtPrincipal: t.bigint().notNull(),
 
@@ -166,8 +168,10 @@ export const position = onchainTable(
     liquidationRepaidDebt: t.bigint().notNull(),
     badDebt: t.bigint().notNull(),
 
-    // Resulting state reported by the router on the most recent lifecycle event.
-    // Snapshots, not live values: interest accrual moves the true LTV between events.
+    // Resulting state from the router's most recent PositionUpdated snapshot (emitted after every
+    // mutation on any path, curated or `execute`) or curated Position* event. Snapshots, not live
+    // values: interest accrual moves the true LTV between events. `lltv` above carries the paired
+    // max/liquidation LTV from the same snapshot.
     lastLtvWad: t.bigint(),
     lastHealthFactorWad: t.bigint(),
 

@@ -75,6 +75,23 @@ export const marginRouterAbi = [
       { name: "healthFactorWad", type: "uint256", indexed: false },
     ],
   },
+  {
+    // Resulting-state snapshot emitted after every collateral/debt mutation on any path (curated or an
+    // `execute` plan), so execute-composed positions are as observable from logs as curated ones.
+    type: "event",
+    name: "PositionUpdated",
+    inputs: [
+      { name: "owner", type: "address", indexed: true },
+      { name: "account", type: "address", indexed: true },
+      { name: "collateral", type: "address", indexed: false },
+      { name: "debt", type: "address", indexed: false },
+      { name: "collateralTotal", type: "uint256", indexed: false },
+      { name: "debtTotal", type: "uint256", indexed: false },
+      { name: "currentLtv", type: "uint256", indexed: false },
+      { name: "maxLtv", type: "uint256", indexed: false },
+      { name: "healthFactorWad", type: "uint256", indexed: false },
+    ],
+  },
 ] as const;
 
 export const morphoAdapterAbi = [
