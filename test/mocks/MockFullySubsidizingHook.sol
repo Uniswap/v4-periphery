@@ -58,7 +58,12 @@ contract MockFullySubsidizingHook is BaseTestHooks {
         SwapParams calldata params,
         BalanceDelta delta,
         bytes calldata /* hookData */
-    ) external override onlyPoolManager returns (bytes4, int128) {
+    )
+        external
+        override
+        onlyPoolManager
+        returns (bytes4, int128)
+    {
         require(params.amountSpecified > 0, "exact output only");
 
         // for exact output the unspecified currency is the input side, which is the side the
