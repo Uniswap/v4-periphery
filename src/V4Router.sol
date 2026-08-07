@@ -201,6 +201,7 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
                 // here: propagating the zero would call swap with amountSpecified == 0, which
                 // PoolManager rejects. The untouched currencies carry no delta, so settlement is a
                 // no-op for them and amountIn of 0 trivially clears amountInMaximum below.
+                // The upstream pools are never swapped, so their hooks never run.
                 if (amountIn == 0) break;
                 amountOut = amountIn;
                 currencyOut = pathKey.intermediateCurrency;

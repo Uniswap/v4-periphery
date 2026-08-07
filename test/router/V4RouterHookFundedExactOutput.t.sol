@@ -22,7 +22,6 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 ///         upstream swap that PoolManager rejects with `SwapAmountCannotBeZero`.
 contract V4RouterHookFundedExactOutputTest is RoutingTestHelpers {
     PoolKey internal hookKey;
-    PoolKey internal hookKey12;
     address internal hookAddr;
 
     function setUp() public {
@@ -37,8 +36,7 @@ contract V4RouterHookFundedExactOutputTest is RoutingTestHelpers {
         MockFullySubsidizingHook(hookAddr).setSubsidyBps(10_000);
 
         hookKey = createPoolWithLiquidity(currency0, currency1, hookAddr);
-        // a second hooked pool, so a multihop path can have a funded hop that is not the last one
-        hookKey12 = createPoolWithLiquidity(currency1, currency2, hookAddr);
+        createPoolWithLiquidity(currency1, currency2, hookAddr);
 
         // the hook pays the swapper's input out of its own balance
         MockERC20(Currency.unwrap(currency0)).mint(hookAddr, 2 ** 120);
