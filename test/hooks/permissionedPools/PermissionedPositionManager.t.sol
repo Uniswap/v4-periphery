@@ -37,6 +37,10 @@ import {INotifier} from "../../../src/interfaces/INotifier.sol";
 import {MockUnsubscribeRevertingSubscriber} from "../../mocks/MockUnsubscribeRevertingSubscriber.sol";
 import {MockBurnRevertingSubscriber} from "../../mocks/MockBurnRevertingSubscriber.sol";
 import {MockReentrantSubscriber} from "../../mocks/MockReentrantSubscriber.sol";
+import {MockApprovalHijackSubscriber} from "../../mocks/MockApprovalHijackSubscriber.sol";
+import {MockRemoveLiquidityDataHook} from "./mocks/MockRemoveLiquidityDataHook.sol";
+import {HookMiner} from "../../shared/HookMiner.sol";
+import {Deploy} from "../../shared/Deploy.sol";
 import {MockSubscriber} from "../../mocks/MockSubscriber.sol";
 
 contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, LiquidityFuzzers {
@@ -1766,7 +1770,7 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
     /// @dev V4 rounds in favor of the pool: a mint+burn roundtrip loses up to 1 wei per side.
     uint256 private constant _ROUNDTRIP_TOLERANCE = 1;
-    bytes4 private constant _UNWIND_SELECTOR = 0x37058749;
+    bytes4 private constant _UNWIND_SELECTOR = 0xb0a281b0;
     bytes4 private constant _WITHDRAW_CLAIM_SELECTOR = 0xf77de3fc;
 
     event CurrencyUnwound(
@@ -1785,7 +1789,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
     }
 
     function _unwind(uint256 tokenId) internal {
-        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId));
+        (bool ok,) =
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, uint128(0), uint128(0), bytes("")));
         require(ok, "unwindPosition failed");
     }
 
@@ -2039,7 +2044,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         _test_permissioned_mint_allowed_user(key2);
 
         vm.prank(notAdmin);
-        (bool ok, bytes memory data) = address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId));
+        (bool ok, bytes memory data) =
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, uint128(0), uint128(0), bytes("")));
         assertEq(ok, false);
         assertEq(bytes4(data), Unauthorized.selector);
     }
@@ -2317,6 +2323,96 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(nonPermissioned.balanceOf(address(lpm)), 0);
     }
 
+    // ===== Caller-supplied burn bounds and hookData on unwindPosition =====
+
+    /// @dev Bounds the burn can satisfy do not change the outcome.
+    function test_unwindPosition_withSatisfiableMinAmounts_succeeds() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        (bool ok,) =
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, uint128(1), uint128(1), bytes("")));
+
+        assertEq(ok, true);
+        assertEq(lpm.getPositionLiquidity(tokenId), 0);
+        vm.expectRevert();
+        IERC721(address(lpm)).ownerOf(tokenId);
+    }
+
+    /// @dev Bounds the burn cannot satisfy revert the whole force-exit and leave the position intact.
+    function test_unwindPosition_withUnsatisfiableMinAmounts_revertsAndPreservesPosition() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+        uint256 liquidityBefore = lpm.getPositionLiquidity(tokenId);
+
+        (bool ok, bytes memory data) = address(lpm)
+            .call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, type(uint128).max, type(uint128).max, bytes("")));
+
+        assertEq(ok, false);
+        assertEq(bytes4(data), SlippageCheck.MinimumAmountInsufficient.selector);
+        assertEq(lpm.getPositionLiquidity(tokenId), liquidityBefore, "position untouched");
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
+    }
+
+    /// @dev A custom hook extension with remove-liquidity callbacks receives the caller-supplied `hookData`.
+    function test_unwindPosition_forwardsHookDataToHook() public {
+        (MockRemoveLiquidityDataHook hook, PoolKey memory hookKey) = _setUpRemoveLiquidityDataHookPool();
+        uint256 tokenId = lpm.nextTokenId();
+        PositionConfig memory config = PositionConfig({poolKey: hookKey, tickLower: -120, tickUpper: 120});
+        vm.prank(alice);
+        mint(config, 1e18, alice, ZERO_BYTES);
+
+        bytes memory hookData = abi.encode("force-exit", tokenId);
+        (bool ok,) =
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, uint128(0), uint128(0), hookData));
+
+        assertEq(ok, true);
+        assertEq(hook.lastHookData(), hookData, "hook received the caller-supplied hookData");
+        assertEq(lpm.getPositionLiquidity(tokenId), 0);
+    }
+
+    /// @dev Control: the same pool with empty hookData reverts in the hook, proving the test above passes
+    ///      because the data was forwarded and not because the hook is inert.
+    function test_unwindPosition_emptyHookDataRevertsInHook() public {
+        (, PoolKey memory hookKey) = _setUpRemoveLiquidityDataHookPool();
+        uint256 tokenId = lpm.nextTokenId();
+        PositionConfig memory config = PositionConfig({poolKey: hookKey, tickLower: -120, tickUpper: 120});
+        vm.prank(alice);
+        mint(config, 1e18, alice, ZERO_BYTES);
+
+        (bool ok,) =
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, uint128(0), uint128(0), bytes("")));
+
+        assertEq(ok, false);
+        assertEq(lpm.getPositionLiquidity(tokenId), 1e18, "position untouched");
+    }
+
+    /// @dev Deploys a hook mined with BEFORE_REMOVE_LIQUIDITY_FLAG, allowlists it, and opens a pool
+    ///      pairing it with a verified adapter.
+    function _setUpRemoveLiquidityDataHookPool()
+        internal
+        returns (MockRemoveLiquidityDataHook hook, PoolKey memory hookKey)
+    {
+        uint160 flags = uint160(1 << 9); // BEFORE_REMOVE_LIQUIDITY_FLAG
+        (address expected, bytes32 salt) = HookMiner.find(
+            address(this), flags, vm.getCode("MockRemoveLiquidityDataHook.sol:MockRemoveLiquidityDataHook"), ""
+        );
+        address deployed =
+            Deploy.create2(vm.getCode("MockRemoveLiquidityDataHook.sol:MockRemoveLiquidityDataHook"), salt);
+        assertEq(deployed, expected);
+        hook = MockRemoveLiquidityDataHook(payable(deployed));
+
+        (hookKey,) = initPool(
+            Currency.wrap(address(permissionsAdapter0)),
+            Currency.wrap(address(permissionsAdapter2)),
+            IHooks(deployed),
+            3000,
+            SQRT_PRICE_1_1
+        );
+        setAllowedHooks(Currency.wrap(address(permissionsAdapter0)), IHooks(deployed), true);
+        setAllowedHooks(Currency.wrap(address(permissionsAdapter2)), IHooks(deployed), true);
+    }
+
     // ===== Subscriber DoS protection on unwindPosition =====
 
     /// @dev Admin force-exit succeeds even when the LP attached a subscriber that reverts on
@@ -2331,7 +2427,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(sub));
 
         // address(this) is admin of both adapters (default setUp)
-        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId));
+        (bool ok,) =
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, uint128(0), uint128(0), bytes("")));
         assertEq(ok, true);
 
         // subscriber detached, NFT burned
@@ -2365,10 +2462,69 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         vm.prank(alice);
         IERC721(address(lpm)).setApprovalForAll(address(sub), true);
 
-        (bool ok,) = address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId));
+        (bool ok,) =
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, uint128(0), uint128(0), bytes("")));
         assertEq(ok, true);
 
         // Subscriber fully detached — no re-attach happened, despite the reentry attempt.
+        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(0));
+        vm.expectRevert();
+        IERC721(address(lpm)).ownerOf(tokenId);
+    }
+
+    /// @dev Admin force-exit succeeds even when the LP's subscriber overwrites the admin's temporary
+    ///      ERC-721 approval during `notifyUnsubscribe`. `approve` has no `onlyIfPoolManagerLocked` guard so
+    ///      the write lands, but UNSUBSCRIBE runs in its own unlock and the approval is re-applied after that
+    ///      unlock closes, so BURN_POSITION still passes `onlyIfApproved`. Here the subscriber is the
+    ///      position owner, so `approve` passes on the `msg.sender == owner` branch.
+    function test_unwindPosition_with_approvalHijackingSubscriber_succeeds() public {
+        MockApprovalHijackSubscriber sub = new MockApprovalHijackSubscriber(address(lpm), true, address(0));
+        // a contract LP needs LIQUIDITY_ALLOWED on both underlyings to hold the position
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(address(sub), PermissionFlags.ALL_ALLOWED);
+        MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(address(sub), PermissionFlags.ALL_ALLOWED);
+
+        PositionConfig memory config = PositionConfig({poolKey: key2, tickLower: -120, tickUpper: 120});
+        uint256 tokenId = lpm.nextTokenId();
+        vm.prank(alice);
+        mint(config, 1e18, address(sub), ZERO_BYTES);
+        assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(sub));
+
+        sub.subscribeSelf(tokenId);
+        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(sub));
+
+        (bool ok,) =
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, uint128(0), uint128(0), bytes("")));
+        assertEq(ok, true);
+
+        // the hijacking write did land inside the callback, and was discarded by the re-approval
+        assertEq(sub.notifyUnsubscribeCount(), 1);
+        assertGt(sub.gasUsedByApprove(), 0);
+
+        assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(0));
+        vm.expectRevert();
+        IERC721(address(lpm)).ownerOf(tokenId);
+    }
+
+    /// @dev Same hijack through the `isApprovedForAll[owner][msg.sender]` branch instead: an EOA LP attaches a
+    ///      separate malicious subscriber and grants it operator-for-all. Operator authority outlives the
+    ///      admin's per-token approval, so this shape needs coverage of its own.
+    function test_unwindPosition_with_operatorApprovalHijackingSubscriber_succeeds() public {
+        uint256 tokenId = lpm.nextTokenId();
+        _test_permissioned_mint_allowed_user(key2);
+
+        MockApprovalHijackSubscriber sub = new MockApprovalHijackSubscriber(address(lpm), true, address(0));
+        vm.prank(alice);
+        INotifier(address(lpm)).subscribe(tokenId, address(sub), "");
+        vm.prank(alice);
+        IERC721(address(lpm)).setApprovalForAll(address(sub), true);
+
+        (bool ok,) =
+            address(lpm).call(abi.encodeWithSelector(_UNWIND_SELECTOR, tokenId, uint128(0), uint128(0), bytes("")));
+        assertEq(ok, true);
+
+        assertEq(sub.notifyUnsubscribeCount(), 1);
+        assertGt(sub.gasUsedByApprove(), 0);
+
         assertEq(address(INotifier(address(lpm)).subscriber(tokenId)), address(0));
         vm.expectRevert();
         IERC721(address(lpm)).ownerOf(tokenId);

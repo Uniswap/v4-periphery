@@ -55,10 +55,17 @@ contract PermissionedPositionManager is PositionManager {
 
     /// @notice Force-exit the LP from a position. Burns the NFT, unwinds liquidity, and routes each currency.
     /// @dev Either PA admin may call. Per-currency fallback is derived on-chain via `_getOwner` (see
-    ///      `_unwindWithFallback`). The 6909 fallback never reverts, so the call is atomic. Emits one
-    ///      `CurrencyUnwound` event per leg.
+    ///      `_unwindWithFallback`). The 6909 fallback never reverts, so routing cannot strand a currency.
+    ///      Emits one `CurrencyUnwound` event per leg.
     /// @param tokenId The position to unwind
-    function unwindPosition(uint256 tokenId) external isNotLocked {
+    /// @param amount0Min Minimum currency0 the burn must return; 0 disables the check
+    /// @param amount1Min Minimum currency1 the burn must return; 0 disables the check
+    /// @param hookData Forwarded to the pool's hook on removal, for hook extensions that require it
+    /// @dev Non-zero bounds revert the burn instead of executing it below them.
+    function unwindPosition(uint256 tokenId, uint128 amount0Min, uint128 amount1Min, bytes calldata hookData)
+        external
+        isNotLocked
+    {
         (PoolKey memory poolKey,) = getPoolAndPositionInfo(tokenId);
         address admin0 = _getOwner(poolKey.currency0);
         address admin1 = _getOwner(poolKey.currency1);
@@ -66,22 +73,29 @@ contract PermissionedPositionManager is PositionManager {
 
         address lp = ownerOf(tokenId);
 
-        // Pre-approve so BURN_POSITION inside the unlock passes its onlyIfApproved check.
+        // Unsubscribe in its own unlock only when a subscriber is attached.
+        if (positionInfo[tokenId].hasSubscriber()) {
+            // Approve so UNSUBSCRIBE passes its own _isApprovedOrOwner check.
+            getApproved[tokenId] = msg.sender;
+            bytes memory unsubscribeAction = abi.encodePacked(uint8(Actions.UNSUBSCRIBE));
+            bytes[] memory unsubscribeParams = new bytes[](1);
+            unsubscribeParams[0] = abi.encode(tokenId);
+            poolManager.unlock(abi.encode(unsubscribeAction, unsubscribeParams));
+        }
+
+        // Approve so BURN_POSITION passes onlyIfApproved.
         // ERC-721 _burn clears getApproved as part of its teardown, so the approval is self-cleaning.
         getApproved[tokenId] = msg.sender;
 
+        // Unwind
         bytes memory actions = abi.encodePacked(
-            uint8(Actions.UNSUBSCRIBE),
-            uint8(Actions.BURN_POSITION),
-            uint8(Actions.UNWIND_WITH_FALLBACK),
-            uint8(Actions.UNWIND_WITH_FALLBACK)
+            uint8(Actions.BURN_POSITION), uint8(Actions.UNWIND_WITH_FALLBACK), uint8(Actions.UNWIND_WITH_FALLBACK)
         );
-        bytes[] memory params = new bytes[](4);
-        params[0] = abi.encode(tokenId);
-        params[1] = abi.encode(tokenId, uint128(0), uint128(0), bytes(""));
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(tokenId, amount0Min, amount1Min, hookData);
         // PoolKey is encoded into the unwind params because BURN_POSITION clears positionInfo[tokenId].
-        params[2] = abi.encode(poolKey, poolKey.currency0, lp, tokenId);
-        params[3] = abi.encode(poolKey, poolKey.currency1, lp, tokenId);
+        params[1] = abi.encode(poolKey, poolKey.currency0, lp, tokenId);
+        params[2] = abi.encode(poolKey, poolKey.currency1, lp, tokenId);
         poolManager.unlock(abi.encode(actions, params));
     }
 
