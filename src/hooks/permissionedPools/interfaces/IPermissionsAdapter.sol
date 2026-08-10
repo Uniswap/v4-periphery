@@ -12,6 +12,9 @@ interface IPermissionsAdapter is IERC20 {
     /// @notice Emitted when an allowed wrapper is updated
     event AllowedWrapperUpdated(address indexed wrapper, bool allowed);
 
+    /// @notice Emitted when an allowed hook is updated
+    event AllowedHookUpdated(IHooks indexed hook, bool allowed);
+
     /// @notice Emitted when the swapping enabled status is updated
     event SwappingEnabledUpdated(bool enabled);
 
@@ -56,6 +59,14 @@ interface IPermissionsAdapter is IERC20 {
     /// @dev To ensure the permissions adapter cannot be wrapped in an ERC6909 token on the PoolManager, the wrapper must only implement `swap` or `modifyLiquidity` functions
     function updateAllowedWrapper(address wrapper, bool allowed) external;
 
+    /// @notice Updates the allowed hook
+    /// @param hook The hook to update
+    /// @param allowed Whether the hook is allowed
+    /// @dev Only callable by the owner
+    /// @dev Revoking a hook blocks future mints and liquidity increases on positions using it. Decreases
+    /// and burns are deliberately left open so that holders can always exit an existing position.
+    function updateAllowedHook(IHooks hook, bool allowed) external;
+
     /// @notice Updates the swapping enabled status
     /// @param enabled Whether swapping is enabled
     /// @dev Only callable by the owner
@@ -72,6 +83,11 @@ interface IPermissionsAdapter is IERC20 {
     /// @dev e.g., the permissioned pool manager, quoters or the swap router
     /// @dev Wrappers must honestly report `msgSender()` to maintain permission guarantees.
     function allowedWrappers(address wrapper) external view returns (bool);
+
+    /// @notice Returns whether a hook is allowed
+    /// @param hook The hook to check
+    /// @dev For a pool pairing two adapters, both adapters must approve the hook
+    function allowedHooks(IHooks hook) external view returns (bool);
 
     /// @notice Returns the swapping enabled status
     function swappingEnabled() external view returns (bool);

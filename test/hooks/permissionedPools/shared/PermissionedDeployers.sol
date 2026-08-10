@@ -43,6 +43,7 @@ import {Deploy} from "../../../../test/shared/Deploy.sol";
 import {HookMiner} from "../../../shared/HookMiner.sol";
 import {IWETH9} from "../../../../src/interfaces/external/IWETH9.sol";
 import {PermissionFlags} from "../../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
+import {IPermissionsAdapter} from "../../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapter.sol";
 
 /// @notice A contract that provides permissioned deployment functionality for tests
 /// This moves the deployFreshManagerAndRoutersPermissioned function from v4-core to the test folder
@@ -164,6 +165,11 @@ contract PermissionedDeployers is Test {
         );
         assertEq(addr, calculatedAddr);
         deployedHooksAddr = calculatedAddr;
+    }
+
+    /// @dev `currency` must be a permissions adapter, which owns the hook allowlist
+    function setAllowedHooks(Currency currency, IHooks permissionedHooks_, bool allowed) internal {
+        IPermissionsAdapter(Currency.unwrap(currency)).updateAllowedHook(permissionedHooks_, allowed);
     }
 
     function deployPermissionedV4Router(address permit2_, address permissionsAdapterFactory_, address weth9)
