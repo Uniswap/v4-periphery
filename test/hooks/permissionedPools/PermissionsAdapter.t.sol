@@ -8,6 +8,7 @@ import {
 import {ERC20, IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {PermissionedPoolsBase, MockAllowlistChecker} from "./PermissionedPoolsBase.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 
 contract PermissionsAdapterTest is PermissionedPoolsBase {
@@ -302,6 +303,52 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
         assertEq(IERC20Metadata(address(adapter)).symbol(), "v4BIG");
         // decimals decode as uint8 fails on the oversized value -> fallback.
         assertEq(IERC20Metadata(address(adapter)).decimals(), 18);
+    }
+
+    /// @dev The adapter must always have an owner: `unwindPosition` authorizes against it and its
+    ///      per-currency fallback routes to it, so a zero owner permanently disables the force-exit.
+    ///      This is the case that matters — `Ownable.renounceOwnership` is `onlyOwner`, so the owner is the
+    ///      only party who could ever have zeroed it.
+    function testRevert_WhenRenouncingOwnership_fromOwner() public {
+        vm.prank(owner);
+        vm.expectRevert(IPermissionsAdapter.RenounceDisabled.selector);
+        Ownable2Step(address(permissionsAdapter)).renounceOwnership();
+
+        assertEq(permissionsAdapter.owner(), owner);
+    }
+
+    /// @dev Reverts for everyone, not just the owner: the override drops `onlyOwner` and reverts
+    ///      unconditionally, so the error is `RenounceDisabled` rather than `OwnableUnauthorizedAccount`.
+    function testRevert_WhenRenouncingOwnership(address caller) public {
+        vm.assume(caller != owner);
+        vm.prank(caller);
+        vm.expectRevert(IPermissionsAdapter.RenounceDisabled.selector);
+        Ownable2Step(address(permissionsAdapter)).renounceOwnership();
+
+        assertEq(permissionsAdapter.owner(), owner);
+    }
+
+    /// @dev The normal two-step handover is untouched.
+    function test_transferOwnership_twoStepStillWorks() public {
+        address newOwner = makeAddr("newOwner");
+
+        vm.prank(owner);
+        Ownable2Step(address(permissionsAdapter)).transferOwnership(newOwner);
+        assertEq(permissionsAdapter.owner(), owner, "not transferred until accepted");
+
+        vm.prank(newOwner);
+        Ownable2Step(address(permissionsAdapter)).acceptOwnership();
+        assertEq(permissionsAdapter.owner(), newOwner);
+    }
+
+    /// @dev The other route to a zero owner: `transferOwnership(address(0))` only sets a pending owner, and
+    ///      address(0) can never call `acceptOwnership`, so ownership cannot reach zero this way either.
+    function test_transferOwnership_toZeroCannotComplete() public {
+        vm.prank(owner);
+        Ownable2Step(address(permissionsAdapter)).transferOwnership(address(0));
+
+        assertEq(permissionsAdapter.owner(), owner);
+        assertEq(Ownable2Step(address(permissionsAdapter)).pendingOwner(), address(0));
     }
 
     function _deployAdapterForToken(IERC20 token) internal returns (IPermissionsAdapter adapter) {
