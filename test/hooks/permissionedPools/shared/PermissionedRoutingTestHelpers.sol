@@ -161,23 +161,11 @@ contract PermissionedRoutingTestHelpers is PermissionedDeployers, DeployPermit2 
         permissionsAdapter0.updateAllowedWrapper(address(permissionedHooks), true);
         permissionsAdapter1.updateAllowedWrapper(address(permissionedHooks), true);
 
-        setAllowedHooks(
-            IPositionManager(positionManager), Currency.wrap(address(permissionsAdapter0)), permissionedHooks
-        );
-        setAllowedHooks(
-            IPositionManager(positionManager), Currency.wrap(address(permissionsAdapter1)), permissionedHooks
-        );
+        setAllowedHooks(Currency.wrap(address(permissionsAdapter0)), permissionedHooks, true);
+        setAllowedHooks(Currency.wrap(address(permissionsAdapter1)), permissionedHooks, true);
 
-        setAllowedHooks(IPositionManager(positionManager), Currency.wrap(address(permissionsAdapter0)), insecureHooks);
-        setAllowedHooks(IPositionManager(positionManager), Currency.wrap(address(permissionsAdapter1)), insecureHooks);
-    }
-
-    function setAllowedHooks(IPositionManager posm, Currency currency, IHooks permissionedHooks_) internal {
-        // addPermissionedHooks selector
-        bytes4 selector = 0xb5cdc484;
-        bytes memory data = abi.encodeWithSelector(selector, currency, permissionedHooks_, true);
-        (bool success,) = address(posm).call(data);
-        require(success, "Failed to set hooks");
+        setAllowedHooks(Currency.wrap(address(permissionsAdapter0)), insecureHooks, true);
+        setAllowedHooks(Currency.wrap(address(permissionsAdapter1)), insecureHooks, true);
     }
 
     function createPoolWithLiquidity(Currency currencyA, Currency currencyB, address hookAddr)

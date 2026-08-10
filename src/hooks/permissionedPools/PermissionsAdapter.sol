@@ -30,6 +30,9 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
     /// @inheritdoc IPermissionsAdapter
     mapping(address wrapper => bool) public allowedWrappers;
 
+    /// @inheritdoc IPermissionsAdapter
+    mapping(IHooks hook => bool) public allowedHooks;
+
     constructor(
         IERC20 permissionedToken,
         address poolManager,
@@ -66,6 +69,11 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
     }
 
     /// @inheritdoc IPermissionsAdapter
+    function updateAllowedHook(IHooks hook, bool allowed) external onlyOwner {
+        _updateAllowedHook(hook, allowed);
+    }
+
+    /// @inheritdoc IPermissionsAdapter
     function updateSwappingEnabled(bool enabled) external onlyOwner {
         _updateSwappingEnabled(enabled);
     }
@@ -86,6 +94,13 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
     function _updateAllowedWrapper(address wrapper, bool allowed) internal {
         allowedWrappers[wrapper] = allowed;
         emit AllowedWrapperUpdated(wrapper, allowed);
+    }
+
+    function _updateAllowedHook(IHooks hook, bool allowed) internal {
+        bool oldAllowed = allowedHooks[hook];
+        if (oldAllowed == allowed) return;
+        allowedHooks[hook] = allowed;
+        emit AllowedHookUpdated(hook, allowed);
     }
 
     function _updateSwappingEnabled(bool enabled) internal {
