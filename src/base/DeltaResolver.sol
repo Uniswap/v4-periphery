@@ -24,7 +24,7 @@ abstract contract DeltaResolver is ImmutableState {
     /// @param recipient Address to receive the currency
     /// @param amount Amount to take
     /// @dev Returns early if the amount is 0
-    function _take(Currency currency, address recipient, uint256 amount) internal {
+    function _take(Currency currency, address recipient, uint256 amount) internal virtual {
         if (amount == 0) return;
         poolManager.take(currency, recipient, amount);
     }

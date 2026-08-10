@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {ActionConstants} from "../../libraries/ActionConstants.sol";
-import {V4Router, IPoolManager, Currency} from "../../V4Router.sol";
+import {V4Router, IPoolManager, Currency, PoolKey} from "../../V4Router.sol";
 import {IPermissionsAdapter} from "./interfaces/IPermissionsAdapter.sol";
 import {IPermissionsAdapterFactory} from "./interfaces/IPermissionsAdapterFactory.sol";
 import {PermissionFlags} from "./libraries/PermissionFlags.sol";
@@ -15,11 +16,44 @@ abstract contract PermissionedV4Router is V4Router {
 
     error Unauthorized();
     error SwappingDisabled();
+    error HookNotAllowed();
 
     constructor(IPoolManager poolManager_, IPermissionsAdapterFactory permissionsAdapterFactory)
         V4Router(poolManager_)
     {
         PERMISSIONS_ADAPTER_FACTORY = permissionsAdapterFactory;
+    }
+
+    /// @inheritdoc V4Router
+    /// @dev Permission enforcement for a permissioned pool lives in its hook, so a pool holding a
+    ///      verified adapter must not be swapped through unless the adapter's owner has allow-listed
+    ///      that hook. Rejecting only `address(0)` is insufficient — a no-op hook, or an address mined
+    ///      without `BEFORE_SWAP_FLAG`, would otherwise pass.
+    function _validatePoolKey(PoolKey memory poolKey) internal view override {
+        if (address(PERMISSIONS_ADAPTER_FACTORY) == address(0)) return;
+        _validateHook(poolKey.currency0, poolKey.hooks);
+        _validateHook(poolKey.currency1, poolKey.hooks);
+    }
+
+    /// @notice Reverts if `currency` is a verified permissions adapter that has not allow-listed `hooks`
+    function _validateHook(Currency currency, IHooks hooks) internal view {
+        if (PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(Currency.unwrap(currency)) == address(0)) return;
+        if (!IPermissionsAdapter(Currency.unwrap(currency)).allowedHooks(hooks)) revert HookNotAllowed();
+    }
+
+    function _take(Currency currency, address recipient, uint256 amount) internal virtual override {
+        address permissionedToken = address(PERMISSIONS_ADAPTER_FACTORY) == address(0)
+            ? address(0)
+            : PERMISSIONS_ADAPTER_FACTORY.verifiedPermissionsAdapterOf(Currency.unwrap(currency));
+
+        // If the token is permissioned, validate swapping is enabled and the sender is swap-allowed
+        if (permissionedToken != address(0)) {
+            IPermissionsAdapter permissionsAdapter = IPermissionsAdapter(Currency.unwrap(currency));
+            if (!permissionsAdapter.swappingEnabled()) revert SwappingDisabled();
+            if (!permissionsAdapter.isAllowed(msgSender(), PermissionFlags.SWAP_ALLOWED)) revert Unauthorized();
+        }
+
+        super._take(currency, recipient, amount);
     }
 
     function _pay(Currency currency, address payer, uint256 amount) internal virtual override {

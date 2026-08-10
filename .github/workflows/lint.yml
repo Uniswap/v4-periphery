@@ -6,7 +6,8 @@ on:
       - main
   pull_request:
 
-permissions: {}
+permissions:
+  contents: read
 jobs:
   run-linters:
     name: Forge Linting
