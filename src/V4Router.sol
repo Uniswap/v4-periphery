@@ -210,10 +210,17 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
         }
     }
 
+    /// @notice Validates a pool before swapping through it
+    /// @dev No-op by default. Called once per swap, i.e. for every hop of a multi-hop route.
+    ///      Inheriting routers override this to reject pools they must not trade in.
+    function _validatePoolKey(PoolKey memory poolKey) internal view virtual {}
+
     function _swap(PoolKey memory poolKey, bool zeroForOne, int256 amountSpecified, bytes calldata hookData)
         private
         returns (BalanceDelta delta)
     {
+        _validatePoolKey(poolKey);
+
         // for protection of exactOut swaps, sqrtPriceLimit is not exposed as a feature in this contract
         delta = poolManager.swap(
             poolKey,

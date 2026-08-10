@@ -23,6 +23,10 @@ import {MockPermissionedToken, MockAllowlistChecker} from "./PermissionedPoolsBa
 import {MockPermissionedHooks} from "./mocks/MockPermissionedHooks.sol";
 import {PermissionFlags, PermissionFlag} from "../../../src/hooks/permissionedPools/libraries/PermissionFlags.sol";
 import {PathKey} from "../../../src/libraries/PathKey.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {MockUnapprovedWrapper} from "./mocks/MockUnapprovedWrapper.sol";
 
 contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
     using PermitHash for IAllowanceTransfer.PermitSingle;
@@ -131,6 +135,53 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
         vm.snapshotGasLastCall("PermissionedV4Router_ExactInputSingle_PermissionedTokens");
     }
 
+    /// @notice Cost of an ordinary, non-permissioned swap routed through the permissioned router.
+    ///         This is what UniversalRouter users pay, since V4SwapRouter inherits PermissionedV4Router.
+    function test_gas_swapExactInputSingle_ordinaryTokens() public {
+        uint256 amountIn = 1000;
+        // key2 is currency2/currency3 with no hook — neither side is a permissions adapter
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(key2, true, uint128(amountIn), 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(key2.currency0, key2.currency1, ActionConstants.MSG_SENDER);
+
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+        vm.snapshotGasLastCall("PermissionedV4Router_ExactInputSingle_OrdinaryTokens");
+    }
+
+    /// @notice Cost of an ordinary 3-hop swap over four distinct assets through the permissioned router.
+    ///         Distinct intermediates are what make multi-hop expensive: each is a currency the router
+    ///         never looked up before, so it costs a cold storage read that a same-pool route would not.
+    function test_gas_swapExactIn3Hops_ordinaryTokens_distinctAssets() public {
+        MockERC20[] memory extra = deployTokens(1, 2 ** 128, false);
+        Currency currency5 = Currency.wrap(address(extra[0]));
+        approveAllContracts(address(extra[0]));
+        extra[0].approve(address(permissionedRouter), type(uint256).max);
+        extra[0].approve(address(positionManager), type(uint256).max);
+
+        // key2 already covers currency2/currency3; add the two remaining legs
+        createPoolWithLiquidity(currency3, currency4, address(0));
+        createPoolWithLiquidity(currency4, currency5, address(0));
+
+        // currency2 -> currency3 -> currency4 -> currency5, no repeats
+        PathKey[] memory path = new PathKey[](3);
+        path[0] = PathKey(currency3, 3000, 60, IHooks(address(0)), bytes(""));
+        path[1] = PathKey(currency4, 3000, 60, IHooks(address(0)), bytes(""));
+        path[2] = PathKey(currency5, 3000, 60, IHooks(address(0)), bytes(""));
+
+        IV4Router.ExactInputParams memory params =
+            IV4Router.ExactInputParams(currency2, path, new uint256[](0), uint128(1000), 0);
+
+        // createPoolWithLiquidity builds its mint on the shared `plan`, so reset before the swap
+        plan = Planner.init();
+        plan = plan.add(Actions.SWAP_EXACT_IN, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(currency2, currency5, ActionConstants.MSG_SENDER);
+
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+        vm.snapshotGasLastCall("PermissionedV4Router_ExactIn3Hops_OrdinaryTokens_DistinctAssets");
+    }
+
     /*//////////////////////////////////////////////////////////////
                         PERMISSION TESTS
     //////////////////////////////////////////////////////////////*/
@@ -167,6 +218,90 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
             )
         );
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+    }
+
+    error HookNotAllowed();
+
+    /// @notice A pool holding a verified adapter with no hook installed must be rejected before the swap runs.
+    ///         Uses an authorized swapper, so the rejection is attributable to the hook and not to SWAP_ALLOWED.
+    function test_swap_reverts_hooklessPoolWithVerifiedAdapter() public {
+        IERC20(Currency.unwrap(currency0)).transfer(alice, 2 ether);
+        currency4.transfer(alice, 2 ether);
+
+        // same currencies as key3, but with no hook installed
+        Currency currencyA = permissionsAdapter0Currency;
+        Currency currencyB = currency4;
+        if (Currency.unwrap(currencyA) > Currency.unwrap(currencyB)) (currencyA, currencyB) = (currencyB, currencyA);
+        PoolKey memory hooklessKey = PoolKey(currencyA, currencyB, 3000, 60, IHooks(address(0)));
+        manager.initialize(hooklessKey, SQRT_PRICE_1_1);
+
+        // ordinary token in, permissioned adapter out — the direction the router never used to check
+        bool zeroForOne = currencyA == currency4;
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(hooklessKey, zeroForOne, 1 ether, 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(currency4, permissionsAdapter0Currency, ActionConstants.MSG_SENDER);
+
+        vm.prank(alice);
+        vm.expectRevert(HookNotAllowed.selector);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+    }
+
+    /// @notice A non-zero hook that is not on the adapter's allowlist must also be rejected. Rejecting only
+    ///         `address(0)` would let a no-op hook, or an address mined without BEFORE_SWAP_FLAG, straight through.
+    function test_swap_reverts_unapprovedNonZeroHook() public {
+        IERC20(Currency.unwrap(currency0)).transfer(alice, 2 ether);
+        IERC20(Currency.unwrap(currency1)).transfer(alice, 2 ether);
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(insecureKey, true, uint128(1 ether), 0, 0, bytes(""));
+
+        // insecureHooks is allow-listed in setUp, so this identical swap succeeds
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(insecureKey.currency0, insecureKey.currency1, ActionConstants.MSG_SENDER);
+        vm.prank(alice);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+
+        // revoke the hook on one side and the same swap is now rejected
+        setAllowedHooks(permissionsAdapter0Currency, insecureHooks, false);
+
+        plan = Planner.init();
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        data = plan.finalizeSwap(insecureKey.currency0, insecureKey.currency1, ActionConstants.MSG_SENDER);
+        vm.prank(alice);
+        vm.expectRevert(HookNotAllowed.selector);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+    }
+
+    /// @notice A wrapper that is not on the adapter's `allowedWrappers` list cannot obtain an adapter delta.
+    ///         This is what closes the ERC-6909 route: `PoolManager.mint` turns a delta into a freely
+    ///         transferable claim without ever entering `PermissionsAdapter._update`, so the underlying
+    ///         token's allowlist never runs and denying the delta is the only defense. Unapproved-hook
+    ///         pools are covered separately — they can never hold adapter inventory to begin with.
+    function test_unapprovedWrapper_cannotObtainAdapterDelta() public {
+        // reports alice, who holds ALL_ALLOWED, so the allowlist check on the swapper passes and the
+        // only remaining barrier is that the wrapper itself is not on `allowedWrappers`
+        MockUnapprovedWrapper unapprovedWrapper = new MockUnapprovedWrapper(manager, alice);
+        assertTrue(permissionsAdapter0.isAllowed(alice, PermissionFlags.SWAP_ALLOWED));
+        assertFalse(permissionsAdapter0.allowedWrappers(address(unapprovedWrapper)));
+
+        bool zeroForOne = key3.currency0 == currency4;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CustomRevert.WrappedError.selector,
+                address(permissionedHooks),
+                IHooks.beforeSwap.selector,
+                abi.encodeWithSelector(Unauthorized.selector),
+                abi.encodeWithSelector(HookCallFailed.selector)
+            )
+        );
+        unapprovedWrapper.swap(
+            key3,
+            SwapParams(zeroForOne, -1e15, zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            bytes("")
+        );
     }
 
     error SwappingDisabled();
@@ -229,6 +364,59 @@ contract PermissionedV4RouterTest is PermissionedRoutingTestHelpers {
 
         vm.prank(alice);
         vm.expectRevert(SwappingDisabled.selector);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+    }
+
+    /// @dev The adapter is only on the output side, so `_pay` takes the standard path and the router's
+    ///         `_take` is the sole guard. `insecureHooks` performs no permission checks, so a revert here
+    ///         can only originate in the router. Should revert when swapping is disabled on the output adapter.
+    function test_take_revert_when_swapping_disabled_on_output_adapter() public {
+        PoolKey memory mixedInsecureKey =
+            createPoolWithLiquidity(permissionsAdapter0Currency, currency2, address(insecureHooks));
+        // minting liquidity above leaves its own actions on the shared plan
+        plan = Planner.init();
+
+        IERC20(Currency.unwrap(currency2)).transfer(alice, 2 ether);
+
+        uint256 amountIn = 100;
+        bool zeroForOne = mixedInsecureKey.currency0 == currency2;
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(mixedInsecureKey, zeroForOne, uint128(amountIn), 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(currency2, permissionsAdapter0Currency, ActionConstants.MSG_SENDER);
+
+        permissionsAdapter0.updateSwappingEnabled(false);
+
+        vm.prank(alice);
+        vm.expectRevert(SwappingDisabled.selector);
+        permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
+    }
+
+    /// @dev The adapter is only on the output side, so `_pay` takes the standard path and the router's
+    ///         `_take` is the sole guard. `insecureHooks` performs no permission checks, so a revert here
+    ///         can only originate in the router. Should revert when msg.sender is not swap-allowed.
+    function test_take_revert_when_unauthorized_on_output_adapter() public {
+        PoolKey memory mixedInsecureKey =
+            createPoolWithLiquidity(permissionsAdapter0Currency, currency2, address(insecureHooks));
+        // minting liquidity above leaves its own actions on the shared plan
+        plan = Planner.init();
+
+        IERC20(Currency.unwrap(currency2)).transfer(alice, 2 ether);
+        MockPermissionedToken(Currency.unwrap(currency0)).setAllowlist(alice, PermissionFlags.LIQUIDITY_ALLOWED);
+
+        uint256 amountIn = 100;
+        bool zeroForOne = mixedInsecureKey.currency0 == currency2;
+
+        IV4Router.ExactInputSingleParams memory params =
+            IV4Router.ExactInputSingleParams(mixedInsecureKey, zeroForOne, uint128(amountIn), 0, 0, bytes(""));
+
+        plan = plan.add(Actions.SWAP_EXACT_IN_SINGLE, abi.encode(params));
+        bytes memory data = plan.finalizeSwap(currency2, permissionsAdapter0Currency, ActionConstants.MSG_SENDER);
+
+        vm.prank(alice);
+        vm.expectRevert(Unauthorized.selector);
         permissionedRouter.execute(COMMAND_V4_SWAP, toBytesArray(data), type(uint256).max);
     }
 

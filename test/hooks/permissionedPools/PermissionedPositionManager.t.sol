@@ -220,22 +220,9 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
 
         Currency permissionsAdapterCurrency = Currency.wrap(address(permissionsAdapter));
 
-        setAllowedHooks(lpm, permissionsAdapterCurrency, permissionedHooks);
-        setAllowedHooks(tertiaryPosm, permissionsAdapterCurrency, permissionedHooks);
-
-        setAllowedHooks(lpm, permissionsAdapterCurrency, secondaryPermissionedHooks);
-        setAllowedHooks(secondaryPosm, permissionsAdapterCurrency, secondaryPermissionedHooks);
-        setAllowedHooks(tertiaryPosm, permissionsAdapterCurrency, secondaryPermissionedHooks);
-
-        setAllowedHooks(lpm, permissionsAdapterCurrency, insecureHooks);
-    }
-
-    function setAllowedHooks(IPositionManager posm, Currency currency, IHooks permissionedHooks_) internal {
-        // setAllowedHook selector
-        bytes4 selector = 0xb5cdc484;
-        bytes memory data = abi.encodeWithSelector(selector, currency, permissionedHooks_, true);
-        (bool success,) = address(posm).call(data);
-        require(success, "Failed to set hooks");
+        setAllowedHooks(permissionsAdapterCurrency, permissionedHooks, true);
+        setAllowedHooks(permissionsAdapterCurrency, secondaryPermissionedHooks, true);
+        setAllowedHooks(permissionsAdapterCurrency, insecureHooks, true);
     }
 
     function test_nameAndSymbol() public view {
@@ -643,24 +630,25 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), alice);
     }
 
-    function test_permissioned_mint_alt_posm_diff_hooks_reverts() public {
-        // secondary posm uses different hooks contract
-        _test_permissioned_mint_alt_posm_diff_hooks_reverts(key0, secondaryPosm);
-        _test_permissioned_mint_alt_posm_diff_hooks_reverts(key1, secondaryPosm);
-        _test_permissioned_mint_alt_posm_diff_hooks_reverts(key2, secondaryPosm);
+    function test_permissioned_mint_disallowed_hook_reverts() public {
+        _test_permissioned_mint_disallowed_hook_reverts(key0);
+        _test_permissioned_mint_disallowed_hook_reverts(key1);
+        _test_permissioned_mint_disallowed_hook_reverts(key2);
     }
 
-    function _test_permissioned_mint_alt_posm_diff_hooks_reverts(PoolKey memory key, IPositionManager posm) internal {
+    function _test_permissioned_mint_disallowed_hook_reverts(PoolKey memory key) internal {
         PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
-
         uint256 liquidity = 1e18;
 
-        // we don't use the helper, so we can choose which position manager to use
-        bytes memory calls = getMintEncoded(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        // Revoke the hook as the adapter admin (address(this) owns both permissionsAdapter0 and permissionsAdapter2)
+        _setHookAllowedForKey(key, false);
 
         vm.prank(alice);
         vm.expectRevert(InvalidHook.selector);
-        posm.modifyLiquidities(calls, block.timestamp + 1);
+        mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+
+        // restore so the fan-out across keys is independent
+        _setHookAllowedForKey(key, true);
     }
 
     function test_permissioned_mint_alt_posm_same_hooks_reverts() public {
@@ -689,6 +677,35 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             )
         );
         posm.modifyLiquidities(calls, block.timestamp + 1);
+    }
+
+    function test_permissioned_mint_alt_posm_allowed_wrapper_succeeds() public {
+        // secondary posm is an allowed wrapper, so the adapter-level hook allowlist is sufficient on its own
+        _test_permissioned_mint_alt_posm_allowed_wrapper_succeeds(key0, secondaryPosm);
+        _test_permissioned_mint_alt_posm_allowed_wrapper_succeeds(key1, secondaryPosm);
+        _test_permissioned_mint_alt_posm_allowed_wrapper_succeeds(key2, secondaryPosm);
+    }
+
+    function _test_permissioned_mint_alt_posm_allowed_wrapper_succeeds(PoolKey memory key, IPositionManager posm)
+        internal
+    {
+        PositionConfig memory config = PositionConfig({poolKey: key, tickLower: -120, tickUpper: 120});
+
+        uint256 liquidity = 1e18;
+        uint256 tokenId = posm.nextTokenId();
+
+        // alice already approved permit2 on the underlying tokens; approve this posm as the permit2 spender
+        vm.startPrank(alice);
+        permit2.approve(Currency.unwrap(currency0), address(posm), type(uint160).max, type(uint48).max);
+        permit2.approve(Currency.unwrap(currency1), address(posm), type(uint160).max, type(uint48).max);
+        permit2.approve(Currency.unwrap(currency2), address(posm), type(uint160).max, type(uint48).max);
+
+        // we don't use the helper, so we can choose which position manager to use
+        bytes memory calls = getMintEncoded(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
+        posm.modifyLiquidities(calls, block.timestamp + 1);
+        vm.stopPrank();
+
+        assertEq(IERC721(address(posm)).ownerOf(tokenId), alice);
     }
 
     function test_permissioned_mint_disallowed_user_reverts() public {
@@ -1615,14 +1632,14 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         mint(config, liquidity, ActionConstants.MSG_SENDER, ZERO_BYTES);
 
         Currency revoked = revokeCurrency0 ? key.currency0 : key.currency1;
-        _setHookAllowed(revoked, key.hooks, false);
+        setAllowedHooks(revoked, key.hooks, false);
 
         vm.prank(alice);
         vm.expectRevert(InvalidHook.selector);
         increaseLiquidity(tokenId, config, liquidity, ZERO_BYTES);
 
         // Restore for the next iteration so the tests are independent.
-        _setHookAllowed(revoked, key.hooks, true);
+        setAllowedHooks(revoked, key.hooks, true);
     }
 
     // =============================================================================
@@ -1732,25 +1749,17 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
         MockPermissionedToken(Currency.unwrap(currency2)).setAllowlist(alice, PermissionFlags.ALL_ALLOWED);
     }
 
-    // Helpers for toggling the hook allowlist in tests. Uses a raw selector call to mirror the
-    // pattern established by `setAllowedHooks` (line 227).
+    // Helpers for toggling the hook allowlist in tests
     function _setHookAllowedForKey(PoolKey memory key, bool allowed) internal {
         _setHookAllowedIfPermissioned(key.currency0, key.hooks, allowed);
         _setHookAllowedIfPermissioned(key.currency1, key.hooks, allowed);
     }
 
     function _setHookAllowedIfPermissioned(Currency currency, IHooks hooks_, bool allowed) internal {
-        // setAllowedHook requires the currency to have a verified permissions adapter;
+        // updateAllowedHook requires the currency to have a verified permissions adapter;
         // skip unpermissioned currencies so mixed-pool keys (key0, key1) work with this helper.
         if (permissionsAdapterFactory.verifiedPermissionsAdapterOf(Currency.unwrap(currency)) == address(0)) return;
-        _setHookAllowed(currency, hooks_, allowed);
-    }
-
-    function _setHookAllowed(Currency currency, IHooks hooks_, bool allowed) internal {
-        // setAllowedHook(Currency,IHooks,bool) selector
-        bytes4 selector = 0xb5cdc484;
-        (bool success,) = address(lpm).call(abi.encodeWithSelector(selector, currency, hooks_, allowed));
-        require(success, "setAllowedHook failed");
+        setAllowedHooks(currency, hooks_, allowed);
     }
 
     // ===== unwindPosition / withdrawClaim helpers =====

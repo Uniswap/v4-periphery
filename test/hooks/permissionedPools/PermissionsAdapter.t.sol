@@ -5,6 +5,7 @@ import {
     IPermissionsAdapter,
     IAllowlistChecker
 } from "../../../src/hooks/permissionedPools/interfaces/IPermissionsAdapter.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {ERC20, IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {PermissionedPoolsBase, MockAllowlistChecker} from "./PermissionedPoolsBase.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -41,7 +42,7 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
         assertEq(address(permissionsAdapter.PERMISSIONED_TOKEN()), address(permissionedToken));
     }
 
-    function testRevert_WhenNotOwner(address account) public {
+    function testRevert_WhenNotOwner(address account, IHooks hooks) public {
         vm.assume(account != owner);
         vm.startPrank(account);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, account));
@@ -50,6 +51,8 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
         permissionsAdapter.updateAllowListChecker(allowlistChecker);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, account));
         permissionsAdapter.updateSwappingEnabled(true);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, account));
+        permissionsAdapter.updateAllowedHook(hooks, true);
         vm.stopPrank();
     }
 
@@ -89,6 +92,17 @@ contract PermissionsAdapterTest is PermissionedPoolsBase {
         emit IPermissionsAdapter.AllowedWrapperUpdated(wrapper, allowed);
         permissionsAdapter.updateAllowedWrapper(wrapper, allowed);
         assertEq(permissionsAdapter.allowedWrappers(wrapper), allowed);
+    }
+
+    function test_UpdateAllowedHook(IHooks hooks, bool allowed) public {
+        vm.startPrank(owner);
+        if (permissionsAdapter.allowedHooks(hooks) != allowed) {
+            vm.expectEmit(true, true, true, true);
+            emit IPermissionsAdapter.AllowedHookUpdated(hooks, allowed);
+        }
+        permissionsAdapter.updateAllowedHook(hooks, allowed);
+        assertEq(permissionsAdapter.allowedHooks(hooks), allowed);
+        vm.stopPrank();
     }
 
     function testRevert_WhenNotSupportedInterfaceEOA(IAllowlistChecker newAllowListCheckerEOA) public {
