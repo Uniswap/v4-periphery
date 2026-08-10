@@ -2409,8 +2409,8 @@ contract PermissionedPositionManagerTest is Test, PermissionedPosmTestSetup, Liq
             3000,
             SQRT_PRICE_1_1
         );
-        setAllowedHooks(lpm, Currency.wrap(address(permissionsAdapter0)), IHooks(deployed));
-        setAllowedHooks(lpm, Currency.wrap(address(permissionsAdapter2)), IHooks(deployed));
+        setAllowedHooks(Currency.wrap(address(permissionsAdapter0)), IHooks(deployed), true);
+        setAllowedHooks(Currency.wrap(address(permissionsAdapter2)), IHooks(deployed), true);
     }
 
     // ===== Subscriber DoS protection on unwindPosition =====
