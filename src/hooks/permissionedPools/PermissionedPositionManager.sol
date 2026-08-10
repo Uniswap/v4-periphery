@@ -94,26 +94,25 @@ contract PermissionedPositionManager is PositionManager {
 
         address lp = ownerOf(tokenId);
 
-        // Approve so UNSUBSCRIBE below passes its own _isApprovedOrOwner check.
-        getApproved[tokenId] = msg.sender;
+        // Unsubscribe in its own unlock only when a subscriber is attached.
+        if (positionInfo[tokenId].hasSubscriber()) {
+            // Approve so UNSUBSCRIBE passes its own _isApprovedOrOwner check.
+            getApproved[tokenId] = msg.sender;
+            bytes memory unsubscribeAction = abi.encodePacked(uint8(Actions.UNSUBSCRIBE));
+            bytes[] memory unsubscribeParams = new bytes[](1);
+            unsubscribeParams[0] = abi.encode(tokenId);
+            poolManager.unlock(abi.encode(unsubscribeAction, unsubscribeParams));
+        }
 
-        // Unsubscribe in a separate unlock. A hostile subscriber can overwrite getApproved during
-        // notifyUnsubscribe, but that write is discarded by the re-approval below, once this unlock
-        // has closed and no further subscriber callback can run.
-        bytes memory actions = abi.encodePacked(uint8(Actions.UNSUBSCRIBE));
-        bytes[] memory params = new bytes[](1);
-        params[0] = abi.encode(tokenId);
-        poolManager.unlock(abi.encode(actions, params));
-
-        // Re-approve so BURN_POSITION passes onlyIfApproved even if the subscriber hijacked the slot.
+        // Approve so BURN_POSITION passes onlyIfApproved.
         // ERC-721 _burn clears getApproved as part of its teardown, so the approval is self-cleaning.
         getApproved[tokenId] = msg.sender;
 
         // Unwind
-        actions = abi.encodePacked(
+        bytes memory actions = abi.encodePacked(
             uint8(Actions.BURN_POSITION), uint8(Actions.UNWIND_WITH_FALLBACK), uint8(Actions.UNWIND_WITH_FALLBACK)
         );
-        params = new bytes[](3);
+        bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(tokenId, amount0Min, amount1Min, hookData);
         // PoolKey is encoded into the unwind params because BURN_POSITION clears positionInfo[tokenId].
         params[1] = abi.encode(poolKey, poolKey.currency0, lp, tokenId);
