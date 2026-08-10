@@ -176,4 +176,15 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
     function owner() public view override(Ownable, IPermissionsAdapter) returns (address) {
         return super.owner();
     }
+
+    /// @notice Disabled. The adapter must always have an owner.
+    /// @dev A zero owner would permanently disable the issuer's force-exit: `unwindPosition` authorizes
+    ///      against `_getOwner` for both pool currencies, and its per-currency fallback routes to that same
+    ///      owner. With no owner the force-exit reverts `Unauthorized` for every caller, and every failed
+    ///      unwind instead mints a freely transferable ERC-6909 claim on this adapter to the exited LP.
+    ///      `Ownable2Step` already prevents losing ownership via `transferOwnership`, which cannot complete
+    ///      without the new owner calling `acceptOwnership`; renouncing is the only remaining path to zero.
+    function renounceOwnership() public pure override {
+        revert RenounceDisabled();
+    }
 }

@@ -34,6 +34,9 @@ interface IPermissionsAdapter is IERC20 {
     /// @notice Thrown when there is an insufficient amount of permissioned tokens available to wrap
     error InsufficientBalance(uint256 amount, uint256 availableBalance);
 
+    /// @notice Thrown when renouncing ownership is attempted; the adapter must always have an owner
+    error RenounceDisabled();
+
     /// @notice Wraps the permissioned token to the pool manager
     /// @param amount The amount of permissioned tokens to wrap
     /// @dev Only callable by allowed wrappers
