@@ -189,6 +189,9 @@ contract MarginRouter is
             if (collateralBefore > 0) {
                 IMarginAccount(account).withdrawCollateral(params.adapter, params.market, collateralBefore, msgSender());
             }
+            // this path bypasses the unlock interpreter, so no action handler fires the snapshot;
+            // emit the terminal PositionUpdated here so snapshot-only consumers see the close
+            _emitPosition(params.adapter, params.market, account);
             // all collateral withdrawn straight to the caller; nothing left in the position
             emit PositionDecreased(
                 msgSender(),
@@ -330,6 +333,21 @@ contract MarginRouter is
         // the router is the account manager, so it can supply directly without an unlock
         IMarginAccount(account).supplyCollateral(params.adapter, params.market, amount);
         PositionData memory position = params.adapter.describePosition(account, params.market);
+        // no unlock means no action handler fires the snapshot; emit it here from the read above
+        // (unguarded is fine: the supply is market-gated, so describePosition cannot be the revert).
+        // PositionUpdated carries the full pair and maxLtv, which CollateralAdded does not, so
+        // snapshot-only consumers can attribute the supply without pair-resolution heuristics.
+        emit PositionUpdated(
+            msgSender(),
+            account,
+            params.market.collateral,
+            params.market.debt,
+            position.collateralAmount,
+            position.debtAmount,
+            position.currentLtv,
+            position.maxLtv,
+            position.healthFactorWad
+        );
         emit CollateralAdded(
             msgSender(),
             account,
@@ -702,7 +720,9 @@ contract MarginRouter is
 
     /// @notice Emits a `PositionUpdated` snapshot for the account's `(collateral, debt)` market after a
     ///         mutation, so an `execute` plan is as observable as the curated entry points. Called after
-    ///         every supply, withdraw, borrow, and repay.
+    ///         every supply, withdraw, borrow, and repay dispatched through the unlock, and by the
+    ///         zero-debt swap-free close (`addCollateral` emits the snapshot inline, reusing the
+    ///         `describePosition` read it already makes).
     /// @dev Best-effort: `describePosition` reverts for a de-registered market, but withdraw and repay
     ///      are intentionally never market-gated (a position must always be exitable), so a failing read
     ///      is swallowed rather than reverting the action. `describePosition` is `view`, so the call is a

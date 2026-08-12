@@ -267,11 +267,13 @@ account-sweep do not, so a position is always exitable.
 5. **`PULL_TO_ACCOUNT`.** An encoded `0` amount reverts (it is not an `OPEN_DELTA` full-balance
 sentinel, unlike the other opcodes); `CONTRACT_BALANCE` is honored only on the router-balance path;
 native currency is unsupported (wrap to WETH first).
-6. **Events.** Every position mutation (supply, withdraw, borrow, repay) — on any path, including
-inside an `execute` plan — emits a `PositionUpdated` snapshot with the account's resulting
-`(collateral, debt)`, LTV, max LTV, and health factor, so an indexer can reconstruct execute-driven
-positions from logs alone (take the last `PositionUpdated` per `(account, collateral, debt)` in a
-transaction as the resulting state). `execute` plans also emit the account-level delta events
+6. **Events.** Every position mutation (supply, withdraw, borrow, repay) on every router path,
+including inside an `execute` plan and on the unlock-free paths (`addCollateral` and the zero-debt
+swap-free close), emits a `PositionUpdated` snapshot with the account's resulting
+`(collateral, debt)`, LTV, max LTV, and health factor, so an indexer can reconstruct positions from
+router logs alone (take the last `PositionUpdated` per `(account, collateral, debt)` in a
+transaction as the resulting state). Mutations made through the owner escape hatch (calling the
+`MarginAccount` directly) bypass the router and emit no snapshot. `execute` plans also emit the account-level delta events
 (`CollateralSupplied`, `Borrowed`, `Repaid`, `Swept`, `AccountCreated`). Only the curated entry
 points additionally emit the richer `PositionIncreased`/`PositionDecreased`/`CollateralAdded` events
 that fold the per-operation deltas and resulting snapshot into one log.
@@ -1163,8 +1165,9 @@ adapter.)
 
 ### Events
 
-`PositionUpdated` (a resulting-state snapshot emitted after every supply/withdraw/borrow/repay on any
-path, including `execute` plans), `PositionIncreased`, `PositionDecreased` (a full close is a
+`PositionUpdated` (a resulting-state snapshot emitted after every supply/withdraw/borrow/repay on
+every router path: curated flows, `execute` plans, and the unlock-free `addCollateral` / zero-debt
+close), `PositionIncreased`, `PositionDecreased` (a full close is a
 `PositionDecreased` with the position emptied), `CollateralAdded`, `AdapterAllowed`,
 `GovernanceTransferStarted`, `GovernanceTransferred` (router); `MarketSet` (adapter); `AccountCreated`
 (account factory). Indexers can key on `PositionUpdated` for resulting state uniformly across curated

@@ -169,12 +169,16 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     );
 
     /// @notice Emitted after a position mutation (supply, withdraw, borrow, or repay) with the
-    ///         account's resulting snapshot in the `(collateral, debt)` market. Fires on every such
-    ///         action, including inside an `execute` plan, so an indexer can reconstruct position state
-    ///         from logs on any path without an archive `describePosition` call. A single transaction
-    ///         may emit several (an open emits one after the supply and one after the borrow); take the
-    ///         last per `(account, collateral, debt)` as the resulting state. The curated entry points
-    ///         additionally emit the richer `Position*` events carrying the per-operation deltas.
+    ///         account's resulting snapshot in the `(collateral, debt)` market. Fires on every router
+    ///         path that mutates a position: the curated flows, `execute` plans, and the direct
+    ///         unlock-free paths (`addCollateral` and the zero-debt swap-free close), so an indexer
+    ///         can reconstruct position state from router logs alone, without an archive
+    ///         `describePosition` call. Mutations made through the owner escape hatch (calling the
+    ///         `MarginAccount` directly) bypass the router entirely and emit no snapshot. A single
+    ///         transaction may emit several (an open emits one after the supply and one after the
+    ///         borrow); take the last per `(account, collateral, debt)` as the resulting state. The
+    ///         curated entry points additionally emit the richer `Position*` events carrying the
+    ///         per-operation deltas.
     /// @dev Best-effort: the snapshot reads `adapter.describePosition`, which reverts for a
     ///      de-registered market. To preserve the exit guarantee (withdraw/repay are never
     ///      market-gated), a failing read is swallowed and no event is emitted rather than reverting

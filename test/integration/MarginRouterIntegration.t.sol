@@ -193,6 +193,50 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         assertEq(IERC20(Currency.unwrap(debt)).balanceOf(address(marginRouter)), 0, "router holds no debt");
     }
 
+    /// @dev addCollateral supplies directly (no unlock), so no action handler fires the snapshot;
+    ///      the entry point must emit PositionUpdated inline with the full pair, or snapshot-only
+    ///      indexers go stale on collateral top-ups and cannot attribute the supply to a market.
+    function test_addCollateral_emitsPositionUpdatedSnapshot() public {
+        address account = _open(1 ether, 2 ether);
+        uint256 debtBefore = protocol.debtOf(account);
+
+        // canonical Permit2 (DeployPermit2 etches it at the canonical address)
+        IAllowanceTransfer permit2 = IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+        MockERC20(Currency.unwrap(collateral)).approve(address(permit2), type(uint256).max);
+        permit2.approve(Currency.unwrap(collateral), address(marginRouter), type(uint160).max, type(uint48).max);
+
+        vm.recordLogs();
+        marginRouter.addCollateral(
+            IMarginRouter.AddCollateralParams({
+                adapter: adapter, market: market, amount: 0.5 ether, subId: 0, deadline: block.timestamp + 1
+            })
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        uint256 snapshotIndex = type(uint256).max;
+        uint256 curatedIndex = type(uint256).max;
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].emitter != address(marginRouter)) continue;
+            if (logs[i].topics[0] == IMarginRouter.PositionUpdated.selector) {
+                assertEq(snapshotIndex, type(uint256).max, "exactly one snapshot");
+                snapshotIndex = i;
+                assertEq(address(uint160(uint256(logs[i].topics[1]))), address(this), "owner topic");
+                assertEq(address(uint160(uint256(logs[i].topics[2]))), account, "account topic");
+                (address c, address d, uint256 collateralTotal, uint256 debtTotal,,,) =
+                    abi.decode(logs[i].data, (address, address, uint256, uint256, uint256, uint256, uint256));
+                assertEq(c, Currency.unwrap(collateral), "snapshot carries the collateral currency");
+                assertEq(d, Currency.unwrap(debt), "snapshot carries the debt currency");
+                assertEq(collateralTotal, 3.5 ether, "collateralTotal reflects the top-up");
+                assertEq(debtTotal, debtBefore, "debt untouched by the top-up");
+            } else if (logs[i].topics[0] == IMarginRouter.CollateralAdded.selector) {
+                curatedIndex = i;
+            }
+        }
+        assertTrue(snapshotIndex != type(uint256).max, "PositionUpdated emitted");
+        assertTrue(curatedIndex != type(uint256).max, "CollateralAdded emitted");
+        assertLt(snapshotIndex, curatedIndex, "snapshot precedes the curated event, as on the unlock paths");
+    }
+
     function test_close_zeroDebt_returnsCollateral() public {
         address account = _open(1 ether, 2 ether);
         // the position holds collateral supplied during the open
@@ -229,6 +273,49 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         assertEq(protocol.collateralOf(account), 0, "collateral fully withdrawn");
         assertEq(protocol.debtOf(account), 0, "position empty");
         assertEq(IERC20(Currency.unwrap(collateral)).balanceOf(address(marginRouter)), 0, "router holds no collateral");
+    }
+
+    /// @dev The zero-debt full close bypasses the unlock interpreter, so the entry point must emit
+    ///      the terminal PositionUpdated itself; without it a snapshot-only indexer never sees the
+    ///      position close.
+    function test_close_zeroDebt_emitsTerminalPositionUpdatedSnapshot() public {
+        address account = _open(1 ether, 2 ether);
+        protocol.setDebt(account, 0);
+
+        vm.recordLogs();
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                debtToRepay: type(uint256).max,
+                maxLtvAfter: Ltv.wrap(0),
+                adapter: adapter,
+                market: market,
+                maxCollateralIn: 0,
+                universalRouter: ur,
+                routeCommands: "",
+                routeInputs: new bytes[](0),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        uint256 count;
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].emitter != address(marginRouter)) continue;
+            if (logs[i].topics[0] != IMarginRouter.PositionUpdated.selector) continue;
+            count++;
+            assertEq(address(uint160(uint256(logs[i].topics[1]))), address(this), "owner topic");
+            assertEq(address(uint160(uint256(logs[i].topics[2]))), account, "account topic");
+            (address c, address d, uint256 collateralTotal, uint256 debtTotal, uint256 currentLtv,, uint256 hf) =
+                abi.decode(logs[i].data, (address, address, uint256, uint256, uint256, uint256, uint256));
+            assertEq(c, Currency.unwrap(collateral), "collateral currency");
+            assertEq(d, Currency.unwrap(debt), "debt currency");
+            assertEq(collateralTotal, 0, "terminal snapshot: no collateral");
+            assertEq(debtTotal, 0, "terminal snapshot: no debt");
+            assertEq(currentLtv, 0, "terminal snapshot: zero LTV");
+            assertEq(hf, type(uint256).max, "terminal snapshot: debt-free health factor");
+        }
+        assertEq(count, 1, "exactly one terminal snapshot");
     }
 
     function test_closeLong_doesNotSweepDonatedBalance() public {
