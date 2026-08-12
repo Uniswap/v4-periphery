@@ -2,28 +2,27 @@
  * Canonical margin-trading deployment registry, keyed by Ponder chain name.
  * ponder.config.ts derives its contract config from this map.
  *
- * PENDING REDEPLOY. These are the deterministic CREATE2 addresses of the margin suite as it deploys
- * from the current source (router mined at salt
- * 0x00000000000000000000000000000000000000007683eee69543020390281140, governance
- * 0x58e28b95a2ee57c4E90613AFce9e8CCEED3aB1E8). They were verified with a `DeployMargin.s.sol` dry-run
- * against a mainnet fork: the router reproduces its mined vanity and every canonical market
- * registers. They differ from the previously deployed suite because the account/adapter bytecode
- * changed, so every margin address moved. Ship the indexer with these alongside the on-chain
- * broadcast, and set `startBlock` to the redeploy block at that time.
+ * The live mainnet margin suite (DeployMargin.s.sol broadcast, blocks 25740584-25740598), verified
+ * onchain: contract code, governance 0x58e28b95a2ee57c4E90613AFce9e8CCEED3aB1E8, the adapter
+ * allowlist, and every canonical market read back true. This deployment carries the
+ * unlock-free-path PositionUpdated emissions (addCollateral and the zero-debt swap-free close) and
+ * the IAmountResolver adapter surface, so the CollateralAdded pair-resolution fallbacks in
+ * src/router.ts only matter for transactions older than `startBlock` (there are none: indexing
+ * starts at the redeploy).
  */
 export const deployments = {
   mainnet: {
     chainId: 1,
     /** MarginRouter (also emits the factory's AccountCreated). */
-    marginRouter: "0x0000000007e3176429aDD4f6F0280d5dbd11aeC8",
+    marginRouter: "0x000000000075e82F7B7DdC5DD1B4984b560eF5D4",
     /** MorphoLendingAdapter. */
-    morphoAdapter: "0x08e4C6b61D99B6f2AD472c16ECE641F63F5635D5",
+    morphoAdapter: "0x70fD13dF8C827ab71AE300D24b771C19B67d178A",
     /** AaveLendingAdapter (Aave v3). */
-    aaveAdapter: "0x2c0bDc6786D285665337Ce7d544C8bC80a23A55C",
+    aaveAdapter: "0x79D243C83e2D351aBbe8010a7E95162998475719",
     /** AaveV4LendingAdapter. */
-    aaveV4Adapter: "0xaC98DBcdC8c9f665372BbBE68C6A9123A8CbA6Eb",
+    aaveV4Adapter: "0x917D08052E2994B75cF82bDaF6314b07532f2556",
     /** CompoundV3LendingAdapter. */
-    compoundAdapter: "0xAaD2B75B9557748a16216f991613deFE42134c36",
+    compoundAdapter: "0x3625D6F7ccA2e8F95aF2E6497075D1a3E32dC5C6",
     /** Morpho Blue singleton. */
     morphoBlue: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
     /** Aave v3 Pool (resolved from the PoolAddressesProvider). */
@@ -33,10 +32,9 @@ export const deployments = {
     /** Compound v3 USDC Comet (cUSDCv3): the base=USDC market the Compound adapter routes through.
      *  Recorded for the deferred Comet truth layer (see src/aave.ts); not yet an indexed contract. */
     compoundComet: "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
-    /** First block of the margin suite deployment. Everything is indexed from here, including
-     *  PoolManager Initialize (pools created earlier have no `pool` metadata row; their fee tier is
-     *  still on `swapEvent.fee`). TODO: set to the redeploy block once the suite above is broadcast;
-     *  25598384 belonged to the superseded deployment. */
-    startBlock: 25598384,
+    /** First block of the margin suite deployment (the redeploy broadcast's first receipt).
+     *  Everything is indexed from here, including PoolManager Initialize (pools created earlier
+     *  have no `pool` metadata row; their fee tier is still on `swapEvent.fee`). */
+    startBlock: 25740584,
   },
 } as const;

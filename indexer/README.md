@@ -21,8 +21,8 @@ Production: `npm start` with `DATABASE_URL` pointing at Postgres.
 
 | Source | Address (mainnet) | Purpose |
 |---|---|---|
-| MarginRouter | `0x0000000004BBC92D0657580CAe35aEBF054E5CDC` | Lifecycle: `AccountCreated`, `PositionIncreased/Decreased`, `CollateralAdded`, `AdapterAllowed`, and `PositionUpdated` (resulting-state snapshot on every mutation, including `execute` plans) |
-| MorphoLendingAdapter | `0x9A7f8F5A9496D3c9dc0BEEfb44cCaC17CAAF28fa` | `MarketSet` market registry (market id, oracle, LLTV) |
+| MarginRouter | `0x000000000075e82F7B7DdC5DD1B4984b560eF5D4` | Lifecycle: `AccountCreated`, `PositionIncreased/Decreased`, `CollateralAdded`, `AdapterAllowed`, and `PositionUpdated` (resulting-state snapshot on every mutation, including `execute` plans) |
+| MorphoLendingAdapter | `0x70fD13dF8C827ab71AE300D24b771C19B67d178A` | `MarketSet` market registry (market id, oracle, LLTV) |
 | Aave v3 / v4 adapters | `0x8Eea...3222` / `0x3a9C...469E` | `MarketSet` market registries |
 | Morpho Blue | `0xBBBB...FFCb` | Collateral/debt flows + `Liquidate`, attributed by `onBehalf` ∈ margin accounts |
 | Aave v3 Pool | `0x8787...A4E2` | Flows + `LiquidationCall`, attributed by `onBehalfOf`/`user` |
