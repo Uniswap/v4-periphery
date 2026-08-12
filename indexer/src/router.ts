@@ -270,8 +270,11 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
     healthFactorWad,
   } = event.args;
 
-  // resolve the pair: from this tx's staged supply flow (carries it for Morpho), or
-  // fall back to the account's single open position with this collateral token
+  // resolve the pair: from this tx's staged supply flow (carries it for Morpho), or from the
+  // epoch the same-tx PositionUpdated snapshot just touched (post-snapshot routers emit it with
+  // the full pair at a lower logIndex, so it has already opened or reconciled the epoch by the
+  // time this handler runs), or fall back to the account's single open position with this
+  // collateral token (pre-snapshot routers, e.g. the live deployment).
   const rows = await txLendingEvents(context, event.transaction.hash, accountAddr);
   const supplyRow = rows.find((r) => r.kind === "SUPPLY_COLLATERAL");
   let debt = supplyRow?.debt ?? null;
@@ -280,8 +283,10 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
       .select()
       .from(position)
       .where(and(eq(position.account, accountAddr), eq(position.collateral, collateral), eq(position.status, "OPEN")));
-    if (candidates.length !== 1) return; // ambiguous or none; raw lendingEvent row remains
-    debt = candidates[0]!.debt;
+    const justUpdated = candidates.filter((c) => c.updatedAt === event.block.timestamp);
+    const resolved = justUpdated.length === 1 ? justUpdated : candidates;
+    if (resolved.length !== 1) return; // ambiguous or none; raw lendingEvent row remains
+    debt = resolved[0]!.debt;
   }
 
   await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
@@ -318,10 +323,12 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
 });
 
 /**
- * Resulting-state snapshot, emitted after every supply/withdraw/borrow/repay on any path (a curated
- * flow OR an `execute` plan). It carries the full pair and the adapter's describePosition totals, so it
- * fills the resulting-state fields that the curated Position* events would otherwise be the only source
- * of. It never touches economics (equity, entry price, leverage) or writes a positionAction row: those
+ * Resulting-state snapshot, emitted after every supply/withdraw/borrow/repay on every router path: the
+ * curated flows, `execute` plans, and (on post-snapshot routers) the unlock-free paths, addCollateral
+ * and the zero-debt swap-free close. The live pre-upgrade deployment does not emit it on those two
+ * direct paths, which is why the CollateralAdded pair-resolution fallbacks below remain. It carries the
+ * full pair and the adapter's describePosition totals, so it fills the resulting-state fields that the
+ * curated Position* events would otherwise be the only source of. It never touches economics (equity, entry price, leverage) or writes a positionAction row: those
  * come from the curated events and the lending-flow layer. Two jobs:
  *
  *  1. On a live epoch, reconcile the router-authoritative snapshot: LTV, health, max/liquidation LTV,
@@ -359,9 +366,11 @@ ponder.on("MarginRouter:PositionUpdated", async ({ event, context }) => {
       lltv: maxLtv,
       lastLtvWad: currentLtv,
       lastHealthFactorWad: healthFactorWad,
-      // an execute / escape-hatch close nets the position to zero and emits no curated close; terminate
-      // the epoch here. Leave the activePosition pointer (as the flow layer does) so a curated close in
-      // the same tx can still enrich it and the next open overwrites it.
+      // an execute-composed close nets the position to zero and emits no curated close; terminate
+      // the epoch here. (The owner escape hatch bypasses the router entirely and emits no snapshot
+      // at all; only the venue flow layer can see those.) Leave the activePosition pointer (as the
+      // flow layer does) so a curated close in the same tx can still enrich it and the next open
+      // overwrites it.
       ...(terminal ? { status: "CLOSED" as const } : {}),
       updatedAt: event.block.timestamp,
     });
