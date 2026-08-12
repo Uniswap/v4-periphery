@@ -8,6 +8,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {ISpoke} from "./interfaces/external/aave-v4/ISpoke.sol";
 import {OwnableAdapter} from "./base/OwnableAdapter.sol";
+import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
 import {Market} from "./types/Market.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
 import {PositionData} from "./types/PositionData.sol";
@@ -53,7 +54,7 @@ import {PositionData} from "./types/PositionData.sol";
 ///         - Routing is curated: every `encode*` and read reverts `MarketNotSupported` for a pair the
 ///           owner has not registered, never returning a silent default market.
 /// @custom:security-contact security@uniswap.org
-contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
+contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountResolver {
     // WAD scale for loan-to-value ratios (1e18 == 100%).
     uint256 private constant WAD = 1e18;
     // Aave expresses collateral factors in basis points (1e4 == 100%).
@@ -204,9 +205,10 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
     /// @dev `collateralAmount` is the account's supplied underlying for the collateral reserve and
     ///      `debtAmount` is its total debt (drawn plus accrued premium) for the debt reserve. Both are
     ///      asset-denominated and already reflect accrued interest.
-    function positionOf(address account, Market calldata market)
-        external
+    function positionOf(address account, Market memory market)
+        public
         view
+        override(ILendingAdapter, PositionAmountResolver)
         returns (uint256 collateralAmount, uint256 debtAmount)
     {
         V4MarketRoute storage route = _resolveRoute(market);
@@ -329,7 +331,7 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter {
     ///         returns its route for reuse by the caller.
     /// @param market The market pair to resolve.
     /// @return route The resolved route for the pair.
-    function _resolveRoute(Market calldata market) internal view returns (V4MarketRoute storage route) {
+    function _resolveRoute(Market memory market) internal view returns (V4MarketRoute storage route) {
         route = _routes[market.collateral][market.debt];
         if (!route.registered) revert MarketNotSupported(market.collateral, market.debt);
     }

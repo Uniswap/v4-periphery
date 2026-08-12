@@ -7,6 +7,7 @@ import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {MorphoLendingAdapter} from "../../src/MorphoLendingAdapter.sol";
+import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
 import {Market} from "../../src/types/Market.sol";
 import {MarketNotSupported} from "../../src/types/MarketRegistry.sol";
 import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
@@ -64,6 +65,14 @@ contract MorphoLendingAdapterTest is Test {
 
     function test_lendingProtocol_returnsMorphoSingleton() public view {
         assertEq(adapter.lendingProtocol(), address(morpho));
+    }
+
+    /// @dev The adapter doubles as an IAmountResolver; the resolver read routes through the same
+    ///      registry gate as positionOf, so an unrouted pair reverts rather than resolving zero.
+    function test_resolveAmount_revertsWhenMarketNotSupported() public {
+        bytes memory context = abi.encode(PositionAmountResolver.PositionAmount.DEBT, account, market);
+        vm.expectRevert(abi.encodeWithSelector(MarketNotSupported.selector, market.collateral, market.debt));
+        adapter.resolveAmount(context);
     }
 
     function test_setMarket_revertsForNonOwner() public {

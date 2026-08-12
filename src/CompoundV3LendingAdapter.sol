@@ -8,6 +8,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {IComet} from "./interfaces/external/compound-v3/IComet.sol";
 import {OwnableAdapter} from "./base/OwnableAdapter.sol";
+import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
 import {Market} from "./types/Market.sol";
 import {MarketAllowlist, MarketNotSupported} from "./types/MarketAllowlist.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
@@ -50,7 +51,7 @@ import {PositionData} from "./types/PositionData.sol";
 ///         - Routing is curated: every `encode*` and read reverts `MarketNotSupported` for a pair the
 ///           owner has not allowlisted, never a silent default market.
 /// @custom:security-contact security@uniswap.org
-contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
+contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountResolver {
     // WAD scale for loan-to-value ratios and collateral factors (Comet expresses factors in WAD).
     uint256 private constant WAD = 1e18;
 
@@ -188,9 +189,10 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
     /// @dev `collateralAmount` is `collateralBalanceOf(account, collateral)` (Comet collateral does not
     ///      accrue). `debtAmount` is `borrowBalanceOf(account)`, the base borrow accrued to
     ///      `block.timestamp`.
-    function positionOf(address account, Market calldata market)
-        external
+    function positionOf(address account, Market memory market)
+        public
         view
+        override(ILendingAdapter, PositionAmountResolver)
         returns (uint256 collateralAmount, uint256 debtAmount)
     {
         _requireSupportedMarket(market);
@@ -319,7 +321,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter {
 
     /// @notice Reverts `MarketNotSupported` unless the `(collateral, debt)` pair is allowlisted.
     /// @param market The market pair to check.
-    function _requireSupportedMarket(Market calldata market) internal view {
+    function _requireSupportedMarket(Market memory market) internal view {
         _markets.requireAllowed(market);
     }
 }

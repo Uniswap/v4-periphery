@@ -10,6 +10,7 @@ import {IPool} from "./interfaces/external/aave/IPool.sol";
 import {IPoolAddressesProvider} from "./interfaces/external/aave/IPoolAddressesProvider.sol";
 import {IPoolDataProvider} from "./interfaces/external/aave/IPoolDataProvider.sol";
 import {OwnableAdapter} from "./base/OwnableAdapter.sol";
+import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
 import {Market} from "./types/Market.sol";
 import {MarketAllowlist, MarketNotSupported} from "./types/MarketAllowlist.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
@@ -47,7 +48,7 @@ import {PositionData} from "./types/PositionData.sol";
 ///         - Routing is curated: every `encode*` and read reverts `MarketNotSupported` for a pair the
 ///           owner has not allowlisted, never returning a silent default market.
 /// @custom:security-contact security@uniswap.org
-contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
+contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountResolver {
     // WAD scale for loan-to-value ratios.
     uint256 private constant WAD = 1e18;
     // Aave expresses LTV and liquidation thresholds in basis points (1e4 == 100%).
@@ -177,9 +178,10 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
     ///      `debtAmount` is its variable debt token balance for the debt reserve. Both Aave receipt
     ///      tokens rebase with accrued interest, so their `balanceOf` already reflects the current
     ///      obligation.
-    function positionOf(address account, Market calldata market)
-        external
+    function positionOf(address account, Market memory market)
+        public
         view
+        override(ILendingAdapter, PositionAmountResolver)
         returns (uint256 collateralAmount, uint256 debtAmount)
     {
         _requireSupportedMarket(market);
@@ -248,7 +250,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
     /// @param market The market whose reserve receipt tokens are resolved.
     /// @return aCollateral The collateral reserve's aToken.
     /// @return vDebt The debt reserve's variable debt token.
-    function _reserveTokens(Market calldata market) internal view returns (address aCollateral, address vDebt) {
+    function _reserveTokens(Market memory market) internal view returns (address aCollateral, address vDebt) {
         (aCollateral,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.collateral));
         (,, vDebt) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.debt));
     }
@@ -288,7 +290,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter {
 
     /// @notice Reverts `MarketNotSupported` unless the `(collateral, debt)` pair is allowlisted.
     /// @param market The market pair to check.
-    function _requireSupportedMarket(Market calldata market) internal view {
+    function _requireSupportedMarket(Market memory market) internal view {
         _markets.requireAllowed(market);
     }
 }

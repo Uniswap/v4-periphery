@@ -11,6 +11,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
 import {OwnableAdapter} from "./base/OwnableAdapter.sol";
+import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
 import {Market} from "./types/Market.sol";
 import {MarketRegistry} from "./types/MarketRegistry.sol";
 import {Ltv, toLtv} from "./types/Ltv.sol";
@@ -26,7 +27,7 @@ import {PositionData} from "./types/PositionData.sol";
 /// @dev    Morpho Blue does not support fee-on-transfer or rebasing tokens, so curated markets are
 ///         standard ERC-20 only; this is what lets the router's flows net to zero with no residual.
 /// @custom:security-contact security@uniswap.org
-contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
+contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountResolver {
     using MarketParamsLib for MarketParams;
     using MorphoBalancesLib for IMorpho;
 
@@ -148,9 +149,10 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter {
     ///      for collateral). `debtAmount` uses `MorphoBalancesLib.expectedBorrowAssets`, which
     ///      applies interest accrual to give the current obligation rather than the stale stored
     ///      value.
-    function positionOf(address account, Market calldata market)
-        external
+    function positionOf(address account, Market memory market)
+        public
         view
+        override(ILendingAdapter, PositionAmountResolver)
         returns (uint256 collateralAmount, uint256 debtAmount)
     {
         MarketParams memory marketParams = _markets.resolve(market);
