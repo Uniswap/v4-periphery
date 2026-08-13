@@ -223,6 +223,66 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         assertEq(amount, 0, "no spendable Permit2 allowance to the UR after the swap");
     }
 
+    /// @dev L-05: a completed mutation must not be rolled back by a reverting event-only read. A
+    ///      risk-reducing addCollateral top-up still applies when describePosition (an oracle read)
+    ///      reverts; the router skips the best-effort events instead of reverting.
+    function test_addCollateral_survivesDescribePositionRevert() public {
+        address account = _open(1 ether, 2 ether);
+        uint256 collBefore = protocol.collateralOf(account);
+
+        IAllowanceTransfer permit2 = IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+        MockERC20(Currency.unwrap(collateral)).approve(address(permit2), type(uint256).max);
+        permit2.approve(Currency.unwrap(collateral), address(marginRouter), type(uint160).max, type(uint48).max);
+
+        adapter.setDescribeReverts(true); // simulate venue oracle downtime
+
+        vm.recordLogs();
+        marginRouter.addCollateral(
+            IMarginRouter.AddCollateralParams({
+                adapter: adapter, market: market, amount: 0.5 ether, subId: 0, deadline: block.timestamp + 1
+            })
+        );
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        assertEq(protocol.collateralOf(account), collBefore + 0.5 ether, "top-up applied despite oracle revert");
+        // the read failed, so the best-effort events are skipped (not a revert)
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].emitter != address(marginRouter)) continue;
+            assertTrue(
+                logs[i].topics[0] != IMarginRouter.PositionUpdated.selector
+                    && logs[i].topics[0] != IMarginRouter.CollateralAdded.selector,
+                "no position event emitted when the read reverts"
+            );
+        }
+    }
+
+    /// @dev L-05: an increase likewise completes when the post-unlock describePosition read reverts;
+    ///      the rich PositionIncreased is skipped, the position is still built.
+    function test_increase_survivesDescribePositionRevert() public {
+        address account = marginRouter.accountOf(address(this), 0);
+        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, debt, collateral, 1 ether, 5 ether, account);
+
+        adapter.setDescribeReverts(true);
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: market,
+                equity: 0,
+                collateralToBuy: 1 ether,
+                maxDebtIn: 5 ether,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: Ltv.wrap(0),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+        assertEq(protocol.collateralOf(account), 2 ether, "increase built despite the event read reverting");
+    }
+
     function test_openLong_revertsWhenResultingLtvExceedsBound() public {
         // fund equity directly, then open with a health bound below the mock's reported LTV (0.86)
         address account = marginRouter.accountOf(address(this), 0);

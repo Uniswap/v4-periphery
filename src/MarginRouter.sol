@@ -132,23 +132,26 @@ contract MarginRouter is
     {
         uint256 debtBefore;
         (account, debtBefore) = _increase(params);
-        // one post-increase snapshot carries full resulting state (indexers need no extra RPC) and
-        // also yields debtDrawn, so no separate post-unlock position read is needed
-        PositionData memory position = params.adapter.describePosition(account, params.market);
-        emit PositionIncreased(
-            msgSender(),
-            account,
-            params.market.collateral,
-            params.market.debt,
-            msg.value > 0 ? msg.value : params.equity,
-            params.collateralToBuy,
-            position.debtAmount - debtBefore,
-            position.collateralAmount,
-            position.debtAmount,
-            position.currentLtv,
-            position.maxLtv,
-            position.healthFactorWad
-        );
+        // Best-effort rich event. describePosition consults the venue oracle, which can revert (e.g.
+        // oracle downtime); the increase is already complete and the PositionUpdated snapshots emitted
+        // inside the unlock carry the resulting state, so a failing read must not roll back the
+        // mutation. Skip the delta-carrying event rather than revert (audit L-05).
+        try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
+            emit PositionIncreased(
+                msgSender(),
+                account,
+                params.market.collateral,
+                params.market.debt,
+                msg.value > 0 ? msg.value : params.equity,
+                params.collateralToBuy,
+                position.debtAmount - debtBefore,
+                position.collateralAmount,
+                position.debtAmount,
+                position.currentLtv,
+                position.maxLtv,
+                position.healthFactorWad
+            );
+        } catch {}
     }
 
     /// @inheritdoc IMarginRouter
@@ -291,20 +294,24 @@ contract MarginRouter is
                 type(uint256).max
             );
         } else {
-            PositionData memory position = params.adapter.describePosition(account, params.market);
-            emit PositionDecreased(
-                msgSender(),
-                account,
-                params.market.collateral,
-                params.market.debt,
-                params.debtToRepay,
-                collateralBefore - position.collateralAmount,
-                residual,
-                position.collateralAmount,
-                position.debtAmount,
-                position.currentLtv,
-                position.healthFactorWad
-            );
+            // best-effort rich event: the read consults the venue oracle and must not roll back the
+            // completed partial decrease if it reverts (the PositionUpdated snapshots emitted inside
+            // the unlock carry the resulting state); skip rather than revert (audit L-05)
+            try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
+                emit PositionDecreased(
+                    msgSender(),
+                    account,
+                    params.market.collateral,
+                    params.market.debt,
+                    params.debtToRepay,
+                    collateralBefore - position.collateralAmount,
+                    residual,
+                    position.collateralAmount,
+                    position.debtAmount,
+                    position.currentLtv,
+                    position.healthFactorWad
+                );
+            } catch {}
         }
     }
 
@@ -335,32 +342,36 @@ contract MarginRouter is
         }
         // the router is the account manager, so it can supply directly without an unlock
         IMarginAccount(account).supplyCollateral(params.adapter, params.market, amount);
-        PositionData memory position = params.adapter.describePosition(account, params.market);
-        // no unlock means no action handler fires the snapshot; emit it here from the read above
-        // (unguarded is fine: the supply is market-gated, so describePosition cannot be the revert).
+        // Best-effort events. addCollateral runs no unlock, so both the PositionUpdated snapshot and
+        // the curated CollateralAdded come from this describePosition read, which consults the venue
+        // oracle and can revert (e.g. oracle downtime; a debt-free Morpho position still triggers an
+        // oracle read). The supply has already completed, and this is a risk-REDUCING top-up, so a
+        // failing read must not roll it back: emit both on success, skip both on failure (audit L-05).
         // PositionUpdated carries the full pair and maxLtv, which CollateralAdded does not, so
         // snapshot-only consumers can attribute the supply without pair-resolution heuristics.
-        emit PositionUpdated(
-            msgSender(),
-            account,
-            params.market.collateral,
-            params.market.debt,
-            position.collateralAmount,
-            position.debtAmount,
-            position.currentLtv,
-            position.maxLtv,
-            position.healthFactorWad
-        );
-        emit CollateralAdded(
-            msgSender(),
-            account,
-            params.market.collateral,
-            amount,
-            position.collateralAmount,
-            position.debtAmount,
-            position.currentLtv,
-            position.healthFactorWad
-        );
+        try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
+            emit PositionUpdated(
+                msgSender(),
+                account,
+                params.market.collateral,
+                params.market.debt,
+                position.collateralAmount,
+                position.debtAmount,
+                position.currentLtv,
+                position.maxLtv,
+                position.healthFactorWad
+            );
+            emit CollateralAdded(
+                msgSender(),
+                account,
+                params.market.collateral,
+                amount,
+                position.collateralAmount,
+                position.debtAmount,
+                position.currentLtv,
+                position.healthFactorWad
+            );
+        } catch {}
     }
 
     /// @inheritdoc IMarginRouter

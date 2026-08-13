@@ -20,12 +20,19 @@ contract MockLendingAdapter is ILendingAdapter {
     // account's target == lendingProtocol() check)
     address public forcedTarget;
 
+    // when set, describePosition reverts, simulating a venue oracle read that fails (e.g. downtime)
+    bool public describeReverts;
+
     constructor(address lendingProtocol_) {
         lendingProtocol = lendingProtocol_;
     }
 
     function setForcedTarget(address t) external {
         forcedTarget = t;
+    }
+
+    function setDescribeReverts(bool v) external {
+        describeReverts = v;
     }
 
     function _callTarget() internal view returns (address) {
@@ -117,6 +124,7 @@ contract MockLendingAdapter is ILendingAdapter {
     }
 
     function describePosition(address account, Market calldata) external view returns (PositionData memory data) {
+        if (describeReverts) revert("oracle down");
         MockLendingProtocol p = MockLendingProtocol(lendingProtocol);
         uint256 collateral = p.collateralOf(account);
         uint256 debt = p.debtOf(account);
