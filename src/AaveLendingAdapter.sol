@@ -134,6 +134,27 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     }
 
     /// @inheritdoc ILendingAdapter
+    /// @dev Aave does not reliably auto-enable a supplied reserve as collateral: `executeSupply` sets
+    ///      the flag only on the account's FIRST supply of the reserve, so any prior aToken balance
+    ///      (including an unsolicited dust transfer to the deterministic account address) leaves later
+    ///      supplies unflagged and the borrow unbacked. Encode an explicit
+    ///      `setUserUseReserveAsCollateral(collateral, true)`, which acts on the calling account and is
+    ///      idempotent. The account parameter is unused: Aave keys this off `msg.sender`, which is the
+    ///      account executing the call.
+    function encodeEnableCollateral(address, Market calldata market)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        _requireSupportedMarket(market);
+        return (
+            address(pool),
+            0,
+            abi.encodeCall(IPool.setUserUseReserveAsCollateral, (Currency.unwrap(market.collateral), true))
+        );
+    }
+
+    /// @inheritdoc ILendingAdapter
     /// @dev Encodes `IPool.withdraw` with `to = receiver`. Aave's withdraw honors the `to` recipient
     ///      directly, so the account does not need to forward. The `receiver` is validated by
     ///      `MarginAccount` before executing. Aave's withdraw burns the caller's own aTokens rather

@@ -134,6 +134,13 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     }
 
     /// @inheritdoc ILendingAdapter
+    /// @dev No-op: Comet counts a supplied collateral asset as collateral automatically, so there is
+    ///      no separate enable step. Returns empty `callData`, which the account skips.
+    function encodeEnableCollateral(address, Market calldata) external pure returns (address, uint256, bytes memory) {
+        return (address(0), 0, "");
+    }
+
+    /// @inheritdoc ILendingAdapter
     /// @dev Encodes `IComet.withdrawTo(receiver, collateral, amount)`, which debits the account's
     ///      collateral and delivers it to `receiver` directly, so the account forwards nothing. The
     ///      `receiver` is validated by `MarginAccount` before executing. Comet's withdraw acts on the

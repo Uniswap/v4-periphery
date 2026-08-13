@@ -145,6 +145,30 @@ contract AaveLendingAdapterTest is Test {
         assertEq(referralCode, 0);
     }
 
+    /// @dev M-02 fix: the adapter encodes an explicit post-supply collateral enable so a prior aToken
+    ///      balance (e.g. a dust grief) cannot leave the reserve unflagged.
+    function test_encodeEnableCollateral_encodesSetUserUseReserveAsCollateral() public view {
+        (address target, uint256 value, bytes memory data) = adapter.encodeEnableCollateral(account, market);
+        assertEq(target, address(pool));
+        assertEq(value, 0);
+        assertEq(bytes4(data), IPool.setUserUseReserveAsCollateral.selector);
+        (address asset, bool useAsCollateral) = abi.decode(this.sliceSelector(data), (address, bool));
+        assertEq(asset, address(usdc), "enables the collateral reserve");
+        assertTrue(useAsCollateral, "enables (not disables) collateral");
+    }
+
+    function test_encodeEnableCollateral_revertsWhenMarketNotSupported() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(MarketNotSupported.selector, unroutedMarket.collateral, unroutedMarket.debt)
+        );
+        adapter.encodeEnableCollateral(account, unroutedMarket);
+    }
+
+    /// @dev Strip the 4-byte selector so the args can be abi.decoded.
+    function sliceSelector(bytes calldata d) external pure returns (bytes memory) {
+        return d[4:];
+    }
+
     function test_encodeWithdrawCollateral_honorsReceiver() public {
         address receiver = makeAddr("receiver");
         // Aave withdraw burns the caller's own aTokens, so the account must be the caller

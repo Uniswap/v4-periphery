@@ -127,6 +127,23 @@ contract MarginRouterShortInverseTest is Test, MarginRouteHelpers, DeployPermit2
         assertEq(weth.balanceOf(account), 0, "account holds no loose WETH");
         assertEq(usdc.balanceOf(address(router)), 0, "router holds no loose USDC");
         assertEq(weth.balanceOf(address(router)), 0, "router holds no loose WETH");
+
+        // M-02 fix: the supply path ran the explicit collateral enable, so the USDC reserve is flagged
+        // as collateral on the pool regardless of any prior aToken balance
+        assertTrue(aavePool.usingAsCollateral(account, address(usdc)), "supply enabled USDC as collateral");
+    }
+
+    /// @dev M-02 end-to-end regression: pre-seed the account with a dust aToken balance (the grief
+    ///      vector) so Aave's first-supply auto-enable would NOT fire, and assert the open still flags
+    ///      the reserve as collateral because the adapter now enables it explicitly via the hook.
+    function test_openShort_enablesCollateralDespitePriorATokenDust() public {
+        address account = router.accountOf(address(this), 0);
+        aavePool.aToken(address(usdc)).mint(account, 1); // dust: makes the later supply a non-first supply
+        assertFalse(aavePool.usingAsCollateral(account, address(usdc)), "not enabled before open");
+
+        _openShort(2000e6, 2000e6, 1.1e18);
+
+        assertTrue(aavePool.usingAsCollateral(account, address(usdc)), "explicit enable fires despite dust");
     }
 
     /// @notice Close a short: collateral USDC is sold to buy back the full WETH debt, which is then

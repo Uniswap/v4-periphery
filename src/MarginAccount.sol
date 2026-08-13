@@ -63,6 +63,11 @@ contract MarginAccount is IMarginAccount {
         _setApproval(market.collateral, target, amount);
         _execCall(target, value, callData);
         _setApproval(market.collateral, target, 0);
+        // Run the venue's post-supply collateral-enable (Aave needs an explicit, account-scoped
+        // enable; Morpho/Compound return empty and this is skipped). Moves no tokens, so no approval.
+        (address enableTarget, uint256 enableValue, bytes memory enableData) =
+            adapter.encodeEnableCollateral(address(this), market);
+        if (enableData.length != 0) _execCall(enableTarget, enableValue, enableData);
         emit CollateralSupplied(msg.sender, address(adapter), market.collateral, amount);
         return amount;
     }

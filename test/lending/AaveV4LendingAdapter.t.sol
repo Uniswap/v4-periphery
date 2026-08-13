@@ -67,10 +67,6 @@ contract AaveV4LendingAdapterTest is Test {
     // calldata decode helpers (slice the 4-byte selector, then abi.decode)
     // -------------------------------------------------------------------------
 
-    function decodeMulticall(bytes calldata d) external pure returns (bytes[] memory calls) {
-        calls = abi.decode(d[4:], (bytes[]));
-    }
-
     function decodeSupply(bytes calldata d)
         external
         pure
@@ -123,44 +119,46 @@ contract AaveV4LendingAdapterTest is Test {
         assertEq(adapter.owner(), gov);
     }
 
-    function test_encodeSupplyCollateral_wrapsSupplyAndSetCollateralInMulticall() public view {
+    function test_encodeSupplyCollateral_encodesPlainSupply() public view {
         (address target, uint256 value, bytes memory data) = adapter.encodeSupplyCollateral(account, market, 1_000e6);
         assertEq(target, address(spoke));
         assertEq(value, 0);
-        assertEq(bytes4(data), ISpoke.multicall.selector);
-
-        bytes[] memory calls = this.decodeMulticall(data);
-        assertEq(calls.length, 2, "supply + setUsingAsCollateral");
-
-        assertEq(bytes4(calls[0]), ISpoke.supply.selector);
-        (uint256 supplyId, uint256 amount, address supplyOnBehalf) = this.decodeSupply(calls[0]);
+        assertEq(bytes4(data), ISpoke.supply.selector, "supply is a plain call, not a multicall");
+        (uint256 supplyId, uint256 amount, address supplyOnBehalf) = this.decodeSupply(data);
         assertEq(supplyId, USDC_RESERVE_ID);
         assertEq(amount, 1_000e6);
         assertEq(supplyOnBehalf, account);
+    }
 
-        assertEq(bytes4(calls[1]), ISpoke.setUsingAsCollateral.selector);
-        (uint256 collId, bool flag, address collOnBehalf) = this.decodeSetCollateral(calls[1]);
+    function test_encodeEnableCollateral_encodesSetUsingAsCollateral() public view {
+        (address target, uint256 value, bytes memory data) = adapter.encodeEnableCollateral(account, market);
+        assertEq(target, address(spoke));
+        assertEq(value, 0);
+        assertEq(bytes4(data), ISpoke.setUsingAsCollateral.selector);
+        (uint256 collId, bool flag, address collOnBehalf) = this.decodeSetCollateral(data);
         assertEq(collId, USDC_RESERVE_ID);
         assertTrue(flag);
         assertEq(collOnBehalf, account);
     }
 
-    function test_encodeSupplyCollateral_executesSupplyAndEnablesCollateral() public {
+    function test_supplyThenEnable_creditsAndEnablesCollateral() public {
         uint256 amount = 1_000e6;
         usdc.mint(account, amount);
 
-        (address target,, bytes memory data) = adapter.encodeSupplyCollateral(account, market, amount);
+        // the account runs the two encoded calls in sequence (as MarginAccount.supplyCollateral does)
+        (address target,, bytes memory supplyData) = adapter.encodeSupplyCollateral(account, market, amount);
+        (,, bytes memory enableData) = adapter.encodeEnableCollateral(account, market);
         vm.startPrank(account);
         usdc.approve(target, amount);
-        (bool ok,) = target.call(data);
+        (bool okSupply,) = target.call(supplyData);
+        (bool okEnable,) = target.call(enableData);
         vm.stopPrank();
 
-        assertTrue(ok, "encoded multicall executed");
+        assertTrue(okSupply && okEnable, "supply + enable executed");
         assertEq(spoke.getUserSuppliedAssets(USDC_RESERVE_ID, account), amount, "supply credited");
-        assertTrue(spoke.isUsingAsCollateral(USDC_RESERVE_ID, account), "collateral enabled in the same batch");
-        // multicall delegatecalls to self, so the inner supply saw the account as msg.sender and pulled
-        // the underlying against the account's allowance to the Spoke
-        assertEq(spoke.lastSupplyCaller(), account, "multicall preserved msg.sender");
+        assertTrue(spoke.isUsingAsCollateral(USDC_RESERVE_ID, account), "collateral enabled by the hook");
+        // the account is the direct caller, so the supply pulled the underlying against its allowance
+        assertEq(spoke.lastSupplyCaller(), account, "account is the supply caller");
         assertEq(usdc.balanceOf(account), 0, "underlying pulled from the account");
     }
 

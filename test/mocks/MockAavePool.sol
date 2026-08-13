@@ -99,10 +99,20 @@ contract MockAavePool is IPool {
         });
     }
 
+    /// @notice Records `setUserUseReserveAsCollateral(caller, asset) => useAsCollateral`, so tests can
+    ///         assert the account ran the post-supply collateral enable.
+    mapping(address user => mapping(address asset => bool)) public usingAsCollateral;
+
     /// @inheritdoc IPool
     function supply(address asset, uint256 amount, address onBehalfOf, uint16) external {
         IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
         _reserves[asset].aToken.mint(onBehalfOf, amount);
+    }
+
+    /// @inheritdoc IPool
+    /// @dev Acts on `msg.sender` (no onBehalfOf), matching Aave; records the flag for assertions.
+    function setUserUseReserveAsCollateral(address asset, bool useAsCollateral) external {
+        usingAsCollateral[msg.sender][asset] = useAsCollateral;
     }
 
     /// @inheritdoc IPool

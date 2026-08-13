@@ -96,6 +96,13 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmount
     }
 
     /// @inheritdoc ILendingAdapter
+    /// @dev No-op: Morpho Blue treats supplied collateral as collateral automatically, so there is no
+    ///      separate enable step. Returns empty `callData`, which the account skips.
+    function encodeEnableCollateral(address, Market calldata) external pure returns (address, uint256, bytes memory) {
+        return (address(0), 0, "");
+    }
+
+    /// @inheritdoc ILendingAdapter
     /// @dev Encodes `IMorphoBase.withdrawCollateral` with `onBehalf = account` and
     ///      `receiver = receiver`. The `receiver` is validated by `MarginAccount` before executing.
     function encodeWithdrawCollateral(address account, Market calldata market, uint256 amount, address receiver)

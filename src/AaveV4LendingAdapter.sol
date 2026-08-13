@@ -30,11 +30,11 @@ import {PositionData} from "./types/PositionData.sol";
 ///         - The account acts as its own `onBehalfOf` AND is the direct caller, so
 ///           `Spoke._isPositionManager(account, account)` short-circuits to true. The v4 position
 ///           manager / intent apparatus (for third-party relayers) is therefore irrelevant here.
-///         - v4 `supply` does NOT auto-enable collateral, so `encodeSupplyCollateral` batches
-///           `supply` and `setUsingAsCollateral` in a `Spoke.multicall` (a delegatecall-to-self that
-///           preserves `msg.sender`, so the inner supply pulls the underlying against the account's
-///           allowance to the Spoke). `setUsingAsCollateral` is idempotent, so re-emitting it on every
-///           supply is safe.
+///         - v4 `supply` does NOT auto-enable collateral, so `encodeSupplyCollateral` supplies and the
+///           account then runs `encodeEnableCollateral` (`setUsingAsCollateral`) through the shared
+///           post-supply hook. The account is the direct caller of both, so the supply pulls the
+///           underlying against the account's allowance to the Spoke. `setUsingAsCollateral` is
+///           idempotent, so re-emitting it on every supply is safe.
 ///         - v4 `borrow` and `withdraw` deliver the underlying to `msg.sender` (the account). The
 ///           account holds the funds and forwards them to its validated receiver, so neither encoder
 ///           carries a recipient.
@@ -141,21 +141,34 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmount
     }
 
     /// @inheritdoc ILendingAdapter
-    /// @dev v4 `supply` does not auto-enable collateral, so the encoded call is a `Spoke.multicall`
-    ///      batching `supply(collateralReserveId, amount, account)` and
-    ///      `setUsingAsCollateral(collateralReserveId, true, account)`. The multicall delegatecalls to
-    ///      self, so the inner supply observes `msg.sender == account` and pulls the underlying against
-    ///      the account's allowance to the Spoke. `value` is 0 (the Spoke is non-payable).
+    /// @dev Encodes `Spoke.supply(collateralReserveId, amount, account)`. The account executes this
+    ///      itself, so the supply observes `msg.sender == account` and pulls the underlying against the
+    ///      account's allowance to the Spoke. v4 `supply` does not auto-enable collateral; the account
+    ///      runs `encodeEnableCollateral` immediately after (see below). `value` is 0 (the Spoke is
+    ///      non-payable).
     function encodeSupplyCollateral(address account, Market calldata market, uint256 amount)
         external
         view
         returns (address, uint256, bytes memory)
     {
         V4MarketRoute storage route = _resolveRoute(market);
-        bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeCall(ISpoke.supply, (route.collateralReserveId, amount, account));
-        calls[1] = abi.encodeCall(ISpoke.setUsingAsCollateral, (route.collateralReserveId, true, account));
-        return (address(spoke), 0, abi.encodeCall(ISpoke.multicall, (calls)));
+        return (address(spoke), 0, abi.encodeCall(ISpoke.supply, (route.collateralReserveId, amount, account)));
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev v4 `supply` does not enable the reserve as collateral, so encode an explicit
+    ///      `setUsingAsCollateral(collateralReserveId, true, account)`. Idempotent, so re-running it on
+    ///      every supply (including a top-up) is safe. Split out of `encodeSupplyCollateral` so both
+    ///      Aave adapters enable collateral through the shared post-supply hook rather than a Spoke
+    ///      multicall.
+    function encodeEnableCollateral(address account, Market calldata market)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        V4MarketRoute storage route = _resolveRoute(market);
+        return
+            (address(spoke), 0, abi.encodeCall(ISpoke.setUsingAsCollateral, (route.collateralReserveId, true, account)));
     }
 
     /// @inheritdoc ILendingAdapter

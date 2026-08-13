@@ -65,9 +65,6 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     }
 
     // External calldata-decode helpers.
-    function decodeMulticall(bytes calldata d) external pure returns (bytes[] memory calls) {
-        calls = abi.decode(d[4:], (bytes[]));
-    }
 
     function decodeSupply(bytes calldata d)
         external
@@ -121,26 +118,23 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     // encodeSupplyCollateral — multicall wrapping
     // -------------------------------------------------------------------------
 
-    function testFuzz_encodeSupplyCollateral_multicallWrapsSupplyAndSetCollateral(address account, uint256 amount)
-        public
-        view
-    {
-        (address target, uint256 value, bytes memory data) = adapter.encodeSupplyCollateral(account, market, amount);
-        assertEq(target, address(spoke), "target must be spoke");
-        assertEq(value, 0, "value must be 0");
-        assertEq(bytes4(data), ISpoke.multicall.selector, "outer selector must be multicall");
-
-        bytes[] memory calls = this.decodeMulticall(data);
-        assertEq(calls.length, 2, "must batch supply + setUsingAsCollateral");
-
-        assertEq(bytes4(calls[0]), ISpoke.supply.selector, "first call must be supply");
-        (uint256 supplyId, uint256 decodedAmount, address supplyOnBehalf) = this.decodeSupply(calls[0]);
+    function testFuzz_encodeSupplyAndEnableCollateral(address account, uint256 amount) public view {
+        (address supplyTarget, uint256 supplyValue, bytes memory supplyData) =
+            adapter.encodeSupplyCollateral(account, market, amount);
+        assertEq(supplyTarget, address(spoke), "supply target must be spoke");
+        assertEq(supplyValue, 0, "supply value must be 0");
+        assertEq(bytes4(supplyData), ISpoke.supply.selector, "supply is a plain call");
+        (uint256 supplyId, uint256 decodedAmount, address supplyOnBehalf) = this.decodeSupply(supplyData);
         assertEq(supplyId, USDC_RESERVE_ID, "supply reserveId must be USDC");
         assertEq(decodedAmount, amount, "supply amount mismatch");
         assertEq(supplyOnBehalf, account, "supply onBehalfOf must be account");
 
-        assertEq(bytes4(calls[1]), ISpoke.setUsingAsCollateral.selector, "second call must be setUsingAsCollateral");
-        (uint256 collId, bool flag, address collOnBehalf) = this.decodeSetCollateral(calls[1]);
+        (address enableTarget, uint256 enableValue, bytes memory enableData) =
+            adapter.encodeEnableCollateral(account, market);
+        assertEq(enableTarget, address(spoke), "enable target must be spoke");
+        assertEq(enableValue, 0, "enable value must be 0");
+        assertEq(bytes4(enableData), ISpoke.setUsingAsCollateral.selector, "enable is setUsingAsCollateral");
+        (uint256 collId, bool flag, address collOnBehalf) = this.decodeSetCollateral(enableData);
         assertEq(collId, USDC_RESERVE_ID, "setCollateral reserveId must be USDC");
         assertTrue(flag, "collateral flag must be true");
         assertEq(collOnBehalf, account, "setCollateral onBehalfOf must be account");

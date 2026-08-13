@@ -13,6 +13,12 @@ interface IPool {
     /// @param referralCode The referral code (unused; pass 0).
     function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external;
 
+    /// @notice Sets whether the caller uses `asset` as collateral. Acts on `msg.sender`'s own reserve
+    ///         configuration (there is no `onBehalfOf`), so the account must call this itself.
+    /// @param asset The address of the underlying asset.
+    /// @param useAsCollateral True to enable the reserve as collateral, false to disable.
+    function setUserUseReserveAsCollateral(address asset, bool useAsCollateral) external;
+
     /// @notice Withdraws `amount` of `asset`, burning the caller's aTokens and sending the underlying
     ///         to `to`.
     /// @param asset The address of the underlying asset to withdraw.

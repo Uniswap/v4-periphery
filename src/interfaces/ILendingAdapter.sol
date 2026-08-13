@@ -45,6 +45,25 @@ interface ILendingAdapter {
         view
         returns (address target, uint256 value, bytes memory callData);
 
+    /// @notice Encode the call the account runs immediately after a supply to make the supplied
+    ///         reserve usable as collateral, for venues that do not enable it implicitly. Aave (v3 and
+    ///         v4) require an explicit enable (`setUserUseReserveAsCollateral` / `setUsingAsCollateral`)
+    ///         which acts on the calling account, so the account must run it itself; Morpho and
+    ///         Compound treat supplied collateral as collateral automatically and return empty
+    ///         `callData`.
+    /// @dev The account executes `callData` against `target` only when `callData` is non-empty;
+    ///      an empty `callData` is the skip signal. Moves no tokens (no approval needed). Idempotent
+    ///      where implemented, so it is safe to run on every supply, including a top-up.
+    /// @param account The MarginAccount whose reserve is enabled as collateral.
+    /// @param market The (collateral, debt) pair identifying the target lending market.
+    /// @return target The call target (`lendingProtocol()`) when `callData` is non-empty.
+    /// @return value The call value. Always 0 for the in-tree non-payable lending protocols.
+    /// @return callData The calldata to execute, or empty bytes to skip.
+    function encodeEnableCollateral(address account, Market calldata market)
+        external
+        view
+        returns (address target, uint256 value, bytes memory callData);
+
     /// @notice Encode the call to withdraw `amount` of `market.collateral` to `receiver`.
     /// @param account The MarginAccount whose collateral is being withdrawn; used as `onBehalf`.
     /// @param market The (collateral, debt) pair identifying the target lending market.

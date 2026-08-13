@@ -60,6 +60,12 @@ contract MockLendingAdapter is ILendingAdapter {
         return (_callTarget(), 0, abi.encodeWithSignature("supplyCollateral(address,uint256)", account, amount));
     }
 
+    /// @dev The mock protocol treats supplied collateral as collateral automatically (like Morpho and
+    ///      Compound), so no post-supply enable is needed; return empty to signal skip.
+    function encodeEnableCollateral(address, Market calldata) external pure returns (address, uint256, bytes memory) {
+        return (address(0), 0, "");
+    }
+
     function encodeWithdrawCollateral(address account, Market calldata, uint256 amount, address receiver)
         external
         view
