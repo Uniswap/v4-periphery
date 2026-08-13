@@ -25,9 +25,11 @@ import {PositionData} from "./types/PositionData.sol";
 ///         `onBehalfOf` is always the account and no delegated authorization is needed. The
 ///         motivating use case is a short ETH position: supply USDC as collateral and borrow WETH.
 /// @dev    Design and trust notes:
-///         - The Pool and protocol data provider are resolved once from the addresses provider and
-///           held immutably. Both are upgradeable proxies whose addresses are stable across Aave
-///           upgrades, so caching the addresses is safe even though the implementations may change.
+///         - The Pool is resolved once from the addresses provider and held immutably: it is a proxy
+///           with a stable address across Aave upgrades. The protocol data provider is NOT cached; it
+///           is resolved from the addresses provider on each use, because Aave's `setPoolDataProvider`
+///           can repoint it to a new, non-proxied address, and caching would strand the adapter on a
+///           deregistered provider (this adapter has no setter and is not upgradeable).
 ///         - The adapter only encodes calls; it never holds funds or moves tokens. The executing
 ///           `MarginAccount` performs a regular call (never a delegatecall) and validates the `to` it
 ///           is handed, but it does not decode this calldata, so THIS ADAPTER is what guarantees the
@@ -58,12 +60,13 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
 
     /// @notice The Aave v3 Pool, resolved from the addresses provider at construction. The single
     ///         call target for every market this adapter routes. All `encode*` functions return this
-    ///         address as `target`.
+    ///         address as `target`. The Pool is a proxy with a stable address, so caching it is safe.
     IPool public immutable pool;
 
-    /// @notice The Aave v3 protocol data provider, resolved from the addresses provider at
-    ///         construction. Used to read reserve token addresses and reserve configuration.
-    IPoolDataProvider public immutable dataProvider;
+    /// @notice The Aave v3 PoolAddressesProvider. The protocol data provider is resolved from it on
+    ///         each use (see `dataProvider`) rather than cached, so an Aave data-provider redeployment
+    ///         is tracked automatically.
+    IPoolAddressesProvider public immutable addressesProvider;
 
     /// @notice The governed allowlist of routable `(collateral, debt)` pairs. Managed via `setMarket`;
     ///         the owner guard lives in `OwnableAdapter`.
@@ -91,15 +94,25 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     /// @param owner_ The initial adapter owner (governance).
     constructor(IPoolAddressesProvider provider, address owner_) OwnableAdapter(owner_) {
         address pool_ = provider.getPool();
-        address dataProvider_ = provider.getPoolDataProvider();
-        if (pool_ == address(0) || dataProvider_ == address(0)) revert ZeroAddress();
+        // resolve the data provider once only to sanity-check the provider is wired; it is re-resolved
+        // on each use rather than cached (Aave can repoint it), see `dataProvider`
+        if (pool_ == address(0) || provider.getPoolDataProvider() == address(0)) revert ZeroAddress();
         pool = IPool(pool_);
-        dataProvider = IPoolDataProvider(dataProvider_);
+        addressesProvider = provider;
     }
 
     /// @inheritdoc ILendingAdapter
     function lendingProtocol() external view returns (address) {
         return address(pool);
+    }
+
+    /// @notice The Aave v3 protocol data provider, resolved fresh from the addresses provider on each
+    ///         call. Unlike the Pool, Aave's data provider is not a stable proxy: `setPoolDataProvider`
+    ///         can overwrite it with a new, non-proxied address, so caching it would strand the adapter
+    ///         on a deregistered provider. Backs the reserve-token and reserve-config reads.
+    /// @return The current Aave v3 protocol data provider.
+    function dataProvider() public view returns (IPoolDataProvider) {
+        return IPoolDataProvider(addressesProvider.getPoolDataProvider());
     }
 
     /// @inheritdoc ILendingAdapter
@@ -197,7 +210,7 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     function maxLtvWad(Market calldata market) external view returns (Ltv) {
         _requireSupportedMarket(market);
         (,, uint256 liquidationThreshold,,,,,,,) =
-            dataProvider.getReserveConfigurationData(Currency.unwrap(market.collateral));
+            dataProvider().getReserveConfigurationData(Currency.unwrap(market.collateral));
         return _thresholdToLtv(liquidationThreshold);
     }
 
@@ -251,8 +264,9 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     /// @return aCollateral The collateral reserve's aToken.
     /// @return vDebt The debt reserve's variable debt token.
     function _reserveTokens(Market memory market) internal view returns (address aCollateral, address vDebt) {
-        (aCollateral,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.collateral));
-        (,, vDebt) = dataProvider.getReserveTokensAddresses(Currency.unwrap(market.debt));
+        IPoolDataProvider dp = dataProvider();
+        (aCollateral,,) = dp.getReserveTokensAddresses(Currency.unwrap(market.collateral));
+        (,, vDebt) = dp.getReserveTokensAddresses(Currency.unwrap(market.debt));
     }
 
     /// @notice Current LTV from Aave's account-level base-currency totals. `type(uint256).max` when
@@ -280,8 +294,9 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     function setMarket(Currency collateral, Currency debt, bool allowed) external {
         _onlyOwner();
         if (allowed) {
-            (address aCollateral,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(collateral));
-            (address aDebt,,) = dataProvider.getReserveTokensAddresses(Currency.unwrap(debt));
+            IPoolDataProvider dp = dataProvider();
+            (address aCollateral,,) = dp.getReserveTokensAddresses(Currency.unwrap(collateral));
+            (address aDebt,,) = dp.getReserveTokensAddresses(Currency.unwrap(debt));
             if (aCollateral == address(0) || aDebt == address(0)) revert MarketNotSupported(collateral, debt);
         }
         _markets.set(collateral, debt, allowed);

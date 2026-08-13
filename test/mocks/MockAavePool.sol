@@ -13,13 +13,19 @@ import {IPoolDataProvider} from "../../src/interfaces/external/aave/IPoolDataPro
 ///         addresses the adapter reads at construction.
 contract MockAaveAddressesProvider is IPoolAddressesProvider {
     address internal immutable _pool;
-    address internal immutable _dataProvider;
+    address internal _dataProvider;
     address internal immutable _priceOracle;
 
     constructor(address pool_, address dataProvider_) {
         _pool = pool_;
         _dataProvider = dataProvider_;
         _priceOracle = address(0);
+    }
+
+    /// @notice Repoint the data provider, mirroring Aave's `setPoolDataProvider` (which overwrites the
+    ///         DATA_PROVIDER entry with a new, non-proxied address). Lets tests exercise a redeployment.
+    function setDataProvider(address dataProvider_) external {
+        _dataProvider = dataProvider_;
     }
 
     /// @inheritdoc IPoolAddressesProvider

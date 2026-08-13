@@ -107,6 +107,28 @@ contract AaveLendingAdapterTest is Test {
         assertEq(adapter.lendingProtocol(), address(pool));
     }
 
+    /// @dev M-01 regression: the data provider is resolved from the addresses provider on each use,
+    ///      not cached, so an Aave `setPoolDataProvider` repoint is tracked without redeploying the
+    ///      adapter (which has no setter and is not upgradeable). Before the fix, the immutable cache
+    ///      would keep returning the original provider and strand the adapter.
+    function test_dataProvider_repointIsTracked() public {
+        assertEq(address(adapter.dataProvider()), address(dataProvider), "initial data provider");
+
+        // Aave redeploys the data provider; the addresses provider now points at a new one over the
+        // same Pool (so reserve lookups still resolve).
+        MockAaveDataProvider replacement = new MockAaveDataProvider(pool);
+        provider.setDataProvider(address(replacement));
+
+        assertEq(address(adapter.dataProvider()), address(replacement), "adapter tracks the repoint");
+
+        // reads route through the new provider and still resolve the position correctly
+        _seedPosition(1_000e6, 1e18);
+        (uint256 collateralAmount, uint256 debtAmount) = adapter.positionOf(account, market);
+        assertEq(collateralAmount, 1_000e6, "collateral read through the repointed provider");
+        assertEq(debtAmount, 1e18, "debt read through the repointed provider");
+        assertEq(Ltv.unwrap(adapter.maxLtvWad(market)), USDC_LIQ_THRESHOLD_BPS * WAD / 1e4, "maxLtv via new provider");
+    }
+
     function test_owner_isConstructorOwner() public view {
         assertEq(adapter.owner(), gov);
     }
