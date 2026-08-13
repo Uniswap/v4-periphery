@@ -662,6 +662,12 @@ contract MarginRouter is
         uint256 balanceAfter = input.balanceOfSelf();
         uint256 leftover = balanceAfter > balanceBeforeTake ? balanceAfter - balanceBeforeTake : 0;
         if (leftover > 0) _settle(input, address(this), leftover);
+
+        // 5. clear the scoped Permit2 allowance to the caller-supplied Universal Router. Permit2 spends
+        //    while block.timestamp <= expiration, so a non-zero residual would stay live for the rest
+        //    of the block; zeroing it leaves no spendable allowance to an unvalidated address past this
+        //    call.
+        permit2.approve(token, universalRouter, 0, 0);
     }
 
     /// @notice Dispatches an account-scoped margin opcode to its handler. Exposure-increasing

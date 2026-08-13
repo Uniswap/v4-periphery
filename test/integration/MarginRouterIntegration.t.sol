@@ -210,6 +210,19 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         );
     }
 
+    /// @dev L-08: ROUTE_SWAP must not leave a spendable Permit2 allowance to the caller-supplied
+    ///      Universal Router after the swap. The increase routes the debt token through the UR, so its
+    ///      router->UR allowance for that token must be zero once the open completes.
+    function test_routeSwap_clearsPermit2AllowanceToUniversalRouter() public {
+        _open(1 ether, 2 ether);
+        IAllowanceTransfer permit2 = IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+        // amount is the security-relevant field: zero means nothing is spendable (Permit2 stores a
+        // zero-expiration approve as block.timestamp per its "lasts the block" rule, so expiration is
+        // not asserted).
+        (uint160 amount,,) = permit2.allowance(address(marginRouter), Currency.unwrap(debt), ur);
+        assertEq(amount, 0, "no spendable Permit2 allowance to the UR after the swap");
+    }
+
     function test_openLong_revertsWhenResultingLtvExceedsBound() public {
         // fund equity directly, then open with a health bound below the mock's reported LTV (0.86)
         address account = marginRouter.accountOf(address(this), 0);
