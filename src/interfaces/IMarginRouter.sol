@@ -58,12 +58,16 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      leave the account funded in the wrong token.
     error NativeCollateralMismatch();
 
-    /// @dev Thrown when an exact-output swap on `increasePosition` under-fills: the pool delivered
-    ///      less than the requested `collateralToBuy` (a thin pool can hit the price limit before the
-    ///      full output is bought). The increase is all-or-nothing, so it reverts rather than opening
-    ///      a smaller position than requested.
-    /// @param requested The collateral amount the increase asked the swap to deliver.
-    /// @param received The collateral amount the swap actually delivered.
+    /// @dev Thrown by the `ASSERT_ACCOUNT_BALANCE` fill check when the active account's resulting
+    ///      balance of the bought currency is below the required minimum: the routed swap delivered
+    ///      less than requested (a thin route can hit its price limit before the full exact-output is
+    ///      bought). The curated flows set the minimum to the account's balance going into the unlock
+    ///      PLUS the amount the swap was asked to deliver, so the absolute check enforces the swap
+    ///      DELTA and a pre-existing balance cannot mask a short fill; the flows are all-or-nothing and
+    ///      revert rather than build on a short fill.
+    /// @param requested The minimum resulting balance the check required (the account's pre-swap
+    ///        balance plus the amount the swap was asked to deliver).
+    /// @param received The account's actual resulting balance of the bought currency.
     error IncompleteFill(uint256 requested, uint256 received);
 
     /// @dev Thrown when an account-scoped action in an `execute` plan runs with no active account

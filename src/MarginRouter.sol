@@ -241,9 +241,12 @@ contract MarginRouter is
             params.routeCommands,
             params.routeInputs
         );
-        // require the account received the debt the repay needs, so an exact-output under-fill reverts
-        // instead of surfacing as an opaque repay failure
-        actionParams[1] = abi.encode(params.market.debt, fullClose ? debt : params.debtToRepay);
+        // require the route to deliver the debt the repay needs ON TOP of any debt-token balance the
+        // account already holds going into the unlock. Setting the ASSERT_ACCOUNT_BALANCE threshold to
+        // `balance + required` makes the absolute check enforce the SWAP DELTA, so a pre-existing or
+        // donated balance cannot mask an exact-output under-fill (audit M-03)
+        uint256 debtHeldBefore = params.market.debt.balanceOf(account);
+        actionParams[1] = abi.encode(params.market.debt, debtHeldBefore + (fullClose ? debt : params.debtToRepay));
         actionParams[2] = abi.encode(params.adapter, params.market, fullClose ? type(uint256).max : params.debtToRepay);
         actionParams[3] = abi.encode(
             params.adapter,
@@ -512,10 +515,13 @@ contract MarginRouter is
             params.routeCommands,
             params.routeInputs
         );
-        // require the account received the full bought collateral (equity + collateralToBuy), so an
-        // exact-output under-fill reverts instead of opening a smaller position
-        actionParams[1] =
-            abi.encode(params.market.collateral, (msg.value > 0 ? msg.value : params.equity) + params.collateralToBuy);
+        // require the route to deliver the full collateralToBuy ON TOP of the balance the account
+        // already holds going into the unlock (equity was transferred in above). Setting the
+        // ASSERT_ACCOUNT_BALANCE threshold to `balance + collateralToBuy` makes the absolute check
+        // enforce the SWAP DELTA, so a pre-existing, idle, cross-market, or donated balance cannot
+        // mask an exact-output under-fill (audit M-03)
+        uint256 collateralHeldBefore = params.market.collateral.balanceOf(account);
+        actionParams[1] = abi.encode(params.market.collateral, collateralHeldBefore + params.collateralToBuy);
         // supply the account's full collateral balance (equity + bought)
         actionParams[2] = abi.encode(params.adapter, params.market, uint256(ActionConstants.OPEN_DELTA));
         // borrow the debt the swap cost (OPEN_DELTA == the router's remaining debt), to the router
@@ -749,8 +755,12 @@ contract MarginRouter is
         IMarginAccount(account).sweep(currency, amount, to);
     }
 
-    /// @notice Routed-swap fill guarantee: require the account received at least `minAmount`, so an
-    ///         exact-output under-fill reverts instead of building a smaller position.
+    /// @notice Routed-swap fill guarantee: require the account's resulting balance of `currency` is at
+    ///         least `minAmount`, reverting `IncompleteFill` otherwise. This is an absolute-balance
+    ///         check by contract (so it composes predictably in `execute` plans); the curated flows
+    ///         achieve a swap-DELTA guarantee by setting `minAmount` to the account's pre-unlock
+    ///         balance plus the amount the route was asked to deliver, so a pre-existing balance cannot
+    ///         mask a short fill (audit M-03).
     function _assertAccountBalance(bytes calldata params, address account) private view {
         (Currency currency, uint256 minAmount) = params.decodeFillCheck();
         uint256 held = currency.balanceOf(account);

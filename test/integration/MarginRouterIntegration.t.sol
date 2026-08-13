@@ -110,6 +110,106 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         assertEq(IERC20(Currency.unwrap(debt)).balanceOf(address(marginRouter)), 0, "router holds no debt");
     }
 
+    /// @dev M-03 regression: a pre-existing account balance must not mask a routed-swap short fill.
+    ///      The fill check enforces the swap DELTA (threshold = pre-unlock balance + collateralToBuy),
+    ///      so a route delivering less than collateralToBuy reverts even though the idle balance would
+    ///      cover the old absolute threshold. Before the fix this opened a position on a short fill.
+    function test_increase_shortFillRevertsDespitePreexistingBalance() public {
+        address account = marginRouter.accountOf(address(this), 0);
+        uint128 buy = 1 ether; // ask the route to deliver 1 WETH
+        uint128 shortfall = 0.3 ether; // but build a route that delivers only 0.7 WETH
+        uint256 preseed = 1 ether + shortfall; // equity + an idle balance that could mask the shortfall
+        MockERC20(Currency.unwrap(collateral)).transfer(account, preseed);
+
+        // route buys only (buy - shortfall) collateral exact-output, delivered to the account
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, debt, collateral, buy - shortfall, 5 ether, account);
+
+        // held at assert time = preseed + (buy - shortfall); required = preseed + buy
+        vm.expectRevert(
+            abi.encodeWithSelector(IMarginRouter.IncompleteFill.selector, preseed + buy, preseed + buy - shortfall)
+        );
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: market,
+                equity: 0,
+                collateralToBuy: buy,
+                maxDebtIn: 5 ether,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: Ltv.wrap(0),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+    }
+
+    /// @dev M-03: the fix reverts SHORT fills, not idle balance per se. A fully-delivering route still
+    ///      opens even when the account holds an idle donation (which OPEN_DELTA then supplies too).
+    function test_increase_succeedsWithIdleBalanceWhenRouteDeliversFully() public {
+        address account = marginRouter.accountOf(address(this), 0);
+        uint256 equity = 1 ether;
+        uint256 donation = 0.5 ether;
+        MockERC20(Currency.unwrap(collateral)).transfer(account, equity + donation);
+
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, debt, collateral, 1 ether, 5 ether, account);
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: market,
+                equity: 0,
+                collateralToBuy: 1 ether,
+                maxDebtIn: 5 ether,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: Ltv.wrap(0),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+        // equity + idle donation + bought collateral are all supplied (OPEN_DELTA supplies the balance)
+        assertEq(protocol.collateralOf(account), equity + donation + 1 ether, "full delivery + idle balance supplied");
+    }
+
+    /// @dev M-03: the same swap-delta guarantee applies on a partial decrease. A pre-existing debt-token
+    ///      balance must not mask a route that buys back less debt than requested.
+    function test_partialDecrease_shortFillRevertsDespitePreexistingBalance() public {
+        address account = _open(1 ether, 2 ether);
+
+        uint256 repay = 0.5 ether; // ask the route to buy back 0.5 of the debt token
+        uint256 shortfall = 0.2 ether; // but build a route delivering only 0.3
+        uint256 donation = 0.3 ether; // idle debt-token balance that could mask the shortfall
+        MockERC20(Currency.unwrap(debt)).transfer(account, donation);
+
+        // decrease route sells collateral to buy (repay - shortfall) of the debt, delivered to the account
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, collateral, debt, uint128(repay - shortfall), 5 ether, account);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMarginRouter.IncompleteFill.selector, donation + repay, donation + repay - shortfall
+            )
+        );
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                adapter: adapter,
+                market: market,
+                debtToRepay: repay,
+                maxCollateralIn: 5 ether,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: toLtv(0.9e18),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+    }
+
     function test_openLong_revertsWhenResultingLtvExceedsBound() public {
         // fund equity directly, then open with a health bound below the mock's reported LTV (0.86)
         address account = marginRouter.accountOf(address(this), 0);
