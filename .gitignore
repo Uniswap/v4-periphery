@@ -7,3 +7,4 @@ broadcast/*/*/run-[0-9]*.json
 
 # local security-audit artifacts (not part of the protocol source)
 x-ray/
+audit-validation/
