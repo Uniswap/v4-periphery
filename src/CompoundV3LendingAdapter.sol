@@ -63,10 +63,6 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     ///         `debt` must equal this.
     address public immutable baseToken;
 
-    /// @notice The Comet's base-token USD price feed, cached at construction. Immutable per Comet
-    ///         instance (like `baseToken`), so it is read once here rather than on every valuation.
-    address public immutable baseTokenPriceFeed;
-
     /// @notice `10 ** baseTokenDecimals` for the Comet's base token, cached at construction. Immutable
     ///         per Comet instance, so it is read once here rather than on every valuation.
     uint256 public immutable baseScale;
@@ -105,13 +101,21 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
         if (base == address(0)) revert ZeroAddress();
         comet = comet_;
         baseToken = base;
-        baseTokenPriceFeed = comet_.baseTokenPriceFeed();
         baseScale = comet_.baseScale();
     }
 
     /// @inheritdoc ILendingAdapter
     function lendingProtocol() external view returns (address) {
         return address(comet);
+    }
+
+    /// @notice The Comet's base-token USD price feed, read fresh from the Comet on each call. Unlike
+    ///         the base token and its scale (fixed per Comet), the price feed is governance-mutable
+    ///         behind the same Comet proxy, so caching it could value debt with a superseded feed;
+    ///         since `debtValue` feeds the health/LTV reads, it is resolved live (audit L-14).
+    /// @return The Comet's current base-token price feed.
+    function baseTokenPriceFeed() public view returns (address) {
+        return comet.baseTokenPriceFeed();
     }
 
     /// @inheritdoc ILendingAdapter
@@ -282,7 +286,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
         collateral = uint256(comet.collateralBalanceOf(account, Currency.unwrap(market.collateral)));
         debt = comet.borrowBalanceOf(account);
         collateralValue = _usd(collateral, comet.getPrice(info.priceFeed), info.scale);
-        debtValue = _usd(debt, comet.getPrice(baseTokenPriceFeed), baseScale);
+        debtValue = _usd(debt, comet.getPrice(baseTokenPriceFeed()), baseScale);
         liquidateCollateralFactor = info.liquidateCollateralFactor;
     }
 

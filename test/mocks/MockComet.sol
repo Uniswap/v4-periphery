@@ -54,6 +54,12 @@ contract MockComet is IComet {
         _price[feed] = price;
     }
 
+    /// @notice Repoint the base-token price feed, mirroring a Comet governance feed migration behind
+    ///         the same proxy. Lets tests exercise a superseded-feed scenario.
+    function setBaseTokenPriceFeed(address baseFeed) external {
+        _baseFeed = baseFeed;
+    }
+
     function setCollateralBalance(address account, address asset, uint256 amount) external {
         _collateral[account][asset] = amount;
     }

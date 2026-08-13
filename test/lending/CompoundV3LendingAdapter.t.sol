@@ -202,6 +202,25 @@ contract CompoundV3LendingAdapterTest is Test {
         assertApproxEqAbs(d.healthFactorWad, 1.48e18, 1e6);
     }
 
+    /// @dev L-14 regression: the base-token price feed is read fresh from the Comet, not cached, so a
+    ///      Comet feed migration is picked up. Before the fix, debt was valued with the superseded feed.
+    function test_describePosition_tracksBaseFeedRepoint() public {
+        comet.setCollateralBalance(account, address(uni), 1_000e18);
+        comet.setBorrowBalance(account, 3_500e6);
+
+        // Comet migrates the base feed; the new feed reports USDC at $2 (a deliberately different price
+        // so a stale read would surface), the old feed keeps $1.
+        address newUsdcFeed = makeAddr("newUsdcFeed");
+        comet.setPrice(newUsdcFeed, 2 * PRICE_SCALE);
+        comet.setBaseTokenPriceFeed(newUsdcFeed);
+
+        assertEq(adapter.baseTokenPriceFeed(), newUsdcFeed, "adapter tracks the feed repoint");
+        // debtValue now uses the new feed: 3500 USDC * $2 = $7000, equal to collateral value ($7000),
+        // so health = liquidateCF * 7000 / 7000 = 0.74 (vs 1.48 under the old $1 feed)
+        PositionData memory d = adapter.describePosition(account, market);
+        assertApproxEqAbs(d.healthFactorWad, 0.74e18, 1e6, "debt valued with the current feed");
+    }
+
     function test_describePosition_zeroDebtHealthIsMax() public {
         comet.setCollateralBalance(account, address(uni), 1_000e18);
         PositionData memory d = adapter.describePosition(account, market);
