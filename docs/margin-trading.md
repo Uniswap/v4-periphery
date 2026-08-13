@@ -981,6 +981,15 @@ adapter, which the allowlist is what actually gates.
 - **Governance.** The router's adapter allowlist and the adapter's market routing table are
 governance-controlled. Ownership transfers are two-step and reject the zero address. Production
 deployments should put governance behind a timelock or multisig.
+- **Market lifecycle.** Retiring or re-pointing a market is a deliberate governance action, and the
+curated router paths (open, increase, decrease, close, reads) only operate on a currently supported
+market. Do not de-register or re-point a pair that has open positions: doing so removes the convenient
+router path for those positions (a full close can read as a success-shaped no-op), and holders must
+then exit through the owner `execute` escape hatch against the lending protocol directly. The Morpho
+registry has no per-market revoke, so stopping routing to a single Morpho market means re-pointing it
+or disallowing the adapter. On the Aave v4 adapter, reserve-id bindings are validated at registration
+against the Spoke's live layout and are not re-checked per operation, so a market must be re-registered
+if the Spoke's reserve layout changes.
 - **Exit is always available.** Closing and delevering do not require an allowlisted adapter, and the
 owner `execute` escape hatch can act directly on the lending protocol, so funds are never trapped by
 router-side configuration.
