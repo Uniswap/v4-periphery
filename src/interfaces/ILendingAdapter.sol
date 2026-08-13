@@ -94,16 +94,19 @@ interface ILendingAdapter {
         returns (address target, uint256 value, bytes memory callData);
 
     /// @notice Encode the call to repay `amount` of `market.debt`.
-    /// @dev Passing `amount == type(uint256).max` triggers a full share-based repay: the entire
-    ///      borrow-share balance is burned, avoiding interest dust that an asset-denominated repay
-    ///      would leave behind due to rounding.
+    /// @dev Passing `amount == type(uint256).max`, or any `amount` at or above the reported debt,
+    ///      triggers a full share-based repay: the entire borrow-share balance is burned, avoiding
+    ///      interest dust that an asset-denominated repay would leave behind due to rounding, and
+    ///      avoiding a rounding underflow when the exact reported debt is repaid as assets. When the
+    ///      account has no debt to repay, the adapter returns empty `callData` and the account skips the
+    ///      call, so a generic "repay then withdraw" exit plan works against a debt-free position.
     /// @param account The MarginAccount repaying the debt; used as `onBehalf`.
     /// @param market The (collateral, debt) pair identifying the target lending market.
     /// @param amount The amount of debt to repay in native decimals, or `type(uint256).max` to repay
     ///        all by shares.
     /// @return target The call target (always `lendingProtocol()`).
     /// @return value The call value. Always 0 for non-payable lending protocols.
-    /// @return callData The calldata the account executes against `target`.
+    /// @return callData The calldata the account executes against `target`, or empty bytes to skip.
     function encodeRepay(address account, Market calldata market, uint256 amount)
         external
         view

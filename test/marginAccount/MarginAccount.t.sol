@@ -161,6 +161,22 @@ contract MarginAccountTest is Test {
         assertEq(debtToken.balanceOf(address(account)), 93e18);
     }
 
+    /// @dev L-01 guard: when the adapter encodes a no-op repay (empty callData, its signal for a
+    ///      debt-free position), the account skips the call, moves no tokens, and reports zero repaid,
+    ///      so a "repay then withdraw" exit plan runs cleanly against a position with no debt.
+    function test_repay_noOpWhenAdapterEncodesEmpty_skipsCall() public {
+        protocol.setDebt(address(account), 7e18);
+        adapter.setRepayNoOp(true);
+        uint256 debtBalBefore = debtToken.balanceOf(address(account));
+        vm.expectEmit(true, true, true, true, address(account));
+        emit IMarginAccount.Repaid(manager, address(adapter), market.debt, 0);
+        vm.prank(manager);
+        uint256 repaid = account.repay(adapter, market, type(uint256).max);
+        assertEq(repaid, 0, "no-op repays nothing");
+        assertEq(protocol.debtOf(address(account)), 7e18, "debt untouched: the repay call was skipped");
+        assertEq(debtToken.balanceOf(address(account)), debtBalBefore, "no tokens moved");
+    }
+
     function test_sweep_toOwner_succeeds() public {
         vm.prank(owner);
         account.sweep(Currency.wrap(address(collateralToken)), 3e18, owner);

@@ -23,6 +23,9 @@ contract MockLendingAdapter is ILendingAdapter {
     // when set, describePosition reverts, simulating a venue oracle read that fails (e.g. downtime)
     bool public describeReverts;
 
+    // when set, encodeRepay returns empty callData, modeling a debt-free repay the account must skip
+    bool public repayNoOp;
+
     constructor(address lendingProtocol_) {
         lendingProtocol = lendingProtocol_;
     }
@@ -33,6 +36,10 @@ contract MockLendingAdapter is ILendingAdapter {
 
     function setDescribeReverts(bool v) external {
         describeReverts = v;
+    }
+
+    function setRepayNoOp(bool v) external {
+        repayNoOp = v;
     }
 
     function _callTarget() internal view returns (address) {
@@ -99,6 +106,8 @@ contract MockLendingAdapter is ILendingAdapter {
         view
         returns (address, uint256, bytes memory)
     {
+        // model an adapter that encodes a no-op for a debt-free position (empty callData the account skips)
+        if (repayNoOp) return (_callTarget(), 0, "");
         return (_callTarget(), 0, abi.encodeWithSignature("repay(address,uint256)", account, amount));
     }
 

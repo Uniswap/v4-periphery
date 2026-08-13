@@ -2,7 +2,14 @@
 pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {IMorpho, IMorphoBase, MarketParams, Id, Position} from "morpho-blue/interfaces/IMorpho.sol";
+import {
+    IMorpho,
+    IMorphoBase,
+    MarketParams,
+    Id,
+    Position,
+    Market as MorphoMarket
+} from "morpho-blue/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
@@ -154,8 +161,24 @@ contract MorphoLendingAdapterFuzzTest is Test {
 
     function testFuzz_encodeRepay_partial_assetDenominated(address account, uint256 amount) public {
         _register();
-        // Avoid the max-uint share-based path.
-        amount = bound(amount, 0, type(uint256).max - 1);
+        // Seed a large reported debt with accrual skipped (lastUpdate == block.timestamp), then bound the
+        // request strictly below it so it is a genuine partial that stays asset-denominated. A request at
+        // or above the reported debt clamps to the share path (covered in the unit boundary tests).
+        Id id = marketParams.id();
+        morpho.setPosition(id, account, Position({supplyShares: 0, borrowShares: 1e30, collateral: 0}));
+        morpho.setMarketState(
+            id,
+            MorphoMarket({
+                totalSupplyAssets: 0,
+                totalSupplyShares: 0,
+                totalBorrowAssets: 1e30,
+                totalBorrowShares: 1e30,
+                lastUpdate: uint128(block.timestamp),
+                fee: 0
+            })
+        );
+        (, uint256 reportedDebt) = adapter.positionOf(account, market);
+        amount = bound(amount, 1, reportedDebt - 1);
         (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, amount);
         assertEq(target, address(morpho), "target must be morpho");
         assertEq(value, 0, "value must be 0");
@@ -169,6 +192,8 @@ contract MorphoLendingAdapterFuzzTest is Test {
     /// encodeRepay(max) uses shares-based full repay: assets == 0, shares == borrowShares.
     function testFuzz_encodeRepay_max_usesShares(address account, uint128 borrowShares) public {
         _register();
+        // a debt-free position (zero shares) encodes a no-op instead, covered separately
+        borrowShares = uint128(bound(borrowShares, 1, type(uint128).max));
         Id id = marketParams.id();
         morpho.setPosition(id, account, Position({supplyShares: 0, borrowShares: borrowShares, collateral: 0}));
         (,, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
@@ -176,6 +201,15 @@ contract MorphoLendingAdapterFuzzTest is Test {
         assertEq(assets, 0, "full repay must have assets == 0");
         assertEq(shares, uint256(borrowShares), "shares must match position borrowShares");
         assertEq(onBehalf, account, "onBehalf must be account");
+    }
+
+    /// A debt-free position encodes an empty no-op the account skips (Morpho rejects a (0, 0) repay).
+    function testFuzz_encodeRepay_zeroDebt_encodesNoOp(address account, uint256 amount) public {
+        _register();
+        // no borrow position seeded for `account`: borrowShares == 0
+        (, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, amount);
+        assertEq(value, 0);
+        assertEq(data.length, 0, "debt-free repay must be an empty no-op");
     }
 
     // -------------------------------------------------------------------------

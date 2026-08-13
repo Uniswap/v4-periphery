@@ -2,7 +2,14 @@
 pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {IMorpho, IMorphoBase, MarketParams, Id, Position} from "morpho-blue/interfaces/IMorpho.sol";
+import {
+    IMorpho,
+    IMorphoBase,
+    MarketParams,
+    Id,
+    Position,
+    Market as MorphoMarket
+} from "morpho-blue/interfaces/IMorpho.sol";
 import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
@@ -47,6 +54,26 @@ contract MorphoLendingAdapterTest is Test {
         morpho.setMarketParams(marketParams); // make the market "exist" on Morpho
         vm.prank(gov);
         adapter.setMarket(marketParams);
+    }
+
+    /// @dev Seeds a borrow position plus 1:1 market totals with `lastUpdate == block.timestamp` so
+    ///      accrual is skipped, making `expectedBorrowAssets` a deterministic function of the shares.
+    function _seedBorrow(address who, uint128 borrowShares, uint128 totalBorrowAssets, uint128 totalBorrowShares)
+        internal
+    {
+        Id id = marketParams.id();
+        morpho.setPosition(id, who, Position({supplyShares: 0, borrowShares: borrowShares, collateral: 0}));
+        morpho.setMarketState(
+            id,
+            MorphoMarket({
+                totalSupplyAssets: 0,
+                totalSupplyShares: 0,
+                totalBorrowAssets: totalBorrowAssets,
+                totalBorrowShares: totalBorrowShares,
+                lastUpdate: uint128(block.timestamp),
+                fee: 0
+            })
+        );
     }
 
     // calldata decode helpers (slice the 4-byte selector, then abi.decode the args)
@@ -122,12 +149,49 @@ contract MorphoLendingAdapterTest is Test {
         assertEq(onBehalf, account);
     }
 
-    function test_encodeRepay_exactAmount_usesAssets() public {
+    function test_encodeRepay_partialBelowDebt_usesAssets() public {
         _register();
+        // reported debt ~100e18; a request well below it is a genuine partial and stays asset-denominated
+        _seedBorrow(account, 100e18, 100e18, 100e18);
         (,, bytes memory data) = adapter.encodeRepay(account, market, 9e18);
         (uint256 assets, uint256 shares,) = this.decodeRepay(data);
         assertEq(assets, 9e18);
         assertEq(shares, 0);
+    }
+
+    /// @dev L-01 boundary: repaying the exact debt `positionOf`/`describePosition` report must NOT take
+    ///      the asset path (which converts the rounded-up value to more shares than held and underflows
+    ///      on Morpho). The clamp routes a request at the reported debt to the dust-free share path.
+    function test_encodeRepay_atReportedDebt_usesShares() public {
+        _register();
+        _seedBorrow(account, 100e18, 100e18, 100e18);
+        (, uint256 reportedDebt) = adapter.positionOf(account, market);
+        (,, bytes memory data) = adapter.encodeRepay(account, market, reportedDebt);
+        (uint256 assets, uint256 shares,) = this.decodeRepay(data);
+        assertEq(assets, 0, "must not repay by assets at the reported debt");
+        assertEq(shares, 100e18, "burns the account's full borrow share balance");
+    }
+
+    /// @dev A request above the reported debt likewise clamps to the share path rather than over-repaying.
+    function test_encodeRepay_aboveReportedDebt_usesShares() public {
+        _register();
+        _seedBorrow(account, 100e18, 100e18, 100e18);
+        (, uint256 reportedDebt) = adapter.positionOf(account, market);
+        (,, bytes memory data) = adapter.encodeRepay(account, market, reportedDebt + 1);
+        (uint256 assets, uint256 shares,) = this.decodeRepay(data);
+        assertEq(assets, 0);
+        assertEq(shares, 100e18);
+    }
+
+    /// @dev L-01 boundary: a debt-free position (zero borrow shares) encodes a no-op the account skips,
+    ///      instead of a `(0, 0)` repay Morpho rejects, so a generic repay-then-withdraw plan applies.
+    function test_encodeRepay_zeroDebt_encodesNoOp() public {
+        _register();
+        // no borrow position seeded: borrowShares == 0
+        (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(target, address(morpho));
+        assertEq(value, 0);
+        assertEq(data.length, 0, "debt-free repay must be an empty no-op");
     }
 
     function test_maxLtvWad_returnsMarketLltv() public {

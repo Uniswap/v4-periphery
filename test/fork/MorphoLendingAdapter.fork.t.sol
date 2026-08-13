@@ -108,4 +108,47 @@ contract MorphoLendingAdapterForkTest is Test {
         assertEq(collateralEnd, 0, "all collateral withdrawn after full repay");
         assertEq(IERC20(WETH).balanceOf(address(this)) - wethBefore, collateralAfter, "collateral returned");
     }
+
+    /// @dev L-01 boundary (first): repaying the exact debt `positionOf` reports must not revert. That
+    ///      value rounds up, so an asset-denominated repay of it converts to more shares than the
+    ///      account holds and underflows on Morpho. The clamp routes it to the share path and clears
+    ///      the position in full.
+    function test_fork_repayExactReportedDebt_doesNotUnderflow() public {
+        deal(WETH, address(account), 1 ether);
+        account.supplyCollateral(adapter, market, 1 ether);
+        account.borrow(adapter, market, 1_000e6, address(this));
+
+        // let interest accrue so the reported debt is a rounded-up, non-integer share ratio
+        vm.warp(block.timestamp + 7 days);
+        (, uint256 reportedDebt) = adapter.positionOf(address(account), market);
+        assertGt(reportedDebt, 1_000e6, "interest accrued");
+
+        // repay the EXACT reported debt (not the max sentinel); pre-fix this reverts with an arithmetic
+        // underflow inside Morpho, post-fix it clamps to the share path and clears the debt
+        deal(USDC, address(account), reportedDebt);
+        uint256 repaid = account.repay(adapter, market, reportedDebt);
+        (, uint256 debtAfter) = adapter.positionOf(address(account), market);
+        assertEq(debtAfter, 0, "exact-reported-debt repay clears the position");
+        assertGt(repaid, 0, "debt was repaid");
+    }
+
+    /// @dev L-01 boundary (second): a debt-free position makes the full-repay sentinel read zero borrow
+    ///      shares, which pre-fix encodes a (0, 0) repay Morpho rejects. The no-op lets a generic
+    ///      repay-then-withdraw exit plan run against a position funded only by collateral.
+    function test_fork_repayDebtFreePosition_isNoOpThenWithdraws() public {
+        deal(WETH, address(account), 1 ether);
+        account.supplyCollateral(adapter, market, 1 ether);
+
+        (, uint256 debt) = adapter.positionOf(address(account), market);
+        assertEq(debt, 0, "no debt");
+
+        // repay-all on a debt-free position is a clean no-op (pre-fix: reverts on a (0,0) repay)
+        uint256 repaid = account.repay(adapter, market, type(uint256).max);
+        assertEq(repaid, 0, "nothing to repay");
+
+        // the withdraw leg of the same generic exit plan then succeeds
+        uint256 wethBefore = IERC20(WETH).balanceOf(address(this));
+        account.withdrawCollateral(adapter, market, 1 ether, address(this));
+        assertEq(IERC20(WETH).balanceOf(address(this)) - wethBefore, 1 ether, "collateral withdrawn");
+    }
 }

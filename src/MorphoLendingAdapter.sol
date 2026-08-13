@@ -133,19 +133,27 @@ contract MorphoLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmount
     }
 
     /// @inheritdoc ILendingAdapter
-    /// @dev When `amount == type(uint256).max`, encodes a share-based full repay by reading the
-    ///      account's current `borrowShares` from `morpho.position`. This avoids the interest dust
-    ///      that asset-denominated rounding leaves behind. For partial repays, encodes
-    ///      `IMorphoBase.repay` with `assets = amount` and `shares = 0`.
+    /// @dev Repay routing with two guards for boundaries Morpho Blue would otherwise reject:
+    ///      - A debt-free position (zero borrow shares) has nothing to repay, and Morpho rejects a
+    ///        `(0 assets, 0 shares)` repay, so this returns empty `callData` the account skips. That
+    ///        lets a generic "repay then withdraw" exit plan run against a position with no outstanding
+    ///        debt (funded only via `addCollateral`, repaid out of band, or previously liquidated).
+    ///      - A request at or above the reported debt (`type(uint256).max`, or `>= expectedBorrowAssets`,
+    ///        the value `positionOf`/`describePosition` report) takes the share-based path, burning the
+    ///        account's exact borrow shares. `expectedBorrowAssets` rounds up, so repaying it as assets
+    ///        would convert to more shares than the account holds and underflow; the share path repays
+    ///        in full with no interest dust.
+    ///      A strictly partial repay encodes `IMorphoBase.repay` with `assets = amount`, `shares = 0`.
     function encodeRepay(address account, Market calldata market, uint256 amount)
         external
         view
         returns (address, uint256, bytes memory)
     {
         MarketParams memory marketParams = _markets.resolve(market);
-        if (amount == type(uint256).max) {
+        uint256 shares = uint256(morpho.position(marketParams.id(), account).borrowShares);
+        if (shares == 0) return (address(morpho), 0, "");
+        if (amount == type(uint256).max || amount >= morpho.expectedBorrowAssets(marketParams, account)) {
             // full repay: burn the account's entire borrow share balance (assets resolved by Morpho)
-            uint256 shares = uint256(morpho.position(marketParams.id(), account).borrowShares);
             return (address(morpho), 0, abi.encodeCall(IMorphoBase.repay, (marketParams, 0, shares, account, "")));
         }
         return (address(morpho), 0, abi.encodeCall(IMorphoBase.repay, (marketParams, amount, 0, account, "")));

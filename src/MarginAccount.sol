@@ -121,6 +121,12 @@ contract MarginAccount is IMarginAccount {
     function repay(ILendingAdapter adapter, Market calldata market, uint256 amount) external returns (uint256 repaid) {
         _authCaller();
         (address target, uint256 value, bytes memory callData) = adapter.encodeRepay(address(this), market, amount);
+        // No debt to repay: the adapter encoded a no-op (empty callData). Skip the call and report zero
+        // so a "repay then withdraw" exit plan runs cleanly against a position with no outstanding debt.
+        if (callData.length == 0) {
+            emit Repaid(msg.sender, address(adapter), market.debt, 0);
+            return 0;
+        }
         uint256 balanceBefore = market.debt.balanceOfSelf();
         uint256 approveAmount = amount == type(uint256).max ? balanceBefore : amount;
         _setApproval(market.debt, target, approveAmount);
