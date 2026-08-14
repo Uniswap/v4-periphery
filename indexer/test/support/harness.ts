@@ -15,6 +15,7 @@ import * as schema from "ponder:schema";
 // handler registration side effects: every src module records into the registry stub
 import "../../src/aave";
 import { _clearAaveV3ATokenCacheForTests, _clearAaveV3DebtTokenCacheForTests } from "../../src/lendingFlows";
+import "../../src/marginAccounts";
 import "../../src/markets";
 import "../../src/morpho";
 import "../../src/pools";
