@@ -19,6 +19,10 @@ export const positionId = (accountAddr: string, collateral: string, debt: string
 
 export const eventId = (txHash: string, logIndex: number): string => `${lower(txHash)}-${logIndex}`;
 
+/** The log index encoded in a `${txHash}-${logIndex}` row id. Ordering by the id string is lexical,
+ *  which sorts logIndex 12 before 8; parse it out to compare numerically. */
+export const logIndexOf = (id: string): number => Number(id.slice(id.lastIndexOf("-") + 1));
+
 /** Id for the flow-layer synthetic CLOSE action, so a curated router close in
  *  the same tx can find and supersede it (router.ts). */
 export const syntheticCloseId = (txHash: string, positionRowId: string): string =>
@@ -67,9 +71,10 @@ export async function findActivePosition(
 
 /** Every lending flow staged for a (tx, account), applied or not. */
 export async function txLendingEvents(context: Context, txHash: `0x${string}`, accountAddr: `0x${string}`) {
-  return await context.db.sql
+  const rows = await context.db.sql
     .select()
     .from(lendingEvent)
-    .where(and(eq(lendingEvent.txHash, txHash), eq(lendingEvent.account, accountAddr)))
-    .orderBy(lendingEvent.id);
+    .where(and(eq(lendingEvent.txHash, txHash), eq(lendingEvent.account, accountAddr)));
+  // All rows share this tx; order by numeric log index (the id sorts lexically — 12 before 8).
+  return rows.sort((a, b) => logIndexOf(a.id) - logIndexOf(b.id));
 }

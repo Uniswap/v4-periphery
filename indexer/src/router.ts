@@ -8,6 +8,8 @@ import {
   ensureToken,
   eventId,
   findActivePosition,
+  logIndexOf,
+  lower,
   pairKey,
   positionId,
   syntheticCloseId,
@@ -44,11 +46,12 @@ ponder.on("MarginRouter:AccountCreated", async ({ event, context }) => {
 
 /** Consume this tx's staged margin swaps; returns the first pool touched. */
 async function consumeSwaps(context: Context, txHash: `0x${string}`): Promise<`0x${string}` | null> {
-  const swaps = await context.db.sql
-    .select()
-    .from(swapEvent)
-    .where(and(eq(swapEvent.txHash, txHash), eq(swapEvent.consumed, false)))
-    .orderBy(swapEvent.id);
+  const swaps = (
+    await context.db.sql
+      .select()
+      .from(swapEvent)
+      .where(and(eq(swapEvent.txHash, txHash), eq(swapEvent.consumed, false)))
+  ).sort((a, b) => logIndexOf(a.id) - logIndexOf(b.id)); // first swap = earliest log index, not lexical
   for (const swap of swaps) {
     await context.db.update(swapEvent, { id: swap.id }).set({ consumed: true });
   }
@@ -70,10 +73,22 @@ async function drainFlows(
   // (sums the tx's flows, so a same-pair multicall of decreases attributes all of it to the last)
   let repaidAssets = 0n;
 
+  // A staged (null-pair) row is claimed only when the single reserve it named belongs to THIS pair in
+  // the role its kind implies — the same predicate applyStagedFlows uses. Without it, two markets
+  // sharing a reserve in one tx drain each other's staged flows. A reserve-less staged row is refused
+  // (fail-closed): there is nothing to attribute it by.
+  const belongs = (row: { kind: string; reserve: `0x${string}` | null }): boolean => {
+    if (!row.reserve) return false;
+    const expected = row.kind === "SUPPLY_COLLATERAL" || row.kind === "WITHDRAW_COLLATERAL" ? collateral : debt;
+    return lower(row.reserve) === lower(expected);
+  };
+
   for (const row of rows) {
     if (row.kind === "LIQUIDATE" || row.kind === "DEFICIT") continue;
     const matches =
-      (row.collateral === null && row.debt === null) || (row.collateral === collateral && row.debt === debt);
+      row.collateral === null && row.debt === null
+        ? belongs(row)
+        : row.collateral === collateral && row.debt === debt;
     if (!matches) continue;
 
     if (row.venue !== "UNKNOWN") venue = row.venue;
