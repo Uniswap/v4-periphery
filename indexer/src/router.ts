@@ -123,8 +123,9 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
   const priceX18 = collateralBought > 0n ? (debtDrawn * WAD) / collateralBought : null;
 
   const key = pairKey(accountAddr, collateral, debt);
-  const pointer = await context.db.find(activePosition, { id: key });
-  const existing = pointer ? await context.db.find(position, { id: pointer.positionId }) : null;
+  // Status-filter the pointer: a curated open on a snapshot-terminated (non-OPEN) epoch reads as absent,
+  // so it starts a NEW epoch and overwrites the pointer instead of folding into the dead one.
+  const existing = await findActivePosition(context, accountAddr, collateral, debt);
 
   // supersede any execute-driven ADJUST this tx's flows synthesized earlier
   if (existing) {
@@ -413,18 +414,20 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
   }
 
   await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
-  const pointer = await context.db.find(activePosition, { id: pairKey(accountAddr, collateral, debt) });
-  if (!pointer) return;
+  // Status-filter the pointer through findActivePosition: a snapshot-terminated (non-OPEN) epoch reads
+  // as absent, so a stray add cannot resurrect it (the candidates query above is already OPEN-filtered).
+  const live = await findActivePosition(context, accountAddr, collateral, debt);
+  if (!live) return;
 
   // supersede any execute-driven ADJUST this tx's flows synthesized earlier
   await reverseAndSupersedeAdjust(context, {
     txHash: event.transaction.hash,
-    positionRowId: pointer.positionId,
+    positionRowId: live.id,
     collateral,
     debt,
   });
 
-  const added = await context.db.update(position, { id: pointer.positionId }).set((row) => ({
+  const added = await context.db.update(position, { id: live.id }).set((row) => ({
     equity: row.equity + amount,
     collateralAmount: collateralTotal,
     debtPrincipal: debtTotal,
@@ -450,7 +453,7 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
   });
   await context.db.insert(positionAction).values({
     id: eventId(event.transaction.hash, event.log.logIndex),
-    positionId: pointer.positionId,
+    positionId: live.id,
     type: "ADD_COLLATERAL",
     markX18: addMarkX18,
     collateralAfter: collateralTotal,
@@ -522,7 +525,10 @@ ponder.on("MarginRouter:PositionUpdated", async ({ event, context }) => {
       // at all; only the venue flow layer can see those.) Leave the activePosition pointer (as the
       // flow layer does) so a curated close in the same tx can still enrich it and the next open
       // overwrites it.
-      ...(terminal ? { status: "CLOSED" as const } : {}),
+      // A snapshot terminal (execute-composed close): record the close context; economics stay null.
+      ...(terminal
+        ? { status: "CLOSED" as const, closeTxHash: event.transaction.hash, closedAt: event.block.timestamp }
+        : {}),
       updatedAt: event.block.timestamp,
     });
     return;
