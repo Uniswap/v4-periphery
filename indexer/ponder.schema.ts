@@ -16,6 +16,7 @@ export const actionType = onchainEnum("action_type", [
   "ADD_COLLATERAL",
   "CLOSE",
   "LIQUIDATION",
+  "ADJUST",
 ]);
 
 export const lendingEventKind = onchainEnum("lending_event_kind", [
@@ -24,6 +25,7 @@ export const lendingEventKind = onchainEnum("lending_event_kind", [
   "BORROW",
   "REPAY",
   "LIQUIDATE",
+  "DEFICIT",
 ]);
 
 /** ERC-20 metadata, populated lazily the first time a token appears. */
@@ -143,6 +145,13 @@ export const position = onchainTable(
     totalCollateralBought: t.bigint().notNull(),
     totalDebtDrawn: t.bigint().notNull(),
     avgEntryPriceX18: t.bigint(), // totalDebtDrawn * 1e18 / totalCollateralBought
+    // Venue-oracle mark at open, RAW ×1e18. Distinct from avgEntryPriceX18, which is the fill price
+    // of the BORROWED leg only and re-averages on every later buy — so it drifts on a pure leverage
+    // change and was never the price the owner's own margin went in at. Written once, at open.
+    entryMarkX18: t.bigint(),
+    // Total collateral at open, raw units. totalCollateralBought is a running high-water figure that
+    // no sell decrements, so it cannot answer "how big was this position when it opened".
+    collateralAtOpen: t.bigint(),
     leverageX18AtOpen: t.bigint(), // (equity + bought) * 1e18 / equity at first open
 
     // Open context.
@@ -211,11 +220,26 @@ export const positionAction = onchainTable(
     equityDelta: t.bigint().notNull(),
     // Execution price for actions that swapped (X18 raw ratio, see position).
     priceX18: t.bigint(),
+    // Venue-oracle mark at this action, RAW debt-per-collateral ×1e18 (same convention as
+    // avgEntryPriceX18 — uninverted; the API layer reciprocates for a SHORT). Derived from the
+    // event's own totals where the router reports an LTV, else read from the oracle at this block.
+    // Null only when neither was available; a consumer must treat null as "cannot value this action".
+    markX18: t.bigint(),
+    // Position totals AFTER this action, raw token units. Lets a cost-basis fold value an equity
+    // move against the balances it actually applied to.
+    collateralAfter: t.bigint(),
+    debtAfter: t.bigint(),
     poolId: t.hex(),
     // Resulting position state reported by the router event (null for liquidations,
     // which are protocol events and carry no router-reported state).
     ltvAfterWad: t.bigint(),
     healthFactorWad: t.bigint(),
+    // Position equity before this tx's synthetic ADJUST began (execute-driven ops
+    // only; null otherwise). The per-flow equity write and its supersession both
+    // recompute equity as clamp0(equityBase + equityDelta), so clamp0 is applied
+    // once rather than composed — exact and step-order-independent even when an
+    // intermediate step would floor equity at 0.
+    equityBase: t.bigint(),
   }),
   (table) => ({
     positionIdx: index().on(table.positionId),
@@ -261,6 +285,13 @@ export const lendingEvent = onchainTable(
     collateral: t.hex(),
     debt: t.hex(),
     morphoMarketId: t.hex(),
+    /**
+     * The single reserve a staged (null-pair) flow named. Only set while staged: it is what lets a later
+     * pair resolution claim ONLY the rows that belong to that pair. Without it, one transaction touching
+     * two markets that share a reserve would drain both markets' staged flows into whichever pair
+     * resolved first — doubling one position's collateral and leaving the other with debt against zero.
+     */
+    reserve: t.hex(),
     assets: t.bigint().notNull(), // primary amount (supplied/withdrawn/borrowed/repaid)
     seizedAssets: t.bigint(), // liquidations only
     badDebtAssets: t.bigint(), // liquidations only

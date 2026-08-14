@@ -19,6 +19,16 @@ export const positionId = (accountAddr: string, collateral: string, debt: string
 
 export const eventId = (txHash: string, logIndex: number): string => `${lower(txHash)}-${logIndex}`;
 
+/** Id for the flow-layer synthetic CLOSE action, so a curated router close in
+ *  the same tx can find and supersede it (router.ts). */
+export const syntheticCloseId = (txHash: string, positionRowId: string): string =>
+  `${lower(txHash)}-${positionRowId}-close`;
+
+/** Id for the flow-layer synthetic ADJUST action (execute-driven op with no
+ *  router event); a curated router event in the same tx supersedes it. */
+export const adjustId = (txHash: string, positionRowId: string): string =>
+  `${lower(txHash)}-${positionRowId}-adjust`;
+
 /** Lazily persist ERC-20 metadata so consumers can scale raw amounts. */
 export async function ensureToken(context: Context, address: `0x${string}`): Promise<void> {
   const existing = await context.db.find(token, { address });

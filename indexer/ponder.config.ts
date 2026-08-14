@@ -1,10 +1,12 @@
-import { createConfig } from "ponder";
+import { createConfig, factory } from "ponder";
 
 import {
   aaveAdapterAbi,
   aaveV3PoolAbi,
   aaveV4AdapterAbi,
+  aaveV4SpokeAbi,
   compoundAdapterAbi,
+  marginAccountAbi,
   marginRouterAbi,
   morphoAdapterAbi,
   morphoBlueAbi,
@@ -27,6 +29,24 @@ export default createConfig({
       abi: marginRouterAbi,
       chain: "mainnet",
       address: mainnet.marginRouter,
+      startBlock: mainnet.startBlock,
+    },
+    /**
+     * Every MarginAccount clone, derived from the router's AccountCreated. Its events name BOTH
+     * currencies, which is the only way to resolve an Aave flow whose reserve is shared by several
+     * registered markets and whose account holds no position yet — the first-ever-open case, where the
+     * registry has nothing to disambiguate with and no curated router event arrives to complete it.
+     * Amounts are NOT read here; the venue events remain the single writer.
+     */
+    MarginAccounts: {
+      abi: marginAccountAbi,
+      chain: "mainnet",
+      address: factory({
+        address: mainnet.marginRouter,
+        // Reuse the router ABI's own item rather than a parseAbiItem string, so the two cannot drift.
+        event: marginRouterAbi.find((item) => item.type === "event" && item.name === "AccountCreated")!,
+        parameter: "account",
+      }),
       startBlock: mainnet.startBlock,
     },
     /** Venue registries: which lending market each (collateral, debt) pair routes to. */
@@ -69,6 +89,12 @@ export default createConfig({
       abi: aaveV3PoolAbi,
       chain: "mainnet",
       address: mainnet.aaveV3Pool,
+      startBlock: mainnet.startBlock,
+    },
+    AaveV4Spoke: {
+      abi: aaveV4SpokeAbi,
+      chain: "mainnet",
+      address: mainnet.aaveV4Spoke,
       startBlock: mainnet.startBlock,
     },
     /**

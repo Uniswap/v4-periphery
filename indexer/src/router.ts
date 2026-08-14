@@ -2,13 +2,21 @@ import type { Context } from "ponder:registry";
 import { ponder } from "ponder:registry";
 import { account, activePosition, lendingEvent, position, positionAction, swapEvent } from "ponder:schema";
 import { and, eq } from "ponder";
-import { decodeEventLog } from "viem";
 
-import { poolManagerSwapAbi } from "../abis";
-import { deployments } from "../addresses";
-import { clamp0, ensureToken, eventId, findActivePosition, lower, pairKey, positionId, txLendingEvents, WAD } from "./helpers";
-
-const poolManagerAddr = lower(deployments.mainnet.poolManager);
+import {
+  clamp0,
+  ensureToken,
+  eventId,
+  findActivePosition,
+  pairKey,
+  positionId,
+  syntheticCloseId,
+  txLendingEvents,
+  WAD,
+} from "./helpers";
+import { reverseAndSupersedeAdjust } from "./lendingFlows";
+import { resolveMarkX18 } from "./marks";
+import { recordTxSwaps } from "./swaps";
 
 /**
  * Router lifecycle handlers. The router events carry the full economics
@@ -33,46 +41,6 @@ ponder.on("MarginRouter:AccountCreated", async ({ event, context }) => {
     .onConflictDoNothing();
 });
 
-/**
- * Persist this transaction's v4 swaps, parsed from the margin event's own receipt. The swap caller
- * is whatever Universal Router the route named (any address, per call), so PoolManager Swap logs
- * cannot be pre-filtered by sender; the receipt attributes exactly the swaps that share a
- * transaction with a margin event, on every execution path (curated route, execute-plan native
- * swap, any UR deployment). The receipt fetch is a cached, retryable client action, and the insert
- * is idempotent per swap log, so the handlers that fire for the same transaction (PositionUpdated
- * snapshots plus a curated event) fetch once and insert each swap once.
- */
-async function recordTxSwaps(context: Context, txHash: `0x${string}`, blockNumber: bigint): Promise<void> {
-  let receipt;
-  try {
-    receipt = await context.client.getTransactionReceipt({ hash: txHash });
-  } catch {
-    return; // receipt unavailable; pool attribution degrades to null, nothing else depends on it
-  }
-  for (const log of receipt.logs) {
-    if (lower(log.address) !== poolManagerAddr) continue;
-    let decoded;
-    try {
-      decoded = decodeEventLog({ abi: poolManagerSwapAbi, topics: log.topics, data: log.data });
-    } catch {
-      continue; // a PoolManager log that is not a Swap (Initialize, ModifyLiquidity, Donate)
-    }
-    await context.db
-      .insert(swapEvent)
-      .values({
-        id: eventId(txHash, log.logIndex),
-        txHash,
-        poolId: decoded.args.id,
-        amount0: decoded.args.amount0,
-        amount1: decoded.args.amount1,
-        sqrtPriceX96: decoded.args.sqrtPriceX96,
-        fee: decoded.args.fee,
-        blockNumber,
-        consumed: false,
-      })
-      .onConflictDoNothing();
-  }
-}
 
 /** Consume this tx's staged margin swaps; returns the first pool touched. */
 async function consumeSwaps(context: Context, txHash: `0x${string}`): Promise<`0x${string}` | null> {
@@ -103,7 +71,7 @@ async function drainFlows(
   let repaidAssets = 0n;
 
   for (const row of rows) {
-    if (row.kind === "LIQUIDATE") continue;
+    if (row.kind === "LIQUIDATE" || row.kind === "DEFICIT") continue;
     const matches =
       (row.collateral === null && row.debt === null) || (row.collateral === collateral && row.debt === debt);
     if (!matches) continue;
@@ -143,6 +111,16 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
   const pointer = await context.db.find(activePosition, { id: key });
   const existing = pointer ? await context.db.find(position, { id: pointer.positionId }) : null;
 
+  // supersede any execute-driven ADJUST this tx's flows synthesized earlier
+  if (existing) {
+    await reverseAndSupersedeAdjust(context, {
+      txHash: event.transaction.hash,
+      positionRowId: existing.id,
+      collateral,
+      debt,
+    });
+  }
+
   // A genuine increase: a prior router event already reported this epoch's open.
   if (existing && existing.openReported) {
     const updated = await context.db.update(position, { id: existing.id }).set((row) => {
@@ -162,10 +140,24 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
       };
     });
 
+    const increaseMarkX18 = await resolveMarkX18({
+      context,
+      venue: updated.venue,
+      collateral,
+      debt,
+      morphoMarketId: updated.morphoMarketId,
+      blockNumber: event.block.number,
+      collateralTotal,
+      debtTotal,
+      ltvAfterWad: currentLtv,
+    });
     await context.db.insert(positionAction).values({
       id: eventId(event.transaction.hash, event.log.logIndex),
       positionId: updated.id,
       type: "INCREASE",
+      markX18: increaseMarkX18,
+      collateralAfter: collateralTotal,
+      debtAfter: debtTotal,
       txHash: event.transaction.hash,
       logIndex: event.log.logIndex,
       blockNumber: event.block.number,
@@ -227,10 +219,31 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
     await context.db.insert(activePosition).values({ id: key, positionId: id }).onConflictDoUpdate({ positionId: id });
   }
 
+  const openMarkX18 = await resolveMarkX18({
+    context,
+    venue: opened.venue,
+    collateral,
+    debt,
+    morphoMarketId: opened.morphoMarketId,
+    blockNumber: event.block.number,
+    collateralTotal,
+    debtTotal,
+    ltvAfterWad: currentLtv,
+  });
+  // Mark and size at open, pinned once. Reading either off the running totals later would let a pure
+  // leverage change move a figure the owner never traded at.
+  await context.db.update(position, { id }).set({
+    entryMarkX18: openMarkX18,
+    collateralAtOpen: collateralTotal,
+  });
+
   await context.db.insert(positionAction).values({
     id: eventId(event.transaction.hash, event.log.logIndex),
     positionId: id,
     type: "OPEN",
+    markX18: openMarkX18,
+    collateralAfter: collateralTotal,
+    debtAfter: debtTotal,
     txHash: event.transaction.hash,
     logIndex: event.log.logIndex,
     blockNumber: event.block.number,
@@ -269,6 +282,14 @@ ponder.on("MarginRouter:PositionDecreased", async ({ event, context }) => {
   const row = await context.db.find(position, { id: pointer.positionId });
   if (!row) return;
 
+  // supersede any execute-driven ADJUST this tx's flows synthesized earlier
+  await reverseAndSupersedeAdjust(context, {
+    txHash: event.transaction.hash,
+    positionRowId: row.id,
+    collateral,
+    debt,
+  });
+
   // The event's debtRepaid is the caller's REQUESTED amount, which the venue clamps when it
   // exceeds the live debt (documented on PositionDecreased); the same-tx venue repay flow carries
   // the measured assets, so prefer it for the action delta and execution price. Aave v4 and
@@ -277,6 +298,14 @@ ponder.on("MarginRouter:PositionDecreased", async ({ event, context }) => {
 
   // a full close leaves nothing behind; a partial decrease keeps the epoch open
   const isClose = collateralTotal === 0n && debtTotal === 0n;
+  // A partial decrease that returned collateral to the owner would be an equity withdrawal this row
+  // does not record, so the cost basis folded from it would be stale. ACCOUNT_WITHDRAW_COLLATERAL
+  // withdraws exactly the settle obligation, so it should be unreachable — log rather than guess.
+  if (!isClose && collateralReturned > 0n) {
+    console.warn(
+      `partial decrease returned collateral (tx ${event.transaction.hash}): cost basis may be stale`
+    );
+  }
   const collateralSold = clamp0(collateralWithdrawn - collateralReturned);
   const priceX18 = collateralSold > 0n ? (measuredRepaid * WAD) / collateralSold : null;
 
@@ -297,12 +326,33 @@ ponder.on("MarginRouter:PositionDecreased", async ({ event, context }) => {
       : {}),
     updatedAt: event.block.timestamp,
   });
-  if (isClose) await context.db.delete(activePosition, { id: key });
+  if (isClose) {
+    await context.db.delete(activePosition, { id: key });
+    // supersede the flow-layer synthetic close (a router-less close detected this
+    // pair earlier in the same tx); this router record is authoritative
+    await context.db.delete(positionAction, { id: syntheticCloseId(event.transaction.hash, row.id) });
+  }
 
+  // A full close emits Ltv.wrap(0), so its mark cannot come from the event totals — resolveMarkX18
+  // falls through to a block-pinned oracle read. Same for a decrease that left no debt.
+  const decreaseMarkX18 = await resolveMarkX18({
+    context,
+    venue: row.venue,
+    collateral,
+    debt,
+    morphoMarketId: row.morphoMarketId,
+    blockNumber: event.block.number,
+    collateralTotal,
+    debtTotal,
+    ltvAfterWad: isClose ? null : currentLtv,
+  });
   await context.db.insert(positionAction).values({
     id: eventId(event.transaction.hash, event.log.logIndex),
     positionId: row.id,
     type: isClose ? "CLOSE" : "DECREASE",
+    markX18: decreaseMarkX18,
+    collateralAfter: collateralTotal,
+    debtAfter: debtTotal,
     txHash: event.transaction.hash,
     logIndex: event.log.logIndex,
     blockNumber: event.block.number,
@@ -351,7 +401,15 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
   const pointer = await context.db.find(activePosition, { id: pairKey(accountAddr, collateral, debt) });
   if (!pointer) return;
 
-  await context.db.update(position, { id: pointer.positionId }).set((row) => ({
+  // supersede any execute-driven ADJUST this tx's flows synthesized earlier
+  await reverseAndSupersedeAdjust(context, {
+    txHash: event.transaction.hash,
+    positionRowId: pointer.positionId,
+    collateral,
+    debt,
+  });
+
+  const added = await context.db.update(position, { id: pointer.positionId }).set((row) => ({
     equity: row.equity + amount,
     collateralAmount: collateralTotal,
     debtPrincipal: debtTotal,
@@ -362,10 +420,26 @@ ponder.on("MarginRouter:CollateralAdded", async ({ event, context }) => {
     updatedAt: event.block.timestamp,
   }));
 
+  // debtDelta is 0 on a top-up, so the mark has to come from the resulting totals (or the oracle when
+  // the position carries no debt).
+  const addMarkX18 = await resolveMarkX18({
+    context,
+    venue: added.venue,
+    collateral,
+    debt,
+    morphoMarketId: added.morphoMarketId,
+    blockNumber: event.block.number,
+    collateralTotal,
+    debtTotal,
+    ltvAfterWad: currentLtv,
+  });
   await context.db.insert(positionAction).values({
     id: eventId(event.transaction.hash, event.log.logIndex),
     positionId: pointer.positionId,
     type: "ADD_COLLATERAL",
+    markX18: addMarkX18,
+    collateralAfter: collateralTotal,
+    debtAfter: debtTotal,
     txHash: event.transaction.hash,
     logIndex: event.log.logIndex,
     blockNumber: event.block.number,

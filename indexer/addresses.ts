@@ -7,10 +7,14 @@
  * 0x58e28b95a2ee57c4E90613AFce9e8CCEED3aB1E8, the adapter allowlist, and every canonical market
  * read back true. This is the post-audit suite: it carries the full OpenZeppelin fix set (delta
  * fill checks, encodeEnableCollateral, measured-repay gating, owner-lifecycle events) on top of
- * the unlock-free-path PositionUpdated emissions and the IAmountResolver adapter surface, so the
- * CollateralAdded pair-resolution fallbacks in src/router.ts only matter for transactions older
- * than `startBlock` (there are none: indexing starts at the redeploy). The superseded 2026-08-12
- * router 0x000000000075e82F7B7DdC5DD1B4984b560eF5D4 remains live onchain but is not indexed.
+ * the unlock-free-path PositionUpdated emissions and the IAmountResolver adapter surface. The
+ * superseded 2026-08-12 router 0x000000000075e82F7B7DdC5DD1B4984b560eF5D4 remains live onchain but
+ * is not indexed.
+ *
+ * Of the CollateralAdded pair-resolution fallbacks in src/router.ts, only the raw-candidates
+ * fallback is pre-startBlock-only (there are no such txs: indexing starts at the redeploy); the
+ * justUpdated preference remains the post-startBlock PRIMARY resolver for Aave v4 / Compound adds,
+ * whose flow layer stages no pair to attribute by.
  */
 export const deployments = {
   mainnet: {
@@ -27,12 +31,16 @@ export const deployments = {
     compoundAdapter: "0x77598B845d0200fc707bD32A8Ad6DCF85C995e0d",
     /** Morpho Blue singleton. */
     morphoBlue: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
-    /** Aave v3 Pool (resolved from the PoolAddressesProvider). */
+    /** Aave v3 Pool (resolved from the PoolAddressesProvider). Also the read-time source for a
+     *  reserve's aToken / variable-debt token (getReserveAToken, getReserveVariableDebtToken), so
+     *  no separate protocol-data-provider address needs registering here. */
     aaveV3Pool: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
-    /** Aave v3 protocol data provider (resolved from the PoolAddressesProvider; same registry as
-     *  docs/margin-trading.md section 10, verified onchain during the audit). Used only for
-     *  read-time variable-debt token resolution; Aave can repoint it, in which case update here. */
-    aaveV3DataProvider: "0x0a16f2FCC0D44FaE41cc54e079281D84A363bECD",
+    /** Aave v4 Main Spoke (proxy). Reserve-keyed supply/withdraw/borrow/repay flows. */
+    aaveV4Spoke: "0x94e7A5dCbE816e498b89aB752661904E2F56c485",
+    /** AaveOracle (getAssetPrice, 8dp USD), resolved from the v3 PoolAddressesProvider.
+     *  Shared by v3 and v4: USD prices are venue-independent and the v4 Spoke's own
+     *  oracle is not getAssetPrice-shaped. */
+    aaveOracle: "0x54586bE62E3c3580375aE3723C145253060Ca0C2",
     /** Uniswap v4 PoolManager singleton. */
     poolManager: "0x000000000004444c5dc75cB358380D2e3dE08A90",
     /** Compound v3 USDC Comet (cUSDCv3): the base=USDC market the Compound adapter routes through.
