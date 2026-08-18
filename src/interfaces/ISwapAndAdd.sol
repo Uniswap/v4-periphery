@@ -39,6 +39,13 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 ///      call may revert atomically inside the unlock (CurrencyNotSettled) — funds are safe, but the operation
 ///      can be unusable there.
 ///
+///      KNOWN LIMIT — wei-scale budgets: the pool keeps up to 1 wei per side on any mint->decrease round trip
+///      (mint amounts are pulled rounded UP, decrease amounts returned rounded DOWN). A budget within a few wei
+///      of that toll cannot fully settle no matter how much of the just-added liquidity the trim removes: the
+///      trim caps at everything that was added, the resulting liquidity is 0, and any `minLiquidity >= 1`
+///      surfaces it as InsufficientLiquidity; only a zero floor (the explicit accept-anything opt-out) sees
+///      v4's CurrencyNotSettled instead. Real-size budgets cannot reach this regime.
+///
 ///      DYNAMIC-FEE NOTE: optimistic sizing uses the pool's stored Slot0 LP fee. A `beforeSwap` hook may select a
 ///      different per-swap override that cannot be generically previewed (it may depend on the caller, amount,
 ///      hookData or mutable state). The actual override is charged by the reconcile swap; if it is higher than
