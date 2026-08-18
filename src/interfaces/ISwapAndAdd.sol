@@ -18,7 +18,8 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 ///      3. one same-pool reconcile swap funds whichever side the mint is short of (either direction: top up if
 ///         the route under-converted, sell back if it over-converted), then a DECREASE ("trim") lands the
 ///         position exactly on what the holdings support,
-///      4. enforce `minLiquidity`, sweep the small remainder (input-token dust) to `recipient`, and transfer the
+///      4. enforce `minLiquidity`, sweep the small remainder (dust, possibly in both pool tokens) to
+///         `recipient`, and transfer the
 ///         NFT to `recipient` after the unlock closes.
 ///
 ///      DESIGN NOTE — route first, then size:
@@ -112,7 +113,8 @@ interface ISwapAndAdd {
     ///                      Fee-on-transfer tokens are unsupported (the route's declared input would exceed the
     ///                      delivered balance), matching the pool-token policy.
     /// @param minLiquidity  Slippage floor: revert if the resulting (post-trim) position liquidity < minLiquidity.
-    /// @param recipient     Receives the POSM NFT (after the unlock) and any swept leftover input token. Must not
+    /// @param recipient     Receives the POSM NFT (after the unlock) and any swept leftovers (possibly in both
+    ///                      pool tokens, plus unconsumed route funding). Must not
     ///                      be this SwapAndAdd contract.
     /// @param hookData      Hook data forwarded to the position mint, reconcile swaps and any trim.
     /// @param deadline      Tx reverts after this timestamp.
@@ -157,7 +159,8 @@ interface ISwapAndAdd {
     ///                          funding leftovers are output like any other).
     /// @param minLiquidityAdded Slippage floor: revert if the liquidity added to the position < this. Quote it
     ///                          against budget PLUS unclaimed fees, or the fee credit becomes slack in the floor.
-    /// @param recipient         Receives any swept leftover input-token dust (NOT the position — that stays put).
+    /// @param recipient         Receives any swept leftover dust, possibly in both pool tokens (NOT the
+    ///                          position — that stays put).
     ///                          Honored only when the caller is the owner; forced to the owner for an operator.
     ///                          Must not be this SwapAndAdd contract.
     /// @param hookData          Hook data forwarded to the fee collect, increase, reconcile swaps and any trim.
