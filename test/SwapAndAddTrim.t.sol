@@ -76,6 +76,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
             amount0In: a0,
             amount1In: a1,
             route: "",
+            routeFunding: new ISwapAndAdd.TokenAmount[](0),
             minLiquidity: minLiq,
             recipient: address(this),
             hookData: "",
