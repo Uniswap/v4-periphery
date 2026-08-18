@@ -663,10 +663,12 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint256 value = c0.isAddressZero() ? c0.balanceOfSelf() : 0;
 
         universalRouter.execute{value: value}(commands, inputs);
-        // Reclaim ALL native left in the UR — ours or donated: UR balances are publicly sweepable, so any
-        // remainder is captured as the current caller's budget (if native is not a pool currency it stays
-        // in this contract for the next native-pool caller, per the donation invariant).
-        if (address(universalRouter).balance > 0) {
+        // Reclaim native left in the UR, but only when this operation pushed value into it: the push is
+        // sized to the full held balance, so a remainder is expected and — UR balances being permissionlessly
+        // sweepable — must not stay there. The SWEEP takes the router's WHOLE balance, so any pre-existing
+        // donation rides along into the caller's budget. Value-less operations leave the UR untouched (a
+        // route stranding its own output there is a broken route; `minLiquidity` gates it like any other).
+        if (value > 0 && address(universalRouter).balance > 0) {
             bytes[] memory sweepInputs = new bytes[](1);
             // token ETH (address(0)), recipient MSG_SENDER (UR maps it back to this contract), no minimum.
             sweepInputs[0] = abi.encode(address(0), ActionConstants.MSG_SENDER, 0);
