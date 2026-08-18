@@ -256,6 +256,75 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.increase(p);
     }
 
+    /// @dev An increase collects and spends the position's accrued fees, so caller auth is required.
+    function test_increase_revertsIfNotAuthorized() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        vm.prank(makeAddr("stranger"));
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.NotAuthorizedForToken.selector, tokenId));
+        zap.increase(_increaseParams(tokenId, 0, 1e18));
+    }
+
+    /// @dev Compound is an increase with a zero pulled budget — both run the same path and reinvest the fees.
+    function test_increase_zeroBudget_equalsCompound() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        _generateFees();
+
+        uint256 snap = vm.snapshotState();
+        (uint128 viaCompound,,) = zap.compound(_compoundParams(tokenId, 0));
+        vm.revertToState(snap);
+
+        (uint128 viaIncrease,,) = zap.increase(_increaseParams(tokenId, 0, 0));
+        assertGt(viaIncrease, 0, "zero-budget increase reinvested the fees");
+        assertEq(viaIncrease, viaCompound, "increase(0,0) == compound");
+    }
+
+    /// @dev The fee collect precedes the deploy: an increase consumes the position's accrued fees entirely
+    ///      (nothing left for a follow-up compound) and the position grows by exactly the returned liquidity.
+    function test_increase_collectsAndReinvestsFees() public {
+        (uint256 tokenId, uint128 liq0,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        _generateFees();
+
+        (uint128 added,,) = zap.increase(_increaseParams(tokenId, 0, 5e18));
+
+        assertGt(added, 0, "budget + fees deployed");
+        assertEq(lpm.getPositionLiquidity(tokenId), liq0 + added, "position grew by exactly the added liquidity");
+        // the fees were consumed by the increase: an immediate compound finds nothing to reinvest
+        vm.expectRevert(ISwapAndAdd.NoFeesToCompound.selector);
+        zap.compound(_compoundParams(tokenId, 0));
+    }
+
+    /// @dev Grow-in-place ops with nothing to deploy (no budget, no fees) revert instead of no-opping.
+    function test_increase_revertsWhenNothingToDeploy() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        vm.expectRevert(ISwapAndAdd.NoFeesToCompound.selector);
+        zap.increase(_increaseParams(tokenId, 0, 0));
+    }
+
+    /// @dev Operator-called increase: all output (swept dust) is forced to the owner, like compound/rebalance.
+    function test_increase_operatorCannotRedirectDust() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        _generateFees();
+        address operator = makeAddr("operator");
+        IERC721(address(lpm)).setApprovalForAll(operator, true);
+        MockERC20(Currency.unwrap(currency1)).mint(operator, 5e18);
+
+        vm.startPrank(operator);
+        MockERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
+        permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
+        ISwapAndAdd.IncreaseParams memory p = _increaseParams(tokenId, 0, 5e18);
+        p.recipient = operator; // attempt to redirect the dust to itself
+        zap.increase(p);
+        vm.stopPrank();
+
+        assertEq(currency0.balanceOf(operator), 0, "operator got no token0 dust");
+        assertEq(currency1.balanceOf(operator), 0, "operator got no token1 dust");
+    }
+
     /// @notice Option C deploys the *actual* max the budget supports, so returned dust is tiny (the genuine
     ///         slippage shortfall), in the input token.
     function test_add_lowDust() public {

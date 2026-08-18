@@ -63,7 +63,8 @@ interface ISwapAndAdd {
     error NotAuthorizedForToken(uint256 tokenId);
     /// @notice A negative `additionalA/additionalB` (return-to-wallet) asked for more than was withdrawn.
     error ReturnExceedsWithdrawn(uint256 requested, uint256 withdrawn);
-    /// @notice `compound` was called on a position with no accrued fees to reinvest.
+    /// @notice Nothing to deploy: the operation has no pulled budget and the position has no accrued fees
+    ///         (compound on a fee-less position, or an empty increase).
     error NoFeesToCompound();
 
     /// @param poolKey       Target v4 pool.
@@ -106,14 +107,20 @@ interface ISwapAndAdd {
 
     /// @param tokenId           Existing position to top up. Its pool and tick range are read on-chain; the
     ///                          liquidity is ADDED to this same tokenId (no new NFT, the NFT never moves).
-    /// @param amount0In         Budget of pool token0 to add (may be 0).
-    /// @param amount1In         Budget of pool token1 to add (may be 0).
+    ///                          Caller must be the owner or an ERC-721-approved operator of the position.
+    /// @param amount0In         Budget of pool token0 to pull and add (may be 0). The position's accrued fees
+    ///                          are collected and deployed ON TOP of the pulled budget — to target a total,
+    ///                          state `target - current unclaimed fees` per side (offchain netting).
+    /// @param amount1In         Budget of pool token1 to pull and add (may be 0); fee semantics as amount0In.
     /// @param route             Verbatim Universal Router payload for the surplus->deficit swap (may be empty;
-    ///                          funding semantics as in `AddParams.route`).
-    /// @param minLiquidityAdded Slippage floor: revert if the liquidity added to the position < this.
+    ///                          funding semantics as in `AddParams.route`). The collected fees are part of the
+    ///                          held budget the route may consume.
+    /// @param minLiquidityAdded Slippage floor: revert if the liquidity added to the position < this. Quote it
+    ///                          against budget PLUS unclaimed fees, or the fee credit becomes slack in the floor.
     /// @param recipient         Receives any swept leftover input-token dust (NOT the position — that stays put).
+    ///                          Honored only when the caller is the owner; forced to the owner for an operator.
     ///                          Must not be this SwapAndAdd contract.
-    /// @param hookData          Hook data forwarded to the increase, reconcile swaps and any trim.
+    /// @param hookData          Hook data forwarded to the fee collect, increase, reconcile swaps and any trim.
     /// @param deadline          Tx reverts after this timestamp.
     struct IncreaseParams {
         uint256 tokenId;
@@ -128,11 +135,16 @@ interface ISwapAndAdd {
 
     /// @notice Top up an EXISTING position with a one- or two-sided token budget in a single transaction. Same
     ///         route-first sizing as `add`, but it INCREASEs the given tokenId at its current range instead of
-    ///         minting a new position — the NFT never moves and no new NFT is created. The contract must be
-    ///         POSM-approved on the position (POSM gates INCREASE_LIQUIDITY on the locker being approved).
-    /// @dev No CALLER auth is needed: funds come from `msg.sender` via `_pullBudget`, the position only grows (for
-    ///      whoever owns it), and swept dust goes to `recipient` (the funder) — there is no value-redirect path,
-    ///      so anyone may top up a position the contract is approved on, from their own wallet.
+    ///         minting a new position — the NFT never moves and no new NFT is created. The position's accrued
+    ///         fees are collected first and reinvested alongside the pulled budget (they fund the route and
+    ///         the sizing; they never leave to the wallet beyond rounding dust). The contract must be
+    ///         POSM-approved on the position (POSM gates the fee collect and INCREASE_LIQUIDITY on the locker
+    ///         being approved).
+    /// @dev CALLER auth required (owner or ERC-721-approved operator): the fee collect spends position value,
+    ///      so an open entrypoint would let anyone force-churn a position's fees through caller-chosen route /
+    ///      floor. For an operator, all output is forced to the owner. The fee collect is a DECREASE by 0, so
+    ///      pools with remove-liquidity hooks see those callbacks on every increase. Reverts NoFeesToCompound
+    ///      when there is nothing to deploy (zero budget and zero fees).
     /// @return liquidityAdded The liquidity added to the position.
     /// @return amount0        token0 added to the position.
     /// @return amount1        token1 added to the position.
@@ -230,8 +242,10 @@ interface ISwapAndAdd {
     ///         optional `route` and/or the same-pool reconcile — and INCREASEs the same tokenId. The fees never
     ///         reach the caller's wallet (compounding) and the NFT is never moved — only the existing position
     ///         grows.
-    /// @dev Operator trust model: see the TRUST NOTE on `rebalance`. Constrained operator systems must likewise
-    ///      set `minLiquidityAdded` themselves rather than forward a caller-supplied value.
+    /// @dev Equivalent to an `increase` with a zero pulled budget (the two share one execution path); kept as
+    ///      its own endpoint for clarity and because it is non-payable. Operator trust model: see the TRUST
+    ///      NOTE on `rebalance`. Constrained operator systems must likewise set `minLiquidityAdded` themselves
+    ///      rather than forward a caller-supplied value.
     /// @return liquidityAdded The liquidity added to the position by reinvesting the fees.
     /// @return amount0        token0 reinvested into the position.
     /// @return amount1        token1 reinvested into the position.

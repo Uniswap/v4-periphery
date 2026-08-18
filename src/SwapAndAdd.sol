@@ -85,11 +85,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev universal-router Commands.SWEEP — used to reclaim native value a route left in the UR.
     uint256 private constant UR_SWEEP_COMMAND = 0x04;
 
-    /// @dev Internal operation commands to identify the operation type in the unlock callback.
+    /// @dev Internal operation commands to identify the operation type in the unlock callback. Compound has
+    ///      no op of its own: it is an increase with a zero pulled budget and shares OP_INCREASE.
     uint256 private constant OP_ADD = 0;
     uint256 private constant OP_REBALANCE = 1;
-    uint256 private constant OP_COMPOUND = 2;
-    uint256 private constant OP_INCREASE = 3;
+    uint256 private constant OP_INCREASE = 2;
 
     /// @dev internal, stack-friendly bundle of the shared add inputs (budget already held by this contract).
     struct CoreParams {
@@ -185,16 +185,16 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         checkDeadline(params.deadline)
         returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
     {
-        // read the position's pool + existing range; the increase deploys into that same range/tokenId.
-        (PoolKey memory key, PositionInfo info) = positionManager.getPoolAndPositionInfo(params.tokenId);
-        _validateRecipient(params.recipient);
-        // pull funds from msg.sender (same as add()'s _pullBudget). The position only grows for whoever owns it,
-        // so no CALLER auth is needed. POSM still gates INCREASE_LIQUIDITY on this contract being approved on the
-        // tokenId (the owner grants that, same as for compound/rebalance).
+        // the position's accrued fees are collected into the budget (see the callback), so an increase spends
+        // position value: only the owner or an approved operator may call, and only the owner picks the recipient.
+        address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
+        _validateRecipient(recipient);
+        (PoolKey memory key, bytes memory payload) =
+            _growPayload(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
+        // pull the caller's stated budget from msg.sender (same as add()'s _pullBudget); the collected fees
+        // join it inside the callback.
         _pullBudget(key, params.amount0In, params.amount1In);
-        // unlock the pool manager and trigger the callback with the INCREASE operation.
-        bytes memory result =
-            poolManager.unlock(abi.encode(OP_INCREASE, abi.encode(params, key, info.tickLower(), info.tickUpper())));
+        bytes memory result = poolManager.unlock(abi.encode(OP_INCREASE, payload));
         // decode the result of the callback.
         (liquidityAdded, amount0, amount1) = abi.decode(result, (uint128, uint256, uint256));
         // positionNFT stays with the original owner, so no transfer is needed.
@@ -211,10 +211,39 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // ensuring a trusted route and liquidity threshold is used. Dust is forced to the owner if caller is an operator.
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
-        // unlock the pool manager and trigger the callback with the COMPOUND operation.
-        bytes memory result = poolManager.unlock(abi.encode(OP_COMPOUND, abi.encode(params, recipient)));
+        // compound is an increase with a zero pulled budget: nothing is pulled here, the collected fees are
+        // the entire budget — both ops share the OP_INCREASE callback path.
+        (, bytes memory payload) =
+            _growPayload(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
+        bytes memory result = poolManager.unlock(abi.encode(OP_INCREASE, payload));
         // decode the result of the callback.
         (liquidityAdded, amount0, amount1) = abi.decode(result, (uint128, uint256, uint256));
+    }
+
+    /// @dev Shared unlock payload for the grow-in-place ops (increase, compound): deploy into the position's
+    ///      existing range. Budgets are left zero — the callback fills them from the balances actually held
+    ///      once the accrued fees have been collected.
+    function _growPayload(
+        uint256 tokenId,
+        bytes calldata route,
+        uint256 minLiquidity,
+        address recipient,
+        bytes calldata hookData
+    ) internal view returns (PoolKey memory key, bytes memory payload) {
+        PositionInfo info;
+        (key, info) = positionManager.getPoolAndPositionInfo(tokenId);
+        CoreParams memory cp = CoreParams({
+            key: key,
+            tickLower: info.tickLower(),
+            tickUpper: info.tickUpper(),
+            budget0: 0,
+            budget1: 0,
+            route: route,
+            minLiquidity: minLiquidity,
+            recipient: recipient,
+            hookData: hookData
+        });
+        payload = abi.encode(tokenId, cp);
     }
 
     // ───────────────────────────────────────────── unlock callback ─────────────────────────────────────────────
@@ -223,30 +252,19 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev Protected by SafeCallback.onlyPoolManager modifier.
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         (uint256 op, bytes memory inner) = abi.decode(data, (uint256, bytes));
-        // handle the COMPOUND operation.
-        if (op == OP_COMPOUND) {
-            (CompoundParams memory cparams, address recipient) = abi.decode(inner, (CompoundParams, address));
-            // collect the fees to the contract, then calls _addCore, increasing the position in place
-            (uint128 liqAdded, uint256 added0, uint256 added1) = _compound(cparams, recipient);
-            return abi.encode(liqAdded, added0, added1);
-        }
-        // handle the INCREASE operation.
+        // handle the grow-in-place operations: increase and compound share this path (compound = zero
+        // pulled budget, so the collected fees are its whole budget).
         if (op == OP_INCREASE) {
-            (IncreaseParams memory p, PoolKey memory key, int24 tickLower, int24 tickUpper) =
-                abi.decode(inner, (IncreaseParams, PoolKey, int24, int24));
-            CoreParams memory icp = CoreParams({
-                key: key,
-                tickLower: tickLower,
-                tickUpper: tickUpper,
-                budget0: p.amount0In,
-                budget1: p.amount1In,
-                route: p.route,
-                minLiquidity: p.minLiquidityAdded,
-                recipient: p.recipient,
-                hookData: p.hookData
-            });
+            (uint256 tokenId, CoreParams memory cp) = abi.decode(inner, (uint256, CoreParams));
+            // collect accrued fees FIRST (DECREASE by 0 credits them, TAKE_PAIR pulls them here): they join
+            // the pulled budget below, so fees are route- and sizing-eligible and never leave to the wallet.
+            _decrease(cp.key, tokenId, 0, cp.hookData);
+            // budget = everything held: the caller's pulled amounts plus the just-collected fees.
+            cp.budget0 = cp.key.currency0.balanceOfSelf();
+            cp.budget1 = cp.key.currency1.balanceOfSelf();
+            if (cp.budget0 == 0 && cp.budget1 == 0) revert NoFeesToCompound();
             // existing tokenId -> _addCore INCREASEs it in place (no new NFT).
-            (, uint128 liqAdded, uint256 added0, uint256 added1) = _addCore(icp, p.tokenId);
+            (, uint128 liqAdded, uint256 added0, uint256 added1) = _addCore(cp, tokenId);
             return abi.encode(liqAdded, added0, added1);
         }
 
@@ -347,14 +365,14 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         // 2. size from the holdings (fee-aware, optimistic), flash-take whatever side is short, then mint a new
         //    position or increase the existing one.
-        (uint128 lopt, uint256 a0opt, uint256 a1opt) = _planLiquidity(cp);
-        _flashTakeDeficit(cp, a0opt, a1opt);
-        tokenId = _deploy(cp, existingTokenId, lopt, a0opt);
+        (uint128 liquidityOptimistic, uint256 amount0optimistic, uint256 amount1optimistic) = _planLiquidity(cp);
+        _flashTakeDeficit(cp, amount0optimistic, amount1optimistic);
+        tokenId = _deploy(cp, existingTokenId, liquidityOptimistic, amount0optimistic);
 
         // 3. same-pool swap to reconcile whichever side is short (if any), then trim the optimistic
         //    size down to what the holdings actually funded.
-        uint128 trimmed = _reconcile(cp, tokenId, lopt, a0opt, a1opt);
-        liquidity = lopt - trimmed;
+        uint128 trimmed = _reconcile(cp, tokenId, liquidityOptimistic, amount0optimistic, amount1optimistic);
+        liquidity = liquidityOptimistic - trimmed;
 
         // 4. slippage floor — the single gate for the whole operation.
         if (liquidity < cp.minLiquidity) revert InsufficientLiquidity(uint128(cp.minLiquidity), liquidity);
@@ -394,39 +412,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     function _flashTakeDeficit(CoreParams memory cp, uint256 amount0, uint256 amount1) internal {
         if (amount0 > cp.budget0) _take(cp.key.currency0, address(this), amount0 - cp.budget0);
         if (amount1 > cp.budget1) _take(cp.key.currency1, address(this), amount1 - cp.budget1);
-    }
-
-    /// @dev Compound: reinvest the position's accrued fees back into the SAME tokenId — the shared core with an
-    ///      INCREASE in place of a fresh MINT, so the existing NFT just grows. Collect fees -> optional route ->
-    ///      size from the holdings (fee-aware) -> flash-take any deficit -> INCREASE -> reconcile residual
-    ///      same-pool + trim -> floor -> sweep dust. The fees never leave to the wallet.
-    function _compound(CompoundParams memory p, address recipient)
-        internal
-        returns (uint128 liquidityAdded, uint256 amount0, uint256 amount1)
-    {
-        // get the pool key and position info.
-        // unlike rebalance/increase, compound pulls no caller funds pre-unlock, so key is first needed here.
-        (PoolKey memory key, PositionInfo info) = positionManager.getPoolAndPositionInfo(p.tokenId);
-
-        // collect fees only: DECREASE by 0 liquidity credits the accrued fees, TAKE_PAIR pulls them here.
-        _decrease(key, p.tokenId, 0, p.hookData);
-
-        // budget = the collected fees; target the position's existing range. Then run the shared core,
-        // INCREASING the same tokenId in place (the fees never leave to the wallet; the NFT stays with its owner).
-        CoreParams memory cp = CoreParams({
-            key: key,
-            tickLower: info.tickLower(),
-            tickUpper: info.tickUpper(),
-            budget0: key.currency0.balanceOfSelf(),
-            budget1: key.currency1.balanceOfSelf(),
-            route: p.route,
-            minLiquidity: p.minLiquidityAdded,
-            recipient: recipient,
-            hookData: p.hookData
-        });
-        if (cp.budget0 == 0 && cp.budget1 == 0) revert NoFeesToCompound();
-
-        (, liquidityAdded, amount0, amount1) = _addCore(cp, p.tokenId);
     }
 
     /// @dev Settle the position's funding using a single same-pool swap in whichever direction is short, then
@@ -658,7 +643,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         params[1] = abi.encode(c0, cp.key.currency1);
 
         // forward exactly the required native amount (the funding is wei-exact, see _flashTakeDeficit); the
-        // SWEEP returns whatever POSM does not consume (e.g. an accrued-fee credit reducing an increase's pull).
+        // SWEEP returns whatever POSM does not consume (accrued fees are collected before an increase, so a
+        // residual credit only arises from fees a same-pool route leg generated since that collect).
         uint256 nativeToForward = c0.isAddressZero() ? amount0 : 0;
         positionManager.modifyLiquiditiesWithoutUnlock{value: nativeToForward}(actions, params);
     }
