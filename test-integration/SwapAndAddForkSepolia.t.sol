@@ -170,8 +170,8 @@ contract SwapAndAddForkSepoliaTest is Test {
 
         ISwapAndAdd.RebalanceParams memory p = ISwapAndAdd.RebalanceParams({
             tokenId: tokenId,
-            additionalA: 0,
-            additionalB: 0,
+            additional0: 0,
+            additional1: 0,
             newTickLower: TICK_LOWER - 600,
             newTickUpper: TICK_UPPER + 600,
             route: "",

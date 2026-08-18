@@ -215,15 +215,15 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
-    function _rebalanceParams(uint256 tokenId, int128 additionalA, int128 additionalB, int24 lo, int24 hi)
+    function _rebalanceParams(uint256 tokenId, int128 additional0, int128 additional1, int24 lo, int24 hi)
         internal
         view
         returns (ISwapAndAdd.RebalanceParams memory)
     {
         return ISwapAndAdd.RebalanceParams({
             tokenId: tokenId,
-            additionalA: additionalA,
-            additionalB: additionalB,
+            additional0: additional0,
+            additional1: additional1,
             newTickLower: lo,
             newTickUpper: hi,
             route: "",
