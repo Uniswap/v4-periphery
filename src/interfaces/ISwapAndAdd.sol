@@ -61,7 +61,7 @@ interface ISwapAndAdd {
     /// @notice Output may not be sent to this contract, where it would violate the no-funds-at-rest invariant.
     error InvalidRecipient(address recipient);
     error NotAuthorizedForToken(uint256 tokenId);
-    /// @notice A negative `additionalA/additionalB` (return-to-wallet) asked for more than was withdrawn.
+    /// @notice A negative `additional0/additional1` (return-to-wallet) asked for more than was withdrawn.
     error ReturnExceedsWithdrawn(uint256 requested, uint256 withdrawn);
     /// @notice Nothing to deploy: the operation has no pulled budget and the position has no accrued fees
     ///         (compound on a fee-less position, or an empty increase).
@@ -159,12 +159,12 @@ interface ISwapAndAdd {
     ///                      setApprovalForAll on POSM), because POSM authorizes the burn against this contract
     ///                      as the locker. The position is withdrawn IN FULL (burned) — see DESIGN NOTE on the
     ///                      deltas below.
-    /// @param additionalA   Signed delta for currency0, applied to the fully-withdrawn holdings of that token:
+    /// @param additional0   Signed delta for currency0, applied to the fully-withdrawn holdings of that token:
     ///                      > 0 pulls that many MORE units from the caller's wallet (rebalance + add in one tx),
     ///                      < 0 returns that many units to `recipient`'s wallet (rebalance + cash-out), 0 leaves
     ///                      the withdrawn amount as-is (a full move). The redeploy budget for currency0 is
-    ///                      `withdrawn0 + additionalA`. A negative value may not exceed `withdrawn0`.
-    /// @param additionalB   Signed delta for currency1, same semantics (`withdrawn1 + additionalB`). currency1 is
+    ///                      `withdrawn0 + additional0`. A negative value may not exceed `withdrawn0`.
+    /// @param additional1   Signed delta for currency1, same semantics (`withdrawn1 + additional1`). currency1 is
     ///                      never native ETH (native sorts to currency0), so a positive value is always an ERC20
     ///                      Permit2 pull.
     /// @param newTickLower  Lower tick of the new position.
@@ -180,8 +180,8 @@ interface ISwapAndAdd {
     /// @param deadline      Tx reverts after this timestamp.
     struct RebalanceParams {
         uint256 tokenId;
-        int128 additionalA;
-        int128 additionalB;
+        int128 additional0;
+        int128 additional1;
         int24 newTickLower;
         int24 newTickUpper;
         bytes route;
@@ -193,7 +193,7 @@ interface ISwapAndAdd {
 
     /// @notice Withdraw an existing position IN FULL and redeposit it into a new range, optionally adding to or
     ///         cashing out of each token, in one transaction. The position is always burned entirely; the
-    ///         per-token redeploy budget is `withdrawn + additional` (the signed `additionalA/additionalB`), run
+    ///         per-token redeploy budget is `withdrawn + additional` (the signed `additional0/additional1`), run
     ///         through the add flow (route + size + reconcile) into the new range. Any negative delta is returned
     ///         to `recipient`'s wallet up front. Always mints a NEW position (POSM ties a tokenId to a fixed range).
     /// @dev DESIGN NOTE — one signed knob for both add-more and cash-out: a rebalance is typically triggered by an

@@ -350,15 +350,15 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.add(p);
     }
 
-    function _rebalanceParams(uint256 tokenId, int128 additionalA, int128 additionalB)
+    function _rebalanceParams(uint256 tokenId, int128 additional0, int128 additional1)
         internal
         view
         returns (ISwapAndAdd.RebalanceParams memory)
     {
         return ISwapAndAdd.RebalanceParams({
             tokenId: tokenId,
-            additionalA: additionalA,
-            additionalB: additionalB,
+            additional0: additional0,
+            additional1: additional1,
             newTickLower: -1200,
             newTickUpper: 1200,
             route: "",

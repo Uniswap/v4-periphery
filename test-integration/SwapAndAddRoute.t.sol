@@ -230,8 +230,8 @@ contract SwapAndAddRouteTest is PosmTestSetup {
 
         ISwapAndAdd.RebalanceParams memory rp = ISwapAndAdd.RebalanceParams({
             tokenId: tokenId,
-            additionalA: 0, // full move: redeploy everything, add/return nothing
-            additionalB: 0,
+            additional0: 0, // full move: redeploy everything, add/return nothing
+            additional1: 0,
             newTickLower: 600, // above current tick (0) -> single-sided token0
             newTickUpper: 1800,
             route: route,

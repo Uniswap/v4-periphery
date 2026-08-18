@@ -165,9 +165,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // ensure caller is owner or an approved operator. Only the position owner can set a new recipient.
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
-        // pull funds from msg.sender (same as add()'s _pullBudget), if additionalA/B is positive. If its
+        // pull funds from msg.sender (same as add()'s _pullBudget), if additional0/1 is positive. If its
         // negative, funds will be returned during the unlock once we know the withdrawn amounts.
-        _pullAdditional(key, params.additionalA, params.additionalB);
+        _pullAdditional(key, params.additional0, params.additional1);
 
         // unlock the pool manager and trigger the callback with the REBALANCE operation.
         bytes memory result = poolManager.unlock(abi.encode(OP_REBALANCE, abi.encode(params, key, recipient)));
@@ -314,8 +314,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             key: key,
             tickLower: p.newTickLower,
             tickUpper: p.newTickUpper,
-            budget0: _resolveBudget(key.currency0, p.additionalA, recipient),
-            budget1: _resolveBudget(key.currency1, p.additionalB, recipient),
+            budget0: _resolveBudget(key.currency0, p.additional0, recipient),
+            budget1: _resolveBudget(key.currency1, p.additional1, recipient),
             route: p.route,
             minLiquidity: p.minLiquidity,
             recipient: recipient,
@@ -752,17 +752,17 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev Pull the positive (add) rebalance deltas from the caller, before the unlock so msg.sender is still
     ///      the caller (mirrors `_pullBudget`). Negative deltas pull nothing here — they are returned to the
     ///      recipient inside the unlock (`_resolveBudget`) once the withdrawn amounts are known.
-    function _pullAdditional(PoolKey memory key, int128 additionalA, int128 additionalB) internal {
+    function _pullAdditional(PoolKey memory key, int128 additional0, int128 additional1) internal {
         uint256 expectedValue;
         Currency c0 = key.currency0;
-        if (additionalA > 0) {
-            uint256 amount = uint256(uint128(additionalA));
+        if (additional0 > 0) {
+            uint256 amount = uint256(uint128(additional0));
             if (c0.isAddressZero()) expectedValue = amount;
             else permit2.transferFrom(msg.sender, address(this), uint160(amount), Currency.unwrap(c0));
         }
-        if (additionalB > 0) {
+        if (additional1 > 0) {
             permit2.transferFrom(
-                msg.sender, address(this), uint160(uint256(uint128(additionalB))), Currency.unwrap(key.currency1)
+                msg.sender, address(this), uint160(uint256(uint128(additional1))), Currency.unwrap(key.currency1)
             );
         }
         if (msg.value != expectedValue) revert InvalidEthValue();
