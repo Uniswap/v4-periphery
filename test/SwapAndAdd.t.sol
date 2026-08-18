@@ -603,24 +603,33 @@ contract SwapAndAddTest is PosmTestSetup {
         p.route = ROUTE_PAYLOAD;
     }
 
-    /// @dev Native left in the UR after a route is reclaimed even when the operation pushed none there (e.g. a
-    ///      prior donation): UR balances are publicly sweepable, so any remainder is captured as the current
-    ///      caller's budget instead of being left for the next SWEEP caller.
-    function test_add_route_reclaimsDonatedUrNative() public {
+    /// @dev The UR SWEEP reclaim runs only for operations that pushed native value: the push is a
+    ///      whole-balance over-push, so a remainder is expected and must not stay in the permissionlessly
+    ///      sweepable UR — and the all-or-nothing SWEEP folds any pre-existing donation into the caller's
+    ///      budget. Value-less operations leave the UR's balance alone.
+    function test_add_route_nativeReclaim_onlyWhenValuePushed() public {
         _configRoute(10000, 0); // no-op route: consumes nothing, the mock just sits on its balance
         ISwapAndAdd.AddParams memory p = _routeAdd(10e18);
-        p.poolKey = nativeKey; // native/currency1 pool: reclaimed ETH is a pool currency -> joins the budget
+        p.poolKey = nativeKey;
 
+        // 1) token1-only budget -> no value pushed -> a pre-existing UR balance is left untouched
+        vm.deal(address(route), 1 ether);
+        zap.add(p);
+        assertEq(address(route).balance, 1 ether, "no value pushed: UR balance untouched");
+        vm.deal(address(route), 0);
+
+        // 2) native in the budget -> value pushed -> the unconsumed push AND the donation are reclaimed
+        p.amount0In = 2 ether;
         uint256 snap = vm.snapshotState();
-        (, uint128 liqBase,,) = zap.add(p); // baseline: no donation in the UR
+        (, uint128 liqBase,,) = zap.add{value: 2 ether}(p); // baseline: no donation in the UR
         vm.revertToState(snap);
 
         vm.deal(address(route), 1 ether); // donated/stranded native sitting in the UR
-        (, uint128 liqDonated,,) = zap.add(p);
+        (, uint128 liqDonated,,) = zap.add{value: 2 ether}(p);
 
-        assertEq(address(route).balance, 0, "UR native fully reclaimed");
+        assertEq(address(route).balance, 0, "value pushed: UR native fully reclaimed");
         assertEq(address(zap).balance, 0, "zap eth == 0");
-        assertGt(liqDonated, liqBase, "donation joined the caller's budget");
+        assertGt(liqDonated, liqBase, "reclaimed donation joined the caller's budget");
     }
 
     /// @notice Route under-converts (input below the ideal): the same-pool reconcile tops up the deficit in the
