@@ -22,7 +22,6 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 
 import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
-import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
@@ -466,8 +465,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     /// @dev DECREASE the position by enough liquidity to free at least `amountOut` of the deficit token,
     ///      capped at `lopt` — the liquidity this flow just added. On increase/compound the position also
-    ///      holds the owner's pre-existing principal, which the trim must never consume; if even the full
-    ///      `lopt` cannot free the deficit, the unlock reverts (CurrencyNotSettled) instead.
+    ///      holds the owner's pre-existing principal, which the trim must never consume.
+    ///      The token->liquidity inverse ROUNDS UP on every division, over `amountOut + 1`, so the DECREASE's
+    ///      rounded-DOWN return always covers `amountOut`: the token0 inverse floors an intermediate value
+    ///      whose truncation is scaled by the amount, so its error in liquidity units is unbounded — a
+    ///      "+1 liquidity unit" style compensation cannot bound a shortfall measured in token wei.
+    ///      The cap is reachable only when the deficit exceeds what unwinding ALL of `lopt` returns, i.e. the
+    ///      budget is within the pool's ~1-wei mint/burn rounding toll: the trim then removes all of `lopt`,
+    ///      the added liquidity is 0 and any `minLiquidity >= 1` floor reverts InsufficientLiquidity (a zero
+    ///      floor lets the unsettled toll surface as v4's CurrencyNotSettled at the end of the unlock).
     function _trim(CoreParams memory cp, uint256 tokenId, uint128 lopt, bool deficitIs1, uint256 amountOut)
         internal
         returns (uint128 dl)
@@ -480,17 +486,18 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // reconcile sell repays it in full at the latest when it exhausts the range — so a still-owed deficit
         // means the sell stopped at or before the far edge. The near side needs no such bound (a range fully
         // beyond spot trims from a price outside it), hence the one-sided clamps.
+        uint256 dlUp;
         if (deficitIs1) {
-            // token1 occupies [sqrtLower, min(price, sqrtUpper)]
+            // token1 occupies [sqrtLower, min(price, sqrtUpper)]: amount1 = L * (hi - lo) / Q96
             uint160 hi = sqrtPriceX96 < sqrtUpper ? sqrtPriceX96 : sqrtUpper;
-            dl = LiquidityAmounts.getLiquidityForAmount1(sqrtLower, hi, amountOut);
+            dlUp = FullMath.mulDivRoundingUp(amountOut + 1, FixedPoint96.Q96, hi - sqrtLower);
         } else {
-            // token0 occupies [max(price, sqrtLower), sqrtUpper]
+            // token0 occupies [max(price, sqrtLower), sqrtUpper]: amount0 = L * Q96 * (hi - lo) / (hi * lo)
             uint160 lo = sqrtPriceX96 > sqrtLower ? sqrtPriceX96 : sqrtLower;
-            dl = LiquidityAmounts.getLiquidityForAmount0(lo, sqrtUpper, amountOut);
+            uint256 intermediate = FullMath.mulDivRoundingUp(lo, sqrtUpper, FixedPoint96.Q96);
+            dlUp = FullMath.mulDivRoundingUp(amountOut + 1, intermediate, sqrtUpper - lo);
         }
-        // +1 because DECREASE frees rounded-down amounts (so the freed amount covers `amountOut`), capped at lopt.
-        dl = dl >= lopt ? lopt : dl + 1;
+        dl = dlUp >= lopt ? lopt : uint128(dlUp);
         _decrease(cp.key, tokenId, dl, cp.hookData);
     }
 
