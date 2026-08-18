@@ -387,7 +387,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (liquidity < cp.minLiquidity) revert InsufficientLiquidity(uint128(cp.minLiquidity), liquidity);
 
         // 5. report the position's composition; sweep all remaining balances to the recipient (no-funds-at-rest).
-        // _reconcile parks rounding dust in the surplus side, whichever that is.
+        // dust can sit in BOTH tokens (the trim frees both sides); it is not re-denominated.
         (amount0, amount1) = _positionAmounts(cp, liquidity);
         _sweep(cp.key.currency0, cp.recipient);
         _sweep(cp.key.currency1, cp.recipient);
@@ -460,15 +460,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             _settleToward(deficit);
         }
 
-        // 4. clean up: take any leftover deficit credit; sell a tiny rounding excess back so dust stays in the
-        //    surplus (= input) token; then square up the surplus side (its swap output nets against any
-        //    remaining surplus debt in the transient accounting).
+        // 4. square up: take any leftover credit on either side into the balance and settle any remaining
+        //    surplus debt. Leftovers are NOT re-denominated — the sweep returns them in whatever pool tokens
+        //    they are (the trim frees BOTH sides, so two-token dust is the normal case; converting one into
+        //    the other would pay the pool fee on cosmetics).
         _takeCredit(deficit);
-        uint256 excessDeficit = deficit.balanceOfSelf();
-        if (excessDeficit > 1) {
-            _swap(cp.key, !zeroForOne, -excessDeficit.toInt256(), cp.hookData); // deficit -> surplus exact-input
-            _settleToward(deficit);
-        }
         _takeCredit(surplus);
         _settleToward(surplus);
     }

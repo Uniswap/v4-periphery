@@ -328,7 +328,8 @@ contract SwapAndAddTest is PosmTestSetup {
     }
 
     /// @notice Option C deploys the *actual* max the budget supports, so returned dust is tiny (the genuine
-    ///         slippage shortfall), in the input token.
+    ///         slippage shortfall). Dust is not re-denominated: the dominant share sits in the surplus (here:
+    ///         input) token and the deficit side returns at most a few wei of trim round-up overshoot.
     function test_add_lowDust() public {
         uint256 amountIn = 10e18;
         uint256 c0Before = currency0.balanceOf(address(this));
