@@ -54,6 +54,21 @@ contract MockSwapRoute {
             require(ok, "mock: sweep failed");
             return;
         }
+        // native surplus: consume from the forwarded msg.value (a real route spends the pushed value at its
+        // venue); the consumed part leaves to a sink, the remainder stays here for the caller's SWEEP reclaim.
+        if (surplus == address(0)) {
+            uint256 nativePull = inputAmount > msg.value ? msg.value : inputAmount;
+            if (nativePull == 0) return;
+            (bool ok,) = address(0xdEaD).call{value: nativePull}("");
+            require(ok, "mock: sink failed");
+            uint256 nativeOut = surplusIsToken0
+                ? FullMath.mulDiv(nativePull, midRateX96, FixedPoint96.Q96)
+                : FullMath.mulDiv(nativePull, FixedPoint96.Q96, midRateX96);
+            nativeOut = (nativeOut * rateMultBps) / 10000;
+            IERC20Min(deficit).transfer(msg.sender, nativeOut);
+            return;
+        }
+
         uint256 avail = IERC20Min(surplus).balanceOf(msg.sender);
         uint256 pull = inputAmount;
         if (pull > avail) pull = avail; // safety clamp only

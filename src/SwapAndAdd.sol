@@ -142,14 +142,16 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         _validateRecipient(params.recipient);
-        _pullBudget(params.poolKey, params.amount0In, params.amount1In);
+        uint256 fundingValue = _pullFunding(params.poolKey, params.routeFunding, params.route);
+        _pullBudget(params.poolKey, params.amount0In, params.amount1In, fundingValue);
         // unlock the pool manager and trigger the callback with the ADD operation.
         bytes memory result = poolManager.unlock(abi.encode(OP_ADD, abi.encode(params)));
         // decode the result of the callback.
         (tokenId, liquidity, amount0, amount1) = abi.decode(result, (uint256, uint128, uint256, uint256));
         // the position was minted to this contract so it could be trimmed; hand it to the recipient now that
-        // the pool is locked again.
+        // the pool is locked again, along with any funding the route did not consume.
         ERC721(address(positionManager)).transferFrom(address(this), params.recipient, tokenId);
+        _sweepFunding(params.routeFunding, params.recipient);
     }
 
     /// @inheritdoc ISwapAndAdd
@@ -166,14 +168,16 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         _validateRecipient(recipient);
         // pull funds from msg.sender (same as add()'s _pullBudget), if additional0/1 is positive. If its
         // negative, funds will be returned during the unlock once we know the withdrawn amounts.
-        _pullAdditional(key, params.additional0, params.additional1);
+        uint256 fundingValue = _pullFunding(key, params.routeFunding, params.route);
+        _pullAdditional(key, params.additional0, params.additional1, fundingValue);
 
         // unlock the pool manager and trigger the callback with the REBALANCE operation.
         bytes memory result = poolManager.unlock(abi.encode(OP_REBALANCE, abi.encode(params, key, recipient)));
         // decode the result of the callback.
         (newTokenId, liquidity, amount0, amount1) = abi.decode(result, (uint256, uint128, uint256, uint256));
-        // transfer the newly created position NFT to the recipient.
+        // transfer the newly created position NFT to the recipient, along with any unconsumed funding.
         ERC721(address(positionManager)).transferFrom(address(this), recipient, newTokenId);
+        _sweepFunding(params.routeFunding, recipient);
     }
 
     /// @inheritdoc ISwapAndAdd
@@ -192,11 +196,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             _growPayload(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
         // pull the caller's stated budget from msg.sender (same as add()'s _pullBudget); the collected fees
         // join it inside the callback.
-        _pullBudget(key, params.amount0In, params.amount1In);
+        uint256 fundingValue = _pullFunding(key, params.routeFunding, params.route);
+        _pullBudget(key, params.amount0In, params.amount1In, fundingValue);
         bytes memory result = poolManager.unlock(abi.encode(OP_INCREASE, payload));
         // decode the result of the callback.
         (liquidityAdded, amount0, amount1) = abi.decode(result, (uint128, uint256, uint256));
-        // positionNFT stays with the original owner, so no transfer is needed.
+        // positionNFT stays with the original owner, so no transfer is needed; unconsumed funding goes to the
+        // RESOLVED recipient (an operator's leftovers are forced to the owner — a route can also produce a
+        // funding token from the collected fees, so funding leftovers are output like any other).
+        _sweepFunding(params.routeFunding, recipient);
     }
 
     /// @inheritdoc ISwapAndAdd
@@ -261,7 +269,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             // budget = everything held: the caller's pulled amounts plus the just-collected fees.
             cp.budget0 = cp.key.currency0.balanceOfSelf();
             cp.budget1 = cp.key.currency1.balanceOfSelf();
-            if (cp.budget0 == 0 && cp.budget1 == 0) revert NoFeesToCompound();
+            // a route can still produce a budget (e.g. from route funding); with neither holdings nor a route
+            // there is provably nothing to deploy.
+            if (cp.budget0 == 0 && cp.budget1 == 0 && cp.route.length == 0) revert NoFeesToCompound();
             // existing tokenId -> _addCore INCREASEs it in place (no new NFT).
             (, uint128 liqAdded, uint256 added0, uint256 added1) = _addCore(cp, tokenId);
             return abi.encode(liqAdded, added0, added1);
@@ -666,8 +676,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      unconsumed thus stays in this contract for the same-pool reconcile.
     function _runRoute(CoreParams memory cp) internal {
         (bytes memory commands, bytes[] memory inputs) = abi.decode(cp.route, (bytes, bytes[]));
-        Currency c0 = cp.key.currency0;
-        uint256 value = c0.isAddressZero() ? c0.balanceOfSelf() : 0;
+        // forward the WHOLE native balance: under no-funds-at-rest it is exactly the operation's own native
+        // budget (native pool) or native route funding (non-native pool) — zero when neither applies.
+        uint256 value = address(this).balance;
 
         universalRouter.execute{value: value}(commands, inputs);
         // Reclaim native left in the UR, but only when this operation pushed value into it: the push is
@@ -736,14 +747,17 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     /// @dev Pull the caller's budget into this contract: native via msg.value (exact), ERC-20 via Permit2.
     ///      currency1 is never native (native sorts to currency0), so only currency0 can consume value.
-    function _pullBudget(PoolKey memory key, uint256 amount0In, uint256 amount1In) internal {
-        uint256 expectedValue;
+    ///      `fundingValue` is the native amount `_pullFunding` declared; the funding guard makes the two
+    ///      msg.value sources mutually exclusive (a native pool rejects an address(0) funding entry), so the
+    ///      sum below always has at most one non-zero term.
+    function _pullBudget(PoolKey memory key, uint256 amount0In, uint256 amount1In, uint256 fundingValue) internal {
+        uint256 expectedValue = fundingValue;
         Currency c0 = key.currency0;
 
         // currency0 can either be native or an ERC-20
         if (c0.isAddressZero()) {
             // amountIn must match msg.value
-            expectedValue = amount0In;
+            expectedValue += amount0In;
         } else if (amount0In > 0) {
             permit2.transferFrom(msg.sender, address(this), amount0In.toUint160(), Currency.unwrap(c0));
         }
@@ -752,19 +766,22 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (amount1In > 0) {
             permit2.transferFrom(msg.sender, address(this), amount1In.toUint160(), Currency.unwrap(key.currency1));
         }
-        // if currency0 is native, msg.value must match amount0In, otherwise msg.value must be zero
+        // msg.value must match its single meaning: the native budget (native pool) OR the native funding entry
         if (msg.value != expectedValue) revert InvalidEthValue();
     }
 
     /// @dev Pull the positive (add) rebalance deltas from the caller, before the unlock so msg.sender is still
-    ///      the caller (mirrors `_pullBudget`). Negative deltas pull nothing here — they are returned to the
-    ///      recipient inside the unlock (`_resolveBudget`) once the withdrawn amounts are known.
-    function _pullAdditional(PoolKey memory key, int128 additional0, int128 additional1) internal {
-        uint256 expectedValue;
+    ///      the caller (mirrors `_pullBudget`, including the `fundingValue` semantics). Negative deltas pull
+    ///      nothing here — they are returned to the recipient inside the unlock (`_resolveBudget`) once the
+    ///      withdrawn amounts are known.
+    function _pullAdditional(PoolKey memory key, int128 additional0, int128 additional1, uint256 fundingValue)
+        internal
+    {
+        uint256 expectedValue = fundingValue;
         Currency c0 = key.currency0;
         if (additional0 > 0) {
             uint256 amount = uint256(uint128(additional0));
-            if (c0.isAddressZero()) expectedValue = amount;
+            if (c0.isAddressZero()) expectedValue += amount;
             else permit2.transferFrom(msg.sender, address(this), uint160(amount), Currency.unwrap(c0));
         }
         if (additional1 > 0) {
@@ -773,6 +790,46 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             );
         }
         if (msg.value != expectedValue) revert InvalidEthValue();
+    }
+
+    /// @dev Pull the caller's route-funding entries — non-pool tokens that exist solely to fund the route —
+    ///      and wire their approvals so the route can spend them. Native entries contribute to the expected
+    ///      msg.value instead of a Permit2 pull; on a native pool address(0) IS currency0 and is rejected as a
+    ///      pool currency, so msg.value never has two meanings. Pool currencies are budget, not funding
+    ///      (rejecting them keeps one canonical encoding). A zero-amount entry pulls nothing but still wires
+    ///      and later sweeps its token — the donation-claim path (see the contract INVARIANT).
+    function _pullFunding(PoolKey memory key, TokenAmount[] calldata funding, bytes calldata route)
+        internal
+        returns (uint256 expectedValue)
+    {
+        if (funding.length == 0) return 0;
+        // funding is route input by definition: without a route it would only round-trip to the recipient.
+        if (route.length == 0) revert RouteFundingRequiresRoute();
+        for (uint256 i = 0; i < funding.length; i++) {
+            Currency token = funding[i].token;
+            if (token == key.currency0 || token == key.currency1) revert InvalidFundingToken(token);
+            if (token.isAddressZero()) {
+                expectedValue += funding[i].amount;
+            } else {
+                if (funding[i].amount > 0) {
+                    permit2.transferFrom(
+                        msg.sender, address(this), funding[i].amount.toUint160(), Currency.unwrap(token)
+                    );
+                }
+                _ensureApproved(token);
+            }
+        }
+    }
+
+    /// @dev Sweep every funding token to the resolved recipient: whatever the route did not consume must not
+    ///      stay in this contract (no-funds-at-rest). Runs after the unlock. The RESOLVED recipient — not
+    ///      msg.sender — receives leftovers, because a route can also PRODUCE a funding token from position
+    ///      value (collected fees, withdrawn principal); sweeping to msg.sender would hand an approved
+    ///      operator a value-redirect path through the zap.
+    function _sweepFunding(TokenAmount[] calldata funding, address to) internal {
+        for (uint256 i = 0; i < funding.length; i++) {
+            _sweep(funding[i].token, to);
+        }
     }
 
     /// @dev Wires a token up: max-approves it to Permit2 and grants standing max Permit2 allowances to POSM

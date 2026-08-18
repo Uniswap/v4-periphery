@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
 
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
 /// @title ISwapAndAdd
@@ -70,9 +71,24 @@ interface ISwapAndAdd {
     error NotAuthorizedForToken(uint256 tokenId);
     /// @notice A negative `additional0/additional1` (return-to-wallet) asked for more than was withdrawn.
     error ReturnExceedsWithdrawn(uint256 requested, uint256 withdrawn);
-    /// @notice Nothing to deploy: the operation has no pulled budget and the position has no accrued fees
-    ///         (compound on a fee-less position, or an empty increase).
+    /// @notice Nothing to deploy: the operation has no pulled budget, the position has no accrued fees and
+    ///         there is no route that could produce a budget (compound on a fee-less position, or an empty
+    ///         increase).
     error NoFeesToCompound();
+    /// @notice `routeFunding` entries are route input by definition; without a `route` they would only
+    ///         round-trip to the recipient.
+    error RouteFundingRequiresRoute();
+    /// @notice A `routeFunding` entry is a pool currency of the operation — pool tokens are budget, not
+    ///         funding: pass them as `amount0In`/`amount1In` (on a native pool this also rejects address(0),
+    ///         keeping msg.value's two possible meanings mutually exclusive).
+    error InvalidFundingToken(Currency token);
+
+    /// @notice One route-funding entry: a non-pool token pulled from the caller solely to fund the route.
+    ///         See `AddParams.routeFunding`.
+    struct TokenAmount {
+        Currency token;
+        uint256 amount;
+    }
 
     /// @param poolKey       Target v4 pool.
     /// @param tickLower     Lower tick of the position.
@@ -84,6 +100,17 @@ interface ISwapAndAdd {
     ///                      declares its own input token and amount; BOTH pool tokens are funded for it (bounded
     ///                      Permit2 allowances / native value), whatever it does not consume stays in the contract
     ///                      for the same-pool reconcile, and native value left in the router is reclaimed.
+    /// @param routeFunding  OPTIONAL non-pool tokens pulled from the caller solely to fund the `route` (zap-in
+    ///                      from arbitrary tokens: e.g. supply USDC, route it into the pool's two tokens). Each
+    ///                      entry is Permit2-pulled up front; whatever of it the route leaves unconsumed is
+    ///                      swept to `recipient` after the operation. Entries must not be pool currencies
+    ///                      (those are `amount0In`/`amount1In`) and require a non-empty `route`. Native ETH may
+    ///                      be an entry (token = address(0)) only when currency0 is not native, and msg.value
+    ///                      must equal that entry's amount — msg.value always has exactly one meaning. A
+    ///                      zero-amount entry pulls nothing but is still swept: it claims any donated balance
+    ///                      of that token (consistent with the donation doctrine in the contract INVARIANT).
+    ///                      Fee-on-transfer tokens are unsupported (the route's declared input would exceed the
+    ///                      delivered balance), matching the pool-token policy.
     /// @param minLiquidity  Slippage floor: revert if the resulting (post-trim) position liquidity < minLiquidity.
     /// @param recipient     Receives the POSM NFT (after the unlock) and any swept leftover input token. Must not
     ///                      be this SwapAndAdd contract.
@@ -96,6 +123,7 @@ interface ISwapAndAdd {
         uint256 amount0In;
         uint256 amount1In;
         bytes route;
+        TokenAmount[] routeFunding;
         uint256 minLiquidity;
         address recipient;
         bytes hookData;
@@ -122,6 +150,11 @@ interface ISwapAndAdd {
     /// @param route             Verbatim Universal Router payload for the surplus->deficit swap (may be empty;
     ///                          funding semantics as in `AddParams.route`). The collected fees are part of the
     ///                          held budget the route may consume.
+    /// @param routeFunding      OPTIONAL non-pool tokens pulled from the caller solely to fund the `route`;
+    ///                          full semantics in `AddParams.routeFunding`. Requires a non-empty `route`;
+    ///                          leftovers are swept to the RESOLVED recipient (forced to the owner for an
+    ///                          operator — a route can also produce a funding token from position value, so
+    ///                          funding leftovers are output like any other).
     /// @param minLiquidityAdded Slippage floor: revert if the liquidity added to the position < this. Quote it
     ///                          against budget PLUS unclaimed fees, or the fee credit becomes slack in the floor.
     /// @param recipient         Receives any swept leftover input-token dust (NOT the position — that stays put).
@@ -134,6 +167,7 @@ interface ISwapAndAdd {
         uint256 amount0In;
         uint256 amount1In;
         bytes route;
+        TokenAmount[] routeFunding;
         uint256 minLiquidityAdded;
         address recipient;
         bytes hookData;
@@ -151,7 +185,7 @@ interface ISwapAndAdd {
     ///      so an open entrypoint would let anyone force-churn a position's fees through caller-chosen route /
     ///      floor. For an operator, all output is forced to the owner. The fee collect is a DECREASE by 0, so
     ///      pools with remove-liquidity hooks see those callbacks on every increase. Reverts NoFeesToCompound
-    ///      when there is nothing to deploy (zero budget and zero fees).
+    ///      when there is nothing to deploy (zero budget, zero fees and no route that could produce a budget).
     /// @return liquidityAdded The liquidity added to the position.
     /// @return amount0        token0 added to the position.
     /// @return amount1        token1 added to the position.
@@ -178,6 +212,9 @@ interface ISwapAndAdd {
     /// @param newTickUpper  Upper tick of the new position.
     /// @param route         Verbatim Universal Router payload for the surplus->deficit swap (may be empty;
     ///                      funding semantics as in `AddParams.route`).
+    /// @param routeFunding  OPTIONAL non-pool tokens pulled from the caller solely to fund the `route`; full
+    ///                      semantics in `AddParams.routeFunding`. Requires a non-empty `route`; leftovers are
+    ///                      swept to the RESOLVED recipient (forced to the owner for an operator).
     /// @param minLiquidity  Slippage floor on the NEW (post-trim) position.
     /// @param recipient     Receives the new POSM NFT, any returned (negative-delta) share, and any swept dust.
     ///                      HONORED ONLY when the caller is the position owner; if an approved operator calls,
@@ -192,6 +229,7 @@ interface ISwapAndAdd {
         int24 newTickLower;
         int24 newTickUpper;
         bytes route;
+        TokenAmount[] routeFunding;
         uint256 minLiquidity;
         address recipient;
         bytes hookData;
