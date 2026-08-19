@@ -44,7 +44,7 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 ///      KNOWN LIMIT — wei-scale budgets: the pool keeps up to 1 wei per side on any mint->decrease round trip
 ///      (mint amounts are pulled rounded UP, decrease amounts returned rounded DOWN). A budget within a few wei
 ///      of that toll cannot fully settle no matter how much of the just-added liquidity the trim removes: the
-///      trim caps at everything that was added, the resulting liquidity is 0, and any `minLiquidity >= 1`
+///      trim caps at everything that was added, the resulting liquidity is 0, and any non-zero `minLiquidity`
 ///      surfaces it as InsufficientLiquidity; only a zero floor (the explicit accept-anything opt-out) sees
 ///      v4's CurrencyNotSettled instead. Real-size budgets cannot reach this regime.
 ///

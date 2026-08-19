@@ -80,7 +80,7 @@ contract SwapAndAddTrimMathTest is Test {
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
     // 2. The dust regime is NOT a formula error: the pool's own mint-up/burn-down rounding keeps
-    //    the wei, so no inverse — however exact — can free it. (This is what the minLiquidity >= 1
+    //    the wei, so no inverse — however exact — can free it. (This is what the non-zero-minLiquidity
     //    floor surfaces as InsufficientLiquidity; see SwapAndAddTrim.t.sol.)
     // ─────────────────────────────────────────────────────────────────────────────────────────
 

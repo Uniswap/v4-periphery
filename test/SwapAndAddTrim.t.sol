@@ -25,7 +25,7 @@ import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol"
 ///         The only remaining failure is the pool's own mint/burn rounding toll (~1 wei/side kept on any
 ///         mint->decrease round trip): budgets within a few wei of that toll cannot settle no matter how much
 ///         is trimmed. There the trim caps at the full just-added liquidity, the added liquidity is 0, and any
-///         `minLiquidity >= 1` floor surfaces it as InsufficientLiquidity; only a zero floor (the explicit
+///         non-zero `minLiquidity` floor surfaces it as InsufficientLiquidity; only a zero floor (the explicit
 ///         opt-out) still sees v4's CurrencyNotSettled. Both pinned below.
 ///
 ///         NOTE the mechanism-hiding price: at price exactly 1 the floored intermediate has zero truncation,
@@ -146,13 +146,13 @@ contract SwapAndAddTrimTest is PosmTestSetup {
 
     // ── the DUST regime: budgets within the pool's ~1-wei mint/burn rounding toll ───────────────────────
 
-    /// @dev with any minLiquidity >= 1 the capped trim (added liquidity fully removed) hits the floor and
+    /// @dev with any non-zero minLiquidity the capped trim (added liquidity fully removed) hits the floor and
     ///      surfaces as the contract's own InsufficientLiquidity — never v4's CurrencyNotSettled.
     function test_trim_dustRegime_floorSurfacesInsufficientLiquidity() public {
         PoolKey memory k = _pool(500, 1, SQRT_PRICE_1_1, 1e24);
         (bool r, bytes4 sel,) = _try(k, -10, 6000, 259, 0, 1);
         assertTrue(r, "dust budget must revert");
-        assertEq(sel, ISwapAndAdd.InsufficientLiquidity.selector, "floor >= 1 must surface InsufficientLiquidity");
+        assertEq(sel, ISwapAndAdd.InsufficientLiquidity.selector, "non-zero floor must surface InsufficientLiquidity");
     }
 
     /// @dev a zero floor is the documented opt-out: the unsettled rounding toll then surfaces as v4's
@@ -188,7 +188,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         }
     }
 
-    // ── fuzz: with a floor of 1, CurrencyNotSettled is unreachable from the rounding domain ─────────────
+    // ── fuzz: with a non-zero floor, CurrencyNotSettled is unreachable from the rounding domain ─────────────
 
     PoolKey fuzzKeyMid;
     PoolKey fuzzKeyLow;
@@ -213,7 +213,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         if (x0 == 0 && x1 == 0) return;
         (bool r,,) = _try(k, tl, tu, x0, x1, 1);
         // the zap may legitimately revert for other reasons (dust floor, sizing overflow, ...) but with a
-        // floor >= 1 never with CurrencyNotSettled.
+        // non-zero floor never with CurrencyNotSettled.
         if (r) {
             (, bytes4 sel,) = _try(k, tl, tu, x0, x1, 1);
             assertTrue(sel != CURRENCY_NOT_SETTLED, "left a currency unsettled despite floor");
