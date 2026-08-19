@@ -40,33 +40,42 @@ contract DeploySwapAndAdd is Script {
 
     function run() external {
         ChainParams memory c = _params(block.chainid);
+        // Reuse an already-deployed patched router (built from the SAME universal-router submodule commit)
+        // by passing ROUTER=<address>; the router is the expensive half of the deployment and the zap only
+        // needs its address. Unset -> deploy a fresh router pair as before.
+        address existingRouter = vm.envOr("ROUTER", address(0));
 
         vm.startBroadcast();
-        UniversalRouter router = new UniversalRouter(
-            RouterParameters({
-                permit2: c.permit2,
-                weth9: c.weth9,
-                v2Factory: c.v2Factory,
-                v3Factory: c.v3Factory,
-                pairInitCodeHash: c.pairInitCodeHash,
-                poolInitCodeHash: c.poolInitCodeHash,
-                v4PoolManager: c.poolManager,
-                permissionsAdapterFactory: address(0),
-                v3NFTPositionManager: c.v3Posm,
-                v4PositionManager: c.posm,
-                spokePool: c.spokePool
-            })
-        );
+        address router = existingRouter;
+        if (router == address(0)) {
+            router = address(
+                new UniversalRouter(
+                    RouterParameters({
+                        permit2: c.permit2,
+                        weth9: c.weth9,
+                        v2Factory: c.v2Factory,
+                        v3Factory: c.v3Factory,
+                        pairInitCodeHash: c.pairInitCodeHash,
+                        poolInitCodeHash: c.poolInitCodeHash,
+                        v4PoolManager: c.poolManager,
+                        permissionsAdapterFactory: address(0),
+                        v3NFTPositionManager: c.v3Posm,
+                        v4PositionManager: c.posm,
+                        spokePool: c.spokePool
+                    })
+                )
+            );
+        }
         SwapAndAdd zap = new SwapAndAdd(
             IPoolManager(c.poolManager),
             IAllowanceTransfer(c.permit2),
             IPositionManager(c.posm),
-            IUniversalRouter(address(router))
+            IUniversalRouter(router)
         );
         vm.stopBroadcast();
 
         console2.log("chainid            ", block.chainid);
-        console2.log("UniversalRouter    ", address(router));
+        console2.log(existingRouter == address(0) ? "UniversalRouter (new)  " : "UniversalRouter (reused)", router);
         console2.log("SwapAndAdd         ", address(zap));
     }
 
