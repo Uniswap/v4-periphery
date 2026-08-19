@@ -478,7 +478,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      "+1 liquidity unit" style compensation cannot bound a shortfall measured in token wei.
     ///      The cap is reachable only when the deficit exceeds what unwinding ALL of `lopt` returns, i.e. the
     ///      budget is within the pool's ~1-wei mint/burn rounding toll: the trim then removes all of `lopt`,
-    ///      the added liquidity is 0 and any `minLiquidity >= 1` floor reverts InsufficientLiquidity (a zero
+    ///      the added liquidity is 0 and any non-zero `minLiquidity` floor reverts InsufficientLiquidity (a zero
     ///      floor lets the unsettled toll surface as v4's CurrencyNotSettled at the end of the unlock).
     function _trim(CoreParams memory cp, uint256 tokenId, uint128 lopt, bool deficitIs1, uint256 amountOut)
         internal
