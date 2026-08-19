@@ -346,6 +346,15 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 
+    /// @dev a budget too small to fund even one unit of liquidity in the requested range: a zero-sized MINT
+    ///      can never produce a position (v4 rejects empty-position updates), so the zap surfaces its own
+    ///      floor error instead of the pool's opaque CannotUpdateEmptyPosition — regardless of the floor.
+    function test_add_zeroSizedMint_revertsInsufficientLiquidity() public {
+        ISwapAndAdd.AddParams memory p = _addParams(-887_220, 887_220, 0, 1); // 1 wei into (nearly) full range
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InsufficientLiquidity.selector, 0, 0));
+        zap.add(p);
+    }
+
     function test_add_revertsOnMinLiquidity() public {
         ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
         p.minLiquidity = type(uint128).max; // impossible floor

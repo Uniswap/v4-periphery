@@ -375,6 +375,13 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // 2. size from the holdings (fee-aware, optimistic), flash-take whatever side is short, then mint a new
         //    position or increase the existing one.
         (uint128 liquidityOptimistic, uint256 amount0optimistic, uint256 amount1optimistic) = _planLiquidity(cp);
+        // a zero-sized MINT can never produce a position (v4 rejects empty-position updates outright), so no
+        // outcome could ever satisfy the caller: surface the contract's own floor error instead of the pool's
+        // opaque CannotUpdateEmptyPosition. Grow-in-place ops keep their semantics (adding 0 to an existing
+        // position is valid; the minLiquidityAdded floor is the gate).
+        if (liquidityOptimistic == 0 && existingTokenId == 0) {
+            revert InsufficientLiquidity(uint128(cp.minLiquidity), 0);
+        }
         _flashTakeDeficit(cp, amount0optimistic, amount1optimistic);
         tokenId = _deploy(cp, existingTokenId, liquidityOptimistic, amount0optimistic);
 
