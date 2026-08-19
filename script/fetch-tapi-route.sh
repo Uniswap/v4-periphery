@@ -14,12 +14,16 @@ TOKEN_IN=${1:?tokenIn}
 TOKEN_OUT=${2:?tokenOut}
 AMOUNT=${3:?amountIn raw units}
 CHAIN_ID=${4:-11155111}
-SWAPPER=${SWAPPER:-0xc6b69cbB1f9EB78D15C3876105B9EDA458CB404F} # live Sepolia SwapAndAdd
+SWAPPER=${SWAPPER:-0x6f923892d6A45f7e77DB36f48F055C045F93E979} # live Sepolia SwapAndAdd
 API=${TAPI_URL:-https://trading-api-labs.interface.gateway.uniswap.org/v1}
 KEY=${TAPI_API_KEY:?set TAPI_API_KEY (see .env)}
 # Router ABI generation to encode for (public x-universal-router-version header). Must match the ABI of the
 # router that will execute the route; the API default targets an older generation than this repo's deployment.
 UR_VERSION=${UR_VERSION:-2.2.0}
+# Routing preference (allowed: BEST_PRICE, FASTEST). NOTE 2026-08-19: BEST_PRICE returns the API's own
+# APIResponseValidationError on Sepolia (server-side schema bug on the testnet aggregation path); use
+# ROUTING_PREFERENCE=FASTEST there. Sepolia also currently only serves v3 legs (v4 not routed).
+ROUTING_PREFERENCE=${ROUTING_PREFERENCE:-BEST_PRICE}
 
 quote=$(curl -sf "$API/quote" -H "x-api-key: $KEY" -H "x-universal-router-version: $UR_VERSION" -H "content-type: application/json" -d @- <<JSON
 {
@@ -30,7 +34,7 @@ quote=$(curl -sf "$API/quote" -H "x-api-key: $KEY" -H "x-universal-router-versio
   "tokenInChainId": $CHAIN_ID,
   "tokenOutChainId": $CHAIN_ID,
   "swapper": "$SWAPPER",
-  "routingPreference": "BEST_PRICE"
+  "routingPreference": "$ROUTING_PREFERENCE"
 }
 JSON
 )
