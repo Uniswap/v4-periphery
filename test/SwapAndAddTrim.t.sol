@@ -60,7 +60,9 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         // deep reserve pool so the flash-take never hits the (unrelated) K-05 PoolManager-drained revert
         (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 10000, int24(200), SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(
-            rk, ModifyLiquidityParams({tickLower: -600_000, tickUpper: 600_000, liquidityDelta: int256(1e30), salt: 0}), ""
+            rk,
+            ModifyLiquidityParams({tickLower: -600_000, tickUpper: 600_000, liquidityDelta: int256(1e30), salt: 0}),
+            ""
         );
     }
 
@@ -134,10 +136,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
             uint256 snap = vm.snapshotState();
             (bool r, bytes4 sel, uint128 liq) = _try(k, centre - 600, centre + 600, 0, amounts[i], 1);
             assertFalse(
-                r,
-                string.concat(
-                    "amount ", vm.toString(amounts[i]), " reverted with selector ", vm.toString(sel)
-                )
+                r, string.concat("amount ", vm.toString(amounts[i]), " reverted with selector ", vm.toString(sel))
             );
             assertGt(liq, 0, "must mint liquidity");
             vm.revertToState(snap);
@@ -178,8 +177,12 @@ contract SwapAndAddTrimTest is PosmTestSetup {
                 assertFalse(
                     rev,
                     string.concat(
-                        "range ", vm.toString(int256(los[r])), " budget ", vm.toString(budgets[i]),
-                        " reverted with selector ", vm.toString(sel)
+                        "range ",
+                        vm.toString(int256(los[r])),
+                        " budget ",
+                        vm.toString(budgets[i]),
+                        " reverted with selector ",
+                        vm.toString(sel)
                     )
                 );
                 assertGt(liq, 0, "must mint liquidity");
@@ -201,9 +204,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         return lowPrice ? (fuzzKeyLow, int24(-207_240)) : (fuzzKeyMid, int24(0));
     }
 
-    function testFuzz_trim_neverUnsettledWithFloor(uint96 b0, uint96 b1, int8 loMul, int8 hiMul, bool lowPrice)
-        public
-    {
+    function testFuzz_trim_neverUnsettledWithFloor(uint96 b0, uint96 b1, int8 loMul, int8 hiMul, bool lowPrice) public {
         (PoolKey memory k, int24 centre) = _fuzzPool(lowPrice);
         int24 tl = centre + int24(int256(loMul)) * k.tickSpacing;
         int24 tu = centre + int24(int256(hiMul)) * k.tickSpacing;

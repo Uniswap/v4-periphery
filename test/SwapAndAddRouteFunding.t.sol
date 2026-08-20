@@ -60,7 +60,9 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         // deep reserve pool so the flash-take never hits the (unrelated) K-05 PoolManager-drained revert
         (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 10000, int24(200), SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(
-            rk, ModifyLiquidityParams({tickLower: -600_000, tickUpper: 600_000, liquidityDelta: int256(1e27), salt: 0}), ""
+            rk,
+            ModifyLiquidityParams({tickLower: -600_000, tickUpper: 600_000, liquidityDelta: int256(1e27), salt: 0}),
+            ""
         );
 
         recipient = makeAddr("recipient");
@@ -73,12 +75,11 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         f[0] = ISwapAndAdd.TokenAmount({token: Currency.wrap(token), amount: amount});
     }
 
-    function _addP(
-        uint256 a0,
-        uint256 a1,
-        bytes memory routeBytes,
-        ISwapAndAdd.TokenAmount[] memory funding
-    ) internal view returns (ISwapAndAdd.AddParams memory) {
+    function _addP(uint256 a0, uint256 a1, bytes memory routeBytes, ISwapAndAdd.TokenAmount[] memory funding)
+        internal
+        view
+        returns (ISwapAndAdd.AddParams memory)
+    {
         return ISwapAndAdd.AddParams({
             poolKey: key,
             tickLower: -600,
@@ -176,8 +177,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
     }
 
     function test_add_funding_rejectsPoolCurrencies() public {
-        ISwapAndAdd.AddParams memory p =
-            _addP(0, 1e18, ROUTE_PAYLOAD, _funding(Currency.unwrap(currency0), 1e18));
+        ISwapAndAdd.AddParams memory p = _addP(0, 1e18, ROUTE_PAYLOAD, _funding(Currency.unwrap(currency0), 1e18));
         vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidFundingToken.selector, currency0));
         zap.add(p);
 

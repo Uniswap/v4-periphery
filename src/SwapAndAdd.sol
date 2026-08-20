@@ -262,18 +262,18 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // handle the grow-in-place operations: increase and compound share this path (compound = zero
         // pulled budget, so the collected fees are its whole budget).
         if (op == OP_INCREASE) {
-            (uint256 tokenId, CoreParams memory cp) = abi.decode(inner, (uint256, CoreParams));
+            (uint256 growId, CoreParams memory growCp) = abi.decode(inner, (uint256, CoreParams));
             // collect accrued fees FIRST (DECREASE by 0 credits them, TAKE_PAIR pulls them here): they join
             // the pulled budget below, so fees are route- and sizing-eligible and never leave to the wallet.
-            _decrease(cp.key, tokenId, 0, cp.hookData);
+            _decrease(growCp.key, growId, 0, growCp.hookData);
             // budget = everything held: the caller's pulled amounts plus the just-collected fees.
-            cp.budget0 = cp.key.currency0.balanceOfSelf();
-            cp.budget1 = cp.key.currency1.balanceOfSelf();
+            growCp.budget0 = growCp.key.currency0.balanceOfSelf();
+            growCp.budget1 = growCp.key.currency1.balanceOfSelf();
             // a route can still produce a budget (e.g. from route funding); with neither holdings nor a route
             // there is provably nothing to deploy.
-            if (cp.budget0 == 0 && cp.budget1 == 0 && cp.route.length == 0) revert NoFeesToCompound();
+            if (growCp.budget0 == 0 && growCp.budget1 == 0 && growCp.route.length == 0) revert NoFeesToCompound();
             // existing tokenId -> _addCore INCREASEs it in place (no new NFT).
-            (, uint128 liqAdded, uint256 added0, uint256 added1) = _addCore(cp, tokenId);
+            (, uint128 liqAdded, uint256 added0, uint256 added1) = _addCore(growCp, growId);
             return abi.encode(liqAdded, added0, added1);
         }
 
