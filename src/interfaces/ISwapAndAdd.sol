@@ -67,7 +67,8 @@ interface ISwapAndAdd {
     /// @notice Plain ETH transfers are rejected; only the PoolManager, POSM and the Universal Router may send.
     error InvalidEthSender();
     error InsufficientLiquidity(uint128 minLiquidity, uint128 liquidity);
-    /// @notice Output may not be sent to this contract, where it would violate the no-funds-at-rest invariant.
+    /// @notice Output may not be sent to this contract (it would strand there) or to the zero address (the
+    ///         NFT hand-off rejects it late; swept leftovers would burn silently on the grow ops).
     error InvalidRecipient(address recipient);
     error NotAuthorizedForToken(uint256 tokenId);
     /// @notice A negative `additional0/additional1` (return-to-wallet) asked for more than was withdrawn.
@@ -101,6 +102,11 @@ interface ISwapAndAdd {
     ///                      declares its own input token and amount; BOTH pool tokens are funded for it (bounded
     ///                      Permit2 allowances / native value), whatever it does not consume stays in the contract
     ///                      for the same-pool reconcile, and native value left in the router is reclaimed.
+    ///                      ROUTE-CONSTRUCTION REQUIREMENT: the contract forwards its WHOLE native balance with
+    ///                      the route, so route commands must scope their input amounts explicitly — never
+    ///                      consume "the entire balance" (e.g. WRAP_ETH with CONTRACT_BALANCE): value wrapped or
+    ///                      spent beyond the declared input is taken from the operation's budget, and WETH left
+    ///                      inside the router is NOT reclaimed (only native is).
     /// @param routeFunding  OPTIONAL non-pool tokens pulled from the caller solely to fund the `route` (zap-in
     ///                      from arbitrary tokens: e.g. supply USDC, route it into the pool's two tokens). Each
     ///                      entry is Permit2-pulled up front; whatever of it the route leaves unconsumed is

@@ -168,6 +168,44 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.compound(compoundParams);
     }
 
+    /// @dev The zero address is rejected up front on every entrypoint: for add/rebalance the NFT hand-off
+    ///      would revert late anyway, and for increase/compound a zero recipient would silently BURN swept
+    ///      leftovers (dust, and — with routeFunding — potentially the whole unconsumed funding input).
+    function test_revertsWhenRecipientIsZero() public {
+        ISwapAndAdd.AddParams memory addParams = _addParams(0, 10e18);
+        addParams.recipient = address(0);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(0)));
+        zap.add(addParams);
+
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+
+        ISwapAndAdd.IncreaseParams memory increaseParams = _increaseParams(tokenId, 0, 10e18);
+        increaseParams.recipient = address(0);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(0)));
+        zap.increase(increaseParams);
+
+        ISwapAndAdd.RebalanceParams memory rebalanceParams = _rebalanceParams(tokenId, 0, 0);
+        rebalanceParams.recipient = address(0);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(0)));
+        zap.rebalance(rebalanceParams);
+
+        ISwapAndAdd.CompoundParams memory compoundParams = _compoundParams(tokenId, 0);
+        compoundParams.recipient = address(0);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.InvalidRecipient.selector, address(0)));
+        zap.compound(compoundParams);
+    }
+
+    /// @dev receive() accepts native only from the PoolManager, POSM and the UR; any other sender is rejected
+    ///      so stray transfers cannot be swept to the next caller.
+    function test_receive_rejectsUnknownSender() public {
+        (bool ok,) = address(zap).call{value: 1 ether}("");
+        assertFalse(ok, "direct native transfer must revert");
+
+        vm.prank(address(manager));
+        (bool okPm,) = address(zap).call{value: 1 ether}("");
+        assertTrue(okPm, "PoolManager may send native");
+    }
+
     // ─────────────────────────── increase (top up an existing position) ───────────────────────────
 
     function _increaseParams(uint256 tokenId, uint256 amount0In, uint256 amount1In)
@@ -617,30 +655,36 @@ contract SwapAndAddTest is PosmTestSetup {
         p.route = ROUTE_PAYLOAD;
     }
 
-    /// @dev The UR SWEEP reclaim runs only for operations that pushed native value: the push is a
-    ///      whole-balance over-push, so a remainder is expected and must not stay in the permissionlessly
-    ///      sweepable UR — and the all-or-nothing SWEEP folds any pre-existing donation into the caller's
-    ///      budget. Value-less operations leave the UR's balance alone.
-    function test_add_route_nativeReclaim_onlyWhenValuePushed() public {
+    /// @dev The UR SWEEP reclaim triggers on ANY native balance left in the router — not only when this
+    ///      operation pushed value. A route can strand native even on a value-less operation (an ERC20-in /
+    ///      native-out route leg on a non-native pool), and UR balances are permissionlessly sweepable, so
+    ///      the reclaim must fire whenever the router holds native at all; the all-or-nothing SWEEP folds the
+    ///      whole balance (over-push and any pre-existing donation alike) into the caller's budget.
+    function test_add_route_reclaimsAnyUrNative() public {
         _configRoute(10000, 0); // no-op route: consumes nothing, the mock just sits on its balance
         ISwapAndAdd.AddParams memory p = _routeAdd(10e18);
         p.poolKey = nativeKey;
 
-        // 1) token1-only budget -> no value pushed -> a pre-existing UR balance is left untouched
-        vm.deal(address(route), 1 ether);
-        zap.add(p);
-        assertEq(address(route).balance, 1 ether, "no value pushed: UR balance untouched");
-        vm.deal(address(route), 0);
-
-        // 2) native in the budget -> value pushed -> the unconsumed push AND the donation are reclaimed
-        p.amount0In = 2 ether;
+        // 1) even with NO value pushed (token1-only budget), a native balance in the UR is reclaimed —
+        //    it joins the caller's budget (native is a pool currency here), boosting the deployed liquidity.
         uint256 snap = vm.snapshotState();
-        (, uint128 liqBase,,) = zap.add{value: 2 ether}(p); // baseline: no donation in the UR
+        (, uint128 liqBaseNoPush,,) = zap.add(p); // no donation in the UR
         vm.revertToState(snap);
 
-        vm.deal(address(route), 1 ether); // donated/stranded native sitting in the UR
-        (, uint128 liqDonated,,) = zap.add{value: 2 ether}(p);
+        vm.deal(address(route), 1 ether); // stranded native sitting in the UR
+        (, uint128 liqDonatedNoPush,,) = zap.add(p);
+        assertEq(address(route).balance, 0, "no push: UR native still fully reclaimed");
+        assertEq(address(zap).balance, 0, "zap eth == 0");
+        assertGt(liqDonatedNoPush, liqBaseNoPush, "reclaimed UR native joined the caller's budget");
 
+        // 2) with native in the budget -> value pushed -> the unconsumed push AND a donation are reclaimed
+        p.amount0In = 2 ether;
+        snap = vm.snapshotState();
+        (, uint128 liqBase,,) = zap.add{value: 2 ether}(p);
+        vm.revertToState(snap);
+
+        vm.deal(address(route), 1 ether);
+        (, uint128 liqDonated,,) = zap.add{value: 2 ether}(p);
         assertEq(address(route).balance, 0, "value pushed: UR native fully reclaimed");
         assertEq(address(zap).balance, 0, "zap eth == 0");
         assertGt(liqDonated, liqBase, "reclaimed donation joined the caller's budget");
