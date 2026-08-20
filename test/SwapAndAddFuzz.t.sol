@@ -284,7 +284,9 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
                 hookData: "",
                 deadline: block.timestamp + 1
             })
-        ) returns (uint128 added, uint256, uint256) {
+        ) returns (
+            uint128 added, uint256, uint256
+        ) {
             assertGe(added, 1, "floor honored");
         } catch (bytes memory data) {
             bytes4 sel = _sel(data);
@@ -335,7 +337,9 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
                 hookData: "",
                 deadline: block.timestamp + 1
             })
-        ) returns (uint256 newId, uint128 liq, uint256, uint256) {
+        ) returns (
+            uint256 newId, uint128 liq, uint256, uint256
+        ) {
             assertGe(liq, 1, "floor honored");
             assertEq(IERC721(address(lpm)).ownerOf(newId), address(this), "user owns new NFT");
         } catch (bytes memory data) {
