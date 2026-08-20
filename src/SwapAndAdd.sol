@@ -55,13 +55,16 @@ import {IUniversalRouter} from "./interfaces/external/IUniversalRouter.sol";
 ///           touch this pool) is re-read and used as the source of truth for sizing. `minLiquidity` checked on
 ///           the final position is the single slippage gate for the whole operation.
 ///
-///         INVARIANT — no funds at rest: outside an active operation this contract holds no tokens, no native
-///         balance and no positions. Every entrypoint pulls the caller's budget, deploys/settles it in full and
-///         sweeps the remainder within the same transaction (any donation to the contract is simply treated as
-///         part of the next caller's budget). The standing max Permit2 allowances to POSM and the Universal
-///         Router (see `_ensureApproved`) are safe *because* of this invariant: both spenders only ever pull
-///         from their direct caller, i.e. only when this contract itself invokes them mid-operation, at which
-///         point the balance is the current caller's own budget and `minLiquidity` bounds the outcome.
+///         INVARIANT — no funds at rest for well-formed operations: an operation pulls the caller's budget,
+///         deploys/settles it in full and sweeps the remainder — pool tokens and every declared routeFunding
+///         token — within the same transaction. What CAN rest here is only value nobody declared: direct
+///         donations, or tokens/native a route delivered that the operation did not list. Such balances are
+///         not lost — they are treated as part of the next caller's budget (pool tokens) or claimable via a
+///         zero-amount routeFunding entry — and, decisively for safety, they are never reachable by a third
+///         party THROUGH this contract's allowances: the standing max Permit2 allowances to POSM and the
+///         Universal Router (see `_ensureApproved`) only ever let those spenders pull from their direct
+///         caller, i.e. only when this contract itself invokes them mid-operation, under the reentrancy lock,
+///         with `minLiquidity` bounding the outcome for the caller whose budget the balance then is.
 ///
 ///         v4-only; ERC-20 + native ETH. Four ops: add + rebalance mint a NEW position (to this contract so it
 ///         can be trimmed, transferred to the recipient after the unlock closes); increase + compound grow an
@@ -367,6 +370,12 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         //    re-read balances — the post-route state is the source of truth we size from, not an estimate.
         if (cp.route.length != 0) {
             _runRoute(cp);
+            // a same-pool route leg re-accrues LP fees on the position AFTER the callback's collect prologue.
+            // POSM credits the position's ENTIRE accrued fee balance on INCREASE_LIQUIDITY, and a credit
+            // exceeding a side's principal pull flips that delta positive — the deploy's SETTLE_PAIR would
+            // revert DeltaNotNegative. Collect again so route-accrued fees join the budget (sizing- and
+            // reconcile-eligible) exactly like the fees collected before the route.
+            if (existingTokenId != 0) _decrease(cp.key, existingTokenId, 0, cp.hookData);
             // update the budget after the route has run.
             cp.budget0 = cp.key.currency0.balanceOfSelf();
             cp.budget1 = cp.key.currency1.balanceOfSelf();
@@ -663,8 +672,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         params[1] = abi.encode(c0, cp.key.currency1);
 
         // forward exactly the required native amount (the funding is wei-exact, see _flashTakeDeficit); the
-        // SWEEP returns whatever POSM does not consume (accrued fees are collected before an increase, so a
-        // residual credit only arises from fees a same-pool route leg generated since that collect).
+        // SWEEP returns whatever POSM does not consume (accrued fees are collected before the deploy — again
+        // after a route, see _addCore — so no residual fee credit is expected here; the SWEEP is belt and
+        // braces for the forwarded value).
         uint256 nativeToForward = c0.isAddressZero() ? amount0 : 0;
         positionManager.modifyLiquiditiesWithoutUnlock{value: nativeToForward}(actions, params);
     }
@@ -684,12 +694,13 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint256 value = address(this).balance;
 
         universalRouter.execute{value: value}(commands, inputs);
-        // Reclaim native left in the UR, but only when this operation pushed value into it: the push is
-        // sized to the full held balance, so a remainder is expected and — UR balances being permissionlessly
-        // sweepable — must not stay there. The SWEEP takes the router's WHOLE balance, so any pre-existing
-        // donation rides along into the caller's budget. Value-less operations leave the UR untouched (a
-        // route stranding its own output there is a broken route; `minLiquidity` gates it like any other).
-        if (value > 0 && address(universalRouter).balance > 0) {
+        // Reclaim ANY native left in the UR: the operation's own over-push (the push is sized to the full
+        // held balance, so a remainder is expected), a route leg that produced native output on a non-native
+        // pool (a supported routeFunding flow that pushes zero value), or a pre-existing donation — UR
+        // balances are permissionlessly sweepable, so not a wei may be left there. The SWEEP takes the
+        // router's WHOLE balance; on a native pool it joins the caller's budget, otherwise it rests here
+        // until claimed (donation doctrine / a zero-amount address(0) routeFunding entry).
+        if (address(universalRouter).balance > 0) {
             bytes[] memory sweepInputs = new bytes[](1);
             // token ETH (address(0)), recipient MSG_SENDER (UR maps it back to this contract), no minimum.
             sweepInputs[0] = abi.encode(address(0), ActionConstants.MSG_SENDER, 0);
@@ -878,9 +889,12 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         currency.transfer(address(poolManager), amount);
     }
 
-    /// @dev Sending output here would strand it and violate the no-funds-at-rest invariant.
+    /// @dev Output must be deliverable: this contract would strand it (violating no-funds-at-rest), and the
+    ///      zero address would either revert late (the NFT hand-off rejects address(0) after the whole
+    ///      operation already ran) or, on the grow ops, silently burn swept leftovers — including unconsumed
+    ///      route funding. Reject both up front.
     function _validateRecipient(address recipient) internal view {
-        if (recipient == address(this)) revert InvalidRecipient(recipient);
+        if (recipient == address(this) || recipient == address(0)) revert InvalidRecipient(recipient);
     }
 
     /// @dev Revert unless msg.sender is the position owner or an ERC-721-approved operator for it, and resolve
