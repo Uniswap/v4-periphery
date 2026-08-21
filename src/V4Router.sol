@@ -27,11 +27,13 @@ abstract contract V4Router is IV4Router, BaseActionsRouter, DeltaResolver {
     using CalldataDecoder for bytes;
     using BipsLibrary for uint256;
 
+    // X36 fixed-point scale for realized hop prices: a hop's price is amountOut * PRECISION /
+    // amountIn (output per input), compared against the caller's minHopPriceX36
     uint256 private constant PRECISION = 1e36;
 
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
-    function _handleAction(uint256 action, bytes calldata params) internal override {
+    function _handleAction(uint256 action, bytes calldata params) internal virtual override {
         // swap actions and payment actions in different blocks for gas efficiency
         if (action < Actions.SETTLE) {
             if (action == Actions.SWAP_EXACT_IN) {

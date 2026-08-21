@@ -1,0 +1,333 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+
+import {ILendingAdapter} from "./interfaces/ILendingAdapter.sol";
+import {IPool} from "./interfaces/external/aave/IPool.sol";
+import {IPoolAddressesProvider} from "./interfaces/external/aave/IPoolAddressesProvider.sol";
+import {IPoolDataProvider} from "./interfaces/external/aave/IPoolDataProvider.sol";
+import {OwnableAdapter} from "./base/OwnableAdapter.sol";
+import {PositionAmountResolver} from "./base/PositionAmountResolver.sol";
+import {Market} from "./types/Market.sol";
+import {MarketAllowlist, MarketNotSupported} from "./types/MarketAllowlist.sol";
+import {Ltv, toLtv} from "./types/Ltv.sol";
+import {PositionData} from "./types/PositionData.sol";
+
+/// @title AaveLendingAdapter
+/// @author Uniswap Labs
+/// @notice A singleton `ILendingAdapter` over the Aave v3 Pool. The adapter is a thin shell composing
+///         a governed `(collateral, debt)` allowlist and an owner guard; encode and read logic
+///         delegates to the Aave Pool and the protocol data provider, except the current-LTV ratio,
+///         which is computed locally over Aave's account-level totals (max LTV and the health factor
+///         are read from the protocol). Each encoded call is executed by a `MarginAccount` as itself, so the Aave
+///         `onBehalfOf` is always the account and no delegated authorization is needed. The
+///         motivating use case is a short ETH position: supply USDC as collateral and borrow WETH.
+/// @dev    Design and trust notes:
+///         - The Pool is resolved once from the addresses provider and held immutably: it is a proxy
+///           with a stable address across Aave upgrades. The protocol data provider is NOT cached; it
+///           is resolved from the addresses provider on each use, because Aave's `setPoolDataProvider`
+///           can repoint it to a new, non-proxied address, and caching would strand the adapter on a
+///           deregistered provider (this adapter has no setter and is not upgradeable).
+///         - The adapter only encodes calls; it never holds funds or moves tokens. The executing
+///           `MarginAccount` performs a regular call (never a delegatecall) and validates the `to` it
+///           is handed, but it does not decode this calldata, so THIS ADAPTER is what guarantees the
+///           target is `lendingProtocol()`, the value is zero, `onBehalfOf` is the account, and a
+///           withdrawal's `to` is the passed `receiver`.
+///         - Aave's `borrow` has no receiver: it delivers the borrowed asset to the caller (the
+///           account), which forwards it to the validated receiver. `withdraw` honors its `to`
+///           recipient and `repay` is encoded directly. Only variable-rate debt is used.
+///         - Borrowing capacity and liquidation are enforced by Aave at call time; this adapter adds
+///           no independent oracle. `currentLtvWad` and `positionOf` read Aave's ACCOUNT-LEVEL state
+///           (Aave tracks health and reserve balances across the whole account, not per
+///           `(collateral, debt)` pair), so they equal the position's values only when the account
+///           holds a single Aave position on this Pool. This is a USAGE REQUIREMENT, not a
+///           router-enforced invariant: each Aave position must use its own `(owner, subId)` account.
+///           Co-locating two of this Pool's markets under one `subId` blends the reads and can make a
+///           close/decrease revert or withdraw collateral still backing another debt. Use a distinct
+///           `subId` per Aave position (Morpho markets are isolated and not subject to this).
+///         - Routing is curated: every `encode*` and read reverts `MarketNotSupported` for a pair the
+///           owner has not allowlisted, never returning a silent default market.
+/// @custom:security-contact security@uniswap.org
+contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountResolver {
+    // WAD scale for loan-to-value ratios.
+    uint256 private constant WAD = 1e18;
+    // Aave expresses LTV and liquidation thresholds in basis points (1e4 == 100%).
+    uint256 private constant BPS = 1e4;
+    // Aave interest rate mode for variable-rate debt (1 = stable, deprecated; 2 = variable).
+    uint256 private constant VARIABLE_RATE = 2;
+
+    /// @notice The Aave v3 Pool, resolved from the addresses provider at construction. The single
+    ///         call target for every market this adapter routes. All `encode*` functions return this
+    ///         address as `target`. The Pool is a proxy with a stable address, so caching it is safe.
+    IPool public immutable pool;
+
+    /// @notice The Aave v3 PoolAddressesProvider. The protocol data provider is resolved from it on
+    ///         each use (see `dataProvider`) rather than cached, so an Aave data-provider redeployment
+    ///         is tracked automatically.
+    IPoolAddressesProvider public immutable addressesProvider;
+
+    /// @notice The governed allowlist of routable `(collateral, debt)` pairs. Managed via `setMarket`;
+    ///         the owner guard lives in `OwnableAdapter`.
+    MarketAllowlist internal _markets;
+
+    /// @dev Thrown when the addresses provider resolves the Pool or the data provider to the zero
+    ///      address at construction.
+    error ZeroAddress();
+
+    /// @dev Thrown when `encodeWithdrawCollateral` is called with an `account` that is not the caller.
+    ///      Aave's withdraw burns the caller's own aTokens (there is no `onBehalfOf`), so the encoder
+    ///      only ever produces a withdrawal for the account that calls it.
+    /// @param account The account argument supplied to the encoder.
+    /// @param caller The actual caller (`msg.sender`).
+    error AccountMismatch(address account, address caller);
+
+    /// @notice Emitted when a market is enabled or disabled in the allowlist.
+    /// @param collateral The collateral token address of the market.
+    /// @param debt The debt token address of the market.
+    /// @param allowed Whether the pair is now routable.
+    event MarketSet(address indexed collateral, address indexed debt, bool allowed);
+
+    /// @param provider The Aave v3 PoolAddressesProvider for the target market. The Pool and data
+    ///        provider proxy addresses are resolved from it and stored immutably.
+    /// @param owner_ The initial adapter owner (governance).
+    constructor(IPoolAddressesProvider provider, address owner_) OwnableAdapter(owner_) {
+        address pool_ = provider.getPool();
+        // resolve the data provider once only to sanity-check the provider is wired; it is re-resolved
+        // on each use rather than cached (Aave can repoint it), see `dataProvider`
+        if (pool_ == address(0) || provider.getPoolDataProvider() == address(0)) revert ZeroAddress();
+        pool = IPool(pool_);
+        addressesProvider = provider;
+    }
+
+    /// @inheritdoc ILendingAdapter
+    function lendingProtocol() external view returns (address) {
+        return address(pool);
+    }
+
+    /// @notice The Aave v3 protocol data provider, resolved fresh from the addresses provider on each
+    ///         call. Unlike the Pool, Aave's data provider is not a stable proxy: `setPoolDataProvider`
+    ///         can overwrite it with a new, non-proxied address, so caching it would strand the adapter
+    ///         on a deregistered provider. Backs the reserve-token and reserve-config reads.
+    /// @return The current Aave v3 protocol data provider.
+    function dataProvider() public view returns (IPoolDataProvider) {
+        return IPoolDataProvider(addressesProvider.getPoolDataProvider());
+    }
+
+    /// @inheritdoc ILendingAdapter
+    function isSupportedMarket(Market calldata market) external view returns (bool) {
+        return _markets.isAllowed(market);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Encodes `IPool.supply` with `onBehalfOf = account` and referral code 0. The `value`
+    ///      field is always 0 because the Aave Pool entrypoints used here are non-payable.
+    function encodeSupplyCollateral(address account, Market calldata market, uint256 amount)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        _requireSupportedMarket(market);
+        return
+            (address(pool), 0, abi.encodeCall(IPool.supply, (Currency.unwrap(market.collateral), amount, account, 0)));
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Aave does not reliably auto-enable a supplied reserve as collateral: `executeSupply` sets
+    ///      the flag only on the account's FIRST supply of the reserve, so any prior aToken balance
+    ///      (including an unsolicited dust transfer to the deterministic account address) leaves later
+    ///      supplies unflagged and the borrow unbacked. Encode an explicit
+    ///      `setUserUseReserveAsCollateral(collateral, true)`, which acts on the calling account and is
+    ///      idempotent. The account parameter is unused: Aave keys this off `msg.sender`, which is the
+    ///      account executing the call.
+    function encodeEnableCollateral(address, Market calldata market)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        _requireSupportedMarket(market);
+        return (
+            address(pool),
+            0,
+            abi.encodeCall(IPool.setUserUseReserveAsCollateral, (Currency.unwrap(market.collateral), true))
+        );
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Encodes `IPool.withdraw` with `to = receiver`. Aave's withdraw honors the `to` recipient
+    ///      directly, so the account does not need to forward. The `receiver` is validated by
+    ///      `MarginAccount` before executing. Aave's withdraw burns the caller's own aTokens rather
+    ///      than an `onBehalfOf` position, so `account` must be the caller; this binds the otherwise
+    ///      unused parameter and asserts the encoder only produces a withdrawal for the account that
+    ///      calls it (the `MarginAccount` always passes its own address).
+    function encodeWithdrawCollateral(address account, Market calldata market, uint256 amount, address receiver)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        _requireSupportedMarket(market);
+        if (account != msg.sender) revert AccountMismatch(account, msg.sender);
+        return
+            (address(pool), 0, abi.encodeCall(IPool.withdraw, (Currency.unwrap(market.collateral), amount, receiver)));
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Encodes `IPool.borrow` in variable-rate mode with `onBehalfOf = account`. Aave's borrow
+    ///      has no receiver: the borrowed asset is delivered to the caller (the account), which
+    ///      forwards it to the receiver it validates.
+    function encodeBorrow(address account, Market calldata market, uint256 amount)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        _requireSupportedMarket(market);
+        return (
+            address(pool),
+            0,
+            abi.encodeCall(IPool.borrow, (Currency.unwrap(market.debt), amount, VARIABLE_RATE, 0, account))
+        );
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Encodes `IPool.repay` in variable-rate mode with `onBehalfOf = account`. Passing
+    ///      `amount == type(uint256).max` repays the account's full variable debt natively,
+    ///      including accrued interest, leaving no dust.
+    function encodeRepay(address account, Market calldata market, uint256 amount)
+        external
+        view
+        returns (address, uint256, bytes memory)
+    {
+        _requireSupportedMarket(market);
+        return
+            (
+                address(pool),
+                0,
+                abi.encodeCall(IPool.repay, (Currency.unwrap(market.debt), amount, VARIABLE_RATE, account))
+            );
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev `collateralAmount` is the account's aToken balance for the collateral reserve and
+    ///      `debtAmount` is its variable debt token balance for the debt reserve. Both Aave receipt
+    ///      tokens rebase with accrued interest, so their `balanceOf` already reflects the current
+    ///      obligation.
+    function positionOf(address account, Market memory market)
+        public
+        view
+        override(ILendingAdapter, PositionAmountResolver)
+        returns (uint256 collateralAmount, uint256 debtAmount)
+    {
+        _requireSupportedMarket(market);
+        (address aCollateral, address vDebt) = _reserveTokens(market);
+        collateralAmount = IERC20(aCollateral).balanceOf(account);
+        debtAmount = IERC20(vDebt).balanceOf(account);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Reads the collateral reserve's liquidation threshold (the Aave analog of Morpho's
+    ///      `lltv`), in basis points, and converts it to a WAD-scaled `Ltv`. Uses the liquidation
+    ///      threshold, not the `ltv` (max-borrow) field.
+    function maxLtvWad(Market calldata market) external view returns (Ltv) {
+        _requireSupportedMarket(market);
+        (,, uint256 liquidationThreshold,,,,,,,) =
+            dataProvider().getReserveConfigurationData(Currency.unwrap(market.collateral));
+        return _thresholdToLtv(liquidationThreshold);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Computes the current LTV as `totalDebtBase * WAD / totalCollateralBase` from Aave's
+    ///      account-level `getUserAccountData`, whose totals are denominated in the protocol's USD
+    ///      base currency, so the collateral/debt decimal difference of a short needs no special
+    ///      handling. Returns `type(uint256).max` (as an `Ltv`) when there is debt but zero
+    ///      collateral, and 0 when there is no debt. This is ACCOUNT-LEVEL: it equals the position LTV
+    ///      only when the account holds a single Aave position on this Pool. Co-locating multiple Aave
+    ///      markets under one `(owner, subId)`, or supplying/borrowing extra reserves via the owner
+    ///      escape hatch, blends every reserve into these totals. The router does NOT enforce one
+    ///      position per account; callers must use a distinct `subId` per Aave position.
+    /// @param market Must be an allowlisted pair (only its currencies are read; the account's full
+    ///        Aave position determines the totals).
+    function currentLtvWad(address account, Market calldata market) external view returns (Ltv) {
+        _requireSupportedMarket(market);
+        (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = pool.getUserAccountData(account);
+        return _currentLtv(totalDebtBase, totalCollateralBase);
+    }
+
+    /// @inheritdoc ILendingAdapter
+    /// @dev Composes the aToken/variable-debt balances with a single account-level
+    ///      `getUserAccountData` read, so the health factor is Aave's own (liquidation-threshold
+    ///      weighted) value rather than a re-derivation. `maxLtv` and `currentLtv` are account-level:
+    ///      they equal the position's values only when the account holds a single Aave position on
+    ///      this Pool (one position per `subId`); see the contract-level notes.
+    function describePosition(address account, Market calldata market)
+        external
+        view
+        returns (PositionData memory data)
+    {
+        _requireSupportedMarket(market);
+        (address aCollateral, address vDebt) = _reserveTokens(market);
+        (uint256 totalCollateralBase, uint256 totalDebtBase,, uint256 liquidationThreshold,, uint256 healthFactor) =
+            pool.getUserAccountData(account);
+        data = PositionData({
+            collateralAmount: IERC20(aCollateral).balanceOf(account),
+            debtAmount: IERC20(vDebt).balanceOf(account),
+            // account-weighted liquidation threshold as the max LTV, matching the health factor Aave
+            // returns; equals the reserve's threshold for a single-position account
+            maxLtv: _thresholdToLtv(liquidationThreshold),
+            currentLtv: _currentLtv(totalDebtBase, totalCollateralBase),
+            healthFactorWad: healthFactor
+        });
+    }
+
+    /// @notice The account's aToken (collateral) and variable-debt-token (debt) addresses for the
+    ///         market's reserves, read from the protocol data provider.
+    /// @param market The market whose reserve receipt tokens are resolved.
+    /// @return aCollateral The collateral reserve's aToken.
+    /// @return vDebt The debt reserve's variable debt token.
+    function _reserveTokens(Market memory market) internal view returns (address aCollateral, address vDebt) {
+        IPoolDataProvider dp = dataProvider();
+        (aCollateral,,) = dp.getReserveTokensAddresses(Currency.unwrap(market.collateral));
+        (,, vDebt) = dp.getReserveTokensAddresses(Currency.unwrap(market.debt));
+    }
+
+    /// @notice Current LTV from Aave's account-level base-currency totals. `type(uint256).max` when
+    ///         there is debt against zero collateral; zero when there is no debt.
+    /// @param totalDebtBase The account's total debt in Aave's base currency.
+    /// @param totalCollateralBase The account's total collateral in Aave's base currency.
+    /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
+    function _currentLtv(uint256 totalDebtBase, uint256 totalCollateralBase) internal pure returns (Ltv) {
+        if (totalCollateralBase == 0) return toLtv(totalDebtBase == 0 ? 0 : type(uint256).max);
+        return toLtv(totalDebtBase * WAD / totalCollateralBase);
+    }
+
+    /// @notice Converts an Aave liquidation threshold (basis points) to a WAD-scaled `Ltv`.
+    /// @param thresholdBps The liquidation threshold in basis points (1e4 == 100%).
+    /// @return The threshold as an `Ltv` (WAD, 1e18 == 100%).
+    function _thresholdToLtv(uint256 thresholdBps) internal pure returns (Ltv) {
+        return toLtv(thresholdBps * WAD / BPS);
+    }
+
+    /// @notice Enables or disables routing for a `(collateral, debt)` pair. When enabling, both
+    ///         assets must be live Aave reserves (their aToken addresses are non-zero). Owner-gated.
+    /// @param collateral The collateral token of the pair.
+    /// @param debt The debt token of the pair.
+    /// @param allowed Whether the pair should be routable.
+    function setMarket(Currency collateral, Currency debt, bool allowed) external {
+        _onlyOwner();
+        if (allowed) {
+            IPoolDataProvider dp = dataProvider();
+            (address aCollateral,,) = dp.getReserveTokensAddresses(Currency.unwrap(collateral));
+            (address aDebt,,) = dp.getReserveTokensAddresses(Currency.unwrap(debt));
+            if (aCollateral == address(0) || aDebt == address(0)) revert MarketNotSupported(collateral, debt);
+        }
+        _markets.set(collateral, debt, allowed);
+        emit MarketSet(Currency.unwrap(collateral), Currency.unwrap(debt), allowed);
+    }
+
+    /// @notice Reverts `MarketNotSupported` unless the `(collateral, debt)` pair is allowlisted.
+    /// @param market The market pair to check.
+    function _requireSupportedMarket(Market memory market) internal view {
+        _markets.requireAllowed(market);
+    }
+}

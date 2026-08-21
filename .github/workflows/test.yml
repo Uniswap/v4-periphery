@@ -24,11 +24,21 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@50d5a8956f2e319df19e6b57539d7e2acb9f8c1e # v1.5.0
         with:
-          version: v1.3.6
+          version: v1.7.1
 
       - name: Show Forge version
         run: |
           forge --version
+
+      # `forge test` compiles sparsely and does not compile `script/`, so it misses the
+      # URCompileAnchor that forces the concrete UniversalRouter into the artifact set. The margin
+      # route helpers deploy the router via `vm.getCode("UniversalRouter.sol:UniversalRouter")`, which
+      # then fails "no matching artifact found". A full `forge build` first compiles the anchor so the
+      # router artifact is present when the tests run.
+      - name: Build
+        run: forge build
+        env:
+          FOUNDRY_PROFILE: ci
 
       - name: Run tests
         run: forge test --isolate -vvv
