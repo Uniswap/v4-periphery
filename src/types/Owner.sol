@@ -46,11 +46,9 @@ function read(Owner storage self) view returns (address) {
 ///         constructor cannot seed an unrecoverable owner (mirrors the guard on `propose`).
 /// @param self The `Owner` storage to update.
 /// @param newOwner The new owner address.
-/// @return The same storage reference, for chaining.
-function write(Owner storage self, address newOwner) returns (Owner storage) {
+function write(Owner storage self, address newOwner) {
     if (newOwner == address(0)) revert ZeroOwner();
     self._current = newOwner;
-    return self;
 }
 
 /// @notice Reverts `NotOwner` unless `caller` is the current owner.
@@ -66,11 +64,9 @@ function onlyOwner(Owner storage self, address caller) view {
 ///         calling `onlyOwner` first); this function performs no authorization itself.
 /// @param self The `Owner` storage to update.
 /// @param newOwner The address proposed as the next owner.
-/// @return The same storage reference, for chaining.
-function propose(Owner storage self, address newOwner) returns (Owner storage) {
+function propose(Owner storage self, address newOwner) {
     if (newOwner == address(0)) revert ZeroOwner();
     self._pending = newOwner;
-    return self;
 }
 
 /// @notice Completes the two-step handoff. Reverts `NotPendingOwner` unless a successor is pending

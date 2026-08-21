@@ -24,7 +24,7 @@ import {V4Quoter} from "../src/lens/V4Quoter.sol";
 import {IMarginRouter} from "../src/interfaces/IMarginRouter.sol";
 import {MorphoLendingAdapter} from "../src/MorphoLendingAdapter.sol";
 import {Market} from "../src/types/Market.sol";
-import {Ltv, raw} from "../src/types/Ltv.sol";
+import {Ltv} from "../src/types/Ltv.sol";
 import {IV4Router} from "../src/interfaces/IV4Router.sol";
 import {Actions} from "../src/libraries/Actions.sol";
 import {ActionConstants} from "../src/libraries/ActionConstants.sol";
@@ -95,7 +95,7 @@ contract OpenMorphoLongEth is Script {
         IV4Quoter quoter = _quoter(router.poolManager());
         bool zeroForOne = market.debt == poolKey.currency0;
 
-        uint256 maxLtvWad = raw(maxLtv);
+        uint256 maxLtvWad = Ltv.unwrap(maxLtv);
         require(leverageX10 > 10, "LEVERAGE_X10 must exceed 10 (1.0x)");
         // gross leverage L implies LTV (L - 1) / L: at 5.0x the debt is 4/5 of collateral value
         uint256 targetLtvWad = (leverageX10 - 10) * WAD / leverageX10;
@@ -186,8 +186,8 @@ contract OpenMorphoLongEth is Script {
         (uint256 collateral, uint256 debt) = adapter.positionOf(account, market);
         Ltv currentLtv = adapter.currentLtvWad(account, market);
 
-        _logResult(collateral, debt, raw(currentLtv), equity, collateralToBuy, oraclePrice);
-        require(raw(currentLtv) < maxLtvWad, "position at or above market max LTV");
+        _logResult(collateral, debt, Ltv.unwrap(currentLtv), equity, collateralToBuy, oraclePrice);
+        require(Ltv.unwrap(currentLtv) < maxLtvWad, "position at or above market max LTV");
         require(collateral >= equity + collateralToBuy, "collateral below equity + buy");
     }
 

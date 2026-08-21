@@ -32,10 +32,8 @@ error MarketNotSupported(Currency collateral, Currency debt);
 /// @param self The registry storage to update.
 /// @param mp The Morpho `MarketParams` to register; its `collateralToken` and `loanToken` fields
 ///        determine the routing key.
-/// @return The same storage reference, for chaining.
-function register(MarketRegistry storage self, MarketParams memory mp) returns (MarketRegistry storage) {
+function register(MarketRegistry storage self, MarketParams memory mp) {
     self._inner[Currency.wrap(mp.collateralToken)][Currency.wrap(mp.loanToken)] = mp;
-    return self;
 }
 
 /// @notice Resolves a market pair to its registered `MarketParams`, reverting if unset.

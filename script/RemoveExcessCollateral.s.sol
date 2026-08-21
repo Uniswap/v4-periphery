@@ -13,7 +13,7 @@ import {IMarginAccount} from "../src/interfaces/IMarginAccount.sol";
 import {ILendingAdapter} from "../src/interfaces/ILendingAdapter.sol";
 import {Market} from "../src/types/Market.sol";
 import {PositionData} from "../src/types/PositionData.sol";
-import {raw} from "../src/types/Ltv.sol";
+import {Ltv} from "../src/types/Ltv.sol";
 
 /// @title RemoveExcessCollateral
 /// @notice Withdraws excess collateral from an existing margin position without touching its
@@ -88,13 +88,14 @@ contract RemoveExcessCollateral is Script {
             require(afterPos.healthFactorWad >= WAD, "position unhealthy after withdrawal");
             if (withdrawWei == 0) {
                 require(
-                    raw(afterPos.currentLtv) <= targetLtvBps * WAD / BPS, "resulting LTV above target after withdrawal"
+                    Ltv.unwrap(afterPos.currentLtv) <= targetLtvBps * WAD / BPS,
+                    "resulting LTV above target after withdrawal"
                 );
             }
         }
 
         console2.log("withdrawn collateral (wei)", received);
-        console2.log("resulting LTV (wad)", raw(afterPos.currentLtv));
+        console2.log("resulting LTV (wad)", Ltv.unwrap(afterPos.currentLtv));
         console2.log("resulting health factor (wad)", afterPos.healthFactorWad);
     }
 
@@ -106,8 +107,8 @@ contract RemoveExcessCollateral is Script {
         if (data.debtAmount == 0) return data.collateralAmount;
 
         uint256 targetLtvWad = targetLtvBps * WAD / BPS;
-        uint256 currentLtvWad = raw(data.currentLtv);
-        require(targetLtvWad < raw(data.maxLtv), "TARGET_LTV_BPS at or above the market liquidation LTV");
+        uint256 currentLtvWad = Ltv.unwrap(data.currentLtv);
+        require(targetLtvWad < Ltv.unwrap(data.maxLtv), "TARGET_LTV_BPS at or above the market liquidation LTV");
         require(currentLtvWad < targetLtvWad, "position already at or above target LTV; nothing safe to remove");
 
         return data.collateralAmount * (targetLtvWad - currentLtvWad) / targetLtvWad;
@@ -117,8 +118,8 @@ contract RemoveExcessCollateral is Script {
         console2.log("margin account", account);
         console2.log("collateral before (wei)", before.collateralAmount);
         console2.log("debt before", before.debtAmount);
-        console2.log("current LTV (wad)", raw(before.currentLtv));
-        console2.log("max LTV (wad)", raw(before.maxLtv));
+        console2.log("current LTV (wad)", Ltv.unwrap(before.currentLtv));
+        console2.log("max LTV (wad)", Ltv.unwrap(before.maxLtv));
         console2.log("target LTV (bps)", targetLtvBps);
         console2.log("withdrawing (wei)", amount);
     }

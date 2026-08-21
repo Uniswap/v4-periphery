@@ -11,7 +11,7 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {MorphoLendingAdapter} from "../src/MorphoLendingAdapter.sol";
 import {Market} from "../src/types/Market.sol";
-import {Ltv, raw} from "../src/types/Ltv.sol";
+import {Ltv} from "../src/types/Ltv.sol";
 
 /// @title FixMorphoWethUsdcMarket
 /// @notice Re-points the deployed Morpho adapter's WETH/USDC (long ETH) route at the canonical
@@ -88,7 +88,7 @@ contract FixMorphoWethUsdcMarket is Script {
 
         require(adapter.isSupportedMarket(market), "WETH/USDC market not registered after fix");
         require(_routesTo(adapter, market, canonical), "adapter does not route to the canonical market after fix");
-        require(raw(adapter.maxLtvWad(market)) == MORPHO_LLTV, "unexpected max LTV after fix");
+        require(Ltv.unwrap(adapter.maxLtvWad(market)) == MORPHO_LLTV, "unexpected max LTV after fix");
 
         console2.log("MorphoLendingAdapter", address(adapter));
         console2.log("WETH/USDC route replaced. Canonical market id:");

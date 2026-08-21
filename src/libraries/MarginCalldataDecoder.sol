@@ -22,7 +22,7 @@ library MarginCalldataDecoder {
     function decodeAdapterMarketAmount(bytes calldata params)
         internal
         pure
-        returns (ILendingAdapter adapter, Market memory market, uint256 amount)
+        returns (ILendingAdapter, Market memory, uint256)
     {
         return abi.decode(params, (ILendingAdapter, Market, uint256));
     }
@@ -37,7 +37,7 @@ library MarginCalldataDecoder {
     function decodeAdapterMarketAmountReceiver(bytes calldata params)
         internal
         pure
-        returns (ILendingAdapter adapter, Market memory market, uint256 amount, address to)
+        returns (ILendingAdapter, Market memory, uint256, address)
     {
         return abi.decode(params, (ILendingAdapter, Market, uint256, address));
     }
@@ -47,7 +47,7 @@ library MarginCalldataDecoder {
     /// @return currency The ERC-20 token to transfer.
     /// @return amount The amount to transfer in the token's native decimals.
     /// @return to The recipient address; must be the manager or owner (enforced by the account).
-    function decodeSweep(bytes calldata params) internal pure returns (Currency currency, uint256 amount, address to) {
+    function decodeSweep(bytes calldata params) internal pure returns (Currency, uint256, address) {
         return abi.decode(params, (Currency, uint256, address));
     }
 
@@ -58,11 +58,7 @@ library MarginCalldataDecoder {
     /// @return adapter The lending adapter used to query the current LTV.
     /// @return market The (collateral, debt) market descriptor.
     /// @return maxLtv The maximum acceptable LTV (WAD, 1e18 == 100%); zero skips the check.
-    function decodeHealthCheck(bytes calldata params)
-        internal
-        pure
-        returns (ILendingAdapter adapter, Market memory market, Ltv maxLtv)
-    {
+    function decodeHealthCheck(bytes calldata params) internal pure returns (ILendingAdapter, Market memory, Ltv) {
         return abi.decode(params, (ILendingAdapter, Market, Ltv));
     }
 
@@ -71,7 +67,7 @@ library MarginCalldataDecoder {
     /// @param params ABI-encoded `(Currency, uint256)`.
     /// @return currency The currency whose router credit is checked.
     /// @return minAmount The minimum required credit (the requested exact-output amount).
-    function decodeFillCheck(bytes calldata params) internal pure returns (Currency currency, uint256 minAmount) {
+    function decodeFillCheck(bytes calldata params) internal pure returns (Currency, uint256) {
         return abi.decode(params, (Currency, uint256));
     }
 
@@ -79,7 +75,7 @@ library MarginCalldataDecoder {
     ///         the authenticated caller and this sub-account id.
     /// @param params ABI-encoded `(uint256)`.
     /// @return subId The caller's sub-account id.
-    function decodeSubId(bytes calldata params) internal pure returns (uint256 subId) {
+    function decodeSubId(bytes calldata params) internal pure returns (uint256) {
         return abi.decode(params, (uint256));
     }
 
@@ -91,11 +87,7 @@ library MarginCalldataDecoder {
     ///         when `payerIsUser` is false.
     /// @return payerIsUser True to pull from the caller via Permit2; false to move the router's
     ///         own balance.
-    function decodePull(bytes calldata params)
-        internal
-        pure
-        returns (Currency currency, uint256 amount, bool payerIsUser)
-    {
+    function decodePull(bytes calldata params) internal pure returns (Currency, uint256, bool) {
         return abi.decode(params, (Currency, uint256, bool));
     }
 
@@ -110,7 +102,7 @@ library MarginCalldataDecoder {
     function decodeRouteSwap(bytes calldata params)
         internal
         pure
-        returns (address universalRouter, Currency input, uint256 maxIn, bytes memory commands, bytes[] memory inputs)
+        returns (address, Currency, uint256, bytes memory, bytes[] memory)
     {
         return abi.decode(params, (address, Currency, uint256, bytes, bytes[]));
     }

@@ -10,7 +10,7 @@ import {IComet} from "../../src/interfaces/external/compound-v3/IComet.sol";
 import {Market} from "../../src/types/Market.sol";
 import {MarketNotSupported} from "../../src/types/MarketAllowlist.sol";
 import {NotOwner, ZeroOwner} from "../../src/types/Owner.sol";
-import {Ltv, raw} from "../../src/types/Ltv.sol";
+import {Ltv} from "../../src/types/Ltv.sol";
 import {PositionData} from "../../src/types/PositionData.sol";
 import {MockComet} from "../mocks/MockComet.sol";
 
@@ -177,17 +177,17 @@ contract CompoundV3LendingAdapterTest is Test {
         // 1000 UNI @ $7 = $7000 collateral; 3500 USDC @ $1 = $3500 debt -> LTV 50%
         comet.setCollateralBalance(account, address(uni), 1_000e18);
         comet.setBorrowBalance(account, 3_500e6);
-        assertApproxEqAbs(raw(adapter.currentLtvWad(account, market)), 0.5e18, 1);
+        assertApproxEqAbs(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0.5e18, 1);
     }
 
     function test_currentLtvWad_zeroDebtIsZero() public {
         comet.setCollateralBalance(account, address(uni), 1_000e18);
-        assertEq(raw(adapter.currentLtvWad(account, market)), 0);
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), 0);
     }
 
     function test_currentLtvWad_debtWithoutCollateralIsMax() public {
         comet.setBorrowBalance(account, 1e6);
-        assertEq(raw(adapter.currentLtvWad(account, market)), type(uint256).max);
+        assertEq(Ltv.unwrap(adapter.currentLtvWad(account, market)), type(uint256).max);
     }
 
     function test_describePosition_derivesAllFields() public {
@@ -197,7 +197,7 @@ contract CompoundV3LendingAdapterTest is Test {
         assertEq(d.collateralAmount, 1_000e18);
         assertEq(d.debtAmount, 3_500e6);
         assertEq(Ltv.unwrap(d.maxLtv), UNI_LIQUIDATE_CF);
-        assertApproxEqAbs(raw(d.currentLtv), 0.5e18, 1);
+        assertApproxEqAbs(Ltv.unwrap(d.currentLtv), 0.5e18, 1);
         // health = liquidateCF * collateralValue / debtValue = 0.74 * 7000 / 3500 = 1.48
         assertApproxEqAbs(d.healthFactorWad, 1.48e18, 1e6);
     }

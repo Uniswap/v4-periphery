@@ -20,7 +20,7 @@ import {MarginAccount} from "../../src/MarginAccount.sol";
 import {CompoundV3LendingAdapter} from "../../src/CompoundV3LendingAdapter.sol";
 import {MarginActions} from "../../src/libraries/MarginActions.sol";
 import {Market} from "../../src/types/Market.sol";
-import {Ltv, toLtv, raw} from "../../src/types/Ltv.sol";
+import {Ltv, toLtv} from "../../src/types/Ltv.sol";
 
 /// @notice Fork test proving the `ROUTE_SWAP` action opens a leveraged long-WETH position on Compound
 ///         v3 by routing the debt->collateral swap through a real Universal Router over a live Uniswap
@@ -96,8 +96,8 @@ contract MarginRouterRouteSwapForkTest is Test, MarginRouteHelpers {
         assertEq(COMET.borrowBalanceOf(account), debt, "positionOf debt matches Comet");
 
         Ltv ltv = adapter.currentLtvWad(account, market);
-        assertGt(raw(ltv), 0, "ltv positive");
-        assertLt(raw(ltv), Ltv.unwrap(adapter.maxLtvWad(market)), "ltv under liquidation");
+        assertGt(Ltv.unwrap(ltv), 0, "ltv positive");
+        assertLt(Ltv.unwrap(ltv), Ltv.unwrap(adapter.maxLtvWad(market)), "ltv under liquidation");
 
         // everything nets: the flash-take was fully returned to the local PoolManager, and no dust
         // is left on the router or the account
