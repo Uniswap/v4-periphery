@@ -7,8 +7,10 @@ import {LibClone} from "solady/utils/LibClone.sol";
 /// @author Uniswap Labs
 /// @notice Deterministic deployment and addressing of per-user MarginAccount clones. Designed to be
 ///         inherited by the contract that manages the accounts (the margin router): the inheriting
-///         contract becomes the `manager` baked into every clone, so accounts can only be deployed
-///         and driven by the contract that owns this logic.
+///         contract becomes the `manager` baked into every clone. Deployment is permissionless and
+///         idempotent (the owner is bound into the CREATE2 salt, so a third-party deploy cannot
+///         change who owns an account), and a deployed account is driven by its manager or directly
+///         by its owner via the account's own owner-gated entry points.
 /// @dev Each account is a Solady clone-with-immutable-args of a single implementation, with
 ///      (owner, manager) baked into the clone bytecode. The manager is fixed to the inheriting
 ///      contract's own address and is also bound into the CREATE2 salt, so an account address is a

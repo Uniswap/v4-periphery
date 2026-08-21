@@ -20,9 +20,11 @@ import {PositionData} from "./types/PositionData.sol";
 /// @title MorphoLendingAdapter
 /// @author Uniswap Labs
 /// @notice A singleton `ILendingAdapter` over all curated Morpho Blue markets. The adapter is a
-///         thin shell composing a governed `(collateral, debt)` routing table and an owner guard;
-///         all encode and read logic reuses Morpho Blue's own libraries, so no Morpho math is
-///         reimplemented. Each encoded call is executed by a `MarginAccount` as itself, so
+///         thin shell composing a governed `(collateral, debt)` routing table and an owner guard.
+///         Encoding and debt-accrual reads reuse Morpho Blue's own libraries; collateral valuation,
+///         current LTV, and the health factor are derived locally from the market oracle's price,
+///         mirroring Morpho's health formulas rather than delegating to them. Each encoded call is
+///         executed by a `MarginAccount` as itself, so
 ///         `onBehalf` is always the account and no delegated authorization is needed.
 /// @dev    Morpho Blue does not support fee-on-transfer or rebasing tokens, so curated markets are
 ///         standard ERC-20 only; this is what lets the router's flows net to zero with no residual.

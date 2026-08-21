@@ -19,9 +19,10 @@ import {PositionData} from "./types/PositionData.sol";
 /// @title AaveLendingAdapter
 /// @author Uniswap Labs
 /// @notice A singleton `ILendingAdapter` over the Aave v3 Pool. The adapter is a thin shell composing
-///         a governed `(collateral, debt)` allowlist and an owner guard; all encode and read logic
-///         delegates to the Aave Pool and the protocol data provider, so no Aave math is
-///         reimplemented. Each encoded call is executed by a `MarginAccount` as itself, so the Aave
+///         a governed `(collateral, debt)` allowlist and an owner guard; encode and read logic
+///         delegates to the Aave Pool and the protocol data provider, except the current-LTV ratio,
+///         which is computed locally over Aave's account-level totals (max LTV and the health factor
+///         are read from the protocol). Each encoded call is executed by a `MarginAccount` as itself, so the Aave
 ///         `onBehalfOf` is always the account and no delegated authorization is needed. The
 ///         motivating use case is a short ETH position: supply USDC as collateral and borrow WETH.
 /// @dev    Design and trust notes:

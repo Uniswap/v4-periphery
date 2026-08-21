@@ -39,7 +39,12 @@ interface IMarginAccount {
     /// @param caller The `msg.sender` that drove the call (the manager or the owner).
     /// @param adapter The lending adapter used.
     /// @param collateral The collateral currency withdrawn.
-    /// @param amount The amount forwarded to `to`, measured as the account's balance increase.
+    /// @param amount The account's own balance increase across the withdrawal, NOT necessarily the
+    ///        amount delivered to `to`. Venue-dependent: the Morpho, Aave v3, and Compound encoders
+    ///        deliver the withdrawal straight to `to` (the account's balance never changes), so this
+    ///        logs zero on those venues; only Aave v4 routes funds through the account and logs the
+    ///        delivered amount. Indexers needing the withdrawn amount on every venue should read the
+    ///        router's `PositionUpdated` snapshots (or the venue's own events) instead.
     /// @param to The recipient (the manager or the owner).
     event CollateralWithdrawn(
         address indexed caller, address indexed adapter, Currency indexed collateral, uint256 amount, address to

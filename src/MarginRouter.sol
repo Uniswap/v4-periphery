@@ -736,7 +736,8 @@ contract MarginRouter is
     }
 
     /// @notice Repays debt to the lending protocol. Not allowlist-gated. `type(uint256).max` repays
-    ///         all by shares (resolved by the adapter against the accrued balance).
+    ///         the full debt, resolved by the adapter in the venue's own terms (see
+    ///         `ILendingAdapter.encodeRepay`).
     function _repay(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
         IMarginAccount(account).repay(adapter, market, amount);

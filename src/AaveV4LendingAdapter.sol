@@ -16,8 +16,10 @@ import {PositionData} from "./types/PositionData.sol";
 /// @title AaveV4LendingAdapter
 /// @author Uniswap Labs
 /// @notice A singleton `ILendingAdapter` over a single Aave v4 Spoke. The adapter is a thin shell
-///         composing a governed `(collateral, debt)` route registry and an owner guard; all encode
-///         and read logic delegates to the Spoke, so no Aave math is reimplemented. Each encoded call
+///         composing a governed `(collateral, debt)` route registry and an owner guard; encode and
+///         read logic delegates to the Spoke, except the current-LTV ratio, which is computed locally
+///         over the Spoke's reported totals (max LTV and the health factor are read from the
+///         protocol). Each encoded call
 ///         is executed by a `MarginAccount` as itself, so the Aave `onBehalfOf` is always the account
 ///         and no delegated authorization is needed. The motivating use case is a short ETH position:
 ///         supply USDC as collateral and borrow WETH.

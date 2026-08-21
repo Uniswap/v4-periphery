@@ -95,15 +95,16 @@ interface ILendingAdapter {
 
     /// @notice Encode the call to repay `amount` of `market.debt`.
     /// @dev Passing `amount == type(uint256).max`, or any `amount` at or above the reported debt,
-    ///      triggers a full share-based repay: the entire borrow-share balance is burned, avoiding
-    ///      interest dust that an asset-denominated repay would leave behind due to rounding, and
-    ///      avoiding a rounding underflow when the exact reported debt is repaid as assets. When the
-    ///      account has no debt to repay, the adapter returns empty `callData` and the account skips the
-    ///      call, so a generic "repay then withdraw" exit plan works against a debt-free position.
+    ///      triggers a full repay resolved by the adapter in the venue's own terms: Morpho burns the
+    ///      entire borrow-share balance (avoiding interest dust and the rounding underflow an
+    ///      asset-denominated exact repay would hit), Aave v3/v4 pass the venue's native repay-all
+    ///      sentinel, and Compound clamps to the outstanding base debt. When the account has no debt
+    ///      to repay, the adapter returns empty `callData` and the account skips the call, so a
+    ///      generic "repay then withdraw" exit plan works against a debt-free position.
     /// @param account The MarginAccount repaying the debt; used as `onBehalf`.
     /// @param market The (collateral, debt) pair identifying the target lending market.
     /// @param amount The amount of debt to repay in native decimals, or `type(uint256).max` to repay
-    ///        all by shares.
+    ///        the full debt.
     /// @return target The call target (always `lendingProtocol()`).
     /// @return value The call value. Always 0 for non-payable lending protocols.
     /// @return callData The calldata the account executes against `target`, or empty bytes to skip.
@@ -112,9 +113,12 @@ interface ILendingAdapter {
         view
         returns (address target, uint256 value, bytes memory callData);
 
-    /// @notice Current position for `account` in `market`, as interest-accrued assets.
-    /// @dev Both amounts are returned with accrued interest applied, not the raw stored values.
-    ///      Callers can rely on these for an accurate snapshot of current obligations.
+    /// @notice Current position for `account` in `market`, as current assets.
+    /// @dev `debtAmount` always includes interest accrued to the current timestamp. `collateralAmount`
+    ///      is the venue's current balance: interest-accrued where collateral earns interest (Aave
+    ///      v3/v4 aToken balances rebase) and the raw supplied balance where it does not (Morpho Blue
+    ///      and Comet collateral earn no interest). In every case it is the amount a full withdrawal
+    ///      would return, so callers can rely on these for an accurate snapshot of current obligations.
     /// @param account The MarginAccount to query.
     /// @param market The (collateral, debt) pair identifying the target lending market.
     /// @return collateralAmount The account's supplied collateral balance, in the collateral token's
@@ -134,6 +138,10 @@ interface ILendingAdapter {
 
     /// @notice The account's current LTV in `market`, expressed as a WAD-typed `Ltv`
     ///         where 1e18 == 100%.
+    /// @dev This is the value `MarginRouter`'s post-action health check consumes. On venues with
+    ///      account-level reads (Aave v3/v4 on both sides; Compound's base debt) it is an
+    ///      account-level value, so it equals the position's LTV only under the
+    ///      one-position-per-`subId` usage requirement documented on each adapter.
     /// @param account The MarginAccount to query.
     /// @param market The (collateral, debt) pair identifying the target lending market.
     /// @return The current LTV as an `Ltv` (WAD, 1e18 == 100%).
@@ -142,10 +150,13 @@ interface ILendingAdapter {
     /// @notice A consolidated snapshot of `account`'s position in `market`: collateral and debt
     ///         amounts, the market's max (liquidation) LTV, the current LTV, and the health factor.
     /// @dev Equivalent to reading `positionOf`, `maxLtvWad`, and `currentLtvWad` together, plus a
-    ///      health factor, in a single call. Health factor is `maxLtv / currentLtv` in WAD and is
-    ///      `type(uint256).max` when there is no debt. For cross-collateral adapters (Aave v3/v4)
-    ///      the LTV and health factor are account-level, so they equal the position's values only
-    ///      when the account holds a single position on that protocol (one position per `subId`).
+    ///      health factor, in a single call. The health factor is `maxLtv / currentLtv` in WAD on
+    ///      Morpho and Compound; Aave v3/v4 report the protocol's own liquidation-threshold-weighted
+    ///      health factor, which only approximates that ratio. It is `type(uint256).max` when there
+    ///      is no debt and zero when debt is held against zero collateral value. For adapters with
+    ///      account-level reads (Aave v3/v4 on both sides; Compound's base debt) the LTV and health
+    ///      factor equal the position's values only when the account holds a single position on that
+    ///      protocol (one position per `subId`).
     /// @param account The MarginAccount to query.
     /// @param market The (collateral, debt) pair identifying the target lending market.
     /// @return data The consolidated position snapshot; see `PositionData`.

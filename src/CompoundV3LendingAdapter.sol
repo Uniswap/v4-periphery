@@ -17,8 +17,10 @@ import {PositionData} from "./types/PositionData.sol";
 /// @title CompoundV3LendingAdapter
 /// @author Uniswap Labs
 /// @notice A singleton `ILendingAdapter` over one Compound v3 (Comet) instance. The adapter is a thin
-///         shell composing a governed `(collateral, debt)` allowlist and an owner guard; all encode
-///         and read logic delegates to the Comet, so no Compound math is reimplemented. Each encoded
+///         shell composing a governed `(collateral, debt)` allowlist and an owner guard. Balances and
+///         collateral factors are read from the Comet; USD valuation, current LTV, and the health
+///         factor are derived locally from the Comet's own price feeds, mirroring its collateralization
+///         math rather than delegating to it. Each encoded
 ///         call is executed by a `MarginAccount` as itself, so the Comet acts on the account's own
 ///         balances and no delegated authorization is needed. The motivating use case is a long
 ///         position in a Comet collateral asset (e.g. supply UNI, borrow the base USDC).

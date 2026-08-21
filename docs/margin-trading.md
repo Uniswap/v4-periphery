@@ -288,7 +288,10 @@ that fold the per-operation deltas and resulting snapshot into one log.
 
 ## 5. Reading position state
 
-Read through the adapter (amounts are interest-accrued):
+Read through the adapter. Debt is always interest-accrued to the current timestamp; collateral is the
+venue's current balance (interest-accrued on Aave, whose aTokens rebase; the raw supplied balance on
+Morpho and Compound, whose collateral earns no interest) — in every case the amount a full withdrawal
+returns:
 
 ```solidity
 // current position, in each token's native decimals
@@ -853,13 +856,30 @@ negative) and repaying is `supply`ing it. The four `ILendingAdapter` primitives 
 sentinel, so a full close (`decreasePosition` with `debtToRepay == type(uint256).max`) supplies exactly
 `borrowBalanceOf(account)`. That balance accrues to `block.timestamp` in the view, so the borrow clears
 to zero with no dust and all collateral can then be withdrawn.
+- **Partial decreases have a venue-imposed minimum.** Comet re-checks the tighter **borrow** collateral
+factor on the withdraw leg of a decrease (the router repays, then withdraws the swap cost), so a
+position that has drifted above the borrow factor rejects small partial decreases: the repay must be
+large enough to bring the position back under the borrow factor, or be a full close (which always
+works). `maxLtvWad` surfaces only the liquidate factor, so size partial decreases against
+`getAssetInfoByAddress(collateral).borrowCollateralFactor`, not `maxLtvWad`.
+- **Base-asset supplies are out of scope.** A positive base balance (a Comet base supply) reads as
+`borrowBalanceOf == 0`, and the base token cannot be registered as a market's collateral (`setMarket`
+rejects it, since `getAssetInfoByAddress(base)` reverts), so the router cannot open, read, or unwind a
+base-supply position - it manages collateral-backed base borrows only. A base supply can only arise via
+an `execute` plan or a direct Comet call; unwind it the same way (an `execute` plan or the owner escape
+hatch).
 
 Reads mirror the other adapters: `positionOf` returns `(collateralBalanceOf, borrowBalanceOf)`,
 `maxLtvWad` returns the collateral's **liquidate** collateral factor (Comet enforces the tighter
 **borrow** collateral factor at borrow time, so a borrow can open below `maxLtvWad` yet be rejected by
 Comet), and `currentLtvWad` is USD-valued through Comet's own price feeds (decimal-agnostic). The reads
 are account-level in the base, so keep one Compound position per `(owner, subId)` and use a distinct
-`subId` for each, as with the Aave adapters.
+`subId` for each, as with the Aave adapters. The priced reads (`maxLtvWad`, `currentLtvWad`,
+`describePosition`) also depend on the live Comet configuration: they call
+`getAssetInfoByAddress(collateral)` unguarded, so if Compound governance ever removes a collateral
+asset from the Comet, those reads (and the curated flows that consult them) revert opaquely until the
+market is de-registered. Compound's removal process makes this realistic only after balances are
+zeroed, and funds remain exitable via the owner escape hatch regardless.
 
 ### 8.2 Open a short ETH position via Aave
 
@@ -1178,7 +1198,25 @@ adapter.)
 every router path: curated flows, `execute` plans, and the unlock-free `addCollateral` / zero-debt
 close), `PositionIncreased`, `PositionDecreased` (a full close is a
 `PositionDecreased` with the position emptied), `CollateralAdded`, `AdapterAllowed`,
-`GovernanceTransferStarted`, `GovernanceTransferred` (router); `MarketSet` (adapter); `AccountCreated`
-(account factory). Indexers can key on `PositionUpdated` for resulting state uniformly across curated
-and `execute` paths; the `Position*` increase/decrease events add the per-operation deltas on the
-curated path — see §4.1.
+`GovernanceTransferStarted`, `GovernanceTransferred` (router; `GovernanceTransferred` also fires at
+construction, from the zero address, for the initial governance); `MarketSet`,
+`OwnershipTransferStarted`, `OwnershipTransferred` (adapter; the ownership events cover construction
+and both steps of the two-step handoff); `CollateralSupplied`, `CollateralWithdrawn`, `Borrowed`,
+`Repaid`, `Swept` (account); `AccountCreated` (account factory). Indexers can key on `PositionUpdated`
+for resulting state uniformly across curated and `execute` paths; the `Position*` increase/decrease
+events add the per-operation deltas on the curated path — see §4.1.
+
+Event-field caveats:
+
+- The delta events report **requested** amounts where their NatSpec says so: a partial decrease's
+`debtRepaid` is the caller's `debtToRepay` (a request above the live debt clamps at the venue and the
+field then over-reports), and an increase's `equity` is the caller's contribution only (the
+`OPEN_DELTA` supply also absorbs any idle balance the account already held). `PositionUpdated` always
+carries measured resulting state — prefer it for accounting.
+- Every `describePosition`-derived emission is **best-effort**: if the venue read reverts (oracle
+downtime, de-registered market), the snapshot and the rich delta event are skipped rather than
+reverting the completed mutation, so a mutation during venue downtime can emit only account-level and
+venue events.
+- The account's `CollateralWithdrawn` logs the **account's own balance delta**, which is zero on
+Morpho, Aave v3, and Compound (their withdrawals deliver straight to the receiver); only Aave v4
+routes through the account and logs the delivered amount.

@@ -44,8 +44,12 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      error, rejected rather than resolved to a full-balance sentinel.
     error ZeroAmount();
 
-    /// @dev Thrown when an operation would create or leave a position with LTV above the adapter's
-    ///      maximum liquidation LTV.
+    /// @dev Thrown by the post-action health check (`ASSERT_HEALTH`) when a position mutation leaves
+    ///      the account's current LTV above the CALLER-supplied bound (`maxLtvAfter` on the curated
+    ///      flows, the encoded bound in an `execute` plan). The bound is the caller's own health
+    ///      limit, not the adapter's liquidation LTV, and a zero bound skips the check entirely
+    ///      (used by full closes, which end debt-free). The venue's liquidation LTV is enforced by
+    ///      the lending protocol at call time regardless.
     error PositionUnhealthy();
 
     /// @dev Thrown when a flow is called with a lending adapter that governance has not allowlisted.
@@ -64,7 +68,8 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      bought). The curated flows set the minimum to the account's balance going into the unlock
     ///      PLUS the amount the swap was asked to deliver, so the absolute check enforces the swap
     ///      DELTA and a pre-existing balance cannot mask a short fill; the flows are all-or-nothing and
-    ///      revert rather than build on a short fill.
+    ///      revert rather than build on a short fill. Also thrown by `ASSERT_FILL`, which applies the
+    ///      same guarantee to the router's own credit in an output currency inside `execute` plans.
     /// @param requested The minimum resulting balance the check required (the account's pre-swap
     ///        balance plus the amount the swap was asked to deliver).
     /// @param received The account's actual resulting balance of the bought currency.
@@ -94,7 +99,9 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     /// @param collateral The collateral currency of the market.
     /// @param debt The debt currency of the market.
     /// @param equity The equity the caller contributed, in the collateral token's native decimals
-    ///        (the wrapped native amount when funded with ETH).
+    ///        (the wrapped native amount when funded with ETH). The increase supplies the account's
+    ///        FULL collateral balance, so any idle balance the account already held is committed on
+    ///        top of this amount; `collateralTotal` reflects the true resulting supply.
     /// @param collateralBought The collateral purchased by the increase swap, in the collateral
     ///        token's native decimals.
     /// @param debtDrawn The debt borrowed to fund the swap (the entry notional), in the debt token's
@@ -127,8 +134,11 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     /// @param account The MarginAccount holding the position.
     /// @param collateral The collateral currency of the market.
     /// @param debt The debt currency of the market.
-    /// @param debtRepaid The debt repaid, in the debt token's native decimals (all outstanding debt on
-    ///        a full close).
+    /// @param debtRepaid The requested repay amount, in the debt token's native decimals: the
+    ///        caller's `debtToRepay` on a partial decrease, all outstanding debt on a full close. A
+    ///        partial request above the live debt clamps at the venue (Compound in its encoder, Aave
+    ///        protocol-side, Morpho at the reported debt), so this field can then exceed the amount
+    ///        actually repaid; the co-emitted `PositionUpdated` carries the measured resulting debt.
     /// @param collateralWithdrawn The collateral removed from the lending position, in the collateral
     ///        token's native decimals (the swap cost on a partial decrease; all collateral on a full
     ///        close).
@@ -266,7 +276,11 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      `maxLtvAfter` asserting the resulting LTV. Passing `debtToRepay == type(uint256).max`
     ///      instead fully closes the position: it repays all debt, withdraws all collateral, and
     ///      returns the residual (realized PnL) to the caller; a zero-debt position takes a swap-free
-    ///      path, and `maxLtvAfter` is ignored on a full close.
+    ///      path, and `maxLtvAfter` is ignored on a full close. One state is not expressible here: a
+    ///      position holding debt against ZERO collateral (possible only after venue-side changes,
+    ///      e.g. a full liquidation leaving dust debt) cannot be fully closed through this flow - the
+    ///      zero withdraw amount collides with the `OPEN_DELTA` sentinel and reverts opaquely at the
+    ///      venue. Repay such a position through an `execute` plan or the account's own `repay`.
     /// @param adapter The allowlisted lending adapter.
     /// @param market The (collateral, debt) pair defining the margin market.
     /// @param debtToRepay The exact amount of debt the route buys and repays (its exact-output amount),
@@ -289,7 +303,9 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///        can source liquidity across v2/v3/v4. Ignored on a zero-debt full close.
     /// @param routeInputs The per-command ABI-encoded inputs for `routeCommands`.
     /// @param maxLtvAfter The maximum LTV the position may have after a partial decrease (WAD, 1e18 ==
-    ///        100%). Must be non-zero for a partial decrease; ignored on a full close.
+    ///        100%). Must be non-zero for a partial decrease; ignored on a full close. Zero is the
+    ///        skip sentinel in `ASSERT_HEALTH`, so a literal zero-LTV bound is unexpressible; the
+    ///        nearest expressible bound is 1 wei of LTV.
     /// @param subId The sub-account index identifying which MarginAccount to decrease or close.
     /// @param deadline A Unix timestamp; the call reverts if `block.timestamp` exceeds this value.
     struct DecreaseParams {
@@ -399,15 +415,19 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///            router is the account manager) - strictly worse than a token approval. Never
     ///            execute plans from untrusted builders; frontends must build the calldata.
     ///         8. Events: `execute` plans emit account-level events (`CollateralSupplied`,
-    ///            `Borrowed`, `Repaid`, `Swept`, `AccountCreated`) but not the `Position*`
-    ///            snapshot events the curated entry points emit.
+    ///            `Borrowed`, `Repaid`, `Swept`, `AccountCreated`) plus a best-effort
+    ///            `PositionUpdated` snapshot after every supply, withdraw, borrow, and repay
+    ///            action. They do not emit the richer delta-carrying events (`PositionIncreased`,
+    ///            `PositionDecreased`, `CollateralAdded`) reserved for the curated entry points.
     ///
     /// @param unlockData `abi.encode(bytes actions, bytes[] params)` describing the plan.
     /// @param deadline The Unix timestamp after which the call reverts `DeadlinePassed`.
     function execute(bytes calldata unlockData, uint256 deadline) external payable;
 
-    /// @notice Deploys the caller's MarginAccount for `subId` if it does not yet exist, returning its
-    ///         address. Idempotent: a repeat call returns the existing account.
+    /// @notice Deploys the MarginAccount owned by `owner` for `subId` if it does not yet exist,
+    ///         returning its address. Idempotent: a repeat call returns the existing account.
+    ///         Permissionless: anyone may deploy any owner's account, and the owner is bound into
+    ///         the CREATE2 salt, so a third-party deploy cannot change who owns it.
     /// @param owner The account owner baked into the clone.
     /// @param subId The sub-account index.
     /// @return account The deployed (or already-existing) account address.
