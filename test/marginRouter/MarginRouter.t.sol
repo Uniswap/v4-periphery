@@ -23,6 +23,10 @@ import {NotOwner, ZeroOwner, NotPendingOwner} from "../../src/types/Owner.sol";
 import {MarginRouteHelpers} from "../shared/MarginRouteHelpers.sol";
 
 contract MarginRouterTest is Test, MarginRouteHelpers {
+    /// @dev Mirrors MarginRouter's event for expectEmit; the router is deployed via `vm.getCode`
+    ///      (never imported here), so the declaration cannot be referenced from the contract.
+    event GovernanceTransferred(address indexed previousGovernance, address indexed newGovernance);
+
     IMarginRouter internal router;
     address internal owner = makeAddr("owner");
     Currency internal c0 = Currency.wrap(address(0x1111));
@@ -113,6 +117,21 @@ contract MarginRouterTest is Test, MarginRouteHelpers {
 
     function test_governance_isDeployer() public view {
         assertEq(router.governance(), address(this));
+    }
+
+    // initial governance is observable onchain (audit N-12): the constructor emits the same
+    // GovernanceTransferred a completed handoff does, from the zero address
+    function test_constructor_emitsInitialGovernanceTransferred() public {
+        address impl = address(new MarginAccount());
+        vm.expectEmit(true, true, true, true);
+        emit GovernanceTransferred(address(0), address(this));
+        deployMarginRouter(
+            IPoolManager(makeAddr("poolManager")),
+            IAllowanceTransfer(makeAddr("permit2")),
+            IWETH9(makeAddr("weth9")),
+            impl,
+            address(this)
+        );
     }
 
     function test_setAdapterAllowed_onlyGovernance() public {

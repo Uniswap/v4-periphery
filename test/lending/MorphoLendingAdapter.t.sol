@@ -14,6 +14,7 @@ import {MarketParamsLib} from "morpho-blue/libraries/MarketParamsLib.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 
 import {MorphoLendingAdapter} from "../../src/MorphoLendingAdapter.sol";
+import {OwnableAdapter} from "../../src/base/OwnableAdapter.sol";
 import {PositionAmountResolver} from "../../src/base/PositionAmountResolver.sol";
 import {Market} from "../../src/types/Market.sol";
 import {MarketNotSupported} from "../../src/types/MarketRegistry.sol";
@@ -257,6 +258,34 @@ contract MorphoLendingAdapterTest is Test {
     function test_acceptOwnership_revertsWhenNonePending() public {
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(NotPendingOwner.selector, stranger));
+        adapter.acceptOwnership();
+    }
+
+    // owner-lifecycle events (audit N-12): the adapter owner is the sole market curator, so seeding,
+    // proposing, and completing a handoff must each be observable onchain
+
+    function test_constructor_emitsInitialOwnershipTransferred() public {
+        vm.expectEmit(true, true, true, true);
+        emit OwnableAdapter.OwnershipTransferred(address(0), gov);
+        new MorphoLendingAdapter(IMorpho(address(morpho)), gov);
+    }
+
+    function test_transferOwnership_emitsOwnershipTransferStarted() public {
+        address newOwner = makeAddr("newOwner");
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit OwnableAdapter.OwnershipTransferStarted(gov, newOwner);
+        vm.prank(gov);
+        adapter.transferOwnership(newOwner);
+    }
+
+    function test_acceptOwnership_emitsOwnershipTransferred() public {
+        address newOwner = makeAddr("newOwner");
+        vm.prank(gov);
+        adapter.transferOwnership(newOwner);
+
+        vm.expectEmit(true, true, true, true, address(adapter));
+        emit OwnableAdapter.OwnershipTransferred(gov, newOwner);
+        vm.prank(newOwner);
         adapter.acceptOwnership();
     }
 }

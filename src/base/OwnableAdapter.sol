@@ -13,6 +13,18 @@ import {Owner} from "../types/Owner.sol";
 ///         The lending adapters are non-upgradeable singletons, so composing the guard here (ahead of
 ///         each adapter's own storage) is free of layout-compatibility concerns.
 abstract contract OwnableAdapter {
+    /// @notice Emitted when the current owner proposes a successor for the two-step handoff.
+    /// @param previousOwner The owner that proposed the successor.
+    /// @param newOwner The address proposed as the next owner.
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+
+    /// @notice Emitted when ownership takes effect: once at construction (from the zero address) and
+    ///         when a proposed successor accepts the handoff. The owner is the sole market curator,
+    ///         so every change of that role is observable onchain.
+    /// @param previousOwner The owner that was replaced (zero at construction).
+    /// @param newOwner The address that became the owner.
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
     /// @notice The owner guard: the current owner plus any pending successor. Gates each adapter's
     ///         market curation via `_onlyOwner` and its `transferOwnership` handoff.
     Owner internal _owner;
@@ -20,6 +32,7 @@ abstract contract OwnableAdapter {
     /// @param owner_ The initial adapter owner (governance).
     constructor(address owner_) {
         _owner.write(owner_);
+        emit OwnershipTransferred(address(0), owner_);
     }
 
     /// @notice The current adapter owner (governance). Only the owner may curate markets and begin an
@@ -40,7 +53,9 @@ abstract contract OwnableAdapter {
     ///         named by `transferOwnership` succeeds; all others revert. On success the caller becomes
     ///         the owner.
     function acceptOwnership() external {
+        address previousOwner = _owner.read();
         _owner.acceptOwnership(msg.sender);
+        emit OwnershipTransferred(previousOwner, msg.sender);
     }
 
     /// @notice Begins a two-step ownership handoff by proposing a successor. The successor takes
@@ -50,6 +65,7 @@ abstract contract OwnableAdapter {
     function transferOwnership(address newOwner) external {
         _owner.onlyOwner(msg.sender);
         _owner.propose(newOwner);
+        emit OwnershipTransferStarted(msg.sender, newOwner);
     }
 
     /// @notice Reverts `NotOwner` unless the caller is the current owner.

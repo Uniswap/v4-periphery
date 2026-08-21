@@ -85,8 +85,9 @@ contract MarginRouter is
     /// @param pendingGovernance The address proposed as the next governance.
     event GovernanceTransferStarted(address indexed currentGovernance, address indexed pendingGovernance);
 
-    /// @notice Emitted when a proposed successor accepts governance and the handoff completes.
-    /// @param previousGovernance The governance address that was replaced.
+    /// @notice Emitted when governance takes effect: once at construction (from the zero address) and
+    ///         when a proposed successor accepts the handoff.
+    /// @param previousGovernance The governance address that was replaced (zero at construction).
     /// @param newGovernance The address that became the new governance.
     event GovernanceTransferred(address indexed previousGovernance, address indexed newGovernance);
 
@@ -120,6 +121,7 @@ contract MarginRouter is
         // governance is set explicitly so CREATE2 deployment names the intended owner, not the
         // CREATE2 factory; hand off to a timelock or multisig after setup
         _governance.write(governance_);
+        emit GovernanceTransferred(address(0), governance_);
     }
 
     /// @inheritdoc IMarginRouter
