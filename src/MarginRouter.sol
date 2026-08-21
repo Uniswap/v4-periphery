@@ -598,8 +598,13 @@ contract MarginRouter is
             return;
         }
 
-        // range 3: account-scoped. A plan must have bound the account with SET_ACCOUNT first; curated
-        // entry points bind it before the unlock, so they never reach this revert.
+        // range 3: account-scoped. The margin opcode space is contiguous
+        // [ACCOUNT_SUPPLY_COLLATERAL, ASSERT_ACCOUNT_BALANCE], so anything above it is undefined;
+        // reject it before the active-account guard so an undefined opcode reverts
+        // UnsupportedAction whether or not the plan bound an account. A defined opcode still needs
+        // a preceding SET_ACCOUNT; curated entry points bind the account before the unlock, so
+        // they never reach the NoActiveAccount revert.
+        if (action > MarginActions.ASSERT_ACCOUNT_BALANCE) revert UnsupportedAction(action);
         address account = _activeAccount();
         if (account == address(0)) revert NoActiveAccount();
         _handleAccountAction(action, params, account);

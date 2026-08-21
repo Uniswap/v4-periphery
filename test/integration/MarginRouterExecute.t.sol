@@ -284,6 +284,45 @@ contract MarginRouterExecuteTest is RoutingTestHelpers, MarginRouteHelpers, Depl
         marginRouter.execute(plan.encode(), block.timestamp + 1);
     }
 
+    // ─────────────────────────────────────── UnsupportedAction ──────────────────────────────────
+
+    // an undefined opcode must report UnsupportedAction, not NoActiveAccount, regardless of whether
+    // the plan bound an account first (audit N-09)
+
+    function test_execute_revertsUnsupportedAction_forUndefinedOpcode_withoutAccount() public {
+        uint256 undefinedOpcode = MarginActions.ASSERT_ACCOUNT_BALANCE + 1;
+        Plan memory plan = Planner.init();
+        plan = plan.add(undefinedOpcode, abi.encode(uint256(0)));
+        vm.expectRevert(abi.encodeWithSelector(BaseActionsRouter.UnsupportedAction.selector, undefinedOpcode));
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+    }
+
+    function test_execute_revertsUnsupportedAction_forUndefinedOpcode_withAccount() public {
+        uint256 undefinedOpcode = MarginActions.ASSERT_ACCOUNT_BALANCE + 1;
+        Plan memory plan = Planner.init();
+        plan = plan.add(MarginActions.SET_ACCOUNT, abi.encode(uint256(0)));
+        plan = plan.add(undefinedOpcode, abi.encode(uint256(0)));
+        vm.expectRevert(abi.encodeWithSelector(BaseActionsRouter.UnsupportedAction.selector, undefinedOpcode));
+        marginRouter.execute(plan.encode(), block.timestamp + 1);
+    }
+
+    function test_marginOpcodeRange_isContiguousAndBoundedByAssertAccountBalance() public pure {
+        // the undefined-opcode guard in _handleAction assumes the margin opcode space is contiguous
+        // with ASSERT_ACCOUNT_BALANCE at the top; pin the constants so adding an opcode above it
+        // without moving the bound fails here first
+        assertEq(MarginActions.ACCOUNT_SUPPLY_COLLATERAL, 0x30);
+        assertEq(MarginActions.ACCOUNT_WITHDRAW_COLLATERAL, 0x31);
+        assertEq(MarginActions.ACCOUNT_BORROW, 0x32);
+        assertEq(MarginActions.ACCOUNT_REPAY, 0x33);
+        assertEq(MarginActions.ACCOUNT_SWEEP, 0x34);
+        assertEq(MarginActions.ASSERT_HEALTH, 0x35);
+        assertEq(MarginActions.ASSERT_FILL, 0x36);
+        assertEq(MarginActions.SET_ACCOUNT, 0x37);
+        assertEq(MarginActions.PULL_TO_ACCOUNT, 0x38);
+        assertEq(MarginActions.ROUTE_SWAP, 0x39);
+        assertEq(MarginActions.ASSERT_ACCOUNT_BALANCE, 0x3a);
+    }
+
     function test_execute_multicall_clearsActiveAccountBetweenLegs() public {
         // leg 1 sets an account and no-ops; leg 2 has a bare account-scoped op with no SET_ACCOUNT.
         // execute clears the transient slot after each call, so leg 2 must see no active account and
