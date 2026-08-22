@@ -153,6 +153,15 @@ contract CompoundV3LendingAdapterTest is Test {
         assertEq(data, abi.encodeCall(IComet.supply, (address(usdc), 1_000e6)));
     }
 
+    function test_encodeRepay_zeroDebt_encodesNoOp() public view {
+        // no borrow seeded: the encoder returns the empty skip signal rather than a zero supply,
+        // matching the interface-wide no-op contract shared with the other adapters
+        (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(target, address(comet));
+        assertEq(value, 0);
+        assertEq(data.length, 0, "debt-free repay must be an empty no-op");
+    }
+
     function test_encodeRepay_maxSuppliesAccruedBorrow() public {
         comet.setBorrowBalance(account, 777e6);
         (,, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);

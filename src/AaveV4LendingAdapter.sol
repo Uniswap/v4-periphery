@@ -206,13 +206,16 @@ contract AaveV4LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmount
     /// @dev Encodes `Spoke.repay(debtReserveId, amount, account)`. Passing `amount == type(uint256).max`
     ///      repays the account's full debt: the Spoke caps an over-amount to the total debt (drawn plus
     ///      premium), leaving no dust. The max-uint cap applies on the Spoke directly, which is what the
-    ///      account calls.
+    ///      account calls. When the account holds no debt in the reserve, encodes the empty skip signal
+    ///      instead: the Spoke reverts `InvalidAmount` on a debt-free repay, and the no-op keeps a
+    ///      generic repay-then-withdraw exit plan runnable against a debt-free position.
     function encodeRepay(address account, Market calldata market, uint256 amount)
         external
         view
         returns (address, uint256, bytes memory)
     {
         V4MarketRoute storage route = _resolveRoute(market);
+        if (spoke.getUserTotalDebt(route.debtReserveId, account) == 0) return (address(spoke), 0, "");
         return (address(spoke), 0, abi.encodeCall(ISpoke.repay, (route.debtReserveId, amount, account)));
     }
 

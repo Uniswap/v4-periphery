@@ -206,7 +206,8 @@ contract AaveLendingAdapterTest is Test {
         assertEq(onBehalfOf, account);
     }
 
-    function test_encodeRepay_exactAmount() public view {
+    function test_encodeRepay_exactAmount() public {
+        _seedPosition(0, 1e18); // the encoder no-ops without live variable debt
         (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, 0.25e18);
         assertEq(target, address(pool));
         assertEq(value, 0);
@@ -218,10 +219,21 @@ contract AaveLendingAdapterTest is Test {
         assertEq(onBehalfOf, account);
     }
 
-    function test_encodeRepay_max() public view {
+    function test_encodeRepay_max() public {
+        _seedPosition(0, 1e18); // the encoder no-ops without live variable debt
         (,, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
         (, uint256 amount,,) = this.decodeRepay(data);
         assertEq(amount, type(uint256).max); // max repays the full variable debt natively
+    }
+
+    function test_encodeRepay_zeroDebt_encodesNoOp() public view {
+        // no debt seeded: Aave's repay would revert NoDebtOfSelectedType, so the encoder returns the
+        // empty skip signal and a generic repay-then-withdraw exit plan runs against a debt-free
+        // position, matching the interface-wide no-op contract
+        (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, type(uint256).max);
+        assertEq(target, address(pool));
+        assertEq(value, 0);
+        assertEq(data.length, 0, "debt-free repay must be an empty no-op");
     }
 
     function test_positionOf_reflectsReceiptBalances() public {

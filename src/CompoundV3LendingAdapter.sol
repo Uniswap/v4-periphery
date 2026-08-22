@@ -186,7 +186,8 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     ///      (`borrowBalanceOf`, re-accrued to `block.timestamp` in the view), so a full repay
     ///      (`type(uint256).max`) or an over-sized repay clears the debt exactly and never converts the
     ///      overshoot into a base SUPPLY position (Comet turns any base supplied beyond the borrow into
-    ///      a positive base balance rather than reverting).
+    ///      a positive base balance rather than reverting). When the account has no borrow, encodes the
+    ///      empty skip signal rather than a zero supply, matching the other adapters' no-op contract.
     function encodeRepay(address account, Market calldata market, uint256 amount)
         external
         view
@@ -194,6 +195,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     {
         _requireSupportedMarket(market);
         uint256 owed = comet.borrowBalanceOf(account);
+        if (owed == 0) return (address(comet), 0, "");
         uint256 repayAmount = amount > owed ? owed : amount;
         return (address(comet), 0, abi.encodeCall(IComet.supply, (Currency.unwrap(market.debt), repayAmount)));
     }

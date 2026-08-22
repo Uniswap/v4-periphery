@@ -193,13 +193,18 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     /// @inheritdoc ILendingAdapter
     /// @dev Encodes `IPool.repay` in variable-rate mode with `onBehalfOf = account`. Passing
     ///      `amount == type(uint256).max` repays the account's full variable debt natively,
-    ///      including accrued interest, leaving no dust.
+    ///      including accrued interest, leaving no dust. When the account holds no variable debt,
+    ///      encodes the empty skip signal instead: Aave's `repay` reverts `NoDebtOfSelectedType` on
+    ///      a debt-free account, and the no-op keeps a generic repay-then-withdraw exit plan
+    ///      runnable against a debt-free position.
     function encodeRepay(address account, Market calldata market, uint256 amount)
         external
         view
         returns (address, uint256, bytes memory)
     {
         _requireSupportedMarket(market);
+        (,, address vDebt) = dataProvider().getReserveTokensAddresses(Currency.unwrap(market.debt));
+        if (IERC20(vDebt).balanceOf(account) == 0) return (address(pool), 0, "");
         return
             (
                 address(pool),

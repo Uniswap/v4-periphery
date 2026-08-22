@@ -176,7 +176,8 @@ contract AaveV4LendingAdapterFuzzTest is Test {
     // encodeRepay
     // -------------------------------------------------------------------------
 
-    function testFuzz_encodeRepay_shape(address account, uint256 amount) public view {
+    function testFuzz_encodeRepay_shape(address account, uint256 amount) public {
+        spoke.seedDebt(WETH_RESERVE_ID, account, 1); // the encoder no-ops without live debt
         (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, amount);
         assertEq(target, address(spoke), "target must be spoke");
         assertEq(value, 0, "value must be 0");
@@ -185,6 +186,14 @@ contract AaveV4LendingAdapterFuzzTest is Test {
         assertEq(reserveId, WETH_RESERVE_ID, "reserveId must be WETH (debt)");
         assertEq(decodedAmount, amount, "amount mismatch (Spoke caps max to owed)");
         assertEq(onBehalfOf, account, "onBehalfOf must be account");
+    }
+
+    function testFuzz_encodeRepay_zeroDebt_encodesNoOp(address account, uint256 amount) public view {
+        // no debt seeded: any requested amount encodes the empty skip signal
+        (address target, uint256 value, bytes memory data) = adapter.encodeRepay(account, market, amount);
+        assertEq(target, address(spoke), "target must be spoke");
+        assertEq(value, 0, "value must be 0");
+        assertEq(data.length, 0, "debt-free repay must be an empty no-op");
     }
 
     // -------------------------------------------------------------------------
