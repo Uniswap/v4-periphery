@@ -114,7 +114,7 @@ contract CompoundV3LendingAdapter is ILendingAdapter, OwnableAdapter, PositionAm
     /// @notice The Comet's base-token USD price feed, read fresh from the Comet on each call. Unlike
     ///         the base token and its scale (fixed per Comet), the price feed is governance-mutable
     ///         behind the same Comet proxy, so caching it could value debt with a superseded feed;
-    ///         since `debtValue` feeds the health/LTV reads, it is resolved live (audit L-14).
+    ///         since `debtValue` feeds the health/LTV reads, it is resolved live.
     /// @return The Comet's current base-token price feed.
     function baseTokenPriceFeed() public view returns (address) {
         return comet.baseTokenPriceFeed();

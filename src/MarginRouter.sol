@@ -137,7 +137,7 @@ contract MarginRouter is
         // Best-effort rich event. describePosition consults the venue oracle, which can revert (e.g.
         // oracle downtime); the increase is already complete and the PositionUpdated snapshots emitted
         // inside the unlock carry the resulting state, so a failing read must not roll back the
-        // mutation. Skip the delta-carrying event rather than revert (audit L-05).
+        // mutation. Skip the delta-carrying event rather than revert.
         try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
             emit PositionIncreased(
                 msgSender(),
@@ -256,7 +256,7 @@ contract MarginRouter is
         // require the route to deliver the debt the repay needs ON TOP of any debt-token balance the
         // account already holds going into the unlock. Setting the ASSERT_ACCOUNT_BALANCE threshold to
         // `balance + required` makes the absolute check enforce the SWAP DELTA, so a pre-existing or
-        // donated balance cannot mask an exact-output under-fill (audit M-03)
+        // donated balance cannot mask an exact-output under-fill
         uint256 debtHeldBefore = params.market.debt.balanceOf(account);
         actionParams[1] = abi.encode(params.market.debt, debtHeldBefore + (fullClose ? debt : params.debtToRepay));
         actionParams[2] = abi.encode(params.adapter, params.market, fullClose ? type(uint256).max : params.debtToRepay);
@@ -305,7 +305,7 @@ contract MarginRouter is
         } else {
             // best-effort rich event: the read consults the venue oracle and must not roll back the
             // completed partial decrease if it reverts (the PositionUpdated snapshots emitted inside
-            // the unlock carry the resulting state); skip rather than revert (audit L-05)
+            // the unlock carry the resulting state); skip rather than revert
             try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
                 emit PositionDecreased(
                     msgSender(),
@@ -355,7 +355,7 @@ contract MarginRouter is
         // the curated CollateralAdded come from this describePosition read, which consults the venue
         // oracle and can revert (e.g. oracle downtime; a debt-free Morpho position still triggers an
         // oracle read). The supply has already completed, and this is a risk-REDUCING top-up, so a
-        // failing read must not roll it back: emit both on success, skip both on failure (audit L-05).
+        // failing read must not roll it back: emit both on success, skip both on failure.
         // PositionUpdated carries the full pair and maxLtv, which CollateralAdded does not, so
         // snapshot-only consumers can attribute the supply without pair-resolution heuristics.
         try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
@@ -539,7 +539,7 @@ contract MarginRouter is
         // already holds going into the unlock (equity was transferred in above). Setting the
         // ASSERT_ACCOUNT_BALANCE threshold to `balance + collateralToBuy` makes the absolute check
         // enforce the SWAP DELTA, so a pre-existing, idle, cross-market, or donated balance cannot
-        // mask an exact-output under-fill (audit M-03)
+        // mask an exact-output under-fill
         uint256 collateralHeldBefore = params.market.collateral.balanceOf(account);
         actionParams[1] = abi.encode(params.market.collateral, collateralHeldBefore + params.collateralToBuy);
         // supply the account's full collateral balance (equity + bought)
@@ -792,7 +792,7 @@ contract MarginRouter is
     ///         check by contract (so it composes predictably in `execute` plans); the curated flows
     ///         achieve a swap-DELTA guarantee by setting `minAmount` to the account's pre-unlock
     ///         balance plus the amount the route was asked to deliver, so a pre-existing balance cannot
-    ///         mask a short fill (audit M-03).
+    ///         mask a short fill.
     function _assertAccountBalance(bytes calldata params, address account) private view {
         (Currency currency, uint256 minAmount) = params.decodeFillCheck();
         uint256 held = currency.balanceOf(account);
