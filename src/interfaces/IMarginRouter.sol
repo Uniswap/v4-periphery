@@ -52,6 +52,13 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      the lending protocol at call time regardless.
     error PositionUnhealthy();
 
+    /// @dev Thrown when a partial decrease targets a position with no outstanding debt. The swap
+    ///      would buy debt tokens no repay consumes (stranding them in the account, since only a
+    ///      full close sweeps the surplus back) while the event reported a repay that never
+    ///      happened. A debt-free position is exited with a full close
+    ///      (`debtToRepay == type(uint256).max`), which withdraws the collateral directly.
+    error NoDebtToRepay();
+
     /// @dev Thrown when a flow is called with a lending adapter that governance has not allowlisted.
     ///      A non-allowlisted adapter could redirect equity to an arbitrary destination.
     /// @param adapter The disallowed adapter address that was supplied.
@@ -273,7 +280,9 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     /// @notice Parameters for reducing (delevering) or fully closing a position.
     /// @dev Sells collateral to buy and repay `debtToRepay` of debt. A partial decrease keeps the
     ///      position open and shrinks it by the swap's collateral cost and the repaid debt, with
-    ///      `maxLtvAfter` asserting the resulting LTV. Passing `debtToRepay == type(uint256).max`
+    ///      `maxLtvAfter` asserting the resulting LTV; it requires live debt and reverts
+    ///      `NoDebtToRepay` against a debt-free position (exit those with a full close instead).
+    ///      Passing `debtToRepay == type(uint256).max`
     ///      instead fully closes the position: it repays all debt, withdraws all collateral, and
     ///      returns the residual (realized PnL) to the caller; a zero-debt position takes a swap-free
     ///      path, and `maxLtvAfter` is ignored on a full close. One state is not expressible here: a

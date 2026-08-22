@@ -214,6 +214,13 @@ contract MarginRouter is
             return account;
         }
 
+        // a partial decrease of a debt-free position has nothing to repay: the swap would buy debt
+        // tokens no repay consumes, stranding them in the account (only a full close sweeps the
+        // surplus) while the event reported a repay that never happened. Fail loudly instead; this
+        // also keeps a stale partial decrease against a re-pointed pair, whose reads see zero debt,
+        // a revert rather than a silent value leak.
+        if (debt == 0) revert NoDebtToRepay();
+
         // a swap runs from here (the debt-free full close returned above), so the input cap is mandatory
         if (params.maxCollateralIn == 0) revert SlippageBoundRequired();
 

@@ -1175,6 +1175,7 @@ adapter.)
 | router   | `SlippageBoundRequired()`                                        | a mandatory bound (`maxDebtIn` / `maxCollateralIn` / `maxLtvAfter`) or amount (`collateralToBuy` / `debtToRepay`) is zero |
 | router   | `IneffectiveLtvBound(Ltv)`                                       | a non-zero `maxLtvAfter` is at or above 100% (`1e18`), so it could never bind (supply a bound below 100%, or 0 to skip)   |
 | router   | `PositionUnhealthy()`                                            | resulting LTV exceeds the bound                                                                                           |
+| router   | `NoDebtToRepay()`                                                | a partial decrease targeted a debt-free position (nothing to repay; exit with a full close instead)                       |
 | router   | `AdapterNotAllowed(address)`                                     | adapter not on the allowlist (exposure-increasing flows)                                                                  |
 | router   | `NativeCollateralMismatch()`                                     | native ETH sent but collateral is not WETH                                                                                |
 | router   | `IncompleteFill(uint256 requested, uint256 received)`            | the exact-output position swap (increase or decrease/close) under-filled (thin pool); the swap is all-or-nothing           |

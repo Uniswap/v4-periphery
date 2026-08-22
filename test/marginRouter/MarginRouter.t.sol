@@ -115,6 +115,25 @@ contract MarginRouterTest is Test, MarginRouteHelpers {
         router.decreasePosition(p);
     }
 
+    function test_partialDecrease_revertsWhenPositionDebtFree() public {
+        // a partial decrease against a debt-free position has nothing to repay: the swap would buy
+        // debt tokens no repay consumes, so the router fails loudly instead of stranding them and
+        // emitting a repay that never happened
+        IMarginRouter.DecreaseParams memory p;
+        p.adapter = ILendingAdapter(makeAddr("adapter"));
+        p.deadline = block.timestamp + 1 hours;
+        p.debtToRepay = 1e18;
+        p.maxCollateralIn = 1;
+        p.maxLtvAfter = toLtv(0.9e18);
+        vm.mockCall(
+            address(p.adapter),
+            abi.encodeWithSelector(ILendingAdapter.positionOf.selector),
+            abi.encode(uint256(5e18), uint256(0))
+        );
+        vm.expectRevert(IMarginRouter.NoDebtToRepay.selector);
+        router.decreasePosition(p);
+    }
+
     function test_governance_isDeployer() public view {
         assertEq(router.governance(), address(this));
     }
