@@ -72,11 +72,13 @@ library MarginActions {
     ///         would. Decoded with `MarginCalldataDecoder.decodeRouteSwap`.
     uint256 internal constant ROUTE_SWAP = 0x39;
 
-    /// @notice Asserts that the active account's wallet balance of a currency is at least a minimum,
-    ///         reverting `IncompleteFill` otherwise. Used after `ROUTE_SWAP` to make the curated flows
-    ///         all-or-nothing: an exact-output swap that under-fills (e.g. a v4 hop exhausts liquidity
-    ///         before reaching the requested output) delivers less to the account, and this catches it
-    ///         before the position is built on a short fill. Decoded with
-    ///         `MarginCalldataDecoder.decodeFillCheck` (same `(currency, minAmount)` shape).
+    /// @notice Asserts that the active account's ABSOLUTE balance of a currency is at least a
+    ///         minimum, reverting `IncompleteFill` otherwise. A floor, not a fill delta: any balance
+    ///         the account already holds counts toward the minimum. The curated flows turn it into a
+    ///         swap-delta guarantee by setting the minimum to the account's pre-unlock balance plus
+    ///         the amount the route must deliver; a hand-built plan gets a delta guarantee only from
+    ///         how it computes the minimum (see the integration guide), never from the action
+    ///         itself. Decoded with `MarginCalldataDecoder.decodeFillCheck` (same
+    ///         `(currency, minAmount)` shape as `ASSERT_FILL`).
     uint256 internal constant ASSERT_ACCOUNT_BALANCE = 0x3a;
 }

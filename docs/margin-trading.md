@@ -249,7 +249,7 @@ set (swap / settle / take, and `SWEEP` / `WRAP` / `UNWRAP`) plus the margin opco
 | `ACCOUNT_SUPPLY_COLLATERAL` / `ACCOUNT_BORROW` | Supply/borrow on the active account. **Allowlist-gated** (exposure-increasing). |
 | `ACCOUNT_WITHDRAW_COLLATERAL` / `ACCOUNT_REPAY` / `ACCOUNT_SWEEP` | Withdraw/repay/sweep on the active account. Not allowlist-gated (exits stay open). |
 | `ROUTE_SWAP(universalRouter, input, maxIn, commands, inputs)` | Route a swap through the caller-supplied `universalRouter` (a Universal Router carrying already-unlocked `V4_SWAP`; must be non-zero, else `UniversalRouterNotSet`) across v2/v3/v4: flash-take up to `maxIn` of `input`, fund UR via a scoped Permit2 allowance, run the caller-built UR `commands`/`inputs` (which must deliver the output to the active account and self-settle), then settle only this call's unspent take (any pre-existing router balance is left untouched). Leaves the same net delta a native v4 swap would, so a following `ACCOUNT_BORROW`/`SETTLE` nets via `OPEN_DELTA`. |
-| `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_FILL(currency, minAmount)` / `ASSERT_ACCOUNT_BALANCE(currency, minAmount)` | Opt-in guards; encode them yourself. `ASSERT_FILL` checks the router's swap credit; `ASSERT_ACCOUNT_BALANCE` checks the active account received at least `minAmount` (the fill guard after a routed swap that delivers to the account). |
+| `ASSERT_HEALTH(adapter, market, maxLtv)` / `ASSERT_FILL(currency, minAmount)` / `ASSERT_ACCOUNT_BALANCE(currency, minAmount)` | Opt-in guards; encode them yourself. `ASSERT_FILL` checks the router's per-unlock swap credit (a true delta). `ASSERT_ACCOUNT_BALANCE` checks the active account's ABSOLUTE balance is at least `minAmount` — a floor any pre-existing balance counts toward, not a fill delta; see the note below on getting a delta guarantee from it. |
 
 `execute` does no entry validation — it gives exactly the guardrails the plan encodes. Composing plans
 safely:
@@ -277,6 +277,18 @@ transaction as the resulting state). Mutations made through the owner escape hat
 (`CollateralSupplied`, `Borrowed`, `Repaid`, `Swept`, `AccountCreated`). Only the curated entry
 points additionally emit the richer `PositionIncreased`/`PositionDecreased`/`CollateralAdded` events
 that fold the per-operation deltas and resulting snapshot into one log.
+
+**The curated flows' swap-delta guarantee is not replicable inside a plan.** `ASSERT_ACCOUNT_BALANCE`
+is an absolute floor and its `minAmount` is static calldata: a plan cannot snapshot the account's
+balance mid-plan, and no delta-asserting account opcode exists, so the curated technique (threshold =
+balance going into the unlock plus the required delivery, computed in the same transaction) is not
+available to a hand-built plan. Prefer `ASSERT_FILL` wherever the swap output lands on the router —
+router credit is per-unlock and cannot be inflated by a standing balance, so it is a true delta.
+`ROUTE_SWAP` delivers the output to the active account, so a fill check there must use
+`ASSERT_ACCOUNT_BALANCE`: either run against an account known to hold none of the output currency (a
+fresh `subId`, or an `ACCOUNT_SWEEP` of that currency beforehand) so the floor and the delta
+coincide, or set `minAmount` to an offchain-observed balance plus the required delivery and accept
+that a balance arriving between observation and execution relaxes the check.
 
 > **Signing an `execute` plan is equivalent to handing over the sub-account.** Because the router is
 > the account's manager, a malicious plan can borrow to the market maximum, withdraw all collateral,
