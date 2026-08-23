@@ -810,8 +810,10 @@ unwound. Whether a given `(collateral, debt)` pair is routable on a venue is rea
 `adapter.isSupportedMarket(market)`.
 
 `AaveLendingAdapter` is constructed from an Aave v3 `IPoolAddressesProvider`
-(`constructor(IPoolAddressesProvider provider, address owner_)`); it resolves and stores the Pool and
-the protocol data provider immutably. Governance enables a pairing with
+(`constructor(IPoolAddressesProvider provider, address owner_)`); it resolves and stores the Pool
+immutably (a proxy with a stable address across Aave upgrades), while the protocol data provider, a
+plain address Aave can repoint, is re-resolved from the addresses provider on each use rather than
+stored. Governance enables a pairing with
 `setMarket(Currency collateral, Currency debt, bool allowed)` (owner-gated; both must be live Aave
 reserves), and ownership is the same two-step `transferOwnership` / `acceptOwnership` /
 `owner()` / `pendingOwner()` handoff as the Morpho adapter. Reads mirror the Morpho adapter:

@@ -90,8 +90,10 @@ contract AaveLendingAdapter is ILendingAdapter, OwnableAdapter, PositionAmountRe
     /// @param allowed Whether the pair is now routable.
     event MarketSet(address indexed collateral, address indexed debt, bool allowed);
 
-    /// @param provider The Aave v3 PoolAddressesProvider for the target market. The Pool and data
-    ///        provider proxy addresses are resolved from it and stored immutably.
+    /// @param provider The Aave v3 PoolAddressesProvider for the target market. The Pool (a proxy
+    ///        with a stable address across Aave upgrades) is resolved from it and stored immutably.
+    ///        The protocol data provider is a plain, replaceable address Aave can repoint, so it is
+    ///        never stored: it is re-resolved from this provider on each use (see `dataProvider`).
     /// @param owner_ The initial adapter owner (governance).
     constructor(IPoolAddressesProvider provider, address owner_) OwnableAdapter(owner_) {
         address pool_ = provider.getPool();
