@@ -13,9 +13,11 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {IWETH9} from "../../src/interfaces/external/IWETH9.sol";
 import {IMarginRouter} from "../../src/interfaces/IMarginRouter.sol";
+import {ILendingAdapter} from "../../src/interfaces/ILendingAdapter.sol";
 import {MarginAccount} from "../../src/MarginAccount.sol";
 import {Market} from "../../src/types/Market.sol";
 import {Ltv, toLtv} from "../../src/types/Ltv.sol";
+import {PositionData} from "../../src/types/PositionData.sol";
 import {MockLendingAdapter} from "../mocks/MockLendingAdapter.sol";
 import {MockLendingProtocol} from "../mocks/MockLendingProtocol.sol";
 
@@ -281,6 +283,103 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
             })
         );
         assertEq(protocol.collateralOf(account), 2 ether, "increase built despite the event read reverting");
+    }
+
+    /// @dev The try/catch on the event read guards the describePosition CALL, not the success block:
+    ///      the increase event computes `position.debtAmount - debtBefore` from two reads taken at
+    ///      different times. If the account's debt shrank across the operation (venues accept
+    ///      permissionless onBehalf repays, so one can land mid-transaction from code in the route
+    ///      path), the delta must saturate to zero rather than panic and roll back the completed
+    ///      supply and borrow.
+    function test_increase_survivesDebtShrinkingAcrossOperation() public {
+        address account = _open(1 ether, 1 ether);
+        (, uint256 debtBefore) = adapter.positionOf(account, market);
+        assertGt(debtBefore, 0, "position carries debt");
+
+        // stage the post-mutation read to report LESS debt than before the increase, as if an
+        // external repay landed inside the transaction
+        vm.mockCall(
+            address(adapter),
+            abi.encodeWithSelector(ILendingAdapter.describePosition.selector),
+            abi.encode(
+                PositionData({
+                    collateralAmount: 3 ether,
+                    debtAmount: 0,
+                    maxLtv: toLtv(0.86e18),
+                    currentLtv: Ltv.wrap(0),
+                    healthFactorWad: type(uint256).max
+                })
+            )
+        );
+
+        MockERC20(Currency.unwrap(collateral)).transfer(account, 1 ether);
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, debt, collateral, 1 ether, 5 ether, account);
+        marginRouter.increasePosition(
+            IMarginRouter.IncreaseParams({
+                adapter: adapter,
+                market: market,
+                equity: 0,
+                collateralToBuy: 1 ether,
+                maxDebtIn: 5 ether,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: Ltv.wrap(0),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+        vm.clearMockedCalls();
+
+        assertEq(protocol.collateralOf(account), 4 ether, "increase completed despite the shrunken debt read");
+    }
+
+    /// @dev Same class on the partial decrease: its event computes
+    ///      `collateralBefore - position.collateralAmount`. If the account's collateral grew across
+    ///      the operation (a permissionless onBehalf supply landing mid-transaction), the delta must
+    ///      saturate to zero rather than panic and roll back the completed repay and withdraw.
+    function test_partialDecrease_survivesCollateralGrowingAcrossOperation() public {
+        address account = _open(1 ether, 2 ether);
+        (, uint256 curDebt) = adapter.positionOf(account, market);
+        uint256 repay = curDebt / 2;
+
+        // stage the post-mutation read to report MORE collateral than before the decrease, as if an
+        // external supply landed inside the transaction
+        vm.mockCall(
+            address(adapter),
+            abi.encodeWithSelector(ILendingAdapter.describePosition.selector),
+            abi.encode(
+                PositionData({
+                    collateralAmount: 100 ether,
+                    debtAmount: curDebt - repay,
+                    maxLtv: toLtv(0.86e18),
+                    currentLtv: toLtv(0.1e18),
+                    healthFactorWad: 8.6e18
+                })
+            )
+        );
+
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, collateral, debt, uint128(repay), 5 ether, account);
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                adapter: adapter,
+                market: market,
+                debtToRepay: repay,
+                maxCollateralIn: 5 ether,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: toLtv(0.9e18),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+        vm.clearMockedCalls();
+
+        (, uint256 debtAfter) = adapter.positionOf(account, market);
+        assertEq(debtAfter, curDebt - repay, "partial decrease completed despite the grown collateral read");
     }
 
     function test_openLong_revertsWhenResultingLtvExceedsBound() public {

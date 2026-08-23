@@ -137,7 +137,10 @@ contract MarginRouter is
         // Best-effort rich event. describePosition consults the venue oracle, which can revert (e.g.
         // oracle downtime); the increase is already complete and the PositionUpdated snapshots emitted
         // inside the unlock carry the resulting state, so a failing read must not roll back the
-        // mutation. Skip the delta-carrying event rather than revert.
+        // mutation. Skip the delta-carrying event rather than revert. The try/catch guards only the
+        // external call, so nothing in this success block may revert either: the debt delta saturates
+        // to zero because venues accept permissionless onBehalf repays, and one landing inside the
+        // transaction (from code in the route path) can leave the debt BELOW its pre-increase level.
         try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
             emit PositionIncreased(
                 msgSender(),
@@ -146,7 +149,7 @@ contract MarginRouter is
                 params.market.debt,
                 msg.value > 0 ? msg.value : params.equity,
                 params.collateralToBuy,
-                position.debtAmount - debtBefore,
+                position.debtAmount > debtBefore ? position.debtAmount - debtBefore : 0,
                 position.collateralAmount,
                 position.debtAmount,
                 position.currentLtv,
@@ -305,7 +308,11 @@ contract MarginRouter is
         } else {
             // best-effort rich event: the read consults the venue oracle and must not roll back the
             // completed partial decrease if it reverts (the PositionUpdated snapshots emitted inside
-            // the unlock carry the resulting state); skip rather than revert
+            // the unlock carry the resulting state); skip rather than revert. The try/catch guards
+            // only the external call, so nothing in this success block may revert either: the
+            // collateral delta saturates to zero because venues accept permissionless onBehalf
+            // supplies, and one landing inside the transaction can leave the collateral ABOVE its
+            // pre-decrease level.
             try params.adapter.describePosition(account, params.market) returns (PositionData memory position) {
                 emit PositionDecreased(
                     msgSender(),
@@ -313,7 +320,7 @@ contract MarginRouter is
                     params.market.collateral,
                     params.market.debt,
                     params.debtToRepay,
-                    collateralBefore - position.collateralAmount,
+                    collateralBefore > position.collateralAmount ? collateralBefore - position.collateralAmount : 0,
                     residual,
                     position.collateralAmount,
                     position.debtAmount,
