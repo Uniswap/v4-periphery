@@ -8,6 +8,7 @@ import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
@@ -33,6 +34,7 @@ import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol"
 ///         pool's documented limits are the only acceptable ways to fail with a non-zero minLiquidity floor.
 contract SwapAndAddFuzzTest is PosmTestSetup {
     using CurrencyLibrary for Currency;
+    using StateLibrary for IPoolManager;
 
     ISwapAndAdd zap;
     MockSwapRoute route;
@@ -64,8 +66,10 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
 
-        // deep reserve pool: keeps the flash-take clear of the K-05 PoolManager-drained limit (see above)
-        (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 10000, int24(200), SQRT_PRICE_1_1);
+        // deep reserve pool: keeps the flash-take clear of the K-05 PoolManager-drained limit (see above).
+        // Its fee is deliberately ABOVE the fuzzed fee range (0..100_000) so a fuzzed (fee, spacing) pair can
+        // never collide with this key and revert PoolAlreadyInitialized. It is never swapped through.
+        (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 500_000, int24(200), SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(
             rk,
             ModifyLiquidityParams({tickLower: -887_200, tickUpper: 887_200, liquidityDelta: int256(1e30), salt: 0}),
@@ -109,9 +113,17 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
             ""
         );
 
-        c.tl = c.centre + int24(int256(loMul)) * ts;
-        c.tu = c.centre + int24(int256(hiMul)) * ts;
-        vm.assume(c.tl < c.tu);
+        (c.tl, c.tu) = _range(c.centre, ts, loMul, hiMul);
+    }
+
+    /// @dev Build an ordered range from two fuzzed multipliers by SORTING them rather than vm.assume-ing the
+    ///      ordering: a rejection-based version throws away ~half of all inputs (and both ranges together ~75%
+    ///      in the rebalance property), which exhausts the assume budget at high run counts.
+    function _range(int24 centre, int24 ts, int8 aMul, int8 bMul) internal pure returns (int24 lo, int24 hi) {
+        (int8 lower, int8 upper) = aMul <= bMul ? (aMul, bMul) : (bMul, aMul);
+        lo = centre + int24(int256(lower)) * ts;
+        hi = centre + int24(int256(upper)) * ts;
+        if (lo == hi) hi += ts; // degenerate: widen by one spacing instead of rejecting the input
     }
 
     /// @dev VALUE-cap the fuzzed budgets: a budget's worth in the OTHER token bounds the flash-take, and
@@ -119,7 +131,22 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
     ///      separate, documented K-05 limit (PM globally drained) instead of the properties under test.
     ///      Clamping (not assume-ing) keeps every run meaningful at extreme prices.
     function _capBudgets(int24 centre, uint88 b0Seed, uint88 b1Seed) internal pure returns (uint256 b0, uint256 b1) {
-        uint160 sp = TickMath.getSqrtPriceAtTick(centre);
+        return _capAt(TickMath.getSqrtPriceAtTick(centre), b0Seed, b1Seed);
+    }
+
+    /// @dev The cap MUST be taken at the price that prevails when the operation runs, not at pool init: the
+    ///      flash-take is sized from the live price, so a drifted pool needs re-capping or an otherwise
+    ///      in-bounds budget implies an astronomical take (the K-05 noise this whole helper exists to exclude).
+    function _capBudgetsAtSpot(PoolKey memory k, uint88 b0Seed, uint88 b1Seed)
+        internal
+        view
+        returns (uint256 b0, uint256 b1)
+    {
+        (uint160 sp,,,) = manager.getSlot0(k.toId());
+        return _capAt(sp, b0Seed, b1Seed);
+    }
+
+    function _capAt(uint160 sp, uint88 b0Seed, uint88 b1Seed) internal pure returns (uint256 b0, uint256 b1) {
         uint256 cap0 = FullMath.mulDiv(FullMath.mulDiv(1e28, FixedPoint96.Q96, sp), FixedPoint96.Q96, sp);
         uint256 cap1 = FullMath.mulDiv(FullMath.mulDiv(1e28, sp, FixedPoint96.Q96), sp, FixedPoint96.Q96);
         b0 = bound(b0Seed, 0, cap0 < type(uint88).max ? cap0 : type(uint88).max);
@@ -254,8 +281,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
     ) public {
         Cfg memory c = _cfg(feeSeed, spacingSeed, centreSeed, depthSeed, loMul, hiMul);
         (uint256 c0m, uint256 c1m) = _capBudgets(c.centre, m0, m1);
-        (uint256 c0i, uint256 c1i) = _capBudgets(c.centre, i0, i1);
-        vm.assume(c0m + c1m > 0 && c0i + c1i > 0);
+        vm.assume(c0m + c1m > 0);
 
         uint256 tokenId;
         try zap.add(_addP(c, c0m, c1m)) returns (uint256 id, uint128, uint256, uint256) {
@@ -271,6 +297,10 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
             int256 d = int256(drift);
             try this.extSwap(c.key, d > 0, d > 0 ? d : -d) {} catch {}
         }
+
+        // cap the increase budgets at the POST-DRIFT price — that is what its flash-take is sized from
+        (uint256 c0i, uint256 c1i) = _capBudgetsAtSpot(c.key, i0, i1);
+        vm.assume(c0i + c1i > 0);
 
         try zap.increase(
             ISwapAndAdd.IncreaseParams({
@@ -310,10 +340,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         Cfg memory c = _cfg(feeSeed, spacingSeed, centreSeed, depthSeed, loMul, hiMul);
         (uint256 c0m, uint256 c1m) = _capBudgets(c.centre, m0, m1);
         vm.assume(c0m + c1m > 0);
-        int24 ts = c.key.tickSpacing;
-        int24 ntl = c.centre + int24(int256(newLoMul)) * ts;
-        int24 ntu = c.centre + int24(int256(newHiMul)) * ts;
-        vm.assume(ntl < ntu);
+        (int24 ntl, int24 ntu) = _range(c.centre, c.key.tickSpacing, newLoMul, newHiMul);
 
         uint256 tokenId;
         try zap.add(_addP(c, c0m, c1m)) returns (uint256 id, uint128, uint256, uint256) {
