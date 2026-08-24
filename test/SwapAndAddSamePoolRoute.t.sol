@@ -71,11 +71,19 @@ contract MockSamePoolRoute {
     }
 }
 
-/// @notice Regression: `increase`/`compound` with a route leg through the SAME pool re-accrues LP fees to the
-///         position between the callback's first collect prologue and `_deploy`'s INCREASE_LIQUIDITY. POSM
-///         credits the whole accrued fee balance on the increase; a credit exceeding the increase's principal
-///         on either side would flip POSM's delta positive and make SETTLE_PAIR revert DeltaNotNegative. The
-///         fix re-collects after the route (see `_addCore`), so route-accrued fees join the budget instead.
+/// @notice Regression: `increase`/`compound` with a route leg through the SAME pool accrues LP fees to the
+///         position between the callback's collect prologue and `_deploy`'s liquidity action. POSM applies
+///         `liquidityDelta + feesAccrued` to its own delta, so a fee credit exceeding that side's principal
+///         makes the delta POSITIVE — the previous `SETTLE_PAIR` asserted a debt and reverted
+///         `DeltaNotNegative`, bricking a route shape the contract advertises as supported. `_deploy` now
+///         closes each currency with `CLOSE_CURRENCY`, which settles a debt or takes a credit.
+///
+///         Where the credited fees END UP: taken into this contract's balance AFTER sizing, so they cannot
+///         grow the position beyond the already-fixed optimistic size. The reconcile spends them on the flash
+///         debt first (avoiding a trim), and the remainder is swept to the resolved recipient. So fees accrued
+///         DURING an operation are refunded, not compounded — measured below. Fees accrued BEFORE the
+///         operation are unaffected: the prologue collect puts them in the budget ahead of sizing, so they
+///         are still fully reinvested, which is what `compound` promises.
 contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
@@ -128,10 +136,10 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
     }
 
     /// @dev A route leg that trades the target pool and drives spot into the position's own range accrues LP
-    ///      fees far exceeding the increase's principal on the deficit side. Before the fix this reverted
-    ///      DeltaNotNegative(currency0); the post-route re-collect folds those fees into the budget so the
-    ///      increase completes and the fees are reinvested (never leaked to the wallet).
-    function test_increase_samePoolRouteLeg_reinvestsAccruedFees() public {
+    ///      fees far exceeding the increase's principal on the deficit side (here 13x). Before the fix this
+    ///      reverted DeltaNotNegative(currency0). Now the deploy takes the credit, the reconcile spends what
+    ///      it needs on the flash debt, and the rest is refunded to the recipient.
+    function test_increase_samePoolRouteLeg_completesAndRefundsFeeCredit() public {
         // 1. the position, minted straight through POSM (spot is above TU: pure token1)
         PositionConfig memory cfg = PositionConfig({poolKey: targetKey, tickLower: TL, tickUpper: TU});
         uint256 tokenId = lpm.nextTokenId();
@@ -161,13 +169,19 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
             })
         );
 
+        // 10% LP fee on the whole route input, all of it to this position (it is the pool's only liquidity)
+        uint256 accruedFee = routeIn / 10;
+        uint256 refunded = routeIn - (c0Before - currency0.balanceOf(address(this)));
+
         assertGt(added, 0, "increase must complete with a same-pool route leg");
+        // the fee credit is refunded to the recipient — not stranded, not burned. It arrives AFTER sizing, so
+        // only the part the reconcile needed for the flash debt stayed in (here a sliver: the price impact).
+        assertApproxEqRel(refunded, accruedFee, 0.01e18, "route-accrued fee refunded to the owner");
+        assertLt(refunded, accruedFee, "the reconcile consumed part of the credit instead of trimming");
         // no funds at rest, and the position NFT never moved
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
+        assertEq(currency1.balanceOf(address(this)), c1Before, "no token1 payout: it all went into the position");
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "owner keeps the NFT");
-        // the caller spent token0 (the route input) and got only dust back — fees were reinvested, not paid out
-        assertLt(currency0.balanceOf(address(this)), c0Before, "token0 budget consumed");
-        assertLe(currency1.balanceOf(address(this)) - c1Before, routeIn / 100, "no material payout to the wallet");
     }
 }

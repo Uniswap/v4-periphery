@@ -370,12 +370,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         //    re-read balances — the post-route state is the source of truth we size from, not an estimate.
         if (cp.route.length != 0) {
             _runRoute(cp);
-            // a same-pool route leg re-accrues LP fees on the position AFTER the callback's collect prologue.
-            // POSM credits the position's ENTIRE accrued fee balance on INCREASE_LIQUIDITY, and a credit
-            // exceeding a side's principal pull flips that delta positive — the deploy's SETTLE_PAIR would
-            // revert DeltaNotNegative. Collect again so route-accrued fees join the budget (sizing- and
-            // reconcile-eligible) exactly like the fees collected before the route.
-            if (existingTokenId != 0) _decrease(cp.key, existingTokenId, 0, cp.hookData);
             // update the budget after the route has run.
             cp.budget0 = cp.key.currency0.balanceOfSelf();
             cp.budget1 = cp.key.currency1.balanceOfSelf();
@@ -636,9 +630,18 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     /// @dev Deploy `liquidity` through POSM: MINT a new position when `existingTokenId` is 0 (owned by THIS
     ///      contract so `_trim` can decrease it within the unlock), else INCREASE that tokenId in place. Funding
-    ///      is SETTLE_PAIR from this contract (standing Permit2 allowance / forwarded native value; a SWEEP
-    ///      returns unused native wei). POSM's per-amount slippage limits are set to max: the single
-    ///      `minLiquidity` floor checked after the trim is the operation's slippage gate.
+    ///      comes from this contract (standing Permit2 allowance / forwarded native value; a SWEEP returns
+    ///      unused native wei). POSM's per-amount slippage limits are set to max: the single `minLiquidity`
+    ///      floor checked after the trim is the operation's slippage gate.
+    ///      Each currency is settled with CLOSE_CURRENCY rather than one SETTLE_PAIR: POSM applies
+    ///      `liquidityDelta + feesAccrued` to its own delta, so on a grow op a fee credit larger than that
+    ///      side's principal makes the delta POSITIVE, and SETTLE_PAIR (which asserts a debt) would revert
+    ///      DeltaNotNegative. The callback collects the position's fees before the route, so the only source
+    ///      left is fees accrued DURING the operation — a route leg trading this pool, or a hook doing the
+    ///      same — but tolerating either sign removes the whole failure class instead of proving each source
+    ///      is handled. A taken credit lands in this contract's balance, where the reconcile spends it on the
+    ///      flash debt (a smaller trim, i.e. more retained liquidity) and the sweep returns any remainder.
+    ///      On a MINT the delta is always a pure debt, so CLOSE_CURRENCY is exactly SETTLE_PAIR there.
     function _deploy(CoreParams memory cp, uint256 existingTokenId, uint128 liquidity, uint256 amount0)
         internal
         returns (uint256 tokenId)
@@ -651,12 +654,14 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         bytes memory actions;
         bytes[] memory params;
         if (c0.isAddressZero()) {
-            actions = abi.encodePacked(deployAction, uint8(Actions.SETTLE_PAIR), uint8(Actions.SWEEP));
-            params = new bytes[](3);
-            params[2] = abi.encode(c0, ActionConstants.MSG_SENDER);
+            actions = abi.encodePacked(
+                deployAction, uint8(Actions.CLOSE_CURRENCY), uint8(Actions.CLOSE_CURRENCY), uint8(Actions.SWEEP)
+            );
+            params = new bytes[](4);
+            params[3] = abi.encode(c0, ActionConstants.MSG_SENDER);
         } else {
-            actions = abi.encodePacked(deployAction, uint8(Actions.SETTLE_PAIR));
-            params = new bytes[](2);
+            actions = abi.encodePacked(deployAction, uint8(Actions.CLOSE_CURRENCY), uint8(Actions.CLOSE_CURRENCY));
+            params = new bytes[](3);
         }
         params[0] = isMint
             ? abi.encode(
@@ -670,12 +675,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
                 cp.hookData
             )
             : abi.encode(tokenId, uint256(liquidity), type(uint128).max, type(uint128).max, cp.hookData);
-        params[1] = abi.encode(c0, cp.key.currency1);
+        params[1] = abi.encode(c0);
+        params[2] = abi.encode(cp.key.currency1);
 
         // forward exactly the required native amount (the funding is wei-exact, see _flashTakeDeficit); the
-        // SWEEP returns whatever POSM does not consume (accrued fees are collected before the deploy — again
-        // after a route, see _addCore — so no residual fee credit is expected here; the SWEEP is belt and
-        // braces for the forwarded value).
+        // SWEEP returns whatever POSM does not consume of the forwarded value.
         uint256 nativeToForward = c0.isAddressZero() ? amount0 : 0;
         positionManager.modifyLiquiditiesWithoutUnlock{value: nativeToForward}(actions, params);
     }
