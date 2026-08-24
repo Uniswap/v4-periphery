@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 
+import {IMulticall_v4} from "./IMulticall_v4.sol";
+
 /// @title ISwapAndAdd
 /// @notice Swap-and-add zap for Uniswap v4: add / rebalance / increase / compound. Lets a caller supply the
 ///         two pool tokens in any ratio (including only one) and, in a single transaction, end up with a
@@ -72,11 +74,30 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 ///      actions (burn/collect, mint/increase, trim) and two reconcile swaps — so hooks must tolerate the
 ///      payload being reused; single-use/nonce payload schemes are unsupported.
 ///
-///      ETH NOTE: inherited Permit2 forwarding calls are payable for composability even though they consume no
-///      ETH. Do not attach value to them. Such value is an unsolicited donation and may be swept to the recipient
-///      of a later operation involving native ETH; it does not create a claim for the sender.
-interface ISwapAndAdd {
+///      MULTICALL NOTE: the contract supports POSM-style `multicall` (self-delegatecall per subcall, reverts
+///      bubbled, atomic). The flagship batch is `[permitBatch, op]` — wire the caller's Permit2 allowances
+///      from a signature and operate in one transaction; the inherited permit forwards swallow an inner
+///      revert, so a front-run permit submission cannot brick the batch. Batching adds no fund-mixing
+///      surface: delegatecall preserves msg.sender (subcalls only ever pull the batcher's own funds) and
+///      every operation sweeps before returning (no-funds-at-rest holds per OP, not per transaction), so a
+///      subcall starts against the same empty contract a fresh transaction would see. msg.value keeps
+///      exactly one meaning per batch: every op asserts `msg.value == expected`, so an ERC20-only op
+///      (expecting 0) cannot ride in a value-bearing batch, and while two native ops expecting the same
+///      value both pass the CHECK, native spending is balance-funded — the second finds the balance already
+///      consumed and reverts InvalidEthValue at its pull, unwinding the whole batch. Zero-value batches of
+///      ERC20 ops compose freely (e.g. a keeper increasing/compounding several positions in one transaction).
+///      Batch value no op consumes (e.g. value attached to a permits-only batch) strands in the contract as
+///      an unsolicited donation — see the ETH NOTE.
+///
+///      ETH NOTE: inherited Permit2 forwarding calls are payable for composability (a value-bearing batch
+///      contains them alongside the one op that consumes the value) even though they consume no ETH
+///      themselves. Do not attach value to a DIRECT call to them. Such value is an unsolicited donation and
+///      may be swept to the recipient of a later operation involving native ETH; it does not create a claim
+///      for the sender.
+interface ISwapAndAdd is IMulticall_v4 {
     error DeadlinePassed(uint256 deadline);
+    /// @notice msg.value does not match the operation's declared native amount, or the contract's native
+    ///         balance cannot cover it (a value-bearing multicall where an earlier subcall already spent it).
     error InvalidEthValue();
     /// @notice Plain ETH transfers are rejected; only the PoolManager, POSM and the Universal Router may send.
     error InvalidEthSender();

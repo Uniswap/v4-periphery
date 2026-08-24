@@ -23,6 +23,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
+import {Multicall_v4} from "./base/Multicall_v4.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
 import {Permit2Forwarder} from "./base/Permit2Forwarder.sol";
@@ -69,7 +70,7 @@ import {IUniversalRouter} from "./interfaces/external/IUniversalRouter.sol";
 ///         v4-only; ERC-20 + native ETH. Four ops: add + rebalance mint a NEW position (to this contract so it
 ///         can be trimmed, transferred to the recipient after the unlock closes); increase + compound grow an
 ///         EXISTING tokenId in place through the same core.
-contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarder, ReentrancyLock {
+contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarder, Multicall_v4, ReentrancyLock {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
     using TransientStateLibrary for IPoolManager;
@@ -787,6 +788,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         }
         // msg.value must match its single meaning: the native budget (native pool) OR the native funding entry
         if (msg.value != expectedValue) revert InvalidEthValue();
+        // under multicall msg.value is per-BATCH (delegatecall preserves it), so equality alone no longer
+        // proves this op is funded: an earlier subcall may have consumed the value. Native spending is
+        // balance-based throughout, so a double-claim can only revert — this guard just makes it revert HERE.
+        if (address(this).balance < expectedValue) revert InvalidEthValue();
     }
 
     /// @dev Pull the positive (add) rebalance deltas from the caller, before the unlock so msg.sender is still
@@ -809,6 +814,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             );
         }
         if (msg.value != expectedValue) revert InvalidEthValue();
+        // per-batch msg.value under multicall: see the identical guard in _pullBudget.
+        if (address(this).balance < expectedValue) revert InvalidEthValue();
     }
 
     /// @dev Pull the caller's route-funding entries — non-pool tokens that exist solely to fund the route —
