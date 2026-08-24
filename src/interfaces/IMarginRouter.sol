@@ -52,11 +52,14 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      the lending protocol at call time regardless.
     error PositionUnhealthy();
 
-    /// @dev Thrown when a partial decrease targets a position with no outstanding debt. The swap
-    ///      would buy debt tokens no repay consumes (stranding them in the account, since only a
-    ///      full close sweeps the surplus back) while the event reported a repay that never
-    ///      happened. A debt-free position is exited with a full close
-    ///      (`debtToRepay == type(uint256).max`), which withdraws the collateral directly.
+    /// @dev Thrown when a partial decrease has nothing to repay: before the unlock when the position
+    ///      reads debt-free, and after it when the repay leg no-oped because the debt was cleared
+    ///      inside the transaction (venues accept permissionless onBehalf repays, so route-path code
+    ///      can retire the debt between the two points). Either way the swap would have bought debt
+    ///      tokens no repay consumes (stranding them in the account, since only a full close sweeps
+    ///      the surplus back) while the event reported a repay that never happened. A debt-free
+    ///      position is exited with a full close (`debtToRepay == type(uint256).max`), which
+    ///      withdraws the collateral directly.
     error NoDebtToRepay();
 
     /// @dev Thrown when a flow is called with a lending adapter that governance has not allowlisted.

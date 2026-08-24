@@ -67,6 +67,10 @@ contract MarginRouter is
     // transient slot holding the account for the current unlock, set from the authenticated caller
     bytes32 private constant ACTIVE_ACCOUNT_SLOT = keccak256("uniswap.marginRouter.activeAccount");
 
+    // transient slot holding the amount the current unlock's last ACCOUNT_REPAY actually repaid, so
+    // the curated partial decrease can assert its repay executed after the unlock returns
+    bytes32 private constant LAST_REPAID_SLOT = keccak256("uniswap.marginRouter.lastRepaid");
+
     // 1e18 == 100% LTV. A resulting-health bound at or above this can never be exceeded by a real LTV,
     // so passing one (e.g. type(uint256).max, the codebase's "no limit" sentinel elsewhere) would
     // satisfy a "bound is set" check yet leave ASSERT_HEALTH a no-op; a supplied bound must sit below it.
@@ -275,8 +279,17 @@ contract MarginRouter is
         // measure the router's own collateral gain across the unlock: zero for a partial decrease (it
         // withdraws exactly the swap cost), the realized PnL for a full close
         uint256 balanceBefore = params.market.collateral.balanceOfSelf();
+        _setLastRepaid(0); // fail-closed: the plan's ACCOUNT_REPAY overwrites this with what it repaid
         poolManager.unlock(abi.encode(actions, actionParams));
         _setActiveAccount(address(0));
+
+        // the pre-unlock debt check cannot see a repay that lands inside the unlock (venues accept
+        // permissionless onBehalf repays, and route-path code can execute one): with the debt cleared
+        // mid-transaction, the repay leg no-ops, the bought debt tokens strand in the account, and the
+        // event would report a repay that never happened. Gate the partial branch on the MEASURED
+        // repay rather than the pre-read; a full close tolerates the no-op (it sweeps the over-bought
+        // debt back below) and execute plans rely on it, so only this curated branch asserts.
+        if (!fullClose && _lastRepaid() == 0) revert NoDebtToRepay();
 
         // a full close whose route over-bought the debt (buffered for accrual) leaves the excess in the
         // account after repay-all; return it to the caller so nothing is stranded
@@ -759,7 +772,10 @@ contract MarginRouter is
     ///         `ILendingAdapter.encodeRepay`).
     function _repay(bytes calldata params, address account) private {
         (ILendingAdapter adapter, Market memory market, uint256 amount) = params.decodeAdapterMarketAmount();
-        IMarginAccount(account).repay(adapter, market, amount);
+        uint256 repaid = IMarginAccount(account).repay(adapter, market, amount);
+        // recorded transiently so the curated partial decrease can assert the repay executed once
+        // the unlock returns; execute plans never read it
+        _setLastRepaid(repaid);
         _emitPosition(adapter, market, account);
     }
 
@@ -875,6 +891,23 @@ contract MarginRouter is
         bytes32 slot = ACTIVE_ACCOUNT_SLOT;
         assembly ("memory-safe") {
             account := tload(slot)
+        }
+    }
+
+    /// @notice Records the amount the last ACCOUNT_REPAY actually repaid in transient storage
+    ///         (EIP-1153), so the curated partial decrease can assert its repay executed.
+    function _setLastRepaid(uint256 repaid) private {
+        bytes32 slot = LAST_REPAID_SLOT;
+        assembly ("memory-safe") {
+            tstore(slot, repaid)
+        }
+    }
+
+    /// @notice Reads the amount the last ACCOUNT_REPAY actually repaid from transient storage.
+    function _lastRepaid() private view returns (uint256 repaid) {
+        bytes32 slot = LAST_REPAID_SLOT;
+        assembly ("memory-safe") {
+            repaid := tload(slot)
         }
     }
 }

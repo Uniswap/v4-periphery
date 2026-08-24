@@ -382,6 +382,44 @@ contract MarginRouterIntegrationTest is RoutingTestHelpers, MarginRouteHelpers, 
         assertEq(debtAfter, curDebt - repay, "partial decrease completed despite the grown collateral read");
     }
 
+    /// @dev The debt-free guard on the partial decrease is a pre-unlock read, which cannot see a
+    ///      repay landing inside the unlock (venues accept permissionless onBehalf repays, so
+    ///      route-path code can retire the debt mid-transaction). The repay leg then encodes the
+    ///      zero-debt no-op and the bought debt tokens would strand while the event reported a repay
+    ///      that never happened. The partial branch must gate on the MEASURED repay and revert.
+    function test_partialDecrease_revertsWhenRepayNoOpsMidUnlock() public {
+        address account = _open(1 ether, 2 ether);
+        (, uint256 curDebt) = adapter.positionOf(account, market);
+        uint256 repay = curDebt / 2;
+
+        // the position reads indebted before the unlock (passing the pre-read guard), but the repay
+        // leg no-ops as if the debt had been cleared inside the transaction; with the debt gone the
+        // health check passes trivially, so it is mocked low to match that state and the measured
+        // repay gate must be what catches the no-op
+        adapter.setRepayNoOp(true);
+        vm.mockCall(
+            address(adapter), abi.encodeWithSelector(ILendingAdapter.currentLtvWad.selector), abi.encode(Ltv.wrap(0))
+        );
+
+        (bytes memory cmds, bytes[] memory ins) =
+            buildV4ExactOutRoute(poolKey, collateral, debt, uint128(repay), 5 ether, account);
+        vm.expectRevert(IMarginRouter.NoDebtToRepay.selector);
+        marginRouter.decreasePosition(
+            IMarginRouter.DecreaseParams({
+                adapter: adapter,
+                market: market,
+                debtToRepay: repay,
+                maxCollateralIn: 5 ether,
+                universalRouter: ur,
+                routeCommands: cmds,
+                routeInputs: ins,
+                maxLtvAfter: toLtv(0.9e18),
+                subId: 0,
+                deadline: block.timestamp + 1
+            })
+        );
+    }
+
     function test_openLong_revertsWhenResultingLtvExceedsBound() public {
         // fund equity directly, then open with a health bound below the mock's reported LTV (0.86)
         address account = marginRouter.accountOf(address(this), 0);
