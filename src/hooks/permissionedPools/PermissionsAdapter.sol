@@ -30,6 +30,9 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
     /// @inheritdoc IPermissionsAdapter
     mapping(address wrapper => bool) public allowedWrappers;
 
+    /// @inheritdoc IPermissionsAdapter
+    mapping(IHooks hook => bool) public allowedHooks;
+
     constructor(
         IERC20 permissionedToken,
         address poolManager,
@@ -66,6 +69,11 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
     }
 
     /// @inheritdoc IPermissionsAdapter
+    function updateAllowedHook(IHooks hook, bool allowed) external onlyOwner {
+        _updateAllowedHook(hook, allowed);
+    }
+
+    /// @inheritdoc IPermissionsAdapter
     function updateSwappingEnabled(bool enabled) external onlyOwner {
         _updateSwappingEnabled(enabled);
     }
@@ -86,6 +94,13 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
     function _updateAllowedWrapper(address wrapper, bool allowed) internal {
         allowedWrappers[wrapper] = allowed;
         emit AllowedWrapperUpdated(wrapper, allowed);
+    }
+
+    function _updateAllowedHook(IHooks hook, bool allowed) internal {
+        bool oldAllowed = allowedHooks[hook];
+        if (oldAllowed == allowed) return;
+        allowedHooks[hook] = allowed;
+        emit AllowedHookUpdated(hook, allowed);
     }
 
     function _updateSwappingEnabled(bool enabled) internal {
@@ -160,5 +175,16 @@ contract PermissionsAdapter is ERC20, Ownable2Step, IPermissionsAdapter {
 
     function owner() public view override(Ownable, IPermissionsAdapter) returns (address) {
         return super.owner();
+    }
+
+    /// @notice Disabled. The adapter must always have an owner.
+    /// @dev A zero owner would permanently disable the issuer's force-exit: `unwindPosition` authorizes
+    ///      against `_getOwner` for both pool currencies, and its per-currency fallback routes to that same
+    ///      owner. With no owner the force-exit reverts `Unauthorized` for every caller, and every failed
+    ///      unwind instead mints a freely transferable ERC-6909 claim on this adapter to the exited LP.
+    ///      `Ownable2Step` already prevents losing ownership via `transferOwnership`, which cannot complete
+    ///      without the new owner calling `acceptOwnership`; renouncing is the only remaining path to zero.
+    function renounceOwnership() public pure override {
+        revert RenounceDisabled();
     }
 }
