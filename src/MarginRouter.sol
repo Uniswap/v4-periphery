@@ -243,7 +243,8 @@ contract MarginRouter is
         );
         // the mode-dependent amounts are inlined (kept out of locals to stay under the stack limit).
         // full close: require the route delivered AT LEAST the current debt (asserted below), repay
-        // ALL by shares so the borrow clears with no borrow-share dust, withdraw all collateral, and
+        // ALL (venue-resolved, see `ILendingAdapter.encodeRepay`) so the borrow clears with no dust,
+        // withdraw all collateral, and
         // pass a zero health bound that ASSERT_HEALTH skips; any debt the route over-bought is swept
         // back after the unlock. A partial requires and repays exactly `debtToRepay`, withdraws only
         // the collateral the swap consumed (OPEN_DELTA == the router's remaining collateral debt), and

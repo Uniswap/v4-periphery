@@ -80,9 +80,11 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///      DELTA and a pre-existing balance cannot mask a short fill; the flows are all-or-nothing and
     ///      revert rather than build on a short fill. Also thrown by `ASSERT_FILL`, which applies the
     ///      same guarantee to the router's own credit in an output currency inside `execute` plans.
-    /// @param requested The minimum resulting balance the check required (the account's pre-swap
-    ///        balance plus the amount the swap was asked to deliver).
-    /// @param received The account's actual resulting balance of the bought currency.
+    /// @param requested The minimum the failed check required: the account's pre-unlock balance plus
+    ///        the amount the swap was asked to deliver (`ASSERT_ACCOUNT_BALANCE`), or the minimum
+    ///        router credit (`ASSERT_FILL`).
+    /// @param received What the check measured: the account's resulting balance of the bought
+    ///        currency (`ASSERT_ACCOUNT_BALANCE`), or the router's credit in it (`ASSERT_FILL`).
     error IncompleteFill(uint256 requested, uint256 received);
 
     /// @dev Thrown when an account-scoped action in an `execute` plan runs with no active account
@@ -427,10 +429,11 @@ interface IMarginRouter is IMulticall_v4, IImmutableState, IPermit2Forwarder {
     ///            router is the account manager) - strictly worse than a token approval. Never
     ///            execute plans from untrusted builders; frontends must build the calldata.
     ///         8. Events: `execute` plans emit account-level events (`CollateralSupplied`,
-    ///            `Borrowed`, `Repaid`, `Swept`, `AccountCreated`) plus a best-effort
-    ///            `PositionUpdated` snapshot after every supply, withdraw, borrow, and repay
-    ///            action. They do not emit the richer delta-carrying events (`PositionIncreased`,
-    ///            `PositionDecreased`, `CollateralAdded`) reserved for the curated entry points.
+    ///            `CollateralWithdrawn`, `Borrowed`, `Repaid`, `Swept`, `AccountCreated`) plus a
+    ///            best-effort `PositionUpdated` snapshot after every supply, withdraw, borrow, and
+    ///            repay action. They do not emit the richer delta-carrying events
+    ///            (`PositionIncreased`, `PositionDecreased`, `CollateralAdded`) reserved for the
+    ///            curated entry points.
     ///
     /// @param unlockData `abi.encode(bytes actions, bytes[] params)` describing the plan.
     /// @param deadline The Unix timestamp after which the call reverts `DeadlinePassed`.

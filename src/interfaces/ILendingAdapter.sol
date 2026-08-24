@@ -116,8 +116,9 @@ interface ILendingAdapter {
     /// @notice Current position for `account` in `market`, as current assets.
     /// @dev `debtAmount` always includes interest accrued to the current timestamp. `collateralAmount`
     ///      is the venue's current balance: interest-accrued where collateral earns interest (Aave
-    ///      v3/v4 aToken balances rebase) and the raw supplied balance where it does not (Morpho Blue
-    ///      and Comet collateral earn no interest). In every case it is the amount a full withdrawal
+    ///      v3 aToken balances rebase; Aave v4 reports the Spoke's accrued supplied assets) and the
+    ///      raw supplied balance where it does not (Morpho Blue and Comet collateral earn no
+    ///      interest). In every case it is the amount a full withdrawal
     ///      would return, so callers can rely on these for an accurate snapshot of current obligations.
     /// @param account The MarginAccount to query.
     /// @param market The (collateral, debt) pair identifying the target lending market.

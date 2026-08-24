@@ -124,12 +124,13 @@ interface IMarginAccount {
         returns (uint256 borrowed);
 
     /// @notice Repay `amount` of `market.debt`. Passing `type(uint256).max` repays all outstanding
-    ///         debt by shares, avoiding interest dust left by asset-denominated rounding. Callable by
-    ///         the manager or owner.
+    ///         debt, resolved by the adapter in the venue's own terms (see
+    ///         `ILendingAdapter.encodeRepay`), leaving no interest dust. Callable by the manager or
+    ///         owner.
     /// @param adapter The lending adapter that encodes the repay call.
     /// @param market The (collateral, debt) pair identifying the target lending market.
     /// @param amount The amount to repay in the debt token's native decimals, or `type(uint256).max`
-    ///        for a full share-based repay.
+    ///        for a full repay.
     /// @return repaid The assets actually repaid, measured as the account's debt-token balance
     ///         decrease after the call.
     function repay(ILendingAdapter adapter, Market calldata market, uint256 amount) external returns (uint256 repaid);

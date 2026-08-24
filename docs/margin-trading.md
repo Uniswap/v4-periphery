@@ -131,7 +131,11 @@ adapter is removed).
 
 The adapter is an **encoder**: each `encode`* returns `(target, value, callData)`, and the account
 performs the call as itself with a regular call (never a delegatecall). The target is the adapter's
-declared `lendingProtocol()`. An allowlisted adapter is trusted (see §9); the account's durable
+declared `lendingProtocol()`. The encode surface is `encodeSupplyCollateral`,
+`encodeEnableCollateral` (run by the account immediately after every supply, for venues that need an
+explicit collateral enable; empty `callData` is the skip signal), `encodeWithdrawCollateral`,
+`encodeBorrow`, and `encodeRepay` — an adapter implementation must provide all five, or
+`supplyCollateral` reverts when the account consults the missing hook. An allowlisted adapter is trusted (see §9); the account's durable
 guarantees are that it acts as its own `onBehalf` and constrains every fund recipient to the owner or
 manager. Governance maintains an **allowlist** of adapters. The allowlist gates only the operations
 that *add* exposure — `increasePosition`, `addCollateral` (and, under `execute`, `ACCOUNT_SUPPLY_COLLATERAL`
@@ -223,8 +227,8 @@ borrow the debt owed → settle → assert `maxLtvAfter` (skipped when zero).
 
 **Full-close mechanics** (`decreasePosition` with `debtToRepay == type(uint256).max`): swap collateral
 → exactly the current debt (exact-out, input capped by `maxCollateralIn`) → assert full fill → take to
-the account → repay all by shares → withdraw all collateral → settle → return the residual collateral
-delta to the caller.
+the account → repay all (a venue-resolved full repay that leaves no dust) → withdraw all collateral →
+settle → return the residual collateral delta to the caller.
 
 **Partial-decrease mechanics:** swap collateral → `debtToRepay` → assert full fill → repay → withdraw
 the collateral the swap consumed → settle → assert the resulting LTV is `<= maxLtvAfter`.
@@ -301,9 +305,9 @@ that a balance arriving between observation and execution relaxes the check.
 ## 5. Reading position state
 
 Read through the adapter. Debt is always interest-accrued to the current timestamp; collateral is the
-venue's current balance (interest-accrued on Aave, whose aTokens rebase; the raw supplied balance on
-Morpho and Compound, whose collateral earns no interest) — in every case the amount a full withdrawal
-returns:
+venue's current balance (interest-accrued on Aave: v3 aTokens rebase, v4 reports the Spoke's accrued
+supplied assets; the raw supplied balance on Morpho and Compound, whose collateral earns no interest)
+— in every case the amount a full withdrawal returns:
 
 ```solidity
 // current position, in each token's native decimals
@@ -834,10 +838,12 @@ the call validates on-chain that each reserve's `underlying` matches the currenc
 reserves are on the same Hub. Four v4 specifics are handled entirely inside the adapter, so the router
 and account flows are unchanged:
 
-- **Supply enables collateral atomically.** v4 `supply` does not auto-enable collateral, so
-`encodeSupplyCollateral` batches `supply` and `setUsingAsCollateral` in a `Spoke.multicall`
-(a delegatecall-to-self that preserves `msg.sender`, so the supply still pulls the underlying against
-the account's allowance).
+- **Supply enables collateral atomically.** v4 `supply` does not auto-enable collateral, so the
+adapter's `encodeEnableCollateral` hook encodes `setUsingAsCollateral`, which the account runs
+immediately after every supply (idempotent, so top-ups are safe). The v3 adapter uses the same hook
+to encode `setUserUseReserveAsCollateral`, making both Aave adapters immune to the first-supply
+auto-enable gap; Morpho and Compound treat supplied collateral as collateral automatically and
+return the empty skip signal.
 - **Premium-inclusive debt.** v4 debt is drawn debt plus accrued premium; `positionOf` and the
 full-repay path read `getUserTotalDebt`, and the router's close swap is sized off that figure.
 - **`maxLtvWad`** reads the collateral reserve's `collateralFactor`. v4's true liquidation point also
@@ -1164,7 +1170,10 @@ All four adapters — `MorphoLendingAdapter`, `AaveLendingAdapter` (Aave v3), `A
 `CompoundV3LendingAdapter` — expose the same `ILendingAdapter` reads: `lendingProtocol()`,
 `isSupportedMarket(Market)`, `positionOf(account, Market)`, `maxLtvWad(Market)`,
 `currentLtvWad(account, Market)`, plus `owner()`, `pendingOwner()`, `acceptOwnership()`, and
-`transferOwnership(address)` for the two-step ownership handoff. Market routing is curated with
+`transferOwnership(address)` for the two-step ownership handoff. The encode surface (see §3.3) is the
+five encoders `encodeSupplyCollateral` / `encodeEnableCollateral` / `encodeWithdrawCollateral` /
+`encodeBorrow` / `encodeRepay`; on the Aave adapters `encodeEnableCollateral` returns the venue's
+explicit collateral-enable call, on Morpho and Compound the empty skip signal. Market routing is curated with
 `setMarket` (owner-gated), and only the `setMarket` signature differs by venue:
 
 - `MorphoLendingAdapter` registers a Morpho `MarketParams` (validating the market exists on Morpho).

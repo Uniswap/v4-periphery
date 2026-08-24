@@ -32,48 +32,66 @@ interface IV4Router is IImmutableState {
     error V4ExactOutputUnfilled(uint256 amountOutRequested, uint256 amountOutReceived);
 
     /// @notice Parameters for a single-hop exact-input swap
+    /// @param poolKey The pool to swap through
+    /// @param zeroForOne The swap direction
+    /// @param amountIn The exact input amount (`OPEN_DELTA` resolves the router's full credit)
+    /// @param amountOutMinimum The minimum acceptable output amount
+    /// @param minHopPriceX36 The minimum realized price as output-per-input scaled by 1e36
+    ///        (`amountOut * 1e36 / amountIn`); zero skips the price check
+    /// @param hookData Arbitrary data passed to the pool's hooks
     struct ExactInputSingleParams {
         PoolKey poolKey;
         bool zeroForOne;
         uint128 amountIn;
         uint128 amountOutMinimum;
-        // minimum realized price as output-per-input scaled by 1e36
-        // (amountOut * 1e36 / amountIn); zero skips the price check
         uint256 minHopPriceX36;
         bytes hookData;
     }
 
     /// @notice Parameters for a multi-hop exact-input swap
+    /// @param currencyIn The input currency the path starts from
+    /// @param path The swap path, one `PathKey` per hop
+    /// @param minHopPriceX36 Per-hop minimum realized prices, each output-per-input scaled by 1e36;
+    ///        an empty array skips all hop checks, otherwise the length must equal the path length
+    ///        (one entry per hop, a zero entry skips that hop)
+    /// @param amountIn The exact input amount (`OPEN_DELTA` resolves the router's full credit)
+    /// @param amountOutMinimum The minimum acceptable final output amount
     struct ExactInputParams {
         Currency currencyIn;
         PathKey[] path;
-        // per-hop minimum realized prices, each output-per-input scaled by 1e36; an empty array
-        // skips all hop checks, otherwise the length must equal the path length (one entry per
-        // hop, zero entries skip that hop)
         uint256[] minHopPriceX36;
         uint128 amountIn;
         uint128 amountOutMinimum;
     }
 
     /// @notice Parameters for a single-hop exact-output swap
+    /// @param poolKey The pool to swap through
+    /// @param zeroForOne The swap direction
+    /// @param amountOut The exact output amount (`OPEN_DELTA` resolves the router's full debt)
+    /// @param amountInMaximum The maximum acceptable input amount
+    /// @param minHopPriceX36 The minimum realized price as output-per-input scaled by 1e36
+    ///        (`amountOut * 1e36 / amountIn`); zero skips the price check
+    /// @param hookData Arbitrary data passed to the pool's hooks
     struct ExactOutputSingleParams {
         PoolKey poolKey;
         bool zeroForOne;
         uint128 amountOut;
         uint128 amountInMaximum;
-        // minimum realized price as output-per-input scaled by 1e36
-        // (amountOut * 1e36 / amountIn); zero skips the price check
         uint256 minHopPriceX36;
         bytes hookData;
     }
 
     /// @notice Parameters for a multi-hop exact-output swap
+    /// @param currencyOut The output currency the path ends in
+    /// @param path The swap path, one `PathKey` per hop
+    /// @param minHopPriceX36 Per-hop minimum realized prices, each output-per-input scaled by 1e36;
+    ///        an empty array skips all hop checks, otherwise the length must equal the path length
+    ///        (one entry per hop, a zero entry skips that hop)
+    /// @param amountOut The exact output amount (`OPEN_DELTA` resolves the router's full debt)
+    /// @param amountInMaximum The maximum acceptable total input amount
     struct ExactOutputParams {
         Currency currencyOut;
         PathKey[] path;
-        // per-hop minimum realized prices, each output-per-input scaled by 1e36; an empty array
-        // skips all hop checks, otherwise the length must equal the path length (one entry per
-        // hop, zero entries skip that hop)
         uint256[] minHopPriceX36;
         uint128 amountOut;
         uint128 amountInMaximum;

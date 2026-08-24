@@ -12,9 +12,11 @@ import {Market} from "../types/Market.sol";
 ///         execution time (no offchain accrual buffer, no over-buy); a full-withdrawal route
 ///         resolves `COLLATERAL` for a balance that is only known when the transaction executes.
 /// @dev    Context ABI: `abi.encode(PositionAmount kind, address account, Market market)`.
-///         Semantics inherit from `positionOf`: amounts are interest-accrued, and an unrouted
-///         market reverts `MarketNotSupported` exactly as the read surface does. Malformed or
-///         out-of-range context reverts in `abi.decode`.
+///         Semantics inherit from `positionOf`: amounts are the venue's current values (debt
+///         interest-accrued; collateral per the venue's own accrual, see
+///         `ILendingAdapter.positionOf`), and an unrouted market reverts `MarketNotSupported`
+///         exactly as the read surface does. Malformed or out-of-range context reverts in
+///         `abi.decode`.
 abstract contract PositionAmountResolver is IAmountResolver {
     /// @notice Which side of the `(account, market)` position the resolver returns.
     enum PositionAmount {
@@ -27,7 +29,8 @@ abstract contract PositionAmountResolver is IAmountResolver {
     ///         external self-call; the implementing adapter overrides both declarations.
     /// @param account The MarginAccount holding the position.
     /// @param market The (collateral, debt) pair identifying the lending market.
-    /// @return collateralAmount The supplied collateral with accrued interest.
+    /// @return collateralAmount The venue's current collateral balance (see
+    ///         `ILendingAdapter.positionOf` for per-venue accrual semantics).
     /// @return debtAmount The outstanding debt with accrued interest.
     function positionOf(address account, Market memory market)
         public
