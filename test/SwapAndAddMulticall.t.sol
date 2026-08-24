@@ -13,6 +13,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
+import {IMulticall_v4} from "../src/interfaces/IMulticall_v4.sol";
 import {IPermit2Forwarder} from "../src/interfaces/IPermit2Forwarder.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 import {PositionConfig} from "./shared/PositionConfig.sol";
@@ -388,5 +389,274 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         assertEq(wLiq, dLiq, "same liquidity");
         assertEq(wA0, dA0, "same amount0");
         assertEq(wA1, dA1, "same amount1");
+    }
+
+    // ─────────────────────────────── adversarial mixing & matching ───────────────────────────────
+
+    function _incParams(uint256 tokenId, uint256 a0, uint256 a1)
+        internal
+        view
+        returns (ISwapAndAdd.IncreaseParams memory)
+    {
+        return ISwapAndAdd.IncreaseParams({
+            tokenId: tokenId,
+            amount0In: a0,
+            amount1In: a1,
+            route: "",
+            routeFunding: new ISwapAndAdd.TokenAmount[](0),
+            minLiquidityAdded: 1,
+            recipient: signer,
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+    }
+
+    function _compParams(uint256 tokenId) internal view returns (ISwapAndAdd.CompoundParams memory) {
+        return ISwapAndAdd.CompoundParams({
+            tokenId: tokenId,
+            route: "",
+            minLiquidityAdded: 1,
+            recipient: signer,
+            hookData: "",
+            deadline: block.timestamp + 1
+        });
+    }
+
+    /// @dev THE mixing-and-matching theorem, fuzzed: a batch of N calls must be observationally identical to
+    ///      the same N calls as separate transactions — the batch succeeds iff every sequential call succeeds,
+    ///      per-call returndata is byte-identical, and the final state (wallet balances, position liquidity,
+    ///      next tokenId, empty zap) matches. Any state leaking between subcalls, any msg.sender/value
+    ///      confusion, any partial execution would break one of these equalities. Op kinds, order and budgets
+    ///      are all fuzzed; reverting sequences are part of the domain (batch must then revert too).
+    function testFuzz_multicall_batchEquivalentToSequential(
+        uint8[3] memory opSeeds,
+        uint88[3] memory b0s,
+        uint88[3] memory b1s
+    ) public {
+        // standing allowances: this fuzz isolates BATCHING mechanics from the permit flow
+        vm.startPrank(signer);
+        permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
+        permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
+        vm.stopPrank();
+        uint256 posId = _mintToSigner(key, 1e21);
+        // accrue fees so a first compound/zero-budget-increase has something to deploy; a SECOND one in the
+        // same sequence finds the fees gone and reverts NoFeesToCompound — deliberately in-domain: the batch
+        // must reproduce exactly that failure.
+        swap(key, true, -int256(1e20), "");
+        swap(key, false, -int256(1e20), "");
+
+        bytes[] memory calls = new bytes[](3);
+        for (uint256 i = 0; i < 3; i++) {
+            uint256 a0 = bound(uint256(b0s[i]), 0, 1e21);
+            uint256 a1 = bound(uint256(b1s[i]), 0, 1e21);
+            uint8 kind = opSeeds[i] % 3;
+            if (kind == 0) calls[i] = abi.encodeCall(ISwapAndAdd.add, (_addParams(key, a0, a1)));
+            else if (kind == 1) calls[i] = abi.encodeCall(ISwapAndAdd.increase, (_incParams(posId, a0, a1)));
+            else calls[i] = abi.encodeCall(ISwapAndAdd.compound, (_compParams(posId)));
+        }
+
+        uint256 snapshot = vm.snapshotState();
+
+        // PATH A: the same calldata as three separate transactions
+        bool seqAllOk = true;
+        bytes[] memory seqResults = new bytes[](3);
+        for (uint256 i = 0; i < 3; i++) {
+            vm.prank(signer);
+            (bool ok, bytes memory ret) = address(zap).call(calls[i]);
+            if (!ok) {
+                seqAllOk = false;
+                break;
+            }
+            seqResults[i] = ret;
+        }
+        uint256 sC0;
+        uint256 sC1;
+        uint128 sLiq;
+        uint256 sNext;
+        if (seqAllOk) {
+            sC0 = currency0.balanceOf(signer);
+            sC1 = currency1.balanceOf(signer);
+            sLiq = lpm.getPositionLiquidity(posId);
+            sNext = lpm.nextTokenId();
+        }
+        vm.revertToState(snapshot);
+
+        // PATH B: the same calldata as one batch
+        vm.prank(signer);
+        try zap.multicall(calls) returns (bytes[] memory results) {
+            assertTrue(seqAllOk, "batch succeeded although a sequential call failed");
+            for (uint256 i = 0; i < 3; i++) {
+                assertEq(keccak256(results[i]), keccak256(seqResults[i]), "subcall returndata differs");
+            }
+            assertEq(currency0.balanceOf(signer), sC0, "signer token0 differs");
+            assertEq(currency1.balanceOf(signer), sC1, "signer token1 differs");
+            assertEq(lpm.getPositionLiquidity(posId), sLiq, "position liquidity differs");
+            assertEq(lpm.nextTokenId(), sNext, "minted tokenIds differ");
+            assertEq(currency0.balanceOf(address(zap)), 0, "token0 at rest after batch");
+            assertEq(currency1.balanceOf(address(zap)), 0, "token1 at rest after batch");
+        } catch {
+            assertFalse(seqAllOk, "batch reverted although every sequential call succeeded");
+        }
+    }
+
+    /// @dev Atomicity: a failing later subcall rolls back everything an earlier one did — no minted position,
+    ///      no consumed funds, no partial state.
+    function test_multicall_laterFailureRollsBackEarlierOps() public {
+        vm.startPrank(signer);
+        permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
+        permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
+        vm.stopPrank();
+        // a position the signer is NOT authorized for
+        uint256 foreignId = lpm.nextTokenId();
+        mint(PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600}), 1e21, makeAddr("someoneElse"), "");
+
+        uint256 c0Before = currency0.balanceOf(signer);
+        uint256 nextBefore = lpm.nextTokenId();
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(ISwapAndAdd.add, (_addParams(key, 1e18, 2e18)));
+        calls[1] = abi.encodeCall(ISwapAndAdd.increase, (_incParams(foreignId, 1e18, 1e18)));
+
+        vm.prank(signer);
+        vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.NotAuthorizedForToken.selector, foreignId));
+        zap.multicall(calls);
+
+        assertEq(currency0.balanceOf(signer), c0Before, "add's pull was not rolled back");
+        assertEq(lpm.nextTokenId(), nextBefore, "add's mint was not rolled back");
+    }
+
+    /// @dev Mixing OTHER PEOPLE's permits into a batch grants nothing: a victim's (mempool-public) permit
+    ///      signature sets the VICTIM's allowance, while every pull in the batch draws from msg.sender — the
+    ///      attacker. With no allowance of their own the attacker's op reverts; with their own allowance it
+    ///      spends only their own funds. Either way the victim's balances are untouchable through the batch.
+    function test_multicall_victimPermitInBatch_cannotTouchVictimFunds() public {
+        IAllowanceTransfer.PermitBatch memory victimPermit = _batch(_bothTokens());
+        bytes memory victimSig = _sign(victimPermit, signerPk); // signer plays the victim
+
+        address attacker = makeAddr("attacker");
+        MockERC20(Currency.unwrap(currency0)).mint(attacker, 1e24);
+        MockERC20(Currency.unwrap(currency1)).mint(attacker, 1e24);
+        vm.startPrank(attacker);
+        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint256).max);
+        MockERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
+        vm.stopPrank();
+
+        uint256 victimC0 = currency0.balanceOf(signer);
+        uint256 victimC1 = currency1.balanceOf(signer);
+
+        ISwapAndAdd.AddParams memory p = _addParams(key, 1e18, 2e18);
+        p.recipient = attacker;
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(IPermit2Forwarder.permitBatch, (signer, victimPermit, victimSig));
+        calls[1] = abi.encodeCall(ISwapAndAdd.add, (p));
+
+        // attacker has no allowance of their own: the victim's permit does not stand in for it
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(IAllowanceTransfer.AllowanceExpired.selector, 0));
+        zap.multicall(calls);
+
+        // with their own allowance the batch runs — on the attacker's OWN funds exclusively
+        vm.startPrank(attacker);
+        permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
+        permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
+        uint256 attC0 = currency0.balanceOf(attacker);
+        zap.multicall(calls);
+        vm.stopPrank();
+
+        assertEq(currency0.balanceOf(signer), victimC0, "victim token0 touched");
+        assertEq(currency1.balanceOf(signer), victimC1, "victim token1 touched");
+        assertLt(currency0.balanceOf(attacker), attC0, "the add was funded by the attacker");
+    }
+
+    /// @dev An approved operator batching over the owner's position gains nothing from the batch: the
+    ///      grow op's output is forced to the OWNER (recipient resolution), and the operator's own op in the
+    ///      same batch is funded solely from the operator's wallet. The operator's balances can only go down.
+    function test_multicall_operatorBatch_cannotRedirectOwnerValue() public {
+        uint256 ownerPos = _mintToSigner(key, 1e21);
+        // accrue owner fees — the value an operator might try to redirect
+        swap(key, true, -int256(1e20), "");
+        swap(key, false, -int256(1e20), "");
+
+        address operator = makeAddr("operator");
+        MockERC20(Currency.unwrap(currency0)).mint(operator, 1e24);
+        MockERC20(Currency.unwrap(currency1)).mint(operator, 1e24);
+        vm.startPrank(operator);
+        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint256).max);
+        MockERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
+        permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
+        permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
+        vm.stopPrank();
+        vm.prank(signer);
+        IERC721(address(lpm)).setApprovalForAll(operator, true);
+
+        // the operator asks for itself as recipient everywhere it can
+        ISwapAndAdd.CompoundParams memory comp = _compParams(ownerPos);
+        comp.recipient = operator; // ignored: resolved to the owner for an operator caller
+        ISwapAndAdd.AddParams memory ownAdd = _addParams(key, 1e18, 1e18);
+        ownAdd.recipient = operator;
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(ISwapAndAdd.compound, (comp));
+        calls[1] = abi.encodeCall(ISwapAndAdd.add, (ownAdd));
+
+        uint128 liqBefore = lpm.getPositionLiquidity(ownerPos);
+        uint256 opC0 = currency0.balanceOf(operator);
+        uint256 opC1 = currency1.balanceOf(operator);
+
+        vm.prank(operator);
+        zap.multicall(calls);
+
+        assertGt(lpm.getPositionLiquidity(ownerPos), liqBefore, "owner's fees were compounded into OWNER's position");
+        assertLe(currency0.balanceOf(operator), opC0, "operator gained token0 through the batch");
+        assertLe(currency1.balanceOf(operator), opC1, "operator gained token1 through the batch");
+        assertEq(currency0.balanceOf(address(zap)), 0, "token0 at rest");
+        assertEq(currency1.balanceOf(address(zap)), 0, "token1 at rest");
+    }
+
+    /// @dev Nested multicall composes with the same semantics — no context is gained or lost one level down.
+    function test_multicall_nestedBatch_behavesLikeFlat() public {
+        ISwapAndAdd.AddParams memory p = _addParams(key, 1e18, 2e18);
+        bytes[] memory inner = _permitThen(_bothTokens(), abi.encodeCall(ISwapAndAdd.add, (p)));
+        bytes[] memory outer = new bytes[](1);
+        outer[0] = abi.encodeCall(IMulticall_v4.multicall, (inner));
+
+        uint256 expectedId = lpm.nextTokenId();
+        vm.prank(signer);
+        zap.multicall(outer);
+        assertEq(IERC721(address(lpm)).ownerOf(expectedId), signer, "nested batch minted to the signer");
+    }
+
+    /// @dev compound is non-payable: it cannot ride in a value-bearing batch at all (delegatecall preserves
+    ///      msg.value, the non-payable dispatch guard sees it and reverts).
+    function test_multicall_compoundInValueBatch_reverts() public {
+        uint256 tokenId = _mintToSigner(key, 1e21);
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeCall(ISwapAndAdd.compound, (_compParams(tokenId)));
+
+        vm.prank(signer);
+        vm.expectRevert();
+        zap.multicall{value: 1}(calls);
+    }
+
+    /// @dev Value attached to a batch no op consumes strands as an unsolicited donation (documented in the
+    ///      MULTICALL/ETH NOTES) and becomes part of the next native operation's sweep — never a third party's
+    ///      claim through allowances.
+    function test_multicall_permitsOnlyValueBatch_strandsAsDonation() public {
+        IAllowanceTransfer.PermitBatch memory b = _batch(_oneToken(currency1));
+        bytes[] memory calls = new bytes[](1);
+        calls[0] = abi.encodeCall(IPermit2Forwarder.permitBatch, (signer, b, _sign(b, signerPk)));
+
+        uint256 donation = 0.05 ether;
+        vm.prank(signer);
+        zap.multicall{value: donation}(calls);
+        assertEq(address(zap).balance, donation, "unconsumed batch value rests in the contract");
+
+        // the next native op's sweep hands it to that op's recipient (donation doctrine)
+        uint256 balBefore = signer.balance;
+        ISwapAndAdd.AddParams memory p = _addParams(nativeKey, 1e17, 1e17);
+        vm.prank(signer);
+        zap.add{value: 1e17}(p);
+        assertEq(address(zap).balance, 0, "no native at rest after the op");
+        assertGe(signer.balance, balBefore - 1e17 + donation, "donation swept to the op's recipient");
     }
 }
