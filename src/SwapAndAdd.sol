@@ -433,7 +433,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      states, the one place the formulas could diverge, are pinned by tests). Requires the PoolManager to
     ///      hold the taken amount across ALL pools; if it is globally drained of that token the take reverts
     ///      inside the token transfer — the same state leaves the reconcile swap nothing to source the deficit
-    ///      from, so the operation is unviable regardless and no pre-check is spent on it (K-05 in the audit doc).
+    ///      from, so the operation is unviable regardless and no pre-check is spent on it (the deficit token is
+    ///      usually a cold SLOAD, i.e. real gas on every call to buy a prettier error in an already-doomed state).
     function _flashTakeDeficit(CoreParams memory cp, uint256 amount0, uint256 amount1) internal {
         if (amount0 > cp.budget0) _take(cp.key.currency0, address(this), amount0 - cp.budget0);
         if (amount1 > cp.budget1) _take(cp.key.currency1, address(this), amount1 - cp.budget1);
