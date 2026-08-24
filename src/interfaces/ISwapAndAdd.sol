@@ -35,11 +35,25 @@ import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 ///      sourced by the same-pool reconcile (the design degrades to a pure same-pool zap). The position is minted
 ///      to this contract so it can be trimmed, then transferred to `recipient`.
 ///
-///      KNOWN LIMIT — fee-taking hooks: the reconcile relies on a conservation identity (the same-pool swap's
-///      output plus what the trim frees covers the flash-taken deficit, because both come out of the just-added
-///      liquidity). Hooks that skim swap output or withdrawal amounts break that identity; on such pools the
-///      call may revert atomically inside the unlock (CurrencyNotSettled) — funds are safe, but the operation
-///      can be unusable there.
+///      UNSUPPORTED POOLS — hooks that return deltas: the reconcile relies on a conservation identity (the
+///      same-pool swap's output plus what the trim frees covers the flash-taken deficit, because both come out
+///      of the just-added liquidity). A hook that takes a cut of the amounts flowing through this contract's
+///      own actions breaks that identity. Screen a pool mechanically by the hook address's permission bits
+///      (v4-core `Hooks.sol`) rather than by intent:
+///        - `AFTER_SWAP_RETURNS_DELTA` / `BEFORE_SWAP_RETURNS_DELTA` — skims the reconcile swap's output, so it
+///          no longer covers the flash debt. UNSUPPORTED.
+///        - `AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA` — skims what the trim, the fee collect or a rebalance burn
+///          frees, so the trim frees less than computed (or the delta turns negative). UNSUPPORTED.
+///        - `AFTER_ADD_LIQUIDITY_RETURNS_DELTA` — charges the deploy instead, which this contract settles from
+///          the operation's budget: it behaves as an extra cost that leaves less for the position, gated by
+///          `minLiquidity` rather than breaking settlement. Expected to degrade gracefully; NOT verified by
+///          tests, so treat as unsupported until it is.
+///      On an unsupported pool the call reverts atomically inside the unlock (CurrencyNotSettled, or
+///      DeltaNotPositive from a removal whose delta went negative) — funds are always safe, but the operation
+///      can simply be unusable there.
+///      Hooks WITHOUT any of those four permissions are supported, including dynamic LP-fee hooks (a
+///      `beforeSwap` fee override under `DYNAMIC_FEE_FLAG` returns a fee, not a delta) — see the DYNAMIC-FEE
+///      NOTE below — as well as gating, oracle and accounting hooks, which only observe the callbacks.
 ///
 ///      KNOWN LIMIT — wei-scale budgets: the pool keeps up to 1 wei per side on any mint->decrease round trip
 ///      (mint amounts are pulled rounded UP, decrease amounts returned rounded DOWN). A budget within a few wei
