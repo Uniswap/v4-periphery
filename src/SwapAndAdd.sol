@@ -88,12 +88,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev universal-router Commands.SWEEP — used to reclaim native value a route left in the UR.
     uint256 private constant UR_SWEEP_COMMAND = 0x04;
 
-    /// @dev Internal operation commands to identify the operation type in the unlock callback. Compound has
-    ///      no op of its own: it is an increase with a zero pulled budget and shares OP_INCREASE.
-    uint256 private constant OP_ADD = 0;
-    uint256 private constant OP_REBALANCE = 1;
-    uint256 private constant OP_INCREASE = 2;
-
     /// @dev internal, stack-friendly bundle of the shared add inputs (budget already held by this contract).
     struct CoreParams {
         PoolKey key;
@@ -105,6 +99,20 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint256 minLiquidity;
         address recipient;
         bytes hookData;
+    }
+
+    /// @dev The ONE unlock payload every entrypoint encodes (see `_run`): the fully-built CoreParams plus the
+    ///      per-op prep the callback must do before the shared core runs. The two tokenIds are sentinels
+    ///      (0 = not this op's path; POSM ids start at 1) and never both set — entrypoints are the only
+    ///      encoders. `growTokenId` (increase/compound): collect that position's fees, budgets = balances,
+    ///      then INCREASE it in place. `burnTokenId` (rebalance): burn that position, budgets resolved from
+    ///      `withdrawn + additional0/1`. Neither (add): budgets travel in CoreParams as encoded.
+    struct UnlockData {
+        uint256 growTokenId;
+        uint256 burnTokenId;
+        int128 additional0;
+        int128 additional1;
+        CoreParams core;
     }
 
     IPositionManager public immutable positionManager;
@@ -148,10 +156,18 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         _validateRecipient(params.recipient);
         uint256 fundingValue = _pullFunding(params.poolKey, params.routeFunding, params.route);
         _pullBudget(params.poolKey, params.amount0In, params.amount1In, fundingValue);
-        // unlock the pool manager and trigger the callback with the ADD operation.
-        bytes memory result = poolManager.unlock(abi.encode(OP_ADD, abi.encode(params)));
-        // decode the result of the callback.
-        (tokenId, liquidity, amount0, amount1) = abi.decode(result, (uint256, uint128, uint256, uint256));
+        CoreParams memory cp = CoreParams({
+            key: params.poolKey,
+            tickLower: params.tickLower,
+            tickUpper: params.tickUpper,
+            budget0: params.amount0In,
+            budget1: params.amount1In,
+            route: params.route,
+            minLiquidity: params.minLiquidity,
+            recipient: params.recipient,
+            hookData: params.hookData
+        });
+        (tokenId, liquidity, amount0, amount1) = _run(0, 0, 0, 0, cp);
         // the position was minted to this contract so it could be trimmed; hand it to the recipient now that
         // the pool is locked again, along with any funding the route did not consume.
         ERC721(address(positionManager)).transferFrom(address(this), params.recipient, tokenId);
@@ -175,10 +191,19 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint256 fundingValue = _pullFunding(key, params.routeFunding, params.route);
         _pullAdditional(key, params.additional0, params.additional1, fundingValue);
 
-        // unlock the pool manager and trigger the callback with the REBALANCE operation.
-        bytes memory result = poolManager.unlock(abi.encode(OP_REBALANCE, abi.encode(params, key, recipient)));
-        // decode the result of the callback.
-        (newTokenId, liquidity, amount0, amount1) = abi.decode(result, (uint256, uint128, uint256, uint256));
+        // budgets are left zero: the callback resolves them from the burn's proceeds plus the signed deltas.
+        CoreParams memory cp = CoreParams({
+            key: key,
+            tickLower: params.newTickLower,
+            tickUpper: params.newTickUpper,
+            budget0: 0,
+            budget1: 0,
+            route: params.route,
+            minLiquidity: params.minLiquidity,
+            recipient: recipient,
+            hookData: params.hookData
+        });
+        (newTokenId, liquidity, amount0, amount1) = _run(0, params.tokenId, params.additional0, params.additional1, cp);
         // transfer the newly created position NFT to the recipient, along with any unconsumed funding.
         ERC721(address(positionManager)).transferFrom(address(this), recipient, newTokenId);
         _sweepFunding(params.routeFunding, recipient);
@@ -196,15 +221,13 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // position value: only the owner or an approved operator may call, and only the owner picks the recipient.
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
-        (PoolKey memory key, bytes memory payload) =
-            _growPayload(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
+        (PoolKey memory key, CoreParams memory cp) =
+            _growCore(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
         // pull the caller's stated budget from msg.sender (same as add()'s _pullBudget); the collected fees
         // join it inside the callback.
         uint256 fundingValue = _pullFunding(key, params.routeFunding, params.route);
         _pullBudget(key, params.amount0In, params.amount1In, fundingValue);
-        bytes memory result = poolManager.unlock(abi.encode(OP_INCREASE, payload));
-        // decode the result of the callback.
-        (liquidityAdded, amount0, amount1) = abi.decode(result, (uint128, uint256, uint256));
+        (, liquidityAdded, amount0, amount1) = _run(params.tokenId, 0, 0, 0, cp);
         // positionNFT stays with the original owner, so no transfer is needed; unconsumed funding goes to the
         // RESOLVED recipient (an operator's leftovers are forced to the owner — a route can also produce a
         // funding token from the collected fees, so funding leftovers are output like any other).
@@ -223,27 +246,25 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
         // compound is an increase with a zero pulled budget: nothing is pulled here, the collected fees are
-        // the entire budget — both ops share the OP_INCREASE callback path.
-        (, bytes memory payload) =
-            _growPayload(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
-        bytes memory result = poolManager.unlock(abi.encode(OP_INCREASE, payload));
-        // decode the result of the callback.
-        (liquidityAdded, amount0, amount1) = abi.decode(result, (uint128, uint256, uint256));
+        // the entire budget — both ops share the grow path in the callback.
+        (, CoreParams memory cp) =
+            _growCore(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
+        (, liquidityAdded, amount0, amount1) = _run(params.tokenId, 0, 0, 0, cp);
     }
 
-    /// @dev Shared unlock payload for the grow-in-place ops (increase, compound): deploy into the position's
+    /// @dev Shared CoreParams for the grow-in-place ops (increase, compound): deploy into the position's
     ///      existing range. Budgets are left zero — the callback fills them from the balances actually held
     ///      once the accrued fees have been collected.
-    function _growPayload(
+    function _growCore(
         uint256 tokenId,
         bytes calldata route,
         uint256 minLiquidity,
         address recipient,
         bytes calldata hookData
-    ) internal view returns (PoolKey memory key, bytes memory payload) {
+    ) internal view returns (PoolKey memory key, CoreParams memory cp) {
         PositionInfo info;
         (key, info) = positionManager.getPoolAndPositionInfo(tokenId);
-        CoreParams memory cp = CoreParams({
+        cp = CoreParams({
             key: key,
             tickLower: info.tickLower(),
             tickUpper: info.tickUpper(),
@@ -254,86 +275,68 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             recipient: recipient,
             hookData: hookData
         });
-        payload = abi.encode(tokenId, cp);
+    }
+
+    /// @dev The single unlock funnel every entrypoint goes through: encode the ONE payload shape, unlock,
+    ///      decode the ONE result shape. Grow ops echo their own tokenId back; callers ignore it.
+    function _run(
+        uint256 growTokenId,
+        uint256 burnTokenId,
+        int128 additional0,
+        int128 additional1,
+        CoreParams memory cp
+    ) internal returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1) {
+        bytes memory result = poolManager.unlock(
+            abi.encode(
+                UnlockData({
+                    growTokenId: growTokenId,
+                    burnTokenId: burnTokenId,
+                    additional0: additional0,
+                    additional1: additional1,
+                    core: cp
+                })
+            )
+        );
+        return abi.decode(result, (uint256, uint128, uint256, uint256));
     }
 
     // ───────────────────────────────────────────── unlock callback ─────────────────────────────────────────────
 
-    /// @notice Callback function triggered by the pool manager and handles the different operations.
+    /// @notice Callback function triggered by the pool manager: at most one budget-resolution prep, then the
+    ///         shared core. Every op arrives as the same UnlockData shape and leaves as the same result tuple.
     /// @dev Protected by SafeCallback.onlyPoolManager modifier.
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        (uint256 op, bytes memory inner) = abi.decode(data, (uint256, bytes));
-        // handle the grow-in-place operations: increase and compound share this path (compound = zero
-        // pulled budget, so the collected fees are its whole budget).
-        if (op == OP_INCREASE) {
-            (uint256 growId, CoreParams memory growCp) = abi.decode(inner, (uint256, CoreParams));
-            // collect accrued fees FIRST (DECREASE by 0 credits them, TAKE_PAIR pulls them here): they join
-            // the pulled budget below, so fees are route- and sizing-eligible and never leave to the wallet.
-            _decrease(growCp.key, growId, 0, growCp.hookData);
-            // budget = everything held: the caller's pulled amounts plus the just-collected fees.
-            growCp.budget0 = growCp.key.currency0.balanceOfSelf();
-            growCp.budget1 = growCp.key.currency1.balanceOfSelf();
+        UnlockData memory d = abi.decode(data, (UnlockData));
+        CoreParams memory cp = d.core;
+
+        // rebalance prep: burn the WHOLE position (tokens land here), then resolve each side's redeploy
+        // budget from the signed delta — `withdrawn + additional`. Positive deltas were already pulled in
+        // `rebalance()`; negative deltas are returned to the recipient HERE, before the add flow runs.
+        // Returning the cash-out share up front is what keeps the accounting safe: the contract is then left
+        // holding exactly the redeploy budget, so every `balanceOfSelf()` read in `_addCore` (the route, the
+        // reconcile's sell-all, the mint settle) sees only what should be deployed, never the portion owed back.
+        if (d.burnTokenId != 0) {
+            _withdraw(cp.key, d.burnTokenId, cp.hookData);
+            cp.budget0 = _resolveBudget(cp.key.currency0, d.additional0, cp.recipient);
+            cp.budget1 = _resolveBudget(cp.key.currency1, d.additional1, cp.recipient);
+        }
+        // grow prep (increase and compound; compound = zero pulled budget, the collected fees are its whole
+        // budget): collect accrued fees FIRST (DECREASE by 0 credits them, TAKE_PAIR pulls them here), then
+        // budget = everything held — the caller's pulled amounts plus the just-collected fees, so fees are
+        // route- and sizing-eligible and never leave to the wallet. `else if` states structurally what the
+        // encoders guarantee: the two prep paths are mutually exclusive.
+        else if (d.growTokenId != 0) {
+            _decrease(cp.key, d.growTokenId, 0, cp.hookData);
+            cp.budget0 = cp.key.currency0.balanceOfSelf();
+            cp.budget1 = cp.key.currency1.balanceOfSelf();
             // a route can still produce a budget (e.g. from route funding); with neither holdings nor a route
             // there is provably nothing to deploy.
-            if (growCp.budget0 == 0 && growCp.budget1 == 0 && growCp.route.length == 0) revert NoFeesToCompound();
-            // existing tokenId -> _addCore INCREASEs it in place (no new NFT).
-            (, uint128 liqAdded, uint256 added0, uint256 added1) = _addCore(growCp, growId);
-            return abi.encode(liqAdded, added0, added1);
+            if (cp.budget0 == 0 && cp.budget1 == 0 && cp.route.length == 0) revert NoFeesToCompound();
         }
 
-        // Only reached by ADD or REBALANCE operations.
-        CoreParams memory cp;
-        // prepare the ADD operation.
-        if (op == OP_ADD) {
-            AddParams memory p = abi.decode(inner, (AddParams));
-            cp = CoreParams({
-                key: p.poolKey,
-                tickLower: p.tickLower,
-                tickUpper: p.tickUpper,
-                budget0: p.amount0In,
-                budget1: p.amount1In,
-                route: p.route,
-                minLiquidity: p.minLiquidity,
-                recipient: p.recipient,
-                hookData: p.hookData
-            });
-        } else {
-            // prepare the REBALANCE operation by burning the position and resolving the budget.
-            (RebalanceParams memory p, PoolKey memory key, address recipient) =
-                abi.decode(inner, (RebalanceParams, PoolKey, address));
-            cp = _prepareRebalance(p, key, recipient);
-        }
-        // tokenId 0 -> _addCore MINTs a new position. Both ADD and REBALANCE create a new position.
-        (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = _addCore(cp, 0);
-        return abi.encode(tokenId, liq, a0, a1);
-    }
-
-    /// @dev Rebalance prep: burn the WHOLE position, then resolve each token's redeploy budget from the signed
-    ///      delta — `withdrawn + additional`. Positive deltas were already pulled in `rebalance()` (so they sit in
-    ///      this contract's balance); negative deltas are returned to the recipient HERE, before the add flow runs.
-    ///      Returning the cash-out share up front is what keeps the accounting safe: the contract is then left
-    ///      holding exactly the redeploy budget, so every `balanceOfSelf()` read in `_addCore` (the route, the
-    ///      reconcile's sell-all, the mint settle) sees only what should be deployed, never the portion owed back.
-    /// @dev reverts with `ReturnExceedsWithdrawn` if the negative delta exceeds the positions balance.
-    function _prepareRebalance(RebalanceParams memory p, PoolKey memory key, address recipient)
-        internal
-        returns (CoreParams memory cp)
-    {
-        // burn the full position. Tokens land in this contract.
-        _withdraw(key, p.tokenId, p.hookData);
-
-        // Create the CoreParams with the remaining budget of the withdrawal after _resolveBudget.
-        cp = CoreParams({
-            key: key,
-            tickLower: p.newTickLower,
-            tickUpper: p.newTickUpper,
-            budget0: _resolveBudget(key.currency0, p.additional0, recipient),
-            budget1: _resolveBudget(key.currency1, p.additional1, recipient),
-            route: p.route,
-            minLiquidity: p.minLiquidity,
-            recipient: recipient,
-            hookData: p.hookData
-        });
+        // growTokenId 0 (add, rebalance) -> _addCore MINTs a new position; else it INCREASEs that tokenId.
+        (uint256 tokenId, uint128 liquidity, uint256 a0, uint256 a1) = _addCore(cp, d.growTokenId);
+        return abi.encode(tokenId, liquidity, a0, a1);
     }
 
     /// @dev Resolve one token's redeploy budget from its signed delta. With a positive delta the additional units
