@@ -98,6 +98,9 @@ async function drainFlows(
   const rows = await txLendingEvents(context, txHash, accountAddr);
   let venue: "MORPHO" | "AAVE_V3" | "AAVE_V4" | "COMPOUND_V3" | "UNKNOWN" = "UNKNOWN";
   let morphoMarketId: `0x${string}` | null = null;
+  // measured venue-truth aggregate: the assets the venue reported repaid for this pair in this tx
+  // (sums the tx's flows, so a same-pair multicall of decreases attributes all of it to the last)
+  let repaidAssets = 0n;
 
   for (const row of rows) {
     if (row.kind === "LIQUIDATE") continue;
@@ -107,9 +110,10 @@ async function drainFlows(
 
     if (row.venue !== "UNKNOWN") venue = row.venue;
     if (row.morphoMarketId) morphoMarketId = row.morphoMarketId;
+    if (row.kind === "REPAY") repaidAssets += row.assets;
     await context.db.update(lendingEvent, { id: row.id }).set({ collateral, debt, applied: true });
   }
-  return { venue, morphoMarketId };
+  return { venue, morphoMarketId, repaidAssets };
 }
 
 ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
@@ -256,7 +260,7 @@ ponder.on("MarginRouter:PositionDecreased", async ({ event, context }) => {
   } = event.args;
 
   await recordTxSwaps(context, event.transaction.hash, event.block.number);
-  await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
+  const flows = await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
   const poolId = await consumeSwaps(context, event.transaction.hash);
 
   const key = pairKey(accountAddr, collateral, debt);
@@ -265,10 +269,16 @@ ponder.on("MarginRouter:PositionDecreased", async ({ event, context }) => {
   const row = await context.db.find(position, { id: pointer.positionId });
   if (!row) return;
 
+  // The event's debtRepaid is the caller's REQUESTED amount, which the venue clamps when it
+  // exceeds the live debt (documented on PositionDecreased); the same-tx venue repay flow carries
+  // the measured assets, so prefer it for the action delta and execution price. Aave v4 and
+  // Compound stage no flow layer yet, so those fall back to the requested amount.
+  const measuredRepaid = flows.repaidAssets > 0n ? flows.repaidAssets : debtRepaid;
+
   // a full close leaves nothing behind; a partial decrease keeps the epoch open
   const isClose = collateralTotal === 0n && debtTotal === 0n;
   const collateralSold = clamp0(collateralWithdrawn - collateralReturned);
-  const priceX18 = collateralSold > 0n ? (debtRepaid * WAD) / collateralSold : null;
+  const priceX18 = collateralSold > 0n ? (measuredRepaid * WAD) / collateralSold : null;
 
   await context.db.update(position, { id: row.id }).set({
     collateralAmount: collateralTotal,
@@ -298,7 +308,7 @@ ponder.on("MarginRouter:PositionDecreased", async ({ event, context }) => {
     blockNumber: event.block.number,
     timestamp: event.block.timestamp,
     collateralDelta: -collateralWithdrawn,
-    debtDelta: -debtRepaid,
+    debtDelta: -measuredRepaid,
     equityDelta: isClose ? -row.equity : 0n,
     priceX18,
     poolId,
