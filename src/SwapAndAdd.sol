@@ -33,43 +33,23 @@ import {ISwapAndAdd} from "./interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "./interfaces/external/IUniversalRouter.sol";
 
 /// @title SwapAndAdd
-/// @notice See ISwapAndAdd. Route-first swap-and-add / rebalance zap for Uniswap v4.
-///
-///         Flow, all inside one PoolManager unlock:
-///           1. ROUTE FIRST — run the caller's verbatim Universal Router route to swap the surplus side toward
-///              the deficit side (best execution, typically off-venue). The post-route state — balances and
-///              pool price — is the source of truth for everything after.
-///           2. SIZE & DEPLOY — size the position from those real holdings at the live price, fee-aware (the
-///              residual same-pool swap will pay the pool fee, so discount the side it consumes), and mint to
-///              this contract (or increase the existing tokenId in place).
-///           3. RECONCILE — a single same-pool swap funds whichever side the deploy is short of (either
-///              direction), then a DECREASE ("trim") lands the position exactly on what the holdings support.
-///           4. FLOOR — revert unless the final liquidity >= `minLiquidity` (the one slippage knob).
-///           5. SWEEP leftover to the recipient and transfer the position NFT to them after the unlock closes.
-///
-///         Why route *before* mint:
-///           The same-pool reconcile swap moves the pool price. If we sized/minted *after* it, the position's
-///           required ratio would depend on the swap we are still computing — a circular dependency.
-///           Minting *first* fixes the position's composition at the live price, so the
-///           reconcile swap can move the price freely without invalidating the mint. The *route* is a black
-///           box that simply runs first — whatever state it leaves (balances and pool price alike, it may even
-///           touch this pool) is re-read and used as the source of truth for sizing. `minLiquidity` checked on
-///           the final position is the single slippage gate for the whole operation.
+/// @notice Route-first swap-and-add / rebalance / increase / compound zap for Uniswap v4. All operation
+///         semantics, the flow, and the integration notes (route-first design, multicall batching, msg.value
+///         rules, unsupported pools, known limits) live in ISwapAndAdd; this file documents only what is
+///         implementation-specific. Every entrypoint funnels into one unlock (`_run` -> `_unlockCallback` ->
+///         `_addCore`): route -> size -> flash-take -> deploy -> reconcile + trim -> floor -> sweep.
 ///
 ///         INVARIANT — no funds at rest for well-formed operations: an operation pulls the caller's budget,
 ///         deploys/settles it in full and sweeps the remainder — pool tokens and every declared routeFunding
-///         token — within the same transaction. What CAN rest here is only value nobody declared: direct
-///         donations, or tokens/native a route delivered that the operation did not list. Such balances are
-///         not lost — they are treated as part of the next caller's budget (pool tokens) or claimable via a
-///         zero-amount routeFunding entry — and, decisively for safety, they are never reachable by a third
-///         party THROUGH this contract's allowances: the standing max Permit2 allowances to POSM and the
-///         Universal Router (see `_ensureApproved`) only ever let those spenders pull from their direct
-///         caller, i.e. only when this contract itself invokes them mid-operation, under the reentrancy lock,
-///         with `minLiquidity` bounding the outcome for the caller whose budget the balance then is.
-///
-///         v4-only; ERC-20 + native ETH. Four ops: add + rebalance mint a NEW position (to this contract so it
-///         can be trimmed, transferred to the recipient after the unlock closes); increase + compound grow an
-///         EXISTING tokenId in place through the same core.
+///         token — within the same transaction (per OPERATION, not per transaction: multicall subcalls each
+///         start clean). What CAN rest here is only value nobody declared: direct donations, or tokens/native
+///         a route delivered that the operation did not list. Such balances are not lost — they are treated
+///         as part of the next caller's budget (pool tokens) or claimable via a zero-amount routeFunding
+///         entry — and, decisively for safety, they are never reachable by a third party THROUGH this
+///         contract's allowances: the standing max Permit2 allowances to POSM and the Universal Router (see
+///         `_ensureApproved`) only ever let those spenders pull from their direct caller, i.e. only when this
+///         contract itself invokes them mid-operation, under the reentrancy lock, with `minLiquidity`
+///         bounding the outcome for the caller whose budget the balance then is.
 contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarder, Multicall_v4, ReentrancyLock {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
@@ -86,7 +66,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      wei rounding even for narrow ranges at extreme ticks (see `_sizeLiquidityWeighted`).
     uint128 private constant REFERENCE_LIQUIDITY = type(uint128).max;
     /// @dev universal-router Commands.SWEEP — used to reclaim native value a route left in the UR.
-    uint256 private constant UR_SWEEP_COMMAND = 0x04;
+    uint8 private constant UR_SWEEP_COMMAND = 0x04;
 
     /// @dev internal, stack-friendly bundle of the shared add inputs (budget already held by this contract).
     struct CoreParams {
@@ -167,7 +147,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             recipient: params.recipient,
             hookData: params.hookData
         });
-        (tokenId, liquidity, amount0, amount1) = _run(0, 0, 0, 0, cp);
+        (tokenId, liquidity, amount0, amount1) =
+            _run(UnlockData({growTokenId: 0, burnTokenId: 0, additional0: 0, additional1: 0, core: cp}));
         // the position was minted to this contract so it could be trimmed; hand it to the recipient now that
         // the pool is locked again, along with any funding the route did not consume.
         ERC721(address(positionManager)).transferFrom(address(this), params.recipient, tokenId);
@@ -186,10 +167,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // ensure caller is owner or an approved operator. Only the position owner can set a new recipient.
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
-        // pull funds from msg.sender (same as add()'s _pullBudget), if additional0/1 is positive. If its
-        // negative, funds will be returned during the unlock once we know the withdrawn amounts.
+        // positive deltas are a plain budget pull; negative deltas pull nothing here — they are returned to
+        // the recipient inside the unlock (`_resolveBudget`) once the withdrawn amounts are known.
         uint256 fundingValue = _pullFunding(key, params.routeFunding, params.route);
-        _pullAdditional(key, params.additional0, params.additional1, fundingValue);
+        _pullBudget(
+            key,
+            params.additional0 > 0 ? uint256(uint128(params.additional0)) : 0,
+            params.additional1 > 0 ? uint256(uint128(params.additional1)) : 0,
+            fundingValue
+        );
 
         // budgets are left zero: the callback resolves them from the burn's proceeds plus the signed deltas.
         CoreParams memory cp = CoreParams({
@@ -203,7 +189,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             recipient: recipient,
             hookData: params.hookData
         });
-        (newTokenId, liquidity, amount0, amount1) = _run(0, params.tokenId, params.additional0, params.additional1, cp);
+        (newTokenId, liquidity, amount0, amount1) = _run(
+            UnlockData({
+                growTokenId: 0,
+                burnTokenId: params.tokenId,
+                additional0: params.additional0,
+                additional1: params.additional1,
+                core: cp
+            })
+        );
         // transfer the newly created position NFT to the recipient, along with any unconsumed funding.
         ERC721(address(positionManager)).transferFrom(address(this), recipient, newTokenId);
         _sweepFunding(params.routeFunding, recipient);
@@ -221,13 +215,14 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // position value: only the owner or an approved operator may call, and only the owner picks the recipient.
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
-        (PoolKey memory key, CoreParams memory cp) =
+        CoreParams memory cp =
             _growCore(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
         // pull the caller's stated budget from msg.sender (same as add()'s _pullBudget); the collected fees
         // join it inside the callback.
-        uint256 fundingValue = _pullFunding(key, params.routeFunding, params.route);
-        _pullBudget(key, params.amount0In, params.amount1In, fundingValue);
-        (, liquidityAdded, amount0, amount1) = _run(params.tokenId, 0, 0, 0, cp);
+        uint256 fundingValue = _pullFunding(cp.key, params.routeFunding, params.route);
+        _pullBudget(cp.key, params.amount0In, params.amount1In, fundingValue);
+        (, liquidityAdded, amount0, amount1) =
+            _run(UnlockData({growTokenId: params.tokenId, burnTokenId: 0, additional0: 0, additional1: 0, core: cp}));
         // positionNFT stays with the original owner, so no transfer is needed; unconsumed funding goes to the
         // RESOLVED recipient (an operator's leftovers are forced to the owner — a route can also produce a
         // funding token from the collected fees, so funding leftovers are output like any other).
@@ -247,9 +242,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         _validateRecipient(recipient);
         // compound is an increase with a zero pulled budget: nothing is pulled here, the collected fees are
         // the entire budget — both ops share the grow path in the callback.
-        (, CoreParams memory cp) =
+        CoreParams memory cp =
             _growCore(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
-        (, liquidityAdded, amount0, amount1) = _run(params.tokenId, 0, 0, 0, cp);
+        (, liquidityAdded, amount0, amount1) =
+            _run(UnlockData({growTokenId: params.tokenId, burnTokenId: 0, additional0: 0, additional1: 0, core: cp}));
     }
 
     /// @dev Shared CoreParams for the grow-in-place ops (increase, compound): deploy into the position's
@@ -261,9 +257,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint256 minLiquidity,
         address recipient,
         bytes calldata hookData
-    ) internal view returns (PoolKey memory key, CoreParams memory cp) {
-        PositionInfo info;
-        (key, info) = positionManager.getPoolAndPositionInfo(tokenId);
+    ) internal view returns (CoreParams memory cp) {
+        (PoolKey memory key, PositionInfo info) = positionManager.getPoolAndPositionInfo(tokenId);
         cp = CoreParams({
             key: key,
             tickLower: info.tickLower(),
@@ -279,24 +274,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     /// @dev The single unlock funnel every entrypoint goes through: encode the ONE payload shape, unlock,
     ///      decode the ONE result shape. Grow ops echo their own tokenId back; callers ignore it.
-    function _run(
-        uint256 growTokenId,
-        uint256 burnTokenId,
-        int128 additional0,
-        int128 additional1,
-        CoreParams memory cp
-    ) internal returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1) {
-        bytes memory result = poolManager.unlock(
-            abi.encode(
-                UnlockData({
-                    growTokenId: growTokenId,
-                    burnTokenId: burnTokenId,
-                    additional0: additional0,
-                    additional1: additional1,
-                    core: cp
-                })
-            )
-        );
+    function _run(UnlockData memory d)
+        internal
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
+    {
+        bytes memory result = poolManager.unlock(abi.encode(d));
         return abi.decode(result, (uint256, uint128, uint256, uint256));
     }
 
@@ -387,7 +369,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // opaque CannotUpdateEmptyPosition. Grow-in-place ops keep their semantics (adding 0 to an existing
         // position is valid; the minLiquidityAdded floor is the gate).
         if (liquidityOptimistic == 0 && existingTokenId == 0) {
-            revert InsufficientLiquidity(uint128(cp.minLiquidity), 0);
+            revert InsufficientLiquidity(cp.minLiquidity, 0);
         }
         _flashTakeDeficit(cp, amount0optimistic, amount1optimistic);
         tokenId = _deploy(cp, existingTokenId, liquidityOptimistic, amount0optimistic);
@@ -398,7 +380,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         liquidity = liquidityOptimistic - trimmed;
 
         // 4. slippage floor — the single gate for the whole operation.
-        if (liquidity < cp.minLiquidity) revert InsufficientLiquidity(uint128(cp.minLiquidity), liquidity);
+        if (liquidity < cp.minLiquidity) revert InsufficientLiquidity(cp.minLiquidity, liquidity);
 
         // 5. report the position's composition; sweep all remaining balances to the recipient (no-funds-at-rest).
         // dust can sit in BOTH tokens (the trim frees both sides); it is not re-denominated.
@@ -713,7 +695,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             bytes[] memory sweepInputs = new bytes[](1);
             // token ETH (address(0)), recipient MSG_SENDER (UR maps it back to this contract), no minimum.
             sweepInputs[0] = abi.encode(address(0), ActionConstants.MSG_SENDER, 0);
-            universalRouter.execute(abi.encodePacked(uint8(UR_SWEEP_COMMAND)), sweepInputs);
+            universalRouter.execute(abi.encodePacked(UR_SWEEP_COMMAND), sweepInputs);
         }
     }
 
@@ -769,6 +751,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @dev Pull the caller's budget into this contract: native via msg.value (exact), ERC-20 via Permit2.
+    ///      Serves add and increase directly, and rebalance with its positive deltas clamped to zero (the
+    ///      negative, return-to-wallet side pulls nothing — it is paid out inside the unlock).
     ///      currency1 is never native (native sorts to currency0), so only currency0 can consume value.
     ///      `fundingValue` is the native amount `_pullFunding` declared; the funding guard makes the two
     ///      msg.value sources mutually exclusive (a native pool rejects an address(0) funding entry), so the
@@ -794,30 +778,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // under multicall msg.value is per-BATCH (delegatecall preserves it), so equality alone no longer
         // proves this op is funded: an earlier subcall may have consumed the value. Native spending is
         // balance-based throughout, so a double-claim can only revert — this guard just makes it revert HERE.
-        if (address(this).balance < expectedValue) revert InvalidEthValue();
-    }
-
-    /// @dev Pull the positive (add) rebalance deltas from the caller, before the unlock so msg.sender is still
-    ///      the caller (mirrors `_pullBudget`, including the `fundingValue` semantics). Negative deltas pull
-    ///      nothing here — they are returned to the recipient inside the unlock (`_resolveBudget`) once the
-    ///      withdrawn amounts are known.
-    function _pullAdditional(PoolKey memory key, int128 additional0, int128 additional1, uint256 fundingValue)
-        internal
-    {
-        uint256 expectedValue = fundingValue;
-        Currency c0 = key.currency0;
-        if (additional0 > 0) {
-            uint256 amount = uint256(uint128(additional0));
-            if (c0.isAddressZero()) expectedValue += amount;
-            else permit2.transferFrom(msg.sender, address(this), uint160(amount), Currency.unwrap(c0));
-        }
-        if (additional1 > 0) {
-            permit2.transferFrom(
-                msg.sender, address(this), uint160(uint256(uint128(additional1))), Currency.unwrap(key.currency1)
-            );
-        }
-        if (msg.value != expectedValue) revert InvalidEthValue();
-        // per-batch msg.value under multicall: see the identical guard in _pullBudget.
         if (address(this).balance < expectedValue) revert InvalidEthValue();
     }
 

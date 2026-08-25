@@ -101,7 +101,7 @@ interface ISwapAndAdd is IMulticall_v4 {
     error InvalidEthValue();
     /// @notice Plain ETH transfers are rejected; only the PoolManager, POSM and the Universal Router may send.
     error InvalidEthSender();
-    error InsufficientLiquidity(uint128 minLiquidity, uint128 liquidity);
+    error InsufficientLiquidity(uint256 minLiquidity, uint128 liquidity);
     /// @notice Output may not be sent to this contract (it would strand there) or to the zero address (the
     ///         NFT hand-off rejects it late; swept leftovers would burn silently on the grow ops).
     error InvalidRecipient(address recipient);
@@ -134,7 +134,7 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @param amount1In     Budget of pool token1 (may be 0).
     /// @param route         Verbatim Universal Router payload for the bulk swap: abi.encode(bytes commands, bytes[] inputs).
     ///                      May be empty -> the whole deficit is sourced by the same-pool swap + trim. The route
-    ///                      declares its own input token and amount; BOTH pool tokens are funded for it (bounded
+    ///                      declares its own input token and amount; BOTH pool tokens are funded for it (standing
     ///                      Permit2 allowances / native value), whatever it does not consume stays in the contract
     ///                      for the same-pool reconcile, and native value left in the router is reclaimed.
     ///                      ROUTE-CONSTRUCTION REQUIREMENT: the contract forwards its WHOLE native balance with
