@@ -131,8 +131,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         _validateRecipient(params.recipient);
-        uint256 fundingValue = _pullFunding(params.poolKey, params.routeFunding, params.route);
-        _pullBudget(params.poolKey, params.amount0In, params.amount1In, fundingValue);
+        _pull(params.poolKey, params.amount0In, params.amount1In, params.routeFunding, params.route);
 
         CoreParams memory cp = CoreParams({
             deployTokenId: 0, // mints a new position
@@ -167,12 +166,12 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         _validateRecipient(recipient);
         // positive deltas are a plain budget pull; negative deltas pull nothing here — they are returned to
         // the recipient right after the burn below (`_resolveBudget`), once the withdrawn amounts are known.
-        uint256 fundingValue = _pullFunding(key, params.routeFunding, params.route);
-        _pullBudget(
+        _pull(
             key,
             params.additional0 > 0 ? uint256(uint128(params.additional0)) : 0,
             params.additional1 > 0 ? uint256(uint128(params.additional1)) : 0,
-            fundingValue
+            params.routeFunding,
+            params.route
         );
 
         // burn the WHOLE position in POSM's own unlock (the vanilla user burn path), then resolve each
@@ -214,10 +213,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         _validateRecipient(recipient);
         CoreParams memory cp =
             _growCore(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
-        // pull the caller's stated budget from msg.sender (same as add()'s _pullBudget); the collected fees
+        // pull the caller's stated budget from msg.sender (same as add()'s _pull); the collected fees
         // join it inside the callback.
-        uint256 fundingValue = _pullFunding(cp.key, params.routeFunding, params.route);
-        _pullBudget(cp.key, params.amount0In, params.amount1In, fundingValue);
+        _pull(cp.key, params.amount0In, params.amount1In, params.routeFunding, params.route);
         (, liquidityAdded, amount0, amount1) = _run(cp);
         // positionNFT stays with the original owner, so no transfer is needed; unconsumed funding goes to the
         // RESOLVED recipient (an operator's leftovers are forced to the owner — a route can also produce a
@@ -735,64 +733,64 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (d > 0) _take(currency, address(this), uint256(d));
     }
 
-    /// @dev Pull the caller's budget into this contract: native via msg.value (exact), ERC-20 via Permit2.
-    ///      Serves add and increase directly, and rebalance with its positive deltas clamped to zero (the
-    ///      negative, return-to-wallet side pulls nothing — it is paid out inside the unlock).
-    ///      currency1 is never native (native sorts to currency0), so only currency0 can consume value.
-    ///      `fundingValue` is the native amount `_pullFunding` declared; the funding guard makes the two
-    ///      msg.value sources mutually exclusive (a native pool rejects an address(0) funding entry), so the
-    ///      sum below always has at most one non-zero term.
-    function _pullBudget(PoolKey memory key, uint256 amount0In, uint256 amount1In, uint256 fundingValue) internal {
-        uint256 expectedValue = fundingValue;
-        Currency c0 = key.currency0;
+    /// @dev Pull everything the operation is funded with, in one place: the route-funding entries (non-pool
+    ///      tokens that exist solely to fund the route) first, then the caller's pool-token budget. Serves add
+    ///      and increase directly, and rebalance with its positive deltas clamped to zero (the negative,
+    ///      return-to-wallet side pulls nothing — it is paid out after the burn); compound pulls nothing.
+    ///      ERC-20s are pulled via Permit2. msg.value has exactly one meaning per operation and is asserted
+    ///      HERE, once, after every native contribution is accumulated: the native pool budget OR a native
+    ///      funding entry — never both, since on a native pool address(0) IS currency0 and is rejected as a
+    ///      funding token below. Funding rules: entries must not be pool currencies (those are budget:
+    ///      amount0In/amount1In — one canonical encoding), they require a non-empty route (funding is route
+    ///      input by definition; without one it would only round-trip to the recipient), and a zero-amount
+    ///      entry pulls nothing but still wires and later sweeps its token — the donation-claim path (see the
+    ///      contract INVARIANT). Funding tokens are wired for the route here, the only place that sees them;
+    ///      pool tokens are wired in `_addCore`, the last common point (rebalance and compound pull no pool
+    ///      tokens here but their deploys still need the allowances).
+    function _pull(
+        PoolKey memory key,
+        uint256 amount0In,
+        uint256 amount1In,
+        TokenAmount[] calldata funding,
+        bytes calldata route
+    ) internal {
+        uint256 expectedValue;
 
-        // currency0 can either be native or an ERC-20
+        if (funding.length != 0) {
+            if (route.length == 0) revert RouteFundingRequiresRoute();
+            for (uint256 i = 0; i < funding.length; i++) {
+                Currency token = funding[i].token;
+                if (token == key.currency0 || token == key.currency1) revert InvalidFundingToken(token);
+                if (token.isAddressZero()) {
+                    expectedValue += funding[i].amount;
+                } else {
+                    if (funding[i].amount > 0) {
+                        permit2.transferFrom(
+                            msg.sender, address(this), funding[i].amount.toUint160(), Currency.unwrap(token)
+                        );
+                    }
+                    _ensureApproved(token);
+                }
+            }
+        }
+
+        // pool-token budget: currency0 is native or an ERC-20; currency1 is always an ERC-20 (native sorts first)
+        Currency c0 = key.currency0;
         if (c0.isAddressZero()) {
-            // amountIn must match msg.value
             expectedValue += amount0In;
         } else if (amount0In > 0) {
             permit2.transferFrom(msg.sender, address(this), amount0In.toUint160(), Currency.unwrap(c0));
         }
-
-        // currency1 is always an ERC-20
         if (amount1In > 0) {
             permit2.transferFrom(msg.sender, address(this), amount1In.toUint160(), Currency.unwrap(key.currency1));
         }
-        // msg.value must match its single meaning: the native budget (native pool) OR the native funding entry
+
+        // msg.value must match its single meaning exactly
         if (msg.value != expectedValue) revert InvalidEthValue();
         // under multicall msg.value is per-BATCH (delegatecall preserves it), so equality alone no longer
         // proves this op is funded: an earlier subcall may have consumed the value. Native spending is
         // balance-based throughout, so a double-claim can only revert — this guard just makes it revert HERE.
         if (address(this).balance < expectedValue) revert InvalidEthValue();
-    }
-
-    /// @dev Pull the caller's route-funding entries — non-pool tokens that exist solely to fund the route —
-    ///      and wire their approvals so the route can spend them. Native entries contribute to the expected
-    ///      msg.value instead of a Permit2 pull; on a native pool address(0) IS currency0 and is rejected as a
-    ///      pool currency, so msg.value never has two meanings. Pool currencies are budget, not funding
-    ///      (rejecting them keeps one canonical encoding). A zero-amount entry pulls nothing but still wires
-    ///      and later sweeps its token — the donation-claim path (see the contract INVARIANT).
-    function _pullFunding(PoolKey memory key, TokenAmount[] calldata funding, bytes calldata route)
-        internal
-        returns (uint256 expectedValue)
-    {
-        if (funding.length == 0) return 0;
-        // funding is route input by definition: without a route it would only round-trip to the recipient.
-        if (route.length == 0) revert RouteFundingRequiresRoute();
-        for (uint256 i = 0; i < funding.length; i++) {
-            Currency token = funding[i].token;
-            if (token == key.currency0 || token == key.currency1) revert InvalidFundingToken(token);
-            if (token.isAddressZero()) {
-                expectedValue += funding[i].amount;
-            } else {
-                if (funding[i].amount > 0) {
-                    permit2.transferFrom(
-                        msg.sender, address(this), funding[i].amount.toUint160(), Currency.unwrap(token)
-                    );
-                }
-                _ensureApproved(token);
-            }
-        }
     }
 
     /// @dev Sweep every funding token to the resolved recipient: whatever the route did not consume must not
