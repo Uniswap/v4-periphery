@@ -64,6 +64,9 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///      surfaces it as InsufficientLiquidity; only a zero floor (the explicit accept-anything opt-out) sees
 ///      v4's CurrencyNotSettled instead. Real-size budgets cannot reach this regime.
 ///
+///      KNOWN LIMIT — fee-on-transfer and rebasing tokens are unsupported: as pool currencies (v4 itself does
+///      not support them) and as routeFunding. Failures are atomic reverts or a larger trim, never a loss.
+///
 ///      DYNAMIC-FEE NOTE: optimistic sizing uses the pool's stored Slot0 LP fee. A `beforeSwap` hook may select a
 ///      different per-swap override that cannot be generically previewed (it may depend on the caller, amount,
 ///      hookData or mutable state). The actual override is charged by the reconcile swap; if it is higher than
@@ -95,6 +98,8 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///      may be swept to the recipient of a later operation involving native ETH; it does not create a claim
 ///      for the sender.
 interface ISwapAndAdd is IMulticall_v4 {
+    /// @notice The zero address is not allowed.
+    error ZeroAddress();
     error DeadlinePassed(uint256 deadline);
     /// @notice msg.value does not match the operation's declared native amount, or the contract's native
     ///         balance cannot cover it (a value-bearing multicall where an earlier subcall already spent it).

@@ -68,8 +68,12 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev universal-router Commands.SWEEP — used to reclaim native value a route left in the UR.
     uint8 private constant UR_SWEEP_COMMAND = 0x04;
 
-    /// @dev internal, stack-friendly bundle of the shared add inputs (budget already held by this contract).
+    /// @dev internal, stack-friendly bundle of the shared core's inputs — the COMPLETE universe `_addCore`
+    ///      and everything below it can see. `deployTokenId` is the deploy target: 0 mints a NEW position
+    ///      (add, rebalance), otherwise that tokenId is INCREASEd in place (increase, compound — it also
+    ///      triggers the callback's grow prep). budget0/1 are callback-resolved for rebalance and the grow ops.
     struct CoreParams {
+        uint256 deployTokenId;
         PoolKey key;
         int24 tickLower;
         int24 tickUpper;
@@ -79,20 +83,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         uint256 minLiquidity;
         address recipient;
         bytes hookData;
-    }
-
-    /// @dev The ONE unlock payload every entrypoint encodes (see `_run`): the fully-built CoreParams plus the
-    ///      per-op prep the callback must do before the shared core runs. The two tokenIds are sentinels
-    ///      (0 = not this op's path; POSM ids start at 1) and never both set — entrypoints are the only
-    ///      encoders. `growTokenId` (increase/compound): collect that position's fees, budgets = balances,
-    ///      then INCREASE it in place. `burnTokenId` (rebalance): burn that position, budgets resolved from
-    ///      `withdrawn + additional0/1`. Neither (add): budgets travel in CoreParams as encoded.
-    struct UnlockData {
-        uint256 growTokenId;
-        uint256 burnTokenId;
-        int128 additional0;
-        int128 additional1;
-        CoreParams core;
     }
 
     IPositionManager public immutable positionManager;
@@ -109,6 +99,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         IPositionManager _positionManager,
         IUniversalRouter _universalRouter
     ) SafeCallback(_poolManager) Permit2Forwarder(_permit2) {
+        if (address(_positionManager) == address(0)) revert ZeroAddress();
+        if (address(_universalRouter) == address(0)) revert ZeroAddress();
+        if (address(_permit2) == address(0)) revert ZeroAddress();
+        if (address(_poolManager) == address(0)) revert ZeroAddress();
+
         positionManager = _positionManager;
         universalRouter = _universalRouter;
     }
@@ -136,7 +131,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         _validateRecipient(params.recipient);
         uint256 fundingValue = _pullFunding(params.poolKey, params.routeFunding, params.route);
         _pullBudget(params.poolKey, params.amount0In, params.amount1In, fundingValue);
+
         CoreParams memory cp = CoreParams({
+            deployTokenId: 0, // mints a new position
             key: params.poolKey,
             tickLower: params.tickLower,
             tickUpper: params.tickUpper,
@@ -147,8 +144,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             recipient: params.recipient,
             hookData: params.hookData
         });
-        (tokenId, liquidity, amount0, amount1) =
-            _run(UnlockData({growTokenId: 0, burnTokenId: 0, additional0: 0, additional1: 0, core: cp}));
+        (tokenId, liquidity, amount0, amount1) = _run(cp);
         // the position was minted to this contract so it could be trimmed; hand it to the recipient now that
         // the pool is locked again, along with any funding the route did not consume.
         ERC721(address(positionManager)).transferFrom(address(this), params.recipient, tokenId);
@@ -179,6 +175,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         // budgets are left zero: the callback resolves them from the burn's proceeds plus the signed deltas.
         CoreParams memory cp = CoreParams({
+            deployTokenId: 0, // mints a new position after burning the old one
             key: key,
             tickLower: params.newTickLower,
             tickUpper: params.newTickUpper,
@@ -189,15 +186,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             recipient: recipient,
             hookData: params.hookData
         });
-        (newTokenId, liquidity, amount0, amount1) = _run(
-            UnlockData({
-                growTokenId: 0,
-                burnTokenId: params.tokenId,
-                additional0: params.additional0,
-                additional1: params.additional1,
-                core: cp
-            })
-        );
+        (newTokenId, liquidity, amount0, amount1) = _run(params.tokenId, params.additional0, params.additional1, cp);
         // transfer the newly created position NFT to the recipient, along with any unconsumed funding.
         ERC721(address(positionManager)).transferFrom(address(this), recipient, newTokenId);
         _sweepFunding(params.routeFunding, recipient);
@@ -221,8 +210,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // join it inside the callback.
         uint256 fundingValue = _pullFunding(cp.key, params.routeFunding, params.route);
         _pullBudget(cp.key, params.amount0In, params.amount1In, fundingValue);
-        (, liquidityAdded, amount0, amount1) =
-            _run(UnlockData({growTokenId: params.tokenId, burnTokenId: 0, additional0: 0, additional1: 0, core: cp}));
+        (, liquidityAdded, amount0, amount1) = _run(cp);
         // positionNFT stays with the original owner, so no transfer is needed; unconsumed funding goes to the
         // RESOLVED recipient (an operator's leftovers are forced to the owner — a route can also produce a
         // funding token from the collected fees, so funding leftovers are output like any other).
@@ -244,12 +232,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // the entire budget — both ops share the grow path in the callback.
         CoreParams memory cp =
             _growCore(params.tokenId, params.route, params.minLiquidityAdded, recipient, params.hookData);
-        (, liquidityAdded, amount0, amount1) =
-            _run(UnlockData({growTokenId: params.tokenId, burnTokenId: 0, additional0: 0, additional1: 0, core: cp}));
+        (, liquidityAdded, amount0, amount1) = _run(cp);
     }
 
-    /// @dev Shared CoreParams for the grow-in-place ops (increase, compound): deploy into the position's
-    ///      existing range. Budgets are left zero — the callback fills them from the balances actually held
+    /// @notice Shared CoreParams for the grow-in-place ops (increase, compound).
+    /// @dev Budgets are left zero — the callback fills them from the balances actually held
     ///      once the accrued fees have been collected.
     function _growCore(
         uint256 tokenId,
@@ -260,11 +247,12 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ) internal view returns (CoreParams memory cp) {
         (PoolKey memory key, PositionInfo info) = positionManager.getPoolAndPositionInfo(tokenId);
         cp = CoreParams({
+            deployTokenId: tokenId, // increases an existing position
             key: key,
             tickLower: info.tickLower(),
             tickUpper: info.tickUpper(),
-            budget0: 0,
-            budget1: 0,
+            budget0: 0, // filled by the callback
+            budget1: 0, // filled by the callback
             route: route,
             minLiquidity: minLiquidity,
             recipient: recipient,
@@ -272,24 +260,35 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         });
     }
 
-    /// @dev The single unlock funnel every entrypoint goes through: encode the ONE payload shape, unlock,
-    ///      decode the ONE result shape. Grow ops echo their own tokenId back; callers ignore it.
-    function _run(UnlockData memory d)
+    /// @dev The single unlock funnel every entrypoint goes through: ONE payload shape — rebalance's burn
+    ///      triple plus the fully-built CoreParams — and ONE result shape (grow ops echo their own tokenId
+    ///      back; callers ignore it).
+    function _run(CoreParams memory cp)
         internal
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
-        bytes memory result = poolManager.unlock(abi.encode(d));
+        return _run(0, 0, 0, cp); // no position to burn: add and the grow ops
+    }
+
+    function _run(uint256 burnTokenId, int128 additional0, int128 additional1, CoreParams memory cp)
+        internal
+        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
+    {
+        bytes memory result = poolManager.unlock(abi.encode(burnTokenId, additional0, additional1, cp));
         return abi.decode(result, (uint256, uint128, uint256, uint256));
     }
 
     // ───────────────────────────────────────────── unlock callback ─────────────────────────────────────────────
 
     /// @notice Callback function triggered by the pool manager: at most one budget-resolution prep, then the
-    ///         shared core. Every op arrives as the same UnlockData shape and leaves as the same result tuple.
-    /// @dev Protected by SafeCallback.onlyPoolManager modifier.
+    ///         shared core. Every op arrives as the same payload shape and leaves as the same result tuple.
+    /// @dev Protected by SafeCallback.onlyPoolManager modifier. INVARIANT: `burnTokenId != 0` (rebalance) and
+    ///      `cp.deployTokenId != 0` (increase/compound) are never both set — the entrypoints are this
+    ///      payload's only encoders (the PoolManager calls back only its unlock's caller) and each sets at
+    ///      most one.
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        UnlockData memory d = abi.decode(data, (UnlockData));
-        CoreParams memory cp = d.core;
+        (uint256 burnTokenId, int128 additional0, int128 additional1, CoreParams memory cp) =
+            abi.decode(data, (uint256, int128, int128, CoreParams));
 
         // rebalance prep: burn the WHOLE position (tokens land here), then resolve each side's redeploy
         // budget from the signed delta — `withdrawn + additional`. Positive deltas were already pulled in
@@ -297,18 +296,19 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // Returning the cash-out share up front is what keeps the accounting safe: the contract is then left
         // holding exactly the redeploy budget, so every `balanceOfSelf()` read in `_addCore` (the route, the
         // reconcile's sell-all, the mint settle) sees only what should be deployed, never the portion owed back.
-        if (d.burnTokenId != 0) {
-            _withdraw(cp.key, d.burnTokenId, cp.hookData);
-            cp.budget0 = _resolveBudget(cp.key.currency0, d.additional0, cp.recipient);
-            cp.budget1 = _resolveBudget(cp.key.currency1, d.additional1, cp.recipient);
+        if (burnTokenId != 0) {
+            _withdraw(cp.key, burnTokenId, cp.hookData);
+            cp.budget0 = _resolveBudget(cp.key.currency0, additional0, cp.recipient);
+            cp.budget1 = _resolveBudget(cp.key.currency1, additional1, cp.recipient);
         }
         // grow prep (increase and compound; compound = zero pulled budget, the collected fees are its whole
         // budget): collect accrued fees FIRST (DECREASE by 0 credits them, TAKE_PAIR pulls them here), then
         // budget = everything held — the caller's pulled amounts plus the just-collected fees, so fees are
         // route- and sizing-eligible and never leave to the wallet. `else if` states structurally what the
         // encoders guarantee: the two prep paths are mutually exclusive.
-        else if (d.growTokenId != 0) {
-            _decrease(cp.key, d.growTokenId, 0, cp.hookData);
+        else if (cp.deployTokenId != 0) {
+            // collect accrued fees FIRST (DECREASE by 0 credits them, TAKE_PAIR pulls them here)
+            _decrease(cp.key, cp.deployTokenId, 0, cp.hookData);
             cp.budget0 = cp.key.currency0.balanceOfSelf();
             cp.budget1 = cp.key.currency1.balanceOfSelf();
             // a route can still produce a budget (e.g. from route funding); with neither holdings nor a route
@@ -316,8 +316,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             if (cp.budget0 == 0 && cp.budget1 == 0 && cp.route.length == 0) revert NoFeesToCompound();
         }
 
-        // growTokenId 0 (add, rebalance) -> _addCore MINTs a new position; else it INCREASEs that tokenId.
-        (uint256 tokenId, uint128 liquidity, uint256 a0, uint256 a1) = _addCore(cp, d.growTokenId);
+        (uint256 tokenId, uint128 liquidity, uint256 a0, uint256 a1) = _addCore(cp);
         return abi.encode(tokenId, liquidity, a0, a1);
     }
 
@@ -340,11 +339,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     // ───────────────────────────────────────────── core flow ─────────────────────────────────────────────
 
-    /// @dev Shared route-first core for add / rebalance / increase / compound. With `existingTokenId == 0` it
+    /// @dev Shared route-first core for add / rebalance / increase / compound. With `cp.deployTokenId == 0` it
     ///      MINTs a new position (to this contract, so it can be trimmed); otherwise it INCREASEs that tokenId in
     ///      place (no new NFT). Route -> size (fee-aware) -> flash-take deficit -> mint|increase -> reconcile +
     ///      trim -> floor -> sweep dust to recipient.
-    function _addCore(CoreParams memory cp, uint256 existingTokenId)
+    function _addCore(CoreParams memory cp)
         internal
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
@@ -368,11 +367,11 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // outcome could ever satisfy the caller: surface the contract's own floor error instead of the pool's
         // opaque CannotUpdateEmptyPosition. Grow-in-place ops keep their semantics (adding 0 to an existing
         // position is valid; the minLiquidityAdded floor is the gate).
-        if (liquidityOptimistic == 0 && existingTokenId == 0) {
+        if (liquidityOptimistic == 0 && cp.deployTokenId == 0) {
             revert InsufficientLiquidity(cp.minLiquidity, 0);
         }
         _flashTakeDeficit(cp, amount0optimistic, amount1optimistic);
-        tokenId = _deploy(cp, existingTokenId, liquidityOptimistic, amount0optimistic);
+        tokenId = _deploy(cp, liquidityOptimistic, amount0optimistic);
 
         // 3. same-pool swap to reconcile whichever side is short (if any), then trim the optimistic
         //    size down to what the holdings actually funded.
@@ -614,7 +613,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     // ───────────────────────────────────────────── POSM / pool actions ─────────────────────────────────────────────
 
-    /// @dev Deploy `liquidity` through POSM: MINT a new position when `existingTokenId` is 0 (owned by THIS
+    /// @dev Deploy `liquidity` through POSM: MINT a new position when `cp.deployTokenId` is 0 (owned by THIS
     ///      contract so `_trim` can decrease it within the unlock), else INCREASE that tokenId in place. Funding
     ///      comes from this contract (standing Permit2 allowance / forwarded native value; a SWEEP returns
     ///      unused native wei). POSM's per-amount slippage limits are set to max: the single `minLiquidity`
@@ -628,12 +627,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      is handled. A taken credit lands in this contract's balance, where the reconcile spends it on the
     ///      flash debt (a smaller trim, i.e. more retained liquidity) and the sweep returns any remainder.
     ///      On a MINT the delta is always a pure debt, so CLOSE_CURRENCY is exactly SETTLE_PAIR there.
-    function _deploy(CoreParams memory cp, uint256 existingTokenId, uint128 liquidity, uint256 amount0)
-        internal
-        returns (uint256 tokenId)
-    {
-        bool isMint = existingTokenId == 0;
-        tokenId = isMint ? positionManager.nextTokenId() : existingTokenId;
+    function _deploy(CoreParams memory cp, uint128 liquidity, uint256 amount0) internal returns (uint256 tokenId) {
+        bool isMint = cp.deployTokenId == 0;
+        tokenId = isMint ? positionManager.nextTokenId() : cp.deployTokenId;
 
         Currency c0 = cp.key.currency0;
         uint8 deployAction = uint8(isMint ? Actions.MINT_POSITION : Actions.INCREASE_LIQUIDITY);
