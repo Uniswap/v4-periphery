@@ -57,7 +57,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
 
-        // deep reserve pool so the flash-take never hits the (unrelated) K-05 PoolManager-drained revert
+        // deep reserve pool so the flash-take never hits the (unrelated) PoolManager-drained revert
         (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 10000, int24(200), SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(
             rk,
@@ -130,7 +130,7 @@ contract SwapAndAddTrimTest is PosmTestSetup {
         PoolKey memory k = _pool(3000, 30, TickMath.getSqrtPriceAtTick(centre), 1e27);
 
         // top tier bounded by the PM's own reserves: at price 1e-9 the token0 flash-take is ~1e9x the token1
-        // budget, and taking more than the PM holds across all pools is the separate, documented K-05 limit.
+        // budget, and taking more than the PM holds across all pools is the separate, documented PoolManager-drained limit.
         uint256[5] memory amounts = [uint256(1e18), 6.4e18, 20e18, 1_000e18, 5_000e18];
         for (uint256 i = 0; i < amounts.length; i++) {
             uint256 snap = vm.snapshotState();

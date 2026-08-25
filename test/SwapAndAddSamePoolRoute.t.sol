@@ -112,7 +112,7 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
             currency0, currency1, IHooks(address(0)), 100_000, int24(60), TickMath.getSqrtPriceAtTick(int24(1200))
         );
 
-        // deep reserve pool in an UNRELATED pool so the flash-take always finds PoolManager reserves (K-05)
+        // deep reserve pool in an UNRELATED pool so the flash-take always finds PoolManager-wide reserves
         (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 500, int24(10), SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(
             rk,

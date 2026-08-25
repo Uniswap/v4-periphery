@@ -47,7 +47,7 @@ contract SwapAndAddFarEdgeTest is PosmTestSetup {
         MockERC20(Currency.unwrap(currency0)).mint(address(this), 1e40);
         MockERC20(Currency.unwrap(currency1)).mint(address(this), 1e40);
 
-        // deep UNRELATED reserve pool: keeps the flash-take clear of the documented K-05 PoolManager-drained
+        // deep UNRELATED reserve pool: keeps the flash-take clear of the documented PoolManager-drained
         // limit (the take needs PM-wide reserves); its fee/spacing never collide with the probe pools and it
         // is never swapped through, so it cannot affect the probe pool's far-edge dynamics.
         (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 500_000, int24(200), SQRT_PRICE_1_1);

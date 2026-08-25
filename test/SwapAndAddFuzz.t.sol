@@ -42,7 +42,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
     bytes4 constant CURRENCY_NOT_SETTLED = 0x5212cba1;
 
     // budget cap (uint88 ~ 3e26 raw) and price-domain cap (|tick| <= 300_000, price ~ 1e±13): together they
-    // keep the flash-take below the reserve pool's holdings, so the separate, documented K-05 limit (take
+    // keep the flash-take below the reserve pool's holdings, so the separate, documented PoolManager-drained limit (take
     // exceeding the PoolManager's global balance) cannot masquerade as a property violation here. The trim
     // bug's operational region (price ~1e-9, token1 from ~6.4e18) sits comfortably inside these bounds.
     int24 constant MAX_CENTRE = 300_000;
@@ -66,7 +66,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
 
-        // deep reserve pool: keeps the flash-take clear of the K-05 PoolManager-drained limit (see above).
+        // deep reserve pool: keeps the flash-take clear of the PoolManager-drained limit (see above).
         // Its fee is deliberately ABOVE the fuzzed fee range (0..100_000) so a fuzzed (fee, spacing) pair can
         // never collide with this key and revert PoolAlreadyInitialized. It is never swapped through.
         (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 500_000, int24(200), SQRT_PRICE_1_1);
@@ -128,7 +128,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
 
     /// @dev VALUE-cap the fuzzed budgets: a budget's worth in the OTHER token bounds the flash-take, and
     ///      the take must stay far below the reserve pool's ~1e30-per-side holdings or the run hits the
-    ///      separate, documented K-05 limit (PM globally drained) instead of the properties under test.
+    ///      separate, documented PoolManager-drained limit instead of the properties under test.
     ///      Clamping (not assume-ing) keeps every run meaningful at extreme prices.
     function _capBudgets(int24 centre, uint88 b0Seed, uint88 b1Seed) internal pure returns (uint256 b0, uint256 b1) {
         return _capAt(TickMath.getSqrtPriceAtTick(centre), b0Seed, b1Seed);
@@ -136,7 +136,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
 
     /// @dev The cap MUST be taken at the price that prevails when the operation runs, not at pool init: the
     ///      flash-take is sized from the live price, so a drifted pool needs re-capping or an otherwise
-    ///      in-bounds budget implies an astronomical take (the K-05 noise this whole helper exists to exclude).
+    ///      in-bounds budget implies an astronomical take (the drained-reserves noise this whole helper exists to exclude).
     function _capBudgetsAtSpot(PoolKey memory k, uint88 b0Seed, uint88 b1Seed)
         internal
         view

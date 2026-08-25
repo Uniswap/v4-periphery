@@ -57,7 +57,7 @@ contract SwapAndAddRouteFundingTest is PosmTestSetup {
         MockERC20(Currency.unwrap(currency0)).mint(address(route), 1e24);
         MockERC20(Currency.unwrap(currency1)).mint(address(route), 1e24);
 
-        // deep reserve pool so the flash-take never hits the (unrelated) K-05 PoolManager-drained revert
+        // deep reserve pool so the flash-take never hits the (unrelated) PoolManager-drained revert
         (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 10000, int24(200), SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(
             rk,
