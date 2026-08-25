@@ -181,7 +181,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // is then left holding exactly the redeploy budget, so every `balanceOfSelf()` read in `_addCore`
         // (the route, the reconcile's sell-all, the mint settle) sees only what should be deployed, never the
         // portion owed back.
-        _withdraw(key, params.tokenId, params.hookData, params.deadline);
+        _withdraw(key, params.tokenId, params.hookData);
         CoreParams memory cp = CoreParams({
             deployTokenId: 0, // mints a new position after burning the old one
             key: key,
@@ -681,14 +681,16 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @dev Burn the whole position and TAKE both tokens (+ fees) to this contract.
-    function _withdraw(PoolKey memory key, uint256 tokenId, bytes calldata hookData, uint256 deadline) internal {
+    function _withdraw(PoolKey memory key, uint256 tokenId, bytes calldata hookData) internal {
         bytes memory actions = abi.encodePacked(uint8(Actions.BURN_POSITION), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
         params[0] = abi.encode(tokenId, uint128(0), uint128(0), hookData);
         params[1] = abi.encode(key.currency0, key.currency1, ActionConstants.MSG_SENDER);
         // POSM's SELF-unlocking surface: the burn is a vanilla POSM operation in its own unlock, run before
-        // the main unlock opens (our checkDeadline already passed, so POSM's cannot fire differently).
-        positionManager.modifyLiquidities(abi.encode(actions, params), deadline);
+        // the main unlock opens. Its mandatory deadline is passed as max: staleness is checked exactly once
+        // per operation, by the entrypoint's checkDeadline (same transaction, same timestamp — a real value
+        // here could never fire differently).
+        positionManager.modifyLiquidities(abi.encode(actions, params), type(uint256).max);
     }
 
     /// @dev DECREASE `dl` liquidity (0 collects just the accrued fees) and TAKE both tokens to this contract.
