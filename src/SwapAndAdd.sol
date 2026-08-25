@@ -450,6 +450,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         //    they are (the trim frees BOTH sides, so two-token dust is the normal case; converting one into
         //    the other would pay the pool fee on cosmetics).
         _takeCredit(deficit);
+        // defensive closure, no modeled flow reaches these two (step 2 zeroed the surplus tab and nothing
+        // re-touches it): kept so "both deltas are zero past this line" is checkable HERE, not by global argument.
         _takeCredit(surplus);
         _settleToward(surplus);
     }
