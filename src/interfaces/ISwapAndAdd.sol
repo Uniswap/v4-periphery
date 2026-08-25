@@ -100,6 +100,45 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 interface ISwapAndAdd is IMulticall_v4 {
     /// @notice The zero address is not allowed.
     error ZeroAddress();
+    /// @notice A new position was minted via `add` and delivered to `recipient`.
+    event Added(
+        address indexed recipient,
+        uint256 indexed tokenId,
+        address caller,
+        uint128 liquidity,
+        uint256 amount0,
+        uint256 amount1
+    );
+    /// @notice `oldTokenId` was burned and redeployed as `newTokenId` (delivered to `recipient`) via `rebalance`.
+    event Rebalanced(
+        address indexed recipient,
+        uint256 indexed oldTokenId,
+        uint256 indexed newTokenId,
+        address caller,
+        uint128 liquidity,
+        uint256 amount0,
+        uint256 amount1
+    );
+    /// @notice `tokenId` grew in place via `increase`. `recipient` is the RESOLVED recipient — the leftover /
+    ///         dust destination, forced to the owner for an operator caller.
+    event Increased(
+        address indexed recipient,
+        uint256 indexed tokenId,
+        address caller,
+        uint128 liquidityAdded,
+        uint256 amount0,
+        uint256 amount1
+    );
+    /// @notice `tokenId`'s accrued fees were reinvested via `compound`; recipient semantics as in `Increased`.
+    event Compounded(
+        address indexed recipient,
+        uint256 indexed tokenId,
+        address caller,
+        uint128 liquidityAdded,
+        uint256 amount0,
+        uint256 amount1
+    );
+
     error DeadlinePassed(uint256 deadline);
     /// @notice msg.value does not match the operation's declared native amount, or the contract's native
     ///         balance cannot cover it (a value-bearing multicall where an earlier subcall already spent it).
