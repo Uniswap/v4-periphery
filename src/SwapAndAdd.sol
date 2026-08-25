@@ -486,6 +486,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             // token0 occupies [max(price, sqrtLower), sqrtUpper]: amount0 = L * Q96 * (hi - lo) / (hi * lo)
             uint160 lo = sqrtPriceX96 > sqrtLower ? sqrtPriceX96 : sqrtLower;
             uint256 intermediate = FullMath.mulDivRoundingUp(lo, sqrtUpper, FixedPoint96.Q96);
+            // KNOWN (informational): at extreme prices, with the post-swap price parked within sqrt-units of
+            // `sqrtUpper` while a large deficit remains, this quotient can exceed uint256 and revert (blank
+            // EvmError) before the `lopt` cap below would have answered — self-inflicted, atomic, transient.
             dlUp = FullMath.mulDivRoundingUp(amountOut + 1, intermediate, sqrtUpper - lo);
         }
         dl = dlUp >= lopt ? lopt : uint128(dlUp);
