@@ -36,8 +36,10 @@ import {IUniversalRouter} from "./interfaces/external/IUniversalRouter.sol";
 /// @notice Route-first swap-and-add / rebalance / increase / compound zap for Uniswap v4. All operation
 ///         semantics, the flow, and the integration notes (route-first design, multicall batching, msg.value
 ///         rules, unsupported pools, known limits) live in ISwapAndAdd; this file documents only what is
-///         implementation-specific. Every entrypoint funnels into one unlock (`_run` -> `_unlockCallback` ->
-///         `_addCore`): route -> size -> flash-take -> deploy -> reconcile + trim -> floor -> sweep.
+///         implementation-specific. Every entrypoint funnels into one main unlock (`_run` -> `_unlockCallback`
+///         -> `_addCore`): route -> size -> flash-take -> deploy -> reconcile + trim -> floor -> sweep.
+///         Rebalance first burns the old position in POSM's own unlock — the vanilla, battle-tested burn
+///         path — so the main unlock starts from resolved budgets like every other op.
 ///
 ///         INVARIANT — no funds at rest for well-formed operations: an operation pulls the caller's budget,
 ///         deploys/settles it in full and sweeps the remainder — pool tokens and every declared routeFunding
@@ -164,7 +166,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         address recipient = _authAndResolveRecipient(params.tokenId, params.recipient);
         _validateRecipient(recipient);
         // positive deltas are a plain budget pull; negative deltas pull nothing here — they are returned to
-        // the recipient inside the unlock (`_resolveBudget`) once the withdrawn amounts are known.
+        // the recipient right after the burn below (`_resolveBudget`), once the withdrawn amounts are known.
         uint256 fundingValue = _pullFunding(key, params.routeFunding, params.route);
         _pullBudget(
             key,
@@ -173,20 +175,26 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             fundingValue
         );
 
-        // budgets are left zero: the callback resolves them from the burn's proceeds plus the signed deltas.
+        // burn the WHOLE position in POSM's own unlock (the vanilla user burn path), then resolve each
+        // side's redeploy budget from the signed delta — `withdrawn + additional` — all BEFORE the main
+        // unlock opens. Returning the cash-out share up front is what keeps the accounting safe: the contract
+        // is then left holding exactly the redeploy budget, so every `balanceOfSelf()` read in `_addCore`
+        // (the route, the reconcile's sell-all, the mint settle) sees only what should be deployed, never the
+        // portion owed back.
+        _withdraw(key, params.tokenId, params.hookData, params.deadline);
         CoreParams memory cp = CoreParams({
             deployTokenId: 0, // mints a new position after burning the old one
             key: key,
             tickLower: params.newTickLower,
             tickUpper: params.newTickUpper,
-            budget0: 0,
-            budget1: 0,
+            budget0: _resolveBudget(key.currency0, params.additional0, recipient),
+            budget1: _resolveBudget(key.currency1, params.additional1, recipient),
             route: params.route,
             minLiquidity: params.minLiquidity,
             recipient: recipient,
             hookData: params.hookData
         });
-        (newTokenId, liquidity, amount0, amount1) = _run(params.tokenId, params.additional0, params.additional1, cp);
+        (newTokenId, liquidity, amount0, amount1) = _run(cp);
         // transfer the newly created position NFT to the recipient, along with any unconsumed funding.
         ERC721(address(positionManager)).transferFrom(address(this), recipient, newTokenId);
         _sweepFunding(params.routeFunding, recipient);
@@ -260,54 +268,31 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         });
     }
 
-    /// @dev The single unlock funnel every entrypoint goes through: ONE payload shape — rebalance's burn
-    ///      triple plus the fully-built CoreParams — and ONE result shape (grow ops echo their own tokenId
-    ///      back; callers ignore it).
+    /// @dev The single main-unlock funnel every entrypoint goes through: the payload IS the fully-built
+    ///      CoreParams, the result always (tokenId, liquidity, amount0, amount1) — grow ops echo their own
+    ///      tokenId back; callers ignore it.
     function _run(CoreParams memory cp)
         internal
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
-        return _run(0, 0, 0, cp); // no position to burn: add and the grow ops
-    }
-
-    function _run(uint256 burnTokenId, int128 additional0, int128 additional1, CoreParams memory cp)
-        internal
-        returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
-    {
-        bytes memory result = poolManager.unlock(abi.encode(burnTokenId, additional0, additional1, cp));
+        bytes memory result = poolManager.unlock(abi.encode(cp));
         return abi.decode(result, (uint256, uint128, uint256, uint256));
     }
 
     // ───────────────────────────────────────────── unlock callback ─────────────────────────────────────────────
 
-    /// @notice Callback function triggered by the pool manager: at most one budget-resolution prep, then the
-    ///         shared core. Every op arrives as the same payload shape and leaves as the same result tuple.
-    /// @dev Protected by SafeCallback.onlyPoolManager modifier. INVARIANT: `burnTokenId != 0` (rebalance) and
-    ///      `cp.deployTokenId != 0` (increase/compound) are never both set — the entrypoints are this
-    ///      payload's only encoders (the PoolManager calls back only its unlock's caller) and each sets at
-    ///      most one.
+    /// @notice Callback function triggered by the pool manager: the grow ops' fee-collect prep, then the
+    ///         shared core. Every op arrives as a CoreParams and leaves as the same result tuple.
+    /// @dev Protected by SafeCallback.onlyPoolManager modifier (and the PoolManager only ever calls back its
+    ///      unlock's caller, so the payload can only originate from `_run`).
     function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-        (uint256 burnTokenId, int128 additional0, int128 additional1, CoreParams memory cp) =
-            abi.decode(data, (uint256, int128, int128, CoreParams));
+        CoreParams memory cp = abi.decode(data, (CoreParams));
 
-        // rebalance prep: burn the WHOLE position (tokens land here), then resolve each side's redeploy
-        // budget from the signed delta — `withdrawn + additional`. Positive deltas were already pulled in
-        // `rebalance()`; negative deltas are returned to the recipient HERE, before the add flow runs.
-        // Returning the cash-out share up front is what keeps the accounting safe: the contract is then left
-        // holding exactly the redeploy budget, so every `balanceOfSelf()` read in `_addCore` (the route, the
-        // reconcile's sell-all, the mint settle) sees only what should be deployed, never the portion owed back.
-        if (burnTokenId != 0) {
-            _withdraw(cp.key, burnTokenId, cp.hookData);
-            cp.budget0 = _resolveBudget(cp.key.currency0, additional0, cp.recipient);
-            cp.budget1 = _resolveBudget(cp.key.currency1, additional1, cp.recipient);
-        }
         // grow prep (increase and compound; compound = zero pulled budget, the collected fees are its whole
         // budget): collect accrued fees FIRST (DECREASE by 0 credits them, TAKE_PAIR pulls them here), then
         // budget = everything held — the caller's pulled amounts plus the just-collected fees, so fees are
-        // route- and sizing-eligible and never leave to the wallet. `else if` states structurally what the
-        // encoders guarantee: the two prep paths are mutually exclusive.
-        else if (cp.deployTokenId != 0) {
-            // collect accrued fees FIRST (DECREASE by 0 credits them, TAKE_PAIR pulls them here)
+        // route- and sizing-eligible and never leave to the wallet.
+        if (cp.deployTokenId != 0) {
             _decrease(cp.key, cp.deployTokenId, 0, cp.hookData);
             cp.budget0 = cp.key.currency0.balanceOfSelf();
             cp.budget1 = cp.key.currency1.balanceOfSelf();
@@ -696,12 +681,14 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @dev Burn the whole position and TAKE both tokens (+ fees) to this contract.
-    function _withdraw(PoolKey memory key, uint256 tokenId, bytes memory hookData) internal {
+    function _withdraw(PoolKey memory key, uint256 tokenId, bytes calldata hookData, uint256 deadline) internal {
         bytes memory actions = abi.encodePacked(uint8(Actions.BURN_POSITION), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
         params[0] = abi.encode(tokenId, uint128(0), uint128(0), hookData);
         params[1] = abi.encode(key.currency0, key.currency1, ActionConstants.MSG_SENDER);
-        positionManager.modifyLiquiditiesWithoutUnlock(actions, params);
+        // POSM's SELF-unlocking surface: the burn is a vanilla POSM operation in its own unlock, run before
+        // the main unlock opens (our checkDeadline already passed, so POSM's cannot fire differently).
+        positionManager.modifyLiquidities(abi.encode(actions, params), deadline);
     }
 
     /// @dev DECREASE `dl` liquidity (0 collects just the accrued fees) and TAKE both tokens to this contract.
