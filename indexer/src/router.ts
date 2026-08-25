@@ -2,8 +2,13 @@ import type { Context } from "ponder:registry";
 import { ponder } from "ponder:registry";
 import { account, activePosition, lendingEvent, position, positionAction, swapEvent } from "ponder:schema";
 import { and, eq } from "ponder";
+import { decodeEventLog } from "viem";
 
-import { clamp0, ensureToken, eventId, findActivePosition, pairKey, positionId, txLendingEvents, WAD } from "./helpers";
+import { poolManagerSwapAbi } from "../abis";
+import { deployments } from "../addresses";
+import { clamp0, ensureToken, eventId, findActivePosition, lower, pairKey, positionId, txLendingEvents, WAD } from "./helpers";
+
+const poolManagerAddr = lower(deployments.mainnet.poolManager);
 
 /**
  * Router lifecycle handlers. The router events carry the full economics
@@ -27,6 +32,47 @@ ponder.on("MarginRouter:AccountCreated", async ({ event, context }) => {
     })
     .onConflictDoNothing();
 });
+
+/**
+ * Persist this transaction's v4 swaps, parsed from the margin event's own receipt. The swap caller
+ * is whatever Universal Router the route named (any address, per call), so PoolManager Swap logs
+ * cannot be pre-filtered by sender; the receipt attributes exactly the swaps that share a
+ * transaction with a margin event, on every execution path (curated route, execute-plan native
+ * swap, any UR deployment). The receipt fetch is a cached, retryable client action, and the insert
+ * is idempotent per swap log, so the handlers that fire for the same transaction (PositionUpdated
+ * snapshots plus a curated event) fetch once and insert each swap once.
+ */
+async function recordTxSwaps(context: Context, txHash: `0x${string}`, blockNumber: bigint): Promise<void> {
+  let receipt;
+  try {
+    receipt = await context.client.getTransactionReceipt({ hash: txHash });
+  } catch {
+    return; // receipt unavailable; pool attribution degrades to null, nothing else depends on it
+  }
+  for (const log of receipt.logs) {
+    if (lower(log.address) !== poolManagerAddr) continue;
+    let decoded;
+    try {
+      decoded = decodeEventLog({ abi: poolManagerSwapAbi, topics: log.topics, data: log.data });
+    } catch {
+      continue; // a PoolManager log that is not a Swap (Initialize, ModifyLiquidity, Donate)
+    }
+    await context.db
+      .insert(swapEvent)
+      .values({
+        id: eventId(txHash, log.logIndex),
+        txHash,
+        poolId: decoded.args.id,
+        amount0: decoded.args.amount0,
+        amount1: decoded.args.amount1,
+        sqrtPriceX96: decoded.args.sqrtPriceX96,
+        fee: decoded.args.fee,
+        blockNumber,
+        consumed: false,
+      })
+      .onConflictDoNothing();
+  }
+}
 
 /** Consume this tx's staged margin swaps; returns the first pool touched. */
 async function consumeSwaps(context: Context, txHash: `0x${string}`): Promise<`0x${string}` | null> {
@@ -84,6 +130,7 @@ ponder.on("MarginRouter:PositionIncreased", async ({ event, context }) => {
   await ensureToken(context, collateral);
   await ensureToken(context, debt);
 
+  await recordTxSwaps(context, event.transaction.hash, event.block.number);
   const flows = await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
   const poolId = await consumeSwaps(context, event.transaction.hash);
   const priceX18 = collateralBought > 0n ? (debtDrawn * WAD) / collateralBought : null;
@@ -208,6 +255,7 @@ ponder.on("MarginRouter:PositionDecreased", async ({ event, context }) => {
     healthFactorWad,
   } = event.args;
 
+  await recordTxSwaps(context, event.transaction.hash, event.block.number);
   await drainFlows(context, event.transaction.hash, accountAddr, collateral, debt);
   const poolId = await consumeSwaps(context, event.transaction.hash);
 
@@ -355,6 +403,10 @@ ponder.on("MarginRouter:PositionUpdated", async ({ event, context }) => {
   } = event.args;
   await ensureToken(context, collateral);
   await ensureToken(context, debt);
+
+  // persist plan swaps: on a pure execute path no curated event fires, so this snapshot is the
+  // only chance to record the transaction's v4 swaps for the pair
+  await recordTxSwaps(context, event.transaction.hash, event.block.number);
 
   const terminal = collateralTotal === 0n && debtTotal === 0n;
   const live = await findActivePosition(context, accountAddr, collateral, debt);

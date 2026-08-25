@@ -9,7 +9,6 @@ import {
   morphoAdapterAbi,
   morphoBlueAbi,
   poolManagerInitAbi,
-  poolManagerSwapAbi,
 } from "./abis";
 import { deployments } from "./addresses";
 
@@ -20,7 +19,10 @@ export default createConfig({
     mainnet: { id: 1, rpc: process.env.PONDER_RPC_URL_1 },
   },
   contracts: {
-    /** Lifecycle events: account creation, increases (open), decreases (close), adds. */
+    /** Lifecycle events: account creation, increases (open), decreases (close), adds. The
+     *  handlers fetch each margin transaction's receipt to extract its v4 Swap logs: the swap
+     *  caller is whatever Universal Router the route named (any address, per call), so PoolManager
+     *  logs cannot be pre-filtered by sender (see recordTxSwaps in src/router.ts). */
     MarginRouter: {
       abi: marginRouterAbi,
       chain: "mainnet",
@@ -79,17 +81,6 @@ export default createConfig({
       chain: "mainnet",
       address: mainnet.poolManager,
       startBlock: mainnet.startBlock,
-    },
-    /** Margin swaps only: the router is always the swap sender for position flows. */
-    PoolManagerSwaps: {
-      abi: poolManagerSwapAbi,
-      chain: "mainnet",
-      address: mainnet.poolManager,
-      startBlock: mainnet.startBlock,
-      filter: {
-        event: "Swap",
-        args: { sender: mainnet.marginRouter },
-      },
     },
   },
 });
