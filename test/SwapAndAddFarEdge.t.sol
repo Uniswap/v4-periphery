@@ -136,18 +136,33 @@ contract SwapAndAddFarEdgeTest is PosmTestSetup {
                 }
             }
         }
+
+        // narrowest legal geometry — tickSpacing 1, ranges 1..5 ticks per side, near-zero fee: the quadratic
+        // impact margin is smallest here, so integer rounding is most of what separates the sell from the edge
+        int24[3] memory narrow = [int24(1), 2, 5];
+        for (uint256 n = 0; n < 3; n++) {
+            for (uint256 e = 0; e < 2; e++) {
+                PoolKey memory k = _pool(feeNonce++, int24(1), ext[e]);
+                _probe(k, -narrow[n], narrow[n], 1e20, 0);
+                k = _pool(feeNonce++, int24(1), ext[e]);
+                _probe(k, -narrow[n], narrow[n], 0, 1e20);
+            }
+        }
     }
 
     /// @dev the hunt: fuzzed budgets/widths/fees over the same config family. Any far-edge landing shows up
     ///      as a raw revert (div-by-zero at equality, Panic 0x11 past it) and fails the outcome-class check.
-    function testFuzz_farEdge_neverRawReverts(uint256 b0, uint256 b1, uint8 widthMul, uint8 feeIdx, bool ext) public {
+    function testFuzz_farEdge_neverRawReverts(uint256 b0, uint256 b1, uint8 widthMul, uint8 feeIdx, bool ext, bool thin)
+        public
+    {
         uint24[4] memory fees = [uint24(0), 100, 3000, 100_000];
-        int24 width = int24(10) * int24(uint24(bound(widthMul, 1, 200))); // 10..2000 ticks each side
+        int24 spacing = thin ? int24(1) : int24(10);
+        int24 width = spacing * int24(uint24(bound(widthMul, 1, 200))); // down to a single tick each side
         b0 = bound(b0, 0, 1e22);
         b1 = bound(b1, 0, 1e22);
         vm.assume(b0 + b1 >= 1e12);
 
-        PoolKey memory k = _pool(fees[feeIdx % 4], int24(10), ext ? uint128(1e6) : uint128(0));
+        PoolKey memory k = _pool(fees[feeIdx % 4], spacing, ext ? uint128(1e6) : uint128(0));
         _probe(k, -width, width, b0, b1);
     }
 }

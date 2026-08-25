@@ -516,11 +516,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      If the holdings are already in ratio (no swap needed) the mid size is returned unchanged.
     ///      `protocolFee` is the packed directional pair from Slot0; the direction's component compounds with
     ///      the lp fee (ProtocolFeeLibrary.calculateSwapFee), it does not simply add.
-    function _sizeFeeAware(uint160 sp, uint160 sl, uint160 su, uint256 b0, uint256 b1, uint24 protocolFee, uint24 lpFee)
-        internal
-        pure
-        returns (uint128)
-    {
+    function _sizeFeeAware(
+        uint160 sp,
+        uint160 sl,
+        uint160 su,
+        uint256 b0,
+        uint256 b1,
+        uint24 protocolFee,
+        uint24 lpFee
+    ) internal pure returns (uint128) {
         uint128 midL = _sizeLiquidityWeighted(sp, sl, su, b0, b1, PIPS_DENOMINATOR, PIPS_DENOMINATOR);
         (uint256 a0m, uint256 a1m) = _getAmountsForLiquidity(sp, sl, su, midL);
         if (b0 > a0m) {
