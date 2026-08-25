@@ -302,3 +302,50 @@ export const poolManagerSwapAbi = [
     ],
   },
 ] as const;
+
+/** Minimal Morpho Blue read surface: post-liquidation debt verification (see lendingFlows.ts). */
+export const morphoBlueViewAbi = [
+  {
+    type: "function",
+    name: "position",
+    stateMutability: "view",
+    inputs: [
+      { name: "id", type: "bytes32" },
+      { name: "user", type: "address" },
+    ],
+    outputs: [
+      { name: "supplyShares", type: "uint256" },
+      { name: "borrowShares", type: "uint128" },
+      { name: "collateral", type: "uint128" },
+    ],
+  },
+  {
+    type: "function",
+    name: "market",
+    stateMutability: "view",
+    inputs: [{ name: "id", type: "bytes32" }],
+    outputs: [
+      { name: "totalSupplyAssets", type: "uint128" },
+      { name: "totalSupplyShares", type: "uint128" },
+      { name: "totalBorrowAssets", type: "uint128" },
+      { name: "totalBorrowShares", type: "uint128" },
+      { name: "lastUpdate", type: "uint128" },
+      { name: "fee", type: "uint128" },
+    ],
+  },
+] as const;
+
+/** Minimal Aave v3 protocol data provider read surface: variable-debt token resolution. */
+export const aaveDataProviderAbi = [
+  {
+    type: "function",
+    name: "getReserveTokensAddresses",
+    stateMutability: "view",
+    inputs: [{ name: "asset", type: "address" }],
+    outputs: [
+      { name: "aTokenAddress", type: "address" },
+      { name: "stableDebtTokenAddress", type: "address" },
+      { name: "variableDebtTokenAddress", type: "address" },
+    ],
+  },
+] as const;

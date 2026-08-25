@@ -27,6 +27,10 @@ export const deployments = {
     morphoBlue: "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
     /** Aave v3 Pool (resolved from the PoolAddressesProvider). */
     aaveV3Pool: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+    /** Aave v3 protocol data provider (resolved from the PoolAddressesProvider; same registry as
+     *  docs/margin-trading.md section 10, verified onchain during the audit). Used only for
+     *  read-time variable-debt token resolution; Aave can repoint it, in which case update here. */
+    aaveV3DataProvider: "0x0a16f2FCC0D44FaE41cc54e079281D84A363bECD",
     /** Uniswap v4 PoolManager singleton. */
     poolManager: "0x000000000004444c5dc75cB358380D2e3dE08A90",
     /** Compound v3 USDC Comet (cUSDCv3): the base=USDC market the Compound adapter routes through.

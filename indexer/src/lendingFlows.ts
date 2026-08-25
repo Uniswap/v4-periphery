@@ -1,6 +1,9 @@
 import type { Context } from "ponder:registry";
 import { account, activePosition, lendingEvent, position, positionAction } from "ponder:schema";
+import { erc20Abi } from "viem";
 
+import { aaveDataProviderAbi, morphoBlueViewAbi } from "../abis";
+import { deployments } from "../addresses";
 import { clamp0, eventId, findActivePosition, pairKey, positionId, WAD } from "./helpers";
 
 type Venue = "MORPHO" | "AAVE_V3" | "AAVE_V4";
@@ -164,6 +167,59 @@ interface LiquidationEvent {
   timestamp: bigint;
 }
 
+// Morpho SharesMath virtual offsets, mirrored for the shares -> assets conversion below.
+const MORPHO_VIRTUAL_SHARES = 1_000_000n;
+const MORPHO_VIRTUAL_ASSETS = 1n;
+
+/**
+ * The venue's live remaining debt for the liquidated account, read at the liquidation block. The
+ * stored debtPrincipal lags accrued interest, so deciding "fully liquidated" from it can retire a
+ * position that still owes accrued debt. Returns null when the venue is not readable (no truth
+ * layer indexed for it, or the read fails); the caller then falls back to the stored-principal
+ * arithmetic.
+ */
+async function liveRemainingDebt(context: Context, liq: LiquidationEvent): Promise<bigint | null> {
+  const chain = deployments.mainnet;
+  try {
+    if (liq.venue === "MORPHO" && liq.morphoMarketId) {
+      const [, borrowShares] = await context.client.readContract({
+        abi: morphoBlueViewAbi,
+        address: chain.morphoBlue,
+        functionName: "position",
+        args: [liq.morphoMarketId, liq.account],
+      });
+      if (borrowShares === 0n) return 0n;
+      const [, , totalBorrowAssets, totalBorrowShares] = await context.client.readContract({
+        abi: morphoBlueViewAbi,
+        address: chain.morphoBlue,
+        functionName: "market",
+        args: [liq.morphoMarketId],
+      });
+      // Morpho toAssetsUp with its virtual offsets: never zero for non-zero shares
+      const num = borrowShares * (totalBorrowAssets + MORPHO_VIRTUAL_ASSETS);
+      const den = totalBorrowShares + MORPHO_VIRTUAL_SHARES;
+      return (num + den - 1n) / den;
+    }
+    if (liq.venue === "AAVE_V3") {
+      const [, , variableDebtToken] = await context.client.readContract({
+        abi: aaveDataProviderAbi,
+        address: chain.aaveV3DataProvider,
+        functionName: "getReserveTokensAddresses",
+        args: [liq.debt],
+      });
+      return await context.client.readContract({
+        abi: erc20Abi,
+        address: variableDebtToken,
+        functionName: "balanceOf",
+        args: [liq.account],
+      });
+    }
+  } catch {
+    // fall through: the caller uses the stored-principal heuristic
+  }
+  return null;
+}
+
 /**
  * Liquidations never emit a router event, so this applies terminally here:
  * amounts, accumulators, and (when the debt is fully cleared) the LIQUIDATED
@@ -191,7 +247,12 @@ export async function recordLiquidation(context: Context, liq: LiquidationEvent)
   if (!live) return;
 
   const debtCleared = liq.repaidDebt + liq.badDebt;
-  const remainingDebt = clamp0(live.debtPrincipal - debtCleared);
+  // Terminal-state truth comes from the venue: the stored principal lags accrued interest, so a
+  // partial liquidation can repay more than the stored value while accrued debt remains, and the
+  // clamped subtraction would misclassify it as full. The read (at the liquidation block, so it
+  // reflects this event) also refreshes the principal; the arithmetic is only a fallback.
+  const liveDebt = await liveRemainingDebt(context, liq);
+  const remainingDebt = liveDebt ?? clamp0(live.debtPrincipal - debtCleared);
   const fullyLiquidated = remainingDebt === 0n;
 
   await context.db.update(position, { id: live.id }).set((row) => ({
