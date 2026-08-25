@@ -174,14 +174,50 @@ contract SwapAndAddSamePoolRouteTest is PosmTestSetup {
         uint256 refunded = routeIn - (c0Before - currency0.balanceOf(address(this)));
 
         assertGt(added, 0, "increase must complete with a same-pool route leg");
-        // the fee credit is refunded to the recipient — not stranded, not burned. It arrives AFTER sizing, so
-        // only the part the reconcile needed for the flash debt stayed in (here a sliver: the price impact).
-        assertApproxEqRel(refunded, accruedFee, 0.01e18, "route-accrued fee refunded to the owner");
-        assertLt(refunded, accruedFee, "the reconcile consumed part of the credit instead of trimming");
+        // the fee credit is refunded to the recipient — not stranded, not burned. It arrives AFTER sizing;
+        // step 1 spends what the flash debt needs (~1/13 here) and the remainder comes straight back — the
+        // reconcile swap is SKIPPED (credit retired the debt), so no swap output pads the refund any more.
+        assertLt(refunded, accruedFee, "part of the credit funded the flash debt");
+        assertGt(refunded, (accruedFee * 85) / 100, "the bulk of the credit is refunded");
         // no funds at rest, and the position NFT never moved
         assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
         assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
-        assertEq(currency1.balanceOf(address(this)), c1Before, "no token1 payout: it all went into the position");
+        assertGt(currency1.balanceOf(address(this)), c1Before, "token1 surplus refunded in its own denomination");
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "owner keeps the NFT");
+    }
+
+    /// @dev When the route-accrued fee credit alone retires the flash debt in reconcile step 1, step 2's
+    ///      sell-all buys nothing the operation needs: it pays the pool fee converting the token1 surplus into
+    ///      token0 that is immediately refunded, and re-denominates the refund (contradicting the sweep
+    ///      doctrine). With the guard, the swap is skipped and the surplus comes back in its OWN token.
+    function test_increase_creditRetiresDebt_skipsGratuitousSwap() public {
+        PositionConfig memory cfg = PositionConfig({poolKey: targetKey, tickLower: TL, tickUpper: TU});
+        uint256 tokenId = lpm.nextTokenId();
+        mint(cfg, L_POS, address(this), "");
+
+        uint256 routeIn = 5.4e20;
+        route.config(targetKey, true, routeIn);
+        uint256 c1Before = currency1.balanceOf(address(this));
+
+        (uint128 added,,) = zap.increase(
+            ISwapAndAdd.IncreaseParams({
+                tokenId: tokenId,
+                amount0In: routeIn,
+                amount1In: 0,
+                route: _encodedRoute(),
+                routeFunding: new ISwapAndAdd.TokenAmount[](0),
+                minLiquidityAdded: 1,
+                recipient: address(this),
+                hookData: "",
+                deadline: block.timestamp + 1
+            })
+        );
+        assertGt(added, 0, "increase completes");
+
+        // the credit (13x the deficit) fully retires the flash debt in step 1, so no reconcile swap may run:
+        // the token1 surplus must be refunded AS token1, not converted through the pool at a 10% fee
+        assertGt(currency1.balanceOf(address(this)), c1Before, "surplus refunded in its own denomination");
+        assertEq(currency0.balanceOf(address(zap)), 0, "zap token0 == 0");
+        assertEq(currency1.balanceOf(address(zap)), 0, "zap token1 == 0");
     }
 }

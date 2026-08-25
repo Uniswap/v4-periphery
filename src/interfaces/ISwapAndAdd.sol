@@ -50,9 +50,10 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///          the operation's budget: it behaves as an extra cost that leaves less for the position, gated by
 ///          `minLiquidity` rather than breaking settlement. Expected to degrade gracefully; NOT verified by
 ///          tests, so treat as unsupported until it is.
-///      On an unsupported pool the call reverts atomically inside the unlock (CurrencyNotSettled, or
-///      DeltaNotPositive from a removal whose delta went negative) — funds are always safe, but the operation
-///      can simply be unusable there.
+///      On an unsupported pool the call reverts atomically inside the unlock (CurrencyNotSettled,
+///      DeltaNotPositive from a removal whose delta went negative, or a low-level arithmetic revert from the
+///      trim math when a skimmed swap leaves the price past the range's far edge) — funds are always safe,
+///      but the operation can simply be unusable there.
 ///      Hooks WITHOUT any of those four permissions are supported, including dynamic LP-fee hooks (a
 ///      `beforeSwap` fee override under `DYNAMIC_FEE_FLAG` returns a fee, not a delta) — see the DYNAMIC-FEE
 ///      NOTE below — as well as gating, oracle and accounting hooks, which only observe the callbacks.

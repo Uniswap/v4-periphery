@@ -426,20 +426,27 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         Currency surplus = deficitIs1 ? cp.key.currency0 : cp.key.currency1;
         bool zeroForOne = deficitIs1; // sell surplus(token0) -> deficit(token1) when token1 is the deficit
 
-        // 1. settle the deficit owed (from the flash-take) with whatever deficit tokens we already hold.
+        // 1. settle the deficit owed (from the flash-take) with whatever deficit tokens we already hold —
+        //    a fee credit CLOSE_CURRENCY handed back during the deploy, or the native SWEEP return.
         _settleToward(deficit);
 
-        // 2. convert ALL remaining surplus to deficit (exact-input) — never overshoot, so nothing is bought
-        //    just to be handed back by the trim. Settle the surplus the swap consumed.
-        uint256 surplusBal = surplus.balanceOfSelf();
-        if (surplusBal > 0) {
-            _swap(cp.key, zeroForOne, -surplusBal.toInt256(), cp.hookData);
-            _settleToward(surplus);
+        // 2. if a debt remains, convert ALL remaining surplus to deficit (exact-input) — never overshoot, so
+        //    nothing is bought just to be handed back by the trim — and settle the surplus the swap consumed.
+        //    When step 1's credit already retired the debt, the swap would buy nothing the operation needs
+        //    (its output would be refunded straight back): skip it, leaving the surplus in its own
+        //    denomination for the sweep instead of paying the pool fee on a gratuitous conversion.
+        int256 owed = poolManager.currencyDelta(address(this), deficit);
+        if (owed < 0) {
+            uint256 surplusBal = surplus.balanceOfSelf();
+            if (surplusBal > 0) {
+                _swap(cp.key, zeroForOne, -surplusBal.toInt256(), cp.hookData);
+                _settleToward(surplus);
+                owed = poolManager.currencyDelta(address(this), deficit);
+            }
         }
 
         // 3. whatever deficit is still owed (the genuine residual) -> free it by trimming the position. The
         //    DECREASE frees BOTH tokens when the price is in range, so it also tops the surplus side back up.
-        int256 owed = poolManager.currencyDelta(address(this), deficit);
         if (owed < 0) {
             trimmed = _trim(cp, tokenId, lopt, deficitIs1, uint256(-owed));
             _settleToward(deficit);
@@ -477,7 +484,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // INVARIANT — the price cannot be past the range's far side (below it when short token1, above it when
         // short token0): the flash debt is the just-added range's own deficit side, and the exact-input
         // reconcile sell repays it in full at the latest when it exhausts the range — so a still-owed deficit
-        // means the sell stopped at or before the far edge. The near side needs no such bound (a range fully
+        // means the sell stopped at or before the far edge. Strictly before, in fact: v4 fees charge the
+        // INPUT side, so a full traversal's untaxed output covers the debt, and the sell's average execution
+        // (a geometric mean below spot) can never afford full extraction from a spot-sized surplus — pinned
+        // by test/SwapAndAddFarEdge.t.sol. Only the unsupported returns-delta hook class can break this. The near side needs no such bound (a range fully
         // beyond spot trims from a price outside it), hence the one-sided clamps.
         uint256 dlUp;
         if (deficitIs1) {
