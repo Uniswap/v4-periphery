@@ -298,7 +298,12 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         }
 
         // 2. Sizing: Compute optimistic liquidity, flash-take any deficit, and deploy via POSM.
-        (uint128 liquidityOptimistic, uint256 amount0optimistic, uint256 amount1optimistic) = _planLiquidity(cp);
+        // Range bounds are constant for the whole operation and threaded; the live price is re-read at
+        // each use instead (the reconcile swap and hook callbacks can move it).
+        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cp.tickLower);
+        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cp.tickUpper);
+        (uint128 liquidityOptimistic, uint256 amount0optimistic, uint256 amount1optimistic) =
+            _planLiquidity(cp, sqrtLower, sqrtUpper);
         // Surface contract's own floor error rather than POSM's opaque CannotUpdateEmptyPosition on 0-sized mint.
         if (liquidityOptimistic == 0 && cp.deployTokenId == 0) {
             revert InsufficientLiquidity(cp.minLiquidity, 0);
@@ -307,28 +312,27 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         tokenId = _deploy(cp, liquidityOptimistic, amount0optimistic);
 
         // 3. Reconcile & Trim: Reconcile deficit via same-pool swap and trim newly added liquidity for any remaining debt.
-        uint128 trimmed = _reconcile(cp, tokenId, liquidityOptimistic, amount0optimistic, amount1optimistic);
+        uint128 trimmed =
+            _reconcile(cp, tokenId, liquidityOptimistic, amount0optimistic, amount1optimistic, sqrtLower, sqrtUpper);
         liquidity = liquidityOptimistic - trimmed;
 
         // 4. Slippage Floor: Enforce minimum liquidity threshold on final post-trim position.
         if (liquidity < cp.minLiquidity) revert InsufficientLiquidity(cp.minLiquidity, liquidity);
 
         // 5. Sweep: Calculate final token composition and sweep leftover dust in both pool tokens to recipient.
-        (amount0, amount1) = _positionAmounts(cp, liquidity);
+        (amount0, amount1) = _positionAmounts(cp, liquidity, sqrtLower, sqrtUpper);
         _sweep(cp.key.currency0, cp.recipient);
         _sweep(cp.key.currency1, cp.recipient);
     }
 
     /// @dev Computes fee-aware optimistic liquidity and required token amounts based on held budgets and pool price.
-    function _planLiquidity(CoreParams memory cp)
+    function _planLiquidity(CoreParams memory cp, uint160 sqrtLower, uint160 sqrtUpper)
         internal
         view
         returns (uint128 liquidity, uint256 amount0, uint256 amount1)
     {
         (uint160 sqrtPriceX96,, uint24 protocolFee, uint24 lpFee) = poolManager.getSlot0(cp.key.toId());
         if (sqrtPriceX96 == 0) revert IPoolManager.PoolNotInitialized();
-        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cp.tickLower);
-        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cp.tickUpper);
         liquidity = SwapAndAddMath.getLiquidityFeeAware(
             sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, protocolFee, lpFee
         );
@@ -347,10 +351,15 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     /// @dev Settles flash-take debt using held tokens, same-pool swaps, and partial liquidity trimming.
     ///      Bidirectional: handles both under-conversion (selling surplus token) and over-conversion.
     /// @return trimmed The amount of liquidity removed by trimming (0 if budget covered deploy).
-    function _reconcile(CoreParams memory cp, uint256 tokenId, uint128 lopt, uint256 a0opt, uint256 a1opt)
-        internal
-        returns (uint128 trimmed)
-    {
+    function _reconcile(
+        CoreParams memory cp,
+        uint256 tokenId,
+        uint128 lopt,
+        uint256 a0opt,
+        uint256 a1opt,
+        uint160 sqrtLower,
+        uint160 sqrtUpper
+    ) internal returns (uint128 trimmed) {
         bool deficitIsCurrency1;
         if (a0opt > cp.budget0) deficitIsCurrency1 = false; // Short token0
         else if (a1opt > cp.budget1) deficitIsCurrency1 = true; // Short token1
@@ -376,7 +385,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         // 3. If residual deficit remains (due to price impact or fees), trim the position to free tokens.
         if (owed < 0) {
-            trimmed = _trim(cp, tokenId, lopt, deficitIsCurrency1, uint256(-owed));
+            trimmed = _trim(cp, tokenId, lopt, deficitIsCurrency1, uint256(-owed), sqrtLower, sqrtUpper);
             _settleToward(deficit);
         }
 
@@ -392,36 +401,32 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      Caps removal at `lopt` so that on increase/compound, existing position principal is never touched.
     ///      Invariant: Price cannot be past the range's far side (reconcile swap's exact-input sell repays debt
     ///      before or at exhausting the range because v4 fees charge input; untaxed output covers debt).
-    function _trim(CoreParams memory cp, uint256 tokenId, uint128 lopt, bool deficitIsCurrency1, uint256 amountOut)
-        internal
-        returns (uint128 dl)
-    {
+    function _trim(
+        CoreParams memory cp,
+        uint256 tokenId,
+        uint128 lopt,
+        bool deficitIsCurrency1,
+        uint256 amountOut,
+        uint160 sqrtLower,
+        uint160 sqrtUpper
+    ) internal returns (uint128 dl) {
+        // Fresh price read: the reconcile swap (or a hook) moved the price since sizing.
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
-        uint256 liquidityToFree = SwapAndAddMath.getLiquidityToFree(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(cp.tickLower),
-            TickMath.getSqrtPriceAtTick(cp.tickUpper),
-            deficitIsCurrency1,
-            amountOut
-        );
+        uint256 liquidityToFree =
+            SwapAndAddMath.getLiquidityToFree(sqrtPriceX96, sqrtLower, sqrtUpper, deficitIsCurrency1, amountOut);
         // Cap trim at the liquidity added in this transaction.
         dl = liquidityToFree >= lopt ? lopt : uint128(liquidityToFree);
         _decrease(cp.key, tokenId, dl, cp.hookData);
     }
 
     /// @dev Calculates final position token amounts at the current pool price.
-    function _positionAmounts(CoreParams memory cp, uint128 liquidity)
+    function _positionAmounts(CoreParams memory cp, uint128 liquidity, uint160 sqrtLower, uint160 sqrtUpper)
         internal
         view
         returns (uint256 amount0, uint256 amount1)
     {
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
-        (amount0, amount1) = SwapAndAddMath.getAmountsForLiquidity(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(cp.tickLower),
-            TickMath.getSqrtPriceAtTick(cp.tickUpper),
-            liquidity
-        );
+        (amount0, amount1) = SwapAndAddMath.getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
     }
 
     // ───────────────────────────────────────────── POSM / pool actions ─────────────────────────────────────────────
