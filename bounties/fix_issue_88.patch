@@ -1,0 +1,4 @@
+diff --git a/src/hooks/DynamicL2GasFeeHook.sol b/src/hooks/DynamicL2GasFeeHook.sol
++contract DynamicL2GasFeeHook is BaseHook {
++    function getDynamicFee() public view returns (uint24) { ... }
++}
