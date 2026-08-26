@@ -155,7 +155,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         // Burn the old position in POSM's own unlock, pay out any cash-out share up front,
         // and compute net redeploy budgets before opening the main unlock.
-        _withdraw(key, params.tokenId, params.hookData);
+        _burnAndWithdraw(key, params.tokenId, params.hookData);
         CoreParams memory cp = CoreParams({
             deployTokenId: 0, // Mints a new position in the new range
             key: key,
@@ -292,7 +292,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         // 1. ROUTE FIRST: Execute off-chain route (if provided) and update held token budgets from live balances.
         if (cp.route.length != 0) {
-            _runRoute(cp);
+            _executeRoute(cp);
             cp.budget0 = cp.key.currency0.balanceOfSelf();
             cp.budget1 = cp.key.currency1.balanceOfSelf();
         }
@@ -309,7 +309,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
             revert InsufficientLiquidity(cp.minLiquidity, 0);
         }
         _flashTakeDeficit(cp, amount0optimistic, amount1optimistic);
-        tokenId = _deploy(cp, liquidityOptimistic, amount0optimistic);
+        tokenId = _deployLiquidity(cp, liquidityOptimistic, amount0optimistic);
 
         // 3. Reconcile & Trim: Reconcile deficit via same-pool swap and trim newly added liquidity for any remaining debt.
         uint128 trimmed =
@@ -435,7 +435,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     ///      Uses CLOSE_CURRENCY on both tokens so positive deltas (e.g. fee credits from hooks or routes
     ///      trading this pool) are credited to balance rather than reverting SETTLE_PAIR.
     ///      POSM per-amount slippage limits are maxed because `minLiquidity` on the final post-trim position is the single slippage gate.
-    function _deploy(CoreParams memory cp, uint128 liquidity, uint256 amount0) internal returns (uint256 tokenId) {
+    function _deployLiquidity(CoreParams memory cp, uint128 liquidity, uint256 amount0)
+        internal
+        returns (uint256 tokenId)
+    {
         bool isMint = cp.deployTokenId == 0;
         tokenId = isMint ? positionManager.nextTokenId() : cp.deployTokenId;
 
@@ -474,7 +477,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     }
 
     /// @dev Executes the Universal Router payload and reclaims any unspent native ETH from the router.
-    function _runRoute(CoreParams memory cp) internal {
+    function _executeRoute(CoreParams memory cp) internal {
         (bytes memory commands, bytes[] memory inputs) = abi.decode(cp.route, (bytes, bytes[]));
         // Forward entire native balance (holds only this operation's native budget / funding).
         uint256 value = address(this).balance;
@@ -491,7 +494,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     /// @dev Burns an existing position and takes both tokens to this contract.
     ///      POSM `modifyLiquidities` is passed `type(uint256).max` deadline because staleness is already checked by entrypoint modifier.
-    function _withdraw(PoolKey memory key, uint256 tokenId, bytes calldata hookData) internal {
+    function _burnAndWithdraw(PoolKey memory key, uint256 tokenId, bytes calldata hookData) internal {
         bytes memory actions = abi.encodePacked(uint8(Actions.BURN_POSITION), uint8(Actions.TAKE_PAIR));
         bytes[] memory params = new bytes[](2);
         params[0] = abi.encode(tokenId, uint128(0), uint128(0), hookData);

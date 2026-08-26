@@ -72,10 +72,10 @@ contract MockSamePoolRoute {
 }
 
 /// @notice Regression: `increase`/`compound` with a route leg through the SAME pool accrues LP fees to the
-///         position between the callback's collect prologue and `_deploy`'s liquidity action. POSM applies
+///         position between the callback's collect prologue and `_deployLiquidity`'s liquidity action. POSM applies
 ///         `liquidityDelta + feesAccrued` to its own delta, so a fee credit exceeding that side's principal
 ///         makes the delta POSITIVE — the previous `SETTLE_PAIR` asserted a debt and reverted
-///         `DeltaNotNegative`, bricking a route shape the contract advertises as supported. `_deploy` now
+///         `DeltaNotNegative`, bricking a route shape the contract advertises as supported. `_deployLiquidity` now
 ///         closes each currency with `CLOSE_CURRENCY`, which settles a debt or takes a credit.
 ///
 ///         Where the credited fees END UP: taken into this contract's balance AFTER sizing, so they cannot
