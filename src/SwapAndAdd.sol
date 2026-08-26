@@ -13,16 +13,13 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {ProtocolFeeLibrary} from "@uniswap/v4-core/src/libraries/ProtocolFeeLibrary.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 import {Actions} from "./libraries/Actions.sol";
 import {ActionConstants} from "./libraries/ActionConstants.sol";
 import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary.sol";
+import {SwapAndAddMath} from "./libraries/SwapAndAddMath.sol";
 import {Multicall_v4} from "./base/Multicall_v4.sol";
 import {SafeCallback} from "./base/SafeCallback.sol";
 import {DeltaResolver} from "./base/DeltaResolver.sol";
@@ -53,10 +50,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     /// @dev Standing Permit2 allowance expiration timestamp.
     uint48 private constant ALLOWANCE_EXPIRATION = type(uint48).max;
-    /// @dev Denominator for fee calculations in pips (1e6 = 100%).
-    uint256 private constant PIPS_DENOMINATOR = 1e6;
-    /// @dev High reference liquidity used to scale sizing calculations accurately across extreme ticks.
-    uint128 private constant REFERENCE_LIQUIDITY = type(uint128).max;
     /// @dev Universal Router command to sweep unspent native ETH.
     uint8 private constant UR_SWEEP_COMMAND = 0x04;
 
@@ -336,12 +329,14 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         if (sqrtPriceX96 == 0) revert IPoolManager.PoolNotInitialized();
         uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cp.tickLower);
         uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cp.tickUpper);
-        liquidity = _sizeFeeAware(sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, protocolFee, lpFee);
-        (amount0, amount1) = _getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
+        liquidity = SwapAndAddMath.getLiquidityFeeAware(
+            sqrtPriceX96, sqrtLower, sqrtUpper, cp.budget0, cp.budget1, protocolFee, lpFee
+        );
+        (amount0, amount1) = SwapAndAddMath.getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
     }
 
     /// @dev Flash-takes deficit tokens from PoolManager so the subsequent POSM deploy is fully funded.
-    ///      `_getAmountsForLiquidity` rounds up with the pool's own math on pool inputs, making funding wei-exact
+    ///      `SwapAndAddMath.getAmountsForLiquidity` rounds up with the pool's own math on pool inputs, making funding wei-exact
     ///      with no rounding buffer needed. Requires PoolManager to hold sufficient aggregate reserves of that
     ///      token across all pools. `_reconcile` settles what the take owes afterwards.
     function _flashTakeDeficit(CoreParams memory cp, uint256 amount0, uint256 amount1) internal {
@@ -356,14 +351,14 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         internal
         returns (uint128 trimmed)
     {
-        bool deficitIs1;
-        if (a0opt > cp.budget0) deficitIs1 = false; // Short token0
-        else if (a1opt > cp.budget1) deficitIs1 = true; // Short token1
+        bool deficitIsCurrency1;
+        if (a0opt > cp.budget0) deficitIsCurrency1 = false; // Short token0
+        else if (a1opt > cp.budget1) deficitIsCurrency1 = true; // Short token1
         else return 0; // Holdings already covered deploy; no swap or trim needed.
 
-        Currency deficit = deficitIs1 ? cp.key.currency1 : cp.key.currency0;
-        Currency surplus = deficitIs1 ? cp.key.currency0 : cp.key.currency1;
-        bool zeroForOne = deficitIs1; // Sell surplus to buy deficit
+        Currency deficit = deficitIsCurrency1 ? cp.key.currency1 : cp.key.currency0;
+        Currency surplus = deficitIsCurrency1 ? cp.key.currency0 : cp.key.currency1;
+        bool zeroForOne = deficitIsCurrency1; // Sell surplus to buy deficit
 
         // 1. Settle debt using any deficit tokens already held (e.g. fee credits or sweep returns).
         _settleToward(deficit);
@@ -381,7 +376,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
         // 3. If residual deficit remains (due to price impact or fees), trim the position to free tokens.
         if (owed < 0) {
-            trimmed = _trim(cp, tokenId, lopt, deficitIs1, uint256(-owed));
+            trimmed = _trim(cp, tokenId, lopt, deficitIsCurrency1, uint256(-owed));
             _settleToward(deficit);
         }
 
@@ -395,122 +390,23 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
 
     /// @dev Decreases newly added liquidity to free enough deficit tokens to settle outstanding debt.
     ///      Caps removal at `lopt` so that on increase/compound, existing position principal is never touched.
-    ///      Uses an exact ceil inverse over `amountOut + 1` so that the pool's rounded-down return during
-    ///      `_decrease` is guaranteed to cover `amountOut`.
     ///      Invariant: Price cannot be past the range's far side (reconcile swap's exact-input sell repays debt
     ///      before or at exhausting the range because v4 fees charge input; untaxed output covers debt).
-    function _trim(CoreParams memory cp, uint256 tokenId, uint128 lopt, bool deficitIs1, uint256 amountOut)
+    function _trim(CoreParams memory cp, uint256 tokenId, uint128 lopt, bool deficitIsCurrency1, uint256 amountOut)
         internal
         returns (uint128 dl)
     {
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
-        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(cp.tickLower);
-        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(cp.tickUpper);
-
-        uint256 dlUp;
-        if (deficitIs1) {
-            // Token1 occupies [sqrtLower, min(price, sqrtUpper)]: amount1 = L * (hi - lo) / Q96.
-            uint160 hi = sqrtPriceX96 < sqrtUpper ? sqrtPriceX96 : sqrtUpper;
-            dlUp = FullMath.mulDivRoundingUp(amountOut + 1, FixedPoint96.Q96, hi - sqrtLower);
-        } else {
-            // Token0 occupies [max(price, sqrtLower), sqrtUpper]: amount0 = L * Q96 * (hi - lo) / (hi * lo).
-            uint160 lo = sqrtPriceX96 > sqrtLower ? sqrtPriceX96 : sqrtLower;
-            uint256 intermediate = FullMath.mulDivRoundingUp(lo, sqrtUpper, FixedPoint96.Q96);
-            // Informational: At extreme prices where post-swap price is within sqrt-units of sqrtUpper with large
-            // deficit remaining, this intermediate quotient can overflow uint256 and revert (self-inflicted, safe).
-            dlUp = FullMath.mulDivRoundingUp(amountOut + 1, intermediate, sqrtUpper - lo);
-        }
+        uint256 liquidityToFree = SwapAndAddMath.getLiquidityToFree(
+            sqrtPriceX96,
+            TickMath.getSqrtPriceAtTick(cp.tickLower),
+            TickMath.getSqrtPriceAtTick(cp.tickUpper),
+            deficitIsCurrency1,
+            amountOut
+        );
         // Cap trim at the liquidity added in this transaction.
-        dl = dlUp >= lopt ? lopt : uint128(dlUp);
+        dl = liquidityToFree >= lopt ? lopt : uint128(liquidityToFree);
         _decrease(cp.key, tokenId, dl, cp.hookData);
-    }
-
-    // ───────────────────────────────────────────── sizing math ─────────────────────────────────────────────
-
-    /// @dev Sizes liquidity accounting for directional swap fees on the surplus token.
-    ///      First calculates a mid-price baseline size to find which token has a surplus, then discounts that
-    ///      surplus token's value by the combined pool fee (LP fee + directional protocol fee).
-    ///      Discounting the surplus side on both the budget and the reference position nets to charging the
-    ///      fee on exactly the swapped amount.
-    function _sizeFeeAware(
-        uint160 sp,
-        uint160 sl,
-        uint160 su,
-        uint256 b0,
-        uint256 b1,
-        uint24 protocolFee,
-        uint24 lpFee
-    ) internal pure returns (uint128) {
-        uint128 midL = _sizeLiquidityWeighted(sp, sl, su, b0, b1, PIPS_DENOMINATOR, PIPS_DENOMINATOR);
-        (uint256 a0m, uint256 a1m) = _getAmountsForLiquidity(sp, sl, su, midL);
-        if (b0 > a0m) {
-            // Token0 surplus: reconcile swap sells token0 (zeroForOne), discount token0 value by fee.
-            uint256 feePips =
-                ProtocolFeeLibrary.calculateSwapFee(ProtocolFeeLibrary.getZeroForOneFee(protocolFee), lpFee);
-            return _sizeLiquidityWeighted(sp, sl, su, b0, b1, PIPS_DENOMINATOR - feePips, PIPS_DENOMINATOR);
-        } else if (b1 > a1m) {
-            // Token1 surplus: reconcile swap sells token1 (oneForZero), discount token1 value by fee.
-            uint256 feePips =
-                ProtocolFeeLibrary.calculateSwapFee(ProtocolFeeLibrary.getOneForZeroFee(protocolFee), lpFee);
-            return _sizeLiquidityWeighted(sp, sl, su, b0, b1, PIPS_DENOMINATOR, PIPS_DENOMINATOR - feePips);
-        }
-        // Holdings are already in exact proportion; no fee discount needed.
-        return midL;
-    }
-
-    /// @dev Computes liquidity by scaling reference liquidity against budget value in the cheaper token.
-    function _sizeLiquidityWeighted(
-        uint160 sp,
-        uint160 sl,
-        uint160 su,
-        uint256 b0,
-        uint256 b1,
-        uint256 pips0,
-        uint256 pips1
-    ) internal pure returns (uint128) {
-        (uint256 a0r, uint256 a1r) = _getAmountsForLiquidity(sp, sl, su, REFERENCE_LIQUIDITY);
-        uint256 refValue;
-        uint256 budgetValue;
-        if (sp >= FixedPoint96.Q96) {
-            // Price >= 1: value both reference and budget in token1 terms.
-            // rate0X96 = sp^2 / Q96 is the token1-per-token0 exchange rate.
-            uint256 rate0X96 = FullMath.mulDiv(sp, sp, FixedPoint96.Q96);
-            refValue = FullMath.mulDiv(a0r, rate0X96 * pips0, FixedPoint96.Q96 * PIPS_DENOMINATOR)
-                + FullMath.mulDiv(a1r, pips1, PIPS_DENOMINATOR);
-            budgetValue = FullMath.mulDiv(b0, rate0X96 * pips0, FixedPoint96.Q96 * PIPS_DENOMINATOR)
-                + FullMath.mulDiv(b1, pips1, PIPS_DENOMINATOR);
-        } else {
-            // Price < 1: value both reference and budget in token0 terms.
-            // rate1X96 = Q96^3 / sp^2 is the token0-per-token1 exchange rate (split to prevent intermediate overflow).
-            uint256 rate1X96 =
-                FullMath.mulDiv(FullMath.mulDiv(FixedPoint96.Q96, FixedPoint96.Q96, sp), FixedPoint96.Q96, sp);
-            refValue = FullMath.mulDiv(a0r, pips0, PIPS_DENOMINATOR)
-                + FullMath.mulDiv(a1r, rate1X96 * pips1, FixedPoint96.Q96 * PIPS_DENOMINATOR);
-            budgetValue = FullMath.mulDiv(b0, pips0, PIPS_DENOMINATOR)
-                + FullMath.mulDiv(b1, rate1X96 * pips1, FixedPoint96.Q96 * PIPS_DENOMINATOR);
-        }
-        if (refValue == 0) return 0;
-        // Scale reference liquidity: L = REFERENCE_LIQUIDITY * budgetValue / refValue.
-        // Truncating towards zero here is the safe direction (any leftover budget is swept as dust).
-        return FullMath.mulDiv(REFERENCE_LIQUIDITY, budgetValue, refValue).toUint128();
-    }
-
-    /// @dev Calculates token amounts required for a given liquidity amount at current price/range.
-    ///      Rounds UP to mirror POSM's MINT_POSITION so the flash-take is never a wei short of POSM's pull.
-    function _getAmountsForLiquidity(uint160 sqrtPriceX96, uint160 sqrtA, uint160 sqrtB, uint128 liquidity)
-        internal
-        pure
-        returns (uint256 amount0, uint256 amount1)
-    {
-        if (sqrtA > sqrtB) (sqrtA, sqrtB) = (sqrtB, sqrtA);
-        if (sqrtPriceX96 <= sqrtA) {
-            amount0 = SqrtPriceMath.getAmount0Delta(sqrtA, sqrtB, liquidity, true);
-        } else if (sqrtPriceX96 < sqrtB) {
-            amount0 = SqrtPriceMath.getAmount0Delta(sqrtPriceX96, sqrtB, liquidity, true);
-            amount1 = SqrtPriceMath.getAmount1Delta(sqrtA, sqrtPriceX96, liquidity, true);
-        } else {
-            amount1 = SqrtPriceMath.getAmount1Delta(sqrtA, sqrtB, liquidity, true);
-        }
     }
 
     /// @dev Calculates final position token amounts at the current pool price.
@@ -520,7 +416,7 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         returns (uint256 amount0, uint256 amount1)
     {
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
-        (amount0, amount1) = _getAmountsForLiquidity(
+        (amount0, amount1) = SwapAndAddMath.getAmountsForLiquidity(
             sqrtPriceX96,
             TickMath.getSqrtPriceAtTick(cp.tickLower),
             TickMath.getSqrtPriceAtTick(cp.tickUpper),

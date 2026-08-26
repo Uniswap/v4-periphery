@@ -21,7 +21,7 @@ import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
 ///         price drifts. Before the collect-fees-first fix, POSM's accrued-fee credit made `increase` revert
 ///         `DeltaNotNegative` unconditionally for any out-of-range position with fees on its empty side. The
 ///         fee collect removes that; these tests additionally pin that the collected single-sided fees entering
-///         the budget are valued sanely at spot by `_sizeLiquidityWeighted` (no funds at rest, no operator
+///         the budget are valued sanely at spot by `SwapAndAddMath.getLiquidityForAmountsWeighted` (no funds at rest, no operator
 ///         redirect, stranger rejected).
 contract SwapAndAddIncreaseOutOfRangeTest is PosmTestSetup {
     using StateLibrary for IPoolManager;

@@ -3,9 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
@@ -17,73 +15,22 @@ import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
 
-/// @notice Fuzzed pins for the two load-bearing pieces of SwapAndAdd math that the deterministic sweeps and
-///         the pool-config property fuzz do NOT discriminate:
+/// @notice Behavioral fuzzed pins for SwapAndAdd math that need a live pool (the pure-math surface is
+///         covered directly in SwapAndAddMath.t.sol against the extracted library):
 ///
-///         1. The trim inverse (pure): across the FULL sqrt-price/width/amount domain, burning the shipped
-///            round-up `dl` must free >= amountOut under v4's round-DOWN burn. The deterministic sweeps in
-///            SwapAndAddTrimMath.t.sol cover engineered regimes; this walks the whole space.
+///         1. Fee-aware sizing accuracy: the dust returned by an add must stay price-impact-small across
+///            fee tiers and budget splits. This is the one test that FAILS if the fee discount in
+///            getLiquidityFeeAware is broken or removed — every other suite tolerates the resulting
+///            over-mint because the trim claws it back and conservation still holds; only the dust (fee *
+///            swapped amount, clawed back to the recipient) betrays the regression. Verified discriminating
+///            by neutering the discount in src and watching this fail.
 ///
-///         2. Fee-aware sizing accuracy (behavioral): the dust returned by an add must stay price-impact-
-///            small across fee tiers and budget splits. This is the one test that FAILS if the fee discount
-///            in _sizeFeeAware is broken or removed — every other suite tolerates the resulting over-mint
-///            because the trim claws it back and conservation still holds; only the dust (fee * swapped
-///            amount, clawed back to the recipient) betrays the regression. Verified discriminating by
-///            neutering the discount in src and watching this fail.
+///         2. Extreme-tick full deployment: single-sided budgets must deploy >= 99.9% of feasible liquidity
+///            end-to-end at any tick, exercising both numeraire branches of the sizing through the contract.
 contract SwapAndAddMathFuzzTest is PosmTestSetup {
     using CurrencyLibrary for Currency;
 
-    // ─────────────────────────── 1. trim inverse: full-domain pure fuzz ───────────────────────────
-
-    /// @dev shipped token0 inverse, mirrored verbatim from _trim
-    function _dl0(uint160 lo, uint160 su, uint256 amountOut) internal pure returns (uint256) {
-        uint256 intermediate = FullMath.mulDivRoundingUp(lo, su, FixedPoint96.Q96);
-        return FullMath.mulDivRoundingUp(amountOut + 1, intermediate, su - lo);
-    }
-
-    /// @dev shipped token1 inverse, mirrored verbatim from _trim
-    function _dl1(uint160 sl, uint160 hi, uint256 amountOut) internal pure returns (uint256) {
-        return FullMath.mulDivRoundingUp(amountOut + 1, FixedPoint96.Q96, hi - sl);
-    }
-
-    function testFuzz_trimInverse_token0_neverUnderFrees(uint160 loSeed, uint160 suSeed, uint256 amountSeed)
-        public
-        pure
-    {
-        uint160 lo = uint160(bound(loSeed, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE - 1));
-        uint160 su = uint160(bound(suSeed, uint256(lo) + 1, TickMath.MAX_SQRT_PRICE));
-        // the debt is CORRELATED with the geometry in-contract: it can never exceed what a max-liquidity
-        // position holds in token0 over [lo, su]. (Uncorrelated hugeness makes the inverse's mulDiv overflow
-        // and revert — reachable only in an astronomically boundary-pinned state; see the src note.)
-        uint256 maxDebt = SqrtPriceMath.getAmount0Delta(lo, su, type(uint128).max, false);
-        vm.assume(maxDebt > 0);
-        uint256 amountOut = bound(amountSeed, 1, maxDebt);
-
-        uint256 dlUp = _dl0(lo, su, amountOut);
-        // the shipped cap path (dlUp >= lopt) is the dust regime, pinned separately; here pin the inverse
-        vm.assume(dlUp <= type(uint128).max);
-
-        // what v4 actually frees for dlUp: rounded DOWN, the pool's favour
-        uint256 freed = SqrtPriceMath.getAmount0Delta(lo, su, uint128(dlUp), false);
-        assertGe(freed, amountOut, "round-up inverse must never under-free token0");
-    }
-
-    function testFuzz_trimInverse_token1_neverUnderFrees(uint160 slSeed, uint160 hiSeed, uint128 amountOut)
-        public
-        pure
-    {
-        uint160 sl = uint160(bound(slSeed, TickMath.MIN_SQRT_PRICE, TickMath.MAX_SQRT_PRICE - 1));
-        uint160 hi = uint160(bound(hiSeed, uint256(sl) + 1, TickMath.MAX_SQRT_PRICE));
-        vm.assume(amountOut > 0);
-
-        uint256 dlUp = _dl1(sl, hi, amountOut);
-        vm.assume(dlUp <= type(uint128).max);
-
-        uint256 freed = SqrtPriceMath.getAmount1Delta(sl, hi, uint128(dlUp), false);
-        assertGe(freed, amountOut, "round-up inverse must never under-free token1");
-    }
-
-    // ─────────────────────── 2. fee-aware sizing accuracy: dust-tightness fuzz ───────────────────────
+    // ─────────────────────── 1. fee-aware sizing accuracy: dust-tightness fuzz ───────────────────────
 
     ISwapAndAdd zap;
     address dustRecipient = makeAddr("dustRecipient");
@@ -139,11 +86,11 @@ contract SwapAndAddMathFuzzTest is PosmTestSetup {
         assertLe(dustValue * 10_000, budgetValue * 10, "dust exceeded 10bps: fee-aware sizing is inaccurate");
     }
 
-    // ─────────────────── 3. extreme-tick sizing: token1 mirror of the token0 fuzz ───────────────────
+    // ─────────────────── 2. extreme-tick sizing: token1 mirror of the token0 fuzz ───────────────────
 
     /// @dev single-sided token1 (range fully below spot) must deploy >= 99.9% of the feasible liquidity at any
     ///      tick — the mirror of testFuzz_add_extremeTick_fullDeployment, exercising the price<1 numeraire
-    ///      branch of _sizeLiquidityWeighted with token1 budgets.
+    ///      branch of getLiquidityForAmountsWeighted with token1 budgets.
     function testFuzz_add_extremeTick_token1_fullDeployment(int24 tick, uint256 exp) public {
         tick = int24((bound(int256(tick), -799990, 800000) / 10) * 10);
         uint256 b1 = 10 ** bound(exp, 6, 30);
