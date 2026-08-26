@@ -18,6 +18,13 @@ abstract contract DeltaResolver is ImmutableState {
     error DeltaNotNegative(Currency currency);
     /// @notice Emitted when the contract does not have enough balance to wrap or unwrap.
     error InsufficientBalance();
+    /// @notice ETH was passed to a settlement action for a non-native currency
+    error UnexpectedValue();
+    /// @notice ETH refund failed.
+    error ETHTransferFailed();
+
+    /// @dev Transient slot holding the ETH value attached to the active execution.
+    uint256 internal constant MSG_VALUE_SLOT = uint256(keccak256("UniswapV4Periphery.msgValue")) - 1;
 
     /// @notice Take an amount of currency out of the PoolManager
     /// @param currency Currency to take
@@ -39,9 +46,18 @@ abstract contract DeltaResolver is ImmutableState {
         if (amount == 0) return;
 
         poolManager.sync(currency);
+        uint256 msgValue = _getMsgValue();
         if (currency.isAddressZero()) {
             poolManager.settle{value: amount}();
+            if (msgValue > amount) {
+                _setMsgValue(msgValue - amount);
+            } else {
+                _setMsgValue(0);
+            }
         } else {
+            if (msgValue != 0) {
+                revert UnexpectedValue();
+            }
             _pay(currency, payer, amount);
             poolManager.settle();
         }
@@ -53,7 +69,6 @@ abstract contract DeltaResolver is ImmutableState {
     /// @param payer The address who should pay tokens
     /// @param amount The number of tokens to send
     function _pay(Currency token, address payer, uint256 amount) internal virtual;
-
     /// @notice Obtain the full amount owed by this contract (negative delta)
     /// @param currency Currency to get the delta for
     /// @return amount The amount owed by this contract as a uint256
@@ -119,5 +134,26 @@ abstract contract DeltaResolver is ImmutableState {
         }
         if (amount > balance) revert InsufficientBalance();
         return amount;
+    }
+
+    /// @dev Store the ETH value attached to the active call in transient storage.
+    function _setMsgValue(uint256 value) internal {
+        assembly ("memory-safe") {
+            tstore(MSG_VALUE_SLOT, value);
+        }
+    }
+
+    /// @dev Read the ETH value attached to the active call from transient storage.
+    function _getMsgValue() internal view returns (uint256 value) {
+        assembly ("memory-safe") {
+            value := tload(MSG_VALUE_SLOT);
+        }
+    }
+
+    /// @dev Refund unspent ETH at the end of a call.
+    function _refundETH(address to, uint256 amount) internal {
+        if (amount == 0) return;
+        (bool success,) = payable(to).call{value: amount}("");
+        if (!success) revert ETHTransferFailed();
     }
 }
