@@ -445,21 +445,8 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         bool isMint = cp.deployTokenId == 0;
         tokenId = isMint ? positionManager.nextTokenId() : cp.deployTokenId;
 
-        Currency c0 = cp.key.currency0;
         uint8 deployAction = uint8(isMint ? Actions.MINT_POSITION : Actions.INCREASE_LIQUIDITY);
-        bytes memory actions;
-        bytes[] memory params;
-        if (c0.isAddressZero()) {
-            actions = abi.encodePacked(
-                deployAction, uint8(Actions.CLOSE_CURRENCY), uint8(Actions.CLOSE_CURRENCY), uint8(Actions.SWEEP)
-            );
-            params = new bytes[](4);
-            params[3] = abi.encode(c0, ActionConstants.MSG_SENDER);
-        } else {
-            actions = abi.encodePacked(deployAction, uint8(Actions.CLOSE_CURRENCY), uint8(Actions.CLOSE_CURRENCY));
-            params = new bytes[](3);
-        }
-        params[0] = isMint
+        bytes memory deployData = isMint
             ? abi.encode(
                 cp.key,
                 cp.tickLower,
@@ -471,12 +458,23 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
                 cp.hookData
             )
             : abi.encode(tokenId, uint256(liquidity), type(uint128).max, type(uint128).max, cp.hookData);
+
+        // Native pools carry a trailing SWEEP to return unconsumed wei of the forwarded ETH.
+        Currency c0 = cp.key.currency0;
+        bool isNative = c0.isAddressZero();
+        bytes memory actions = isNative
+            ? abi.encodePacked(
+                deployAction, uint8(Actions.CLOSE_CURRENCY), uint8(Actions.CLOSE_CURRENCY), uint8(Actions.SWEEP)
+            )
+            : abi.encodePacked(deployAction, uint8(Actions.CLOSE_CURRENCY), uint8(Actions.CLOSE_CURRENCY));
+
+        bytes[] memory params = new bytes[](isNative ? 4 : 3);
+        params[0] = deployData;
         params[1] = abi.encode(c0);
         params[2] = abi.encode(cp.key.currency1);
+        if (isNative) params[3] = abi.encode(c0, ActionConstants.MSG_SENDER);
 
-        // Forward native ETH if currency0 is native; POSM's SWEEP returns any unused wei.
-        uint256 nativeToForward = c0.isAddressZero() ? amount0 : 0;
-        positionManager.modifyLiquiditiesWithoutUnlock{value: nativeToForward}(actions, params);
+        positionManager.modifyLiquiditiesWithoutUnlock{value: isNative ? amount0 : 0}(actions, params);
     }
 
     /// @dev Executes the Universal Router payload and reclaims any unspent native ETH from the router.
