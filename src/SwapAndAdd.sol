@@ -2,6 +2,7 @@
 pragma solidity 0.8.26;
 
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {ERC721} from "solmate/src/tokens/ERC721.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
@@ -13,6 +14,7 @@ import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
@@ -47,7 +49,13 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
     using PoolIdLibrary for PoolKey;
     using PositionInfoLibrary for PositionInfo;
     using SafeCast for uint256;
+    using Hooks for IHooks;
 
+    /// @dev Hook permissions that let a hook alter this contract's settlement deltas, breaking the
+    ///      conservation accounting the reconcile relies on. Pools carrying any of them are rejected.
+    uint160 private constant UNSUPPORTED_HOOK_FLAGS = Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+        | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.AFTER_ADD_LIQUIDITY_RETURNS_DELTA_FLAG
+        | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG;
     /// @dev Standing Permit2 allowance expiration timestamp.
     uint48 private constant ALLOWANCE_EXPIRATION = type(uint48).max;
     /// @dev Universal Router command to sweep unspent native ETH.
@@ -287,6 +295,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         internal
         returns (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)
     {
+        // Pure bitmask on the hook address; a benignly-behaving hook with the permission is still rejected —
+        // the boundary is the capability, not observed behavior.
+        if (cp.key.hooks.hasPermission(UNSUPPORTED_HOOK_FLAGS)) revert UnsupportedHookPermissions(cp.key.hooks);
+
         _ensureApproved(cp.key.currency0);
         _ensureApproved(cp.key.currency1);
 
@@ -319,8 +331,9 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // 4. Slippage Floor: Enforce minimum liquidity threshold on final post-trim position.
         if (liquidity < cp.minLiquidity) revert InsufficientLiquidity(cp.minLiquidity, liquidity);
 
-        // 5. Sweep: Calculate final token composition and sweep leftover dust in both pool tokens to recipient.
-        (amount0, amount1) = _positionAmounts(cp, liquidity, sqrtLower, sqrtUpper);
+        // 5. Sweep: Calculate final position token amounts at live price and sweep leftover dust to recipient.
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
+        (amount0, amount1) = SwapAndAddMath.getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
         _sweep(cp.key.currency0, cp.recipient);
         _sweep(cp.key.currency1, cp.recipient);
     }
@@ -417,16 +430,6 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // Cap trim at the liquidity added in this transaction.
         dl = liquidityToFree >= lopt ? lopt : uint128(liquidityToFree);
         _decrease(cp.key, tokenId, dl, cp.hookData);
-    }
-
-    /// @dev Calculates final position token amounts at the current pool price.
-    function _positionAmounts(CoreParams memory cp, uint128 liquidity, uint160 sqrtLower, uint160 sqrtUpper)
-        internal
-        view
-        returns (uint256 amount0, uint256 amount1)
-    {
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(cp.key.toId());
-        (amount0, amount1) = SwapAndAddMath.getAmountsForLiquidity(sqrtPriceX96, sqrtLower, sqrtUpper, liquidity);
     }
 
     // ───────────────────────────────────────────── POSM / pool actions ─────────────────────────────────────────────

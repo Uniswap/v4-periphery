@@ -597,6 +597,30 @@ contract SwapAndAddTest is PosmTestSetup {
         zap.add(p);
     }
 
+    /// @dev Returns-delta hooks break settlement conservation and are rejected upfront with a typed error —
+    ///      the boundary is enforced in code, not just documented. One case per permission flag, each paired
+    ///      with the base flag v4 requires alongside it.
+    function test_add_returnsDeltaHook_revertsUnsupported() public {
+        uint160[4] memory flagged = [
+            Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG,
+            Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG,
+            Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_ADD_LIQUIDITY_RETURNS_DELTA_FLAG,
+            Hooks.AFTER_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA_FLAG
+        ];
+        ISwapAndAdd.AddParams memory p = _addParams(1e18, 1e18);
+        for (uint256 i = 0; i < flagged.length; i++) {
+            p.poolKey.hooks = IHooks(address(flagged[i]));
+            vm.expectRevert(abi.encodeWithSelector(ISwapAndAdd.UnsupportedHookPermissions.selector, p.poolKey.hooks));
+            zap.add(p);
+        }
+
+        // Negative control: a hook WITHOUT returns-delta permissions passes the gate — the same call
+        // proceeds into the flow and fails deeper on the (uninitialized) pool instead.
+        p.poolKey.hooks = IHooks(address(uint160(Hooks.BEFORE_SWAP_FLAG)));
+        vm.expectRevert(IPoolManager.PoolNotInitialized.selector);
+        zap.add(p);
+    }
+
     function test_rebalance_revertsIfNotAuthorized() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         // do NOT approve the zap; call from a stranger

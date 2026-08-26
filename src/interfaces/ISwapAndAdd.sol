@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 import {IMulticall_v4} from "./IMulticall_v4.sol";
 
@@ -34,7 +35,7 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///        (new NFT, cash-out, swept dust) is forced to the position owner to prevent value redirection.
 ///      - Unsupported Pools: Pools with hooks returning deltas (`BEFORE_SWAP_RETURNS_DELTA`, `AFTER_SWAP_RETURNS_DELTA`,
 ///        `AFTER_REMOVE_LIQUIDITY_RETURNS_DELTA`, `AFTER_ADD_LIQUIDITY_RETURNS_DELTA`) break settlement conservation
-///        and are unsupported. Failures revert atomically; funds remain safe. Dynamic fee, gating, and oracle hooks are supported.
+///        and are rejected upfront with `UnsupportedHookPermissions`. Dynamic fee, gating, and oracle hooks are supported.
 ///      - Known Limits: Fee-on-transfer and rebasing tokens are unsupported (atomic reverts or larger trim, never token loss).
 ///        Budgets within the pool's ~1-wei mint/burn rounding toll cannot settle and revert `InsufficientLiquidity`.
 ///      - HookData Reuse: The same `hookData` payload is passed to all hook callbacks in the operation; single-use
@@ -116,6 +117,9 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @notice Thrown when a `routeFunding` token is one of the pool currencies (use `amount0In`/`amount1In` instead).
     error InvalidFundingToken(Currency token);
 
+    /// @notice Thrown when the pool's hook carries a returns-delta permission (see the Unsupported Pools note).
+    error UnsupportedHookPermissions(IHooks hooks);
+
     /// @notice Represents a non-pool token amount pulled to fund an off-chain route.
     /// @param token The non-pool token address (or address(0) for native ETH).
     /// @param amount The amount to pull from caller via Permit2 (or expected msg.value for native ETH). A zero amount pulls nothing but sweeps unlisted donations of that token.
@@ -130,24 +134,24 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @param tickUpper Upper tick of the position range.
     /// @param amount0In Amount of token0 budget to pull from caller (can be 0).
     /// @param amount1In Amount of token1 budget to pull from caller (can be 0).
-    /// @param route Encoded Universal Router commands and inputs (empty for pure same-pool zap). Must scope input amounts explicitly (never spend entire contract balance).
-    /// @param routeFunding Optional non-pool tokens pulled to fund the route. Unused amounts are swept to `recipient`.
     /// @param minLiquidity Minimum liquidity required for the minted position (slippage floor).
     /// @param recipient Address that receives the minted position NFT and leftover dust.
-    /// @param hookData Arbitrary data passed to pool hooks (reused across all callbacks).
     /// @param deadline Timestamp after which the transaction will revert.
+    /// @param route Encoded Universal Router commands and inputs (empty for pure same-pool zap). Must scope input amounts explicitly (never spend entire contract balance).
+    /// @param routeFunding Optional non-pool tokens pulled to fund the route. Unused amounts are swept to `recipient`.
+    /// @param hookData Arbitrary data passed to pool hooks (reused across all callbacks).
     struct AddParams {
         PoolKey poolKey;
         int24 tickLower;
         int24 tickUpper;
         uint256 amount0In;
         uint256 amount1In;
-        bytes route;
-        TokenAmount[] routeFunding;
         uint256 minLiquidity;
         address recipient;
-        bytes hookData;
         uint256 deadline;
+        bytes route;
+        TokenAmount[] routeFunding;
+        bytes hookData;
     }
 
     /// @notice Create a new v4 position from a one- or two-sided token budget in a single transaction.
@@ -165,22 +169,22 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @param tokenId Existing position ID to increase.
     /// @param amount0In Amount of token0 budget to pull from caller (can be 0). Accrued fees are collected and reinvested automatically.
     /// @param amount1In Amount of token1 budget to pull from caller (can be 0). Accrued fees are collected and reinvested automatically.
-    /// @param route Encoded Universal Router commands and inputs (can be empty).
-    /// @param routeFunding Optional non-pool tokens pulled to fund the route. Unused amounts are swept to `recipient`.
     /// @param minLiquidityAdded Minimum liquidity that must be added to the position (slippage floor).
     /// @param recipient Destination for swept dust. Forced to position owner if caller is an operator.
-    /// @param hookData Arbitrary data passed to pool hooks.
     /// @param deadline Timestamp after which the transaction will revert.
+    /// @param route Encoded Universal Router commands and inputs (can be empty).
+    /// @param routeFunding Optional non-pool tokens pulled to fund the route. Unused amounts are swept to `recipient`.
+    /// @param hookData Arbitrary data passed to pool hooks.
     struct IncreaseParams {
         uint256 tokenId;
         uint256 amount0In;
         uint256 amount1In;
-        bytes route;
-        TokenAmount[] routeFunding;
         uint256 minLiquidityAdded;
         address recipient;
-        bytes hookData;
         uint256 deadline;
+        bytes route;
+        TokenAmount[] routeFunding;
+        bytes hookData;
     }
 
     /// @notice Top up an existing position with a one- or two-sided budget and reinvest accrued fees in a single transaction.
@@ -200,24 +204,24 @@ interface ISwapAndAdd is IMulticall_v4 {
     /// @param additional1 Signed delta for token1 with the same signed delta semantics.
     /// @param newTickLower Lower tick of the new position range.
     /// @param newTickUpper Upper tick of the new position range.
-    /// @param route Encoded Universal Router commands and inputs (can be empty).
-    /// @param routeFunding Optional non-pool tokens pulled to fund the route. Unused amounts are swept to `recipient`.
     /// @param minLiquidity Minimum liquidity required for the newly minted position (slippage floor).
     /// @param recipient Destination for the new position NFT, returned cash-out tokens, and dust. Forced to owner if caller is an operator.
-    /// @param hookData Arbitrary data passed to pool hooks.
     /// @param deadline Timestamp after which the transaction will revert.
+    /// @param route Encoded Universal Router commands and inputs (can be empty).
+    /// @param routeFunding Optional non-pool tokens pulled to fund the route. Unused amounts are swept to `recipient`.
+    /// @param hookData Arbitrary data passed to pool hooks.
     struct RebalanceParams {
         uint256 tokenId;
         int128 additional0;
         int128 additional1;
         int24 newTickLower;
         int24 newTickUpper;
-        bytes route;
-        TokenAmount[] routeFunding;
         uint256 minLiquidity;
         address recipient;
-        bytes hookData;
         uint256 deadline;
+        bytes route;
+        TokenAmount[] routeFunding;
+        bytes hookData;
     }
 
     /// @notice Withdraw an existing position entirely and redeploy it into a new tick range, optionally adding or cashing out tokens.
@@ -234,18 +238,18 @@ interface ISwapAndAdd is IMulticall_v4 {
 
     /// @notice Parameters for `compound`.
     /// @param tokenId Existing position ID whose accrued fees will be collected and reinvested.
-    /// @param route Encoded Universal Router commands and inputs (can be empty).
     /// @param minLiquidityAdded Minimum liquidity that must be added from reinvested fees (slippage floor).
     /// @param recipient Destination for swept dust. Forced to position owner if caller is an operator.
-    /// @param hookData Arbitrary data passed to pool hooks.
     /// @param deadline Timestamp after which the transaction will revert.
+    /// @param route Encoded Universal Router commands and inputs (can be empty).
+    /// @param hookData Arbitrary data passed to pool hooks.
     struct CompoundParams {
         uint256 tokenId;
-        bytes route;
         uint256 minLiquidityAdded;
         address recipient;
-        bytes hookData;
         uint256 deadline;
+        bytes route;
+        bytes hookData;
     }
 
     /// @notice Collect accrued fees on a position and reinvest them back into the same position in a single transaction.
