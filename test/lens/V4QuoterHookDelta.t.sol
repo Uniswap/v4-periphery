@@ -8,7 +8,6 @@ import {MockArbitraryAfterSwapDeltaHook} from "../mocks/MockArbitraryAfterSwapDe
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
@@ -143,16 +142,12 @@ contract V4QuoterHookDeltaTest is Test, Deployers {
         assertEq(amountIn, 2 ** 127);
     }
 
-    function test_quoteExactOutput_fullyFundedHop_revertsSwapAmountCannotBeZero() public {
+    function test_quoteExactOutput_fullyFundedHop_quotesZeroInput() public {
         hook.setSubsidizeExactOutput(0);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                QuoterRevert.UnexpectedRevertBytes.selector,
-                abi.encodeWithSelector(IPoolManager.SwapAmountCannotBeZero.selector)
-            )
-        );
-        quoter.quoteExactOutput(_exactOutputPathWithHookProcessedFirst(1 ether));
+        (uint256 amountIn,) = quoter.quoteExactOutput(_exactOutputPathWithHookProcessedFirst(1 ether));
+
+        assertEq(amountIn, 0);
     }
 
     function _exactOutputPathWithHookProcessedLast(uint128 amountOut)

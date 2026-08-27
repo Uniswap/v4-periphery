@@ -7,9 +7,9 @@
   "Quoter_quoteExactInput_oneHop_initializedAfter": "147624",
   "Quoter_quoteExactInput_oneHop_startingInitialized": "80899",
   "Quoter_quoteExactInput_twoHops": "205261",
-  "Quoter_quoteExactOutput_oneHop_1TickLoaded": "122486",
-  "Quoter_quoteExactOutput_oneHop_2TicksLoaded": "153141",
-  "Quoter_quoteExactOutput_oneHop_initializedAfter": "122513",
-  "Quoter_quoteExactOutput_oneHop_startingInitialized": "98807",
-  "Quoter_quoteExactOutput_twoHops": "204975"
+  "Quoter_quoteExactOutput_oneHop_1TickLoaded": "122515",
+  "Quoter_quoteExactOutput_oneHop_2TicksLoaded": "153170",
+  "Quoter_quoteExactOutput_oneHop_initializedAfter": "122542",
+  "Quoter_quoteExactOutput_oneHop_startingInitialized": "98836",
+  "Quoter_quoteExactOutput_twoHops": "205036"
 }

@@ -140,6 +140,8 @@ contract V4Quoter is IV4Quoter, BaseV4Quoter {
                 ? uint256(-int256(swapDelta.amount1())).toUint128()
                 : uint256(-int256(swapDelta.amount0())).toUint128();
 
+            if (amountOut == 0) break;
+
             outputCurrency = pathKey.intermediateCurrency;
         }
         // amountOut after the loop exits actually holds the amountIn of the trade
