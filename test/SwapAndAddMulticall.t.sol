@@ -613,6 +613,84 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
         assertEq(currency1.balanceOf(address(zap)), 0, "token1 at rest");
     }
 
+    /// @dev An operator batching ERC-20 operations for multiple owners produces the exact same outcomes
+    ///      as executing them sequentially. (Native ETH batches can only fund one operation).
+    function test_multicall_operatorBatch_twoOwners_attributionMatchesSequential() public {
+        address alice = makeAddr("alice");
+        address bob = makeAddr("bob");
+        uint256 posA = lpm.nextTokenId();
+        mint(PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600}), 1e21, alice, "");
+        uint256 posB = lpm.nextTokenId();
+        mint(PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600}), 1e21, bob, "");
+        // accrue fees to both positions so the compound has substance
+        swap(key, true, -int256(1e20), "");
+        swap(key, false, -int256(1e20), "");
+
+        address operator = makeAddr("operator");
+        _fundAndApproveOperator(operator);
+        _approveZapAndOperator(alice, operator);
+        _approveZapAndOperator(bob, operator);
+
+        ISwapAndAdd.IncreaseParams memory inc = _incParams(posA, 1e18, 1e18);
+        inc.recipient = operator; // ignored: resolved to alice for an operator caller
+        ISwapAndAdd.CompoundParams memory comp = _compParams(posB);
+        comp.recipient = operator; // ignored: resolved to bob
+
+        bytes[] memory calls = new bytes[](2);
+        calls[0] = abi.encodeCall(ISwapAndAdd.increase, (inc));
+        calls[1] = abi.encodeCall(ISwapAndAdd.compound, (comp));
+
+        uint256 snapshot = vm.snapshotState();
+        vm.prank(operator);
+        zap.multicall(calls);
+        uint256[6] memory batched = _ownerState(alice, bob, posA, posB);
+        assertEq(currency0.balanceOf(address(zap)), 0, "token0 at rest after batch");
+        assertEq(currency1.balanceOf(address(zap)), 0, "token1 at rest after batch");
+
+        vm.revertToState(snapshot);
+        vm.prank(operator);
+        zap.increase(inc);
+        vm.prank(operator);
+        zap.compound(comp);
+        uint256[6] memory sequential = _ownerState(alice, bob, posA, posB);
+
+        for (uint256 i = 0; i < 6; i++) {
+            assertEq(batched[i], sequential[i], "owner outcome differs batched vs sequential");
+        }
+    }
+
+    /// @dev Owner-attribution snapshot: both owners' token balances and position liquidities.
+    function _ownerState(address alice, address bob, uint256 posA, uint256 posB)
+        internal
+        view
+        returns (uint256[6] memory s)
+    {
+        s[0] = currency0.balanceOf(alice);
+        s[1] = currency1.balanceOf(alice);
+        s[2] = currency0.balanceOf(bob);
+        s[3] = currency1.balanceOf(bob);
+        s[4] = lpm.getPositionLiquidity(posA);
+        s[5] = lpm.getPositionLiquidity(posB);
+    }
+
+    function _fundAndApproveOperator(address operator) internal {
+        MockERC20(Currency.unwrap(currency0)).mint(operator, 1e24);
+        MockERC20(Currency.unwrap(currency1)).mint(operator, 1e24);
+        vm.startPrank(operator);
+        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint256).max);
+        MockERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
+        permit2.approve(Currency.unwrap(currency0), address(zap), type(uint160).max, type(uint48).max);
+        permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
+        vm.stopPrank();
+    }
+
+    function _approveZapAndOperator(address owner, address operator) internal {
+        vm.startPrank(owner);
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        IERC721(address(lpm)).setApprovalForAll(operator, true);
+        vm.stopPrank();
+    }
+
     /// @dev Nested multicall composes with the same semantics — no context is gained or lost one level down.
     function test_multicall_nestedBatch_behavesLikeFlat() public {
         ISwapAndAdd.AddParams memory p = _addParams(key, 1e18, 2e18);

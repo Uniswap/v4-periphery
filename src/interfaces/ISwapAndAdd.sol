@@ -24,8 +24,9 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///      Key Integrator Notes:
 ///      - Route-First Design: Passing an empty `route` turns the flow into a pure same-pool zap. When a route
 ///        is provided, post-route balances are used directly so favorable swap execution improves position size.
-///      - Route Construction: Routes must explicitly scope input amounts—never use whole-balance consumption
-///        (e.g. `CONTRACT_BALANCE`), because the zap forwards its entire native balance to the router.
+///      - Route Construction: Routes must specify explicit input amounts. Avoid balance-relative commands
+///        (`CONTRACT_BALANCE`, `PAY_PORTION`, bps `SWEEP`), as the zap forwards its entire native balance to the router.
+///        Any non-pool route output token (including ETH) must be declared in `routeFunding` (a zero-amount entry works) to be swept to recipient.
 ///      - Slippage & Operators: `minLiquidity` / `minLiquidityAdded` is the single slippage knob checked on the final
 ///        position. Constrained operator systems (e.g. keepers) must compute and enforce this floor themselves.
 ///      - Position Approvals: For `rebalance`, `increase`, and `compound`, caller authorization is checked
@@ -40,8 +41,9 @@ import {IMulticall_v4} from "./IMulticall_v4.sol";
 ///        Budgets within the pool's ~1-wei mint/burn rounding toll cannot settle and revert `InsufficientLiquidity`.
 ///      - HookData Reuse: The same `hookData` payload is passed to all hook callbacks in the operation; single-use
 ///        payload schemes are unsupported.
-///      - Multicall & Native ETH: Supports multicall with Permit2 forwarding (`permitBatch` + op). Each operation
-///        validates its declared native amount against `msg.value`.
+///      - Multicall & Native ETH: Supports multicall with Permit2 forwarding (`permitBatch` + op). Because all subcalls
+///        share `msg.value`, an ETH-bearing batch fails, even if combined with ERC20-only subcalls. Zero-value batches compose 
+///        freely across multiple positions; batch native operations using WETH or separate transactions.
 interface ISwapAndAdd is IMulticall_v4 {
     /// @notice Emitted when a new position is minted via `add`.
     event Added(

@@ -146,6 +146,8 @@ library SwapAndAddMath {
         } else {
             // Token0 occupies [max(price, sqrtLower), sqrtUpper]: amount0 = L * Q96 * (hi - lo) / (hi * lo).
             uint160 clampedLower = sqrtPriceX96 > sqrtPriceLowerX96 ? sqrtPriceX96 : sqrtPriceLowerX96;
+            // Informational: Below tick ~-665k (lo * hi < Q96), rounding up this sub-1 quotient over-trims by
+            // a factor of up to ~2^32, which the caller's cap safely absorbs without fund loss.
             uint256 intermediate = FullMath.mulDivRoundingUp(clampedLower, sqrtPriceUpperX96, FixedPoint96.Q96);
             // Informational: At extreme prices where post-swap price is within sqrt-units of sqrtUpper with large
             // deficit remaining, this intermediate quotient can overflow uint256 and revert (self-inflicted, safe).
