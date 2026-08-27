@@ -28,15 +28,14 @@ import {UniversalRouter} from "universal-router/contracts/UniversalRouter.sol";
 import {RouterParameters} from "universal-router/contracts/types/RouterParameters.sol";
 import {Commands} from "universal-router/contracts/libraries/Commands.sol";
 
-/// @notice Mainnet-FORK integration: deploys the REAL modified Universal Router + SwapAndAdd against the live
-///         mainnet v4 PoolManager/POSM/Permit2 and drives an add against the real deep ETH/USDC pool
-///         (id 0xdce6...78d). Backbone for the test suite and the eventual UI-on-anvil-fork.
+/// @notice Mainnet fork test. Deploys the modified Universal Router and SwapAndAdd against the live
+///         PoolManager, POSM, and Permit2, then adds to the ETH/USDC pool (id 0xdce6...78d).
 ///         Run: FOUNDRY_PROFILE=integration forge test --match-contract SwapAndAddForkMainnetTest
 contract SwapAndAddForkMainnetTest is Test {
     using StateLibrary for IPoolManager;
     using PoolIdLibrary for PoolKey;
 
-    // ── canonical mainnet addresses (from universal-router/script/deployParameters/DeployMainnet.s.sol) ──
+    // canonical mainnet addresses, from universal-router/script/deployParameters/DeployMainnet.s.sol
     address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
     address constant POSM = 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e;
     address constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
@@ -59,8 +58,8 @@ contract SwapAndAddForkMainnetTest is Test {
     PoolKey key;
 
     function setUp() public {
-        // Defaults to the head because the keyless public RPC serves no archive state. For a reproducible run,
-        // set FORK_URL to an archive endpoint and pin with FORK_BLOCK (e.g. 25_495_000, 2026-07-09).
+        // The public RPC has no archive state, so default to head.
+        // For a reproducible run, set an archive FORK_URL and pin FORK_BLOCK (for example 25_495_000, 2026-07-09).
         uint256 forkBlock = vm.envOr("FORK_BLOCK", uint256(0));
         string memory forkUrl = vm.envOr("FORK_URL", string(""));
         if (bytes(forkUrl).length == 0) forkUrl = "https://ethereum-rpc.publicnode.com"; // empty env var = unset
@@ -93,7 +92,7 @@ contract SwapAndAddForkMainnetTest is Test {
         });
     }
 
-    /// @dev brute-force the PoolKey whose id == TARGET_ID, assuming no hook. Tries native-ETH/USDC then USDC/WETH.
+    /// @dev Find the hookless PoolKey whose id matches TARGET_ID.
     function _reconstructKey() internal pure returns (PoolKey memory) {
         (bool ok, PoolKey memory k) = _tryPair(Currency.wrap(address(0)), Currency.wrap(USDC));
         if (ok) return k;
@@ -147,7 +146,7 @@ contract SwapAndAddForkMainnetTest is Test {
         });
     }
 
-    // ─────────────────────────── empty-route (same-pool) against the real pool ───────────────────────────
+    // empty-route (same-pool) adds against the real pool
 
     function test_fork_add_usdcBudget_emptyRoute() public {
         (int24 lo, int24 hi) = _ticks();
@@ -177,14 +176,13 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
-    // ─────────────────────────── real-UR route within the zap's unlock ───────────────────────────
+    // real-UR route within the zap's unlock
 
     function test_fork_add_usdcBudget_viaURRoute() public {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
 
-        // bulk: sell 4_000 USDC -> ETH on the SAME real pool via the real UR (within the zap's unlock);
-        // the same-pool reconcile + trim finish the position.
+        // Sell 4_000 USDC for ETH through the real UR inside the zap's unlock.
         bytes memory route = _v4SwapRoute(key, false, 4_000e6, key.currency1, key.currency0);
 
         (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(0, 10_000e6, route, lo, hi));
@@ -195,9 +193,7 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
-    /// @notice Route-first against the REAL UR: with a well-sized route (route does the bulk), almost the entire
-    ///         budget is deployed — the recipient gets back only tiny dust (route-first sizes from real holdings,
-    ///         so it does not return the route's execution slice the way a size-then-swap design would).
+    /// @notice With a well-sized route, the zap deploys almost the whole budget and returns only dust.
     function test_fork_add_usdcBudget_viaURRoute_lowDust() public {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
@@ -205,16 +201,14 @@ contract SwapAndAddForkMainnetTest is Test {
         uint256 usdcBefore = IERC20(USDC).balanceOf(address(this));
         uint256 ethBefore = address(this).balance;
 
-        // route ~half the budget (the bulk) USDC -> ETH on the real pool; reconcile + trim finish it.
+        // Route about half the budget USDC -> ETH.
         bytes memory route = _v4SwapRoute(key, false, 5_000e6, key.currency1, key.currency0);
         (uint256 tokenId, uint128 liq,,) = zap.add(_addParams(0, 10_000e6, route, lo, hi));
 
         uint256 usdcReturned = IERC20(USDC).balanceOf(address(this)) + 10_000e6 - usdcBefore; // budget pulled was 10_000
         assertEq(IERC721(POSM).ownerOf(tokenId), address(this), "user owns NFT");
         assertGt(liq, 0, "liquidity minted");
-        // route-first deploys nearly all of it: returned USDC is a small fraction of the 10_000 budget.
         assertLt(usdcReturned, 200e6, "returned USDC < 2% of budget");
-        // the swapped-into token (ETH) is not returned to the user beyond dust.
         assertApproxEqAbs(address(this).balance, ethBefore, 1e12, "no meaningful ETH dust to user");
         assertEq(address(zap).balance, 0, "zap eth == 0");
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
@@ -240,7 +234,7 @@ contract SwapAndAddForkMainnetTest is Test {
         });
     }
 
-    // ─────────────────────────── rebalance on the real pool ───────────────────────────
+    // rebalance on the real pool
 
     function test_fork_rebalance_full() public {
         (int24 lo, int24 hi) = _ticks();
@@ -259,8 +253,7 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
-    // Negative delta (cash-out) on the real pool: the old position is burned IN FULL, a chosen amount of USDC is
-    // returned to the recipient's wallet, and only the remainder (plus the withdrawn ETH) is redeployed.
+    // Cash-out rebalance: burn the old position, return the requested USDC, redeploy the remainder.
     function test_fork_rebalance_cashOut() public {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
@@ -275,14 +268,12 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC721(POSM).ownerOf(newTokenId), address(this), "user owns new NFT");
         assertGt(newLiq, 0, "new liquidity minted");
         assertEq(posm.getPositionLiquidity(tokenId), 0, "old position fully burned");
-        // the cashed-out USDC reaches the recipient (at least the requested 2k).
         assertGe(IERC20(USDC).balanceOf(address(this)), usdcBefore + 2_000e6, "cashed-out usdc returned");
         assertEq(address(zap).balance, 0, "zap eth == 0");
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
-    // Positive delta (rebalance + add) on the real pool: pull MORE USDC from the wallet on top of the withdrawn
-    // holdings, so the new position is larger than a plain full redeploy of the same burned position.
+    // Rebalance with extra USDC: the new position must exceed a plain full redeploy.
     function test_fork_rebalance_addMore() public {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
@@ -303,7 +294,7 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
-    // Native positive delta on the real ETH/USDC pool: add more native ETH (via msg.value) during a rebalance.
+    // Add more native ETH (msg.value) during a rebalance.
     function test_fork_rebalance_native_addMore() public {
         (int24 lo, int24 hi) = _ticks();
         vm.deal(address(this), 100 ether);
@@ -326,7 +317,7 @@ contract SwapAndAddForkMainnetTest is Test {
         assertEq(IERC20(USDC).balanceOf(address(zap)), 0, "zap usdc == 0");
     }
 
-    // Repro: full rebalance into the SAME range as the old position (the UI's default).
+    // Full rebalance into the same range (the UI default).
     function test_fork_rebalance_sameRange_full() public {
         (int24 lo, int24 hi) = _ticks();
         _fundUsdc(50_000e6);
@@ -336,7 +327,7 @@ contract SwapAndAddForkMainnetTest is Test {
         zap.rebalance(_rebalanceParams(tokenId, 0, 0, lo, hi)); // new range == old range
     }
 
-    // Faithful repro of the in-browser flow: 0.5 ETH add, then same-range full rebalance.
+    // Browser-flow repro: 0.5 ETH add, then same-range full rebalance.
     function test_fork_rebalance_sameRange_full_halfEth() public {
         (int24 lo, int24 hi) = _ticks();
         vm.deal(address(this), 100 ether);
@@ -345,7 +336,7 @@ contract SwapAndAddForkMainnetTest is Test {
         zap.rebalance(_rebalanceParams(tokenId, 0, 0, lo, hi));
     }
 
-    // ─────────────────────────── compound on the real pool ───────────────────────────
+    // compound on the real pool
 
     function _compoundParams(uint256 tokenId, uint256 minLiquidityAdded)
         internal
@@ -362,13 +353,11 @@ contract SwapAndAddForkMainnetTest is Test {
         });
     }
 
-    /// @dev Generate fees on the real pool: balanced round-trip swaps (ETH<->USDC) so the price returns near its
-    ///      start while both sides accrue fees to the in-range position. Large notional so a position of this size
-    ///      captures a non-trivial fee share of the deep pool.
+    /// @dev Balanced round-trip swaps keep the price near its start while the position accrues fees.
     function test_fork_compound_reinvestsFees() public {
         (int24 lo, int24 hi) = _ticks();
         int24 ts = key.tickSpacing;
-        lo = lo - 40 * ts; // widen so the position stays in range across the fee-generating swaps
+        lo = lo - 40 * ts; // widen so the position stays in range
         hi = hi + 40 * ts;
 
         _fundUsdc(5_000_000e6);
@@ -380,7 +369,6 @@ contract SwapAndAddForkMainnetTest is Test {
         PoolSwapTest swapRouter = new PoolSwapTest(manager);
         IERC20(USDC).approve(address(swapRouter), type(uint256).max);
         PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false});
-        // round-trips: sell ETH -> USDC, then sell that USDC back -> ETH, so the price returns near its start.
         for (uint256 i = 0; i < 3; i++) {
             swapRouter.swap{value: 300 ether}(
                 key,
@@ -430,15 +418,8 @@ contract SwapAndAddForkMainnetTest is Test {
         return abi.encode(commands, inputs);
     }
 
-    // ── real Trading API route fixture (mainnet) ──
-    // Fetched via /v1/quote + /v1/swap with x-universal-router-version: 2.2.0, protocols=["V4"] and
-    // swapper = TAPI_ZAP, a synthetic constant address: the zap is placed there with deployCodeTo, so the
-    // fixture (which embeds the swapper as the route's recipient) never goes stale from deployment-nonce
-    // drift. 2500e6 USDC -> native ETH as a multi-hop v4 route + native SWEEP — this is the coverage the
-    // Sepolia fixture lost when TAPI stopped serving v4 legs there: TAPI's v4-action ABI generation
-    // executing on OUR router generation, V4_SWAP running inside the zap's already-open unlock, and a
-    // native-output route. Pinned to the quote's block; refresh via script/fetch-tapi-route.sh (chainId 1,
-    // SWAPPER=TAPI_ZAP). Requires an archive FORK_URL; skipped otherwise.
+    // TAPI route fixture (mainnet): 2500e6 USDC -> native ETH, multi-hop v4 plus a native SWEEP, pinned to the quote's block.
+    // Generated by script/fetch-tapi-route.sh (chainId 1, SWAPPER=TAPI_ZAP), with the zap placed at the synthetic swapper address.
     address constant TAPI_ZAP = 0x000000000000000000000000000000005a9B7a11;
     uint256 constant TAPI_FIXTURE_BLOCK = 25789116;
     bytes constant TAPI_EXECUTE_TAIL =
@@ -446,10 +427,10 @@ contract SwapAndAddForkMainnetTest is Test {
 
     function test_fork_add_viaRealTapiRoute() public {
         string memory forkUrl = vm.envOr("FORK_URL", string(""));
-        vm.skip(bytes(forkUrl).length == 0); // pinned block needs archive state; skip on public RPC
+        vm.skip(bytes(forkUrl).length == 0); // the pinned block needs archive state, so skip on the public RPC
         vm.createSelectFork(forkUrl, TAPI_FIXTURE_BLOCK);
 
-        // fresh stack in the pinned fork; the zap sits at the fixture's swapper address
+        // fresh stack in the pinned fork, with the zap at the fixture's swapper address
         router = new UniversalRouter(_routerParams());
         deployCodeTo(
             "SwapAndAdd.sol:SwapAndAdd",

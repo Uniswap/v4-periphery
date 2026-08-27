@@ -10,11 +10,8 @@ interface IERC20Min {
     function balanceOf(address) external view returns (uint256);
 }
 
-/// @notice Test stand-in for an off-venue Universal Router route (ERC20 only). Implements the
-///         `IUniversalRouter.execute(bytes,bytes[])` shape SwapAndAdd calls. Consumes a FIXED `inputAmount`
-///         of the surplus token (pulled via Permit2, exactly as a real route does) and returns the deficit at
-///         an effective rate = mid * rateMultBps / 10000 (10000 = mid, <10000 worse, >10000 beats mid). It does
-///         NOT touch the target pool, mimicking off-venue execution. Pre-fund it with inventory of both tokens.
+/// @notice Test stand-in for a Universal Router route. Pulls a fixed `inputAmount` of the surplus token
+///         via Permit2 and returns the deficit token at mid * rateMultBps / 10000. Pre-fund it with both tokens.
 contract MockSwapRoute {
     IAllowanceTransfer public immutable permit2;
 
@@ -46,7 +43,7 @@ contract MockSwapRoute {
     }
 
     function execute(bytes calldata commands, bytes[] calldata inputs) external payable {
-        // Universal Router SWEEP (0x04) — SwapAndAdd reclaims native left in the router after a route.
+        // Universal Router SWEEP (0x04) returns leftover native to the caller.
         if (commands.length == 1 && uint8(commands[0]) == 0x04) {
             (address token,,) = abi.decode(inputs[0], (address, address, uint256));
             require(token == address(0), "mock: only native sweep");
@@ -54,8 +51,7 @@ contract MockSwapRoute {
             require(ok, "mock: sweep failed");
             return;
         }
-        // native surplus: consume from the forwarded msg.value (a real route spends the pushed value at its
-        // venue); the consumed part leaves to a sink, the remainder stays here for the caller's SWEEP reclaim.
+        // A native surplus consumes from msg.value. The rest stays here for the SWEEP reclaim.
         if (surplus == address(0)) {
             uint256 nativePull = inputAmount > msg.value ? msg.value : inputAmount;
             if (nativePull == 0) return;

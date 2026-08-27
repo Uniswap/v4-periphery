@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
 
-/// @notice ERC-20 that hardcodes an infinite allowance for the canonical Permit2 ("Permit2-native" token
-///         pattern) and reverts approve() toward it — such approvals are pointless and strict implementations
-///         disallow them. Integrations must therefore neither trust the token's ERC20 allowance as proof of
-///         their own wiring (their Permit2-internal grants may not exist yet) nor issue the redundant approve.
+/// @notice ERC-20 that hardcodes an infinite Permit2 allowance and reverts approve toward Permit2,
+///         which simulates Permit2-native tokens.
 contract MockERC20Permit2Native {
     string public constant name = "Permit2Native";
     string public constant symbol = "P2N";

@@ -6,8 +6,9 @@
 #   - amountIn: raw units
 #   - chainId: default 11155111 (Sepolia)
 #
-# IMPORTANT: request the quote with swapper = the SwapAndAdd deployment — the UR executes with the zap as
-# msg.sender, so pulls/recipients must map to it. No permit data: the zap holds standing Permit2 allowances.
+# IMPORTANT: request the quote with swapper = the SwapAndAdd deployment. The router executes with
+# the zap as msg.sender, so pulls and recipients must map to it. Do not include permit data, the zap
+# holds standing Permit2 allowances.
 set -euo pipefail
 
 TOKEN_IN=${1:?tokenIn}
@@ -17,12 +18,13 @@ CHAIN_ID=${4:-11155111}
 SWAPPER=${SWAPPER:-0x6f923892d6A45f7e77DB36f48F055C045F93E979} # live Sepolia SwapAndAdd
 API=${TAPI_URL:-https://trading-api-labs.interface.gateway.uniswap.org/v1}
 KEY=${TAPI_API_KEY:?set TAPI_API_KEY (see .env)}
-# Router ABI generation to encode for (public x-universal-router-version header). Must match the ABI of the
-# router that will execute the route; the API default targets an older generation than this repo's deployment.
+# Router ABI generation to encode for (the x-universal-router-version header). It must match the
+# ABI of the router that executes the route. The API default targets an older generation than this
+# repo's deployment.
 UR_VERSION=${UR_VERSION:-2.2.0}
-# Routing preference (allowed: BEST_PRICE, FASTEST). NOTE 2026-08-19: BEST_PRICE returns the API's own
-# APIResponseValidationError on Sepolia (server-side schema bug on the testnet aggregation path); use
-# ROUTING_PREFERENCE=FASTEST there. Sepolia also currently only serves v3 legs (v4 not routed).
+# Routing preference (allowed: BEST_PRICE, FASTEST). NOTE 2026-08-19: BEST_PRICE returns the API's
+# own APIResponseValidationError on Sepolia (a server-side schema bug on the testnet aggregation
+# path), use ROUTING_PREFERENCE=FASTEST there. Sepolia also currently only serves v3 legs.
 ROUTING_PREFERENCE=${ROUTING_PREFERENCE:-BEST_PRICE}
 
 quote=$(curl -sf "$API/quote" -H "x-api-key: $KEY" -H "x-universal-router-version: $UR_VERSION" -H "content-type: application/json" -d @- <<JSON
@@ -43,13 +45,13 @@ swap=$(curl -sf "$API/swap" -H "x-api-key: $KEY" -H "x-universal-router-version:
   -d "{\"quote\": $(echo "$quote" | jq .quote), \"simulateTransaction\": false}")
 
 data=$(echo "$swap" | jq -r .swap.data)
-echo "── UR calldata (execute) ──"
+echo "== UR calldata (execute) =="
 echo "$data"
 echo
-echo "── decoded (commands, inputs, deadline) ──"
+echo "== decoded (commands, inputs, deadline) =="
 cast decode-calldata "execute(bytes,bytes[],uint256)" "$data"
 echo
 echo "Re-encode as the zap's route with:  abi.encode(commands, inputs)   (drop the deadline)"
 echo
-echo "NOTE: keep UR_VERSION in sync with the executing router's ABI generation — v4 action structs differ"
-echo "      between generations and calldata encoded for the wrong one will not decode."
+echo "NOTE: keep UR_VERSION in sync with the executing router's ABI generation. The v4 action"
+echo "      structs differ between generations, and calldata encoded for the wrong one will not decode."

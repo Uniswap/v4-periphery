@@ -13,10 +13,7 @@ import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
-/// @notice Gas snapshots for every SwapAndAdd operation under its meaningful execution conditions. The
-///         dimensions that dominate cost: whether the reconcile swap runs (single-sided vs balanced input),
-///         whether a route executes before sizing, native vs ERC-20 currency0, and whether accrued fees are
-///         collected (grow ops). Numbers land in snapshots/SwapAndAddGasTest.json via the CI isolate run.
+/// @notice Gas snapshots for all SwapAndAdd operations. Results go to snapshots/SwapAndAddGasTest.json.
 contract SwapAndAddGasTest is PosmTestSetup {
     using CurrencyLibrary for Currency;
 
@@ -24,7 +21,7 @@ contract SwapAndAddGasTest is PosmTestSetup {
     MockSwapRoute route;
     int24 constant TICK_LOWER = -600;
     int24 constant TICK_UPPER = 600;
-    /// @dev abi.encode(bytes commands, bytes[] inputs) — a non-empty route payload the mock ignores.
+    /// @dev Non-empty route payload. The mock ignores its content.
     bytes constant ROUTE_PAYLOAD = abi.encode(bytes(""), new bytes[](0));
 
     function setUp() public {
@@ -36,7 +33,7 @@ contract SwapAndAddGasTest is PosmTestSetup {
         seedMoreLiquidity(key, 1_000e18, 1_000e18);
 
         route = new MockSwapRoute(permit2);
-        // Same artifact-based deployment as SwapAndAdd.t.sol (via_ir=true/500 production build).
+        // Deploy from the compiled artifact to measure the production via_ir build.
         zap = ISwapAndAdd(
             deployCode("SwapAndAdd.sol:SwapAndAdd", abi.encode(manager, permit2, lpm, IUniversalRouter(address(route))))
         );
@@ -99,7 +96,7 @@ contract SwapAndAddGasTest is PosmTestSetup {
         });
     }
 
-    /// @dev Balanced round-trip swaps: both sides of in-range liquidity accrue fees, price returns near 1:1.
+    /// @dev Round-trip swaps accrue fees in both tokens and return the price near 1:1.
     function _generateFees() internal {
         for (uint256 i = 0; i < 5; i++) {
             swap(key, true, -50e18, "");
@@ -107,27 +104,27 @@ contract SwapAndAddGasTest is PosmTestSetup {
         }
     }
 
-    // ───────────────────────────────────────────── add ─────────────────────────────────────────────
+    // --------------------------------------------- add ---------------------------------------------
 
-    /// @dev The full path: fee-aware sizing, flash-take, mint, reconcile swap, trim, sweep.
+    /// @dev Full path with the reconcile swap.
     function test_gas_add_singleSided() public {
         zap.add(_addParams(0, 10e18));
         vm.snapshotGasLastCall("SwapAndAdd_add_singleSided");
     }
 
-    /// @dev Proportional input at 1:1 — the reconcile swap is skipped (wei-scale residue at most).
+    /// @dev Balanced input skips the reconcile swap.
     function test_gas_add_balanced() public {
         zap.add(_addParams(10e18, 10e18));
         vm.snapshotGasLastCall("SwapAndAdd_add_balanced");
     }
 
-    /// @dev Skewed two-sided input: reconcile swap converts only the surplus share.
+    /// @dev Skewed input, so the reconcile swap converts only the surplus share.
     function test_gas_add_mixedRatio() public {
         zap.add(_addParams(3e18, 10e18));
         vm.snapshotGasLastCall("SwapAndAdd_add_mixedRatio");
     }
 
-    /// @dev Native currency0: value forwarding plus POSM's SWEEP refund leg.
+    /// @dev Native currency0 adds value forwarding and the SWEEP refund.
     function test_gas_add_native() public {
         ISwapAndAdd.AddParams memory p = _addParams(1e17, 0);
         p.poolKey = nativeKey;
@@ -135,8 +132,7 @@ contract SwapAndAddGasTest is PosmTestSetup {
         vm.snapshotGasLastCall("SwapAndAdd_add_native");
     }
 
-    /// @dev Route-first: the mock converts half the token1 input to token0 at mid before sizing, so the
-    ///      reconcile only closes the residual — measures the route plumbing on top of a near-balanced add.
+    /// @dev Measures the route plumbing on top of a near-balanced add.
     function test_gas_add_routed() public {
         route.config(Currency.unwrap(currency1), Currency.unwrap(currency0), FixedPoint96.Q96, 10000, 5e18, false);
         ISwapAndAdd.AddParams memory p = _addParams(0, 10e18);
@@ -145,16 +141,16 @@ contract SwapAndAddGasTest is PosmTestSetup {
         vm.snapshotGasLastCall("SwapAndAdd_add_routed");
     }
 
-    // ─────────────────────────────────────── increase / compound ───────────────────────────────────────
+    // --------------------------------------- increase / compound ---------------------------------------
 
-    /// @dev Warm position, no accrued fees: the fee-collect poke returns nothing.
+    /// @dev No accrued fees, so the collect step returns nothing.
     function test_gas_increase_noFees() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         zap.increase(_increaseParams(tokenId, 0, 10e18));
         vm.snapshotGasLastCall("SwapAndAdd_increase_noFees");
     }
 
-    /// @dev Accrued fees join the pulled budget: collect credits both tokens before sizing.
+    /// @dev Accrued fees join the pulled budget.
     function test_gas_increase_withAccruedFees() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         _generateFees();
@@ -162,7 +158,7 @@ contract SwapAndAddGasTest is PosmTestSetup {
         vm.snapshotGasLastCall("SwapAndAdd_increase_withAccruedFees");
     }
 
-    /// @dev Pure fee reinvestment: zero pulled budget, collected fees are the whole deploy.
+    /// @dev Collected fees fund the whole deploy.
     function test_gas_compound() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         _generateFees();
@@ -179,9 +175,9 @@ contract SwapAndAddGasTest is PosmTestSetup {
         vm.snapshotGasLastCall("SwapAndAdd_compound");
     }
 
-    // ───────────────────────────────────────────── rebalance ─────────────────────────────────────────────
+    // --------------------------------------------- rebalance ---------------------------------------------
 
-    /// @dev Burn old range, remint into a wider one: two POSM unlocks plus the full add path.
+    /// @dev Burns the old position and mints into a wider range.
     function test_gas_rebalance() public {
         (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
         zap.rebalance(

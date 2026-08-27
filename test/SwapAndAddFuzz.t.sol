@@ -21,17 +21,12 @@ import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
 import {ISwapAndAdd} from "../src/interfaces/ISwapAndAdd.sol";
 import {IUniversalRouter} from "../src/interfaces/external/IUniversalRouter.sol";
 
-/// @notice Property fuzz over the POOL CONFIGURATION as well as the inputs. The trim under-estimate (fixed
-///         at ddcfd2b) survived the whole suite because every pool sat at price 1 and the one full-domain
-///         fuzz only supplied token0-side budgets — the vulnerable configuration (low price x single-sided
-///         token1) was never generated. This suite's premise: fixed pool configs are what create false
-///         confidence, so NOTHING here is fixed — initial price, fee, tick spacing, depth, range and both
-///         budget sides are all fuzzed, across all four operations.
+/// @notice Full-domain property fuzz. Initial price, fee, tick spacing, depth, range, and both
+///         budget sides are fuzzed across all four operations.
 ///
-///         THE PROPERTY: an operation either succeeds — leaving no funds at rest — or reverts with an error
-///         the design explicitly allows (the whitelist in `_allowed`). v4's CurrencyNotSettled, panics and
-///         wrapped low-level failures are always property violations: the contract's own errors and the
-///         pool's documented limits are the only acceptable ways to fail with a non-zero minLiquidity floor.
+///         Property: an operation either succeeds and leaves no funds at rest, or reverts with an
+///         error in the `_allowed` whitelist. CurrencyNotSettled, panics, and wrapped low-level
+///         failures are always violations.
 contract SwapAndAddFuzzTest is PosmTestSetup {
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
@@ -41,10 +36,8 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
 
     bytes4 constant CURRENCY_NOT_SETTLED = 0x5212cba1;
 
-    // budget cap (uint88 ~ 3e26 raw) and price-domain cap (|tick| <= 300_000, price ~ 1e±13): together they
-    // keep the flash-take below the reserve pool's holdings, so the separate, documented PoolManager-drained limit (take
-    // exceeding the PoolManager's global balance) cannot masquerade as a property violation here. The trim
-    // bug's operational region (price ~1e-9, token1 from ~6.4e18) sits comfortably inside these bounds.
+    // budget (uint88) and price (|tick| <= 300_000) caps keep the flash-take below the reserve
+    // pool's holdings, so an out-of-scope PoolManager-drained take cannot fail the property
     int24 constant MAX_CENTRE = 300_000;
 
     function setUp() public {
@@ -66,9 +59,8 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
         IERC721(address(lpm)).setApprovalForAll(address(zap), true);
 
-        // deep reserve pool: keeps the flash-take clear of the PoolManager-drained limit (see above).
-        // Its fee is deliberately ABOVE the fuzzed fee range (0..100_000) so a fuzzed (fee, spacing) pair can
-        // never collide with this key and revert PoolAlreadyInitialized. It is never swapped through.
+        // deep reserve pool backs the flash-take. Its fee sits above the fuzzed fee range so a fuzzed
+        // key cannot collide with it.
         (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 500_000, int24(200), SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(
             rk,
@@ -81,7 +73,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         MockERC20(Currency.unwrap(currency1)).mint(address(route), 1e32);
     }
 
-    // ── fuzzed pool + range construction ────────────────────────────────────────────────────────────────
+    // fuzzed pool + range construction
 
     struct Cfg {
         PoolKey key;
@@ -91,7 +83,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
     }
 
     /// @dev a fully fuzzed pool: initial price across ±MAX_CENTRE, fee 0..10%, spacing from the common set,
-    ///      seeded depth 1e18..1e26 — plus a fuzzed range of 1..127 spacings per side around (or off) spot.
+    ///      seeded depth 1e18..1e26, plus a fuzzed range of 1..127 spacings per side around (or off) spot.
     function _cfg(uint24 feeSeed, uint8 spacingSeed, int24 centreSeed, uint128 depthSeed, int8 loMul, int8 hiMul)
         internal
         returns (Cfg memory c)
@@ -116,27 +108,20 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         (c.tl, c.tu) = _range(c.centre, ts, loMul, hiMul);
     }
 
-    /// @dev Build an ordered range from two fuzzed multipliers by SORTING them rather than vm.assume-ing the
-    ///      ordering: a rejection-based version throws away ~half of all inputs (and both ranges together ~75%
-    ///      in the rebalance property), which exhausts the assume budget at high run counts.
+    /// @dev Sort the fuzzed multipliers into an ordered range. Rejection would exhaust the assume budget.
     function _range(int24 centre, int24 ts, int8 aMul, int8 bMul) internal pure returns (int24 lo, int24 hi) {
         (int8 lower, int8 upper) = aMul <= bMul ? (aMul, bMul) : (bMul, aMul);
         lo = centre + int24(int256(lower)) * ts;
         hi = centre + int24(int256(upper)) * ts;
-        if (lo == hi) hi += ts; // degenerate: widen by one spacing instead of rejecting the input
+        if (lo == hi) hi += ts; // widen a degenerate range by one spacing
     }
 
-    /// @dev VALUE-cap the fuzzed budgets: a budget's worth in the OTHER token bounds the flash-take, and
-    ///      the take must stay far below the reserve pool's ~1e30-per-side holdings or the run hits the
-    ///      separate, documented PoolManager-drained limit instead of the properties under test.
-    ///      Clamping (not assume-ing) keeps every run meaningful at extreme prices.
+    /// @dev Value-cap the budgets so the flash-take stays far below the reserve pool's ~1e30 holdings.
     function _capBudgets(int24 centre, uint88 b0Seed, uint88 b1Seed) internal pure returns (uint256 b0, uint256 b1) {
         return _capAt(TickMath.getSqrtPriceAtTick(centre), b0Seed, b1Seed);
     }
 
-    /// @dev The cap MUST be taken at the price that prevails when the operation runs, not at pool init: the
-    ///      flash-take is sized from the live price, so a drifted pool needs re-capping or an otherwise
-    ///      in-bounds budget implies an astronomical take (the drained-reserves noise this whole helper exists to exclude).
+    /// @dev Cap at the live price, not the init price, because the flash-take is sized from the live price.
     function _capBudgetsAtSpot(PoolKey memory k, uint88 b0Seed, uint88 b1Seed)
         internal
         view
@@ -153,8 +138,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         b1 = bound(b1Seed, 0, cap1 < type(uint88).max ? cap1 : type(uint88).max);
     }
 
-    /// @dev the errors an operation is DESIGNED to be able to hit on well-formed inputs; everything else —
-    ///      CurrencyNotSettled above all — is a bug.
+    /// @dev errors an operation can hit by design. Anything else, above all CurrencyNotSettled, is a bug.
     function _allowed(bytes4 sel) internal pure returns (bool) {
         return sel == ISwapAndAdd.InsufficientLiquidity.selector // the single slippage/dust gate
             || sel == ISwapAndAdd.NoFeesToCompound.selector // grow ops with nothing to deploy
@@ -192,7 +176,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         });
     }
 
-    // ── add: any pool config x any budgets x any range ──────────────────────────────────────────────────
+    // add: any pool config x any budgets x any range
 
     function testFuzz_add_anyPoolConfig(
         uint24 feeSeed,
@@ -218,7 +202,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         _noFundsAtRest(c.key);
     }
 
-    // ── add with a route leg: fuzzed off-venue conversion feeding the fuzzed pool ───────────────────────
+    // add with a route leg: fuzzed off-venue conversion feeding the fuzzed pool
 
     function testFuzz_add_routed_anyPoolConfig(
         uint24 feeSeed,
@@ -234,8 +218,8 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         Cfg memory c = _cfg(feeSeed, spacingSeed, centreSeed, depthSeed, loMul, hiMul);
         (, uint256 a1) = _capBudgets(c.centre, 0, b1);
         vm.assume(a1 > 0);
-        // an off-venue token1 -> token0 conversion at the FUZZED pool's mid, filled 50%..150% of mid, over a
-        // fuzzed slice of the budget (0 = a no-op route; > b1 clamps to the full budget in the mock)
+        // off-venue token1 -> token0 at the pool's mid, filled 50%..150% of mid, over a fuzzed slice
+        // of the budget (0 = no-op route, > b1 clamps to the full budget)
         uint256 midRateX96 = FullMath_rate(c.centre);
         route.config(
             Currency.unwrap(currency1),
@@ -257,14 +241,14 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         _noFundsAtRest(c.key);
     }
 
-    /// @dev token1-per-token0 mid rate (Q96) at a tick, for the mock's pricing; clamped away from zero.
+    /// @dev token1-per-token0 mid rate (Q96) at a tick, for the mock's pricing. Clamped away from zero.
     function FullMath_rate(int24 centre) internal pure returns (uint256 r) {
         uint160 sp = TickMath.getSqrtPriceAtTick(centre);
         r = (uint256(sp) * uint256(sp)) >> 96;
         if (r == 0) r = 1;
     }
 
-    // ── grow-in-place: mint, drift the price, then increase / compound on the fuzzed pool ───────────────
+    // grow-in-place: mint, drift the price, then increase / compound on the fuzzed pool
 
     function testFuzz_increase_afterDrift(
         uint24 feeSeed,
@@ -291,14 +275,13 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
             return; // nothing minted, nothing to grow
         }
 
-        // fuzzed price drift (either direction, bounded so the exact-input swap itself is well-formed);
-        // fee accrual on the position rides along for free.
+        // fuzzed price drift in either direction, which also accrues fees on the position
         if (drift != 0) {
             int256 d = int256(drift);
             try this.extSwap(c.key, d > 0, d > 0 ? d : -d) {} catch {}
         }
 
-        // cap the increase budgets at the POST-DRIFT price — that is what its flash-take is sized from
+        // cap the increase budgets at the post-drift price
         (uint256 c0i, uint256 c1i) = _capBudgetsAtSpot(c.key, i0, i1);
         vm.assume(c0i + c1i > 0);
 
@@ -376,8 +359,7 @@ contract SwapAndAddFuzzTest is PosmTestSetup {
         _noFundsAtRest(c.key);
     }
 
-    /// @dev external wrapper so a failing drift swap (e.g. pool drained to the bound) is skippable state,
-    ///      not a test failure — the property under test is the zap's behavior, not the drift's.
+    /// @dev external wrapper so a failed drift swap is skipped, not a test failure
     function extSwap(PoolKey memory k, bool zeroForOne, int256 amountIn) external {
         swap(k, zeroForOne, -amountIn, "");
     }

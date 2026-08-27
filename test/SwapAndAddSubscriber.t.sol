@@ -28,9 +28,8 @@ interface IERC20Min {
     function transfer(address to, uint256 amt) external returns (bool);
 }
 
-/// @notice A subscriber that trades the position's own pool from inside a notification — the strongest thing
-///         subscriber code can do to a SwapAndAdd operation. It fires on the FIRST notifyModifyLiquidity (the
-///         grow ops' fee collect), i.e. between the collect and the sizing read, and settles its own deltas.
+/// @notice A subscriber that trades the pool of the position from inside the first
+///         notifyModifyLiquidity, between the fee collect and the sizing read.
 contract MockSwappingSubscriber is ISubscriber {
     using CurrencyLibrary for Currency;
 
@@ -73,12 +72,9 @@ contract MockSwappingSubscriber is ISubscriber {
     }
 }
 
-/// @notice POSM SUBSCRIBERS are the one owner-chosen external-call surface inside SwapAndAdd's unlock that is
-///         not a hook: `notifyModifyLiquidity` fires (full gas, revert bubbling) on the grow ops' fee collect,
-///         the INCREASE, and any trim; `notifyBurn` fires on the rebalance burn. This suite pins the doctrine:
-///         a well-behaved subscriber is transparent; a reverting subscriber can only DoS its OWN position's
-///         operations (atomic revert, funds safe); a subscriber that trades the pool mid-operation is gated by
-///         the `minLiquidity` floor exactly like a hook or the caller's own route.
+/// @notice Subscriber notifications fire inside the unlock of SwapAndAdd. A well-behaved subscriber is
+///         transparent, a reverting one only blocks its own position, and a pool-trading one is gated
+///         by the `minLiquidity` floor.
 contract SwapAndAddSubscriberTest is PosmTestSetup {
     using StateLibrary for IPoolManager;
     using CurrencyLibrary for Currency;
@@ -108,13 +104,13 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
         sub = new MockSubscriber(lpm);
     }
 
-    // ─────────────────────────────── helpers ───────────────────────────────
+    // helpers
 
     /// @dev Position owned by this contract with accrued fees, subscribed to `subscriber`.
     function _subscribedPosition(address subscriber) internal returns (uint256 tokenId) {
         tokenId = lpm.nextTokenId();
         mint(PositionConfig({poolKey: key, tickLower: -600, tickUpper: 600}), 1e21, address(this), "");
-        // accrue fees so the grow ops have position value to work with
+        // accrue fees for the grow ops
         swap(key, true, -int256(1e20), "");
         swap(key, false, -int256(1e20), "");
         lpm.subscribe(tokenId, subscriber, "");
@@ -138,7 +134,7 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
         });
     }
 
-    // ─────────────────────────────── well-behaved subscriber: transparent ───────────────────────────────
+    // well-behaved subscriber: transparent
 
     function test_increase_subscribedPosition_notifiesAndSucceeds() public {
         uint256 tokenId = _subscribedPosition(address(sub));
@@ -148,7 +144,7 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
 
         assertGt(added, 0, "increase completed on a subscribed position");
         assertEq(lpm.getPositionLiquidity(tokenId), before + added, "position grew");
-        // fee collect + INCREASE both notified (a trim, if any, adds a third)
+        // the fee collect and the increase both notify (a trim, if any, adds a third)
         assertGe(sub.notifyModifyLiquidityCount(), 2, "collect and increase must both notify");
         assertEq(currency0.balanceOf(address(zap)), 0, "no token0 at rest");
         assertEq(currency1.balanceOf(address(zap)), 0, "no token1 at rest");
@@ -199,17 +195,17 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
         assertEq(IERC721(address(lpm)).ownerOf(newTokenId), address(this), "owner receives the new NFT");
     }
 
-    // ─────────────────────────────── reverting subscriber: self-DoS only, atomic ───────────────────────────────
+    // reverting subscriber: self-DoS only, atomic
 
     function test_increase_revertingSubscriber_revertsAtomically() public {
         MockRevertSubscriber rev = new MockRevertSubscriber(lpm);
-        rev.setRevert(false); // let notifySubscribe pass; notifyModifyLiquidity always reverts
+        rev.setRevert(false); // let notifySubscribe pass, notifyModifyLiquidity always reverts
         uint256 tokenId = _subscribedPosition(address(rev));
 
         uint128 liqBefore = lpm.getPositionLiquidity(tokenId);
         uint256 c0Before = currency0.balanceOf(address(this));
 
-        // the revert is bubbled (wrapped) by the Notifier at the very first notification — the fee collect
+        // the Notifier bubbles the revert at the first notification, the fee collect
         vm.expectRevert();
         zap.increase(_incParams(tokenId, 1e18, 1e18, 1));
 
@@ -244,11 +240,11 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
         assertEq(IERC721(address(lpm)).ownerOf(tokenId), address(this), "NFT untouched");
     }
 
-    // ─────────────────────────── price-manipulating subscriber: gated by the floor ───────────────────────────
+    // price-manipulating subscriber: gated by the floor
 
     function _swappingSetup() internal returns (uint256 tokenId, MockSwappingSubscriber swapper) {
         swapper = new MockSwappingSubscriber(lpm, manager);
-        // fund the swapper so it can settle its own mid-operation trade
+        // fund the swapper so it can settle its own trade
         MockERC20(Currency.unwrap(currency0)).mint(address(swapper), 1e22);
         tokenId = _subscribedPosition(address(swapper));
         swapper.config(key, 1e21); // fires on the fee collect, before the zap sizes from the live price
@@ -257,8 +253,7 @@ contract SwapAndAddSubscriberTest is PosmTestSetup {
     function test_increase_swappingSubscriber_floorReverts() public {
         (uint256 tokenId,) = _swappingSetup();
 
-        // an honest floor quoted against the pre-manipulation price: the subscriber's swap makes the
-        // operation miss it, and the whole thing reverts atomically — exactly the hook/route doctrine
+        // the swap of the subscriber makes the operation miss a floor quoted at the pre-manipulation price
         vm.expectPartialRevert(ISwapAndAdd.InsufficientLiquidity.selector);
         zap.increase(_incParams(tokenId, 1e18, 1e18, type(uint128).max));
     }
