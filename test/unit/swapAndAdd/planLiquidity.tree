@@ -1,0 +1,33 @@
+PlanLiquidityTest
+├── given the range sits below spot
+│ ├── when the budget is token1-only
+│ │ └── it mints without a swap and leaves the zap idle
+│ └── when the budget is token0-only
+│     └── it sells the whole budget down into the range and mints
+├── given the budget exceeds the depth of the pool
+│ ├── when the range is narrow
+│ │ └── it still mints, pushing spot past the new range
+│ ├── when the pool is thin
+│ │ └── it still mints against the thin depth
+│ └── when spot sits on the upper edge with a token0-only budget
+│     └── it funds the whole mint from the reconcile sell
+├── given spot lands exactly on a range boundary
+│ ├── when the stored tick is below the boundary
+│ │ └── it degenerates the in-range amount0 to 0 and mints
+│ └── when the stored tick is at the boundary
+│     └── it degenerates the in-range amount1 to 0 and mints
+├── given an extreme tick
+│ ├── when the budget is token0-only
+│ │ └── it deploys at least 99.9% of the feasible liquidity
+│ ├── when the budget is token1-only
+│ │ └── it deploys at least 99.9% of the feasible liquidity
+│ └── when the budget is two-sided at a tick far below 0
+│     └── it values the token1 budget through the inverse rate
+├── given the pool charges a protocol fee
+│ └── it sizes from the swap fee of the direction, not the packed pair
+├── given the pool hook overrides the LP fee
+│ ├── it forwards hookData to beforeSwap and absorbs the difference in the trim
+│ └── when minLiquidity is quoted at the stored fee
+│     └── it reverts with {InsufficientLiquidity}
+└── given any two-sided budget
+    └── it mints and leaves the zap idle

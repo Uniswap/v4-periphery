@@ -8,9 +8,21 @@ IncreaseTest
 ├── given caller is owner
 │ ├── when the position has liquidity
 │ │ └── it grows the same tokenId and leaves the zap idle
+│ ├── when the budget is token0-only
+│ │ └── it grows the same tokenId from the other single-sided direction
 │ ├── when the position is emptied
 │ │ └── it refills the same tokenId
-│ └── when the pool is native
-│     └── it grows the same tokenId and leaves the zap idle
-└── given caller is an operator
-    └── it forces dust to the owner
+│ ├── when the pool is native
+│ │ └── it grows the same tokenId and leaves the zap idle
+│ ├── when spot has drifted out of range
+│ │ └── it collects the accrued fees first and still grows the position
+│ ├── when the budget is 0 AND fees accrued
+│ │ └── it reinvests the fees alone, matching compound
+│ └── when the budget is non-zero AND fees accrued
+│     └── it deploys budget and fees together, leaving nothing to compound
+├── given caller is an operator
+│ └── it forces dust to the owner
+└── given the increase succeeds
+    ├── it emits Increased whose recipient is the resolved one
+    └── when caller is an operator
+        └── it emits Increased with the owner as recipient and the operator as caller

@@ -114,6 +114,8 @@ contract PullTest is BttBase {
         zap.exposedPull{value: 1e17 - 1}(nativeKey, 1e17, 0, _emptyFunding(), "");
     }
 
+    /// @dev Two native ops see the same msg.value, but native spending is balance-funded. The first op
+    ///      consumes and sweeps the value, so the second hits this guard and reverts the whole batch.
     function test_WhenBalanceLtExpectedValue_Reverts() public {
         // it reverts with {InvalidEthValue}
         ISwapAndAdd.AddParams memory p = _addParams(1e17, 0);

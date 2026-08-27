@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
 
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+import {ISwapAndAdd} from "../../../src/interfaces/ISwapAndAdd.sol";
 import {BttBase} from "./BttBase.sol";
 import {ISwapAndAddHarness} from "./ISwapAndAddHarness.sol";
 
@@ -9,6 +14,7 @@ contract ReconcileTest is BttBase {
     using CurrencyLibrary for Currency;
 
     address internal constant SINK = address(0xdead);
+    bytes4 internal constant CURRENCY_NOT_SETTLED = 0x5212cba1;
 
     function _deployedMint(uint256 budget0, uint256 budget1)
         internal
@@ -140,5 +146,69 @@ contract ReconcileTest is BttBase {
 
         assertLe(trimmed, lopt, "trim capped");
         assertEq(lpm.getPositionLiquidity(tokenId), lopt - trimmed, "native liquidity");
+    }
+
+    // the token->liquidity inverse of the trim, driven end to end through `add`
+
+    /// @dev A pool at `sqrtPrice` with a full-domain band of `depth`, plus deep reserves for the flash-take.
+    function _trimPool(uint24 fee, int24 spacing, uint256 depth) internal returns (PoolKey memory k) {
+        MockERC20(Currency.unwrap(currency0)).mint(address(this), 1e45);
+        MockERC20(Currency.unwrap(currency1)).mint(address(this), 1e45);
+        (k,) = initPool(currency0, currency1, IHooks(address(0)), fee, spacing, SQRT_PRICE_1_1);
+        modifyLiquidityRouter.modifyLiquidity(
+            k,
+            ModifyLiquidityParams({tickLower: -600_000, tickUpper: 600_000, liquidityDelta: int256(depth), salt: 0}),
+            ""
+        );
+        // a deep unrelated reserve pool, so the flash-take never hits a drained PoolManager
+        (PoolKey memory rk,) = initPool(currency0, currency1, IHooks(address(0)), 10000, int24(200), SQRT_PRICE_1_1);
+        modifyLiquidityRouter.modifyLiquidity(
+            rk,
+            ModifyLiquidityParams({tickLower: -600_000, tickUpper: 600_000, liquidityDelta: int256(1e30), salt: 0}),
+            ""
+        );
+    }
+
+    function _trimAdd(PoolKey memory k, int24 tl, int24 tu, uint256 a0, uint256 a1, uint256 minLiq)
+        internal
+        returns (bool reverted, bytes4 sel, uint128 liq)
+    {
+        ISwapAndAdd.AddParams memory p = _addParams(tl, tu, a0, a1);
+        p.poolKey = k;
+        p.minLiquidity = minLiq;
+        try zap.add(p) returns (uint256, uint128 l, uint256, uint256) {
+            liq = l;
+        } catch (bytes memory data) {
+            reverted = true;
+            if (data.length >= 4) sel = bytes4(data);
+        }
+    }
+
+    /// @dev The uncapped trim must always free the flash debt, so its inverse has to round up.
+    function test_WhenTheBudgetIsLargeAndSingleSided_TrimFreesTheDebt() public {
+        // it mints without leaving a currency unsettled
+        PoolKey memory k = _trimPool(100, 60, 1e34);
+        (bool reverted, bytes4 sel, uint128 liq) = _trimAdd(k, -60, 60, 0, 4.4e30, 1);
+        assertFalse(reverted, string.concat("must not revert, got selector ", vm.toString(sel)));
+        assertGt(liq, 0, "liquidity minted");
+        _assertZapIdle();
+    }
+
+    /// @dev Budgets inside the ~1-wei mint/burn rounding toll of the pool.
+    function test_WhenTheBudgetIsDustAndTheFloorIsSet_SurfacesInsufficientLiquidity() public {
+        // it reverts with {InsufficientLiquidity}
+        PoolKey memory k = _trimPool(500, 1, 1e24);
+        (bool reverted, bytes4 sel,) = _trimAdd(k, -10, 6000, 259, 0, 1);
+        assertTrue(reverted, "a dust budget must revert");
+        assertEq(sel, ISwapAndAdd.InsufficientLiquidity.selector, "a non-zero floor surfaces InsufficientLiquidity");
+    }
+
+    /// @dev A zero floor is the documented opt-out, so the rounding toll surfaces as the v4 error.
+    function test_WhenTheBudgetIsDustAndTheFloorIsZero_SurfacesCurrencyNotSettled() public {
+        // it reverts with {CurrencyNotSettled}
+        PoolKey memory k = _trimPool(500, 1, 1e24);
+        (bool reverted, bytes4 sel,) = _trimAdd(k, -10, 6000, 259, 0, 0);
+        assertTrue(reverted, "a dust budget must revert");
+        assertEq(sel, CURRENCY_NOT_SETTLED, "a zero floor lets CurrencyNotSettled surface");
     }
 }

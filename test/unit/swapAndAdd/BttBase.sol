@@ -11,6 +11,7 @@ import {ModifyLiquidityParams} from "@uniswap/v4-core/src/types/PoolOperation.so
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 import {PosmTestSetup} from "../../shared/PosmTestSetup.sol";
 import {Actions} from "../../../src/libraries/Actions.sol";
@@ -180,6 +181,20 @@ contract BttBase is PosmTestSetup {
 
     function _emptyFunding() internal pure returns (ISwapAndAdd.TokenAmount[] memory funding) {
         funding = new ISwapAndAdd.TokenAmount[](0);
+    }
+
+    /// @dev The single log the zap emitted since `vm.recordLogs()`. Asserts there is exactly one.
+    function _zapLog() internal returns (Vm.Log memory) {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        uint256 found = type(uint256).max;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].emitter == address(zap)) {
+                assertEq(found, type(uint256).max, "exactly one zap event per operation");
+                found = i;
+            }
+        }
+        assertTrue(found != type(uint256).max, "the operation must emit a zap event");
+        return logs[found];
     }
 
     function _assertZapIdle() internal view {

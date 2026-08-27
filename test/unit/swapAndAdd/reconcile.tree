@@ -10,5 +10,13 @@ ReconcileTest
 │     └── it trims newly added liquidity, then closes deltas
 ├── given a deficit on token1
 │ └── it selects currency1 as the deficit, sells token0, and closes deltas
-└── given a native pool deficit
-    └── it closes native and token1 deltas and leaves the zap idle
+├── given a native pool deficit
+│ └── it closes native and token1 deltas and leaves the zap idle
+└── given the trim inverse must round up
+    ├── when the budget is large and single-sided
+    │ └── it mints without leaving a currency unsettled
+    └── when the budget is inside the rounding toll of the pool
+        ├── when minLiquidity is non-zero
+        │ └── it reverts with {InsufficientLiquidity}
+        └── when minLiquidity is 0
+            └── it reverts with {CurrencyNotSettled}

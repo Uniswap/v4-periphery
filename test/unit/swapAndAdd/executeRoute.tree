@@ -1,5 +1,17 @@
 ExecuteRouteTest
 ├── when the router holds no native after execute
 │ └── it does not issue a sweep
-└── when the router holds native after execute
-    └── it sweeps the full native balance back to the zap
+├── when the router holds native after execute
+│ ├── it sweeps the full native balance back to the zap
+│ └── it reclaims the donation into the budget, with and without a pushed value
+└── given the route runs before sizing
+    ├── when the route under-converts
+    │ └── it fills the remaining deficit in the pool and mints
+    ├── when the route over-converts
+    │ └── it sells the excess token0 back to token1 and mints
+    ├── when the route beats the mid price
+    │ └── it deploys more than the same-pool path
+    ├── when the route is cheaper than the pool fee
+    │ └── it deploys more and returns less than the same-pool path
+    └── when the route leg swaps in the target pool
+        └── it completes, funds the flash debt from the fee credit, and refunds the rest in its own denomination

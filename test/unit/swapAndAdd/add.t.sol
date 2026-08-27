@@ -71,6 +71,22 @@ contract AddTest is BttBase {
         _assertZapIdle();
     }
 
+    function test_WhenBudgetIsSingleSided_ReturnedDustIsSmall() public {
+        // it returns only the slippage shortfall, in the input token
+        uint256 amountIn = 10e18;
+        uint256 c0Before = currency0.balanceOf(address(this));
+        uint256 c1Before = currency1.balanceOf(address(this));
+
+        zap.add(_addParams(0, amountIn));
+
+        // net token1 spent = pulled budget - swept dust
+        uint256 dust1 = currency1.balanceOf(address(this)) + amountIn - c1Before;
+        // measured near 15 bps of the budget here, so the 2% bound has headroom
+        assertLt(dust1, amountIn / 50, "token1 dust under 2% of the budget");
+        assertApproxEqAbs(currency0.balanceOf(address(this)), c0Before, 5, "no token0 dust");
+        _assertZapIdle();
+    }
+
     function test_WhenAddSucceeds_EmitsAddedMatchingReturns() public {
         // it emits Added whose fields match the return values
         address recipient = makeAddr("recipient");
@@ -79,16 +95,7 @@ contract AddTest is BttBase {
         vm.recordLogs();
         (uint256 tokenId, uint128 liq, uint256 a0, uint256 a1) = zap.add(p);
 
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        Vm.Log memory zapLog;
-        uint256 found;
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].emitter == address(zap)) {
-                zapLog = logs[i];
-                found++;
-            }
-        }
-        assertEq(found, 1, "exactly one zap event");
+        Vm.Log memory zapLog = _zapLog();
         assertEq(zapLog.topics[0], ISwapAndAdd.Added.selector, "topic0");
         assertEq(zapLog.topics[1], bytes32(uint256(uint160(recipient))), "indexed recipient");
         assertEq(zapLog.topics[2], bytes32(tokenId), "indexed tokenId");

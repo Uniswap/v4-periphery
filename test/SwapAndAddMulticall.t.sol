@@ -277,24 +277,6 @@ contract SwapAndAddMulticallTest is PosmTestSetup {
 
     // msg.value discipline
 
-    /// @dev Two native ops see the same msg.value, but native spending is balance-funded. The first
-    ///      op consumes and sweeps the value, so the second reverts the whole batch. No double-spend.
-    function test_multicall_secondNativeOp_cannotDoubleSpend() public {
-        // standing allowances isolate the value mechanics from the permit flow
-        vm.startPrank(signer);
-        permit2.approve(Currency.unwrap(currency1), address(zap), type(uint160).max, type(uint48).max);
-
-        ISwapAndAdd.AddParams memory p = _addParams(nativeKey, 1e17, 1e17);
-        bytes[] memory calls = new bytes[](2);
-        calls[0] = abi.encodeCall(ISwapAndAdd.add, (p));
-        calls[1] = abi.encodeCall(ISwapAndAdd.add, (p));
-
-        // the second op must fail on the balance guard in _pullBudget
-        vm.expectRevert(ISwapAndAdd.InvalidEthValue.selector);
-        zap.multicall{value: 1e17}(calls);
-        vm.stopPrank();
-    }
-
     /// @dev An ERC20-only op asserts msg.value == 0, so it cannot run in a value-bearing batch.
     function test_multicall_erc20OpInValueBatch_reverts() public {
         vm.startPrank(signer);

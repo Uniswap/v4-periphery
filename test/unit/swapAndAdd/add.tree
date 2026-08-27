@@ -13,5 +13,7 @@ AddTest
 │ └── it mints a position NFT to recipient and leaves the zap idle
 ├── when the pool is native
 │ └── it mints a native position and leaves the zap idle
+├── when the budget is single-sided
+│ └── it returns only the slippage shortfall, in the input token
 └── given the add succeeds
     └── it emits Added whose fields match the return values
