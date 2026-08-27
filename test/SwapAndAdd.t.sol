@@ -21,6 +21,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 
 import {PosmTestSetup} from "./shared/PosmTestSetup.sol";
+import {Actions} from "../src/libraries/Actions.sol";
 import {LiquidityAmounts} from "../src/libraries/LiquidityAmounts.sol";
 import {PositionConfig} from "./shared/PositionConfig.sol";
 import {MockSwapRoute} from "./mocks/MockSwapRoute.sol";
@@ -277,6 +278,42 @@ contract SwapAndAddTest is PosmTestSetup {
         assertEq(lpm.getPositionLiquidity(tokenId), liq0 + added, "native position grew by added");
         assertEq(lpm.nextTokenId(), nextBefore, "no new NFT minted");
         assertEq(address(zap).balance, 0, "zap eth == 0");
+    }
+
+    /// @dev Empties a position via POSM directly (decrease to 0, NFT kept) — the state a keeper uses to
+    ///      preserve the tokenId (and its subscribers) between exits.
+    function _emptyPosition(uint256 tokenId) internal {
+        bytes memory actions = abi.encodePacked(uint8(Actions.DECREASE_LIQUIDITY), uint8(Actions.TAKE_PAIR));
+        bytes[] memory params = new bytes[](2);
+        params[0] = abi.encode(tokenId, uint256(lpm.getPositionLiquidity(tokenId)), uint128(0), uint128(0), bytes(""));
+        params[1] = abi.encode(key.currency0, key.currency1, address(this));
+        lpm.modifyLiquidities(abi.encode(actions, params), block.timestamp + 1);
+        assertEq(lpm.getPositionLiquidity(tokenId), 0, "position emptied");
+    }
+
+    /// @dev A position decreased to 0 liquidity (NFT alive) is refillable: the fee-collect poke is skipped
+    ///      (v4 rejects 0-liquidity pokes, and an emptied position holds no uncollected fees) and the
+    ///      increase recreates the position — the zap's only path back into an existing tokenId.
+    function test_increase_worksOnEmptiedPosition() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        _emptyPosition(tokenId);
+
+        (uint128 added,,) = zap.increase(_increaseParams(tokenId, 0, 5e18));
+
+        assertGt(added, 0, "empty position refilled");
+        assertEq(lpm.getPositionLiquidity(tokenId), added, "position liquidity equals added");
+    }
+
+    /// @dev Compound on an emptied position surfaces the zap's own NoFeesToCompound instead of v4's
+    ///      opaque CannotUpdateEmptyPosition from the fee-collect poke.
+    function test_compound_emptiedPosition_revertsNoFees() public {
+        (uint256 tokenId,,,) = zap.add(_addParams(0, 10e18));
+        IERC721(address(lpm)).setApprovalForAll(address(zap), true);
+        _emptyPosition(tokenId);
+
+        vm.expectRevert(ISwapAndAdd.NoFeesToCompound.selector);
+        zap.compound(_compoundParams(tokenId, 0));
     }
 
     function test_increase_revertsOnMinLiquidity() public {

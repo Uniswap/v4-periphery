@@ -265,7 +265,10 @@ contract SwapAndAdd is ISwapAndAdd, SafeCallback, DeltaResolver, Permit2Forwarde
         // For grow ops (increase, compound): collect accrued fees via a 0-liquidity decrease first.
         // The held balance (collected fees + any pulled budget) becomes the redeploy budget.
         if (cp.deployTokenId != 0) {
-            _decrease(cp.key, cp.deployTokenId, 0, cp.hookData);
+            // Skip collect for emptied positions with zero liquidity
+            if (positionManager.getPositionLiquidity(cp.deployTokenId) != 0) {
+                _decrease(cp.key, cp.deployTokenId, 0, cp.hookData);
+            }
             cp.budget0 = cp.key.currency0.balanceOfSelf();
             cp.budget1 = cp.key.currency1.balanceOfSelf();
             // Revert if there are neither held fees nor a route to source tokens.
